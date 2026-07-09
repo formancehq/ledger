@@ -684,6 +684,7 @@ const (
 	ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY                ErrorReason = 60
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL         ErrorReason = 61
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW        ErrorReason = 62
+	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY             ErrorReason = 63
 )
 
 // Enum value maps for ErrorReason.
@@ -752,6 +753,7 @@ var (
 		60: "ERROR_REASON_CLUSTER_UNHEALTHY",
 		61: "ERROR_REASON_WRITES_BLOCKED_DISK_FULL",
 		62: "ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW",
+		63: "ERROR_REASON_CHECKPOINT_NOT_READY",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -817,6 +819,7 @@ var (
 		"ERROR_REASON_CLUSTER_UNHEALTHY":                60,
 		"ERROR_REASON_WRITES_BLOCKED_DISK_FULL":         61,
 		"ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW":        62,
+		"ERROR_REASON_CHECKPOINT_NOT_READY":             63,
 	}
 )
 
@@ -11687,7 +11690,7 @@ func (x *PersistedConfig) GetFsmDeterminismEnabled() bool {
 	return false
 }
 
-// CallerIdentity uniquely identifies an authenticated caller. It is
+// CallerIdentity uniquely identifies who initiated an action. It is
 // strictly an *identification* — subject plus the mechanism that
 // authenticated it — and carries no authorization decision.
 //
@@ -11695,6 +11698,10 @@ func (x *PersistedConfig) GetFsmDeterminismEnabled() bool {
 // a request to the leader) because no downstream code makes an
 // authorization decision based on it: the admission point that issued
 // it already vetted the call.
+//
+// source distinguishes a user (issuer or key_id) from a system action
+// (system_component). An absent source means the identity is a bare
+// subject with no known origin.
 type CallerIdentity struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Subject string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
@@ -11702,6 +11709,7 @@ type CallerIdentity struct {
 	//
 	//	*CallerIdentity_Issuer
 	//	*CallerIdentity_KeyId
+	//	*CallerIdentity_SystemComponent
 	Source        isCallerIdentity_Source `protobuf_oneof:"source"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -11769,6 +11777,15 @@ func (x *CallerIdentity) GetKeyId() string {
 	return ""
 }
 
+func (x *CallerIdentity) GetSystemComponent() string {
+	if x != nil {
+		if x, ok := x.Source.(*CallerIdentity_SystemComponent); ok {
+			return x.SystemComponent
+		}
+	}
+	return ""
+}
+
 type isCallerIdentity_Source interface {
 	isCallerIdentity_Source()
 }
@@ -11781,9 +11798,15 @@ type CallerIdentity_KeyId struct {
 	KeyId string `protobuf:"bytes,5,opt,name=key_id,json=keyId,proto3,oneof"` // Ed25519 signing key ID
 }
 
+type CallerIdentity_SystemComponent struct {
+	SystemComponent string `protobuf:"bytes,6,opt,name=system_component,json=systemComponent,proto3,oneof"` // system/internal actor (no user); names the subsystem
+}
+
 func (*CallerIdentity_Issuer) isCallerIdentity_Source() {}
 
 func (*CallerIdentity_KeyId) isCallerIdentity_Source() {}
+
+func (*CallerIdentity_SystemComponent) isCallerIdentity_Source() {}
 
 // CallerSnapshot is the *admission-time* record of who initiated an
 // action and what authorization was granted to them at that moment.
@@ -11792,8 +11815,9 @@ func (*CallerIdentity_KeyId) isCallerIdentity_Source() {}
 // etc.).
 //
 // Carried on Proposals through Raft, then copied to AuditEntry by the
-// FSM. Nil when authentication is disabled or for system-initiated
-// proposals.
+// FSM. Nil when authentication is disabled. System-initiated proposals
+// carry a non-nil identity whose source is system_component (never nil),
+// so an audit entry is never ambiguously blank.
 type CallerSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Identity      *CallerIdentity        `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
@@ -13022,11 +13046,12 @@ const file_common_proto_rawDesc = "" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\x126\n" +
 	"\x17idempotency_ttl_seconds\x18\x03 \x01(\x04R\x15idempotencyTtlSeconds\x124\n" +
 	"\x16storage_schema_version\x18\x04 \x01(\rR\x14storageSchemaVersion\x126\n" +
-	"\x17fsm_determinism_enabled\x18\x05 \x01(\bR\x15fsmDeterminismEnabled\"\x80\x01\n" +
+	"\x17fsm_determinism_enabled\x18\x05 \x01(\bR\x15fsmDeterminismEnabled\"\xad\x01\n" +
 	"\x0eCallerIdentity\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x18\n" +
 	"\x06issuer\x18\x04 \x01(\tH\x00R\x06issuer\x12\x17\n" +
-	"\x06key_id\x18\x05 \x01(\tH\x00R\x05keyIdB\b\n" +
+	"\x06key_id\x18\x05 \x01(\tH\x00R\x05keyId\x12+\n" +
+	"\x10system_component\x18\x06 \x01(\tH\x00R\x0fsystemComponentB\b\n" +
 	"\x06sourceJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\x06scopesR\x03god\"n\n" +
 	"\x0eCallerSnapshot\x122\n" +
 	"\bidentity\x18\x01 \x01(\v2\x16.common.CallerIdentityR\bidentity\x12\x16\n" +
@@ -13118,7 +13143,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xd8\x13\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xff\x13\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13183,7 +13208,8 @@ const file_common_proto_rawDesc = "" +
 	"%ERROR_REASON_NON_DETERMINISTIC_SCRIPT\x10;\x12\"\n" +
 	"\x1eERROR_REASON_CLUSTER_UNHEALTHY\x10<\x12)\n" +
 	"%ERROR_REASON_WRITES_BLOCKED_DISK_FULL\x10=\x12*\n" +
-	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>*Q\n" +
+	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>\x12%\n" +
+	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +
@@ -13859,6 +13885,7 @@ func file_common_proto_init() {
 	file_common_proto_msgTypes[148].OneofWrappers = []any{
 		(*CallerIdentity_Issuer)(nil),
 		(*CallerIdentity_KeyId)(nil),
+		(*CallerIdentity_SystemComponent)(nil),
 	}
 	file_common_proto_msgTypes[152].OneofWrappers = []any{
 		(*BackupStorage_S3)(nil),

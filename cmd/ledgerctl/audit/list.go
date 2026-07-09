@@ -132,8 +132,8 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Caller info (compact or verbose)
 	callerText := ""
-	if id := entry.GetCallerSnapshot().GetIdentity(); id.GetSubject() != "" {
-		callerText = "  caller=" + pterm.Yellow(id.GetSubject())
+	if label := callerLabel(entry.GetCallerSnapshot()); label != "" {
+		callerText = "  caller=" + pterm.Yellow(label)
 	}
 
 	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s%s\n",
@@ -147,29 +147,26 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Verbose caller details
 	if verbose {
-		if snap := entry.GetCallerSnapshot(); snap != nil && snap.GetIdentity().GetSubject() != "" {
+		if snap := entry.GetCallerSnapshot(); snap != nil {
 			id := snap.GetIdentity()
+			source := callerSourceString(id)
 
-			var source string
-
-			switch s := id.GetSource().(type) {
-			case *commonpb.CallerIdentity_Issuer:
-				source = "issuer=" + s.Issuer
-			case *commonpb.CallerIdentity_KeyId:
-				source = "key_id=" + s.KeyId
+			subject := id.GetSubject()
+			if subject == "" {
+				subject = "(none)"
 			}
 
 			if snap.GetGod() {
 				pterm.Printf("    %s subject=%s %s %s\n",
 					pterm.Gray("caller:"),
-					pterm.Yellow(id.GetSubject()),
+					pterm.Yellow(subject),
 					pterm.Gray(source),
 					pterm.Red("god=true"),
 				)
 			} else {
 				pterm.Printf("    %s subject=%s %s scopes=[%s]\n",
 					pterm.Gray("caller:"),
-					pterm.Yellow(id.GetSubject()),
+					pterm.Yellow(subject),
 					pterm.Gray(source),
 					pterm.Gray(strings.Join(snap.GetScopes(), ",")),
 				)
@@ -203,6 +200,45 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 		printGroupedOrders(orders, verbose)
 	} else if entry.GetOrderCount() > 0 {
 		pterm.Printf("    └─ %s orders\n", pterm.Cyan(strconv.FormatUint(uint64(entry.GetOrderCount()), 10)))
+	}
+}
+
+// callerSourceString renders the CallerIdentity source for display.
+func callerSourceString(id *commonpb.CallerIdentity) string {
+	switch s := id.GetSource().(type) {
+	case *commonpb.CallerIdentity_Issuer:
+		return "issuer=" + s.Issuer
+	case *commonpb.CallerIdentity_KeyId:
+		return "key_id=" + s.KeyId
+	case *commonpb.CallerIdentity_SystemComponent:
+		return "system=" + s.SystemComponent
+	default:
+		return ""
+	}
+}
+
+// callerLabel renders a compact one-token caller label, falling back to the
+// source (system component, key id, or issuer) when the subject is empty.
+// Empty when there is no caller snapshot at all.
+func callerLabel(snap *commonpb.CallerSnapshot) string {
+	if snap == nil {
+		return ""
+	}
+
+	id := snap.GetIdentity()
+	if id.GetSubject() != "" {
+		return id.GetSubject()
+	}
+
+	switch s := id.GetSource().(type) {
+	case *commonpb.CallerIdentity_SystemComponent:
+		return "system:" + s.SystemComponent
+	case *commonpb.CallerIdentity_KeyId:
+		return "key:" + s.KeyId
+	case *commonpb.CallerIdentity_Issuer:
+		return "issuer:" + s.Issuer
+	default:
+		return ""
 	}
 }
 

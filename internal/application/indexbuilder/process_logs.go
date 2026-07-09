@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -238,9 +239,18 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			needsPersist = true
 		}
 
-		// Create or delete a query checkpoint after the batch is committed
-		// but BEFORE advancing the indexed sequence. This ensures the
-		// checkpoint directory exists before readers are notified.
+		// Materialize a query checkpoint inline, at the exact moment the builder
+		// crosses the CreatedQueryCheckpoint log — so the live read index
+		// reflects precisely MaxSequence (the checkpoint's point-in-time). The
+		// materialization is atomic (temp dir + fsync + rename + .ready marker
+		// last), so a reader never observes a partial checkpoint. There is no
+		// reconciler: historical reconstruction to a past MaxSequence is
+		// infeasible (chapter log purge) and unnecessary (this inline point is
+		// already exactly point-in-time). A node that crashes between rename and
+		// marker, or that purged the logs before reaching this point, will never
+		// have a marker for this checkpoint; the checkpoint stays registered, so
+		// reads there return the retryable ErrCheckpointNotReady (Unavailable)
+		// until the client deletes and recreates it (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			if err := b.createReadIndexCheckpoint(cpID); err != nil {
 				return cursor, err
@@ -344,13 +354,114 @@ func (b *Builder) indexPayload(
 	return nil
 }
 
-// createReadIndexCheckpoint creates a physical Pebble checkpoint of the read index
-// for the given query checkpoint ID. Called after the batch containing all index
-// data up to this point has been committed.
-func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) error {
-	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
-	if err := b.readStore.CreateCheckpoint(destDir); err != nil {
-		return fmt.Errorf("creating read index checkpoint %d: %w", checkpointID, err)
+// checkpointLinkRetries bounds the retries of a read-index checkpoint whose
+// SST hard-link raced a concurrent compaction ("link ... no such file or
+// directory"). Pebble hard-links live SSTs last; if one is compacted away
+// between the manifest snapshot and the link, the whole checkpoint call fails.
+// Recreating the checkpoint re-snapshots the (now stable) LSM and succeeds.
+const checkpointLinkRetries = 5
+
+// createReadIndexCheckpoint materializes a physical Pebble checkpoint of the read
+// index for the given query checkpoint ID, atomically and crash-safely:
+//
+//  1. Build the checkpoint into a sibling temp directory (never the final path).
+//  2. fsync the temp directory so its content is durable.
+//  3. Atomically rename it into the final location.
+//  4. Write the readiness marker LAST, only after the rename succeeded.
+//
+// A crash at any point before step 4 leaves either no final directory or a
+// final directory without a marker — both are treated as "not materialized" by
+// readers (openCheckpointStores). A half-written temp directory is never visible
+// under the final path. Called only from the inline indexing path, at the moment
+// the builder crosses the CreatedQueryCheckpoint log (so the snapshot is exactly
+// MaxSequence). There is no background reconciler.
+func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) (err error) {
+	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+
+	// Already materialized on this replica (redundant call). Nothing to do.
+	if readstore.CheckpointDirReady(finalDir) {
+		return nil
+	}
+
+	// Any leftover final directory here is a prior attempt that crashed before
+	// writing the marker (never trusted — see the type doc): discard it.
+	if err := os.RemoveAll(finalDir); err != nil {
+		return fmt.Errorf("clearing stale read index checkpoint %d: %w", checkpointID, err)
+	}
+
+	tmpDir := finalDir + ".tmp"
+
+	// pebble.Checkpoint fails with ErrExist if the target already exists, so the
+	// temp dir must not linger from a previous crashed attempt.
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return fmt.Errorf("clearing stale temp checkpoint %d: %w", checkpointID, err)
+	}
+
+	// Any error path after this point leaves a partial temp directory behind;
+	// clean it up. After a successful rename tmpDir no longer exists, so this is
+	// a harmless no-op on the happy path.
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(tmpDir)
+		}
+	}()
+
+	for attempt := range checkpointLinkRetries {
+		err = b.readStore.CreateCheckpoint(tmpDir)
+		if err == nil {
+			break
+		}
+
+		// A concurrent compaction can delete an SST between the manifest
+		// snapshot and the hard-link, surfacing as ErrNotExist. This is
+		// transient — retry after clearing the partial temp directory so the
+		// next CreateCheckpoint starts from a clean slate.
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("creating read index checkpoint %d: %w", checkpointID, err)
+		}
+
+		// Clear the partial temp dir between attempts (not on the last one —
+		// the deferred cleanup handles the give-up case).
+		if attempt < checkpointLinkRetries-1 {
+			b.logger.WithFields(map[string]any{
+				"checkpointID": checkpointID,
+				"attempt":      attempt + 1,
+				"error":        err,
+			}).Infof("Read index checkpoint hard-link raced compaction, retrying")
+
+			if rmErr := os.RemoveAll(tmpDir); rmErr != nil {
+				return fmt.Errorf("cleaning partial temp checkpoint %d: %w", checkpointID, rmErr)
+			}
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("creating read index checkpoint %d after %d attempts: %w", checkpointID, checkpointLinkRetries, err)
+	}
+
+	// fsync the fully-built temp directory before the rename so its content is
+	// durable independent of the rename.
+	if err = readstore.FsyncDir(tmpDir); err != nil {
+		return fmt.Errorf("fsync temp checkpoint %d: %w", checkpointID, err)
+	}
+
+	// Atomic rename into the final location: a reader never sees a partial dir.
+	if err = os.Rename(tmpDir, finalDir); err != nil {
+		return fmt.Errorf("renaming checkpoint %d into place: %w", checkpointID, err)
+	}
+
+	// fsync the parent so the rename is durable before we vouch for it.
+	if err = readstore.FsyncDir(filepath.Dir(finalDir)); err != nil {
+		return fmt.Errorf("fsync checkpoint %d parent: %w", checkpointID, err)
+	}
+
+	// Write the readiness marker LAST: readers (openCheckpointStores) only treat
+	// the checkpoint as ready once this exists, guaranteeing a fully materialized,
+	// atomically-renamed directory. (tmpDir is already renamed away, so the
+	// deferred cleanup is a no-op if this fails; the markerless finalDir is then
+	// treated as not-ready and rebuilt on the next attempt.)
+	if err = readstore.MarkCheckpointReady(finalDir); err != nil {
+		return fmt.Errorf("marking read index checkpoint %d ready: %w", checkpointID, err)
 	}
 
 	b.logger.WithFields(map[string]any{

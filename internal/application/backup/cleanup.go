@@ -164,6 +164,7 @@ func (c *Cleanup) tick(ctx context.Context) {
 
 func (c *Cleanup) failOrphan(ctx context.Context, jobID uint64, kind raftcmdpb.BackupKind) error {
 	cmd := commands.NewCommand()
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentBackup)
 	failMessage := "orphan: no live executor on this leader"
 
 	switch kind {

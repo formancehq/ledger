@@ -587,6 +587,42 @@ func TestConvertToGRPCError_NodeNotReachable(t *testing.T) {
 	}
 }
 
+// TestConvertToGRPCError_CheckpointNotReady pins EN-1460: a read that targets a
+// query checkpoint whose read index has not been materialized yet (async
+// index-builder work, or a follower node lagging) must surface as a typed,
+// retryable codes.Unavailable with reason CHECKPOINT_NOT_READY — never the
+// opaque, non-retryable codes.Unknown of the default sanitizer. Covers both the
+// raw sentinel and the wrapped form the read handlers may return.
+func TestConvertToGRPCError_CheckpointNotReady(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"raw", &domain.ErrCheckpointNotReady{CheckpointID: 27}},
+		{"wrapped", fmt.Errorf("serving read: %w", &domain.ErrCheckpointNotReady{CheckpointID: 27})},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err, testLogger())
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.Unavailable, st.Code(),
+				"checkpoint-not-ready must surface as Unavailable, not %v", st.Code())
+			require.NotContains(t, st.Message(), "correlation ID",
+				"must not fall through to the opaque Unknown sanitizer")
+
+			info := extractErrorInfo(t, st)
+			require.Equal(t, domain.ErrReasonCheckpointNotReady, info.GetReason())
+			require.Equal(t, "27", info.GetMetadata()["checkpointId"])
+		})
+	}
+}
+
 func TestConvertToGRPCError_MissingSignature(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -27,17 +29,21 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
+	impl := &BucketServiceServerImpl{logger: testLogger()}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
-	out := adoptForwardedSnapshotIfTrusted(ctx, req)
+	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
 
+	require.NoError(t, err)
 	require.Same(t, snapshot, internalauth.ForwardedSnapshotFromContext(out))
 }
 
-// TestAdoptForwardedSnapshotIfTrusted_IgnoresFromRegularClient verifies that
-// a regular (non-cluster-internal) client cannot spoof the audit identity by
-// setting forwarded_caller. The field MUST be dropped on direct requests.
-func TestAdoptForwardedSnapshotIfTrusted_IgnoresFromRegularClient(t *testing.T) {
+// TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient verifies that a
+// regular (non-cluster-internal) client cannot spoof the audit identity by
+// setting forwarded_caller. A forwarded snapshot on an untrusted channel is
+// rejected loudly rather than silently dropped, so a cluster-secret
+// misconfiguration surfaces instead of corrupting the audit trail.
+func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{
@@ -45,24 +51,33 @@ func TestAdoptForwardedSnapshotIfTrusted_IgnoresFromRegularClient(t *testing.T) 
 			Identity: &commonpb.CallerIdentity{Subject: "attacker"},
 		},
 	}
+	impl := &BucketServiceServerImpl{logger: testLogger()}
 
-	out := adoptForwardedSnapshotIfTrusted(context.Background(), req)
+	out, err := impl.adoptForwardedSnapshotIfTrusted(context.Background(), req)
 
+	require.Equal(t, codes.PermissionDenied, status.Code(err),
+		"a forwarded snapshot on a non-cluster-internal channel must be rejected")
 	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out),
-		"non-cluster-internal requests must not be allowed to set the forwarded snapshot")
+		"the untrusted forwarded snapshot must not be adopted")
 }
 
 // TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp verifies that an
-// empty forwarded_caller leaves the context untouched even on a trusted hop,
-// so the leader falls back to building the snapshot from its own claims (or
-// nil).
+// absent forwarded_caller leaves the context untouched (and errors nowhere),
+// so a direct request or an unauthenticated hop falls back to building the
+// snapshot from its own claims (or nil).
 func TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{}
+	impl := &BucketServiceServerImpl{logger: testLogger()}
 
+	// No forwarded snapshot is fine on both a trusted and a plain context.
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
-	out := adoptForwardedSnapshotIfTrusted(ctx, req)
+	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
+	require.NoError(t, err)
+	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 
+	out, err = impl.adoptForwardedSnapshotIfTrusted(context.Background(), req)
+	require.NoError(t, err)
 	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 }

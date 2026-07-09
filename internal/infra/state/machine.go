@@ -1547,6 +1547,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 
 		result.Error = &domain.BusinessError{Err: err}
+		result.AuditEntryWritten = true
 
 		return result, nil
 	}
@@ -1580,8 +1581,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 
 		return &ApplyResult{
-			ProposalID: proposal.GetId(),
-			Error:      &domain.BusinessError{Err: invariant},
+			ProposalID:        proposal.GetId(),
+			Error:             &domain.BusinessError{Err: invariant},
+			AuditEntryWritten: true,
 		}, nil
 	}
 
@@ -1601,6 +1603,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 
 		result.Error = &domain.BusinessError{Err: err}
+		result.AuditEntryWritten = true
 
 		return result, nil
 	}
@@ -1737,6 +1740,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	return &ApplyResult{
 		ProposalID:             proposal.GetId(),
 		Logs:                   logs,
+		AuditEntryWritten:      true,
 		SinkConfigChanged:      sinkConfigChanged,
 		MirrorConfigChanged:    mirrorConfigChanged,
 		ArchiveRequested:       archiveRequested,
@@ -2076,10 +2080,16 @@ func (pb *PreparedBatch) Close() {
 }
 
 type ApplyResult struct {
-	ProposalID          uint64
-	AppliedIndex        uint64 // Raft index at which this entry was applied
-	Logs                []*raftcmdpb.CreatedLogOrReference
-	Error               error
+	ProposalID   uint64
+	AppliedIndex uint64 // Raft index at which this entry was applied
+	Logs         []*raftcmdpb.CreatedLogOrReference
+	Error        error
+
+	// AuditEntryWritten is true when an audit entry was appended for this
+	// proposal — a success or a committed business-rule failure. It is false
+	// for idempotency replays, stale proposals, and pre-commit rejections,
+	// which write no entry.
+	AuditEntryWritten   bool
 	CheckpointPath      string // Set by Node after checkpoint creation (CloseChapter proposals)
 	SinkConfigChanged   bool   // True when events sink configuration changed
 	MirrorConfigChanged bool   // True when mirror ledger configuration changed

@@ -43,6 +43,7 @@ const (
 	callerSourceNone   byte = 0
 	callerSourceIssuer byte = 1
 	callerSourceKeyID  byte = 2
+	callerSourceSystem byte = 3
 )
 
 // outcome_tag values in HashedHeaderPayload.
@@ -215,6 +216,9 @@ func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
 	case *commonpb.CallerIdentity_KeyId:
 		buf = appendU8(buf, callerSourceKeyID)
 		buf = appendLenString(buf, src.KeyId)
+	case *commonpb.CallerIdentity_SystemComponent:
+		buf = appendU8(buf, callerSourceSystem)
+		buf = appendLenString(buf, src.SystemComponent)
 	default:
 		buf = appendU8(buf, callerSourceNone)
 		buf = appendLenBytes(buf, nil)

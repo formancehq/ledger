@@ -8,6 +8,7 @@ import (
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
@@ -121,6 +122,44 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 	require.Equal(t, expectedHash, gotHash,
 		"audit chain hash drifted from H(blake3-key(clusterID), header || items... || lastHash). "+
 			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new envelope version.")
+}
+
+// TestHashChain_Envelope_SystemCaller pins the system_component source tag in
+// the hash pre-image and proves a system-attributed entry is NOT byte-equal to
+// a caller-less one — the whole point of tagging system actions is that they
+// are distinguishable in the audit trail, hash included.
+func TestHashChain_Envelope_SystemCaller(t *testing.T) {
+	t.Parallel()
+
+	base := func() *auditpb.AuditEntry {
+		return &auditpb.AuditEntry{
+			Sequence:    7,
+			Timestamp:   &commonpb.Timestamp{Data: 1700000000},
+			ProposalId:  9,
+			OrderCount:  1,
+			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			Ledgers:     []string{"ledger-a"},
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 1},
+			},
+		}
+	}
+
+	systemEntry := base()
+	systemEntry.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentChapterArchiver)
+
+	systemHeader, err := BuildHashedHeaderPayload(systemEntry)
+	require.NoError(t, err)
+
+	// Production builder agrees with the hand-rolled spec for the new tag.
+	require.Equal(t, goldenBuildHeader(systemEntry), systemHeader,
+		"buildCallerSnapshotPayload drifted from the golden spec for system_component")
+
+	// System-attributed vs caller-less must produce different pre-images.
+	nilCallerHeader, err := BuildHashedHeaderPayload(base())
+	require.NoError(t, err)
+	require.NotEqual(t, nilCallerHeader, systemHeader,
+		"a system-tagged audit entry must not hash identically to a caller-less one")
 }
 
 // TestHashChain_Envelope_Failure exercises the failure outcome path. The
@@ -348,6 +387,9 @@ func goldenBuildSnapshot(s *commonpb.CallerSnapshot) []byte {
 	case *commonpb.CallerIdentity_KeyId:
 		buf = append(buf, 0x02) // callerSourceKeyID
 		buf = goldenLenString(buf, src.KeyId)
+	case *commonpb.CallerIdentity_SystemComponent:
+		buf = append(buf, 0x03) // callerSourceSystem
+		buf = goldenLenString(buf, src.SystemComponent)
 	default:
 		buf = append(buf, 0x00) // callerSourceNone
 		buf = goldenLenBytes(buf, nil)
