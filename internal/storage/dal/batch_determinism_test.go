@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,8 +60,8 @@ func TestWriteSession_MarshalProto_DeterministicWhenFlagOn(t *testing.T) {
 		}
 	}
 
-	for i := len(keys) - 1; i >= 0; i-- {
-		k := keys[i]
+	for _, v := range slices.Backward(keys) {
+		k := v
 		second.Metadata[k] = &commonpb.MetadataValue{
 			Type: &commonpb.MetadataValue_StringValue{StringValue: k + "-value"},
 		}
