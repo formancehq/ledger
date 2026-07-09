@@ -1120,8 +1120,10 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // honoring the shared list contract (filter, reverse, cursor, page size). It
 // delegates to ListAuditEntriesFrom bound to the controller's own stores.
 //
-// API convention (matching the other list endpoints): reverse=false means
-// newest-first (descending by sequence); reverse=true means oldest-first.
+// Ordering: the audit trail is chronological, so the default (reverse=false)
+// iterates ascending by sequence (oldest first) — this is the audit trail's
+// natural read order and is preserved from the pre-ListOptions behavior.
+// reverse=true iterates descending (newest first).
 func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, ledger string, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, ledger, pageSize, afterSequence, filter, reverse)
 }
@@ -1161,9 +1163,9 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	// API reverse=false → newest-first (descending); ReadAuditEntriesPage
-	// reverse=false → ascending, so invert.
-	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, !reverse, pageSize)
+	// Audit default is chronological (ascending); ReadAuditEntriesPage takes
+	// reverse=false as ascending, so pass reverse through directly.
+	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, reverse, pageSize)
 	if err != nil {
 		_ = handle.Close()
 

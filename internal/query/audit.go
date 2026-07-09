@@ -116,8 +116,18 @@ func ReadAuditEntriesPage(
 }
 
 // readAuditPageFromSeqSet materializes a page from an explicit, ascending set
-// of candidate sequences. Cursor, bounds, reverse and page size are applied on
-// the sequence slice before any entry is read, so only the page is fetched.
+// of candidate sequences. The window ([loSeq, hiSeq]), reverse ordering and the
+// exclusive cursor are applied on the sequence slice first; then entries are
+// materialized in order and the page is capped at pageSize *valid* entries.
+//
+// Truncation happens AFTER the purged-sequence skip, not before: a candidate
+// that is indexed but no longer in the audit zone (chapter purge, EN-1339)
+// must not consume a page slot, otherwise a page could return fewer than
+// pageSize entries while more valid entries exist further down the candidate
+// set — which also breaks the handler's peek-ahead (it fetches pageSize+1 to
+// decide whether to emit an x-next-cursor trailer, and a purge inside that
+// slack would drop the "more pages" signal). We therefore keep consuming
+// candidates until we have pageSize valid entries (or exhaust the set).
 func readAuditPageFromSeqSet(
 	reader dal.PebbleReader,
 	seqs []uint64,
@@ -153,16 +163,13 @@ func readAuditPageFromSeqSet(
 		filtered = filtered[idx:]
 	}
 
-	if pageSize > 0 && uint32(len(filtered)) > pageSize {
-		filtered = filtered[:pageSize]
-	}
-
-	entries := make([]*auditpb.AuditEntry, 0, len(filtered))
+	entries := make([]*auditpb.AuditEntry, 0, min(len(filtered), pageCap(pageSize)))
 	for _, s := range filtered {
 		entry, err := ReadAuditEntry(context.Background(), reader, s)
 		if errors.Is(err, domain.ErrNotFound) {
-			// Indexed but purged from the zone — skip (EN-1339 tolerates
-			// dangling index entries; drop+rebuild reclaims them).
+			// Indexed but purged from the zone — skip WITHOUT consuming a page
+			// slot (EN-1339 tolerates dangling index entries; drop+rebuild
+			// reclaims them).
 			continue
 		}
 		if err != nil {
@@ -170,9 +177,24 @@ func readAuditPageFromSeqSet(
 		}
 
 		entries = append(entries, entry)
+
+		// Cap on valid entries, after the purge skip above.
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
+			break
+		}
 	}
 
 	return cursor.NewSliceCursor(entries), nil
+}
+
+// pageCap returns a sane initial capacity for a page slice: pageSize when set,
+// else a small default to avoid a zero-cap allocation growth loop.
+func pageCap(pageSize uint32) int {
+	if pageSize == 0 {
+		return 16
+	}
+
+	return int(pageSize)
 }
 
 // readAuditPageFromZone streams a page directly from the audit zone within the

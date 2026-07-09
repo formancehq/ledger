@@ -332,6 +332,14 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 // ListAuditEntries collects all audit entries from the streaming RPC. When
 // failuresOnly is true it applies the shared filter `audit[outcome] == failure`
 // (failures_only is no longer a top-level request field — EN-1241).
+//
+// Consistency: with failuresOnly=false the read streams the audit zone directly
+// and reflects every applied entry. With failuresOnly=true the outcome filter
+// is served by the asynchronous audit secondary index (EN-1339), so it is
+// eventually consistent — a just-applied failure may take a short moment to
+// appear. Callers that assert on a freshly-applied entry must poll (e.g.
+// require.Eventually / Gomega Eventually) rather than assume immediate
+// visibility; do not add time.Sleep.
 func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
 	req := &servicepb.ListAuditEntriesRequest{}
 	if failuresOnly {

@@ -2275,7 +2275,7 @@ full-chain scan.
 > strongly consistent.
 
 **Behavior:**
-- Streams audit entries from the server, newest first by default (`--reverse` for oldest first)
+- Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)
 - Each entry shows: sequence number, timestamp, proposal ID, and outcome (OK/FAIL)
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
@@ -2288,10 +2288,10 @@ full-chain scan.
 **Example:**
 
 ```bash
-# List audit entries (newest first)
+# List audit entries (oldest first, chronological)
 ledgerctl audit list
 
-# Oldest first
+# Newest first
 ledgerctl audit list --reverse
 
 # Show only failures (shorthand)
