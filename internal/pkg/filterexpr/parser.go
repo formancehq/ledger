@@ -570,7 +570,14 @@ type Value struct {
 	Str   string `parser:"| @String"`
 	Num   string `parser:"| @Number"`
 	Bool  string `parser:"| @('true' | 'false')"`
-	Bare  string `parser:"| @Ident"`
+	// Kw accepts the "noun" keywords as bare right-hand-side values so that a
+	// reserved word can still be used as an unquoted value (e.g.
+	// `metadata[type] == audit` / `== ledger` / `== source`). Only field/prefix
+	// keywords are listed — the structural operators (and/or/not/in/between)
+	// are deliberately excluded so they keep terminating expressions rather
+	// than being swallowed as values. true/false are handled by Bool above.
+	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'exists')"`
+	Bare string `parser:"| @Ident"`
 }
 
 func (v *Value) resolve() string {
@@ -584,6 +591,10 @@ func (v *Value) resolve() string {
 
 	if v.Bool != "" {
 		return v.Bool
+	}
+
+	if v.Kw != "" {
+		return v.Kw
 	}
 
 	return v.Bare

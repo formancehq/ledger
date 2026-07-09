@@ -138,6 +138,32 @@ func TestParseAudit_StringFieldRejectsNotEqual(t *testing.T) {
 	assert.Contains(t, err.Error(), "== and in only")
 }
 
+// TestParseAudit_KeywordAsBareValue guards that introducing the `audit`
+// keyword (and the pre-existing field keywords) does not stop them being used
+// as unquoted right-hand-side values, while structural operators stay reserved.
+func TestParseAudit_KeywordAsBareValue(t *testing.T) {
+	t.Parallel()
+
+	// Reserved "noun" keywords must still parse as bare values.
+	for _, kw := range []string{"audit", "ledger", "source", "destination", "metadata", "address", "exists"} {
+		f, err := Parse("metadata[type] == " + kw)
+		require.NoError(t, err, "metadata[type] == %s should parse", kw)
+		assert.Equal(t, kw, f.GetField().GetStringCond().GetHardcoded())
+	}
+
+	// Structural operators must NOT be swallowed as values.
+	for _, op := range []string{"and", "or", "not", "in", "between"} {
+		_, err := Parse("metadata[type] == " + op)
+		require.Error(t, err, "metadata[type] == %s must not parse (structural keyword)", op)
+	}
+
+	// Composition still works after the value change.
+	f, err := Parse("metadata[a] == audit and metadata[b] == ledger")
+	require.NoError(t, err)
+	require.NotNil(t, f.GetAnd())
+	require.Len(t, f.GetAnd().GetFilters(), 2)
+}
+
 func TestFormatAudit_RoundTrip(t *testing.T) {
 	t.Parallel()
 
