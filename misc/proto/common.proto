@@ -1287,17 +1287,7 @@ message LogIdCondition {
   UintCondition cond = 1;
 }
 
-// BuiltinUintCondition filters transactions by a built-in uint64 field within
-// an unsigned range. `field` reuses the shared TransactionBuiltinIndex enum
-// (which also names the address/reference index kinds used by the indexbuilder),
-// but only the uint-range members are valid here: TX_BUILTIN_INDEX_ID,
-// TX_BUILTIN_INDEX_TIMESTAMP, TX_BUILTIN_INDEX_INSERTED_AT and
-// TX_BUILTIN_INDEX_REVERTED_AT. The REFERENCE / ADDRESS / SOURCE_ADDRESS /
-// DESTINATION_ADDRESS members are string/prefix index kinds and are rejected by
-// compileBuiltinUintCondition — they are matched via the dedicated
-// ReferenceCondition / AddressMatch conditions instead. The public JSON codec
-// and openapi.yml expose only the four valid fields, keeping the wire contract
-// in step with what actually compiles.
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, or inserted_at).
 message BuiltinUintCondition {
   TransactionBuiltinIndex field = 1;
   UintCondition cond = 2;
