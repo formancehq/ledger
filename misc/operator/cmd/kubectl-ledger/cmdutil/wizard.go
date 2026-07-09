@@ -65,8 +65,8 @@ func ResolveClusterName(ctx context.Context, opts *Options, args []string) (name
 	return selected, ns, nil
 }
 
-// ResolveLedgerBackupName returns the LedgerBackup name from args or by interactive selection.
-func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
+// ResolveBackupName returns the Backup name from args or by interactive selection.
+func ResolveBackupName(ctx context.Context, opts *Options, args []string) (name, namespace string, err error) {
 	ns, err := opts.ResolvedNamespace()
 	if err != nil {
 		return "", "", fmt.Errorf("resolving namespace: %w", err)
@@ -81,11 +81,11 @@ func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) 
 		return "", "", fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerBackup resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Backup resources...")
 
-	backups, err := ListLedgerBackups(ctx, crdClient, ns)
+	backups, err := ListBackups(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerBackup resources")
+		spinner.Fail("Failed to list Backup resources")
 
 		return "", "", fmt.Errorf("listing backups: %w", err)
 	}
@@ -93,7 +93,7 @@ func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) 
 	_ = spinner.Stop()
 
 	if len(backups.Items) == 0 {
-		return "", "", fmt.Errorf("no LedgerBackup resources found in namespace %q", ns)
+		return "", "", fmt.Errorf("no Backup resources found in namespace %q", ns)
 	}
 
 	names := make([]string, len(backups.Items))
@@ -109,7 +109,7 @@ func ResolveLedgerBackupName(ctx context.Context, opts *Options, args []string) 
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(names).
-		WithDefaultText("Select a LedgerBackup").
+		WithDefaultText("Select a Backup").
 		Show()
 	if err != nil {
 		return "", "", fmt.Errorf("failed to select backup: %w", err)

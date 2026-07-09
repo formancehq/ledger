@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// BackupPhase describes the current lifecycle phase of a LedgerBackup.
+// BackupPhase describes the current lifecycle phase of a Backup.
 // +kubebuilder:validation:Enum=Pending;Ready;Running;Failed
 type BackupPhase string
 
@@ -53,8 +53,8 @@ type BackupSchedule struct {
 	Incremental string `json:"incremental,omitempty"`
 }
 
-// LedgerBackupSpec defines the desired state of a LedgerBackup.
-type LedgerBackupSpec struct {
+// BackupSpec defines the desired state of a Backup.
+type BackupSpec struct {
 	// ServiceRef is the name of the Cluster in the same namespace.
 	// +kubebuilder:validation:Required
 	ServiceRef string `json:"serviceRef"`
@@ -64,19 +64,19 @@ type LedgerBackupSpec struct {
 	Destination BackupDestination `json:"destination"`
 
 	// Schedule defines cron schedules for full and incremental backups.
-	// Both entries are optional; a LedgerBackup without any schedule is valid
-	// and acts as a backup configuration template for manual LedgerBackupRun resources.
+	// Both entries are optional; a Backup without any schedule is valid
+	// and acts as a backup configuration template for manual BackupRun resources.
 	// +optional
 	Schedule BackupSchedule `json:"schedule,omitempty"`
 
-	// SuccessfulRunsHistoryLimit is the maximum number of successful LedgerBackupRun
+	// SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun
 	// resources to keep per type (full/incremental). Older runs are garbage-collected.
 	// Defaults to 3.
 	// +kubebuilder:default=3
 	// +optional
 	SuccessfulRunsHistoryLimit *int32 `json:"successfulRunsHistoryLimit,omitempty"`
 
-	// FailedRunsHistoryLimit is the maximum number of failed LedgerBackupRun
+	// FailedRunsHistoryLimit is the maximum number of failed BackupRun
 	// resources to keep per type (full/incremental). Older runs are garbage-collected.
 	// Defaults to 1.
 	// +kubebuilder:default=1
@@ -172,8 +172,8 @@ type IncrementalBackupStatus struct {
 	LastAuditSequence uint64 `json:"lastAuditSequence,omitempty"`
 }
 
-// LedgerBackupStatus defines the observed state of a LedgerBackup.
-type LedgerBackupStatus struct {
+// BackupStatus defines the observed state of a Backup.
+type BackupStatus struct {
 	// Phase is the current lifecycle phase.
 	// +optional
 	Phase BackupPhase `json:"phase,omitempty"`
@@ -205,32 +205,32 @@ type LedgerBackupStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=lbk
+// +kubebuilder:resource:shortName=bk
 // +kubebuilder:printcolumn:name="Service",type=string,JSONPath=`.spec.serviceRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Last Full",type=date,JSONPath=`.status.lastFullBackup.time`
 // +kubebuilder:printcolumn:name="Last Incremental",type=date,JSONPath=`.status.lastIncrementalBackup.time`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// LedgerBackup manages scheduled backups of a Cluster to S3 via ledgerctl.
-type LedgerBackup struct {
+// Backup manages scheduled backups of a Cluster to S3 via ledgerctl.
+type Backup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   LedgerBackupSpec   `json:"spec,omitempty"`
-	Status LedgerBackupStatus `json:"status,omitempty"`
+	Spec   BackupSpec   `json:"spec,omitempty"`
+	Status BackupStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LedgerBackupList contains a list of LedgerBackup.
-type LedgerBackupList struct {
+// BackupList contains a list of Backup.
+type BackupList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []LedgerBackup `json:"items"`
+	Items []Backup `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&LedgerBackup{}, &LedgerBackupList{})
+	SchemeBuilder.Register(&Backup{}, &BackupList{})
 }

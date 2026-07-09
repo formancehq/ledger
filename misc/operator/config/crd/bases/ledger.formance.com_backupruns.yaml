@@ -4,30 +4,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: ledgerbackups.ledger.formance.com
+  name: backupruns.ledger.formance.com
 spec:
   group: ledger.formance.com
   names:
-    kind: LedgerBackup
-    listKind: LedgerBackupList
-    plural: ledgerbackups
+    kind: BackupRun
+    listKind: BackupRunList
+    plural: backupruns
     shortNames:
-    - lbk
-    singular: ledgerbackup
+    - bkr
+    singular: backuprun
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.serviceRef
-      name: Service
+    - jsonPath: .spec.backupRef
+      name: Backup
+      type: string
+    - jsonPath: .spec.type
+      name: Type
       type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.lastFullBackup.time
-      name: Last Full
-      type: date
-    - jsonPath: .status.lastIncrementalBackup.time
-      name: Last Incremental
+    - jsonPath: .status.startTime
+      name: Started
       type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -35,8 +35,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: LedgerBackup manages scheduled backups of a Cluster to S3 via
-          ledgerctl.
+        description: |-
+          BackupRun represents a single backup execution triggered either by a Backup schedule
+          or manually (e.g. via `kubectl ledger backup trigger`).
         properties:
           apiVersion:
             description: |-
@@ -56,99 +57,31 @@ spec:
           metadata:
             type: object
           spec:
-            description: LedgerBackupSpec defines the desired state of a LedgerBackup.
+            description: BackupRunSpec defines the desired state of a BackupRun.
             properties:
-              destination:
-                description: Destination defines where backups are stored.
-                properties:
-                  bucketId:
-                    description: |-
-                      BucketID is the namespace prefix for backup files.
-                      Defaults to the cluster-id if not set.
-                    type: string
-                  driver:
-                    default: s3
-                    description: 'Driver is the backup storage driver: "s3".'
-                    enum:
-                    - s3
-                    type: string
-                  s3:
-                    description: S3 configuration (required when driver is "s3").
-                    properties:
-                      bucket:
-                        description: Bucket is the S3 bucket name.
-                        type: string
-                      endpoint:
-                        description: Endpoint is a custom S3 endpoint (for MinIO).
-                        type: string
-                      region:
-                        description: Region is the AWS region.
-                        type: string
-                    type: object
-                  s3AccessKeyId:
-                    description: |-
-                      S3AccessKeyID is a static AWS access key ID for S3 authentication.
-                      If not set, the default AWS credential chain is used (env vars, IRSA, etc.).
-                    type: string
-                  s3SecretAccessKey:
-                    description: |-
-                      S3SecretAccessKey is a static AWS secret access key for S3 authentication.
-                      If not set, the default AWS credential chain is used.
-                    type: string
-                required:
-                - driver
-                type: object
-              failedRunsHistoryLimit:
-                default: 1
+              backupRef:
                 description: |-
-                  FailedRunsHistoryLimit is the maximum number of failed LedgerBackupRun
-                  resources to keep per type (full/incremental). Older runs are garbage-collected.
-                  Defaults to 1.
-                format: int32
-                type: integer
-              schedule:
-                description: |-
-                  Schedule defines cron schedules for full and incremental backups.
-                  Both entries are optional; a LedgerBackup without any schedule is valid
-                  and acts as a backup configuration template for manual LedgerBackupRun resources.
-                properties:
-                  full:
-                    description: Full is the cron expression for full backups (e.g.
-                      "0 2 * * 0" for weekly Sunday 2am).
-                    type: string
-                  incremental:
-                    description: Incremental is the cron expression for incremental
-                      backups (e.g. "0 * * * *" for hourly).
-                    type: string
-                type: object
-              serviceRef:
-                description: ServiceRef is the name of the Cluster in the same namespace.
+                  BackupRef is the name of the parent Backup in the same namespace.
+                  Destination and serviceRef are inherited from the parent.
                 type: string
-              successfulRunsHistoryLimit:
-                default: 3
-                description: |-
-                  SuccessfulRunsHistoryLimit is the maximum number of successful LedgerBackupRun
-                  resources to keep per type (full/incremental). Older runs are garbage-collected.
-                  Defaults to 3.
-                format: int32
-                type: integer
-              timeout:
-                default: 1h
-                description: |-
-                  Timeout caps how long the `ledgerctl store backup` /
-                  `ledgerctl store incremental-backup` RPC may run before the client
-                  aborts. The operator forwards it as `--timeout` to the Job's
-                  ledgerctl invocation; tune it for the size of the ledger and the
-                  throughput of the destination bucket. Defaults to 1h, which is
-                  enough for tens of GB on S3 while still bounding stuck runs.
+              type:
+                default: Full
+                description: Type is the backup type. Defaults to Full.
+                enum:
+                - Full
+                - Incremental
                 type: string
             required:
-            - destination
-            - serviceRef
+            - backupRef
             type: object
           status:
-            description: LedgerBackupStatus defines the observed state of a LedgerBackup.
+            description: BackupRunStatus defines the observed state of a BackupRun.
             properties:
+              completionTime:
+                description: CompletionTime is when the run reached a terminal phase
+                  (Succeeded or Failed).
+                format: date-time
+                type: string
               conditions:
                 description: Conditions represent the latest available observations.
                 items:
@@ -206,8 +139,9 @@ spec:
                   - type
                   type: object
                 type: array
-              lastFullBackup:
-                description: LastFullBackup holds the result of the last full backup.
+              full:
+                description: Full holds the result of a Full backup run. Set only
+                  when spec.type is Full and the run succeeded.
                 properties:
                   durationMs:
                     description: DurationMs is the duration of the last full backup
@@ -257,9 +191,9 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              lastIncrementalBackup:
-                description: LastIncrementalBackup holds the result of the last incremental
-                  backup.
+              incremental:
+                description: Incremental holds the result of an Incremental backup
+                  run. Set only when spec.type is Incremental and the run succeeded.
                 properties:
                   auditEntriesExported:
                     description: AuditEntriesExported is the number of audit entries
@@ -301,25 +235,20 @@ spec:
                     type: string
                 type: object
               message:
-                description: Message contains human-readable status information.
-                type: string
-              nextFullBackupTime:
-                description: NextFullBackupTime is the next scheduled time for a full
-                  backup.
-                format: date-time
-                type: string
-              nextIncrementalBackupTime:
-                description: NextIncrementalBackupTime is the next scheduled time
-                  for an incremental backup.
-                format: date-time
+                description: Message contains human-readable status information (typically
+                  an error message).
                 type: string
               phase:
                 description: Phase is the current lifecycle phase.
                 enum:
                 - Pending
-                - Ready
                 - Running
+                - Succeeded
                 - Failed
+                type: string
+              startTime:
+                description: StartTime is when the run transitioned to Running.
+                format: date-time
                 type: string
             type: object
         type: object

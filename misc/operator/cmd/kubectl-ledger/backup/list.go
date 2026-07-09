@@ -15,7 +15,7 @@ func newListCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List LedgerBackup resources in the current namespace",
+		Short:   "List Backup resources in the current namespace",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runList(cmd, opts)
 		},
@@ -35,10 +35,10 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerBackup resources...")
-	backups, err := cmdutil.ListLedgerBackups(ctx, crdClient, ns)
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Backup resources...")
+	backups, err := cmdutil.ListBackups(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerBackup resources")
+		spinner.Fail("Failed to list Backup resources")
 
 		return fmt.Errorf("listing backups: %w", err)
 	}
@@ -54,7 +54,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 	}
 }
 
-func renderBackupListTable(backups *ledgerv1alpha1.LedgerBackupList) error {
+func renderBackupListTable(backups *ledgerv1alpha1.BackupList) error {
 	header := []string{"NAME", "SERVICE", "PHASE", "LAST FULL", "LAST INCR", "AGE"}
 
 	rows := make([][]string, 0, len(backups.Items))
@@ -81,7 +81,7 @@ func renderBackupListTable(backups *ledgerv1alpha1.LedgerBackupList) error {
 	}
 
 	if len(rows) == 0 {
-		pterm.Info.Println("No LedgerBackup resources found.")
+		pterm.Info.Println("No Backup resources found.")
 
 		return nil
 	}

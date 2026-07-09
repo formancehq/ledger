@@ -9,6 +9,6 @@ spec:
     - name: Backup with missing service should fail
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-failed.yaml

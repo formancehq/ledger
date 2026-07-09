@@ -29,9 +29,9 @@ func newTriggerCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "trigger [backup-name]",
-		Short: "Manually trigger a backup by creating a LedgerBackupRun",
-		Long: "Creates a LedgerBackupRun that references the given LedgerBackup. " +
-			"The LedgerBackupRunReconciler executes the backup via ledgerctl. " +
+		Short: "Manually trigger a backup by creating a BackupRun",
+		Long: "Creates a BackupRun that references the given Backup. " +
+			"The BackupRunReconciler executes the backup via ledgerctl. " +
 			"Use --wait to block until the run reaches a terminal phase.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,7 +54,7 @@ func runTrigger(cmd *cobra.Command, opts *cmdutil.Options, f *triggerFlags, args
 		return err
 	}
 
-	name, ns, err := cmdutil.ResolveLedgerBackupName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveBackupName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -64,25 +64,25 @@ func runTrigger(cmd *cobra.Command, opts *cmdutil.Options, f *triggerFlags, args
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	// Verify the parent LedgerBackup exists.
-	if _, err := cmdutil.GetLedgerBackup(ctx, crdClient, ns, name); err != nil {
-		return fmt.Errorf("getting LedgerBackup %q: %w", name, err)
+	// Verify the parent Backup exists.
+	if _, err := cmdutil.GetBackup(ctx, crdClient, ns, name); err != nil {
+		return fmt.Errorf("getting Backup %q: %w", name, err)
 	}
 
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "ledger.formance.com/v1alpha1",
-			Kind:       "LedgerBackupRun",
+			Kind:       "BackupRun",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:    ns,
 			GenerateName: name + "-manual-",
 			Labels: map[string]string{
-				ledgerv1alpha1.LabelLedgerBackup:        name,
-				ledgerv1alpha1.LabelLedgerBackupRunType: string(runType),
+				ledgerv1alpha1.LabelBackup:        name,
+				ledgerv1alpha1.LabelBackupRunType: string(runType),
 			},
 		},
-		Spec: ledgerv1alpha1.LedgerBackupRunSpec{
+		Spec: ledgerv1alpha1.BackupRunSpec{
 			BackupRef: name,
 			Type:      runType,
 		},
@@ -90,11 +90,11 @@ func runTrigger(cmd *cobra.Command, opts *cmdutil.Options, f *triggerFlags, args
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating %s backup run for %s...", runType, name))
 	if err := crdClient.Create(ctx, run); err != nil {
-		spinner.Fail("Failed to create LedgerBackupRun")
+		spinner.Fail("Failed to create BackupRun")
 
-		return fmt.Errorf("creating LedgerBackupRun: %w", err)
+		return fmt.Errorf("creating BackupRun: %w", err)
 	}
-	spinner.Success("Created LedgerBackupRun " + pterm.Cyan(run.Name))
+	spinner.Success("Created BackupRun " + pterm.Cyan(run.Name))
 
 	if !f.wait {
 		return nil
@@ -114,14 +114,14 @@ func parseRunType(s string) (ledgerv1alpha1.BackupRunType, error) {
 	}
 }
 
-// waitForTerminal polls the LedgerBackupRun status until it reaches Succeeded or Failed.
-func waitForTerminal(ctx context.Context, c client.Client, run *ledgerv1alpha1.LedgerBackupRun, timeout time.Duration) error {
+// waitForTerminal polls the BackupRun status until it reaches Succeeded or Failed.
+func waitForTerminal(ctx context.Context, c client.Client, run *ledgerv1alpha1.BackupRun, timeout time.Duration) error {
 	deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	spinner, _ := pterm.DefaultSpinner.Start("Waiting for backup run to complete...")
 
-	var final ledgerv1alpha1.LedgerBackupRun
+	var final ledgerv1alpha1.BackupRun
 	err := wait.PollUntilContextCancel(deadlineCtx, 2*time.Second, true, func(pollCtx context.Context) (bool, error) {
 		if err := c.Get(pollCtx, types.NamespacedName{
 			Namespace: run.Namespace,
@@ -151,7 +151,7 @@ func waitForTerminal(ctx context.Context, c client.Client, run *ledgerv1alpha1.L
 	return fmt.Errorf("backup run %s failed", final.Name)
 }
 
-func printRunSummary(run *ledgerv1alpha1.LedgerBackupRun) {
+func printRunSummary(run *ledgerv1alpha1.BackupRun) {
 	rows := [][]string{
 		{"Phase", string(run.Status.Phase)},
 		{"Type", string(run.Spec.Type)},

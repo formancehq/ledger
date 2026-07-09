@@ -1,5 +1,5 @@
 apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerBackup
+kind: Backup
 metadata:
   name: my-backup
 spec:

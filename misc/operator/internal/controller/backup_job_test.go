@@ -55,9 +55,9 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
 		},
 	}
-	backup := &ledgerv1alpha1.LedgerBackup{
+	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "blockchains", Namespace: "ledger-v3"},
-		Spec: ledgerv1alpha1.LedgerBackupSpec{
+		Spec: ledgerv1alpha1.BackupSpec{
 			ServiceRef: "ledger",
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
@@ -65,9 +65,9 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 			},
 		},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "blockchains-manual-abc", Namespace: "ledger-v3"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{BackupRef: "blockchains", Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "blockchains", Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeRequired)
@@ -75,7 +75,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 
 	require.Equal(t, "ledger-blockchains-manual-abc", job.Name)
 	require.Equal(t, "ledger-v3", job.Namespace)
-	require.Equal(t, "blockchains", job.Labels[ledgerv1alpha1.LabelLedgerBackup])
+	require.Equal(t, "blockchains", job.Labels[ledgerv1alpha1.LabelBackup])
 	require.Equal(t, "blockchains-manual-abc", job.Labels[backupJobLabelRun])
 
 	require.NotNil(t, job.Spec.BackoffLimit)
@@ -145,13 +145,13 @@ func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
 		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
-	backup := &ledgerv1alpha1.LedgerBackup{
+	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+		Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
@@ -169,13 +169,13 @@ func TestBuildBackupJob_Incremental(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
 		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "repo", Tag: "tag"}},
 	}
-	backup := &ledgerv1alpha1.LedgerBackup{
+	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+		Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "b-incr", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
+		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeIncremental},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
@@ -192,10 +192,10 @@ func TestBuildBackupJob_UnknownType(t *testing.T) {
 	t.Parallel()
 
 	ls := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"}}
-	backup := &ledgerv1alpha1.LedgerBackup{ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"}}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	backup := &ledgerv1alpha1.Backup{ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"}}
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: "Garbage"},
+		Spec:       ledgerv1alpha1.BackupRunSpec{Type: "Garbage"},
 	}
 
 	_, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
@@ -209,16 +209,16 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
 		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	t.Run("explicit timeout is forwarded as --timeout", func(t *testing.T) {
 		t.Parallel()
-		backup := &ledgerv1alpha1.LedgerBackup{
+		backup := &ledgerv1alpha1.Backup{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-			Spec: ledgerv1alpha1.LedgerBackupSpec{
+			Spec: ledgerv1alpha1.BackupSpec{
 				Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"},
 				Timeout:     &metav1.Duration{Duration: 30 * time.Minute},
 			},
@@ -230,9 +230,9 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 
 	t.Run("missing timeout means no --timeout flag", func(t *testing.T) {
 		t.Parallel()
-		backup := &ledgerv1alpha1.LedgerBackup{
+		backup := &ledgerv1alpha1.Backup{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-			Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+			Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
 		}
 		job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)
 		require.NoError(t, err)
@@ -241,9 +241,9 @@ func TestBuildBackupJob_Timeout(t *testing.T) {
 
 	t.Run("zero timeout is omitted", func(t *testing.T) {
 		t.Parallel()
-		backup := &ledgerv1alpha1.LedgerBackup{
+		backup := &ledgerv1alpha1.Backup{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-			Spec: ledgerv1alpha1.LedgerBackupSpec{
+			Spec: ledgerv1alpha1.BackupSpec{
 				Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"},
 				Timeout:     &metav1.Duration{Duration: 0},
 			},
@@ -452,13 +452,13 @@ func TestBuildBackupJob_DeclaresTerminationMessagePath(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ns"},
 		Spec:       ledgerv1alpha1.ClusterSpec{Image: ledgerv1alpha1.ImageSpec{Repository: "r", Tag: "t"}},
 	}
-	backup := &ledgerv1alpha1.LedgerBackup{
+	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
+		Spec:       ledgerv1alpha1.BackupSpec{Destination: ledgerv1alpha1.BackupDestination{Driver: "s3"}},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "ns"},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeDisabled)

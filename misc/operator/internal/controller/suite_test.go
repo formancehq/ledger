@@ -101,16 +101,16 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("setting up Credentials controller: %v", err))
 	}
 
-	if err := (&LedgerBackupReconciler{
+	if err := (&BackupReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerBackup controller: %v", err))
+		panic(fmt.Sprintf("setting up Backup controller: %v", err))
 	}
 
-	// NOTE: LedgerBackupRunReconciler is intentionally NOT wired into envtest because
+	// NOTE: BackupRunReconciler is intentionally NOT wired into envtest because
 	// it would attempt to exec ledgerctl in non-existent pods. Tests in this suite
-	// cover LedgerBackup → Run creation, scheduling, and retention. End-to-end Run
+	// cover Backup → Run creation, scheduling, and retention. End-to-end Run
 	// execution is covered by chainsaw e2e tests against a real cluster.
 
 	go func() {

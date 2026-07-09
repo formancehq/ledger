@@ -15,7 +15,7 @@ import (
 func newRunsCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "runs [backup-name]",
-		Short: "List LedgerBackupRun resources for a LedgerBackup",
+		Short: "List BackupRun resources for a Backup",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRuns(cmd, opts, args)
@@ -26,7 +26,7 @@ func newRunsCommand(opts *cmdutil.Options) *cobra.Command {
 func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerBackupName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveBackupName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -36,10 +36,10 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerBackupRun resources...")
-	runs, err := cmdutil.ListLedgerBackupRuns(ctx, crdClient, ns, name)
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching BackupRun resources...")
+	runs, err := cmdutil.ListBackupRuns(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to list LedgerBackupRun resources")
+		spinner.Fail("Failed to list BackupRun resources")
 
 		return fmt.Errorf("listing runs: %w", err)
 	}
@@ -59,7 +59,7 @@ func runRuns(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 }
 
-func renderRunsTable(runs *ledgerv1alpha1.LedgerBackupRunList) error {
+func renderRunsTable(runs *ledgerv1alpha1.BackupRunList) error {
 	header := []string{"NAME", "TYPE", "PHASE", "STARTED", "DURATION", "AGE"}
 
 	rows := make([][]string, 0, len(runs.Items))
@@ -87,7 +87,7 @@ func renderRunsTable(runs *ledgerv1alpha1.LedgerBackupRunList) error {
 	}
 
 	if len(rows) == 0 {
-		pterm.Info.Println("No LedgerBackupRun resources found for this backup.")
+		pterm.Info.Println("No BackupRun resources found for this backup.")
 
 		return nil
 	}
@@ -98,7 +98,7 @@ func renderRunsTable(runs *ledgerv1alpha1.LedgerBackupRunList) error {
 	return nil
 }
 
-// runPhaseColor colors a LedgerBackupRun phase string for terminal output.
+// runPhaseColor colors a BackupRun phase string for terminal output.
 func runPhaseColor(phase string) string {
 	switch phase {
 	case string(ledgerv1alpha1.BackupRunPhaseSucceeded):

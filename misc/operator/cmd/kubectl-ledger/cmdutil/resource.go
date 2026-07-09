@@ -90,9 +90,9 @@ func Clusters(ctx context.Context, cs kubernetes.Interface, namespace, name stri
 	})
 }
 
-// GetLedgerBackup fetches a single LedgerBackup CR.
-func GetLedgerBackup(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerBackup, error) {
-	var backup ledgerv1alpha1.LedgerBackup
+// GetBackup fetches a single Backup CR.
+func GetBackup(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.Backup, error) {
+	var backup ledgerv1alpha1.Backup
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &backup); err != nil {
 		return nil, err
 	}
@@ -100,9 +100,9 @@ func GetLedgerBackup(ctx context.Context, c client.Client, namespace, name strin
 	return &backup, nil
 }
 
-// ListLedgerBackups lists LedgerBackup CRs in a namespace.
-func ListLedgerBackups(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.LedgerBackupList, error) {
-	var list ledgerv1alpha1.LedgerBackupList
+// ListBackups lists Backup CRs in a namespace.
+func ListBackups(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.BackupList, error) {
+	var list ledgerv1alpha1.BackupList
 	opts := []client.ListOption{}
 	if namespace != "" {
 		opts = append(opts, client.InNamespace(namespace))
@@ -114,9 +114,9 @@ func ListLedgerBackups(ctx context.Context, c client.Client, namespace string) (
 	return &list, nil
 }
 
-// GetLedgerBackupRun fetches a single LedgerBackupRun CR.
-func GetLedgerBackupRun(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerBackupRun, error) {
-	var run ledgerv1alpha1.LedgerBackupRun
+// GetBackupRun fetches a single BackupRun CR.
+func GetBackupRun(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.BackupRun, error) {
+	var run ledgerv1alpha1.BackupRun
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &run); err != nil {
 		return nil, err
 	}
@@ -124,17 +124,17 @@ func GetLedgerBackupRun(ctx context.Context, c client.Client, namespace, name st
 	return &run, nil
 }
 
-// ListLedgerBackupRuns lists LedgerBackupRun CRs in a namespace, optionally filtered
-// by parent LedgerBackup name (matches the LabelLedgerBackup label). Pass an empty
+// ListBackupRuns lists BackupRun CRs in a namespace, optionally filtered
+// by parent Backup name (matches the LabelBackup label). Pass an empty
 // backupName to list all runs in the namespace.
-func ListLedgerBackupRuns(ctx context.Context, c client.Client, namespace, backupName string) (*ledgerv1alpha1.LedgerBackupRunList, error) {
-	var list ledgerv1alpha1.LedgerBackupRunList
+func ListBackupRuns(ctx context.Context, c client.Client, namespace, backupName string) (*ledgerv1alpha1.BackupRunList, error) {
+	var list ledgerv1alpha1.BackupRunList
 	opts := []client.ListOption{}
 	if namespace != "" {
 		opts = append(opts, client.InNamespace(namespace))
 	}
 	if backupName != "" {
-		opts = append(opts, client.MatchingLabels{ledgerv1alpha1.LabelLedgerBackup: backupName})
+		opts = append(opts, client.MatchingLabels{ledgerv1alpha1.LabelBackup: backupName})
 	}
 	if err := c.List(ctx, &list, opts...); err != nil {
 		return nil, err

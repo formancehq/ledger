@@ -1,13 +1,13 @@
 apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerBackup
+kind: Backup
 metadata:
-  name: bad-ref
+  name: bad-sched
 spec:
-  serviceRef: nonexistent-service
+  serviceRef: sched-svc
   destination:
     driver: s3
     s3:
       bucket: unused
       region: us-east-1
   schedule:
-    full: "0 2 * * 0"
+    full: "not a cron expression"
