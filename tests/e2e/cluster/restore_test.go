@@ -263,6 +263,16 @@ var _ = Describe("Restore", Ordered, func() {
 				Expect(err).To(Succeed())
 			}
 
+			// Declare metadata field types AFTER the full checkpoint, so they live
+			// only in the incremental export segments — the RebuildDelta replay
+			// path, not the raw checkpoint copy. Phase 3 reads them back.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING)))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING)))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64)))
+			Expect(err).To(Succeed())
+
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
@@ -499,6 +509,21 @@ var _ = Describe("Restore", Ordered, func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(commonpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+		})
+
+		It("should preserve the metadata schema declared after the checkpoint", func() {
+			// The field types were declared post-checkpoint, so they exist only in
+			// the incremental exports and must be reconstructed by the RebuildDelta
+			// replay. RebuildDelta currently rebuilds only volumes/metadata/tx state
+			// and drops the schema, so this fails on a restored node.
+			resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+
+			Expect(resp.GetAccountFields()).To(HaveKey("tier"))
+			Expect(resp.GetAccountFields()["tier"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+			Expect(resp.GetLedgerFields()).To(HaveKey("region"))
+			Expect(resp.GetTransactionFields()).To(HaveKey("category"))
+			Expect(resp.GetTransactionFields()["category"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))
 		})
 
 		It("should have the correct data on ledger 2", func() {
