@@ -378,20 +378,17 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	aggregate.Merge(tuNeeds)
 
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
+	cmdOrders := cmd.GetOrders()
 	for i := range orders {
 		operations = append(operations, plan.WriteOperation{
 			Coverage: perOrder[i],
-			SetCoverage: func(bits []byte) {
-				cmd.GetOrders()[i].CoverageBits = bits
-			},
+			Target:   &cmdOrders[i].CoverageBits,
 		})
 	}
 
 	operations = append(operations, plan.WriteOperation{
 		Coverage: tuNeeds,
-		SetCoverage: func(bits []byte) {
-			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
 	})
 
 	build, err := w.builder.Build(aggregate, operations)
@@ -533,9 +530,7 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 
 	operations := []plan.WriteOperation{{
 		Coverage: needs,
-		SetCoverage: func(bits []byte) {
-			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	build, err := w.builder.Build(needs, operations)

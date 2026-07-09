@@ -124,12 +124,9 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 		for orderIdx, spec := range specs {
 			c := buildPerOrderCoverage(spec, orderIdx)
 
-			idx := orderIdx
 			ops[orderIdx] = WriteOperation{
 				Coverage: c,
-				SetCoverage: func(bits []byte) {
-					targets[idx] = bits
-				},
+				Target:   &targets[orderIdx],
 			}
 			aggregate.Merge(c)
 		}

@@ -488,9 +488,7 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 	// (tracker mutex held just long enough to inject PredictedIndex +
 	// proposer.Propose).
 	operations := []plan.WriteOperation{{
-		SetCoverage: func(bits []byte) {
-			e.proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target: &e.proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	// applyEventsSinkUpdate reads no cache state — an empty aggregate is

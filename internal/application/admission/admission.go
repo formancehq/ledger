@@ -425,16 +425,16 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		))
 
 	// Build the per-order WriteOperation slice. Each operation carries
-	// its Coverage (for preload aggregation) and a SetCoverage closure
-	// that the runner invokes at marshal time to write the computed
-	// bitset onto Order.CoverageBits.
+	// its Coverage (for preload aggregation) and a Target pointer that
+	// the runner writes the computed bitset into at marshal time —
+	// pointer over closure avoids one heap alloc per order (the
+	// captured index).
 	operations := make([]plan.WriteOperation, len(orders))
+	cmdOrders := cmd.GetOrders()
 	for i := range orders {
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			SetCoverage: func(bits []byte) {
-				cmd.GetOrders()[i].CoverageBits = bits
-			},
+			Target:   &cmdOrders[i].CoverageBits,
 		}
 	}
 
