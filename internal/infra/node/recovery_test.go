@@ -10,7 +10,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 )
 
 // TestRun_RefusesStartWhenGapExceedsWALRetention verifies that when the applier

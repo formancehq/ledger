@@ -71,7 +71,7 @@ func UnmarshalConfChangeV2(entry *raftpb.Entry) (*raftpb.ConfChangeV2, bool, err
 
 		cc := ccV1.AsV2()
 		// V1->V2 conversion does not copy Context; propagate it manually.
-		cc.Context = ccV1.Context
+		cc.Context = ccV1.GetContext()
 
 		return cc, true, nil
 	case raftpb.EntryConfChangeV2:
@@ -120,27 +120,27 @@ func WalkConfChangeContexts(cc *raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTy
 		return nil
 	}
 
-	contextConsumingNodeIDs := make([]uint64, 0, len(cc.Changes))
-	for _, change := range cc.Changes {
+	contextConsumingNodeIDs := make([]uint64, 0, len(cc.GetChanges()))
+	for _, change := range cc.GetChanges() {
 		switch change.GetType() {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
 			contextConsumingNodeIDs = append(contextConsumingNodeIDs, change.GetNodeId())
 		}
 	}
 
-	if len(contextConsumingNodeIDs) > 1 && len(cc.Context) > 0 {
+	if len(contextConsumingNodeIDs) > 1 && len(cc.GetContext()) > 0 {
 		return fmt.Errorf("invariant: ConfChangeV2 carries %d Add/AddLearner/Update/Remove changes with a non-empty Context (nodes=%v); one Context can only address a single peer, all local propose paths emit single-op batches", len(contextConsumingNodeIDs), contextConsumingNodeIDs)
 	}
 
 	var cached *ConfChangeContext
 
-	for _, change := range cc.Changes {
+	for _, change := range cc.GetChanges() {
 		switch change.GetType() {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
 			var ctx *ConfChangeContext
-			if len(cc.Context) > 0 {
+			if len(cc.GetContext()) > 0 {
 				if cached == nil {
-					decoded, err := UnmarshalConfChangeContext(cc.Context)
+					decoded, err := UnmarshalConfChangeContext(cc.GetContext())
 					if err != nil {
 						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.GetNodeId(), err)
 					}

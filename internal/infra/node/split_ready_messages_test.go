@@ -7,7 +7,6 @@ import (
 	"go.etcd.io/raft/v3"
 	raftpb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
-
 )
 
 // msg builds a *raftpb.Message from scalar fields for terse test literals.
