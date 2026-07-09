@@ -139,7 +139,7 @@ type readyResult struct {
 	// applyResponses are MsgStorageApplyResp messages collected from
 	// LocalApplyThread messages in rd.Messages. They are handed to
 	// applier.Submit in finishReady and Step()-ed back into rawNode by the
-	// applier AFTER applyEntriesToFSM (or spool append) completes — bumping
+	// applier AFTER applyDecodedEntriesToFSM (or spool append) completes — bumping
 	// raft.Applied in lockstep with FSM-applied. Used only when
 	// AsyncStorageWrites is enabled.
 	applyResponses []raftpb.Message
@@ -1377,14 +1377,14 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 	// Submit committed entries to the Applier for async FSM application.
 	// applyResponses (MsgStorageApplyResp) are deferred to the applier: they
-	// are Step()-ed back into rawNode only after applyEntriesToFSM (or the
+	// are Step()-ed back into rawNode only after applyDecodedEntriesToFSM (or the
 	// spool append) completes, so raft.Applied tracks FSM-applied.
 	//
 	// The guard is CommittedEntries-only by design. etcd/raft only emits
 	// MsgStorageApply (source of applyResponses) when CommittedEntries > 0
 	// (rawnode.go's needStorageApplyMsg). So `len(applyResponses) > 0 &&
 	// len(CommittedEntries) == 0` is unreachable — a defensive OR would only
-	// hide a future contract violation, since applyEntriesToFSM's decode+loop
+	// hide a future contract violation, since applyDecodedEntriesToFSM's decode+loop
 	// would silently drop responses when entries is empty (CLAUDE.md #7).
 	if len(rd.CommittedEntries) > 0 {
 		node.applier.Submit(rd.CommittedEntries, node.confState.Load(), result.applyResponses, stop)

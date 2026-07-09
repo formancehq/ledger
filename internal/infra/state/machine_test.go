@@ -797,7 +797,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 // PrepareEntries used to read entries[0].Index unconditionally inside a
 // trace-level log when lastPersistedIndex lagged lastAppliedIndex. Calling
 // it with an empty entries slice (e.g. the empty `head` slice produced by
-// applyEntriesToFSM when a batch boundary lands on the first entry) and
+// applyDecodedEntriesToFSM when a batch boundary lands on the first entry) and
 // trace logging enabled would panic with index out of range. The non-empty
 // sub-test exercises the trace-log code path itself to keep coverage on the
 // guarded block.
