@@ -27,8 +27,11 @@ func NewListCommand() *cobra.Command {
 
 Entries are shown oldest first by default (chronological); use --reverse for newest first.
 
-The --filter flag accepts audit[...] conditions combined with and/or:
+Filtering is done entirely through the generic --filter flag (same DSL as the
+other list commands); there are no audit-specific flags. It accepts audit[...]
+conditions combined with and/or:
   audit[outcome] == failure
+  audit[ledger] == main
   audit[ledger] == main and audit[order_type] == create_transaction
   audit[order_type] in (create_transaction, revert_transaction)
   audit[caller.subject] == "svc:payments"
@@ -43,21 +46,19 @@ Unsupported conditions (not, non-indexed fields) are rejected.
 
 Examples:
   ledgerctl audit list
-  ledgerctl audit list --failures-only
-  ledgerctl audit list --ledger my-ledger --reverse
+  ledgerctl audit list --reverse
   ledgerctl audit list --filter 'audit[outcome] == failure'
+  ledgerctl audit list --filter 'audit[ledger] == my-ledger'
   ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmd.Flags().String("ledger", "", "Scope to audit entries touching this ledger")
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
 	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
 	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Bool("failures-only", false, "Show only failed entries (shorthand for --filter 'audit[outcome] == failure')")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
@@ -75,9 +76,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
 	expand, _ := cmd.Flags().GetBool("expand")
-	ledger, _ := cmd.Flags().GetString("ledger")
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
@@ -87,14 +86,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// --failures-only is a convenience shorthand for `audit[outcome] ==
-	// failure`, AND-combined with any explicit --filter.
-	if failuresOnly {
-		filter = combineAuditFilter(filter, auditOutcomeFailureFilter())
-	}
-
 	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Ledger:  ledger,
 		Options: cmdutil.BuildListOptions(pgn, cns, filter),
 	})
 	if err != nil {
@@ -148,39 +140,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cmdutil.EmitNextCursorHint(cmd, nextCursor)
 
 	return nil
-}
-
-// auditOutcomeFailureFilter builds the `audit[outcome] == failure` condition
-// that backs the --failures-only shorthand.
-func auditOutcomeFailureFilter() *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
-				Field: commonpb.AuditField_AUDIT_FIELD_OUTCOME,
-				Condition: &commonpb.AuditCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "failure"},
-					},
-				},
-			},
-		},
-	}
-}
-
-// combineAuditFilter AND-combines two filters. Either may be nil.
-func combineAuditFilter(a, b *commonpb.QueryFilter) *commonpb.QueryFilter {
-	switch {
-	case a == nil:
-		return b
-	case b == nil:
-		return a
-	default:
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{a, b}},
-			},
-		}
-	}
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.

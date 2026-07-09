@@ -1986,7 +1986,6 @@ func (m *ListAuditEntriesRequest) CloneVT() *ListAuditEntriesRequest {
 		return (*ListAuditEntriesRequest)(nil)
 	}
 	r := new(ListAuditEntriesRequest)
-	r.Ledger = m.Ledger
 	r.Options = m.Options.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -6312,9 +6311,6 @@ func (this *ListAuditEntriesRequest) EqualVT(that *ListAuditEntriesRequest) bool
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
 		return false
 	}
 	if !this.Options.EqualVT(that.Options) {
@@ -13121,13 +13117,6 @@ func (m *ListAuditEntriesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i--
 		dAtA[i] = 0x12
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -18050,10 +18039,6 @@ func (m *ListAuditEntriesRequest) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.Options != nil {
 		l = m.Options.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -30530,38 +30515,6 @@ func (m *ListAuditEntriesRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ListAuditEntriesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)

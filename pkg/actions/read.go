@@ -386,7 +386,6 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 	// page request — dropping it would silently turn a freshness-gated audit
 	// scan into a stale read against a lagging follower.
 	page := &servicepb.ListAuditEntriesRequest{
-		Ledger: req.GetLedger(),
 		Options: &commonpb.ListOptions{
 			Read:     req.GetOptions().GetRead(),
 			PageSize: listAllPageSize,

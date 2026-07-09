@@ -126,13 +126,12 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
-		// Filter by the original ledger — should not include the second ledger's
-		// entries. The ledger scope is served by the async audit index, so poll
-		// until it has caught up (Eventually).
+		// Filter by the original ledger via `audit[ledger] == <name>` — should not
+		// include the second ledger's entries. The ledger scope is served by the
+		// async audit index, so poll until it has caught up (Eventually).
 		Eventually(func(g Gomega) {
-			filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-				Ledger: ledgerName,
-			})
+			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
 			g.Expect(err).To(Succeed())
 			g.Expect(filtered).NotTo(BeEmpty())
 
@@ -144,9 +143,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Filter by the other ledger — should include at least 2 entries (create + transaction)
 		Eventually(func(g Gomega) {
-			otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-				Ledger: otherLedger,
-			})
+			otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, otherLedger)))
 			g.Expect(err).To(Succeed())
 			g.Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
 		}).Should(Succeed())
@@ -433,9 +431,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should have ledgers field populated on list entries when filtering by ledger", func() {
 		Eventually(func(g Gomega) {
-			filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-				Ledger: ledgerName,
-			})
+			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
 			g.Expect(err).To(Succeed())
 			g.Expect(filtered).NotTo(BeEmpty())
 
