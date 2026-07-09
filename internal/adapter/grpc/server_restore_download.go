@@ -186,29 +186,30 @@ func (s *RestoreServiceServerImpl) runDownloadJob(
 ) {
 	defer close(job.done)
 
-	storage, manifest, fileKeyPrefix, err := s.prepareDownload(ctx, req, factory)
+	storage, manifest, err := s.prepareDownload(ctx, req, factory)
 	if err != nil {
 		s.finishJob(job, err, nil)
 
 		return
 	}
 
-	stagingStore, err := s.executeDownload(ctx, job, storage, manifest, fileKeyPrefix)
+	stagingStore, err := s.executeDownload(ctx, job, storage, manifest)
 	s.finishJob(job, err, stagingStore)
 }
 
 // prepareDownload performs all blocking I/O that must succeed before workers
 // start: build the storage client, fetch the manifest, validate it, and
-// recreate the staging directory. Returns the storage, the parsed manifest
-// and the object key prefix for data files.
+// recreate the staging directory. Returns the storage and the parsed manifest;
+// checkpoint files are downloaded by their content-addressed keys recorded in
+// the manifest, so no prefix needs to be threaded through.
 func (s *RestoreServiceServerImpl) prepareDownload(
 	ctx context.Context,
 	req *restorepb.StartDownloadBackupRequest,
 	factory storageFactory,
-) (backup.Storage, *backup.Manifest, string, error) {
+) (backup.Storage, *backup.Manifest, error) {
 	storage, err := factory(req)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("creating backup storage: %w", err)
+		return nil, nil, fmt.Errorf("creating backup storage: %w", err)
 	}
 
 	bucketID := req.GetBucketId()
@@ -217,38 +218,37 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 	}
 
 	manifestKey := bucketID + "/backups/manifest.json"
-	fileKeyPrefix := bucketID + "/backups/data/"
 
 	manifestReader, err := storage.GetFile(ctx, manifestKey)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("reading backup manifest: %w", err)
+		return nil, nil, fmt.Errorf("reading backup manifest: %w", err)
 	}
 
 	manifestData, err := io.ReadAll(io.LimitReader(manifestReader, maxRestoreManifestBytes+1))
 	_ = manifestReader.Close()
 
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("reading manifest data: %w", err)
+		return nil, nil, fmt.Errorf("reading manifest data: %w", err)
 	}
 
 	if int64(len(manifestData)) > maxRestoreManifestBytes {
-		return nil, nil, "", status.Errorf(codes.FailedPrecondition,
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
 			"backup manifest exceeds %d bytes; refusing to read", maxRestoreManifestBytes)
 	}
 
 	var manifest backup.Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		return nil, nil, "", fmt.Errorf("parsing manifest: %w", err)
+		return nil, nil, fmt.Errorf("parsing manifest: %w", err)
 	}
 
 	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
 	if !hasCheckpoint && len(manifest.Exports) == 0 {
-		return nil, nil, "", status.Error(codes.FailedPrecondition,
+		return nil, nil, status.Error(codes.FailedPrecondition,
 			"backup manifest contains no checkpoint files and no export segments")
 	}
 
 	if hasCheckpoint && len(manifest.Checkpoint.Files) > maxRestoreManifestFiles {
-		return nil, nil, "", status.Errorf(codes.FailedPrecondition,
+		return nil, nil, status.Errorf(codes.FailedPrecondition,
 			"backup manifest declares %d files (max %d); refusing to download",
 			len(manifest.Checkpoint.Files), maxRestoreManifestFiles)
 	}
@@ -256,14 +256,14 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 	stagingDir := s.stagingDir()
 
 	if err := os.RemoveAll(stagingDir); err != nil {
-		return nil, nil, "", fmt.Errorf("cleaning staging directory: %w", err)
+		return nil, nil, fmt.Errorf("cleaning staging directory: %w", err)
 	}
 
 	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
-		return nil, nil, "", fmt.Errorf("creating staging directory: %w", err)
+		return nil, nil, fmt.Errorf("creating staging directory: %w", err)
 	}
 
-	return storage, &manifest, fileKeyPrefix, nil
+	return storage, &manifest, nil
 }
 
 // executeDownload transitions the job to RUNNING, downloads every checkpoint
@@ -274,7 +274,6 @@ func (s *RestoreServiceServerImpl) executeDownload(
 	job *downloadJob,
 	storage backup.Storage,
 	manifest *backup.Manifest,
-	fileKeyPrefix string,
 ) (*dal.Store, error) {
 	stagingDir := s.stagingDir()
 
@@ -282,9 +281,9 @@ func (s *RestoreServiceServerImpl) executeDownload(
 		job.totalFiles.Store(uint64(len(manifest.Checkpoint.Files)))
 
 		var totalBytes uint64
-		for _, size := range manifest.Checkpoint.Files {
-			if size > 0 {
-				totalBytes += uint64(size)
+		for _, cf := range manifest.Checkpoint.Files {
+			if cf.Size > 0 {
+				totalBytes += uint64(cf.Size)
 			}
 		}
 
@@ -296,7 +295,7 @@ func (s *RestoreServiceServerImpl) executeDownload(
 	s.mu.Unlock()
 
 	if manifest.Checkpoint != nil {
-		if err := s.downloadCheckpointFiles(ctx, job, storage, manifest, fileKeyPrefix, stagingDir); err != nil {
+		if err := s.downloadCheckpointFiles(ctx, job, storage, manifest, stagingDir); err != nil {
 			return nil, err
 		}
 	}
@@ -323,19 +322,18 @@ func (s *RestoreServiceServerImpl) downloadCheckpointFiles(
 	job *downloadJob,
 	storage backup.Storage,
 	manifest *backup.Manifest,
-	fileKeyPrefix string,
 	stagingDir string,
 ) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(s.parallelism)
 
-	for filename := range manifest.Checkpoint.Files {
+	for filename, cf := range manifest.Checkpoint.Files {
 		g.Go(func() error {
 			if err := gctx.Err(); err != nil {
 				return err
 			}
 
-			return s.downloadOneFile(gctx, job, storage, fileKeyPrefix, stagingDir, filename)
+			return s.downloadOneFile(gctx, job, storage, stagingDir, filename, cf.Key)
 		})
 	}
 
@@ -356,9 +354,9 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 	ctx context.Context,
 	job *downloadJob,
 	storage backup.Storage,
-	fileKeyPrefix string,
 	stagingDir string,
 	filename string,
+	storageKey string,
 ) error {
 	destPath, err := safeStagingPath(stagingDir, filename)
 	if err != nil {
@@ -372,7 +370,10 @@ func (s *RestoreServiceServerImpl) downloadOneFile(
 	name := filename
 	job.currentFile.Store(&name)
 
-	reader, err := storage.GetFile(ctx, fileKeyPrefix+filename)
+	// storageKey is the content-addressed object key recorded in the manifest;
+	// downloads resolve by that key, never by reconstructing prefix+filename,
+	// so a restore always fetches the exact bytes the manifest committed.
+	reader, err := storage.GetFile(ctx, storageKey)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", filename, err)
 	}

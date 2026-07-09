@@ -181,11 +181,12 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(manifest.Checkpoint.LastAuditSequence).To(BeNumerically(">", 0))
 		Expect(manifest.Exports).To(BeEmpty())
 
-		// Verify all checkpoint files exist on S3
-		for filename := range manifest.Checkpoint.Files {
-			key := backupS3DataPrefix + filename
-			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),
-				"S3 object %s should exist", key)
+		// Verify all checkpoint files exist on S3 at their content-addressed keys.
+		for _, cf := range manifest.Checkpoint.Files {
+			Expect(cf.Key).To(HavePrefix(backupS3DataPrefix),
+				"checkpoint object key must live under the data/ prefix")
+			Expect(backupS3ObjectExists(ctx, s3Client, cf.Key)).To(BeTrue(),
+				"S3 object %s should exist", cf.Key)
 		}
 	})
 
@@ -215,11 +216,10 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(manifestAfter.Checkpoint.Timestamp).NotTo(Equal(timestampBefore))
 
-		// Verify all checkpoint files exist on S3
-		for filename := range manifestAfter.Checkpoint.Files {
-			key := backupS3DataPrefix + filename
-			Expect(backupS3ObjectExists(ctx, s3Client, key)).To(BeTrue(),
-				"S3 object %s should exist after backup", key)
+		// Verify all checkpoint files exist on S3 at their content-addressed keys.
+		for _, cf := range manifestAfter.Checkpoint.Files {
+			Expect(backupS3ObjectExists(ctx, s3Client, cf.Key)).To(BeTrue(),
+				"S3 object %s should exist after backup", cf.Key)
 		}
 	})
 

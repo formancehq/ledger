@@ -1,7 +1,10 @@
 package backup
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"strings"
@@ -30,6 +33,14 @@ type orderedStorage struct {
 	ops []string
 	// putErrKeys: if a Put key contains one of these substrings, PutFile fails.
 	putErrKeys []string
+	// mutatingOverwrites records every PutFile that replaced an already-present
+	// object under data/ with DIFFERENT bytes — i.e. a content-mutating in-place
+	// overwrite of a (potentially manifest-referenced) checkpoint object. This
+	// is the precise immutability violation: a re-put of byte-identical content
+	// under the same content-addressed key is harmless and not recorded, but
+	// changing the bytes behind an existing key corrupts any manifest that
+	// references it. With content-addressing this must stay empty.
+	mutatingOverwrites []string
 }
 
 func newOrderedStorage() *orderedStorage {
@@ -52,6 +63,10 @@ func (s *orderedStorage) PutFile(_ context.Context, key string, data io.Reader, 
 
 	if readErr != nil {
 		return readErr
+	}
+
+	if prev, existed := s.files[key]; existed && strings.Contains(key, "/data/") && !bytes.Equal(prev, body) {
+		s.mutatingOverwrites = append(s.mutatingOverwrites, key)
 	}
 
 	s.files[key] = body
@@ -102,6 +117,15 @@ func (s *orderedStorage) opsCopy() []string {
 	defer s.mu.Unlock()
 
 	return append([]string(nil), s.ops...)
+}
+
+// overwritesCopy returns a snapshot of content-mutating in-place data/
+// overwrites under the lock.
+func (s *orderedStorage) overwritesCopy() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]string(nil), s.mutatingOverwrites...)
 }
 
 // firstIndex returns the index of the first op satisfying pred, or -1.
@@ -182,6 +206,108 @@ func TestRunBackup_ManifestWrittenAfterUploadsAndBeforeAnyDelete(t *testing.T) {
 		require.Greater(t, firstDelIdx, manifestIdx,
 			"no object may be deleted before the manifest is committed (crash-safety)")
 	}
+}
+
+// TestRunBackup_NeverOverwritesManifestReferencedObject is the immutability
+// regression (MAJOR bug found in review of PR #1543): a Pebble checkpoint
+// contains a MANIFEST-NNNNNN file that keeps the SAME local name but GROWS
+// between checkpoints. With name-keyed storage keys, the second full backup
+// re-uploaded data/MANIFEST-NNNNNN in place — overwriting an object the
+// currently published backup manifest still referenced, BEFORE the manifest
+// swap. A crash in that window left the previous backup pointing at corrupt
+// Pebble metadata.
+//
+// With content-addressed keys, a file whose bytes change lands on a new key, so
+// no object a published manifest references is ever overwritten in place. This
+// test drives two full backups across a mutation that grows the MANIFEST and
+// asserts zero in-place overwrites under data/. It FAILS on the pre-fix
+// (name-keyed) code and passes after.
+func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+
+	seedBatch := store.OpenWriteSession()
+	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seedBatch.Commit())
+	require.NoError(t, store.Flush())
+
+	storage := newOrderedStorage()
+
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
+	require.NoError(t, err)
+
+	manifest1, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	keys1 := checkpointKeySet(manifest1)
+
+	// Mutate + compact so the checkpoint's file set changes — most notably
+	// Pebble's MANIFEST-NNNNNN, which keeps the same local name but grows in
+	// place. This is the exact trigger that made the pre-fix (name-keyed) code
+	// overwrite a manifest-referenced object.
+	mutate := store.OpenWriteSession()
+	for seq := uint64(2); seq <= 60; seq++ {
+		require.NoError(t, mutate.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+	}
+	require.NoError(t, mutate.Commit())
+	require.NoError(t, store.CompactAll())
+	require.NoError(t, store.Flush())
+
+	_, err = RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-2")
+	require.NoError(t, err)
+
+	manifest2, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	keys2 := checkpointKeySet(manifest2)
+
+	// The precise immutability invariant: no object under data/ was ever
+	// overwritten with different bytes.
+	require.Empty(t, storage.overwritesCopy(),
+		"no object referenced by a published manifest may be overwritten with different bytes")
+
+	// Sanity: the two checkpoints are genuinely different (the mutation+compaction
+	// changed at least one file), so the test actually exercised a changed file
+	// rather than a trivially identical checkpoint.
+	require.NotEqual(t, keys1, keys2,
+		"the second checkpoint must differ from the first for this test to be meaningful")
+
+	// The stored object under every key the CURRENT manifest references must hash
+	// to the content the key encodes. This is what makes objects immutable AND
+	// catches the silent-skip failure mode: on the pre-fix name-keyed scheme, a
+	// file whose content changed is either overwritten in place or silently
+	// skipped (a same-name object already exists), so the stored bytes for a
+	// grown MANIFEST-NNNNNN would NOT match the hash its key/name implies.
+	//
+	// (We check manifest2, the current backup — not manifest1, whose objects are
+	// legitimately superseded and pruned once manifest2 is committed. The
+	// guarantee that manifest1's objects were untouched *during* backup 2, before
+	// its manifest swap, is covered by overwritesCopy() being empty above.)
+	for name, cf := range manifest2.Checkpoint.Files {
+		rc, err := storage.GetFile(context.Background(), cf.Key)
+		require.NoError(t, err, "object for %s (%s) must exist", name, cf.Key)
+		body, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		_ = rc.Close()
+
+		sum := sha256.Sum256(body)
+		wantSuffix := "." + hex.EncodeToString(sum[:])
+		require.True(t, strings.HasSuffix(cf.Key, wantSuffix),
+			"stored bytes for %s must match the content hash its key encodes (key=%s)", name, cf.Key)
+	}
+}
+
+// checkpointKeySet collects the set of content-addressed storage keys a
+// checkpoint manifest references.
+func checkpointKeySet(m *Manifest) map[string]struct{} {
+	out := make(map[string]struct{}, len(m.Checkpoint.Files))
+	for _, cf := range m.Checkpoint.Files {
+		out[cf.Key] = struct{}{}
+	}
+
+	return out
 }
 
 // TestRunBackup_SecondBackupSucceedsEvenWhenDeletesFail is the regression test

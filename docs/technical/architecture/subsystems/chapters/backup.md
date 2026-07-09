@@ -49,21 +49,42 @@ sequenceDiagram
     FSM->>FSM: status=COMPLETE, persist manifest pointer
 ```
 
-### Crash-safe write ordering
+### Crash-safe write ordering and object immutability
 
-The upload order is **load-bearing** for recoverability: every object the new
-manifest will reference is uploaded **before** the manifest, and **no object is
-deleted before the new manifest is committed**. The manifest is the
-authoritative inventory, so a crash at any point before the manifest write
-leaves the *previously published* manifest fully restorable, and a crash after
-it leaves the *new* manifest fully restorable — there is no window in which the
-current manifest points at a deleted object. Cleanup of everything the new
-manifest no longer references (stale SST files, obsolete export segments, and
-files leaked by earlier crashed runs) is a single orphan-prune pass that runs
-*after* `WriteManifest`. A failed segment upload aborts the run before the
-manifest is touched, so a partial upload can never publish a dangling
-reference. See `internal/infra/backup/manager.go` (`RunBackup` /
-`RunIncrementalBackup`).
+Recoverability rests on two rules, both enforced in `internal/infra/backup/manager.go`:
+
+1. **Ordering.** Every object the new manifest will reference is uploaded
+   *before* the manifest, and *no object is deleted before* the new manifest is
+   committed. Cleanup of everything the new manifest no longer references (stale
+   checkpoint files, obsolete export segments, files leaked by earlier crashed
+   runs) is a single orphan-prune pass that runs *after* `WriteManifest`.
+
+2. **Immutability via content-addressing.** Checkpoint file objects are stored
+   under **content-addressed keys** — `data/<filename>.<sha256>` — so any object
+   a published manifest references is immutable. This matters because a Pebble
+   checkpoint contains a `MANIFEST-NNNNNN` file that keeps the *same local name*
+   but **grows** between checkpoints. Keying by name alone, the next full backup
+   would re-upload it and overwrite the object the currently published backup
+   manifest still points at, *before* the manifest swap — a crash in that window
+   would corrupt the previous backup. Keying by content routes a changed file to
+   a *new* key; the old object is untouched until the post-manifest prune.
+   Identical content across checkpoints yields the same key, so unchanged SSTs
+   are naturally deduped and skipped on re-upload (this replaces the old
+   name+size diff — correctness is now the content hash, not the size).
+
+Together these mean a crash at any point *before* `WriteManifest` leaves the
+*previously published* manifest fully restorable, and a crash *after* it leaves
+the *new* one restorable — there is never a window in which the current manifest
+points at a deleted or half-overwritten object. A failed segment upload aborts
+the run before the manifest is touched, so a partial upload can never publish a
+dangling reference.
+
+> **Manifest schema note (pre-GA, breaking):** `checkpoint.files` changed from
+> `{ filename: size }` to `{ filename: { size, key } }`, where `key` is the
+> content-addressed storage key. Restore resolves objects by that recorded
+> `key`, never by reconstructing `prefix + filename`. Backups written by an
+> older binary (bare-`data/<filename>` layout) are not readable by the new
+> restore path and must be retaken.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 
@@ -109,7 +130,7 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 
 - **Pebble checkpoint is hard-link-based.** Almost no I/O cost; the live database keeps serving writes.
 - **Uploads are leader-only.** Followers are not involved. This avoids fan-out but means the leader's bandwidth caps backup throughput.
-- **Incremental diffing is by SST file identity.** Pebble's compaction rewrites SSTs, so a heavily-churned database may re-upload more than a quiet one — there is no key-level diffing.
+- **Full-backup dedup is by content hash.** Each checkpoint file is sha256-hashed; a file whose content is already present on storage (same content-addressed key) is skipped. Pebble's compaction rewrites SSTs, so a heavily-churned database changes more file contents and re-uploads more than a quiet one — dedup is at whole-file granularity, there is no key-level diffing.
 - **No backups during snapshot transfer.** A follower receiving a Raft snapshot is in a transient state; the leader does not initiate a backup while a follower is mid-sync.
 
 ## What backup doesn't do

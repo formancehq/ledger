@@ -323,13 +323,12 @@ var _ = Describe("Restore", Ordered, func() {
 				"the second incremental must accumulate additional export segments in the manifest")
 		})
 
-		It("should reject a concurrent incremental while a backup holds the destination", func() {
-			// EN-1055: full and incremental backups share a single FSM-managed
-			// per-destination slot. We cannot easily interleave two long uploads
-			// deterministically here, but the FSM contract is exercised
-			// end-to-end by the unit/state tests; this case documents that a
-			// repeated no-op incremental against the same destination is
-			// idempotent rather than corrupting the manifest.
+		It("should be a no-op incremental when nothing changed since the last one", func() {
+			// Not a concurrency test — the FSM per-destination mutual exclusion
+			// (EN-1055) is covered deterministically by the unit/state tests
+			// (internal/infra/state/backup_jobs_test.go). This documents the
+			// sequential idempotency of a repeated incremental: with no new
+			// data, it exports nothing and does not disturb the manifest.
 			req := &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,

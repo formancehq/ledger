@@ -18,11 +18,26 @@ type Manifest struct {
 
 // CheckpointManifest describes a full Pebble checkpoint upload.
 type CheckpointManifest struct {
-	Timestamp         string           `json:"timestamp"`
-	LastAppliedIndex  uint64           `json:"lastAppliedIndex"`
-	LastLogSequence   uint64           `json:"lastLogSequence"`
-	LastAuditSequence uint64           `json:"lastAuditSequence"`
-	Files             map[string]int64 `json:"files"` // filename → size in bytes
+	Timestamp         string                    `json:"timestamp"`
+	LastAppliedIndex  uint64                    `json:"lastAppliedIndex"`
+	LastLogSequence   uint64                    `json:"lastLogSequence"`
+	LastAuditSequence uint64                    `json:"lastAuditSequence"`
+	Files             map[string]CheckpointFile `json:"files"` // local filename → stored object
+}
+
+// CheckpointFile records where one checkpoint file lives on storage and its
+// size. The storage Key is content-addressed (it embeds a hash of the file
+// bytes), so a file whose content changes between checkpoints — most notably
+// Pebble's MANIFEST-NNNNNN, which keeps the same local name but grows — is
+// uploaded under a NEW key rather than overwriting the object the currently
+// published manifest still references. This makes every object a published
+// manifest points at immutable: a crash between upload and the manifest swap
+// can never corrupt the previous backup (EN-1055). Identical content across
+// checkpoints yields the same Key, so unchanged SSTs are naturally deduped and
+// skipped on re-upload.
+type CheckpointFile struct {
+	Size int64  `json:"size"`
+	Key  string `json:"key"`
 }
 
 // ExportSegment describes a single incremental export segment stored on S3.

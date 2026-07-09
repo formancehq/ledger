@@ -122,7 +122,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 		Checkpoint: &CheckpointManifest{
 			LastLogSequence:   5,
 			LastAuditSequence: 5,
-			Files:             map[string]int64{"000001.sst": 1},
+			Files:             map[string]CheckpointFile{"000001.sst": {Size: 1, Key: CheckpointFileKey("bucket", "000001.sst", "deadbeef")}},
 		},
 	}
 	body, err := json.Marshal(manifest)

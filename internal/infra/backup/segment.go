@@ -35,9 +35,19 @@ func ExportAppliedProposalSegmentKey(bucketID string, startSeq, endSeq uint64, p
 	return fmt.Sprintf("%s/backups/exports/applied-proposals-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
 }
 
-// CheckpointFileKey returns the S3 key for a checkpoint file.
-func CheckpointFileKey(bucketID, filename string) string {
-	return CheckpointPrefix(bucketID) + filename
+// CheckpointFileKey returns the content-addressed S3 key for a checkpoint file.
+// The contentHash (hex sha256 of the file bytes) is appended to the local
+// filename so a file whose content changes between checkpoints lands on a NEW
+// key instead of overwriting an object the currently published manifest still
+// references — the immutability guarantee behind EN-1055. Two checkpoints that
+// carry byte-identical content for the same filename produce the same key, so
+// unchanged files are deduped and skipped on re-upload.
+//
+// The filename is kept in the key (rather than a bare hash) so operators can
+// still recognise objects in the bucket; correctness rests entirely on the
+// hash suffix.
+func CheckpointFileKey(bucketID, filename, contentHash string) string {
+	return CheckpointPrefix(bucketID) + filename + "." + contentHash
 }
 
 // CheckpointPrefix returns the key prefix shared by every checkpoint file.
