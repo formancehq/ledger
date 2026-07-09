@@ -414,6 +414,16 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (
 	mainPath := impl.store.QueryCheckpointMainDir(checkpointID)
 	readIndexPath := impl.store.QueryCheckpointReadIndexDir(checkpointID)
 
+	// The read-index checkpoint is materialized asynchronously by the index
+	// builder, and on a follower node the builder may not have caught up to the
+	// checkpoint's log sequence yet. Opening a not-yet-materialized directory
+	// would surface an opaque, non-retryable Unknown (EN-1460). Gate on the
+	// builder's readiness marker and return a typed, retryable error instead —
+	// mirrors the INDEX_BUILDING -> Unavailable pattern for metadata indexes.
+	if !readstore.CheckpointDirReady(readIndexPath) {
+		return nil, nil, &domain.ErrCheckpointNotReady{CheckpointID: checkpointID}
+	}
+
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)

@@ -455,9 +455,16 @@ func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context,
 
 	// Extract the assigned checkpoint ID and log sequence from the response.
 	if cp := logs[0].GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
-		// Wait for the read index to process this log (which triggers the
-		// read index checkpoint creation by the index builder).
-		if err := impl.readStore.WaitForSequence(ctx, logs[0].GetSequence()); err != nil {
+		// Wait for the read-index checkpoint directory to be fully materialized
+		// by the index builder before returning. Waiting on the log sequence
+		// alone (WaitForSequence) is insufficient: the progress cursor is
+		// persisted in the batch that precedes the physical checkpoint creation,
+		// so the sequence advances ~100-150ms before the directory exists
+		// (EN-1460). WaitForCheckpoint gates on the readiness marker the builder
+		// writes as the last step, so the checkpoint is readable the moment this
+		// call returns.
+		readIndexDir := impl.store.QueryCheckpointReadIndexDir(cp.GetCheckpointId())
+		if err := impl.readStore.WaitForCheckpoint(ctx, readIndexDir); err != nil {
 			return nil, fmt.Errorf("waiting for read index checkpoint: %w", err)
 		}
 

@@ -556,6 +556,74 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 	return entries, nil
 }
 
+// checkpointReadyMarker is the sentinel file the index builder writes into a
+// query checkpoint read-index directory as the final step, once pebble's
+// Checkpoint() has fully completed (dir created, manifest written, and every
+// SST hard-linked). Its presence is the single authoritative readiness signal:
+// pebble writes SSTs last and a checkpoint can fail mid-link (EN-1460's
+// "link ... no such file or directory"), so the directory or its manifest
+// existing is NOT sufficient — only the marker is.
+const checkpointReadyMarker = ".ready"
+
+// CheckpointDirReady reports whether a query checkpoint read-index directory
+// has been fully materialized, i.e. the builder wrote the readiness marker.
+func CheckpointDirReady(dirPath string) bool {
+	_, err := os.Stat(filepath.Join(dirPath, checkpointReadyMarker))
+
+	return err == nil
+}
+
+// MarkCheckpointReady writes the readiness marker into a completed checkpoint
+// directory. The builder calls this after CreateCheckpoint returns without error.
+func MarkCheckpointReady(dirPath string) error {
+	return os.WriteFile(filepath.Join(dirPath, checkpointReadyMarker), nil, 0o640)
+}
+
+// WaitForCheckpoint blocks until the query checkpoint read-index directory at
+// dirPath has been fully materialized by the index builder (see
+// CheckpointDirReady), or the context is cancelled. It exists because the
+// progress cursor (LastIndexedSequence) is persisted in the same batch that
+// precedes the physical checkpoint creation: waiting on the sequence alone
+// races the directory into existence (the ~100-150ms window in EN-1460). The
+// index builder broadcasts on progressCond *after* createReadIndexCheckpoint
+// (which writes the marker) returns and lastIndexedSeq is stored, so
+// re-checking the marker on each broadcast observes it once present.
+func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
+	if CheckpointDirReady(dirPath) {
+		return nil
+	}
+
+	// Spawn a goroutine that broadcasts when the context is cancelled so the
+	// Wait() below is unblocked.
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressCond.Broadcast()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	for {
+		if ctx.Err() != nil {
+			s.progressMu.Unlock()
+
+			return ctx.Err()
+		}
+
+		if CheckpointDirReady(dirPath) {
+			s.progressMu.Unlock()
+
+			return nil
+		}
+
+		s.progressCond.Wait()
+	}
+}
+
 // WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
 // is cancelled.
 func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {

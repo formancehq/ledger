@@ -702,7 +702,13 @@ func (m *Log) CloneVT() *Log {
 	r.Sequence = m.Sequence
 	r.Payload = m.Payload.CloneVT()
 	r.Receipt = m.Receipt
-	r.ResponseSignature = m.ResponseSignature.CloneVT()
+	if rhs := m.ResponseSignature; rhs != nil {
+		if vtpb, ok := interface{}(rhs).(interface{ CloneVT() *signaturepb.SignedLog }); ok {
+			r.ResponseSignature = vtpb.CloneVT()
+		} else {
+			r.ResponseSignature = proto.Clone(rhs).(*signaturepb.SignedLog)
+		}
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5476,7 +5482,13 @@ func (this *Log) EqualVT(that *Log) bool {
 	if this.Receipt != that.Receipt {
 		return false
 	}
-	if !this.ResponseSignature.EqualVT(that.ResponseSignature) {
+	if equal, ok := interface{}(this.ResponseSignature).(interface {
+		EqualVT(*signaturepb.SignedLog) bool
+	}); ok {
+		if !equal.EqualVT(that.ResponseSignature) {
+			return false
+		}
+	} else if !proto.Equal(this.ResponseSignature, that.ResponseSignature) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -13405,12 +13417,24 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if m.ResponseSignature != nil {
-		size, err := m.ResponseSignature.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
+		if vtmsg, ok := interface{}(m.ResponseSignature).(interface {
+			MarshalToSizedBufferVT([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.ResponseSignature)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
 		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -23196,7 +23220,13 @@ func (m *Log) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.ResponseSignature != nil {
-		l = m.ResponseSignature.SizeVT()
+		if size, ok := interface{}(m.ResponseSignature).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.ResponseSignature)
+		}
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -31452,8 +31482,16 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 			if m.ResponseSignature == nil {
 				m.ResponseSignature = &signaturepb.SignedLog{}
 			}
-			if err := m.ResponseSignature.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
+			if unmarshal, ok := interface{}(m.ResponseSignature).(interface {
+				UnmarshalVT([]byte) error
+			}); ok {
+				if err := unmarshal.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				if err := proto.Unmarshal(dAtA[iNdEx:postIndex], m.ResponseSignature); err != nil {
+					return err
+				}
 			}
 			iNdEx = postIndex
 		default:

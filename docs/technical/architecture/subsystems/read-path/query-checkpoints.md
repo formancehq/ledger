@@ -21,8 +21,17 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 2. The request is proposed through Raft consensus.
 3. The FSM commits pending state and records `QueryCheckpointState` metadata in Pebble.
 4. The Applier creates a physical Pebble checkpoint of the main store at `{dataDir}/query-checkpoints/{id}/main/`.
-5. The index builder detects the `CreatedQueryCheckpointLog` and creates a read index checkpoint at `{dataDir}/query-checkpoints/{id}/readindex/`.
+5. The index builder detects the `CreatedQueryCheckpointLog` and creates a read index checkpoint at `{dataDir}/query-checkpoints/{id}/readindex/`. This is **asynchronous** — the read index is materialized off the FSM hot path by the index builder, typically ~100-150ms after the log is applied. When the checkpoint is fully hard-linked, the builder writes a `.ready` marker file into the `readindex/` directory as the last step. Because pebble hard-links SST files last and a checkpoint can fail mid-link (a concurrent compaction removing an SST), the builder retries the checkpoint on a `link ... no such file or directory` error before writing the marker.
 6. Both stores are opened read-only when a query specifies `checkpoint_id`.
+
+## Readiness and Error Contract
+
+The read index materializes asynchronously (step 5), so a read at a checkpoint whose read index does not yet exist would otherwise race the builder.
+
+- **`CreateQueryCheckpoint` blocks until the checkpoint is readable.** The handler waits (`readStore.WaitForCheckpoint`) for the `.ready` marker before returning, so on the node that created the checkpoint an immediate read at the returned `checkpoint_id` always succeeds. Waiting on the index-builder progress cursor alone is insufficient: the cursor advances in the batch that *precedes* the physical checkpoint creation, so the sequence is reached before the directory exists.
+- **A read on a not-yet-ready checkpoint returns a typed, retryable error.** On any node whose index builder has not yet materialized the checkpoint (e.g. a follower reached via a load balancer, or a deferred read of a persisted `checkpoint_id`), `openCheckpointStores` gates on the `.ready` marker and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry deterministically instead of receiving an opaque, non-retryable `Unknown`. The read never returns partial checkpoint state — either the fully-materialized checkpoint or the retryable readiness error.
+
+The `.ready` marker and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
 
 ## Automatic Checkpoint Creation (Cron Scheduler)
 
@@ -130,9 +139,11 @@ Physical checkpoint data is stored outside Pebble:
 data/
   query-checkpoints/
     1/
-      main/       # Pebble checkpoint of main store
-      readindex/  # Pebble checkpoint of read index
+      main/              # Pebble checkpoint of main store
+      readindex/         # Pebble checkpoint of read index
+        .ready           # readiness marker, written last by the index builder
     2/
       main/
       readindex/
+        .ready
 ```

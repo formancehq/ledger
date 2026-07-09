@@ -344,13 +344,56 @@ func (b *Builder) indexPayload(
 	return nil
 }
 
+// checkpointLinkRetries bounds the retries of a read-index checkpoint whose
+// SST hard-link raced a concurrent compaction ("link ... no such file or
+// directory"). Pebble hard-links live SSTs last; if one is compacted away
+// between the manifest snapshot and the link, the whole checkpoint call fails.
+// Recreating the checkpoint re-snapshots the (now stable) LSM and succeeds.
+const checkpointLinkRetries = 5
+
 // createReadIndexCheckpoint creates a physical Pebble checkpoint of the read index
 // for the given query checkpoint ID. Called after the batch containing all index
-// data up to this point has been committed.
+// data up to this point has been committed. On success it writes a readiness
+// marker into the checkpoint directory (readstore.MarkCheckpointReady) — the
+// authoritative signal that readers (WaitForCheckpoint / openCheckpointStores)
+// gate on, so no read ever opens a half-linked checkpoint.
 func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) error {
 	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
-	if err := b.readStore.CreateCheckpoint(destDir); err != nil {
-		return fmt.Errorf("creating read index checkpoint %d: %w", checkpointID, err)
+
+	var err error
+	for attempt := range checkpointLinkRetries {
+		err = b.readStore.CreateCheckpoint(destDir)
+		if err == nil {
+			break
+		}
+
+		// A concurrent compaction can delete an SST between the manifest
+		// snapshot and the hard-link, surfacing as ErrNotExist. This is
+		// transient — retry after clearing any partial directory so the next
+		// CreateCheckpoint starts from a clean slate.
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("creating read index checkpoint %d: %w", checkpointID, err)
+		}
+
+		b.logger.WithFields(map[string]any{
+			"checkpointID": checkpointID,
+			"attempt":      attempt + 1,
+			"error":        err,
+		}).Infof("Read index checkpoint hard-link raced compaction, retrying")
+
+		if rmErr := os.RemoveAll(destDir); rmErr != nil {
+			return fmt.Errorf("cleaning partial read index checkpoint %d: %w", checkpointID, rmErr)
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("creating read index checkpoint %d after %d attempts: %w", checkpointID, checkpointLinkRetries, err)
+	}
+
+	// Write the readiness marker last: readers only open the checkpoint once
+	// this exists, so the marker guarantees a fully hard-linked directory.
+	if err := readstore.MarkCheckpointReady(destDir); err != nil {
+		return fmt.Errorf("marking read index checkpoint %d ready: %w", checkpointID, err)
 	}
 
 	b.logger.WithFields(map[string]any{

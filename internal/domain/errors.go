@@ -215,6 +215,7 @@ const (
 	ErrReasonStorageOperation              = "STORAGE_OPERATION_FAILED"
 	ErrReasonTransactionStateInconsistent  = "TRANSACTION_STATE_INCONSISTENT"
 	ErrReasonCheckpointIDRequired          = "CHECKPOINT_ID_REQUIRED"
+	ErrReasonCheckpointNotReady            = "CHECKPOINT_NOT_READY"
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
@@ -778,6 +779,26 @@ type ErrIndexBuilding struct {
 func (e *ErrIndexBuilding) Error() string               { return "index is still building: " + e.Index }
 func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
 func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
+
+// ErrCheckpointNotReady — a read targets a query checkpoint whose read index
+// has not been materialized yet. CreateQueryCheckpoint returns the checkpoint
+// ID as soon as the Raft log is applied, but the physical read-index directory
+// is created asynchronously by the index builder, and on a follower node the
+// builder may simply not have caught up to the checkpoint's log sequence. Both
+// are transient: the caller should retry until the directory exists. Mirrors
+// ErrIndexBuilding — maps to KindUnavailable so gRPC clients retry deterministically
+// instead of receiving an opaque, non-retryable Unknown.
+type ErrCheckpointNotReady struct {
+	CheckpointID uint64
+}
+
+func (e *ErrCheckpointNotReady) Error() string {
+	return fmt.Sprintf("query checkpoint %d read index is still building", e.CheckpointID)
+}
+func (*ErrCheckpointNotReady) Reason() string { return ErrReasonCheckpointNotReady }
+func (e *ErrCheckpointNotReady) Metadata() map[string]string {
+	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
+}
 
 // ErrIndexInconsistent — read path detects a structural inconsistency between
 // the filter index and the per-ledger log index (e.g. logID present in the

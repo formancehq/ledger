@@ -14,6 +14,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -370,6 +372,62 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			Expect(resp.GetVolumes()[asset].GetBalance()).To(Equal("400"))
+		})
+	})
+
+	// EN-1460: an immediate read at a freshly-created checkpoint used to race the
+	// asynchronous read-index materialization and return an opaque, non-retryable
+	// code=Unknown. CreateQueryCheckpoint now blocks until the read index is
+	// materialized, and a read on a not-yet-ready checkpoint returns a typed
+	// retryable Unavailable — never Unknown.
+	Context("immediate read after checkpoint creation is race-free", Ordered, func() {
+		var (
+			ctx           context.Context
+			client        servicepb.BucketServiceClient
+			clusterClient clusterpb.ClusterServiceClient
+		)
+
+		const (
+			httpPort   = 9224
+			grpcPort   = 8224
+			ledgerName = "qcp-race"
+		)
+
+		BeforeAll(func() {
+			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("reads the checkpoint immediately without a race, never Unknown", func() {
+			// Repeat create-then-read several times to shrink the odds the race
+			// window is simply missed by chance.
+			for i := 0; i < 10; i++ {
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+				}, nil)))
+				Expect(err).To(Succeed())
+
+				resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+				Expect(err).To(Succeed())
+				cpID := resp.GetCheckpointId()
+
+				// Read at the checkpoint with zero delay. Before the fix this
+				// intermittently returned code=Unknown ("unknown server error").
+				agg, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+					Ledger:       ledgerName,
+					CheckpointId: cpID,
+				})
+				if err != nil {
+					// The only acceptable failure is the typed, retryable
+					// readiness error — never an opaque Unknown.
+					Expect(status.Code(err)).To(Equal(codes.Unavailable),
+						"checkpoint read must never return code=Unknown (EN-1460); got %v", err)
+					continue
+				}
+				Expect(aggregateAssets(agg)).To(ContainElement("USD"))
+			}
 		})
 	})
 })
