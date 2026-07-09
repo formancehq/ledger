@@ -22,4 +22,8 @@ type Writer interface {
 	SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error
 	SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error
 	DeleteTxMetadata(canonicalKey []byte, key string) error
+	// Schema declarations are keyed by ledger (they live on LedgerInfo), not by
+	// a canonical attribute key.
+	SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error
+	RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error
 }

@@ -319,6 +319,17 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
+// SetMetadataFieldType / RemoveMetadataFieldType are no-ops here: the schema
+// lives on LedgerInfo, not in this attribute merge store. Verifying the schema
+// projection in the checker (the invariant-8 gap) is left as a follow-up.
+func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
+	return nil
+}
+
+func (s *replayStore) RemoveMetadataFieldType(string, commonpb.TargetType, string) error {
+	return nil
+}
+
 // newPrefixIter creates a Pebble iterator scoped to a single prefix byte.
 func (s *replayStore) newPrefixIter(prefix byte) (*pebble.Iterator, error) {
 	return s.db.NewIter(&pebble.IterOptions{

@@ -175,9 +175,17 @@ func ReplayLedgerLog(
 		}
 
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		// Schema operations — no state to track
+		if l := p.SetMetadataFieldType; l != nil {
+			if err := w.SetMetadataFieldType(ledger, l.GetTargetType(), l.GetKey(), l.GetType()); err != nil {
+				return fmt.Errorf("replaying set metadata field type: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
-		// Schema operations — no state to track
+		if l := p.RemovedMetadataFieldType; l != nil {
+			if err := w.RemoveMetadataFieldType(ledger, l.GetTargetType(), l.GetKey()); err != nil {
+				return fmt.Errorf("replaying removed metadata field type: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_FillGap:
 		// No state to track
 	case *commonpb.LedgerLogPayload_CreateIndex:

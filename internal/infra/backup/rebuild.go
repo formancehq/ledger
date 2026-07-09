@@ -46,6 +46,7 @@ func RebuildDelta(
 		tx:             attrs.Transaction,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
+		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -67,7 +68,7 @@ func RebuildDelta(
 	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
 	// without this the replayed entries would skip ephemeral-purge simulation
 	// and write transient volumes that should never have been persisted.
-	if err := seedLedgerContext(ctx, readHandle, rawLedgerTypes, ledgerAccountTypes); err != nil {
+	if err := seedLedgerContext(ctx, readHandle, rawLedgerTypes, ledgerAccountTypes, writer.ledgerInfos); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("seeding ledger context: %w", err)
@@ -162,10 +163,11 @@ func RebuildDelta(
 			}
 
 			info := &commonpb.LedgerInfo{
-				Name:      p.CreateLedger.GetName(),
-				Id:        p.CreateLedger.GetId(),
-				CreatedAt: p.CreateLedger.GetCreatedAt(),
-				Mode:      p.CreateLedger.GetMode(),
+				Name:           p.CreateLedger.GetName(),
+				Id:             p.CreateLedger.GetId(),
+				CreatedAt:      p.CreateLedger.GetCreatedAt(),
+				Mode:           p.CreateLedger.GetMode(),
+				MetadataSchema: p.CreateLedger.GetMetadataSchema(),
 			}
 
 			if err := state.SaveLedger(batch, info); err != nil {
@@ -173,6 +175,8 @@ func RebuildDelta(
 
 				return fmt.Errorf("saving ledger info at log %d: %w", seq, err)
 			}
+
+			writer.ledgerInfos[info.GetName()] = info
 
 		case *commonpb.LogPayload_DeleteLedger:
 			// Deletion is handled by system state; nothing to rebuild here
@@ -408,6 +412,7 @@ func seedLedgerContext(
 	reader dal.PebbleReader,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
+	ledgerInfos map[string]*commonpb.LedgerInfo,
 ) error {
 	cursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
@@ -428,11 +433,84 @@ func seedLedgerContext(
 
 		name := info.GetName()
 
+		ledgerInfos[name] = info.CloneVT()
+
 		if types := info.GetAccountTypes(); len(types) > 0 {
 			cloned := maps.Clone(types)
 			rawLedgerTypes[name] = cloned
 			ledgerAccountTypes[name] = accounttype.CompileTypes(cloned)
 		}
+	}
+
+	return nil
+}
+
+// SetMetadataFieldType folds a field-type declaration replayed from the log onto
+// the ledger's in-memory LedgerInfo and re-saves it. The schema lives on
+// LedgerInfo, which the attribute zones do not cover, so without this a restore
+// loses every field type declared beyond the checkpoint.
+func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error {
+	// A schema op cannot arrive for a ledger that was never created; if the info
+	// is absent (e.g. a since-deleted ledger not seeded), there is nothing to
+	// attach the declaration to.
+	info := w.ledgerInfos[ledger]
+	if info == nil {
+		return nil
+	}
+
+	if info.GetMetadataSchema() == nil {
+		info.MetadataSchema = &commonpb.MetadataSchema{}
+	}
+
+	field := &commonpb.MetadataFieldSchema{Type: fieldType}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		if info.MetadataSchema.AccountFields == nil {
+			info.MetadataSchema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		info.MetadataSchema.AccountFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		if info.MetadataSchema.TransactionFields == nil {
+			info.MetadataSchema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		info.MetadataSchema.TransactionFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		if info.MetadataSchema.LedgerFields == nil {
+			info.MetadataSchema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		info.MetadataSchema.LedgerFields[key] = field
+	}
+
+	if err := state.SaveLedger(w.batch, info); err != nil {
+		return fmt.Errorf("saving rebuilt ledger schema: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMetadataFieldType drops a field-type declaration from the ledger's
+// in-memory LedgerInfo and re-saves it.
+func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error {
+	info := w.ledgerInfos[ledger]
+	if info == nil || info.GetMetadataSchema() == nil {
+		return nil
+	}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		delete(info.GetMetadataSchema().GetAccountFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		delete(info.GetMetadataSchema().GetTransactionFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		delete(info.GetMetadataSchema().GetLedgerFields(), key)
+	}
+
+	if err := state.SaveLedger(w.batch, info); err != nil {
+		return fmt.Errorf("saving rebuilt ledger schema: %w", err)
 	}
 
 	return nil
@@ -453,6 +531,12 @@ type attributeReplayWriter struct {
 	tx             *attributes.Attribute[*commonpb.TransactionState]
 	pendingVolumes map[string]*raftcmdpb.VolumePair
 	pendingTx      map[string]*commonpb.TransactionState
+
+	// LedgerInfo per ledger, carrying the evolving metadata schema. Schema
+	// declarations live on LedgerInfo (not the attribute zones), so schema
+	// replays fold into these and re-save. Seeded from the checkpoint and
+	// extended as CreateLedger logs replay.
+	ledgerInfos map[string]*commonpb.LedgerInfo
 }
 
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
