@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -234,7 +235,7 @@ func handleRetry(
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(delay):
+			case <-time.After(delay + time.Duration(rand.Int63n(max(int64(delay/2), 1)))):
 				count++
 				span.SetAttributes(attribute.Int("retry", count))
 				continue

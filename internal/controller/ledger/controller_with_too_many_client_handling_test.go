@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -14,6 +15,17 @@ import (
 
 	ledger "github.com/formancehq/ledger/internal"
 )
+
+func TestDelayCalculatorFn(t *testing.T) {
+	t.Parallel()
+
+	fn := DelayCalculatorFn(func(iteration int) time.Duration {
+		return time.Duration(iteration) * time.Second
+	})
+	require.Equal(t, time.Duration(0), fn.Next(0))
+	require.Equal(t, time.Second, fn.Next(1))
+	require.Equal(t, 2*time.Second, fn.Next(2))
+}
 
 func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 	t.Parallel()
@@ -46,6 +58,62 @@ func TestNewControllerWithTooManyClientHandling(t *testing.T) {
 		delayCalculator.EXPECT().
 			Next(1).
 			Return(10 * time.Millisecond)
+
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
+		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
+		require.NoError(t, err)
+	})
+
+	t.Run("context canceled during retry wait", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		underlyingLedgerController := NewMockController(ctrl)
+		delayCalculator := NewMockDelayCalculator(ctrl)
+		ctx, cancel := context.WithCancel(logging.TestingContext())
+
+		parameters := Parameters[CreateTransaction]{}
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(nil, nil, false, postgres.ErrTooManyClient{})
+
+		delayCalculator.EXPECT().
+			Next(0).
+			DoAndReturn(func(int) time.Duration {
+				cancel()
+				return time.Hour
+			})
+
+		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
+		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("retry with sub-nanosecond delay exercises max guard", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		underlyingLedgerController := NewMockController(ctrl)
+		delayCalculator := NewMockDelayCalculator(ctrl)
+		ctx := logging.TestingContext()
+
+		parameters := Parameters[CreateTransaction]{}
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(nil, nil, false, postgres.ErrTooManyClient{})
+
+		underlyingLedgerController.EXPECT().
+			CreateTransaction(gomock.Any(), parameters).
+			Return(&ledger.Log{}, &ledger.CreatedTransaction{
+				Transaction: ledger.NewTransaction(),
+			}, false, nil)
+
+		// 1ns delay: int64(1/2) == 0, so max(0, 1) kicks in
+		delayCalculator.EXPECT().
+			Next(0).
+			Return(time.Duration(1))
 
 		ledgerController := NewControllerWithTooManyClientHandling(underlyingLedgerController, noop.Tracer{}, delayCalculator)
 		_, _, _, err := ledgerController.CreateTransaction(ctx, parameters)
