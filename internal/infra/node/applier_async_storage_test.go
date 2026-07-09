@@ -15,7 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -26,7 +25,7 @@ import (
 // Applier — it just forwards the slice to the sink.
 func makeApplyResp(nodeID uint64, index uint64) *raftpb.Message {
 	return &raftpb.Message{
-		Type:  raftutil.MessageType(raftpb.MsgStorageApplyResp),
+		Type:  new(raftpb.MsgStorageApplyResp),
 		To:    new(nodeID),
 		From:  proto.Uint64(raft.LocalApplyThread),
 		Index: new(index),

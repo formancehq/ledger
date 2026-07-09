@@ -11,7 +11,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -234,7 +233,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 		require.NoError(t, err)
 
 		entry := &raftpb.Entry{
-			Type: raftutil.EntryType(raftpb.EntryConfChangeV2),
+			Type: new(raftpb.EntryConfChangeV2),
 			Data: data,
 		}
 		if !v2 {
@@ -246,7 +245,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 			d, err := proto.Marshal(ccV1)
 			require.NoError(t, err)
 
-			entry = &raftpb.Entry{Type: raftutil.EntryType(raftpb.EntryConfChange), Data: d}
+			entry = &raftpb.Entry{Type: new(raftpb.EntryConfChange), Data: d}
 		}
 
 		session := m.store.store.OpenWriteSession()
@@ -255,11 +254,11 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	}
 
 	apply(t, &raftpb.ConfChangeV2{
-		Changes: []*raftpb.ConfChangeSingle{{Type: raftutil.ConfChangeType(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(1)}},
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(1)}},
 		Context: addCtx,
 	}, false)
 	apply(t, &raftpb.ConfChangeV2{
-		Changes: []*raftpb.ConfChangeSingle{{Type: raftutil.ConfChangeType(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(2)}},
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(2)}},
 		Context: addLearnerCtx,
 	}, true)
 
@@ -275,7 +274,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	// no-op for the peer payload: it's a role change, not an address
 	// change.
 	apply(t, &raftpb.ConfChangeV2{
-		Changes: []*raftpb.ConfChangeSingle{{Type: raftutil.ConfChangeType(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)}},
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)}},
 		Context: nil,
 	}, true)
 
@@ -289,7 +288,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	removeCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: make([]byte, 16)})
 	require.NoError(t, err)
 	apply(t, &raftpb.ConfChangeV2{
-		Changes: []*raftpb.ConfChangeSingle{{Type: raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)}},
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)}},
 		Context: removeCtx,
 	}, true)
 
@@ -516,8 +515,8 @@ func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 
 	cc := &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{
-			{Type: raftutil.ConfChangeType(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(1)},
-			{Type: raftutil.ConfChangeType(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)},
+			{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(1)},
+			{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)},
 		},
 		Context: ctx,
 	}
@@ -540,8 +539,8 @@ func TestWalkConfChangeContexts_MultiRemoveAllowed(t *testing.T) {
 
 	cc := &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{
-			{Type: raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)},
-			{Type: raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
+			{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)},
+			{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
 		},
 	}
 

@@ -11,7 +11,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 )
 
 // TestRun_RefusesStartWhenGapExceedsWALRetention verifies that when the applier
@@ -31,7 +30,7 @@ func TestRun_RefusesStartWhenGapExceedsWALRetention(t *testing.T) {
 		entries[i] = &raftpb.Entry{
 			Term:  proto.Uint64(1),
 			Index: new(uint64(i + 1)),
-			Type:  raftutil.EntryType(raftpb.EntryNormal),
+			Type:  new(raftpb.EntryNormal),
 			Data:  []byte{byte(i)},
 		}
 	}
@@ -81,7 +80,7 @@ func TestRun_AllowsOutOfSyncRecoveryPastGap(t *testing.T) {
 		entries[i] = &raftpb.Entry{
 			Term:  proto.Uint64(1),
 			Index: new(uint64(i + 1)),
-			Type:  raftutil.EntryType(raftpb.EntryNormal),
+			Type:  new(raftpb.EntryNormal),
 			Data:  []byte{byte(i)},
 		}
 	}

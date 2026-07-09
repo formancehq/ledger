@@ -7,7 +7,6 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -79,7 +78,7 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
+		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 	chkpt := func(t *testing.T, idx uint64) *raftpb.Entry {
 		t.Helper()
@@ -96,11 +95,11 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
+		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 
-	confChange := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryConfChange)}
-	emptyData := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal)}
+	confChange := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: new(raftpb.EntryConfChange)}
+	emptyData := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal)}
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()

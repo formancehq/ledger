@@ -8,7 +8,6 @@ import (
 	raftpb "go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 )
 
 // msg builds a *raftpb.Message from scalar fields for terse test literals.
@@ -81,7 +80,7 @@ func TestSplitReadyMessages_AppendResponsesSelfPeerSplit(t *testing.T) {
 
 	msgs := []*raftpb.Message{
 		{
-			Type: raftutil.MessageType(raftpb.MsgStorageAppend),
+			Type: new(raftpb.MsgStorageAppend),
 			To:   proto.Uint64(raft.LocalAppendThread),
 			From: proto.Uint64(self),
 			Responses: []*raftpb.Message{
@@ -116,7 +115,7 @@ func TestSplitReadyMessages_ApplyResponsesNoSplit(t *testing.T) {
 
 	msgs := []*raftpb.Message{
 		{
-			Type:      raftutil.MessageType(raftpb.MsgStorageApply),
+			Type:      new(raftpb.MsgStorageApply),
 			To:        proto.Uint64(raft.LocalApplyThread),
 			From:      proto.Uint64(self),
 			Responses: []*raftpb.Message{applyResp},
@@ -146,13 +145,13 @@ func TestSplitReadyMessages_MixedRealisticReady(t *testing.T) {
 	msgs := []*raftpb.Message{
 		outboundApp,
 		{
-			Type:      raftutil.MessageType(raftpb.MsgStorageAppend),
+			Type:      new(raftpb.MsgStorageAppend),
 			To:        proto.Uint64(raft.LocalAppendThread),
 			From:      proto.Uint64(self),
 			Responses: []*raftpb.Message{selfAppendResp, selfAppResp},
 		},
 		{
-			Type:      raftutil.MessageType(raftpb.MsgStorageApply),
+			Type:      new(raftpb.MsgStorageApply),
 			To:        proto.Uint64(raft.LocalApplyThread),
 			From:      proto.Uint64(self),
 			Responses: []*raftpb.Message{applyResp},
@@ -180,7 +179,7 @@ func TestSplitReadyMessages_FollowerAllPeer(t *testing.T) {
 
 	msgs := []*raftpb.Message{
 		{
-			Type:      raftutil.MessageType(raftpb.MsgStorageAppend),
+			Type:      new(raftpb.MsgStorageAppend),
 			To:        proto.Uint64(raft.LocalAppendThread),
 			From:      proto.Uint64(self),
 			Responses: []*raftpb.Message{selfAppendResp, appRespToLeader},

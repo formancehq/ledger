@@ -19,7 +19,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -329,7 +328,7 @@ func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *raftpb
 	return &raftpb.Entry{
 		Index: new(index),
 		Term:  proto.Uint64(1),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  entryData,
 	}
 }
@@ -866,7 +865,7 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 			pb, err := machine.PrepareEntries(context.Background(), dataStore, &raftpb.Entry{
 				Index: proto.Uint64(6),
 				Term:  proto.Uint64(1),
-				Type:  raftutil.EntryType(raftpb.EntryNormal),
+				Type:  new(raftpb.EntryNormal),
 			})
 			require.NoError(t, err)
 			if pb != nil {

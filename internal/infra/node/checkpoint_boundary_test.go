@@ -8,7 +8,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -34,7 +33,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
+		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 
 	checkpoint := func(t *testing.T, index uint64) *raftpb.Entry {
@@ -51,10 +50,10 @@ func TestFindCheckpointBoundary(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
+		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 
-	emptyEntry := &raftpb.Entry{Index: proto.Uint64(42), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal)}
+	emptyEntry := &raftpb.Entry{Index: proto.Uint64(42), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal)}
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()

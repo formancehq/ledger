@@ -12,7 +12,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
@@ -56,7 +55,7 @@ func TestRaftApplied_ControlsCommittedEntriesDelivery(t *testing.T) {
 		entries[i] = &raftpb.Entry{
 			Term:  proto.Uint64(1),
 			Index: new(uint64(i + 1)),
-			Type:  raftutil.EntryType(raftpb.EntryNormal),
+			Type:  new(raftpb.EntryNormal),
 			Data:  []byte{byte(i)},
 		}
 	}

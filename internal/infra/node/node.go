@@ -24,7 +24,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -2323,7 +2322,7 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 			return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 				Changes: []*raftpb.ConfChangeSingle{{
-					Type:   raftutil.ConfChangeType(raftpb.ConfChangeUpdateNode),
+					Type:   new(raftpb.ConfChangeUpdateNode),
 					NodeId: new(nodeID),
 				}},
 				Context: ccCtx,
@@ -2332,7 +2331,7 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 			Changes: []*raftpb.ConfChangeSingle{{
-				Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddLearnerNode),
+				Type:   new(raftpb.ConfChangeAddLearnerNode),
 				NodeId: new(nodeID),
 			}},
 			Context: ccCtx,
@@ -2361,7 +2360,7 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 			Changes: []*raftpb.ConfChangeSingle{{
-				Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddNode),
+				Type:   new(raftpb.ConfChangeAddNode),
 				NodeId: new(nodeID),
 			}},
 		})
@@ -2434,7 +2433,7 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 			Changes: []*raftpb.ConfChangeSingle{{
-				Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+				Type:   new(raftpb.ConfChangeRemoveNode),
 				NodeId: new(nodeID),
 			}},
 			Context: ccCtx,
@@ -2539,7 +2538,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// Apply the ConfChange directly (bypasses consensus).
 		cc := &raftpb.ConfChangeV2{
 			Changes: []*raftpb.ConfChangeSingle{{
-				Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+				Type:   new(raftpb.ConfChangeRemoveNode),
 				NodeId: new(nodeID),
 			}},
 		}
@@ -2677,7 +2676,7 @@ func (node *Node) checkAndPromoteLearners() {
 			cc := &raftpb.ConfChangeV2{
 				Changes: []*raftpb.ConfChangeSingle{
 					{
-						Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddNode),
+						Type:   new(raftpb.ConfChangeAddNode),
 						NodeId: new(id),
 					},
 				},

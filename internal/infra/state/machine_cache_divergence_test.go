@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -683,7 +682,7 @@ func mustMakeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *ra
 	return &raftpb.Entry{
 		Index: new(index),
 		Term:  proto.Uint64(1),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}
 }

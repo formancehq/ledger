@@ -23,7 +23,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -204,7 +203,7 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (*raftpb.Ent
 	return &raftpb.Entry{
 		Term:  proto.Uint64(1),
 		Index: new(index),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -522,7 +521,7 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 	return &raftpb.Entry{
 		Term:  new(term),
 		Index: new(index),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -835,7 +834,7 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (*raftpb.Entry, 
 	return &raftpb.Entry{
 		Term:  proto.Uint64(1),
 		Index: new(index),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -864,7 +863,7 @@ func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uin
 	return &raftpb.Entry{
 		Term:  proto.Uint64(1),
 		Index: new(index),
-		Type:  raftutil.EntryType(raftpb.EntryNormal),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }

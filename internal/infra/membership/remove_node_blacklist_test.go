@@ -14,7 +14,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -63,7 +62,7 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 
 	cc := &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{{
-			Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+			Type:   new(raftpb.ConfChangeRemoveNode),
 			NodeId: proto.Uint64(3),
 		}},
 		Context: ccCtx,
@@ -71,7 +70,7 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
 
-	entry := &raftpb.Entry{Type: raftutil.EntryType(raftpb.EntryConfChangeV2), Data: data}
+	entry := &raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
 	require.NoError(t, m.WriteConfChange(entry, session))
@@ -105,14 +104,14 @@ func TestWriteConfChange_RemoveNodeWithoutContextSkipsBlacklist(t *testing.T) {
 
 	cc := &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{{
-			Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+			Type:   new(raftpb.ConfChangeRemoveNode),
 			NodeId: proto.Uint64(3),
 		}},
 	}
 	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
 
-	entry := &raftpb.Entry{Type: raftutil.EntryType(raftpb.EntryConfChangeV2), Data: data}
+	entry := &raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
 	require.NoError(t, m.WriteConfChange(entry, session))
