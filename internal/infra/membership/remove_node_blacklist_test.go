@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -59,17 +61,17 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: instanceID})
 	require.NoError(t, err)
 
-	cc := raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{
-			Type:   raftpb.ConfChangeRemoveNode,
-			NodeID: 3,
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{
+			Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+			NodeId: proto.Uint64(3),
 		}},
 		Context: ccCtx,
 	}
-	data, err := cc.Marshal()
+	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
 
-	entry := raftpb.Entry{Type: raftpb.EntryConfChangeV2, Data: data}
+	entry := &raftpb.Entry{Type: raftutil.EntryType(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
 	require.NoError(t, m.WriteConfChange(entry, session))
@@ -101,16 +103,16 @@ func TestWriteConfChange_RemoveNodeWithoutContextSkipsBlacklist(t *testing.T) {
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 
-	cc := raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{
-			Type:   raftpb.ConfChangeRemoveNode,
-			NodeID: 3,
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{
+			Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+			NodeId: proto.Uint64(3),
 		}},
 	}
-	data, err := cc.Marshal()
+	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
 
-	entry := raftpb.Entry{Type: raftpb.EntryConfChangeV2, Data: data}
+	entry := &raftpb.Entry{Type: raftutil.EntryType(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
 	require.NoError(t, m.WriteConfChange(entry, session))

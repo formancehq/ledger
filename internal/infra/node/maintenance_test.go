@@ -33,7 +33,7 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 // applyEntry feeds a single entry through the Applier synchronously by
 // submitting, draining, and stopping the applier. After it returns,
 // fsm.LastPersistedIndex reflects the entry.
-func (s *testApplierSetup) applyEntry(t *testing.T, ctx context.Context, entry raftpb.Entry) {
+func (s *testApplierSetup) applyEntry(t *testing.T, ctx context.Context, entry *raftpb.Entry) {
 	t.Helper()
 
 	runDone := make(chan error, 1)
@@ -42,7 +42,7 @@ func (s *testApplierSetup) applyEntry(t *testing.T, ctx context.Context, entry r
 		runDone <- s.applier.Run(ctx, s.stop)
 	}()
 
-	s.applier.Submit([]raftpb.Entry{entry}, nil, nil, s.stop)
+	s.applier.Submit([]*raftpb.Entry{entry}, nil, nil, s.stop)
 	s.applier.Drain(s.stop)
 
 	close(s.stop)
@@ -66,7 +66,7 @@ func TestDoMaintenance_NoEntries_NoOp(t *testing.T) {
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
 
-	require.Equal(t, snapBefore.Metadata.Index, snapAfter.Metadata.Index,
+	require.Equal(t, snapBefore.GetMetadata().GetIndex(), snapAfter.GetMetadata().GetIndex(),
 		"WAL snapshot must not advance when no entries are persisted")
 	require.Zero(t, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must not advance when nothing was checkpointed")
@@ -92,7 +92,7 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
 
-	require.Equal(t, persisted, snapAfter.Metadata.Index,
+	require.Equal(t, persisted, snapAfter.GetMetadata().GetIndex(),
 		"WAL snapshot index must match the lastPersistedIndex captured by doMaintenance")
 	require.Equal(t, persisted, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must be updated after a successful Pebble checkpoint")
@@ -127,7 +127,7 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
 
-	require.Equal(t, snapBefore.Metadata.Index, snapAfter.Metadata.Index,
+	require.Equal(t, snapBefore.GetMetadata().GetIndex(), snapAfter.GetMetadata().GetIndex(),
 		"WAL snapshot must not advance when SyncWAL fails")
 	require.Zero(t, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must not advance when SyncWAL fails")

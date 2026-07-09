@@ -5,7 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -68,7 +70,7 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 func TestValidateCheckpointEntryPositions(t *testing.T) {
 	t.Parallel()
 
-	apply := func(t *testing.T, idx uint64) raftpb.Entry {
+	apply := func(t *testing.T, idx uint64) *raftpb.Entry {
 		t.Helper()
 		cmd := &raftcmdpb.Proposal{
 			Id:     idx,
@@ -77,9 +79,9 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return raftpb.Entry{Index: idx, Term: 1, Type: raftpb.EntryNormal, Data: data}
+		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
 	}
-	chkpt := func(t *testing.T, idx uint64) raftpb.Entry {
+	chkpt := func(t *testing.T, idx uint64) *raftpb.Entry {
 		t.Helper()
 		cmd := &raftcmdpb.Proposal{
 			Id: idx,
@@ -94,11 +96,11 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return raftpb.Entry{Index: idx, Term: 1, Type: raftpb.EntryNormal, Data: data}
+		return &raftpb.Entry{Index: new(idx), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal), Data: data}
 	}
 
-	confChange := raftpb.Entry{Index: 99, Term: 1, Type: raftpb.EntryConfChange}
-	emptyData := raftpb.Entry{Index: 99, Term: 1, Type: raftpb.EntryNormal}
+	confChange := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryConfChange)}
+	emptyData := &raftpb.Entry{Index: proto.Uint64(99), Term: proto.Uint64(1), Type: raftutil.EntryType(raftpb.EntryNormal)}
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()
@@ -106,30 +108,30 @@ func TestValidateCheckpointEntryPositions(t *testing.T) {
 	})
 	t.Run("no trigger", func(t *testing.T) {
 		t.Parallel()
-		require.NoError(t, ValidateCheckpointEntryPositions([]raftpb.Entry{apply(t, 1), apply(t, 2)}))
+		require.NoError(t, ValidateCheckpointEntryPositions([]*raftpb.Entry{apply(t, 1), apply(t, 2)}))
 	})
 	t.Run("trigger last", func(t *testing.T) {
 		t.Parallel()
-		require.NoError(t, ValidateCheckpointEntryPositions([]raftpb.Entry{apply(t, 1), chkpt(t, 2)}))
+		require.NoError(t, ValidateCheckpointEntryPositions([]*raftpb.Entry{apply(t, 1), chkpt(t, 2)}))
 	})
 	t.Run("single trigger", func(t *testing.T) {
 		t.Parallel()
-		require.NoError(t, ValidateCheckpointEntryPositions([]raftpb.Entry{chkpt(t, 1)}))
+		require.NoError(t, ValidateCheckpointEntryPositions([]*raftpb.Entry{chkpt(t, 1)}))
 	})
 	t.Run("trigger first", func(t *testing.T) {
 		t.Parallel()
-		err := ValidateCheckpointEntryPositions([]raftpb.Entry{chkpt(t, 1), apply(t, 2)})
+		err := ValidateCheckpointEntryPositions([]*raftpb.Entry{chkpt(t, 1), apply(t, 2)})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "applier must pre-split")
 	})
 	t.Run("trigger middle", func(t *testing.T) {
 		t.Parallel()
-		err := ValidateCheckpointEntryPositions([]raftpb.Entry{apply(t, 1), chkpt(t, 2), apply(t, 3)})
+		err := ValidateCheckpointEntryPositions([]*raftpb.Entry{apply(t, 1), chkpt(t, 2), apply(t, 3)})
 		require.Error(t, err)
 	})
 	t.Run("conf-change and empty entries are skipped", func(t *testing.T) {
 		t.Parallel()
-		require.NoError(t, ValidateCheckpointEntryPositions([]raftpb.Entry{confChange, emptyData, chkpt(t, 100)}))
+		require.NoError(t, ValidateCheckpointEntryPositions([]*raftpb.Entry{confChange, emptyData, chkpt(t, 100)}))
 	})
 }
 

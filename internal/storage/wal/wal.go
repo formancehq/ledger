@@ -11,8 +11,8 @@ type WAL interface {
 	CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte) error
 	UpdateSnapshotConfState(cs *raftpb.ConfState) error
 	Compact(u uint64) error
-	Append(state raftpb.HardState, entries []raftpb.Entry) error
-	ApplySnapshot(snapshot raftpb.Snapshot) error
+	Append(state *raftpb.HardState, entries []*raftpb.Entry) error
+	ApplySnapshot(snapshot *raftpb.Snapshot) error
 	Close() error
 	// MarkClusterJoined creates the CLUSTER_JOINED marker in the WAL data
 	// directory. The marker proves this node has been accepted by the

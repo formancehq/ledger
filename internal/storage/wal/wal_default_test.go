@@ -15,6 +15,33 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
+// hs builds a *raftpb.HardState from scalar fields for terse test literals.
+func hs(term, vote, commit uint64) *raftpb.HardState {
+	return &raftpb.HardState{
+		Term:   new(term),
+		Vote:   new(vote),
+		Commit: new(commit),
+	}
+}
+
+// ent builds a *raftpb.Entry from scalar fields for terse test literals.
+func ent(index, term uint64, data []byte) *raftpb.Entry {
+	return &raftpb.Entry{
+		Index: new(index),
+		Term:  new(term),
+		Data:  data,
+	}
+}
+
+// snapshotMeta builds a *raftpb.SnapshotMetadata for terse test literals.
+func snapshotMeta(index, term uint64, cs *raftpb.ConfState) *raftpb.SnapshotMetadata {
+	return &raftpb.SnapshotMetadata{
+		Index:     new(index),
+		Term:      new(term),
+		ConfState: cs,
+	}
+}
+
 func countWALFiles(t *testing.T, dir string) int {
 	t.Helper()
 
@@ -65,8 +92,8 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	entryData := make([]byte, 20*1024*1024)
 	for i := uint64(1); i <= numEntries; i++ {
 		err := w.Append(
-			raftpb.HardState{Term: 1, Vote: 1, Commit: i},
-			[]raftpb.Entry{{Index: i, Term: 1, Data: entryData}},
+			hs(1, 1, i),
+			[]*raftpb.Entry{ent(i, 1, entryData)},
 		)
 		require.NoError(t, err)
 	}
@@ -95,7 +122,7 @@ func TestInitialState_EmptyWAL(t *testing.T) {
 	hs, cs, err := w.InitialState()
 	require.NoError(t, err)
 	require.True(t, raft.IsEmptyHardState(hs), "empty WAL should return empty hard state")
-	require.Empty(t, cs.Voters, "empty WAL should return empty conf state")
+	require.Empty(t, cs.GetVoters(), "empty WAL should return empty conf state")
 }
 
 func TestInitialState_AfterAppend(t *testing.T) {
@@ -103,17 +130,17 @@ func TestInitialState_AfterAppend(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	hs := raftpb.HardState{Term: 3, Vote: 1, Commit: 5}
-	err := w.Append(hs, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("data")},
+	hs := hs(3, 1, 5)
+	err := w.Append(hs, []*raftpb.Entry{
+		ent(1, 1, []byte("data")),
 	})
 	require.NoError(t, err)
 
 	gotHS, _, err := w.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, hs.Term, gotHS.Term)
-	require.Equal(t, hs.Vote, gotHS.Vote)
-	require.Equal(t, hs.Commit, gotHS.Commit)
+	require.Equal(t, hs.GetTerm(), gotHS.GetTerm())
+	require.Equal(t, hs.GetVote(), gotHS.GetVote())
+	require.Equal(t, hs.GetCommit(), gotHS.GetCommit())
 }
 
 func TestInitialState_AfterSnapshot(t *testing.T) {
@@ -127,7 +154,7 @@ func TestInitialState_AfterSnapshot(t *testing.T) {
 
 	_, gotCS, err := w.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, cs.Voters, gotCS.Voters)
+	require.Equal(t, cs.GetVoters(), gotCS.GetVoters())
 }
 
 // --- Entries tests ---
@@ -137,21 +164,21 @@ func TestEntries_Basic(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
-		{Index: 4, Term: 2, Data: []byte("d")},
-		{Index: 5, Term: 2, Data: []byte("e")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+		ent(4, 2, []byte("d")),
+		ent(5, 2, []byte("e")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 2, Vote: 1, Commit: 5}, entries))
+	require.NoError(t, w.Append(hs(2, 1, 5), entries))
 
 	// Read all entries
 	got, err := w.Entries(1, 6, math.MaxUint64)
 	require.NoError(t, err)
 	require.Len(t, got, 5)
-	require.Equal(t, uint64(1), got[0].Index)
-	require.Equal(t, uint64(5), got[4].Index)
+	require.Equal(t, uint64(1), got[0].GetIndex())
+	require.Equal(t, uint64(5), got[4].GetIndex())
 }
 
 func TestEntries_SubRange(t *testing.T) {
@@ -159,18 +186,18 @@ func TestEntries_SubRange(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(1, 1, 3), entries))
 
 	got, err := w.Entries(2, 4, math.MaxUint64)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
-	require.Equal(t, uint64(2), got[0].Index)
-	require.Equal(t, uint64(3), got[1].Index)
+	require.Equal(t, uint64(2), got[0].GetIndex())
+	require.Equal(t, uint64(3), got[1].GetIndex())
 }
 
 func TestEntries_MaxSizeLimit(t *testing.T) {
@@ -178,12 +205,12 @@ func TestEntries_MaxSizeLimit(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: make([]byte, 100)},
-		{Index: 2, Term: 1, Data: make([]byte, 100)},
-		{Index: 3, Term: 1, Data: make([]byte, 100)},
+	entries := []*raftpb.Entry{
+		ent(1, 1, make([]byte, 100)),
+		ent(2, 1, make([]byte, 100)),
+		ent(3, 1, make([]byte, 100)),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(1, 1, 3), entries))
 
 	// Use a very small maxSize that should still return at least the first entry
 	got, err := w.Entries(1, 4, 1)
@@ -197,8 +224,8 @@ func TestEntries_InvalidRange(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 1}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
+	require.NoError(t, w.Append(hs(1, 1, 1), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
 	}))
 
 	// lo >= hi
@@ -212,12 +239,12 @@ func TestEntries_Compacted(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(1, 1, 3), entries))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(2, cs, nil))
@@ -242,9 +269,9 @@ func TestEntries_HiOutOfBound(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
 	}))
 
 	_, err := w.Entries(1, 100, math.MaxUint64)
@@ -258,12 +285,12 @@ func TestTerm_Basic(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 2, Data: []byte("b")},
-		{Index: 3, Term: 3, Data: []byte("c")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 2, []byte("b")),
+		ent(3, 3, []byte("c")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 3, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(3, 1, 3), entries))
 
 	term, err := w.Term(1)
 	require.NoError(t, err)
@@ -283,12 +310,12 @@ func TestTerm_SnapshotIndex(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 2, Data: []byte("b")},
-		{Index: 3, Term: 3, Data: []byte("c")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 2, []byte("b")),
+		ent(3, 3, []byte("c")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 3, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(3, 1, 3), entries))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(2, cs, nil))
@@ -305,9 +332,9 @@ func TestTerm_OutOfBound(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
 	}))
 
 	// Beyond last entry
@@ -320,12 +347,12 @@ func TestTerm_Compacted(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	entries := []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 2, Data: []byte("b")},
-		{Index: 3, Term: 3, Data: []byte("c")},
+	entries := []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 2, []byte("b")),
+		ent(3, 3, []byte("c")),
 	}
-	require.NoError(t, w.Append(raftpb.HardState{Term: 3, Vote: 1, Commit: 3}, entries))
+	require.NoError(t, w.Append(hs(3, 1, 3), entries))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(2, cs, nil))
@@ -353,10 +380,10 @@ func TestLastIndex_WithEntries(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	idx, err := w.LastIndex()
@@ -371,13 +398,9 @@ func TestLastIndex_WithSnapshotOnly(t *testing.T) {
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(0, cs, nil))
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     10,
-			Term:      2,
-			ConfState: *cs,
-		},
-		Data: []byte("snapshot data"),
+	snap := &raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 2, cs),
+		Data:     []byte("snapshot data"),
 	}
 	require.NoError(t, w.ApplySnapshot(snap))
 
@@ -403,10 +426,10 @@ func TestFirstIndex_WithEntries(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	idx, err := w.FirstIndex()
@@ -419,12 +442,12 @@ func TestFirstIndex_AfterCompaction(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
-		{Index: 4, Term: 1, Data: []byte("d")},
-		{Index: 5, Term: 1, Data: []byte("e")},
+	require.NoError(t, w.Append(hs(1, 1, 5), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+		ent(4, 1, []byte("d")),
+		ent(5, 1, []byte("e")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
@@ -446,8 +469,8 @@ func TestSnapshot_Empty(t *testing.T) {
 
 	snap, err := w.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), snap.Metadata.Index)
-	require.Equal(t, uint64(0), snap.Metadata.Term)
+	require.Equal(t, uint64(0), snap.GetMetadata().GetIndex())
+	require.Equal(t, uint64(0), snap.GetMetadata().GetTerm())
 }
 
 func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
@@ -455,10 +478,10 @@ func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 2, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 2, Data: []byte("b")},
-		{Index: 3, Term: 2, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(2, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 2, []byte("b")),
+		ent(3, 2, []byte("c")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
@@ -466,10 +489,10 @@ func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
 
 	snap, err := w.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), snap.Metadata.Index)
-	require.Equal(t, uint64(2), snap.Metadata.Term)
-	require.Equal(t, []byte("snap-data"), snap.Data)
-	require.Equal(t, cs.Voters, snap.Metadata.ConfState.Voters)
+	require.Equal(t, uint64(3), snap.GetMetadata().GetIndex())
+	require.Equal(t, uint64(2), snap.GetMetadata().GetTerm())
+	require.Equal(t, []byte("snap-data"), snap.GetData())
+	require.Equal(t, cs.GetVoters(), snap.GetMetadata().GetConfState().GetVoters())
 }
 
 // --- ApplySnapshot tests ---
@@ -480,27 +503,23 @@ func TestApplySnapshot(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Append some entries first
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
 	}))
 
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     10,
-			Term:      5,
-			ConfState: raftpb.ConfState{Voters: []uint64{1, 2, 3}},
-		},
-		Data: []byte("full-snapshot"),
+	snap := &raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
+		Data:     []byte("full-snapshot"),
 	}
 	require.NoError(t, w.ApplySnapshot(snap))
 
 	// Verify snapshot is applied
 	gotSnap, err := w.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), gotSnap.Metadata.Index)
-	require.Equal(t, uint64(5), gotSnap.Metadata.Term)
-	require.Equal(t, []byte("full-snapshot"), gotSnap.Data)
+	require.Equal(t, uint64(10), gotSnap.GetMetadata().GetIndex())
+	require.Equal(t, uint64(5), gotSnap.GetMetadata().GetTerm())
+	require.Equal(t, []byte("full-snapshot"), gotSnap.GetData())
 
 	// Entries should be cleared after applying snapshot
 	idx, err := w.LastIndex()
@@ -516,7 +535,7 @@ func TestAppend_NoChangeNoOp(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Appending same hard state with no entries should be a no-op
-	err := w.Append(raftpb.HardState{}, nil)
+	err := w.Append(&raftpb.HardState{}, nil)
 	require.NoError(t, err)
 }
 
@@ -525,13 +544,13 @@ func TestAppend_HardStateOnly(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	hs := raftpb.HardState{Term: 5, Vote: 2, Commit: 0}
+	hs := hs(5, 2, 0)
 	require.NoError(t, w.Append(hs, nil))
 
 	gotHS, _, err := w.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, uint64(5), gotHS.Term)
-	require.Equal(t, uint64(2), gotHS.Vote)
+	require.Equal(t, uint64(5), gotHS.GetTerm())
+	require.Equal(t, uint64(2), gotHS.GetVote())
 }
 
 func TestAppend_MultipleAppends(t *testing.T) {
@@ -540,15 +559,15 @@ func TestAppend_MultipleAppends(t *testing.T) {
 	w := newTestWAL(t)
 
 	// First batch
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
 	}))
 
 	// Second batch
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 4}, []raftpb.Entry{
-		{Index: 3, Term: 1, Data: []byte("c")},
-		{Index: 4, Term: 1, Data: []byte("d")},
+	require.NoError(t, w.Append(hs(1, 1, 4), []*raftpb.Entry{
+		ent(3, 1, []byte("c")),
+		ent(4, 1, []byte("d")),
 	}))
 
 	idx, err := w.LastIndex()
@@ -566,15 +585,15 @@ func TestAppend_Truncation(t *testing.T) {
 	w := newTestWAL(t)
 
 	// First append
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	// Overwrite from index 2 with a different term (simulates leader change)
-	require.NoError(t, w.Append(raftpb.HardState{Term: 2, Vote: 2, Commit: 2}, []raftpb.Entry{
-		{Index: 2, Term: 2, Data: []byte("b-new")},
+	require.NoError(t, w.Append(hs(2, 2, 2), []*raftpb.Entry{
+		ent(2, 2, []byte("b-new")),
 	}))
 
 	idx, err := w.LastIndex()
@@ -584,9 +603,9 @@ func TestAppend_Truncation(t *testing.T) {
 	ents, err := w.Entries(1, 3, math.MaxUint64)
 	require.NoError(t, err)
 	require.Len(t, ents, 2)
-	require.Equal(t, uint64(1), ents[0].Term)
-	require.Equal(t, uint64(2), ents[1].Term)
-	require.Equal(t, []byte("b-new"), ents[1].Data)
+	require.Equal(t, uint64(1), ents[0].GetTerm())
+	require.Equal(t, uint64(2), ents[1].GetTerm())
+	require.Equal(t, []byte("b-new"), ents[1].GetData())
 }
 
 func TestAppend_GapCreatesAppend(t *testing.T) {
@@ -595,15 +614,15 @@ func TestAppend_GapCreatesAppend(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Append entries at index 1-2
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
 	}))
 
 	// Append entries at index 5 (gap from 3-4 -- this shouldn't happen in valid Raft
 	// but tests the code path where entries[0].Index > offset+len(s.entries))
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, []raftpb.Entry{
-		{Index: 5, Term: 1, Data: []byte("e")},
+	require.NoError(t, w.Append(hs(1, 1, 5), []*raftpb.Entry{
+		ent(5, 1, []byte("e")),
 	}))
 
 	idx, err := w.LastIndex()
@@ -618,12 +637,12 @@ func TestCompact_Basic(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
-		{Index: 4, Term: 1, Data: []byte("d")},
-		{Index: 5, Term: 1, Data: []byte("e")},
+	require.NoError(t, w.Append(hs(1, 1, 5), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+		ent(4, 1, []byte("d")),
+		ent(5, 1, []byte("e")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
@@ -646,10 +665,10 @@ func TestCompact_AfterSnapshot(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Attempt compact with index > snapshot.Metadata.Index should error
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	// Compact at index 5 without a snapshot at that index should fail
@@ -662,10 +681,10 @@ func TestCompact_BeforeFirstIndex(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
@@ -683,12 +702,8 @@ func TestCompact_EmptyEntriesAfterApplySnapshot(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Apply a snapshot which clears entries
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     10,
-			Term:      2,
-			ConfState: raftpb.ConfState{Voters: []uint64{1}},
-		},
+	snap := &raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
 	}
 	require.NoError(t, w.ApplySnapshot(snap))
 
@@ -707,10 +722,10 @@ func TestCompact_TruncateAll(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
@@ -737,9 +752,9 @@ func TestCreateSnapshot_EmptyStorage(t *testing.T) {
 
 	snap, err := w.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), snap.Metadata.Index)
-	require.Equal(t, uint64(0), snap.Metadata.Term)
-	require.Equal(t, []byte("initial"), snap.Data)
+	require.Equal(t, uint64(0), snap.GetMetadata().GetIndex())
+	require.Equal(t, uint64(0), snap.GetMetadata().GetTerm())
+	require.Equal(t, []byte("initial"), snap.GetData())
 }
 
 func TestCreateSnapshot_RestoreOnEmptyStorage(t *testing.T) {
@@ -754,8 +769,8 @@ func TestCreateSnapshot_RestoreOnEmptyStorage(t *testing.T) {
 
 	snap, err := w.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(100), snap.Metadata.Index)
-	require.Equal(t, uint64(1), snap.Metadata.Term, "restore snapshot should use term 1")
+	require.Equal(t, uint64(100), snap.GetMetadata().GetIndex())
+	require.Equal(t, uint64(1), snap.GetMetadata().GetTerm(), "restore snapshot should use term 1")
 }
 
 func TestCreateSnapshot_OutOfDate(t *testing.T) {
@@ -763,10 +778,10 @@ func TestCreateSnapshot_OutOfDate(t *testing.T) {
 
 	w := newTestWAL(t)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 3}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("a")},
-		{Index: 2, Term: 1, Data: []byte("b")},
-		{Index: 3, Term: 1, Data: []byte("c")},
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
@@ -794,9 +809,9 @@ func TestWAL_Persistence(t *testing.T) {
 	w, err := New(dir, logger, meter)
 	require.NoError(t, err)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 3, Vote: 1, Commit: 2}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("first")},
-		{Index: 2, Term: 3, Data: []byte("second")},
+	require.NoError(t, w.Append(hs(3, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("first")),
+		ent(2, 3, []byte("second")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
@@ -812,16 +827,16 @@ func TestWAL_Persistence(t *testing.T) {
 	// Verify hard state persisted
 	hs, gotCS, err := w2.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), hs.Term)
-	require.Equal(t, uint64(1), hs.Vote)
-	require.Equal(t, uint64(2), hs.Commit)
-	require.Equal(t, []uint64{1, 2}, gotCS.Voters)
+	require.Equal(t, uint64(3), hs.GetTerm())
+	require.Equal(t, uint64(1), hs.GetVote())
+	require.Equal(t, uint64(2), hs.GetCommit())
+	require.Equal(t, []uint64{1, 2}, gotCS.GetVoters())
 
 	// Verify snapshot persisted
 	snap, err := w2.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), snap.Metadata.Index)
-	require.Equal(t, []byte("snap"), snap.Data)
+	require.Equal(t, uint64(2), snap.GetMetadata().GetIndex())
+	require.Equal(t, []byte("snap"), snap.GetData())
 
 	// Verify entries: after snapshot at index 2, entries before the snapshot
 	// may or may not be available depending on the etcd WAL replay.
@@ -845,21 +860,21 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 	w, err := New(dir, logger, meter)
 	require.NoError(t, err)
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, []raftpb.Entry{
-		{Index: 1, Term: 1, Data: []byte("entry-1")},
-		{Index: 2, Term: 1, Data: []byte("entry-2")},
-		{Index: 3, Term: 1, Data: []byte("entry-3")},
-		{Index: 4, Term: 1, Data: []byte("entry-4")},
-		{Index: 5, Term: 1, Data: []byte("entry-5")},
+	require.NoError(t, w.Append(hs(1, 1, 5), []*raftpb.Entry{
+		ent(1, 1, []byte("entry-1")),
+		ent(2, 1, []byte("entry-2")),
+		ent(3, 1, []byte("entry-3")),
+		ent(4, 1, []byte("entry-4")),
+		ent(5, 1, []byte("entry-5")),
 	}))
 
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(3, cs, []byte("snapshot-data")))
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 8}, []raftpb.Entry{
-		{Index: 6, Term: 1, Data: []byte("entry-6")},
-		{Index: 7, Term: 1, Data: []byte("entry-7")},
-		{Index: 8, Term: 1, Data: []byte("entry-8")},
+	require.NoError(t, w.Append(hs(1, 1, 8), []*raftpb.Entry{
+		ent(6, 1, []byte("entry-6")),
+		ent(7, 1, []byte("entry-7")),
+		ent(8, 1, []byte("entry-8")),
 	}))
 
 	require.NoError(t, w.Close())
@@ -901,8 +916,8 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 	// Step 4: Verify snapshot is preserved.
 	snap, err := w2.Snapshot()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), snap.Metadata.Index)
-	require.Equal(t, []byte("snapshot-data"), snap.Data)
+	require.Equal(t, uint64(3), snap.GetMetadata().GetIndex())
+	require.Equal(t, []byte("snapshot-data"), snap.GetData())
 
 	// Step 5: Verify some entries were recovered.
 	lastIdx, err := w2.LastIndex()
@@ -947,27 +962,27 @@ func TestAppend_StaleEntriesBeforeCachedWindowDoesNotLeakLock(t *testing.T) {
 	w := newTestWAL(t)
 
 	require.NoError(t, w.Append(
-		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
-		[]raftpb.Entry{
-			{Index: 3, Term: 1, Data: []byte("c")},
-			{Index: 4, Term: 1, Data: []byte("d")},
-			{Index: 5, Term: 1, Data: []byte("e")},
+		hs(1, 1, 5),
+		[]*raftpb.Entry{
+			ent(3, 1, []byte("c")),
+			ent(4, 1, []byte("d")),
+			ent(5, 1, []byte("e")),
 		},
 	))
 
 	require.NoError(t, w.Append(
-		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
-		[]raftpb.Entry{
-			{Index: 1, Term: 1, Data: []byte("a")},
-			{Index: 2, Term: 1, Data: []byte("b")},
+		hs(1, 1, 5),
+		[]*raftpb.Entry{
+			ent(1, 1, []byte("a")),
+			ent(2, 1, []byte("b")),
 		},
 	))
 
 	done := make(chan error, 1)
 	go func() {
 		done <- w.Append(
-			raftpb.HardState{Term: 1, Vote: 1, Commit: 6},
-			[]raftpb.Entry{{Index: 6, Term: 1, Data: []byte("f")}},
+			hs(1, 1, 6),
+			[]*raftpb.Entry{ent(6, 1, []byte("f"))},
 		)
 	}()
 
@@ -981,8 +996,8 @@ func TestAppend_StaleEntriesBeforeCachedWindowDoesNotLeakLock(t *testing.T) {
 	got, err := w.Entries(3, 7, math.MaxUint64)
 	require.NoError(t, err)
 	require.Len(t, got, 4)
-	require.Equal(t, uint64(3), got[0].Index)
-	require.Equal(t, uint64(6), got[3].Index)
+	require.Equal(t, uint64(3), got[0].GetIndex())
+	require.Equal(t, uint64(6), got[3].GetIndex())
 }
 
 // TestAppend_StaleEntriesPiggybackedHardStateIsPersisted pins the second
@@ -1010,21 +1025,21 @@ func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
 	require.NoError(t, w.CreateSnapshot(2, cs, nil))
 
 	require.NoError(t, w.Append(
-		raftpb.HardState{Term: 1, Vote: 1, Commit: 5},
-		[]raftpb.Entry{
-			{Index: 3, Term: 1, Data: []byte("c")},
-			{Index: 4, Term: 1, Data: []byte("d")},
-			{Index: 5, Term: 1, Data: []byte("e")},
+		hs(1, 1, 5),
+		[]*raftpb.Entry{
+			ent(3, 1, []byte("c")),
+			ent(4, 1, []byte("d")),
+			ent(5, 1, []byte("e")),
 		},
 	))
 
 	// Stale entries (1..2) + a piggy-backed Commit=10. The stale branch
 	// must drop the entries but still flush the new HardState.
 	require.NoError(t, w.Append(
-		raftpb.HardState{Term: 1, Vote: 1, Commit: 10},
-		[]raftpb.Entry{
-			{Index: 1, Term: 1, Data: []byte("a")},
-			{Index: 2, Term: 1, Data: []byte("b")},
+		hs(1, 1, 10),
+		[]*raftpb.Entry{
+			ent(1, 1, []byte("a")),
+			ent(2, 1, []byte("b")),
 		},
 	))
 
@@ -1035,7 +1050,7 @@ func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
 
 	hs, _, err := reopened.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), hs.Commit,
+	require.Equal(t, uint64(10), hs.GetCommit(),
 		"piggy-backed HardState commit on a stale-entry Append must survive across restart (#301)")
 }
 

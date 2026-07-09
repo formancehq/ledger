@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
+	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -117,7 +118,7 @@ func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error
 // (closing the loop on async-storage writes). Owned by an fx provider so
 // both NewApplier (writer) and NewNode (reader) receive the same instance
 // via constructor injection — no setters.
-type LocalResponses chan []raftpb.Message
+type LocalResponses chan []*raftpb.Message
 
 // NewLocalResponses constructs the LocalResponses channel. Buffered at 64 to
 // absorb a few Ready cycles' worth of responses without blocking processReady.
@@ -135,14 +136,14 @@ type readyResult struct {
 	snapshotApplied bool
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each.
-	confChanges []raftpb.ConfChangeV2
+	confChanges []*raftpb.ConfChangeV2
 	// applyResponses are MsgStorageApplyResp messages collected from
 	// LocalApplyThread messages in rd.Messages. They are handed to
 	// applier.Submit in finishReady and Step()-ed back into rawNode by the
 	// applier AFTER applyDecodedEntriesToFSM (or spool append) completes — bumping
 	// raft.Applied in lockstep with FSM-applied. Used only when
 	// AsyncStorageWrites is enabled.
-	applyResponses []raftpb.Message
+	applyResponses []*raftpb.Message
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
@@ -251,9 +252,9 @@ func NewNode(
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
 
-	var initialConfState raftpb.ConfState
+	var initialConfState *raftpb.ConfState
 
-	if len(snapshot.Metadata.ConfState.Voters) == 0 {
+	if len(snapshot.GetMetadata().GetConfState().GetVoters()) == 0 {
 		logger.Infof("Fresh start: WAL has no ConfState voters, creating initial snapshot")
 
 		// Check for RESTORED marker from a completed backup restore
@@ -276,7 +277,7 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			initialConfState = raftpb.ConfState{
+			initialConfState = &raftpb.ConfState{
 				Voters: []uint64{cfg.NodeID},
 			}
 
@@ -284,7 +285,7 @@ func NewNode(
 				return nil, err
 			}
 
-			if err := wal.CreateSnapshot(marker.LastAppliedIndex, &initialConfState, nil); err != nil {
+			if err := wal.CreateSnapshot(marker.LastAppliedIndex, initialConfState, nil); err != nil {
 				return nil, fmt.Errorf("creating restore snapshot: %w", err)
 			}
 
@@ -325,7 +326,7 @@ func NewNode(
 				return nil, errors.New("first start requires --bootstrap or --join")
 			}
 
-			initialConfState = raftpb.ConfState{
+			initialConfState = &raftpb.ConfState{
 				Voters:   voters,
 				Learners: learners,
 			}
@@ -341,7 +342,7 @@ func NewNode(
 				return nil, err
 			}
 
-			if err := wal.CreateSnapshot(0, &initialConfState, nil); err != nil {
+			if err := wal.CreateSnapshot(0, initialConfState, nil); err != nil {
 				return nil, fmt.Errorf("creating initial snapshot: %w", err)
 			}
 
@@ -360,10 +361,10 @@ func NewNode(
 		}
 	} else {
 		logger.WithFields(map[string]any{
-			"snapshotIndex": snapshot.Metadata.Index,
-			"snapshotTerm":  snapshot.Metadata.Term,
-			"voters":        snapshot.Metadata.ConfState.Voters,
-			"learners":      snapshot.Metadata.ConfState.Learners,
+			"snapshotIndex": snapshot.GetMetadata().GetIndex(),
+			"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
+			"voters":        snapshot.GetMetadata().GetConfState().GetVoters(),
+			"learners":      snapshot.GetMetadata().GetConfState().GetLearners(),
 			"nodeID":        cfg.NodeID,
 			"bootstrap":     cfg.Bootstrap,
 			"peerCount":     len(cfg.Peers),
@@ -375,10 +376,10 @@ func NewNode(
 		// (FSM cache reset, snapshotIndex update) is still required on the
 		// install path; that lives in Synchronizer.
 		switch {
-		case snapshot.Metadata.Index > 0:
+		case snapshot.GetMetadata().GetIndex() > 0:
 			logger.WithFields(map[string]any{
-				"index":        snapshot.Metadata.Index,
-				"snapshotSize": len(snapshot.Data),
+				"index":        snapshot.GetMetadata().GetIndex(),
+				"snapshotSize": len(snapshot.GetData()),
 			}).Infof("Restoring Machine from snapshot")
 
 			if err := synchronizer.InstallSnapshot(context.Background(), snapshot); err != nil {
@@ -404,7 +405,7 @@ func NewNode(
 			return nil, fmt.Errorf(
 				"node-id %d not found in WAL ConfState (voters=%v, learners=%v); "+
 					"this usually means --node-id or --wal-dir was changed between restarts",
-				cfg.NodeID, initialConfState.Voters, initialConfState.Learners,
+				cfg.NodeID, initialConfState.GetVoters(), initialConfState.GetLearners(),
 			)
 		}
 	}
@@ -466,10 +467,10 @@ func NewNode(
 	// that lands before the first Ready already tags futures with the correct
 	// term. This closes the term=0 startup window referenced by issue #172.
 	if hs, _, hsErr := wal.InitialState(); hsErr == nil {
-		node.lastObservedTerm.Store(hs.Term)
+		node.lastObservedTerm.Store(hs.GetTerm())
 	}
 
-	node.confState.Store(&initialConfState)
+	node.confState.Store(initialConfState)
 
 	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
@@ -601,7 +602,7 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		return fmt.Errorf("reading WAL last index: %w", err)
 	}
 
-	if walLastIdx <= lastSnap.Metadata.Index+node.applier.CompactionMargin() {
+	if walLastIdx <= lastSnap.GetMetadata().GetIndex()+node.applier.CompactionMargin() {
 		return nil
 	}
 
@@ -612,15 +613,15 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 
 	// Only snapshot at the applied index (not walLastIdx) — the FSM may not
 	// have processed every WAL entry yet.
-	if appliedIndex <= lastSnap.Metadata.Index {
+	if appliedIndex <= lastSnap.GetMetadata().GetIndex() {
 		return nil
 	}
 
 	node.logger.WithFields(map[string]any{
-		"lastSnapshotIndex":  lastSnap.Metadata.Index,
+		"lastSnapshotIndex":  lastSnap.GetMetadata().GetIndex(),
 		"walLastIndex":       walLastIdx,
 		"appliedIndex":       appliedIndex,
-		"entriesAccumulated": walLastIdx - lastSnap.Metadata.Index,
+		"entriesAccumulated": walLastIdx - lastSnap.GetMetadata().GetIndex(),
 	}).Infof("WAL has excess entries, compacting before Raft start")
 
 	compactionStart := time.Now()
@@ -686,7 +687,7 @@ func (node *Node) doMaintenance() {
 
 	// Early skip: nothing new since the previous tick. Avoids paying for an
 	// fsync on idle clusters.
-	if node.fsm.LastPersistedIndex() <= lastSnap.Metadata.Index {
+	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
 		return
 	}
 
@@ -788,30 +789,30 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 				"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
 					"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
 					"Restore from a Pebble checkpoint or contact ops",
-				applied, walFirstIdx, walSnap.Metadata.Index,
+				applied, walFirstIdx, walSnap.GetMetadata().GetIndex(),
 			)
 		}
 
 		node.logger.WithFields(map[string]any{
 			"applied":          applied,
 			"walFirstIndex":    walFirstIdx,
-			"walSnapshotIndex": walSnap.Metadata.Index,
+			"walSnapshotIndex": walSnap.GetMetadata().GetIndex(),
 		}).Errorf(
 			"Pebble applied lags WAL snapshot — previous process crashed between " +
 				"InstallSnapshot and SynchronizeWithLeader completion; applier is " +
 				"out-of-sync, will re-sync from leader",
 		)
 
-		applied = walSnap.Metadata.Index
+		applied = walSnap.GetMetadata().GetIndex()
 	}
 
-	if walSnap.Metadata.Index > applied {
+	if walSnap.GetMetadata().GetIndex() > applied {
 		// Should not happen with SyncWAL in doMaintenance; log loudly so the
 		// regression is visible. Raft can still recover via redelivery of
 		// [Applied+1, Commit] in CommittedEntries.
 		node.logger.WithFields(map[string]any{
 			"storeApplied":   applied,
-			"walSnapshotIdx": walSnap.Metadata.Index,
+			"walSnapshotIdx": walSnap.GetMetadata().GetIndex(),
 		}).Errorf("Pebble lags WAL snapshot — SyncWAL durability invariant violated, relying on Raft replay")
 	}
 
@@ -827,13 +828,13 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		return fmt.Errorf("reading WAL initial state for Applied: %w", err)
 	}
 
-	if hardState.Commit < applied {
+	if hardState.GetCommit() < applied {
 		node.logger.WithFields(map[string]any{
 			"storeApplied":     applied,
-			"walDurableCommit": hardState.Commit,
+			"walDurableCommit": hardState.GetCommit(),
 		}).Infof("Pebble applied ahead of WAL durable commit, capping Applied")
 
-		applied = hardState.Commit
+		applied = hardState.GetCommit()
 	}
 
 	// Initialize lastCheckpointPersistedIndex from the durable applied index.
@@ -887,11 +888,11 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		"nodeID":    node.config.NodeID,
 		"raftState": status.RaftState.String(),
 		"lead":      status.Lead,
-		"term":      status.HardState.Term,
-		"commit":    status.HardState.Commit,
-		"vote":      status.HardState.Vote,
-		"voters":    node.confState.Load().Voters,
-		"learners":  node.confState.Load().Learners,
+		"term":      status.HardState.GetTerm(),
+		"commit":    status.HardState.GetCommit(),
+		"vote":      status.HardState.GetVote(),
+		"voters":    node.confState.Load().GetVoters(),
+		"learners":  node.confState.Load().GetLearners(),
 	}).Infof("Raft node created — initial state")
 
 	node.tasks.add(newTask(node.orchestrate))
@@ -1146,13 +1147,14 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// future with the proposer's view of the current term (issue #172). Use a
 	// monotonic CAS — terms only grow.
 	if !raft.IsEmptyHardState(rd.HardState) {
+		rdTerm := rd.GetTerm()
 		for {
 			cur := node.lastObservedTerm.Load()
-			if cur >= rd.Term {
+			if cur >= rdTerm {
 				break
 			}
 
-			if node.lastObservedTerm.CompareAndSwap(cur, rd.Term) {
+			if node.lastObservedTerm.CompareAndSwap(cur, rdTerm) {
 				break
 			}
 		}
@@ -1165,8 +1167,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		snapshotDetails := map[string]any{
 			"nodeID":       node.config.NodeID,
-			"index":        rd.Snapshot.Metadata.Index,
-			"snapshotSize": len(rd.Snapshot.Data),
+			"index":        rd.Snapshot.GetMetadata().GetIndex(),
+			"snapshotSize": len(rd.Snapshot.GetData()),
 		}
 		node.logger.WithFields(snapshotDetails).Infof("Applying snapshot sent by leader")
 		lifecycle.SendEvent("snapshot_received", snapshotDetails)
@@ -1194,7 +1196,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		node.logger.WithFields(map[string]any{
 			"duration": time.Since(snapshotStart).String(),
-			"index":    rd.Snapshot.Metadata.Index,
+			"index":    rd.Snapshot.GetMetadata().GetIndex(),
 		}).Infof("Snapshot from leader applied, starting checkpoint sync")
 
 		// The snapshot is already persisted in WAL at this point. If syncSnapshot
@@ -1250,17 +1252,15 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	rd := result.rd
 
 	if result.snapshotApplied {
-		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+		node.rawNode.ReportSnapshot(rd.Snapshot.GetMetadata().GetIndex(), raft.SnapshotFinish)
 
 		// Re-sync the in-memory ConfState shadow from the just-installed
 		// snapshot. wal.ApplySnapshot already persisted the correct ConfState;
 		// without this, the reconcile block below loads the stale shadow and
-		// overwrites the WAL with it (EN-1278). Fresh pointer copy avoids
-		// aliasing the Ready's snapshot struct. Runs before the conf-change
+		// overwrites the WAL with it (EN-1278). Runs before the conf-change
 		// loop so a combined snapshot+conf-change Ready still layers the delta
 		// on top of the correct baseline.
-		cs := rd.Snapshot.Metadata.ConfState
-		node.confState.Store(&cs)
+		node.confState.Store(rd.Snapshot.GetMetadata().GetConfState())
 	}
 
 	// Apply conf changes (rawNode.ApplyConfChange must run in orchestrate goroutine).
@@ -1271,7 +1271,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 	for _, cc := range result.confChanges {
 		node.logger.
-			WithFields(map[string]any{"transition": cc.Transition.String()}).
+			WithFields(map[string]any{"transition": cc.GetTransition().String()}).
 			Infof("Applying configuration change")
 		node.confState.Store(node.rawNode.ApplyConfChange(cc))
 
@@ -1306,15 +1306,15 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		// PromoteLearner and UpdateNode types that membership.WalkConfChangeContexts
 		// skips — because pending futures are keyed by NodeID regardless
 		// of transition type.
-		for _, change := range cc.Changes {
-			if f, ok := node.pendingConfChanges.LoadAndDelete(change.NodeID); ok {
+		for _, change := range cc.GetChanges() {
+			if f, ok := node.pendingConfChanges.LoadAndDelete(change.GetNodeId()); ok {
 				pendingFutures = append(pendingFutures, f)
 			}
 
 			lifecycle.SendEvent("conf_change_committed", map[string]any{
 				"nodeID":     node.config.NodeID,
-				"targetNode": change.NodeID,
-				"changeType": change.Type.String(),
+				"targetNode": change.GetNodeId(),
+				"changeType": change.GetType().String(),
 			})
 		}
 	}
@@ -1325,7 +1325,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// async snapshot creation finishes, causing the new node to reject it.
 	if cs := node.confState.Load(); cs != nil {
 		snap, _ := node.wal.Snapshot()
-		if !confStatesEqual(cs, &snap.Metadata.ConfState) {
+		if !confStatesEqual(cs, snap.GetMetadata().GetConfState()) {
 			err := node.wal.UpdateSnapshotConfState(cs)
 			if err != nil {
 				return fmt.Errorf("updating snapshot confstate: %w", err)
@@ -1351,7 +1351,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// because admission is only routed to the leader, so a non-leader's
 	// proposeCh is always empty.
 	if len(rd.CommittedEntries) > 0 {
-		lastCommitted := rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+		lastCommitted := rd.CommittedEntries[len(rd.CommittedEntries)-1].GetIndex()
 		before := node.indexTracker.Next()
 
 		ss := node.lastSoftState.Load()
@@ -1415,19 +1415,19 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 // Pure function; called by processReady but split out so the self/peer
 // split invariant (missing it broke cluster formation on the first attempt)
 // stays testable without spinning up a full Node.
-func splitReadyMessages(nodeID uint64, msgs []raftpb.Message) (appendResponses, applyResponses, outbound []raftpb.Message) {
+func splitReadyMessages(nodeID uint64, msgs []*raftpb.Message) (appendResponses, applyResponses, outbound []*raftpb.Message) {
 	for _, m := range msgs {
-		switch m.To {
+		switch m.GetTo() {
 		case raft.LocalAppendThread:
-			for _, resp := range m.Responses {
-				if resp.To == nodeID {
+			for _, resp := range m.GetResponses() {
+				if resp.GetTo() == nodeID {
 					appendResponses = append(appendResponses, resp)
 				} else {
 					outbound = append(outbound, resp)
 				}
 			}
 		case raft.LocalApplyThread:
-			applyResponses = append(applyResponses, m.Responses...)
+			applyResponses = append(applyResponses, m.GetResponses()...)
 		default:
 			outbound = append(outbound, m)
 		}
@@ -1485,10 +1485,11 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	// Helper to process a batch of messages.
 	// Filters out MsgTimeoutNow while the node is syncing to prevent a
 	// not-yet-caught-up node from being forced into leadership.
-	stepMessages := func(msgs []raftpb.Message) error {
+	stepMessages := func(msgs []*raftpb.Message) error {
 		for _, msg := range msgs {
 			s := node.applier.Status()
-			if msg.Type == raftpb.MsgTimeoutNow && s != statusNormal {
+			msgType := msg.GetType()
+			if msgType == raftpb.MsgTimeoutNow && s != statusNormal {
 				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
 
 				continue
@@ -1496,15 +1497,15 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 			// Diagnostic: log messages stepped while a Ready is being processed,
 			// as they can mutate rawNode state before Advance is called.
-			if node.readyTerminated != nil && (msg.Type == raftpb.MsgApp || msg.Type == raftpb.MsgSnap) {
+			if node.readyTerminated != nil && (msgType == raftpb.MsgApp || msgType == raftpb.MsgSnap) {
 				node.logger.WithFields(map[string]any{
-					"type":       msg.Type.String(),
-					"from":       msg.From,
-					"term":       msg.Term,
-					"logTerm":    msg.LogTerm,
-					"index":      msg.Index,
-					"commit":     msg.Commit,
-					"entryCount": len(msg.Entries),
+					"type":       msgType.String(),
+					"from":       msg.GetFrom(),
+					"term":       msg.GetTerm(),
+					"logTerm":    msg.GetLogTerm(),
+					"index":      msg.GetIndex(),
+					"commit":     msg.GetCommit(),
+					"entryCount": len(msg.GetEntries()),
 				}).Infof("Stepping MsgApp/MsgSnap while Ready in flight")
 			}
 
@@ -1512,7 +1513,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			if err != nil {
 				if errors.Is(err, raft.ErrStepPeerNotFound) {
 					if node.logger.Enabled(logging.TraceLevel) {
-						node.logger.Tracef("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+						node.logger.Tracef("Ignoring message from unknown peer %d (type=%s)", msg.GetFrom(), msgType)
 					}
 
 					continue
@@ -1546,7 +1547,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	// arms drain localResponseCh from three different priority tiers, and
 	// having one function makes it impossible for those three sites to drift
 	// in error handling.
-	stepResponses := func(msgs []raftpb.Message) error {
+	stepResponses := func(msgs []*raftpb.Message) error {
 		if err := stepMessages(msgs); err != nil {
 			return err
 		}
@@ -1627,9 +1628,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 							"raftApplied":    status.Applied,
 							"raftCommitted":  status.Commit,
 							"committedCount": len(result.rd.CommittedEntries),
-							"firstCommitted": result.rd.CommittedEntries[0].Index,
+							"firstCommitted": result.rd.CommittedEntries[0].GetIndex(),
 							"hasSnapshot":    !raft.IsEmptySnap(result.rd.Snapshot),
-							"snapshotIndex":  result.rd.Snapshot.Metadata.Index,
+							"snapshotIndex":  result.rd.Snapshot.GetMetadata().GetIndex(),
 						}).Tracef("Pre-Advance diagnostic")
 					}
 
@@ -2034,12 +2035,12 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// semantic they want is "is Pebble caught up".
 	raftStatus := &clusterpb.RaftStatus{
 		State:              stateStr,
-		Term:               hardState.Term,
+		Term:               hardState.GetTerm(),
 		Leader:             leaderID,
 		Applied:            status.Applied,
-		Commit:             hardState.Commit,
+		Commit:             hardState.GetCommit(),
 		LastIndex:          lastIndex,
-		Vote:               hardState.Vote,
+		Vote:               hardState.GetVote(),
 		Progress:           progress,
 		LastPersistedIndex: lastPersistedIndex,
 	}
@@ -2319,19 +2320,19 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 				return ErrNodeAlreadyInCluster
 			}
 
-			return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
-				Changes: []raftpb.ConfChangeSingle{{
-					Type:   raftpb.ConfChangeUpdateNode,
-					NodeID: nodeID,
+			return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+				Changes: []*raftpb.ConfChangeSingle{{
+					Type:   raftutil.ConfChangeType(raftpb.ConfChangeUpdateNode),
+					NodeId: new(nodeID),
 				}},
 				Context: ccCtx,
 			})
 		}
 
-		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{{
-				Type:   raftpb.ConfChangeAddLearnerNode,
-				NodeID: nodeID,
+		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddLearnerNode),
+				NodeId: new(nodeID),
 			}},
 			Context: ccCtx,
 		})
@@ -2357,10 +2358,10 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
 
-		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{{
-				Type:   raftpb.ConfChangeAddNode,
-				NodeID: nodeID,
+		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddNode),
+				NodeId: new(nodeID),
 			}},
 		})
 	}, nil)
@@ -2430,10 +2431,10 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 			ccCtx = marshaled
 		}
 
-		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{{
-				Type:   raftpb.ConfChangeRemoveNode,
-				NodeID: nodeID,
+		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+				NodeId: new(nodeID),
 			}},
 			Context: ccCtx,
 		})
@@ -2535,10 +2536,10 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		hasIdentity = hasIdentity && len(instanceID) == 16
 
 		// Apply the ConfChange directly (bypasses consensus).
-		cc := raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{{
-				Type:   raftpb.ConfChangeRemoveNode,
-				NodeID: nodeID,
+		cc := &raftpb.ConfChangeV2{
+			Changes: []*raftpb.ConfChangeSingle{{
+				Type:   raftutil.ConfChangeType(raftpb.ConfChangeRemoveNode),
+				NodeId: new(nodeID),
 			}},
 		}
 		cs := node.rawNode.ApplyConfChange(cc)
@@ -2576,8 +2577,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		node.logger.WithFields(map[string]any{
 			"removedNodeID": nodeID,
-			"voters":        cs.Voters,
-			"learners":      cs.Learners,
+			"voters":        cs.GetVoters(),
+			"learners":      cs.GetLearners(),
 			"blacklisted":   hasIdentity,
 		}).Infof("Force-removed node (bypassed consensus)")
 
@@ -2621,7 +2622,7 @@ func (node *Node) checkAndPromoteLearners() {
 			continue
 		}
 
-		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
+		if prog.Match+node.config.AutoPromoteThreshold >= status.GetCommit() {
 			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
 				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
 					continue
@@ -2668,15 +2669,15 @@ func (node *Node) checkAndPromoteLearners() {
 			node.logger.WithFields(map[string]any{
 				"node_id":   id,
 				"match":     prog.Match,
-				"commit":    status.Commit,
+				"commit":    status.HardState.GetCommit(),
 				"threshold": node.config.AutoPromoteThreshold,
 			}).Infof("Auto-promoting learner to voter")
 
-			cc := raftpb.ConfChangeV2{
-				Changes: []raftpb.ConfChangeSingle{
+			cc := &raftpb.ConfChangeV2{
+				Changes: []*raftpb.ConfChangeSingle{
 					{
-						Type:   raftpb.ConfChangeAddNode,
-						NodeID: id,
+						Type:   raftutil.ConfChangeType(raftpb.ConfChangeAddNode),
+						NodeId: new(id),
 					},
 				},
 			}
@@ -2697,12 +2698,16 @@ func (node *Node) checkAndPromoteLearners() {
 
 // confStateContainsNode returns true if nodeID appears in the ConfState's
 // Voters or Learners list.
-func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
-	if slices.Contains(cs.Voters, nodeID) {
+func confStateContainsNode(cs *raftpb.ConfState, nodeID uint64) bool {
+	if cs == nil {
+		return false
+	}
+
+	if slices.Contains(cs.GetVoters(), nodeID) {
 		return true
 	}
 
-	return slices.Contains(cs.Learners, nodeID)
+	return slices.Contains(cs.GetLearners(), nodeID)
 }
 
 // initialJoinVoters returns the voter list for the join-mode initial WAL

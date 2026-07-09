@@ -40,7 +40,7 @@ func (m *MockSpool) EXPECT() *MockSpoolMockRecorder {
 }
 
 // AppendCommittedEntries mocks base method.
-func (m *MockSpool) AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error {
+func (m *MockSpool) AppendCommittedEntries(ctx context.Context, entries ...*raftpb.Entry) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range entries {
@@ -71,13 +71,13 @@ func (c *MockSpoolAppendCommittedEntriesCall) Return(arg0 error) *MockSpoolAppen
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSpoolAppendCommittedEntriesCall) Do(f func(context.Context, ...raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
+func (c *MockSpoolAppendCommittedEntriesCall) Do(f func(context.Context, ...*raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSpoolAppendCommittedEntriesCall) DoAndReturn(f func(context.Context, ...raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
+func (c *MockSpoolAppendCommittedEntriesCall) DoAndReturn(f func(context.Context, ...*raftpb.Entry) error) *MockSpoolAppendCommittedEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -199,7 +199,7 @@ func (c *MockSpoolPruneCall) DoAndReturn(f func(uint64) (PruneStats, error)) *Mo
 }
 
 // ReplayUntil mocks base method.
-func (m *MockSpool) ReplayUntil(ctx context.Context, end Position, lastApplied uint64, applyFn func(raftpb.Entry) error) error {
+func (m *MockSpool) ReplayUntil(ctx context.Context, end Position, lastApplied uint64, applyFn func(*raftpb.Entry) error) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReplayUntil", ctx, end, lastApplied, applyFn)
 	ret0, _ := ret[0].(error)
@@ -225,13 +225,13 @@ func (c *MockSpoolReplayUntilCall) Return(arg0 error) *MockSpoolReplayUntilCall 
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockSpoolReplayUntilCall) Do(f func(context.Context, Position, uint64, func(raftpb.Entry) error) error) *MockSpoolReplayUntilCall {
+func (c *MockSpoolReplayUntilCall) Do(f func(context.Context, Position, uint64, func(*raftpb.Entry) error) error) *MockSpoolReplayUntilCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockSpoolReplayUntilCall) DoAndReturn(f func(context.Context, Position, uint64, func(raftpb.Entry) error) error) *MockSpoolReplayUntilCall {
+func (c *MockSpoolReplayUntilCall) DoAndReturn(f func(context.Context, Position, uint64, func(*raftpb.Entry) error) error) *MockSpoolReplayUntilCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

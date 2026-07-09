@@ -8,12 +8,14 @@ import (
 	"go.etcd.io/raft/v3"
 	raftpb "go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
 	"github.com/formancehq/ledger/v3/internal/storage/wal"
@@ -22,12 +24,12 @@ import (
 // makeApplyResp builds a MsgStorageApplyResp targeted at nodeID for use as
 // the response payload in async-storage tests. Content is opaque to the
 // Applier — it just forwards the slice to the sink.
-func makeApplyResp(nodeID uint64, index uint64) raftpb.Message {
-	return raftpb.Message{
-		Type:  raftpb.MsgStorageApplyResp,
-		To:    nodeID,
-		From:  raft.LocalApplyThread,
-		Index: index,
+func makeApplyResp(nodeID uint64, index uint64) *raftpb.Message {
+	return &raftpb.Message{
+		Type:  raftutil.MessageType(raftpb.MsgStorageApplyResp),
+		To:    new(nodeID),
+		From:  proto.Uint64(raft.LocalApplyThread),
+		Index: new(index),
 	}
 }
 
@@ -47,13 +49,13 @@ func TestApplierFiresResponsesAfterCommit(t *testing.T) {
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "async-normal")
-	resp := makeApplyResp(1, entry.Index)
-	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
+	resp := makeApplyResp(1, entry.GetIndex())
+	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
 	select {
 	case got := <-sink:
 		require.Len(t, got, 1)
-		require.Equal(t, resp.Index, got[0].Index)
+		require.Equal(t, resp.GetIndex(), got[0].GetIndex())
 
 		// Response arrived — the commit MUST have completed. Verify FSM
 		// state reflects the entry (this is the timing assertion behind
@@ -90,13 +92,13 @@ func TestApplierFiresResponsesFromSpoolBranch(t *testing.T) {
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "async-spool")
-	resp := makeApplyResp(1, entry.Index)
-	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
+	resp := makeApplyResp(1, entry.GetIndex())
+	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
 	select {
 	case got := <-sink:
 		require.Len(t, got, 1)
-		require.Equal(t, resp.Index, got[0].Index)
+		require.Equal(t, resp.GetIndex(), got[0].GetIndex())
 
 		// Under out-of-sync the entry is spooled, NOT applied — the sink
 		// must fire on spool durability, not on FSM state.
@@ -146,8 +148,8 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 		_ = w.Close()
 	})
 
-	confState := raftpb.ConfState{Voters: []uint64{1}}
-	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
+	confState := &raftpb.ConfState{Voters: []uint64{1}}
+	require.NoError(t, w.CreateSnapshot(0, confState, nil))
 
 	nodeCache, err := cache.New(1000, nil)
 	require.NoError(t, err)
@@ -157,7 +159,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
-		func(raftpb.Entry, *dal.WriteSession) error { return nil },
+		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
 
@@ -191,8 +193,8 @@ func TestApplierNoFireWhenResponseObserverAbsent(t *testing.T) {
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "async-no-observer")
-	resp := makeApplyResp(1, entry.Index)
-	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
+	resp := makeApplyResp(1, entry.GetIndex())
+	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
 	setup.applier.Drain(setup.stop)
 
@@ -221,7 +223,7 @@ func TestApplierNoFireWhenResponsesEmpty(t *testing.T) {
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "async-no-resp")
-	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, nil, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 
 	setup.applier.Drain(setup.stop)
 
@@ -259,20 +261,20 @@ func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {
 	entry2, _ := makeCreateLedgerEntry(t, 2, "async-multi-2")
 	entry3, _ := makeCreateLedgerEntry(t, 3, "async-multi-3")
 
-	resp1 := makeApplyResp(1, entry1.Index)
-	resp2 := makeApplyResp(1, entry2.Index)
-	resp3 := makeApplyResp(1, entry3.Index)
+	resp1 := makeApplyResp(1, entry1.GetIndex())
+	resp2 := makeApplyResp(1, entry2.GetIndex())
+	resp3 := makeApplyResp(1, entry3.GetIndex())
 
-	setup.applier.Submit([]raftpb.Entry{entry1}, setup.confState, []raftpb.Message{resp1}, setup.stop)
-	setup.applier.Submit([]raftpb.Entry{entry2}, setup.confState, []raftpb.Message{resp2}, setup.stop)
-	setup.applier.Submit([]raftpb.Entry{entry3}, setup.confState, []raftpb.Message{resp3}, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry1}, setup.confState, []*raftpb.Message{resp1}, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry2}, setup.confState, []*raftpb.Message{resp2}, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry3}, setup.confState, []*raftpb.Message{resp3}, setup.stop)
 
 	setup.applier.Drain(setup.stop)
 
 	// Collect responses. Order is guaranteed by the single-writer applier→
 	// committer chain: batches commit in the order they're submitted.
 	receivedIdx := collectResponseIndices(t, sink, 3)
-	require.Equal(t, []uint64{entry1.Index, entry2.Index, entry3.Index}, receivedIdx)
+	require.Equal(t, []uint64{entry1.GetIndex(), entry2.GetIndex(), entry3.GetIndex()}, receivedIdx)
 
 	close(setup.stop)
 	select {
@@ -307,8 +309,8 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "async-full-sink")
-	resp := makeApplyResp(1, entry.Index)
-	setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, []raftpb.Message{resp}, setup.stop)
+	resp := makeApplyResp(1, entry.GetIndex())
+	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
 	// Give runCommitter time to fire the response — it will block on the
 	// unbuffered send. If the deadlock regressed, the test hangs here.
@@ -340,7 +342,7 @@ func collectResponseIndices(t *testing.T, sink LocalResponses, want int) []uint6
 		select {
 		case batch := <-sink:
 			for _, m := range batch {
-				out = append(out, m.Index)
+				out = append(out, m.GetIndex())
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for %d responses, got %d", want, len(out))

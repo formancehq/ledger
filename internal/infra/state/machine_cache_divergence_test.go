@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	"github.com/formancehq/ledger/v3/internal/pkg/raftutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -261,7 +262,7 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 	t.Logf("Crashing follower at index %d, gen=%d", crashIndex, follower.Registry.Cache.CurrentGeneration())
 
 	// Now: leader continues alone for many entries, follower is "dead"
-	leaderEntries := make([]raftpb.Entry, 0, 30)
+	leaderEntries := make([]*raftpb.Entry, 0, 30)
 	for i := range 30 {
 		account := accounts[i%len(accounts)]
 		proposal := buildProposalWithLeaderPreloads(t, leader, nextIndex, threshold,
@@ -386,7 +387,7 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 		// (before any are applied - simulates admission pipeline depth)
 		pipelineDepth := threshold + 1 // cross 1 rotation boundary
 
-		admittedEntries := make([]raftpb.Entry, 0, pipelineDepth)
+		admittedEntries := make([]*raftpb.Entry, 0, pipelineDepth)
 		for i := range uint64(pipelineDepth) {
 			idx := nextIndex + i
 			account := fmt.Sprintf("users:%d", int(idx)%5)
@@ -403,12 +404,12 @@ func TestCacheDivergencePipelinedAdmission(t *testing.T) {
 
 		for _, entry := range admittedEntries {
 			result, err := leader.ApplyEntries(ctx, leaderStore, entry)
-			require.NoError(t, err, "leader apply entry %d", entry.Index)
+			require.NoError(t, err, "leader apply entry %d", entry.GetIndex())
 
 			for _, r := range result.Results {
 				if r.Error != nil {
 					leaderRejects++
-					t.Logf("Leader REJECTED entry %d: %v", entry.Index, r.Error)
+					t.Logf("Leader REJECTED entry %d: %v", entry.GetIndex(), r.Error)
 				}
 			}
 		}
@@ -501,7 +502,7 @@ func runCacheDivergenceScenario(t *testing.T, threshold uint64, crashAfterN, pip
 	// Leader continues with pipelined admission
 	for range 3 {
 		// Admit pipelineDepth entries from SAME leader cache state
-		entries := make([]raftpb.Entry, 0, pipelineDepth)
+		entries := make([]*raftpb.Entry, 0, pipelineDepth)
 		for i := range pipelineDepth {
 			idx := nextIndex + uint64(i)
 			proposal := buildProposalWithLeaderPreloads(t, leader, idx, threshold,
@@ -673,16 +674,16 @@ func buildProposalWithLeaderPreloads(
 	}
 }
 
-func mustMakeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.Entry {
+func mustMakeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *raftpb.Entry {
 	t.Helper()
 
 	data, err := proto.Marshal(proposal)
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Index: index,
-		Term:  1,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Index: new(index),
+		Term:  proto.Uint64(1),
+		Type:  raftutil.EntryType(raftpb.EntryNormal),
 		Data:  data,
 	}
 }

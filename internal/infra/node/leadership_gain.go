@@ -26,5 +26,5 @@ func leadershipGainTarget(rd raft.Ready) (uint64, error) {
 		return 0, errEmptyLeadershipGainReady
 	}
 
-	return rd.Entries[len(rd.Entries)-1].Index, nil
+	return rd.Entries[len(rd.Entries)-1].GetIndex(), nil
 }

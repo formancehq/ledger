@@ -8,6 +8,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -54,9 +55,9 @@ func newTestPeerConn(t *testing.T, peerID uint64, unreachable func(uint64) bool)
 	require.NoError(t, err)
 
 	return &peerConnection{
-		highPriorityCh:         make(chan []raftpb.Message), // cap 0 → default branch every send
-		mediumPriorityCh:       make(chan []raftpb.Message),
-		lowPriorityCh:          make(chan []raftpb.Message),
+		highPriorityCh:         make(chan []*raftpb.Message), // cap 0 → default branch every send
+		mediumPriorityCh:       make(chan []*raftpb.Message),
+		lowPriorityCh:          make(chan []*raftpb.Message),
 		logger:                 logging.Testing(),
 		peerID:                 peerID,
 		pushUnreachable:        unreachable,
@@ -76,7 +77,7 @@ func TestPeerConnection_PushMessages_EmitsUnreachableOnDrop(t *testing.T) {
 	notify, got := captureUnreachable()
 	conn := newTestPeerConn(t, 42, notify)
 
-	ok := conn.pushMessages(0, []raftpb.Message{{}})
+	ok := conn.pushMessages(0, []*raftpb.Message{{}})
 	require.False(t, ok, "pushMessages must report drop on full channel")
 	require.Equal(t, []uint64{42}, got(), "Unreachable must be signalled with the peer ID on drop")
 }
@@ -93,7 +94,7 @@ func TestPeerConnection_PushMessages_DedupsUnreachableWithinBurst(t *testing.T) 
 	conn := newTestPeerConn(t, 7, notify)
 
 	for range 100 {
-		require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+		require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	}
 	require.Equal(t, []uint64{7}, got(), "burst of 100 drops must emit Unreachable exactly once")
 }
@@ -123,7 +124,7 @@ func TestPeerConnection_PushMessages_RollsBackFlagOnEmitFailure(t *testing.T) {
 	})
 
 	// First drop: emit fails, flag must roll back to false.
-	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	require.False(t, conn.unreachableReported.Load(),
 		"failed emit must not leave the dedup flag set — otherwise subsequent drops are silently suppressed")
 
@@ -131,7 +132,7 @@ func TestPeerConnection_PushMessages_RollsBackFlagOnEmitFailure(t *testing.T) {
 	mu.Lock()
 	fail = false
 	mu.Unlock()
-	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	require.True(t, conn.unreachableReported.Load(),
 		"successful emit after retry must set the dedup flag")
 
@@ -151,17 +152,17 @@ func TestPeerConnection_PushMessages_ReEmitsAfterSuccessfulSend(t *testing.T) {
 	notify, got := captureUnreachable()
 	conn := newTestPeerConn(t, 3, notify)
 
-	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	require.Equal(t, []uint64{3}, got())
 
 	// Second drop within the same burst is deduped.
-	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	require.Equal(t, []uint64{3}, got())
 
 	// Simulate what sendMessages does on a successful stream.Send.
 	conn.unreachableReported.Store(false)
 
-	require.False(t, conn.pushMessages(0, []raftpb.Message{{}}))
+	require.False(t, conn.pushMessages(0, []*raftpb.Message{{}}))
 	require.Equal(t, []uint64{3, 3}, got(), "drop after successful send must re-signal Unreachable")
 }
 
@@ -182,7 +183,7 @@ func newTestTransport(t *testing.T, pendingCap int) *DefaultTransport {
 
 	return &DefaultTransport{
 		logger:                   logging.Testing(),
-		pendingSendQueue:         make(chan []raftpb.Message, pendingCap),
+		pendingSendQueue:         make(chan []*raftpb.Message, pendingCap),
 		unreachableCh:            make(chan uint64, 16),
 		pendingSendLoadHistogram: loadH,
 		pendingSendFullCounter:   fullC,
@@ -201,11 +202,11 @@ func TestDefaultTransport_Send_EmitsUnreachablePerUniquePeer(t *testing.T) {
 	// cap 0 → any Send hits the default branch.
 	tr := newTestTransport(t, 0)
 
-	tr.Send([]raftpb.Message{
-		{To: 2},
-		{To: 3},
-		{To: 2}, // duplicate — must not fire Unreachable again
-		{To: 5},
+	tr.Send([]*raftpb.Message{
+		{To: proto.Uint64(2)},
+		{To: proto.Uint64(3)},
+		{To: proto.Uint64(2)}, // duplicate — must not fire Unreachable again
+		{To: proto.Uint64(5)},
 	})
 
 	// Drain unreachableCh.
@@ -233,7 +234,7 @@ func TestDefaultTransport_Send_NoUnreachableOnHappyPath(t *testing.T) {
 
 	tr := newTestTransport(t, 4)
 
-	tr.Send([]raftpb.Message{{To: 2}, {To: 3}})
+	tr.Send([]*raftpb.Message{{To: proto.Uint64(2)}, {To: proto.Uint64(3)}})
 
 	require.Len(t, tr.unreachableCh, 0, "happy path must not push to unreachableCh")
 }
