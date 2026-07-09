@@ -43,21 +43,39 @@ sequenceDiagram
     Peb-->>Exec: SST file set
     Exec->>Exec: diff vs previous manifest
     Exec->>Dst: upload new/changed SST files
-    Exec->>Dst: delete obsolete SST files
     Exec->>Dst: write new manifest
+    Exec->>Dst: prune obsolete SST files + exports
     Exec->>FSM: CompleteBackupOrder(stats)
     FSM->>FSM: status=COMPLETE, persist manifest pointer
 ```
+
+### Crash-safe write ordering
+
+The upload order is **load-bearing** for recoverability: every object the new
+manifest will reference is uploaded **before** the manifest, and **no object is
+deleted before the new manifest is committed**. The manifest is the
+authoritative inventory, so a crash at any point before the manifest write
+leaves the *previously published* manifest fully restorable, and a crash after
+it leaves the *new* manifest fully restorable — there is no window in which the
+current manifest points at a deleted object. Cleanup of everything the new
+manifest no longer references (stale SST files, obsolete export segments, and
+files leaked by earlier crashed runs) is a single orphan-prune pass that runs
+*after* `WriteManifest`. A failed segment upload aborts the run before the
+manifest is touched, so a partial upload can never publish a dangling
+reference. See `internal/infra/backup/manager.go` (`RunBackup` /
+`RunIncrementalBackup`).
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 
 ### Per-destination mutual exclusion
 
-Two simultaneous backups to the same destination are rejected at FSM apply time. The mutex is keyed by a hash of the `BackupDestination` (driver kind + endpoint + bucket + path), so the same Pebble database can back up to S3 and a filesystem in parallel, but cannot run two S3 backups to the same bucket.
+Two simultaneous backups to the same destination are rejected at FSM apply time. The mutex is keyed by `CanonicalDestinationKey` — a hash of the namespace-determining fields of the `BackupDestination` (driver kind, canonicalised endpoint, bucket/container, bucket ID; region, `base_path`, and credentials are deliberately excluded, see `internal/infra/state/backup_jobs.go`). Full (`BackupOrder`) and incremental (`IncrementalBackupOrder`) backups **share the same slot**: both are routed through the leader and propose a `Start` order that lands on the same key, so a full backup and an incremental backup against the same bucket cannot run concurrently — the second gets `ErrBackupInProgress`. Two backups against genuinely distinct destinations (different bucket/endpoint) run in parallel.
+
+This FSM-managed per-destination slot is what closes the manifest-atomicity race (EN-1055): because only one backup holds a destination at a time, the read-modify-write of the shared manifest can never interleave, so no writer can overwrite another's manifest update and orphan its segments. It is a deterministic, clock-free alternative to a leased lock — the slot is held from `Start` to `Complete`/`Fail`, and an orphaned slot (executor gone after a leadership change or crash) is freed by the leader-only cleanup loop (`internal/application/backup/cleanup.go`).
 
 ### Manifest + incremental segments
 
-A backup is **incremental by default**: the executor diffs the current checkpoint's SST file set against the previous manifest, uploads only the new files, and tags the old files as still-needed in the new manifest. Files that are no longer referenced by any manifest are deleted from the destination.
+A full backup diffs the current checkpoint's SST file set against the previous manifest and uploads only the new/changed files, but always writes a fresh checkpoint manifest with an empty export set. An **incremental** backup (`IncrementalBackupOrder`) does not take a new checkpoint at all: it streams the log/audit/audit-item/applied-proposal entries written since the last recorded sequence into size-bounded export *segments* and appends them to the manifest's export list. Files that are no longer referenced by the newly written manifest are pruned from the destination *after* the manifest is committed (see "Crash-safe write ordering" above).
 
 The manifest itself (`internal/infra/backup/manifest.go`) records:
 

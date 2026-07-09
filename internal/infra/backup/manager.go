@@ -99,34 +99,27 @@ func RunBackup(
 		"toDelete":   len(toDelete),
 	}).Infof("Backup diff computed")
 
-	// 5. Upload new/changed files
+	// 5. Upload new/changed files.
+	//
+	// Crash-safety ordering (EN-888 / EN-1055): every object the new manifest
+	// will reference is uploaded BEFORE the manifest is written, and NO stale
+	// object is deleted before the new manifest is committed. Deleting a
+	// checkpoint file or export segment that the *currently published* manifest
+	// still references would open a window — a crash between the delete and the
+	// manifest write — in which neither the old nor the new manifest is fully
+	// restorable. Cleanup of everything the new manifest no longer references is
+	// therefore deferred to the orphan prune (step 8), which runs only after
+	// WriteManifest has atomically published the new inventory. The prune is a
+	// superset of the old stale-file / old-export deletes (it lists the whole
+	// data/ and exports/ prefixes and removes anything not in the new manifest),
+	// so nothing is leaked by dropping the pre-manifest deletes.
 	for _, filename := range toUpload {
 		if err := uploadFile(ctx, storage, checkpointPath, CheckpointFileKey(bucketID, filename), filename); err != nil {
 			return nil, err
 		}
 	}
 
-	// 6. Delete stale checkpoint files from storage
-	for _, filename := range toDelete {
-		if err := storage.DeleteFile(ctx, CheckpointFileKey(bucketID, filename)); err != nil {
-			logger.WithFields(map[string]any{
-				"file":  filename,
-				"error": err,
-			}).Errorf("Failed to delete stale backup file (non-fatal)")
-		}
-	}
-
-	// 7. Clean up old exports (they are obsolete after a new checkpoint)
-	for _, seg := range existingManifest.Exports {
-		if err := storage.DeleteFile(ctx, seg.Key); err != nil {
-			logger.WithFields(map[string]any{
-				"segment": seg.Key,
-				"error":   err,
-			}).Errorf("Failed to delete stale export segment (non-fatal)")
-		}
-	}
-
-	// 8. Read sequences from the checkpoint to record in manifest
+	// 6. Read sequences from the checkpoint to record in manifest
 	checkpointStore, err := dal.OpenReadOnly(checkpointPath, logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
@@ -161,7 +154,7 @@ func RunBackup(
 		return nil, fmt.Errorf("reading last audit sequence from checkpoint: %w", err)
 	}
 
-	// 9. Write updated manifest with new checkpoint and empty exports
+	// 7. Write updated manifest with new checkpoint and empty exports
 	newManifest := &Manifest{
 		Checkpoint: &CheckpointManifest{
 			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
@@ -177,10 +170,14 @@ func RunBackup(
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
-	// 10. Prune orphans left behind by earlier failed runs. The manifest is the
-	// authoritative inventory; anything under data/ or exports/ not in it is dead
-	// weight. Runs that crashed before writing a manifest leak files the diff
-	// step (which compares against the *previous manifest*) cannot reach.
+	// 8. Prune orphans now that the new manifest is committed. The manifest is
+	// the authoritative inventory; anything under data/ or exports/ not in it is
+	// dead weight — this includes both the stale checkpoint files this run
+	// replaced and every export segment obsoleted by the new checkpoint, plus
+	// files leaked by earlier runs that crashed before writing a manifest (the
+	// diff step, which compares against the *previous manifest*, cannot reach
+	// those). Running the prune strictly after WriteManifest is what makes the
+	// cycle crash-safe: at no point is a still-referenced object deleted.
 	expectedKeys := make(map[string]struct{}, len(localFiles))
 	for filename := range localFiles {
 		expectedKeys[CheckpointFileKey(bucketID, filename)] = struct{}{}
