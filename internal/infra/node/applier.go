@@ -157,7 +157,7 @@ type commitWork struct {
 	// responses are MsgStorageApplyResp messages tied to this commit. On
 	// commit success, runCommitter sends them on Applier.responseSink so
 	// raft.Applied advances only after CommitPreparedBatch has landed.
-	// Empty on all but the last sub-batch of an applyEntriesToFSM call,
+	// Empty on all but the last sub-batch of an applyDecodedEntriesToFSM call,
 	// and always empty for the replay path (applyEntriesAndResolveCommands).
 	responses []raftpb.Message
 	done      chan error
@@ -796,9 +796,27 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 		waitStart           = time.Now()
 	)
 
+	// Local handle on the decoded channel so we can stop selecting on it once
+	// the decoder has closed it. The decoder only ever closes decodedCh from
+	// its ctx.Done() path (a.ch is never closed), i.e. runCtx was cancelled —
+	// the OnStart/OnStop-timeout fallback in bootstrap, NOT a graceful stop.
+	// A closed channel always wins the select with a zero value, so without
+	// disabling this branch the loop would busy-spin on the empty batch. We
+	// do NOT return here: the applier task must exit via `stop` (see the fx
+	// hook rationale in bootstrap/module.go — a spontaneous task return is
+	// treated as a fatal task-pool error), and we must NOT nil a.decodedCh
+	// itself or the deferred `range a.decodedCh` drain would block forever.
+	decodedCh := a.decodedCh
+
 	for {
 		select {
-		case dw := <-a.decodedCh:
+		case dw, ok := <-decodedCh:
+			if !ok {
+				decodedCh = nil
+
+				continue
+			}
+
 			work := dw.work
 			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
 
@@ -1176,17 +1194,6 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, responses: responses, done: done}
 }
 
-// runCommitter is the dedicated goroutine that processes commits sequentially.
-// It reads from commitCh and commits each batch, resolving futures on success
-// or failure. Exits when commitCh is closed.
-//
-// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
-// the same instant as orchestrate's stop. It's a second escape hatch on the
-// response-sink send: node.Stop closes the task stop channels but does NOT
-// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
-// races into the sink send AFTER orchestrate stopped draining would sit
-// forever on ctx.Done alone (finding 70740916). Selecting on stop too
-// unblocks the send synchronously with orchestrate's exit.
 // runDecoder is the prefetching decoder goroutine started by Run. It reads
 // applyWork items from a.ch, invokes state.DecodeEntries when the item
 // carries raft entries, and forwards the decoded batch (or a decode error)
@@ -1195,14 +1202,15 @@ func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture
 // decoder is a strict pass-through for them so ordering vs. entries is
 // preserved via a single goroutine.
 //
-// Exit conditions:
-//   - ctx.Done(): drop the currently-in-flight decode result (release its
-//     pooled Proposals) and return. Closing a.decodedCh here signals the
-//     main loop of an unclean shutdown; the Run defer drains anything still
-//     buffered.
-//   - a.ch closed (Stop): drain any remaining items, forward them, then
-//     close a.decodedCh cleanly so the main loop's <-a.decodedCh returns
-//     zero-value on the next iteration and the loop unwinds.
+// The only exit is ctx.Done(): a.ch is never closed (closing it would panic
+// the producers — Submit/SyncSnapshot/Barrier/…), so the decoder runs until
+// runCtx is cancelled. That cancel is the bootstrap OnStart/OnStop-timeout
+// fallback, never a graceful stop — graceful stop goes through the task
+// `stop` channel, which the decoder does not watch. On ctx.Done() the decoder
+// drops any in-flight decode result (releasing its pooled Proposals) and
+// returns; the deferred close(a.decodedCh) then unblocks the main loop, which
+// disables its decodedCh select branch (see Run), and the Run defer drains
+// anything still buffered.
 //
 // The buffer=1 on a.decodedCh lets this goroutine race one batch ahead of
 // the applier: while Prepare(N) runs under fsm.mu, UnmarshalVT(N+1) runs on
@@ -1212,18 +1220,12 @@ func (a *Applier) runDecoder(ctx context.Context) {
 	defer close(a.decodedCh)
 
 	for {
-		var (
-			work applyWork
-			ok   bool
-		)
+		var work applyWork
 
 		select {
 		case <-ctx.Done():
 			return
-		case work, ok = <-a.ch:
-			if !ok {
-				return
-			}
+		case work = <-a.ch:
 		}
 
 		dw := decodedApplyWork{work: work}
@@ -1248,6 +1250,17 @@ func (a *Applier) runDecoder(ctx context.Context) {
 	}
 }
 
+// runCommitter is the dedicated goroutine that processes commits sequentially.
+// It reads from commitCh and commits each batch, resolving futures on success
+// or failure. Exits when commitCh is closed.
+//
+// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
+// the same instant as orchestrate's stop. It's a second escape hatch on the
+// response-sink send: node.Stop closes the task stop channels but does NOT
+// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// races into the sink send AFTER orchestrate stopped draining would sit
+// forever on ctx.Done alone (finding 70740916). Selecting on stop too
+// unblocks the send synchronously with orchestrate's exit.
 func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
@@ -1338,7 +1351,7 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 // asynchronously. The previous batch's commit runs concurrently with this
 // batch's prepare. Used by the hot path in Run (statusNormal).
 //
-// The caller (applyEntriesToFSM) owns the lifetime of decoded[].Proposal
+// The caller (applyDecodedEntriesToFSM) owns the lifetime of decoded[].Proposal
 // pointers — this method does not release them.
 func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []raftpb.Message, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
@@ -1375,7 +1388,7 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []raftpb.
 
 	// Send to the committer goroutine. Futures are resolved when the
 	// commit completes. No need to wait for the next batch. responses (may be
-	// nil for non-last sub-batches of the current applyEntriesToFSM call, or
+	// nil for non-last sub-batches of the current applyDecodedEntriesToFSM call, or
 	// when AsyncStorageWrites is off) rides with the commit and is fired by
 	// runCommitter on success.
 	a.submitAsyncCommit(pb, pfs, maxTerm, responses)
@@ -1577,7 +1590,7 @@ type maintenanceTask func(
 // gateAndLaunchMaintenance is the shared setup for every "checkpoint
 // required during apply" flow:
 //  1. Compute frozenAtIndex (the last applied index — the trigger entry is
-//     the last in the slice by construction; see applyEntriesToFSM).
+//     the last in the slice by construction; see applyDecodedEntriesToFSM).
 //  2. Mark the applier as gated with the given gatingReason.
 //  3. Extract the deferred future (the proposal that triggered gating).
 //  4. Sweep stale-term futures so they don't survive the gating window
@@ -1589,7 +1602,7 @@ type maintenanceTask func(
 // resolve the future with the checkpoint path on success or with the
 // error on failure.
 //
-// There are no remaining entries to spool here: applyEntriesToFSM pre-splits
+// There are no remaining entries to spool here: applyDecodedEntriesToFSM pre-splits
 // the slice so the checkpoint trigger is always the last entry it applies.
 // Any entries received from raft AFTER gating starts go to the spool via the
 // normal hot-path routing.

@@ -242,7 +242,7 @@ func TestApplierNoFireWhenResponsesEmpty(t *testing.T) {
 }
 
 // TestApplierMultipleBatchesOnlyLastResponsesFire — with multiple sub-batches
-// resulting from applyEntriesToFSM's checkpoint-boundary splitting (or from
+// resulting from applyDecodedEntriesToFSM's checkpoint-boundary splitting (or from
 // multiple Submits), each Submit's responses must fire independently: no
 // aggregation, no loss, exactly once per Submit that carries responses.
 func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {

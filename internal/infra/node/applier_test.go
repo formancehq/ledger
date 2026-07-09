@@ -841,7 +841,7 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 // makeStaleCreateQueryCheckpointEntry builds a CreateQueryCheckpoint entry
 // whose PredictedIndex deliberately differs from the raft index, so
 // checkStaleProposal rejects it before any order runs. Used to exercise the
-// "structural trigger that does not actually fire" branch of applyEntriesToFSM.
+// "structural trigger that does not actually fire" branch of applyDecodedEntriesToFSM.
 func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uint64) (raftpb.Entry, uint64) {
 	t.Helper()
 
@@ -920,7 +920,7 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 // panic with "task pool error: preparing entries: invalid index, got 231,
 // expected 230 [recovered, repanicked]".
 //
-// Root cause: applyEntriesToFSM pre-splits the committed entries slice at any
+// Root cause: applyDecodedEntriesToFSM pre-splits the committed entries slice at any
 // CreateQueryCheckpoint / CloseChapter trigger so each FSM batch contains at
 // most one trigger as its last entry. The pre-split is purely structural — it
 // does not know whether the trigger will actually fire at apply time. When
