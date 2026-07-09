@@ -52,15 +52,17 @@ import (
 // Kept local so the public contract never inherits the TX_BUILTIN_INDEX_*
 // proto prefixes.
 var (
+	// Only the fields the query compiler resolves as an unsigned-range condition
+	// are exposed. The remaining TransactionBuiltinIndex values
+	// (REFERENCE, ADDRESS, SOURCE_ADDRESS, DESTINATION_ADDRESS) are internal
+	// index kinds used by the address/reference condition compilers, NOT uint
+	// range fields — compileBuiltinUintCondition rejects them, so exposing them
+	// here would document valid-looking filters that fail at execution.
 	txBuiltinFieldToJSON = map[TransactionBuiltinIndex]string{
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:           "reference",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:           "timestamp",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:                  "id",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:             "address",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:      "sourceAddress",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS: "destinationAddress",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:         "insertedAt",
-		TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:         "revertedAt",
+		TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:          "id",
+		TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:   "timestamp",
+		TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT: "insertedAt",
+		TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT: "revertedAt",
 	}
 	txBuiltinFieldFromJSON = invertEnumMap(txBuiltinFieldToJSON)
 
@@ -329,12 +331,17 @@ func unmarshalCondition(raw json.RawMessage, x *QueryFilter) error {
 		x.Filter = &QueryFilter_AccountHasAsset{AccountHasAsset: &AccountHasAssetCondition{AssetBase: c.AssetBase, Precision: c.Precision}}
 	case "reverted":
 		var c struct {
-			Value bool `json:"value"`
+			Value *bool `json:"value"`
 		}
 		if err := json.Unmarshal(raw, &c); err != nil {
 			return fmt.Errorf("reverted: %w", err)
 		}
-		x.Filter = &QueryFilter_Reverted{Reverted: &RevertedCondition{Value: c.Value}}
+		// value is a required, meaningful boolean (false is a real query, not a
+		// default) — reject absence rather than silently matching non-reverted.
+		if c.Value == nil {
+			return errors.New("reverted: value is required")
+		}
+		x.Filter = &QueryFilter_Reverted{Reverted: &RevertedCondition{Value: *c.Value}}
 	case "":
 		return errors.New("match: missing discriminator field \"type\"")
 	default:
@@ -537,28 +544,35 @@ func unmarshalAddressMatch(raw json.RawMessage) (*AddressMatch, error) {
 		return nil, fmt.Errorf("address: %w", err)
 	}
 
-	if in.Value != "" && in.Param != "" {
-		return nil, errors.New("address: set only one of value or param")
-	}
-
-	am := &AddressMatch{}
 	switch in.Operator {
-	case "prefix":
-		if in.Param != "" {
-			am.Match = &AddressMatch_ParamPrefix{ParamPrefix: in.Param}
-		} else {
-			am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: in.Value}
-		}
-	case "exact":
-		if in.Param != "" {
-			am.Match = &AddressMatch_ParamExact{ParamExact: in.Param}
-		} else {
-			am.Match = &AddressMatch_HardcodedExact{HardcodedExact: in.Value}
-		}
+	case "prefix", "exact":
+		// valid — validated further below
 	case "":
 		return nil, errors.New("address: operator is required (prefix or exact)")
 	default:
 		return nil, fmt.Errorf("address: unknown operator %q", in.Operator)
+	}
+
+	// Exactly one of value/param must be set. A hardcoded empty prefix/exact
+	// would silently match every address (over-broad), so the empty case is
+	// rejected rather than defaulted.
+	if in.Value != "" && in.Param != "" {
+		return nil, errors.New("address: set only one of value or param")
+	}
+	if in.Value == "" && in.Param == "" {
+		return nil, errors.New("address: set one of value or param")
+	}
+
+	am := &AddressMatch{}
+	switch {
+	case in.Operator == "prefix" && in.Param != "":
+		am.Match = &AddressMatch_ParamPrefix{ParamPrefix: in.Param}
+	case in.Operator == "prefix":
+		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: in.Value}
+	case in.Operator == "exact" && in.Param != "":
+		am.Match = &AddressMatch_ParamExact{ParamExact: in.Param}
+	default: // exact + hardcoded value
+		am.Match = &AddressMatch_HardcodedExact{HardcodedExact: in.Value}
 	}
 
 	if in.Role != "" {
