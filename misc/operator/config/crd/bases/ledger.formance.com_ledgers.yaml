@@ -99,6 +99,7 @@ spec:
                       properties:
                         key:
                           description: Key is the metadata key name to index.
+                          maxLength: 256
                           minLength: 1
                           type: string
                         target:
@@ -128,6 +129,7 @@ spec:
                       - target
                       - type
                       type: object
+                    maxItems: 64
                     type: array
                     x-kubernetes-validations:
                     - message: metadata index (target,key) pairs must be unique

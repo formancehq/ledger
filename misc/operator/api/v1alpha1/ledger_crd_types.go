@@ -80,6 +80,7 @@ type LedgerIndexesSpec struct {
 	// Metadata lists the metadata-key indexes to maintain on account or
 	// transaction metadata. Each (target, key) pair must be unique.
 	// +optional
+	// +kubebuilder:validation:MaxItems=64
 	// +kubebuilder:validation:XValidation:rule="self.all(x, self.exists_one(y, y.target == x.target && y.key == x.key))",message="metadata index (target,key) pairs must be unique"
 	Metadata []MetadataIndexSpec `json:"metadata,omitempty"`
 }
@@ -97,6 +98,7 @@ type MetadataIndexSpec struct {
 
 	// Key is the metadata key name to index.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
 	Key string `json:"key"`
 
 	// Type is the metadata field type declared before indexing.
