@@ -3760,27 +3760,354 @@ components:
     QueryFilter:
       type: object
       description: >-
-        Recursive filter tree (AND/OR/NOT of field conditions and address matches).
-        The `match` object holds one of the named condition types: field equality/range
-        (`FieldCondition`), address prefix/exact match (`AddressMatch`), transaction
-        reference match (`ReferenceCondition`), built-in uint range (`BuiltinUintCondition`),
-        or account-asset presence (`AccountHasAssetCondition`).
+        Recursive filter tree. Exactly one of `and`, `or`, `not`, or `match`
+        must be set on each node. `and`/`or` combine child filters; `not` negates
+        a single child filter; `match` is a leaf condition (a tagged union
+        discriminated by its `type` field — see `Condition`).
       properties:
         and:
           type: array
+          description: Logical AND of the child filters (all must match).
           items:
             $ref: '#/components/schemas/QueryFilter'
         or:
           type: array
+          description: Logical OR of the child filters (at least one must match).
           items:
             $ref: '#/components/schemas/QueryFilter'
         not:
-          $ref: '#/components/schemas/QueryFilter'
+          allOf:
+            - $ref: '#/components/schemas/QueryFilter'
+          description: Negates the child filter.
         match:
-          type: object
+          $ref: '#/components/schemas/Condition'
+
+    Condition:
+      description: >-
+        A leaf filter condition. Tagged union discriminated by `type`.
+      oneOf:
+        - $ref: '#/components/schemas/FieldCondition'
+        - $ref: '#/components/schemas/AddressCondition'
+        - $ref: '#/components/schemas/ReferenceCondition'
+        - $ref: '#/components/schemas/LedgerCondition'
+        - $ref: '#/components/schemas/LogIdCondition'
+        - $ref: '#/components/schemas/BuiltinUintCondition'
+        - $ref: '#/components/schemas/LogBuiltinUintCondition'
+        - $ref: '#/components/schemas/AccountHasAssetCondition'
+        - $ref: '#/components/schemas/RevertedCondition'
+      discriminator:
+        propertyName: type
+        mapping:
+          field: '#/components/schemas/FieldCondition'
+          address: '#/components/schemas/AddressCondition'
+          reference: '#/components/schemas/ReferenceCondition'
+          ledger: '#/components/schemas/LedgerCondition'
+          logId: '#/components/schemas/LogIdCondition'
+          builtinUint: '#/components/schemas/BuiltinUintCondition'
+          logBuiltinUint: '#/components/schemas/LogBuiltinUintCondition'
+          accountHasAsset: '#/components/schemas/AccountHasAssetCondition'
+          reverted: '#/components/schemas/RevertedCondition'
+
+    FieldCondition:
+      type: object
+      description: Matches a metadata field of the target entity.
+      required:
+        - type
+        - metadata
+        - condition
+      properties:
+        type:
+          type: string
+          enum: [field]
+        metadata:
+          type: string
+          description: Metadata key to match on.
+          example: risk_score
+        condition:
+          $ref: '#/components/schemas/FieldValueCondition'
+
+    FieldValueCondition:
+      description: >-
+        A typed condition on a metadata field value. Tagged union discriminated
+        by `type`.
+      oneOf:
+        - $ref: '#/components/schemas/StringValueCondition'
+        - $ref: '#/components/schemas/IntValueCondition'
+        - $ref: '#/components/schemas/UintValueCondition'
+        - $ref: '#/components/schemas/BoolValueCondition'
+        - $ref: '#/components/schemas/ExistsValueCondition'
+      discriminator:
+        propertyName: type
+        mapping:
+          string: '#/components/schemas/StringValueCondition'
+          int: '#/components/schemas/IntValueCondition'
+          uint: '#/components/schemas/UintValueCondition'
+          bool: '#/components/schemas/BoolValueCondition'
+          exists: '#/components/schemas/ExistsValueCondition'
+
+    StringValueCondition:
+      type: object
+      description: >-
+        String equality. Set exactly one of `equals` (hardcoded value) or
+        `param` (name of a parameter supplied at execution time).
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [string]
+        equals:
+          type: string
+          description: Hardcoded value to match exactly.
+        param:
+          type: string
+          description: Name of a query parameter that supplies the value at execution.
+
+    IntValueCondition:
+      type: object
+      description: >-
+        Signed-integer range. Bounds are inclusive unless the matching
+        `*Exclusive` flag is set. Any bound may instead be supplied at execution
+        time via `paramMin` / `paramMax`.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [int]
+        min:
+          type: integer
+          format: int64
+        max:
+          type: integer
+          format: int64
+        minExclusive:
+          type: boolean
+        maxExclusive:
+          type: boolean
+        paramMin:
+          type: string
+        paramMax:
+          type: string
+
+    UintValueCondition:
+      type: object
+      description: >-
+        Unsigned-integer range. `min`/`max` are encoded as decimal strings to
+        stay lossless above 2^53. Bounds are inclusive unless the matching
+        `*Exclusive` flag is set; `paramMin`/`paramMax` supply bounds at
+        execution time.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [uint]
+        min:
+          type: string
+          description: Lower bound as a decimal string.
+          example: "100"
+        max:
+          type: string
+          description: Upper bound as a decimal string.
+          example: "9007199254740993"
+        minExclusive:
+          type: boolean
+        maxExclusive:
+          type: boolean
+        paramMin:
+          type: string
+        paramMax:
+          type: string
+
+    BoolValueCondition:
+      type: object
+      description: >-
+        Boolean equality. Set exactly one of `equals` (hardcoded value) or
+        `param`.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [bool]
+        equals:
+          type: boolean
+        param:
+          type: string
+
+    ExistsValueCondition:
+      type: object
+      description: Matches when the metadata key is present.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [exists]
+        includeNull:
+          type: boolean
+          description: When true, also matches keys explicitly set to null.
+
+    AddressCondition:
+      type: object
+      description: >-
+        Matches an account address by prefix or exact value. Set exactly one of
+        `value` (hardcoded) or `param` (supplied at execution).
+      required:
+        - type
+        - operator
+      properties:
+        type:
+          type: string
+          enum: [address]
+        operator:
+          type: string
+          enum: [prefix, exact]
+        value:
+          type: string
+          description: Hardcoded address or prefix.
+          example: "users:"
+        param:
+          type: string
+          description: Name of a query parameter that supplies the address at execution.
+        role:
+          type: string
+          enum: [any, source, destination]
           description: >-
-            Field condition or address match. Use one of the named condition schemas
-            (e.g. `AccountHasAssetCondition`) as the value.
+            For transaction queries, restricts the match to the source or
+            destination side of a posting. Defaults to `any`.
+
+    ReferenceCondition:
+      type: object
+      description: Matches a transaction by its reference (string equality).
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [reference]
+        equals:
+          type: string
+        param:
+          type: string
+
+    LedgerCondition:
+      type: object
+      description: Matches log entries by ledger name (string equality).
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [ledger]
+        equals:
+          type: string
+        param:
+          type: string
+
+    LogIdCondition:
+      type: object
+      description: Matches log entries by ledger-local log id (unsigned range).
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [logId]
+        min:
+          type: string
+        max:
+          type: string
+        minExclusive:
+          type: boolean
+        maxExclusive:
+          type: boolean
+        paramMin:
+          type: string
+        paramMax:
+          type: string
+
+    BuiltinUintCondition:
+      type: object
+      description: >-
+        Matches a built-in transaction field carrying an unsigned value (id,
+        timestamp, inserted-at / reverted-at dates, or an address mapping) within
+        an unsigned range.
+      required:
+        - type
+        - field
+      properties:
+        type:
+          type: string
+          enum: [builtinUint]
+        field:
+          type: string
+          enum:
+            - id
+            - reference
+            - timestamp
+            - insertedAt
+            - revertedAt
+            - address
+            - sourceAddress
+            - destinationAddress
+        min:
+          type: string
+        max:
+          type: string
+        minExclusive:
+          type: boolean
+        maxExclusive:
+          type: boolean
+        paramMin:
+          type: string
+        paramMax:
+          type: string
+
+    LogBuiltinUintCondition:
+      type: object
+      description: >-
+        Matches a built-in log field carrying an unsigned value (currently the
+        log date) within an unsigned range.
+      required:
+        - type
+        - field
+      properties:
+        type:
+          type: string
+          enum: [logBuiltinUint]
+        field:
+          type: string
+          enum: [date]
+        min:
+          type: string
+        max:
+          type: string
+        minExclusive:
+          type: boolean
+        maxExclusive:
+          type: boolean
+        paramMin:
+          type: string
+        paramMax:
+          type: string
+
+    RevertedCondition:
+      type: object
+      description: >-
+        Matches transactions by revert status. Served from the per-ledger
+        reversion bitset (no index required).
+      required:
+        - type
+        - value
+      properties:
+        type:
+          type: string
+          enum: [reverted]
+        value:
+          type: boolean
+          description: True matches reverted originals; false matches everything else.
 
     AccountHasAssetCondition:
       type: object
@@ -3790,8 +4117,12 @@ components:
         index on the ledger; the query is rejected if the index is absent or still
         BUILDING.
       required:
+        - type
         - assetBase
       properties:
+        type:
+          type: string
+          enum: [accountHasAsset]
         assetBase:
           type: string
           description: Asset code without precision suffix (e.g. `USD`, `EUR`).

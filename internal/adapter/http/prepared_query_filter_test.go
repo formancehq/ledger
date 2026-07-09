@@ -29,7 +29,7 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 		{
 			name:    "empty object",
 			raw:     "{}",
-			wantErr: "must contain at least one condition",
+			wantErr: "exactly one of",
 		},
 		{
 			name:    "invalid json",
@@ -37,19 +37,29 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			wantErr: "filter:",
 		},
 		{
-			name: "and filter with nested field oneof",
-			raw: `{"and":{"filters":[
-				{"field":{"field":{"metadata":"x"},"intCond":{"min":"1"}}},
-				{"field":{"field":{"metadata":"y"},"boolCond":{"hardcoded":true}}}
-			]}}`,
+			name: "and filter with nested field conditions",
+			raw: `{"and":[
+				{"match":{"type":"field","metadata":"x","condition":{"type":"int","min":1}}},
+				{"match":{"type":"field","metadata":"y","condition":{"type":"bool","equals":true}}}
+			]}`,
 		},
 		{
 			name: "or filter",
-			raw:  `{"or":{"filters":[{"field":{"field":{"metadata":"x"},"existsCond":{}}}]}}`,
+			raw:  `{"or":[{"match":{"type":"field","metadata":"x","condition":{"type":"exists"}}}]}`,
 		},
 		{
-			name: "leaf field oneof",
-			raw:  `{"field":{"field":{"metadata":"x"},"existsCond":{}}}`,
+			name: "leaf field condition",
+			raw:  `{"match":{"type":"field","metadata":"x","condition":{"type":"exists"}}}`,
+		},
+		{
+			name:    "unknown condition type rejected",
+			raw:     `{"match":{"type":"bogus"}}`,
+			wantErr: "unknown condition type",
+		},
+		{
+			name:    "multiple top-level keys rejected",
+			raw:     `{"and":[],"not":{"match":{"type":"reverted","value":true}}}`,
+			wantErr: "exactly one of",
 		},
 	}
 

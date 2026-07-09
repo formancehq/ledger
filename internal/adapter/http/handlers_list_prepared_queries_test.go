@@ -92,12 +92,18 @@ func TestHandleListPreparedQueries_CamelCaseBodyShape(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	body := w.Body.String()
-	require.Contains(t, body, `"target":"QUERY_TARGET_TRANSACTIONS"`)
-	require.Contains(t, body, `"reference"`)
-	require.Contains(t, body, `"hardcoded":"order-123"`)
+	// Canonical flat contract (EN-1465): bare string enum + `match` tagged union.
+	require.Contains(t, body, `"target":"TRANSACTIONS"`)
+	require.Contains(t, body, `"match":{"type":"reference"`)
+	require.Contains(t, body, `"equals":"order-123"`)
+	// #478 PascalCase leak must not survive.
 	require.NotContains(t, body, `"Reference"`)
 	require.NotContains(t, body, `"Hardcoded"`)
 	require.NotContains(t, body, `"target":1`)
+	// EN-1465 protojson leak must not survive.
+	require.NotContains(t, body, `QUERY_TARGET_`)
+	require.NotContains(t, body, `"cond"`)
+	require.NotContains(t, body, `"hardcoded"`)
 }
 
 func TestHandleListPreparedQueries_MissingLedgerName(t *testing.T) {

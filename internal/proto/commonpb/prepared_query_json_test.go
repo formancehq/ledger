@@ -1,7 +1,6 @@
 package commonpb
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,13 +8,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
-// TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString guards the regression
-// where PreparedQuery shipped through sonic/encoding/json emitted PascalCase
-// oneof keys (`"Filter":{"Reference":{"cond":{"Value":{"Hardcoded":...}}}}`)
-// and a raw enum int (`"target":1`) — see #478. The fix routes the value
-// through protojson so the response matches the camelCase contract every
-// other endpoint follows and the input side already accepts via
-// decodePreparedQueryFilter.
+// TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString guards two regressions:
+//   - #478: default encoding/json emitted PascalCase oneof keys
+//     (`"Filter":{"Reference":{...}}`) and a raw enum int (`"target":1`).
+//   - EN-1465: the earlier protojson fix leaked the proto-internal oneof/wrapper
+//     names of QueryFilter (`"reference":{"cond":{"hardcoded":...}}`) and the
+//     QUERY_TARGET_* enum prefix onto the public surface.
+//
+// The current contract is the canonical flat shape: target is the bare string
+// enum (ACCOUNTS/TRANSACTIONS/LOGS) and the filter uses `match` + tagged-union
+// conditions (see query_filter.go).
 func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 	t.Parallel()
 
@@ -38,27 +40,27 @@ func TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString(t *testing.T) {
 
 	out := string(data)
 	require.Contains(t, out, `"name":"q1"`)
-	require.Contains(t, out, `"target":"QUERY_TARGET_TRANSACTIONS"`,
-		"enum must be emitted as its string constant, not a raw int")
-	require.Contains(t, out, `"reference"`,
-		"oneof variants must be lowercased per protojson")
-	require.Contains(t, out, `"hardcoded":"order-123"`,
-		"nested oneof variants must be camelCase too")
+	require.Contains(t, out, `"target":"TRANSACTIONS"`,
+		"enum must be emitted as the bare string constant, not a raw int or the QUERY_TARGET_* prefix")
+	require.Contains(t, out, `"match":{"type":"reference"`,
+		"filter must use the canonical flat match shape")
+	require.Contains(t, out, `"equals":"order-123"`,
+		"string condition must use the public `equals` key")
 
 	// The PreparedQuery value no longer carries a ledger field — the ledger
 	// lives on the storage key, on the surrounding RPC request, and (for
-	// write commands) on the LedgerScopedOrder wrapper. The marshalled
-	// payload must not leak the field, even transiently.
-	require.False(t, strings.Contains(out, `"ledger"`),
+	// write commands) on the LedgerScopedOrder wrapper.
+	require.NotContains(t, out, `"ledger"`,
 		"ledger field must not appear in the marshalled PreparedQuery")
 
-	// Belt-and-braces: the broken shape must not survive.
-	require.False(t, strings.Contains(out, `"Filter"`),
-		"PascalCase oneof container leak")
-	require.False(t, strings.Contains(out, `"Reference"`),
-		"PascalCase oneof variant leak")
-	require.False(t, strings.Contains(out, `"Hardcoded"`),
-		"PascalCase nested-oneof variant leak")
-	require.False(t, strings.Contains(out, `"target":1`),
-		"raw-int enum leak")
+	// The broken shape (#478) must not survive.
+	require.NotContains(t, out, `"Filter"`, "PascalCase oneof container leak")
+	require.NotContains(t, out, `"Reference"`, "PascalCase oneof variant leak")
+	require.NotContains(t, out, `"Hardcoded"`, "PascalCase nested-oneof variant leak")
+	require.NotContains(t, out, `"target":1`, "raw-int enum leak")
+
+	// The protojson leak (EN-1465) must not survive either.
+	require.NotContains(t, out, `QUERY_TARGET_`, "proto enum prefix leak")
+	require.NotContains(t, out, `"cond"`, "protojson-internal condition wrapper leak")
+	require.NotContains(t, out, `"hardcoded"`, "protojson-internal string oneof leak")
 }
