@@ -93,6 +93,17 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 		return r.ledgerctlExecOutput(execCtx, ns, svc, pod0, grpcPort, args...)
 	}
 
+	// Persist ownership from the changes that actually succeeded, on every
+	// return path. If a create succeeds and a later command fails, the created
+	// index must still be recorded as operator-owned — otherwise the next
+	// reconcile sees it as pre-existing and can never drop it. createdOK and
+	// droppedOK accumulate only the operations that completed.
+	oldApplied := ledger.Status.AppliedIndexes
+	var createdOK, droppedOK []managedIndex
+	defer func() {
+		ledger.Status.AppliedIndexes = nextAppliedIndexes(oldApplied, indexDiff{toCreate: createdOK, toDrop: droppedOK})
+	}()
+
 	desired := desiredIndexes(ledger.Spec.Indexes)
 
 	listOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json")
@@ -147,22 +158,29 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 		}
 
 		log.Info("created index", "ledger", ledgerName, "index", mi.canonical)
+		createdOK = append(createdOK, mi)
 		changed = true
 	}
 
 	for _, mi := range diff.toDrop {
-		if _, dropErr := exec(mi.dropArgs(ledgerName)...); dropErr != nil && !isLedgerNotFound(dropErr) {
-			return false, dropErr
+		// Issue a drop command only for indexes still present; ones already
+		// gone out-of-band need no command but must still be relinquished from
+		// ownership below so a later external recreate is not mistaken as ours.
+		if actual[mi.canonical] {
+			if _, dropErr := exec(mi.dropArgs(ledgerName)...); dropErr != nil && !isLedgerNotFound(dropErr) {
+				return false, dropErr
+			}
+
+			log.Info("dropped index", "ledger", ledgerName, "index", mi.canonical)
+			changed = true
 		}
 
-		log.Info("dropped index", "ledger", ledgerName, "index", mi.canonical)
-		changed = true
+		droppedOK = append(droppedOK, mi)
 	}
 
-	// Record the operator-owned set so future reconciles scope drops correctly.
-	// Only indexes the operator created are recorded — a desired index that
-	// already existed is never adopted, so it is never dropped later.
-	ledger.Status.AppliedIndexes = nextAppliedIndexes(ledger.Status.AppliedIndexes, diff)
-
+	// ledger.Status.AppliedIndexes is written by the deferred func above from
+	// createdOK/droppedOK, so partial progress on an error path is still
+	// recorded. Only indexes the operator created are ever recorded — a desired
+	// index that already existed is never adopted, so it is never dropped later.
 	return !changed, nil
 }

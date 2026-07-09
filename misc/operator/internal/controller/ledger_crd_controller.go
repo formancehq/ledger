@@ -180,7 +180,8 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		return r.reconcilePromotion(ctx, ledger)
 	}
 
-	// Detect spec drift.
+	// Detect spec drift. The hash excludes indexes, so a mismatch means an
+	// immutable field (name/serviceRef/mode/mirrorSource) changed.
 	currentHash := computeLedgerSpecHash(&ledger.Spec)
 	if ledger.Status.AppliedSpecHash != "" && currentHash != ledger.Status.AppliedSpecHash {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -191,9 +192,15 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 			ObservedGeneration: ledger.Generation,
 		})
 		log.Info("spec drift detected on immutable ledger", "name", ledger.Spec.Name)
-	} else {
-		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
+
+		// Do NOT run index reconciliation while an immutable field has drifted:
+		// spec.name / spec.serviceRef may now point at a different ledger or
+		// cluster, so creating/dropping indexes here would mutate the wrong
+		// target. Hold until the drift is resolved by delete + recreate.
+		return ctrl.Result{}, nil
 	}
+
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
 
 	// Reconcile declarative indexes (mutable, independent of ledger immutability).
 	if ledger.Spec.Indexes == nil {

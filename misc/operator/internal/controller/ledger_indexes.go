@@ -295,9 +295,14 @@ type indexDiff struct {
 
 // diffIndexes computes the create/drop plan. Creates are desired indexes not
 // present in actual. Drops are ownership-scoped: only indexes the operator
-// previously created (applied) that are no longer desired AND still present in
-// actual — so externally-created and CRD-unrepresentable indexes are never
-// dropped, and already-gone indexes are not re-dropped.
+// previously created (applied) that are no longer desired — so externally-
+// created and CRD-unrepresentable indexes are never dropped.
+//
+// toDrop deliberately includes owned-but-no-longer-desired indexes even when
+// they are already absent from actual: the caller must relinquish ownership of
+// them (remove them from status.appliedIndexes) so a later external recreate is
+// not mistaken for operator-owned. The caller issues an actual drop command
+// only for the ones still present in actual (see reconcileIndexes).
 func diffIndexes(desired []managedIndex, actual map[string]bool, applied []string) indexDiff {
 	desiredByCanonical := make(map[string]struct{}, len(desired))
 	var diff indexDiff
@@ -311,10 +316,6 @@ func diffIndexes(desired []managedIndex, actual map[string]bool, applied []strin
 
 	for _, canonical := range applied {
 		if _, stillDesired := desiredByCanonical[canonical]; stillDesired {
-			continue
-		}
-
-		if !actual[canonical] {
 			continue
 		}
 

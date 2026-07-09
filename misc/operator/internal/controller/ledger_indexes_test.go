@@ -271,16 +271,19 @@ func TestDiffIndexes_KeepsExternallyCreated(t *testing.T) {
 	assert.Empty(t, diff.toDrop)
 }
 
-func TestDiffIndexes_DoesNotRedropAlreadyGone(t *testing.T) {
+func TestDiffIndexes_RelinquishesAlreadyGoneOwnership(t *testing.T) {
 	t.Parallel()
 
-	// Applied "timestamp" no longer desired AND already absent from actual →
-	// nothing to drop.
+	// Applied "timestamp" is no longer desired AND already absent from actual.
+	// It must still appear in toDrop so the reconciler relinquishes ownership of
+	// it (no drop command will be issued since it is absent) — otherwise a later
+	// external recreate would be wrongly treated as operator-owned and dropped.
 	desired := desiredIndexes(&ledgerv1alpha1.LedgerIndexesSpec{Transaction: []string{"reference"}})
 	diff := diffIndexes(desired, map[string]bool{"reference": true}, []string{"reference", "timestamp"})
 
 	assert.Empty(t, diff.toCreate)
-	assert.Empty(t, diff.toDrop)
+	require.Len(t, diff.toDrop, 1)
+	assert.Equal(t, "timestamp", diff.toDrop[0].canonical)
 }
 
 func TestDiffIndexes_EmptyManagedDropsPreviouslyApplied(t *testing.T) {
@@ -351,6 +354,16 @@ func TestNextAppliedIndexes_Empty(t *testing.T) {
 	t.Parallel()
 
 	assert.Nil(t, nextAppliedIndexes(nil, indexDiff{}))
+}
+
+// TestNextAppliedIndexes_PartialProgress models the reconciler recording only
+// the operations that succeeded (createdOK/droppedOK) before an error return:
+// index "a" was created but "b" failed, so ownership must include "a".
+func TestNextAppliedIndexes_PartialProgress(t *testing.T) {
+	t.Parallel()
+
+	got := nextAppliedIndexes(nil, indexDiff{toCreate: []managedIndex{{canonical: "a"}}})
+	assert.Equal(t, []string{"a"}, got)
 }
 
 func TestDiffIndexes_MixedWithMetadataDrop(t *testing.T) {
