@@ -1419,10 +1419,45 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/_bulk:
+  /v3/{ledgerName}/bulk:
     post:
       summary: Bulk operations
-      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request. Requires `ledger:write` scope.
+      description: |
+        Execute multiple operations (create transactions, add metadata,
+        revert transactions, delete metadata) in a single request. Requires
+        `ledger:write` scope.
+
+        The response status is decided in three tiers:
+
+        1. **Request-level failures** (before per-element processing):
+           malformed body → `400`, missing/insufficient scope → `401` or
+           `403`, oversized body → `413`, leader unavailable → `503`.
+           Returned unconditionally, `continueOnFailure` does not apply.
+        2. **Infrastructure failures during processing** (transport
+           timeout, cache-horizon exceeded, storage error): the overall
+           status is `500`, regardless of `continueOnFailure`. Callers
+           must retry the bulk — the top-level failure means the request
+           did not complete deterministically.
+        3. **Per-element errors during processing**: each element's error
+           carries the HTTP status it would surface as a single request
+           (via the same mapping `handleError` uses). The top-level
+           status is the "worst" of them, with `continueOnFailure`
+           applying only to per-element business failures (4xx):
+           - Business failures (validation, not-found, conflict,
+             precondition, permission — 4xx): rolled up per
+             `continueOnFailure`. `true` → `200`; `false` (default) →
+             the highest 4xx among failing elements (typically `400`).
+           - Rate-limit failures (`KindResourceExhausted`, `429`):
+             surface unconditionally as `429`.
+           - Retryable infrastructure failures (leader loss,
+             cache-horizon exceeded, `KindUnavailable`): surface as
+             `503` with `Retry-After: 1`, regardless of
+             `continueOnFailure`.
+           - Non-retryable infrastructure failures (transport / storage
+             errors, `KindInternal`, unclassified): surface as `500`.
+           - Aborted elements (`context.Canceled` from the sequential
+             runner after a prior failure): contribute nothing — the
+             originating error drives the rollup.
       operationId: bulkOperations
       tags:
         - Transactions
@@ -1464,69 +1499,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '413':
-          description: Request entity too large
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '405':
-          $ref: '#/components/responses/MethodNotAllowed'
-
-  /v3/{ledgerName}/bulk:
-    post:
-      summary: Bulk operations (alternate path)
-      description: |
-        Alias for `POST /{ledgerName}/_bulk`. Execute multiple operations
-        (create transactions, add metadata, revert transactions, delete metadata)
-        in a single request. Requires `ledger:write` scope.
-      operationId: bulkOperationsAlternate
-      tags:
-        - Transactions
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-        - name: continueOnFailure
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Continue processing remaining operations even if one fails
-        - name: atomic
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute all operations atomically (not yet supported)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/BulkElement'
-      responses:
-        '200':
-          description: Bulk operations completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkResponse'
-        '400':
-          description: Bulk operations completed with errors, or invalid request
+        '429':
+          description: |
+            A per-element error mapped to `KindResourceExhausted` (quota
+            or rate-limit hit during processing). Surfaces unconditionally,
+            regardless of `continueOnFailure`. Body carries the per-element
+            details in `data`.
           content:
             application/json:
               schema:

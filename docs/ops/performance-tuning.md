@@ -158,7 +158,7 @@ Use multi-source/multi-destination patterns when the business logic requires it,
 
 ### Use Bulk Mode for High Throughput
 
-The bulk API (`POST /{ledger}/_bulk` or gRPC `Apply` with multiple actions) amortizes the Raft consensus overhead across many transactions.
+The bulk API (`POST /v3/{ledger}/bulk` or gRPC `Apply` with multiple actions) amortizes the Raft consensus overhead across many transactions.
 
 | Approach | Raft entries | Network roundtrips |
 |----------|--------------|--------------------|

@@ -415,7 +415,7 @@ All writes must go through the leader:
 ### Batching
 
 Transactions can be batched to improve throughput:
-- `/_bulk` API to send multiple operations
+- `/bulk` API to send multiple operations
 - Parallel processing possible
 - Optional atomicity
 

@@ -190,7 +190,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 
 ### 4. Bulk Operations
 
-**Endpoint:** `POST /v3/{ledgerName}/_bulk`
+**Endpoint:** `POST /v3/{ledgerName}/bulk`
 
 **Supported actions:**
 - ✅ `CREATE_TRANSACTION`

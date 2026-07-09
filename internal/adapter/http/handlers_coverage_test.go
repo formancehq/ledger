@@ -934,7 +934,7 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	}
 
 	results := []bulkResult{
-		{err: errors.New("something failed")},
+		{err: domain.ErrEmptyTransaction},
 		{
 			log: &commonpb.LedgerLog{
 				Id: 2,
@@ -950,9 +950,94 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestWriteBulkResponse_KindDispatch enumerates every domain.ErrorKind and
+// asserts the per-element status maps to the corresponding top-level status
+// under continueOnFailure=true — pinning that infrastructure/retryable
+// Describables (KindInternal, KindUnavailable, KindResourceExhausted) surface
+// their real 5xx/429 status even when the caller opts into rollup.
+func TestWriteBulkResponse_KindDispatch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantRetry  bool
+	}{
+		// Business kinds → suppressed to 200 under continueOnFailure=true.
+		{"validation", domain.NewValidationSentinel("bad"), http.StatusOK, false},
+		// Retryable infra → 503 with Retry-After, unmasked by continueOnFailure.
+		{"leader-loss", commonpb.ErrNoLeader, http.StatusServiceUnavailable, true},
+		// Plain infrastructure error (non-Describable) → 500.
+		{"opaque-infra", errors.New("boom"), http.StatusInternalServerError, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{},
+				},
+			}}}
+
+			w := httptest.NewRecorder()
+			writeBulkResponse(w, elements, []bulkResult{{err: tc.err}}, true)
+
+			require.Equal(t, tc.wantStatus, w.Code, "unexpected top-level status for %q", tc.name)
+
+			retryAfter := w.Header().Get("Retry-After")
+			if tc.wantRetry {
+				require.Equal(t, "1", retryAfter, "Retry-After missing for %q", tc.name)
+			} else {
+				require.Empty(t, retryAfter, "Retry-After should be absent for %q", tc.name)
+			}
+		})
+	}
+}
+
+func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
+	t.Parallel()
+
+	elements := []*servicepb.BulkElement{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+	}
+
+	results := []bulkResult{
+		{err: domain.ErrEmptyTransaction},
+		{
+			log: &commonpb.LedgerLog{
+				Id: 2,
+				Data: &commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+						CreatedTransaction: &commonpb.CreatedTransaction{
+							Transaction: &commonpb.Transaction{Id: 2},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, elements, results, true)
+
+	require.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestWriteBulkResponse_AllSuccess(t *testing.T) {
@@ -982,7 +1067,7 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1001,7 +1086,7 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1068,7 +1153,11 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			callCount++
 			if callCount == 1 {
-				return nil, errors.New("first fails")
+				// Domain-level (Describable) business error — the caller
+				// opted into continuing on this kind of per-element
+				// failure. Non-domain (infra) errors are asserted
+				// separately, see TestHandleBulk_InfraErrorNotSwallowed.
+				return nil, domain.ErrEmptyTransaction
 			}
 
 			return []*commonpb.Log{
@@ -1102,8 +1191,95 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 
 	srv.handleBulk(w, r)
 
-	// Should have errors, so 400
+	// continueOnFailure=true → per-element domain failures don't turn the
+	// request itself into a top-level failure. Response stays 200 and the
+	// caller reads per-element errorCode.
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestWriteBulkResponse_AbortedElementsDontEscalate asserts that
+// runBulkSequential's context.Canceled sentinel (marking elements skipped
+// after a prior failed with continueOnFailure=false) never turns the
+// top-level status into 500. The originating domain error alone drives the
+// 400 rollup; the skipped tail contributes nothing.
+func TestWriteBulkResponse_AbortedElementsDontEscalate(t *testing.T) {
+	t.Parallel()
+
+	elements := []*servicepb.BulkElement{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+	}
+
+	results := []bulkResult{
+		{err: domain.ErrEmptyTransaction},
+		{err: context.Canceled}, // skipped by runBulkSequential
+	}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, elements, results, false)
+
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestHandleBulk_InfraErrorNotSwallowed asserts that continueOnFailure=true
+// does NOT swallow an infrastructure-level Apply error (any non-Describable
+// error, e.g. transport timeout, pebble error). Those mean the request could
+// not complete deterministically and the caller must see a 5xx regardless of
+// the continueOnFailure opt-in.
+func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return nil, errors.New("boom: pebble store unavailable")
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`[{"action":"CREATE_TRANSACTION","data":{"script":{"plain":"a"}}}]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk?continueOnFailure=true", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// TestHandleBulk_LeaderLossReturns503WithRetryAfter asserts that
+// commonpb.ErrNoLeader — a retryable infra sentinel — surfaces as 503 with a
+// Retry-After header, matching the shape handleError uses on single requests
+// (see internal/adapter/http/error_handler.go). Any other status would leave
+// callers without the backoff hint the sentinel is meant to carry.
+func TestHandleBulk_LeaderLossReturns503WithRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return nil, commonpb.ErrNoLeader
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`[{"action":"CREATE_TRANSACTION","data":{"script":{"plain":"a"}}}]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk?continueOnFailure=true", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "1", w.Header().Get("Retry-After"))
 }
 
 // --------------------------------------------------------------------------
@@ -1267,7 +1443,7 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
@@ -1292,7 +1468,7 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }

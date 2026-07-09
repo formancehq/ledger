@@ -8,11 +8,13 @@ import (
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations.
+// handleBulk handles POST /{ledgerName}/bulk to create multiple transactions/operations.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
@@ -78,7 +80,7 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
-	writeBulkResponse(w, elements, results)
+	writeBulkResponse(w, elements, results, opts.continueOnFailure)
 }
 
 // bulkOptions contains options for bulk processing.
@@ -189,9 +191,23 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 	return results
 }
 
-// writeBulkResponse writes the bulk response.
-func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult) {
-	hasError := false
+// writeBulkResponse writes the bulk response. Each per-element error is
+// mapped to the HTTP status it would carry as a single request (via
+// perElementStatus, which mirrors handleError). The top-level status is
+// then the "worst" of those statuses, with two rollup rules:
+//
+//   - **Aborted** (`context.Canceled` sentinel emitted by runBulkSequential
+//     when `continueOnFailure=false` and a prior element failed): perElementStatus
+//     returns 0 and the element contributes nothing to the rollup.
+//   - **Per-element business** (4xx from a domain Describable): rolled up per
+//     `continueOnFailure` — suppressed to 200 when opt-in, surfaced as its
+//     own status (typically 400/404/409) otherwise.
+//
+// Any 5xx/429 status from infra/retryable/rate-limit errors always surfaces,
+// with `Retry-After: 1` on 503 to match handleError.
+func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
+	worstBusiness := 0 // highest 4xx from a per-element business failure
+	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
@@ -200,10 +216,29 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 		var data any
 
 		if result.err != nil {
-			hasError = true
+			switch st := perElementStatus(result.err); {
+			case st == 0:
+				// Aborted sentinel — no top-level status contribution.
+			case st >= 500:
+				if st > worstInfra {
+					worstInfra = st
+				}
+			case st == http.StatusTooManyRequests:
+				// KindResourceExhausted: retryable resource-limit, still
+				// forced past the continueOnFailure rollup.
+				if st > worstInfra {
+					worstInfra = st
+				}
+			default:
+				// 4xx per-element business error — subject to continueOnFailure.
+				if st > worstBusiness {
+					worstBusiness = st
+				}
+			}
+
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
-				ErrorCode:        "ERROR",
+				ErrorCode:        bulkErrorCode(result.err),
 				ErrorDescription: result.err.Error(),
 			}
 
@@ -228,12 +263,59 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	}
 
 	statusCode := http.StatusOK
-	if hasError {
-		statusCode = http.StatusBadRequest
+	switch {
+	case worstInfra > 0:
+		statusCode = worstInfra
+		if worstInfra == http.StatusServiceUnavailable {
+			// Match handleError's leader-loss / cache-horizon branch: give
+			// callers the same backoff hint on single requests.
+			w.Header().Set("Retry-After", "1")
+		}
+	case worstBusiness > 0 && !continueOnFailure:
+		statusCode = worstBusiness
 	}
 
 	response := bulkResponse{Data: apiResults}
 	writeJSONResponse(w, statusCode, response)
+}
+
+// perElementStatus returns the HTTP status a given per-element error would
+// carry as a single request, or 0 for the runBulkSequential context.Canceled
+// sentinel that marks skipped elements. The mapping mirrors handleError so
+// bulk stays consistent with single-request handling.
+func perElementStatus(err error) int {
+	// Aborted sentinel: runBulkSequential sets this on remaining elements
+	// after the first failure when continueOnFailure=false. Not a status
+	// contributor — the originating error drives the rollup.
+	if errors.Is(err, context.Canceled) {
+		return 0
+	}
+
+	// Retryable infra sentinels handled before Describable dispatch,
+	// mirroring handleError.
+	if errors.Is(err, commonpb.ErrNoLeader) || errors.Is(err, plan.ErrCacheHorizonExceeded) {
+		return http.StatusServiceUnavailable
+	}
+
+	var d domain.Describable
+	if errors.As(err, &d) {
+		return kindToHTTPStatus(domain.Kind(d))
+	}
+
+	// Unknown error: 500. Can't be masked as 200 under continueOnFailure.
+	return http.StatusInternalServerError
+}
+
+// bulkErrorCode returns a machine-readable code for a per-element bulk failure.
+// Domain-typed errors expose it through the Describable contract; anything else
+// keeps the generic "ERROR" fallback rather than leaking a raw string.
+func bulkErrorCode(err error) string {
+	var d domain.Describable
+	if errors.As(err, &d) {
+		return d.Reason()
+	}
+
+	return "ERROR"
 }
 
 // writeBulkErrorResponse writes a bulk error response.

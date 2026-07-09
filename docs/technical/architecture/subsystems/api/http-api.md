@@ -308,10 +308,8 @@ Content-Type: application/json
 ]
 ```
 
-**Alternative endpoint**: `POST /v3/{ledgerName}/_bulk` (for backward compatibility)
-
 **Query Parameters**:
-- `continueOnFailure=true`: Continue even if an error occurs
+- `continueOnFailure=true`: When the request is accepted, keep processing subsequent elements after a per-element **business** failure (validation / not-found / conflict / precondition / permission) instead of aborting. Business failures surface as `errorCode` on each element and the overall status stays `200`. Request-level failures (malformed body, missing scope, oversized) and processing-time infra/retryable failures (`ErrNoLeader`, cache-horizon exceeded, `KindInternal`, `KindResourceExhausted`, `KindUnavailable`) still surface as non-2xx (`4xx`, `429`, `503`, `500`) regardless of this flag — see the `POST /v3/{ledgerName}/bulk` operation in `openapi.yml` for the full status matrix.
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported
 
 ### Account Metadata
