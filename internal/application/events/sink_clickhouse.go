@@ -47,6 +47,11 @@ const clickhouseTransactionColumns = `JSON(
 
 // ClickHouseCreateTableDDL returns the CREATE TABLE statement for the events table
 // with a fully-typed JSON column matching the ledger v2 reference implementation.
+//
+// Delivery is at-least-once, so a redelivered batch re-inserts rows with an
+// identical (ledger, log_sequence). ReplacingMergeTree collapses those duplicates
+// during background merges; dedup is therefore eventual, and exact queries must
+// use FINAL or GROUP BY to avoid transiently counting an un-merged duplicate.
 func ClickHouseCreateTableDDL(table string) string {
 	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
     log_sequence UInt64,
@@ -69,7 +74,7 @@ func ClickHouseCreateTableDDL(table string) string {
         sinkName Nullable(String),
         hash Nullable(String)
     )
-) ENGINE = MergeTree()
+) ENGINE = ReplacingMergeTree()
 ORDER BY (ledger, log_sequence)`, table, clickhouseTransactionColumns, clickhouseTransactionColumns)
 }
 
