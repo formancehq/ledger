@@ -794,6 +794,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 		readiesDuringGating int64
 		gatingStart         time.Time
 		waitStart           = time.Now()
+		// syncingLeader is the leader of the sync currently in flight (0 when
+		// not syncing). Run-goroutine-local: read and written only here, so it
+		// needs no synchronization. Used to coalesce duplicate syncLeader
+		// requests for the same leader (see the syncLeader branch below).
+		syncingLeader uint64
 	)
 
 	// Local handle on the decoded channel so we can stop selecting on it once
@@ -833,6 +838,24 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			if work.syncLeader != 0 {
+				// Coalesce a duplicate sync request for the leader we are
+				// already syncing from. The decoder stage adds a second
+				// buffered slot (a.ch → decodedCh) between processReady's
+				// TrySyncSnapshot and this status transition, so a back-to-back
+				// Ready can enqueue a second syncLeader before processReady's
+				// statusOutOfSync gate closes. Re-running startSyncSnapshot
+				// would Interrupt() the in-flight checkpoint fetch and restart
+				// it from scratch. Drop the duplicate here; a genuinely new
+				// leader (leadership changed mid-sync) still falls through and
+				// preempts.
+				if work.syncLeader == syncingLeader &&
+					a.status.Load() == statusGated &&
+					a.gatingReason.Load() == gatingReasonSyncing {
+					waitStart = time.Now()
+
+					continue
+				}
+
 				// Drain pending commit before starting sync.
 				if err := a.waitPendingCommit(ctx); err != nil {
 					return err
@@ -840,6 +863,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 				a.status.Store(statusGated)
 				a.gatingReason.Store(gatingReasonSyncing)
+				syncingLeader = work.syncLeader
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
 
@@ -939,6 +963,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
 			a.gatingTerminated = nil
+			// The in-flight sync (if any) has ended — succeeded, failed, or was
+			// an install-snapshot gating. Clear the coalescing guard so the next
+			// syncLeader request starts fresh, even for the same leader (e.g. a
+			// failed sync that processReady legitimately retries).
+			syncingLeader = 0
 
 			if a.status.Load() == statusInstallingSnapshot {
 				// Run set this status via the installSnapshot command.
