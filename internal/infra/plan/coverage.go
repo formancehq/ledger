@@ -2,44 +2,73 @@ package plan
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 )
 
 // Coverage describes the preload / coverage requirements for a command.
 //
-// Attributes[attrCode] is the set of canonical key bytes admission wants
-// the FSM apply path to be authorized to access (read or delete) under
-// dal.SubAttrXxx = attrCode. The resolver may attach a seed value to an
-// entry when admission's Pebble scan resolved one (CacheMiss + Pebble-hit);
-// otherwise the entry ships as coverage-only.
+// Attributes[attrCode][id] = canonical bytes. `id` is the U128 hash of the
+// canonical bytes (attributes.MakeKey) — pre-computed at Add time so the
+// downstream pipeline (parallel resolver, coverage_bits) never has to
+// rehash or shuttle the bytes through a string round-trip. The canonical
+// bytes stay on the map value because Pebble Get in the resolver still
+// needs them; on the wire only the U128 payload rides on AttributeID.
 //
-// IdempotencyKeys stay separate: they do not live in the attribute cache
-// (they have a dedicated IdempotencyStore), so the resolver treats them
-// via its own load path and they carry no bloom-filter / rotation
-// semantics.
+// IdempotencyKeys is lazily allocated on first AddIdempotencyKey — most
+// orders (system scoped, index management, chapter operations) carry
+// none, so paying an empty-map header per order is wasteful.
 //
 // The map-of-maps shape collapses what used to be 13 typed key fields
 // into a single generic dispatch keyed by attribute code — the same code
 // the FSM uses to route through AttributeCoverage.attr_code.
 type Coverage struct {
-	Attributes      map[byte]map[string]struct{}
+	Attributes      map[byte]map[attributes.U128][]byte
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
 }
 
-// Add records `canonical` under attrCode's key set. Idempotent.
-// Callers pass the result of the domain key's Bytes() method.
+// Add records `canonical` under attrCode's key set. Idempotent — a
+// repeat Add for the same key is a no-op (the canonical bytes are
+// retained from the first call). Callers pass the result of the domain
+// key's Bytes() method; Coverage takes ownership of the slice, callers
+// MUST NOT mutate it afterwards.
 func (c *Coverage) Add(attrCode byte, canonical []byte) {
-	c.set(attrCode)[string(canonical)] = struct{}{}
+	if c.Attributes == nil {
+		c.Attributes = make(map[byte]map[attributes.U128][]byte)
+	}
+
+	m, ok := c.Attributes[attrCode]
+	if !ok {
+		m = make(map[attributes.U128][]byte)
+		c.Attributes[attrCode] = m
+	}
+
+	id, _ := attributes.MakeKey(canonical)
+
+	if _, exists := m[id]; !exists {
+		m[id] = canonical
+	}
+}
+
+// AddIdempotencyKey records a batch idempotency key. Lazily allocates
+// the underlying map on first call — most proposals carry none.
+func (c *Coverage) AddIdempotencyKey(key string) {
+	if c.IdempotencyKeys == nil {
+		c.IdempotencyKeys = make(map[domain.IdempotencyKey]struct{})
+	}
+
+	c.IdempotencyKeys[domain.IdempotencyKey{Key: key}] = struct{}{}
 }
 
 // Has reports whether `canonical` is in attrCode's key set.
 // Primarily a test helper (production reads iterate the map directly).
 func (c *Coverage) Has(attrCode byte, canonical []byte) bool {
-	set, ok := c.Attributes[attrCode]
+	m, ok := c.Attributes[attrCode]
 	if !ok {
 		return false
 	}
 
-	_, ok = set[string(canonical)]
+	id, _ := attributes.MakeKey(canonical)
+	_, ok = m[id]
 
 	return ok
 }
@@ -48,20 +77,6 @@ func (c *Coverage) Has(attrCode byte, canonical []byte) bool {
 // attrCode has no entry). Test helper.
 func (c *Coverage) Count(attrCode byte) int {
 	return len(c.Attributes[attrCode])
-}
-
-func (c *Coverage) set(attrCode byte) map[string]struct{} {
-	if c.Attributes == nil {
-		c.Attributes = make(map[byte]map[string]struct{})
-	}
-
-	set, ok := c.Attributes[attrCode]
-	if !ok {
-		set = make(map[string]struct{})
-		c.Attributes[attrCode] = set
-	}
-
-	return set
 }
 
 // TotalKeys returns the total number of keys across all attribute
@@ -89,15 +104,39 @@ func (c *Coverage) AttributeKeysCount() int {
 // Merge unions every key set from src into dst. Used by admission to
 // roll per-order Coverage into a single proposal-wide Coverage while
 // keeping the per-order slice available for coverage_bits computation.
+// Merging from a nil Coverage is a no-op.
 func (c *Coverage) Merge(src *Coverage) {
-	for attrCode, set := range src.Attributes {
-		dst := c.set(attrCode)
-		for k := range set {
-			dst[k] = struct{}{}
+	if src == nil {
+		return
+	}
+
+	for attrCode, srcMap := range src.Attributes {
+		if len(srcMap) == 0 {
+			continue
+		}
+
+		if c.Attributes == nil {
+			c.Attributes = make(map[byte]map[attributes.U128][]byte, len(src.Attributes))
+		}
+
+		dst, ok := c.Attributes[attrCode]
+		if !ok {
+			dst = make(map[attributes.U128][]byte, len(srcMap))
+			c.Attributes[attrCode] = dst
+		}
+
+		for id, canonical := range srcMap {
+			if _, exists := dst[id]; !exists {
+				dst[id] = canonical
+			}
 		}
 	}
 
-	if len(src.IdempotencyKeys) > 0 && c.IdempotencyKeys == nil {
+	if len(src.IdempotencyKeys) == 0 {
+		return
+	}
+
+	if c.IdempotencyKeys == nil {
 		c.IdempotencyKeys = make(map[domain.IdempotencyKey]struct{}, len(src.IdempotencyKeys))
 	}
 
@@ -106,11 +145,9 @@ func (c *Coverage) Merge(src *Coverage) {
 	}
 }
 
-// NewCoverage creates a Coverage with initialized maps. Per-attribute
-// sets are created lazily on first Add so an empty Coverage stays cheap.
+// NewCoverage returns an empty Coverage. Maps are allocated lazily on the
+// first Add / AddIdempotencyKey — a Coverage that ends up carrying
+// nothing (many system-scoped orders) never touches the allocator.
 func NewCoverage() *Coverage {
-	return &Coverage{
-		Attributes:      make(map[byte]map[string]struct{}),
-		IdempotencyKeys: make(map[domain.IdempotencyKey]struct{}),
-	}
+	return &Coverage{}
 }

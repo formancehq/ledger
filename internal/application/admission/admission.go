@@ -401,8 +401,8 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// (machine.Preload installs them unconditionally), so any order carries it
 	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
 	if batch.key != "" && len(orders) > 0 {
-		needs.IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
-		perOrder[0].IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
+		needs.AddIdempotencyKey(batch.key)
+		perOrder[0].AddIdempotencyKey(batch.key)
 	}
 
 	// Step 2: Resolve script references and discover script dependencies.

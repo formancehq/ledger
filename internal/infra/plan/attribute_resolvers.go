@@ -18,12 +18,14 @@ import (
 // protoAttrResolver[T]; the interface exists so the builder can hold
 // them uniformly in a map keyed by attrCode.
 type attrResolver interface {
-	// Resolve walks the keys set through resolveCoverage for
-	// this attribute's cache/loader/store bindings. Returns the batch
-	// of AttributeCoverage entries and the tracker keys the caller must
-	// associate with Loader() for the CleanupToken.
+	// Resolve walks the keys map (U128 id → canonical bytes) through
+	// resolveCoverage for this attribute's cache/loader/store bindings.
+	// The pre-hashed id lives on the map key so no re-hashing is needed
+	// here. Returns the batch of AttributeCoverage entries and the
+	// tracker keys the caller must associate with Loader() for the
+	// CleanupToken.
 	Resolve(
-		keys map[string]struct{},
+		keys map[attributes.U128][]byte,
 		nextIndex, boundary, cacheEpoch uint64,
 		store dal.PebbleGetter,
 		logger logging.Logger,
@@ -56,7 +58,7 @@ type protoAttrResolver[T interface {
 }
 
 func (r *protoAttrResolver[T]) Resolve(
-	keys map[string]struct{},
+	keys map[attributes.U128][]byte,
 	nextIndex, boundary, cacheEpoch uint64,
 	store dal.PebbleGetter,
 	logger logging.Logger,

@@ -68,8 +68,11 @@ func seedEntry(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.At
 }
 
 // resolveCoverage resolves one attribute cache for the plan pipeline.
-// Keys are passed as canonical byte strings (see Coverage.Attributes) —
-// no K generic; the (attrCode, canonical) pair is the whole identity.
+// Keys arrive already hashed: the map key is the pre-computed U128
+// (attributes.MakeKey), the map value is the canonical bytes. No
+// string↔bytes round trip, no rehash on iteration — the (id, canonical)
+// pair travels intact from admission's Add through to the FSM's wire
+// payload.
 //
 // For each key, resolveCoverage emits ONE AttributeCoverage entry based
 // on admission's CheckCache verdict:
@@ -94,7 +97,7 @@ func seedEntry(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.At
 func resolveCoverage[T interface {
 	MarshalVT() ([]byte, error)
 }](
-	keys map[string]struct{},
+	keys map[attributes.U128][]byte,
 	nextIndex, boundary, cacheEpoch uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *preload.AttributeLoader[T],
@@ -110,14 +113,17 @@ func resolveCoverage[T interface {
 		mu       sync.Mutex
 		wg       sync.WaitGroup
 		firstErr error
-		plans    []*raftcmdpb.AttributeCoverage
+		plans    = make([]*raftcmdpb.AttributeCoverage, 0, len(keys))
 	)
 
 	sem := make(chan struct{}, resolveParallelism)
 
-	for key := range keys {
-		canonicalKey := []byte(key)
-		id, tag := attributes.MakeKey(canonicalKey)
+	for id, canonicalKey := range keys {
+		// The XXH3-128 id was computed once at Add time and lives in
+		// the map key — no rehash. Only the XXH3-64 tag has to be
+		// derived here; option E (fused MakeKey) would eliminate this
+		// second pass entirely.
+		tag := attributes.Tag64(canonicalKey)
 
 		switch attrCache.CheckCache(nextIndex, id) {
 		case cache.CacheUnreachable:
@@ -182,9 +188,9 @@ func resolveCoverage[T interface {
 
 			sem <- struct{}{}
 
-			canonicalKey := canonicalKey
-			id := id
-			tag := tag
+			// Loop variables can be captured directly by the goroutine
+			// closure since Go 1.22 (per-iteration binding). No need
+			// for the id := id shadow trick.
 
 			wg.Go(func() {
 				defer func() { <-sem }()
