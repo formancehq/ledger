@@ -783,6 +783,18 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 
 	resp, err := client.GetPeers(ctx, &clusterbootstrappb.GetPeersRequest{})
 	if err != nil {
+		// Propagate an Unauthenticated status unwrapped so the retry loop's
+		// status.FromError sees a clean st.Message() ("missing authorization
+		// metadata on Raft RPC", etc.) rather than the whole wrapped chain.
+		// Wrapping here would leak "getting peers from <addr>: rpc error:
+		// code = Unauthenticated desc = …" into JoinAuthError.Detail —
+		// duplicating the address and re-exposing the raw gRPC noise this
+		// fail-fast exists to hide. This keeps the discovery path consistent
+		// with the learner-registration path. EN-1080.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("getting peers from %s: %w", raftAddr, err)
 	}
 

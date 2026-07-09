@@ -70,6 +70,16 @@ func TestDiscoverPeers_FailsFastOnUnauthenticated(t *testing.T) {
 	require.Contains(t, err.Error(), "inter-node authentication failed")
 	require.Contains(t, err.Error(), "set --cluster-secret")
 
+	// Detail must carry the clean, unwrapped status message — not the
+	// wrapped chain. Wrapping GetPeers' error before status.FromError would
+	// leak "getting peers from <addr>: rpc error: code = Unauthenticated
+	// desc = …" here, duplicating the address and re-exposing the gRPC noise
+	// this fail-fast exists to hide (EN-1080 review finding).
+	require.Equal(t, "missing authorization metadata on Raft RPC", joinErr.Detail)
+	require.NotContains(t, joinErr.Detail, "rpc error:")
+	require.NotContains(t, joinErr.Detail, "getting peers from")
+	require.NotContains(t, joinErr.Detail, lis.Addr().String())
+
 	// Must fail fast, not retry until the deadline.
 	require.Less(t, elapsed, 5*time.Second,
 		"discovery must abort immediately on Unauthenticated, not retry until the deadline")
