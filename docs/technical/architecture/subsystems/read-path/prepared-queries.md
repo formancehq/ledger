@@ -112,6 +112,19 @@ The canonical shape is:
   discriminated by a `type` field (`field`, `address`, `reference`, `ledger`,
   `logId`, `builtinUint`, `logBuiltinUint`, `accountHasAsset`, `reverted`).
   `field` nests a second tagged union (`string`/`int`/`uint`/`bool`/`exists`).
+  `builtinUint.field` is restricted to the fields the compiler resolves as an
+  unsigned range (`id`/`timestamp`/`insertedAt`/`revertedAt`); address/reference
+  matching uses the dedicated `address`/`reference` conditions. Address
+  conditions require exactly one of `value`/`param`, and `reverted` requires an
+  explicit `value` — the decoder rejects the omitted/empty forms loudly rather
+  than defaulting.
+
+**REST prepared-query targets are `ACCOUNTS` / `TRANSACTIONS` only.** `LOGS` is a
+valid direct `ListLogs` target but not (yet) a usable *prepared-query* target:
+`query.Execute` hydrates only account/transaction data (`PreparedQueryCursor`
+has no log result field), so a LOGS prepared query would execute to an empty
+cursor. The REST create handler rejects it; if a LOGS query is created via
+gRPC/CLI, the REST list/get path still echoes its true target faithfully.
 
 The codec is bidirectional and lossless (unsigned bounds are carried as decimal
 strings to survive values above 2^53). It fails loudly on an unknown `type`, on a

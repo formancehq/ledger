@@ -366,8 +366,13 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 // leak the protobuf-internal oneof/wrapper names of QueryFilter onto the public
 // REST surface (see the codec in query_filter.go). Instead the filter is
 // encoded through QueryFilter's own hand-written MarshalJSON (canonical flat
-// shape) and the target is emitted as the string enum the OpenAPI contract
-// advertises (ACCOUNTS / TRANSACTIONS / LOGS).
+// shape) and the target is emitted as the bare string enum.
+//
+// REST can only create ACCOUNTS / TRANSACTIONS prepared queries (see
+// parsePreparedQueryTarget — LOGS prepared queries would execute to an empty
+// cursor). A LOGS-target query can still exist if created via gRPC/CLI; when
+// such a query is listed over REST we emit its true target ("LOGS") faithfully
+// rather than lying about it, so the map covers all three proto values.
 func (x *PreparedQuery) MarshalJSON() ([]byte, error) {
 	target, ok := queryTargetToJSON[x.GetTarget()]
 	if !ok {
