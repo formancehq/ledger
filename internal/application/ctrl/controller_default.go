@@ -1120,12 +1120,15 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // honoring the shared list contract (filter, reverse, cursor, page size). It
 // delegates to ListAuditEntriesFrom bound to the controller's own stores.
 //
+// Audit has no dedicated top-level filters: ledger scope and outcome selection
+// are expressed entirely through filter (audit[ledger], audit[outcome], …).
+//
 // Ordering: the audit trail is chronological, so the default (reverse=false)
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, ledger string, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, ledger, pageSize, afterSequence, filter, reverse)
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 
 // ListAuditEntriesFrom returns a cursor over audit entries using the provided
@@ -1133,10 +1136,9 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, ledger stri
 // through the readstore audit secondary index (EN-1339) plus an audit-zone
 // sequence bound — there is no scan-time predicate fallback, so an expression
 // the index cannot answer is rejected upstream with InvalidArgument.
-func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledger string, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_audit_entries",
 		trace.WithAttributes(
-			attribute.String("ledger", ledger),
 			attribute.Int("page_size", int(pageSize)),
 			attribute.Bool("reverse", reverse),
 		))
@@ -1146,14 +1148,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	// must not be able to force an unbounded materialization.
 	pageSize = ClampFetchSize(pageSize)
 
-	// Fold the top-level ledger scope into the filter as audit[ledger] == X so
-	// it is resolved by the same index path as every other condition.
-	effectiveFilter := filter
-	if ledger != "" {
-		effectiveFilter = andAuditLedger(filter, ledger)
-	}
-
-	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, effectiveFilter)
+	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1173,33 +1168,6 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	}
 
 	return cursor.NewClosingCursor(c, handle), nil
-}
-
-// andAuditLedger ANDs an audit[ledger] == ledger condition onto filter (which
-// may be nil), so the top-level ledger scope shares the index-backed path.
-func andAuditLedger(filter *commonpb.QueryFilter, ledger string) *commonpb.QueryFilter {
-	ledgerCond := &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Audit{
-			Audit: &commonpb.AuditCondition{
-				Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
-				Condition: &commonpb.AuditCondition_StringCond{
-					StringCond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger},
-					},
-				},
-			},
-		},
-	}
-
-	if filter == nil {
-		return ledgerCond
-	}
-
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{ledgerCond, filter}},
-		},
-	}
 }
 
 // GetLog returns a single system log by sequence number.

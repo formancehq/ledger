@@ -2239,9 +2239,12 @@ ledgerctl audit list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ledger` | (all) | Scope to audit entries touching this ledger (match-any over the entry's ledgers). |
-| `--failures-only` | `false` | Shorthand for `--filter 'audit[outcome] == failure'`. Combined (AND) with any explicit `--filter`. |
 | `--expand` | `false` | Expand orders within each audit entry |
+
+Audit has **no dedicated filter flags** — there is no `--failures-only` and no
+`--ledger`. Selecting failures or scoping to a ledger is done through the generic
+`--filter` (e.g. `--filter 'audit[outcome] == failure'`,
+`--filter 'audit[ledger] == main'`), exactly like every other list command.
 
 Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
 
@@ -2267,12 +2270,12 @@ reads first-class with every other list endpoint while never degrading to a
 full-chain scan.
 
 > **Consistency note.** The audit secondary index is maintained by an
-> asynchronous per-node worker, so a *filtered* audit read (including `--ledger`
-> / `--failures-only`) is eventually consistent — a just-applied entry may take
-> up to ~200 ms to appear. `--min-log-sequence` gates the read-side log index,
-> not the audit index. An *unfiltered* read (plain `audit list`, optionally with
-> `--reverse` / `audit[seq]` bounds) reads the audit zone directly and is
-> strongly consistent.
+> asynchronous per-node worker, so any *filtered* audit read (including an
+> `audit[ledger]` or `audit[outcome]` filter) is eventually consistent — a
+> just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
+> gates the read-side log index, not the audit index. An *unfiltered* read
+> (plain `audit list`, optionally with `--reverse` / `audit[seq]` bounds) reads
+> the audit zone directly and is strongly consistent.
 >
 > **Checkpoint + filter caveat.** A query checkpoint snapshots the audit index
 > at creation time; checkpoint creation waits for the log index but not yet for
@@ -2302,10 +2305,13 @@ ledgerctl audit list
 # Newest first
 ledgerctl audit list --reverse
 
-# Show only failures (shorthand)
-ledgerctl audit list --failures-only
+# Show only failures (via the generic filter — no dedicated flag)
+ledgerctl audit list --filter 'audit[outcome] == failure'
 
-# Filter by outcome and ledger via the shared filter grammar
+# Scope to a ledger (via the generic filter — no dedicated flag)
+ledgerctl audit list --filter 'audit[ledger] == my-ledger'
+
+# Combine outcome and ledger
 ledgerctl audit list --filter 'audit[outcome] == failure and audit[ledger] == main'
 
 # Filter by order type
@@ -2313,9 +2319,6 @@ ledgerctl audit list --filter 'audit[order_type] in (create_transaction, revert_
 
 # Sequence range
 ledgerctl audit list --filter 'audit[seq] between 1000 and 2000'
-
-# Scope to a ledger
-ledgerctl audit list --ledger my-ledger
 
 # Read from a query checkpoint instead of the live store
 ledgerctl audit list --checkpoint-id 7

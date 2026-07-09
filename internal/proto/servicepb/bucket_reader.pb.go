@@ -6208,16 +6208,11 @@ func NewCheckStoreProgressListReader(s []*CheckStoreProgress) CheckStoreProgress
 // ListAuditEntriesRequestReader provides read-only access to ListAuditEntriesRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListAuditEntriesRequestReader interface {
-	GetLedger() string
 	GetOptions() commonpb.ListOptionsReader
 	Mutate() *ListAuditEntriesRequest
 }
 
 type listAuditEntriesRequestReadonly ListAuditEntriesRequest
-
-func (r *listAuditEntriesRequestReadonly) GetLedger() string {
-	return (*ListAuditEntriesRequest)(r).GetLedger()
-}
 
 func (r *listAuditEntriesRequestReadonly) GetOptions() commonpb.ListOptionsReader {
 	v := (*ListAuditEntriesRequest)(r).GetOptions()

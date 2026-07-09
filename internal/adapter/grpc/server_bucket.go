@@ -1239,13 +1239,13 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		// The proper fix belongs in the checkpoint-creation path (make the audit
 		// indexer catch up before the readstore checkpoint, mirroring the
 		// log-index WaitForSequence); it is out of scope here.
-		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	} else {
 		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
 			return waitErr
 		}
 
-		c, err = impl.ctrl.ListAuditEntries(ctx, req.GetLedger(), fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	}
 
 	if err != nil {

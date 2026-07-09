@@ -248,9 +248,21 @@ func main() {
 		// entries must be unique per ProposalId (a failed proposal writes
 		// exactly one Failure entry by design, machine.go:1163-1204).
 		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-			Ledger: ledger,
 			Options: &commonpb.ListOptions{
 				Read: &commonpb.ReadOptions{MinLogSequence: minLogSeq},
+				// Audit has no dedicated ledger field — scope via the generic filter.
+				Filter: &commonpb.QueryFilter{
+					Filter: &commonpb.QueryFilter_Audit{
+						Audit: &commonpb.AuditCondition{
+							Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
+							Condition: &commonpb.AuditCondition_StringCond{
+								StringCond: &commonpb.StringCondition{
+									Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ledger},
+								},
+							},
+						},
+					},
+				},
 			},
 		})
 		if err != nil {
