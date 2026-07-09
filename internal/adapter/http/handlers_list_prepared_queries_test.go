@@ -92,15 +92,14 @@ func TestHandleListPreparedQueries_CamelCaseBodyShape(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	body := w.Body.String()
-	// Canonical flat contract (EN-1465): bare string enum + `match` tagged union.
+	// v2-aligned contract (EN-1465): bare string enum + `$match` DSL.
 	require.Contains(t, body, `"target":"TRANSACTIONS"`)
-	require.Contains(t, body, `"match":{"type":"reference"`)
-	require.Contains(t, body, `"equals":"order-123"`)
+	require.Contains(t, body, `"$match":{"reference":"order-123"}`)
 	// #478 PascalCase leak must not survive.
 	require.NotContains(t, body, `"Reference"`)
 	require.NotContains(t, body, `"Hardcoded"`)
 	require.NotContains(t, body, `"target":1`)
-	// EN-1465 protojson leak must not survive.
+	// protojson-internal leaks must not survive.
 	require.NotContains(t, body, `QUERY_TARGET_`)
 	require.NotContains(t, body, `"cond"`)
 	require.NotContains(t, body, `"hardcoded"`)

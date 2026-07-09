@@ -15,10 +15,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// validFieldFilterJSON is a minimal QueryFilter wire shape (canonical flat
-// shape) with a populated leaf condition, used to exercise the create/update
+// validFieldFilterJSON is a minimal QueryFilter wire shape (v2-aligned query
+// DSL) with a populated leaf condition, used to exercise the create/update
 // paths without depending on the full filter grammar.
-const validFieldFilterJSON = `{"match":{"type":"field","metadata":"foo","condition":{"type":"exists"}}}`
+const validFieldFilterJSON = `{"$exists":{"metadata":"foo"}}`
 
 func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
@@ -65,9 +65,9 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 		"name": "vip-high-risk",
 		"target": "ACCOUNTS",
 		"filter": {
-			"and": [
-				{"match": {"type": "field", "metadata": "risk_score", "condition": {"type": "int", "min": 70}}},
-				{"match": {"type": "field", "metadata": "vip",        "condition": {"type": "bool", "equals": true}}}
+			"$and": [
+				{"$gte": {"metadata[risk_score]": 70}},
+				{"$match": {"metadata[vip]": true}}
 			]
 		}
 	}`
@@ -87,18 +87,19 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 	require.NotNil(t, filter, "filter was lost during decoding")
 
 	and := filter.GetAnd()
-	require.NotNil(t, and, "outer AND oneof was not dispatched")
+	require.NotNil(t, and, "outer $and was not dispatched")
 	require.Len(t, and.GetFilters(), 2)
 
 	first := and.GetFilters()[0].GetField()
-	require.NotNil(t, first, "first child field oneof was not dispatched")
+	require.NotNil(t, first, "first child metadata condition was not dispatched")
 	require.Equal(t, "risk_score", first.GetField().GetMetadata())
-	require.NotNil(t, first.GetIntCond(), "first child int_cond oneof was not dispatched")
+	require.NotNil(t, first.GetIntCond(), "first child int range was not dispatched")
+	require.Equal(t, int64(70), first.GetIntCond().GetMin())
 
 	second := and.GetFilters()[1].GetField()
 	require.NotNil(t, second)
 	require.Equal(t, "vip", second.GetField().GetMetadata())
-	require.NotNil(t, second.GetBoolCond(), "second child bool_cond oneof was not dispatched")
+	require.NotNil(t, second.GetBoolCond(), "second child bool condition was not dispatched")
 	require.True(t, second.GetBoolCond().GetHardcoded())
 }
 

@@ -38,12 +38,13 @@ func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
 }
 
 // decodePreparedQueryFilter decodes the `filter` JSON value of a prepared-query
-// create/update request. The value uses the canonical flat QueryFilter shape
-// documented in openapi.yml (combinators `and`/`or`/`not` plus a tagged-union
-// `match`); the codec lives on commonpb.QueryFilter (query_filter.go) and keeps
-// the protobuf-internal oneof/wrapper names off the public surface. An empty or
-// absent filter is rejected — otherwise the prepared query would store nil and
-// fail later at execute time with "unknown filter type: <nil>".
+// create/update request. The value uses the v2-aligned query DSL documented in
+// openapi.yml (combinators `$and`/`$or`/`$not` plus single-key operators
+// `$match`/`$gt`/`$exists`/…); the codec lives on commonpb.QueryFilter
+// (query_filter.go) and keeps the protobuf-internal oneof/wrapper names off the
+// public surface. An empty or absent filter is rejected — otherwise the prepared
+// query would store nil and fail later at execute time with "unknown filter
+// type: <nil>".
 func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, errors.New("filter is required")

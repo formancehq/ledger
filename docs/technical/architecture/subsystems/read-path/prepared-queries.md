@@ -93,47 +93,58 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 
 **Cursor for `ListPreparedQueries`.** The cursor is the query name itself (printable ASCII, exactly what the name-validator requires). Listing is a single-ledger scan.
 
-## Canonical `QueryFilter` JSON shape (REST)
+## Canonical `QueryFilter` JSON shape (REST) — v2-aligned query DSL
 
 `QueryFilter` is a protobuf oneof; naively routing it through `protojson` leaks the
 proto-internal oneof/wrapper names onto the public REST surface (`and.filters[]`,
 `not.filter`, `field.field.metadata`, `stringCond`, `hardcodedExact`, and the
-`QUERY_TARGET_*` enum prefix). To keep the wire aligned with the OpenAPI schema,
-`QueryFilter` carries a **hand-written JSON codec** (`internal/proto/commonpb/query_filter.go`),
-and `PreparedQuery.MarshalJSON` (`internal/proto/commonpb/common.pb.json.go`) uses
-it plus a string target enum. The HTTP decoder
-(`internal/adapter/http/prepared_query_filter.go`) decodes through the same codec.
+`QUERY_TARGET_*` enum prefix). To keep the REST wire aligned with the rest of the
+Formance platform, `QueryFilter` carries a **hand-written JSON codec**
+(`internal/proto/commonpb/query_filter.go`) that mirrors the shared Formance query
+DSL (`go-libs/pkg/query`, as used by ledger v2). `PreparedQuery.MarshalJSON`
+(`internal/proto/commonpb/common.pb.json.go`) uses it plus a string target enum;
+the HTTP decoder (`internal/adapter/http/prepared_query_filter.go`) decodes through
+the same codec.
 
-The canonical shape is:
+The canonical shape (each node has **exactly one** top-level `$`-operator key):
 
-- **Combinators** (exactly one per node): `{"and": [QueryFilter, ...]}`,
-  `{"or": [QueryFilter, ...]}`, `{"not": QueryFilter}`.
-- **Leaf**: `{"match": <Condition>}`, where `<Condition>` is a tagged union
-  discriminated by a `type` field (`field`, `address`, `reference`, `ledger`,
-  `logId`, `builtinUint`, `logBuiltinUint`, `accountHasAsset`, `reverted`).
-  `field` nests a second tagged union (`string`/`int`/`uint`/`bool`/`exists`).
-  `builtinUint.field` is restricted to the fields the compiler resolves as an
-  unsigned range (`id`/`timestamp`/`insertedAt`/`revertedAt`); address/reference
-  matching uses the dedicated `address`/`reference` conditions. Address
-  conditions require exactly one of `value`/`param`, and `reverted` requires an
-  explicit `value` — the decoder rejects the omitted/empty forms loudly rather
-  than defaulting.
+- **Combinators**: `{"$and": [QueryFilter, ...]}`, `{"$or": [QueryFilter, ...]}`
+  (both non-empty arrays), `{"$not": QueryFilter}`.
+- **Leaf conditions** — single-key operator over a one-field body:
+  - `{"$match": {"<field>": <value>}}` — equality; for `address`/`source`/`destination`
+    a trailing `:` means prefix, otherwise exact.
+  - `{"$gt"|"$gte"|"$lt"|"$lte": {"<field>": <value>}}` — range bound; a closed range
+    is an `$and` of a lower + an upper bound on the same field (the decoder folds it
+    back into one range condition).
+  - `{"$exists": {"metadata": "<key>"}}` — metadata key present.
+  - `{"$exists": {"asset": "<assetRef>"}}` — account has held the asset (`BASE` or
+    `BASE/PRECISION`, e.g. `USD/2`); this is how `AccountHasAssetCondition` is expressed.
+
+Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
+`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`,
+`date`. A value is a JSON literal or a parameter reference `{"$param": "<name>"}`
+(prepared-query parameters). A parameterised address prefix is carried as
+`{"$like": {"address": {"$param": "<name>"}}}` (a literal prefix keeps its trailing
+`:` under `$match`, which a param value cannot). uint64 fields are carried as decimal
+strings to stay lossless above 2^53.
+
+The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
+empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,
+an empty `$param` name, and a proto oneof arm it does not recognise — so a new proto
+arm cannot silently drop a filter. The full DSL is documented under `QueryFilter` in
+`openapi.yml`. Round-trip and error-path tests live in
+`internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
+`tests/e2e/business/prepared_query_rest_shape_test.go`.
+
+This shape is shared by every filtered endpoint (and by the audit conditions in
+EN-1548): new conditions extend it as new `$match`/`$gt`/… over new field names.
 
 **REST prepared-query targets are `ACCOUNTS` / `TRANSACTIONS` only.** `LOGS` is a
 valid direct `ListLogs` target but not (yet) a usable *prepared-query* target:
-`query.Execute` hydrates only account/transaction data (`PreparedQueryCursor`
-has no log result field), so a LOGS prepared query would execute to an empty
-cursor. The REST create handler rejects it; if a LOGS query is created via
-gRPC/CLI, the REST list/get path still echoes its true target faithfully.
-
-The codec is bidirectional and lossless (unsigned bounds are carried as decimal
-strings to survive values above 2^53). It fails loudly on an unknown `type`, on a
-node that sets zero or more than one of `and`/`or`/`not`/`match`, and on a proto
-oneof arm it does not recognise — so a new proto arm cannot silently drop a
-filter. The full schema (including every condition sub-type) is documented under
-`QueryFilter` / `Condition` in `openapi.yml`. Round-trip and error-path tests live
-in `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
-`tests/e2e/business/prepared_query_rest_shape_test.go`.
+`query.Execute` hydrates only account/transaction data (`PreparedQueryCursor` has no
+log result field), so a LOGS prepared query would execute to an empty cursor. The
+REST create handler rejects it; if a LOGS query is created via gRPC/CLI, the REST
+list/get path still echoes its true target faithfully.
 
 ## Recent changes
 
@@ -142,7 +153,7 @@ in `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
 | `c1f79db80` (EN-1321) | Wire prepared queries into the per-attribute bloom registry. |
 | `7662d2bae` | Monotonic-skip and probe-based `AndIterator` optimisations for filter execution. |
 | `dedb005bc` (fix/376) | Fix protojson oneOf/enum encoding for prepared-query payloads. |
-| EN-1465 | Canonical flat `QueryFilter` JSON codec (replaces the protojson leak); string target enum on `PreparedQuery`. |
+| EN-1465 | v2-aligned `QueryFilter` JSON codec (`$and`/`$match`/…), replacing the protojson leak; string target enum on `PreparedQuery`. |
 
 ## What's not (yet) here
 
