@@ -122,6 +122,13 @@ func (v jsonValue) MarshalJSON() ([]byte, error) {
 }
 
 func (v *jsonValue) UnmarshalJSON(data []byte) error {
+	// A JSON null in value position is meaningless (it would silently decode to
+	// the Go zero value — false / "" / 0 — via json.Unmarshal no-op, matching a
+	// condition the caller never intended). Reject it loudly.
+	if string(data) == "null" {
+		return errors.New("value must not be null")
+	}
+
 	// A {"$param": "name"} object is a parameter reference; anything else is a
 	// literal. We only treat an object with exactly the $param key as a param —
 	// a plain object literal (unused today) would pass through as a literal.
@@ -379,7 +386,13 @@ func marshalFieldCondition(fc *FieldCondition) (map[string]any, error) {
 		return marshalBoolCond(key, c.BoolCond)
 	case *FieldCondition_ExistsCond:
 		// metadata existence uses {"$exists": {"metadata": "<key>"}} (v2 shape),
-		// not the metadata[<key>] field form.
+		// not the metadata[<key>] field form. The v2 DSL has no way to express
+		// `include_null`, so a condition that sets it cannot be represented
+		// losslessly — fail loudly rather than silently drop the flag. (No
+		// current builder sets it; this guards a future one.)
+		if c.ExistsCond.GetIncludeNull() {
+			return nil, errors.New("exists: include_null is not representable in the query DSL")
+		}
 		v, err := literalValue(fc.GetField().GetMetadata())
 		if err != nil {
 			return nil, err

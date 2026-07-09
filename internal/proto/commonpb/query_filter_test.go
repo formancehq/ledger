@@ -231,6 +231,16 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"range on reference rejected", `{"$gt":{"reference":"x"}}`, "unsupported field"},
 		{"range on address rejected", `{"$gt":{"sourceAddress":"1"}}`, "unsupported field"},
 		{"in unsupported", `{"$in":{"address":["a"]}}`, "not supported"},
+		// null in value position must be rejected (no silent zero-value coercion).
+		{"null reverted rejected", `{"$match":{"reverted":null}}`, "must not be null"},
+		{"null metadata rejected", `{"$match":{"metadata[k]":null}}`, "must not be null"},
+		{"null reference rejected", `{"$match":{"reference":null}}`, "must not be null"},
+		{"null address rejected", `{"$match":{"address":null}}`, "must not be null"},
+		{"null ledger rejected", `{"$match":{"ledger":null}}`, "must not be null"},
+		{"null range bound rejected", `{"$gt":{"timestamp":null}}`, "must not be null"},
+		// $match on a numeric built-in is rejected (range-only fields).
+		{"match on timestamp rejected", `{"$match":{"timestamp":"1"}}`, "unsupported field"},
+		{"match on id rejected", `{"$match":{"id":"1"}}`, "unsupported field"},
 	}
 
 	for _, tc := range cases {
@@ -242,6 +252,18 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
+}
+
+// TestQueryFilterMarshalExistsIncludeNull asserts marshalling fails loudly when
+// an ExistsCondition sets include_null, which the v2 DSL cannot express (rather
+// than silently dropping the flag).
+func TestQueryFilterMarshalExistsIncludeNull(t *testing.T) {
+	t.Parallel()
+
+	f := fieldFilter("k", &FieldCondition_ExistsCond{ExistsCond: &ExistsCondition{IncludeNull: true}})
+	_, err := json.Marshal(f)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "include_null")
 }
 
 // TestQueryFilterClosedRangeFolding asserts that an $and of two same-field bounds

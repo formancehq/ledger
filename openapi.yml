@@ -3799,13 +3799,18 @@ components:
         Supported fields: `metadata[<key>]`, `address`, `source`, `destination`,
         `reference`, `reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`,
         `revertedAt`, `logId`, `date`. Not every field applies to every query target;
-        a field that does not apply is rejected at execution.
+        a field that does not apply is rejected. The numeric built-ins
+        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
+        **range-only** — use `$gt`/`$gte`/`$lt`/`$lte`; `$match` on them is rejected.
+        The log-only fields (`logId`, `date`, `ledger`) are rejected on prepared
+        queries, which can only target accounts or transactions.
 
 
         A value is either a JSON literal or a parameter reference
-        `{"$param": "<name>"}`, resolved at prepared-query execution time. uint64
-        fields (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
-        carried as decimal strings to stay lossless above 2^53.
+        `{"$param": "<name>"}`, resolved at prepared-query execution time. A JSON
+        `null` in value position is rejected. uint64 fields
+        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are carried
+        as decimal strings to stay lossless above 2^53.
       minProperties: 1
       maxProperties: 1
       additionalProperties: true
@@ -3863,9 +3868,11 @@ components:
         $like:
           type: object
           description: >-
-            `{ "<field>": <value> }` — SQL-style pattern / parameterised address
-            prefix. Reserved; currently emitted only for a parameterised address
-            prefix (`{"$like": {"address": {"$param": "<name>"}}}`).
+            `{ "<field>": <value> }` — address prefix match. Emitted for a
+            parameterised address prefix (`{"$like": {"address": {"$param": "<name>"}}}`)
+            and for a hardcoded byte-level prefix that does not end in `:` (which
+            `$match` cannot express, since a trailing `:` is its prefix marker),
+            e.g. `{"$like": {"address": "users"}}`.
           minProperties: 1
           maxProperties: 1
           additionalProperties: true

@@ -159,10 +159,21 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
 	case *commonpb.QueryFilter_LogBuiltinUint:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("log-field filter (date) is only valid on log queries")
+		}
+
 		return compileLogBuiltinUintCondition(ctx, f.LogBuiltinUint)
 	case *commonpb.QueryFilter_LogId:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("logId filter is only valid on log queries")
+		}
+
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
 	case *commonpb.QueryFilter_Ledger:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("ledger filter is only valid on log queries")
+		}
 		// Ledger condition is a no-op in the Compile framework --- the ledger
 		// is already set in the context. Return the universe iterator.
 		return compileUniverse(ctx)

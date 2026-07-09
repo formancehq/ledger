@@ -59,5 +59,43 @@ func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, erro
 		return nil, errors.New("filter must contain at least one condition")
 	}
 
+	// REST prepared queries only target ACCOUNTS/TRANSACTIONS
+	// (see parsePreparedQueryTarget), so log-only conditions (logId, date,
+	// ledger) can never be satisfied here — they would compile a log iterator
+	// and silently return unrelated/empty results. Reject them up front.
+	if err := rejectLogOnlyConditions(filter); err != nil {
+		return nil, err
+	}
+
 	return filter, nil
+}
+
+// rejectLogOnlyConditions walks the filter tree and rejects conditions that only
+// make sense for log queries: logId, log date (logBuiltinUint), and ledger. The
+// REST prepared-query surface cannot target logs, so these are always invalid.
+func rejectLogOnlyConditions(f *commonpb.QueryFilter) error {
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_LogId:
+		return errors.New("logId filter is only valid on log queries, which prepared queries cannot target over REST")
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		return errors.New("date filter is only valid on log queries, which prepared queries cannot target over REST")
+	case *commonpb.QueryFilter_Ledger:
+		return errors.New("ledger filter is only valid on log queries, which prepared queries cannot target over REST")
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.GetFilters() {
+			if err := rejectLogOnlyConditions(sub); err != nil {
+				return err
+			}
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.GetFilters() {
+			if err := rejectLogOnlyConditions(sub); err != nil {
+				return err
+			}
+		}
+	case *commonpb.QueryFilter_Not:
+		return rejectLogOnlyConditions(v.Not.GetFilter())
+	}
+
+	return nil
 }

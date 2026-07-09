@@ -57,6 +57,31 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			wantErr: "unknown operator",
 		},
 		{
+			name:    "logId rejected on prepared query (log-only field)",
+			raw:     `{"$gt":{"logId":"5"}}`,
+			wantErr: "logId filter is only valid on log queries",
+		},
+		{
+			name:    "date rejected on prepared query (log-only field)",
+			raw:     `{"$gt":{"date":"5"}}`,
+			wantErr: "date filter is only valid on log queries",
+		},
+		{
+			name:    "ledger rejected on prepared query (log-only field)",
+			raw:     `{"$match":{"ledger":"main"}}`,
+			wantErr: "ledger filter is only valid on log queries",
+		},
+		{
+			name:    "logId nested in and rejected",
+			raw:     `{"$and":[{"$match":{"reference":"r"}},{"$gt":{"logId":"5"}}]}`,
+			wantErr: "logId filter is only valid on log queries",
+		},
+		{
+			name:    "null value rejected",
+			raw:     `{"$match":{"reference":null}}`,
+			wantErr: "must not be null",
+		},
+		{
 			name:    "multiple top-level operators rejected",
 			raw:     `{"$and":[],"$not":{"$match":{"reverted":true}}}`,
 			wantErr: "exactly one operator",
