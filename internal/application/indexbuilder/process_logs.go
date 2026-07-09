@@ -204,18 +204,35 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			break
 		}
 
+		// When a checkpoint is being created, persist progress at lastSeq-1
+		// (i.e. up to but NOT including the CreatedQueryCheckpoint log) in this
+		// first batch. The checkpoint log itself carries no index writes, so
+		// holding the cursor one short of it costs nothing but makes the
+		// checkpoint creation crash-safe: if the node dies before the checkpoint
+		// directory is fully materialized and marked ready, the durable cursor
+		// still points before the checkpoint log, so on restart the builder
+		// replays it and recreates the checkpoint. Persisting the cursor AT
+		// lastSeq before the marker existed would strand a markerless directory
+		// forever (EN-1460 / NumaryBot), because the builder would never revisit
+		// the log. Progress is advanced to lastSeq in a second write below, only
+		// after the marker is on disk.
+		progressSeq := lastSeq
+		if pendingCheckpointCreate > 0 && lastSeq > 0 {
+			progressSeq = lastSeq - 1
+		}
+
 		// Commit the batch if there are index writes or a checkpoint action pending.
 		hasCheckpointAction := pendingCheckpointCreate > 0 || pendingCheckpointDelete > 0
 		if !b.wb.Empty() || hasCheckpointAction {
 			// Write progress into the same batch before Flush commits it.
-			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
+			if err := b.readStore.WriteProgress(batch, progressSeq); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
 			}
 
-			// Persist only AppliedProposal entries whose log range is fully behind lastSeq.
-			if err := persistAppliedProposalProgress(batch, lastSeq); err != nil {
+			// Persist only AppliedProposal entries whose log range is fully behind progressSeq.
+			if err := persistAppliedProposalProgress(batch, progressSeq); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -240,10 +257,30 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Create or delete a query checkpoint after the batch is committed
 		// but BEFORE advancing the indexed sequence. This ensures the
-		// checkpoint directory exists before readers are notified.
+		// checkpoint directory exists (and its .ready marker is written)
+		// before readers are notified and before the cursor advances past
+		// the CreatedQueryCheckpoint log.
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			if err := b.createReadIndexCheckpoint(cpID); err != nil {
 				return cursor, err
+			}
+
+			// The checkpoint is now fully materialized and marked ready. Advance
+			// the durable cursor past the CreatedQueryCheckpoint log so it is not
+			// reprocessed on the next iteration or after a restart.
+			if progressSeq != lastSeq {
+				progressBatch := b.readStore.NewBatch()
+				if err := b.readStore.WriteProgress(progressBatch, lastSeq); err != nil {
+					_ = progressBatch.Cancel()
+
+					return cursor, fmt.Errorf("advancing progress past checkpoint %d log: %w", cpID, err)
+				}
+
+				if err := progressBatch.Commit(); err != nil {
+					_ = progressBatch.Cancel()
+
+					return cursor, fmt.Errorf("committing progress past checkpoint %d log: %w", cpID, err)
+				}
 			}
 		}
 
@@ -359,6 +396,16 @@ const checkpointLinkRetries = 5
 // gate on, so no read ever opens a half-linked checkpoint.
 func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) error {
 	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+
+	// pebble.Checkpoint fails with ErrExist if destDir already exists. We only
+	// reach this path with the progress cursor still held before the
+	// CreatedQueryCheckpoint log (see processLogs), so any pre-existing directory
+	// here is a stale leftover from a previous attempt that crashed before
+	// writing the readiness marker — it is always safe to discard and recreate.
+	// This makes checkpoint creation idempotent across restarts/replays.
+	if err := os.RemoveAll(destDir); err != nil {
+		return fmt.Errorf("clearing stale read index checkpoint %d: %w", checkpointID, err)
+	}
 
 	var err error
 	for attempt := range checkpointLinkRetries {

@@ -2,6 +2,7 @@ package readstore
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -96,6 +97,27 @@ func TestCreateCheckpointThenMarkIsOpenable(t *testing.T) {
 	ro, err := OpenReadOnly(destDir, logging.NopZap())
 	require.NoError(t, err)
 	require.NoError(t, ro.Close())
+}
+
+// TestCreateCheckpointFailsIfDirExists documents the pebble contract the index
+// builder relies on for crash-safe recreation: CreateCheckpoint errors when the
+// destination already exists, so a replay-after-crash MUST clear the stale
+// directory first (createReadIndexCheckpoint does exactly that). A recreate over
+// a cleared path then succeeds.
+func TestCreateCheckpointFailsIfDirExists(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	destDir := filepath.Join(t.TempDir(), "readindex")
+
+	require.NoError(t, s.CreateCheckpoint(destDir))
+
+	// Second create over the existing dir fails (pebble ErrExist).
+	require.Error(t, s.CreateCheckpoint(destDir))
+
+	// After clearing, recreate succeeds — the idempotency the builder depends on.
+	require.NoError(t, os.RemoveAll(destDir))
+	require.NoError(t, s.CreateCheckpoint(destDir))
 }
 
 // TestWaitForCheckpointContextCancel unblocks on context cancellation and
