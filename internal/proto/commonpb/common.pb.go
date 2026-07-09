@@ -1073,7 +1073,6 @@ const (
 	QueryTarget_QUERY_TARGET_ACCOUNTS     QueryTarget = 0
 	QueryTarget_QUERY_TARGET_TRANSACTIONS QueryTarget = 1
 	QueryTarget_QUERY_TARGET_LOGS         QueryTarget = 2
-	QueryTarget_QUERY_TARGET_AUDIT        QueryTarget = 3
 )
 
 // Enum value maps for QueryTarget.
@@ -1082,13 +1081,11 @@ var (
 		0: "QUERY_TARGET_ACCOUNTS",
 		1: "QUERY_TARGET_TRANSACTIONS",
 		2: "QUERY_TARGET_LOGS",
-		3: "QUERY_TARGET_AUDIT",
 	}
 	QueryTarget_value = map[string]int32{
 		"QUERY_TARGET_ACCOUNTS":     0,
 		"QUERY_TARGET_TRANSACTIONS": 1,
 		"QUERY_TARGET_LOGS":         2,
-		"QUERY_TARGET_AUDIT":        3,
 	}
 )
 
@@ -10191,10 +10188,12 @@ func (x *RevertedCondition) GetValue() bool {
 
 // AuditCondition filters audit entries by a single audit field, mirroring
 // BuiltinUintCondition's (field-enum × condition) shape. It is only meaningful
-// under QUERY_TARGET_AUDIT: the audit compiler (query.CompileAuditFilter)
-// accepts Audit/And/Or leaves and rejects every other QueryFilter variant with
+// for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
+// Audit/And/Or leaves and rejects every other QueryFilter variant with
 // InvalidArgument, while the index compiler used for accounts/transactions/logs
-// (query.Compile) never lists QueryFilter_Audit and rejects it there too.
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too. There
+// is no QueryTarget dispatch for audit — ListAuditEntries calls
+// CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller.subject, order_type, timestamp,
@@ -13410,12 +13409,11 @@ const file_common_proto_rawDesc = "" +
 	"\vAddressRole\x12\x14\n" +
 	"\x10ADDRESS_ROLE_ANY\x10\x00\x12\x17\n" +
 	"\x13ADDRESS_ROLE_SOURCE\x10\x01\x12\x1c\n" +
-	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*v\n" +
+	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*x\n" +
 	"\vQueryTarget\x12\x19\n" +
 	"\x15QUERY_TARGET_ACCOUNTS\x10\x00\x12\x1d\n" +
 	"\x19QUERY_TARGET_TRANSACTIONS\x10\x01\x12\x15\n" +
-	"\x11QUERY_TARGET_LOGS\x10\x02\x12\x16\n" +
-	"\x12QUERY_TARGET_AUDIT\x10\x03*B\n" +
+	"\x11QUERY_TARGET_LOGS\x10\x02\"\x04\b\x03\x10\x03*\x12QUERY_TARGET_AUDIT*B\n" +
 	"\tQueryMode\x12\x13\n" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
 	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01B9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"

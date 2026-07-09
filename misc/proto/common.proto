@@ -1280,10 +1280,12 @@ message RevertedCondition {
 
 // AuditCondition filters audit entries by a single audit field, mirroring
 // BuiltinUintCondition's (field-enum × condition) shape. It is only meaningful
-// under QUERY_TARGET_AUDIT: the audit compiler (query.CompileAuditFilter)
-// accepts Audit/And/Or leaves and rejects every other QueryFilter variant with
+// for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
+// Audit/And/Or leaves and rejects every other QueryFilter variant with
 // InvalidArgument, while the index compiler used for accounts/transactions/logs
-// (query.Compile) never lists QueryFilter_Audit and rejects it there too.
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too. There
+// is no QueryTarget dispatch for audit — ListAuditEntries calls
+// CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller.subject, order_type, timestamp,
@@ -1432,7 +1434,12 @@ enum QueryTarget {
   QUERY_TARGET_ACCOUNTS = 0;
   QUERY_TARGET_TRANSACTIONS = 1;
   QUERY_TARGET_LOGS = 2;
-  QUERY_TARGET_AUDIT = 3;
+
+  // 3 was QUERY_TARGET_AUDIT — removed: the audit list path calls
+  // query.CompileAuditFilter directly and never dispatches on QueryTarget, and
+  // prepared queries cannot target audit. Reserved so the number is not reused.
+  reserved 3;
+  reserved "QUERY_TARGET_AUDIT";
 }
 
 enum QueryMode {
