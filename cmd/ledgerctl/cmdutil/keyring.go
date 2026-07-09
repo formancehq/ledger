@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"context"
 	"errors"
 
 	"github.com/spf13/cobra"
@@ -28,6 +29,12 @@ func GetKeyring(cmd *cobra.Command) Keyring {
 	}
 
 	return &osKeyring{}
+}
+
+// WithKeyring returns a context carrying kr as the Keyring GetKeyring will
+// resolve. Exists so tests can inject fakes without touching the OS keyring.
+func WithKeyring(ctx context.Context, kr Keyring) context.Context {
+	return context.WithValue(ctx, contextKeyKeyring{}, kr)
 }
 
 // osKeyring wraps the OS-level keyring (macOS Keychain, Linux libsecret, Windows Credential Manager).

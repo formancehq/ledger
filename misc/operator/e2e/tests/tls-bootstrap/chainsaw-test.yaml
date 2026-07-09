@@ -43,13 +43,13 @@ spec:
                 --from-file=ca.crt=ca.crt
             timeout: 60s
 
-    # 2. Deploy LedgerService with TLS enabled from the start. Because there
+    # 2. Deploy Cluster with TLS enabled from the start. Because there
     #    is no pre-existing StatefulSet, the operator does not need to walk
     #    through the optional phase.
-    - name: Deploy TLS-enabled LedgerService
+    - name: Deploy TLS-enabled Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -65,7 +65,7 @@ spec:
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: tls-bs
               status:

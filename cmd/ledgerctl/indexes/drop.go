@@ -23,7 +23,7 @@ and frees the associated storage.
 Index types:
   address              Account→transaction mapping (any role)
   source-address       Source account→transaction mapping
-  dest-address         Destination account→transaction mapping
+  destination-address  Destination account→transaction mapping
   metadata             Metadata field index (requires --target and --key)
   account-asset        Account asset-presence index (the 'has asset' account filter)
 
@@ -37,8 +37,10 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().String("type", "", "Index type: address, source-address, dest-address, metadata")
-	cmd.Flags().String("target", "", "Target type for metadata index: account or transaction")
+	cmd.Flags().String("type", "", "Index type: address, source-address, destination-address, metadata")
+	cmdutil.RegisterEnumCompletion(cmd, "type", indexTypeOptions...)
+	cmd.Flags().String("target", "", "Target type for metadata index: account, transaction, or ledger")
+	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name (for metadata index)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -63,7 +65,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger", "account-asset"}).
+			WithOptions(indexTypeOptions).
 			WithDefaultText("Select index type to drop").
 			Show()
 		if err != nil {
@@ -71,6 +73,10 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 		}
 
 		indexType = result
+	}
+
+	if err := rejectMetadataOnlyFlags(cmd, indexType); err != nil {
+		return err
 	}
 
 	req := &servicepb.DropIndexRequest{
@@ -86,9 +92,9 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	case "source-address":
 		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
 		indexDesc = "source-address"
-	case "dest-address":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
-		indexDesc = "dest-address"
+	case "destination-address":
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
+		indexDesc = "destination-address"
 	case "metadata":
 		target, key, err := resolveMetadataIndexFlags(cmd)
 		if err != nil {
@@ -106,11 +112,14 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	case "inserted-at":
 		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
 		indexDesc = "inserted-at"
+	case "reverted-at":
+		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+		indexDesc = "reverted-at"
 	case "account-asset":
 		req.Id = accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 		indexDesc = "account has-asset"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, inserted-at, or account-asset", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, destination-address, metadata, reference, timestamp, inserted-at, reverted-at, or account-asset", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

@@ -1154,7 +1154,7 @@ Response:
 | **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
 | **ExistsCondition on untyped keys** | Allowed | `ExistsCondition` checks for key presence, not the value type — it works regardless of whether the key has a declared schema. Some clients store large amounts of untyped metadata; `ExistsCondition` lets them query key presence without requiring a schema declaration first. |
 | **Volume-based filters** | Out of scope — not viable as index-backed filters | A condition like `balance(USD/2) > 1000` cannot be backed by an inverted index in bbolt because volumes change on every transaction — the index would need to be rewritten for every posting. This is the same write amplification problem that ruled out replicating volumes in bbolt (Section 9.2). The only viable approach is post-filtering: run the metadata filter first, then load volumes from Pebble for each candidate and apply the balance condition. This breaks the streaming/lazy cursor model — the executor must materialize candidates, perform N Pebble reads, and re-filter. For a metadata filter matching 10K accounts, that's 10K `ComputeValue` calls before the balance condition even applies. If needed in the future, it should be implemented as a separate post-filter step with a hard limit on candidate set size, not as a `FieldRef` in the filter tree. |
-| **Point-in-time queries** | Not supported (arbitrary PIT); [chapter](../technical/architecture/data-model/chapters.md)-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and chapter archival are designed to bound the hot dataset — PIT negates both. Chapter-boundary snapshots (file copy at chapter close) provide auditable historical queries without fighting the architecture. See Section 14. |
+| **Point-in-time queries** | Not supported (arbitrary PIT); [chapter](../technical/architecture/subsystems/chapters/lifecycle.md)-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and chapter archival are designed to bound the hot dataset — PIT negates both. Chapter-boundary snapshots (file copy at chapter close) provide auditable historical queries without fighting the architecture. See Section 14. |
 
 ## 14. Point-in-Time Queries
 
@@ -1170,7 +1170,7 @@ Ledger v2 supports querying the ledger at any arbitrary date via a `pit` paramet
 
 ### 14.2 What PIT Would Mean for v3
 
-The v3 architecture is fundamentally designed around **compaction**: old entries are consolidated and cleaned up over time (generational compaction in Pebble, [chapter](../technical/architecture/data-model/chapters.md) archival to cold storage). PIT fights directly against this design.
+The v3 architecture is fundamentally designed around **compaction**: old entries are consolidated and cleaned up over time (generational compaction in Pebble, [chapter](../technical/architecture/subsystems/chapters/lifecycle.md) archival to cold storage). PIT fights directly against this design.
 
 #### What would be needed
 
@@ -1184,7 +1184,7 @@ To support arbitrary PIT in the prepared query read store:
 
 4. **Volume reconstruction**: `ComputeValue(reader, maxIndex, key)` can reconstruct volumes at a specific Raft index — but only if the base+diff entries still exist in Pebble. After generational compaction, old entries are deleted. PIT beyond the compaction window is impossible.
 
-5. **[Chapter](../technical/architecture/data-model/chapters.md) archival breaks PIT**: once a chapter is archived and logs purged from Pebble, the base+diff entries for that chapter's transactions are gone. PIT queries into archived chapters would require retrieving data from cold storage — fundamentally changing the query latency model.
+5. **[Chapter](../technical/architecture/subsystems/chapters/lifecycle.md) archival breaks PIT**: once a chapter is archived and logs purged from Pebble, the base+diff entries for that chapter's transactions are gone. PIT queries into archived chapters would require retrieving data from cold storage — fundamentally changing the query latency model.
 
 #### Cost analysis
 
@@ -1199,7 +1199,7 @@ To support arbitrary PIT in the prepared query read store:
 
 ### 14.3 Recommendation — No Arbitrary PIT
 
-**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, [chapter](../technical/architecture/data-model/chapters.md) archival, and cold storage are all mechanisms to bound the hot dataset size.
+**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, [chapter](../technical/architecture/subsystems/chapters/lifecycle.md) archival, and cold storage are all mechanisms to bound the hot dataset size.
 
 Adding PIT to the prepared query system would:
 
@@ -1214,13 +1214,13 @@ Instead of arbitrary PIT, three lighter-weight alternatives provide historical q
 
 #### Option A — Chapter-boundary snapshots
 
-When a [chapter](../technical/architecture/data-model/chapters.md) closes, capture a snapshot of the bbolt read store state. This gives exact answers to "what was the ledger state at the end of chapter N?" without any ongoing storage cost between chapters.
+When a [chapter](../technical/architecture/subsystems/chapters/lifecycle.md) closes, capture a snapshot of the bbolt read store state. This gives exact answers to "what was the ledger state at the end of chapter N?" without any ongoing storage cost between chapters.
 
 - **Storage**: one frozen bbolt file per closed chapter (can be compressed and moved to cold storage)
 - **Query**: open the chapter's bbolt snapshot as read-only, execute the same prepared query against it
 - **Granularity**: chapter boundaries only — not arbitrary dates, but predictable and auditable
 - **Implementation**: `bbolt.View()` + file copy at chapter close; or Pebble checkpoint-style approach
-- **Natural fit**: chapters already exist for archival (see [chapter lifecycle](../technical/architecture/data-model/chapters.md)); snapshots extend them to read queries
+- **Natural fit**: chapters already exist for archival (see [chapter lifecycle](../technical/architecture/subsystems/chapters/lifecycle.md)); snapshots extend them to read queries
 
 #### Option B — On-demand reconstruction from logs
 
@@ -1253,7 +1253,7 @@ At a configurable interval (e.g., daily, weekly), the index builder captures a f
 | **Compaction compatible** | No | Yes | Yes | Yes |
 | **Cold storage compatible** | No | Yes (snapshot in cold) | Yes (replays from cold) | Yes (snapshot in cold) |
 
-**Recommendation**: start with **Option A** (chapter-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing [chapter lifecycle](../technical/architecture/data-model/chapters.md). Option B can be added later for ad-hoc audit queries.
+**Recommendation**: start with **Option A** (chapter-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing [chapter lifecycle](../technical/architecture/subsystems/chapters/lifecycle.md). Option B can be added later for ad-hoc audit queries.
 
 ## 15. Open Questions
 

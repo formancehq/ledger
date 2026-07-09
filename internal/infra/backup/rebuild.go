@@ -45,6 +45,7 @@ func RebuildDelta(
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
+		pendingTx:      make(map[string]*commonpb.TransactionState),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -313,6 +314,7 @@ func RebuildDelta(
 			batch = store.OpenWriteSession()
 			writer.batch = batch
 			clear(writer.pendingVolumes)
+			clear(writer.pendingTx)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
@@ -438,6 +440,11 @@ func seedLedgerContext(
 
 // attributeReplayWriter implements replay.Writer by writing directly to
 // Pebble attributes via Attribute[V].Set/Get/Delete.
+//
+// Pebble batches are not indexed (see OpenWriteSession), so writes committed
+// through w.batch are invisible to w.store.Get until Commit. The pending*
+// overlays make in-batch state visible to same-batch reads; both maps are
+// cleared on every batch commit alongside the batch itself.
 type attributeReplayWriter struct {
 	store          *dal.Store
 	batch          *dal.WriteSession
@@ -445,6 +452,7 @@ type attributeReplayWriter struct {
 	metadata       *attributes.Attribute[*commonpb.MetadataValue]
 	tx             *attributes.Attribute[*commonpb.TransactionState]
 	pendingVolumes map[string]*raftcmdpb.VolumePair
+	pendingTx      map[string]*commonpb.TransactionState
 }
 
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
@@ -552,20 +560,38 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 	return w.metadata.Delete(w.batch, oldKey)
 }
 
-func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue) error {
-	txState := &commonpb.TransactionState{
-		CreatedByLog: seq,
-		Metadata:     metadata,
-		Timestamp:    timestamp,
+// getTx returns the in-batch state if present, otherwise the committed state.
+// Symmetric to GetVolume — required because w.batch is non-indexed and would
+// otherwise hide same-batch writes from subsequent reads within the 5000-log
+// commit window.
+func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*commonpb.TransactionState, error) {
+	if state, ok := w.pendingTx[string(canonicalKey)]; ok {
+		return state, nil
 	}
 
-	_, err := w.tx.Set(w.batch, canonicalKey, txState)
-
-	return err
+	return w.tx.Get(w.store, canonicalKey)
 }
 
-func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64) error {
-	existing, err := w.tx.Get(w.store, canonicalKey)
+func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
+	txState := &commonpb.TransactionState{
+		CreatedByLog:       seq,
+		Metadata:           metadata,
+		Timestamp:          timestamp,
+		Postings:           postings,
+		RevertsTransaction: revertsTransaction,
+	}
+
+	if _, err := w.tx.Set(w.batch, canonicalKey, txState); err != nil {
+		return err
+	}
+
+	w.pendingTx[string(canonicalKey)] = txState
+
+	return nil
+}
+
+func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
+	existing, err := w.getTx(canonicalKey)
 	if err != nil {
 		return err
 	}
@@ -575,14 +601,19 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	}
 
 	existing.RevertedByTransaction = revertTxID
+	existing.RevertedAt = revertedAt
 
-	_, err = w.tx.Set(w.batch, canonicalKey, existing)
+	if _, err := w.tx.Set(w.batch, canonicalKey, existing); err != nil {
+		return err
+	}
 
-	return err
+	w.pendingTx[string(canonicalKey)] = existing
+
+	return nil
 }
 
 func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error {
-	existing, err := w.tx.Get(w.store, canonicalKey)
+	existing, err := w.getTx(canonicalKey)
 	if err != nil {
 		return err
 	}
@@ -597,13 +628,17 @@ func (w *attributeReplayWriter) SaveTxMetadata(canonicalKey []byte, metadata map
 
 	maps.Copy(existing.GetMetadata(), metadata)
 
-	_, err = w.tx.Set(w.batch, canonicalKey, existing)
+	if _, err := w.tx.Set(w.batch, canonicalKey, existing); err != nil {
+		return err
+	}
 
-	return err
+	w.pendingTx[string(canonicalKey)] = existing
+
+	return nil
 }
 
 func (w *attributeReplayWriter) DeleteTxMetadata(canonicalKey []byte, key string) error {
-	existing, err := w.tx.Get(w.store, canonicalKey)
+	existing, err := w.getTx(canonicalKey)
 	if err != nil {
 		return err
 	}
@@ -614,7 +649,11 @@ func (w *attributeReplayWriter) DeleteTxMetadata(canonicalKey []byte, key string
 
 	delete(existing.GetMetadata(), key)
 
-	_, err = w.tx.Set(w.batch, canonicalKey, existing)
+	if _, err := w.tx.Set(w.batch, canonicalKey, existing); err != nil {
+		return err
+	}
 
-	return err
+	w.pendingTx[string(canonicalKey)] = existing
+
+	return nil
 }

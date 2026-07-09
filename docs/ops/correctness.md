@@ -6,147 +6,7 @@ This document describes the mechanisms ensuring the integrity and immutability o
 
 Integrity verification uses a **batch-level hash chain on audit entries** rather than per-log hashing. Each audit entry (one per Raft proposal) is cryptographically chained to its predecessor, providing tamper detection and ordering proof at the proposal level.
 
-### Hash Formula
-
-```
-audit_hash = H(key, header_payload || concat(per_item_payload) || previous_audit_hash)
-```
-
-Where:
-- `H` is the configured keyed hash function (BLAKE3 or XXH3-128).
-- `key` is derived from the immutable `ClusterID` via domain-separated BLAKE3.
-- `header_payload` is the canonical binary encoding of EVERY AuditEntry field except `hash`: sequence, timestamp, proposal_id, outcome (success with log-range bounds, or failure with all sub-fields including the context map), order_count, ledgers, hash_version, caller_snapshot, idempotency key, signature.
-- `per_item_payload` is the canonical binary encoding of each AuditItem (order_index, log_sequence, serialized_order) — one payload per item, concatenated in order_index order.
-- `previous_audit_hash` is the hash of the immediately preceding audit entry (empty for the first entry).
-
-The verifier rebuilds `header_payload` and each `per_item_payload` from the stored typed fields via the spec below, so any tampering with any bound field changes the rebuilt bytes and breaks the chain hash. Detection scope: every field of `AuditEntry` and `AuditItem` except `AuditEntry.hash` itself.
-
-### Bound vs unbound fields
-
-| Field | Bound by | Tampering detection |
-|---|---|---|
-| `AuditEntry.sequence` | `header_payload` | ✓ |
-| `AuditEntry.timestamp` | `header_payload` | ✓ |
-| `AuditEntry.proposal_id` | `header_payload` | ✓ |
-| `AuditEntry.outcome` (success or failure) | `header_payload` | ✓ |
-| `AuditEntry.order_count` | `header_payload` | ✓ |
-| `AuditEntry.items` | NOT stored in entry value — see `per_item_payload` below | ✓ |
-| `AuditEntry.ledgers` | `header_payload` (sorted) | ✓ |
-| `AuditEntry.hash` | output of chain — not in pre-image by construction | — |
-| `AuditEntry.hash_version` | `header_payload` | ✓ |
-| `AuditEntry.caller_snapshot` | `header_payload` (identity, source oneof, god, sorted scopes) | ✓ |
-| `AuditEntry.idempotency` | `header_payload` (key string) | ✓ |
-| `AuditEntry.signature` | `header_payload` (key_id, signature, payload) | ✓ |
-| `AuditItem.order_index` | `per_item_payload` | ✓ |
-| `AuditItem.serialized_order` | `per_item_payload` | ✓ |
-| `AuditItem.log_sequence` | `per_item_payload` | ✓ |
-
-### Header payload binary spec
-
-All integers are big-endian. All variable-length blobs (strings, sub-payloads, repeated entries) are prefixed by their length as `u32 BE`. Maps and `repeated string` fields are iterated in lexicographic key order.
-
-```
-HashedHeaderPayload {
-    u64 sequence
-    u64 timestamp_data
-    u64 proposal_id
-    u32 order_count
-    u32 hash_version
-    u32 ledgers_count
-    repeated { u32 ledger_len ; bytes ledger }     // sorted lexicographically
-    u8  outcome_tag                                  // 0 = success, 1 = failure
-    u32 outcome_payload_len
-    bytes outcome_payload                            // shape selon outcome_tag
-    u32 caller_snapshot_len                          // 0 when CallerSnapshot is absent
-    bytes caller_snapshot_payload
-    u32 idempotency_key_len ; bytes idempotency_key  // 0 when the batch is unkeyed
-    u32 signature_len                                // 0 when the batch is unsigned
-    bytes signature_payload
-}
-
-SignaturePayload {                                  // empty buffer when unsigned
-    u32 key_id_len ; bytes key_id
-    u32 signature_len ; bytes signature
-    u32 payload_len ; bytes payload
-}
-
-OutcomeSuccessPayload {
-    u64 min_log_sequence
-    u64 max_log_sequence
-}
-
-OutcomeFailurePayload {
-    u32 reason                                          // common.ErrorReason enum value
-    u32 message_len ; bytes message
-    u32 context_count
-    repeated { u32 key_len ; bytes key ; u32 value_len ; bytes value }  // sorted by key
-}
-
-CallerSnapshotPayload {                              // empty buffer when snapshot is nil
-    u32 subject_len ; bytes subject
-    u8  source_tag                                   // 0 = none, 1 = issuer, 2 = key_id
-    u32 source_value_len ; bytes source_value
-    u8  god                                          // 0 or 1
-    u32 scopes_count
-    repeated { u32 scope_len ; bytes scope }         // sorted
-}
-```
-
-### Per-item payload binary spec
-
-```
-PerItemPayload {
-    u32 order_index
-    u64 log_sequence
-    u32 serialized_order_len
-    bytes serialized_order
-}
-```
-
-`serialized_order` is the exact `Order.MarshalDeterministicVT()` output captured at apply time and persisted in `AuditItem.serialized_order` — verifiers re-hash those bytes directly and never re-marshal an `Order` proto, so the chain is immune to vtprotobuf or `Order` schema evolution.
-
-The Go reference implementation lives in `internal/infra/state/audit_envelope.go` (`BuildHashedHeaderPayload` and `BuildPerItemPayload`); cross-language verifiers re-implement the spec above. A golden test (`internal/infra/state/audit_envelope_test.go`) recomputes the hash by hand for a fixed fixture and trips on any drift between the spec and the Go implementation.
-
-### Why Batch-Level (Not Per-Log)
-
-Per-log hashing creates a strict sequential dependency in the FSM hot path: each log's hash depends on the previous log's hash, preventing any parallelism in `ProcessOrders`. Moving the hash chain to audit entries means:
-
-1. The hash is computed **once per batch** (after all business logic completes), not per log
-2. `ProcessOrders` is free of sequential hash dependencies
-3. Failure entries are included in the chain, preventing silent removal of error records
-
-### Hash Algorithm Selection
-
-The hash algorithm is a cluster-wide setting configured via `--hash-algorithm` and replicated through Raft (stored in `ClusterConfig`). Each audit entry records which algorithm was used in its `hash_version` field.
-
-| `hash_version` | Algorithm | Output Size | Properties |
-|----------------|-----------|-------------|------------|
-| `0` (default) | BLAKE3 | 32 bytes | Cryptographic — detects both corruption and intentional tampering |
-| `1` | XXH3-128 | 16 bytes | Non-cryptographic — detects corruption only, ~5-10x faster |
-
-### Implementation Details
-
-- **BLAKE3**: `github.com/zeebo/blake3` — stateless `blake3.Sum256`, zero shared state
-- **XXH3-128**: `github.com/zeebo/xxh3` — stateless, zero allocation
-- **Hash field**: Stored as `bytes hash` (field 9) in the `AuditEntry` protobuf message
-- **Version field**: Stored as `uint32 hash_version` (field 10) in the `AuditEntry` protobuf message
-- **Computation**: Performed synchronously in `applyProposal()` on the FSM goroutine, after `ProcessOrders`
-
-### State Persistence
-
-The `lastAuditHash` is maintained as volatile state in the `Machine` (FSM). It is:
-- **Recovered** on startup from the last `AuditEntry` in Pebble
-- **Updated** after each audit entry is written (success or failure)
-
-The chain is **not broken** by Raft snapshots: the snapshot contains all Pebble data including audit entries, and recovery reads the last entry's hash.
-
-### Failure Isolation
-
-If a proposal fails (e.g., insufficient funds, ledger not found), a failure audit entry is created. The hash binds the failure outcome (reason, message, context) alongside the orders, so a failure cannot silently be relabelled as a success (or vice versa) without breaking the chain. The `WriteSet` state is discarded without being merged into the `Machine`, but the audit chain advances. This ensures failed proposals are tamper-evident.
-
-### Idempotent Responses
-
-When an idempotent request matches a previously processed order, the processor returns a **reference** to the existing log rather than creating a new one. References do not produce new logs, but the audit entry still covers the batch.
+For the full specification — hash formula, header and per-item binary spec, algorithm selection, state persistence, failure isolation, and the companion-stream cardinality (`AuditEntry` / `AuditItem` / `AppliedProposal` / `Log`) — see [`docs/technical/architecture/subsystems/checker/audit-chain.md`](../technical/architecture/subsystems/checker/audit-chain.md). The verification passes that keep every projection honest against the chain live in [`checker.md`](../technical/architecture/subsystems/checker/checker.md).
 
 ## Double-Entry Invariant Check
 
@@ -290,13 +150,13 @@ The `lastAppliedTimestamp` is maintained as volatile state in the `Machine` (FSM
 - **Included in Raft snapshots** via the `last_applied_timestamp` field in `MemorySnapshot`
 - **Restored** when a node installs a snapshot from the leader
 
-See [Hybrid Logical Clock Architecture](../technical/architecture/core/hybrid-logical-clock.md) for a detailed technical description.
+See [Hybrid Logical Clock Architecture](../technical/architecture/subsystems/consensus/hybrid-logical-clock.md) for a detailed technical description.
 
 ### Clock Skew Check
 
 As a complementary safety mechanism, the `HealthChecker` periodically queries each peer's physical clock via the `GetNodeTime` gRPC RPC. If the absolute skew between any two nodes exceeds the configured threshold (`--health-clock-skew-threshold`, default 500ms), the cluster is marked unhealthy and the admission layer rejects new write operations. This ensures operators are alerted to NTP issues before the HLC has to compensate excessively, which would degrade timestamp quality.
 
-See [Clock Skew Check](../technical/architecture/core/hybrid-logical-clock.md#clock-skew-check) for details.
+See [Clock Skew Check](../technical/architecture/subsystems/consensus/hybrid-logical-clock.md#clock-skew-check) for details.
 
 ## Cold Archive Integrity
 

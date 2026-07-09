@@ -31,6 +31,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
 	cmd.Flags().String("mode", "", "Enforcement mode: STRICT or AUDIT (required)")
+	cmdutil.RegisterEnumCompletion(cmd, "mode", "STRICT", "AUDIT")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("ledger")
 	_ = cmd.MarkFlagRequired("mode")

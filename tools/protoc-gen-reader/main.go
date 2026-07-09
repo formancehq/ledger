@@ -1,7 +1,10 @@
-// protoc-gen-reader generates read-only interfaces and wrapper structs for
+// protoc-gen-reader generates read-only interfaces and wrapper types for
 // protobuf messages. Each message gets:
 //   - A <Message>Reader interface with all Get* methods + Mutate() *<Message>
-//   - An unexported <message>Readonly wrapper struct implementing the interface
+//   - An unexported <message>Readonly named type defined as `type X Msg` so
+//     that AsReader() can convert *Msg -> *<message>Readonly without heap
+//     allocation. The resulting *<message>Readonly fits in the interface data
+//     word, and every transitive GetFoo() reader view is likewise zero-alloc.
 //   - An AsReader() method on the concrete type returning the reader interface
 //   - A Mutate() method on the concrete type returning CloneVT()
 //
@@ -43,10 +46,12 @@ type extraMethod struct {
 // extraMethods registers custom read-only methods for specific proto messages.
 // Key: proto full name (e.g., "common.Uint256").
 // These methods are added to the Reader interface and delegated on the wrapper.
+// In `call`, the token %BASE% is substituted with a cast of the wrapper receiver
+// back to the concrete message pointer (e.g., "(*Uint256)(r)").
 var extraMethods = map[string][]extraMethod{
 	"common.Uint256": {
-		{name: "IntoUint256", signature: "(dst *uint256.Int)", call: "r.v.IntoUint256(dst)"},
-		{name: "IsZero", signature: "() bool", call: "return r.v.IsZero()"},
+		{name: "IntoUint256", signature: "(dst *uint256.Int)", call: "%BASE%.IntoUint256(dst)"},
+		{name: "IsZero", signature: "() bool", call: "return %BASE%.IsZero()"},
 	},
 }
 
@@ -153,16 +158,23 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P("\tMutate() *", typeName)
 	g.P("}")
 
-	// --- Wrapper struct ---
+	// --- Wrapper type ---
+	// Defined as a named type over the concrete message so that AsReader() can
+	// convert *typeName -> *wrapperName without allocating a heap wrapper. The
+	// resulting *wrapperName fits in the interface data-word, keeping the whole
+	// reader-view chain zero-alloc.
 	g.P()
-	g.P("type ", wrapperName, " struct{ v *", typeName, " }")
+	g.P("type ", wrapperName, " ", typeName)
+
+	// base is the receiver→concrete cast used inside every wrapper method.
+	base := "(*" + typeName + ")(r)"
 
 	for _, field := range msg.Fields {
 		if field.Oneof != nil && !field.Desc.HasOptionalKeyword() {
 			continue
 		}
 
-		writeWrapperGetter(g, msg, field, wrapperName)
+		writeWrapperGetter(g, msg, field, wrapperName, base)
 	}
 
 	// Oneof getters on wrapper
@@ -175,7 +187,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 		oneofInterfaceName := fmt.Sprintf("is%s_%s", typeName, oneof.GoName)
 		g.P()
 		g.P("func (r *", wrapperName, ") ", getterName, "() ", oneofInterfaceName, " {")
-		g.P("\treturn r.v.", getterName, "()")
+		g.P("\treturn ", base, ".", getterName, "()")
 		g.P("}")
 	}
 
@@ -187,14 +199,14 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 
 		g.P()
 		g.P("func (r *", wrapperName, ") ", em.name, em.signature, " {")
-		g.P("\t", em.call)
+		g.P("\t", strings.ReplaceAll(em.call, "%BASE%", base))
 		g.P("}")
 	}
 
 	// Mutate on wrapper
 	g.P()
 	g.P("func (r *", wrapperName, ") Mutate() *", typeName, " {")
-	g.P("\treturn r.v.CloneVT()")
+	g.P("\treturn ", base, ".CloneVT()")
 	g.P("}")
 
 	// --- Methods on concrete type ---
@@ -202,7 +214,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message) {
 	g.P("// AsReader returns a read-only view of this ", typeName, ".")
 	g.P("func (m *", typeName, ") AsReader() ", readerName, " {")
 	g.P("\tif m == nil { return nil }")
-	g.P("\treturn &", wrapperName, "{v: m}")
+	g.P("\treturn (*", wrapperName, ")(m)")
 	g.P("}")
 
 	g.P()
@@ -243,8 +255,9 @@ func readerFieldType(g *protogen.GeneratedFile, owner *protogen.Message, field *
 }
 
 // writeWrapperGetter emits the wrapper method for one field, applying the
-// immutability rules described at the top of the file.
-func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field, wrapperName string) {
+// immutability rules described at the top of the file. `base` is the expression
+// used inside method bodies to reach the concrete message (e.g., "(*Foo)(r)").
+func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, field *protogen.Field, wrapperName string, base string) {
 	getterName := "Get" + field.GoName
 
 	switch {
@@ -254,7 +267,7 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 
 		g.P()
 		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-		g.P("\treturn ", mapImpl, "(r.v.", getterName, "())")
+		g.P("\treturn ", mapImpl, "(", base, ".", getterName, "())")
 		g.P("}")
 
 	case field.Desc.IsList():
@@ -270,14 +283,14 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 
 			g.P()
 			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-			g.P("\treturn ", ctor, "(r.v.", getterName, "())")
+			g.P("\treturn ", ctor, "(", base, ".", getterName, "())")
 			g.P("}")
 
 		case protoreflect.BytesKind:
 			// [][]byte — deep clone.
 			g.P()
 			g.P("func (r *", wrapperName, ") ", getterName, "() [][]byte {")
-			g.P("\tsrc := r.v.", getterName, "()")
+			g.P("\tsrc := ", base, ".", getterName, "()")
 			g.P("\tif src == nil { return nil }")
 			g.P("\tout := make([][]byte, len(src))")
 			g.P("\tfor i, b := range src {")
@@ -292,7 +305,7 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 
 			g.P()
 			g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-			g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: slicesPkg}), "(r.v.", getterName, "())")
+			g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: slicesPkg}), "(", base, ".", getterName, "())")
 			g.P("}")
 		}
 
@@ -301,7 +314,7 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 
 		g.P()
 		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-		g.P("\tv := r.v.", getterName, "()")
+		g.P("\tv := ", base, ".", getterName, "()")
 		g.P("\tif v == nil { return nil }")
 		g.P("\treturn v.AsReader()")
 		g.P("}")
@@ -310,7 +323,7 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 		// Singular []byte — defensive clone.
 		g.P()
 		g.P("func (r *", wrapperName, ") ", getterName, "() []byte {")
-		g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "(r.v.", getterName, "())")
+		g.P("\treturn ", g.QualifiedGoIdent(protogen.GoIdent{GoName: "Clone", GoImportPath: bytesPkg}), "(", base, ".", getterName, "())")
 		g.P("}")
 
 	default:
@@ -319,7 +332,7 @@ func writeWrapperGetter(g *protogen.GeneratedFile, owner *protogen.Message, fiel
 
 		g.P()
 		g.P("func (r *", wrapperName, ") ", getterName, "() ", retType, " {")
-		g.P("\treturn r.v.", getterName, "()")
+		g.P("\treturn ", base, ".", getterName, "()")
 		g.P("}")
 	}
 }

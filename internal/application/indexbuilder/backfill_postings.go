@@ -12,7 +12,7 @@ import (
 )
 
 // processBackfillPostings is the fast path for backfilling posting-related
-// indexes (ADDRESS, SOURCE_ADDRESS, DEST_ADDRESS). It reads raw Pebble values
+// indexes (ADDRESS, SOURCE_ADDRESS, DESTINATION_ADDRESS). It reads raw Pebble values
 // and uses a protowire parser that only extracts the fields needed for posting
 // indexation (~30% of the payload), skipping metadata, balances, volumes,
 // timestamps, signatures and hash.
@@ -46,9 +46,9 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 	// cfg (account-by-asset hook), so exactly one of the two backfill modes
 	// is active per task.
 	var (
-		indexAny bool
-		indexSrc bool
-		indexDst bool
+		indexAny         bool
+		indexSource      bool
+		indexDestination bool
 		// cfg controls the account-by-asset hook in indexPostingAddressMappings.
 		// An empty config leaves ACCT_BUILTIN_INDEX_ASSET unregistered so the
 		// hook is a no-op; only the account-asset task registers it.
@@ -60,8 +60,8 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		// A tx-address builtin task: turn on the matching address-mapping
 		// flag and leave the account-by-asset hook off (cfg stays empty).
 		indexAny = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
-		indexSrc = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
-		indexDst = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS
+		indexSource = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+		indexDestination = k.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS
 	case *commonpb.IndexID_AccountBuiltin:
 		if k.AccountBuiltin != commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
 			// Unreachable by design: isPostingIndex only routes the account
@@ -172,7 +172,7 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(
 					kb, cfg, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset,
-					indexAny, indexSrc, indexDst, excludedVolumes,
+					indexAny, indexSource, indexDestination, excludedVolumes,
 				); err != nil {
 					_ = batch.Cancel()
 
@@ -230,14 +230,14 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 // isPostingIndex returns true if the index is replayed through the shared
 // posting walk during backfill: the transaction builtin address indexes
-// (ADDRESS, SOURCE_ADDRESS, DEST_ADDRESS) and the account has-asset index.
+// (ADDRESS, SOURCE_ADDRESS, DESTINATION_ADDRESS) and the account has-asset index.
 func isPostingIndex(id *commonpb.IndexID) bool {
 	switch k := id.GetKind().(type) {
 	case *commonpb.IndexID_TxBuiltin:
 		switch k.TxBuiltin {
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
 			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
-			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
 			return true
 		}
 	case *commonpb.IndexID_AccountBuiltin:

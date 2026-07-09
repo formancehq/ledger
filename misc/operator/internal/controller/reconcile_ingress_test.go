@@ -16,7 +16,7 @@ import (
 
 func TestReconcile_IngressHTTP(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-http", ns)
+	ls := newCluster("ing-http", ns)
 	ls.Spec.Ingress = &ledgerv1alpha1.IngressSpec{
 		Enabled:   true,
 		ClassName: "nginx",
@@ -54,7 +54,7 @@ func TestReconcile_IngressHTTP(t *testing.T) {
 
 func TestReconcile_IngressGrpc(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-grpc", ns)
+	ls := newCluster("ing-grpc", ns)
 	ls.Spec.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{
 		Enabled:   true,
 		ClassName: "custom-class",
@@ -78,7 +78,7 @@ func TestReconcile_IngressGrpc(t *testing.T) {
 
 func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-cleanup", ns)
+	ls := newCluster("ing-cleanup", ns)
 	ls.Spec.Ingress = &ledgerv1alpha1.IngressSpec{
 		Enabled:   true,
 		ClassName: "nginx",
@@ -93,7 +93,7 @@ func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-ing-cleanup", Namespace: ns}, ing) == nil
 	}, "Ingress should be created")
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "ing-cleanup", Namespace: ns}, updated))
 	updated.Spec.Ingress.Enabled = false
 	require.NoError(t, k8sClient.Update(ctx, updated))
@@ -106,7 +106,7 @@ func TestReconcile_IngressDisabledCleansUp(t *testing.T) {
 
 func TestReconcile_IngressDefaultPaths(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-defpath", ns)
+	ls := newCluster("ing-defpath", ns)
 	ls.Spec.Ingress = &ledgerv1alpha1.IngressSpec{
 		Enabled: true,
 		Hosts: []ledgerv1alpha1.IngressHost{

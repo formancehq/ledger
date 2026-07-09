@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolString = sync.Pool{
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString = sync.Pool{
 		New: func() any { s := make([]string, 0, 16); return &s },
 	}
 )
@@ -75,7 +75,7 @@ func (m *MetadataMap) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Values) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Values {
 			keys = append(keys, k)
@@ -98,8 +98,9 @@ func (m *MetadataMap) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
@@ -156,6 +157,18 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x59
+	}
+	if m.RevertedByTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertedByTransaction))
+		i--
+		dAtA[i] = 0x51
+	}
 	if m.RevertedAt != nil {
 		size, _ := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -208,7 +221,7 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		dAtA[i] = 0x1a
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -231,8 +244,9 @@ func (m *Transaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.Postings) > 0 {
 		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
@@ -273,7 +287,7 @@ func (m *Script) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 	}
 	if len(m.Vars) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Vars {
 			keys = append(keys, k)
@@ -296,8 +310,9 @@ func (m *Script) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.Plain) > 0 {
 		i -= len(m.Plain)
@@ -351,7 +366,7 @@ func (m *VolumesByAssets) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Volumes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Volumes {
 			keys = append(keys, k)
@@ -374,8 +389,9 @@ func (m *VolumesByAssets) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
@@ -400,7 +416,7 @@ func (m *PostCommitVolumes) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.VolumesByAccount) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.VolumesByAccount {
 			keys = append(keys, k)
@@ -423,8 +439,9 @@ func (m *PostCommitVolumes) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
@@ -449,7 +466,7 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Volumes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Volumes {
 			keys = append(keys, k)
@@ -472,8 +489,9 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x32
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.UpdatedAt != nil {
 		size, _ := m.UpdatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -497,7 +515,7 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 		dAtA[i] = 0x1a
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -520,8 +538,9 @@ func (m *Account) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.Address) > 0 {
 		i -= len(m.Address)
@@ -586,7 +605,7 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.LedgerFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.LedgerFields {
 			keys = append(keys, k)
@@ -609,11 +628,12 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.TransactionFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.TransactionFields {
 			keys = append(keys, k)
@@ -636,11 +656,12 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.AccountFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountFields {
 			keys = append(keys, k)
@@ -663,8 +684,9 @@ func (m *MetadataSchema) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
@@ -1244,7 +1266,7 @@ func (m *SavedLedgerMetadataLog) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1267,8 +1289,9 @@ func (m *SavedLedgerMetadataLog) MarshalToSizedBufferDeterministicVT(dAtA []byte
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -1497,7 +1520,7 @@ func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		dAtA[i] = 0x38
 	}
 	if len(m.AccountTypes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
@@ -1520,8 +1543,9 @@ func (m *CreatedLedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x32
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.MirrorSource != nil {
 		size, _ := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -1854,7 +1878,7 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		dAtA[i] = 0x19
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -1877,8 +1901,9 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.Transaction != nil {
 		size, _ := m.Transaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -1952,7 +1977,7 @@ func (m *SavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1975,8 +2000,9 @@ func (m *SavedMetadata) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, e
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -2087,6 +2113,215 @@ func (m *MirrorSourceConfig) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *MirrorRewriteRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *CreatedTransactionRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *RevertedTransactionRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SavedMetadataRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DeletedMetadataRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *AnyVariantRule) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *CreatedTransactionAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *RevertedTransactionAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SavedMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DeletedMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *AnyVariantAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *RewriteAddressAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SetMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DeleteMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SetAccountMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DeleteAccountMetadataAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SetAccountMetadataFromAddressAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *SetAccountMetadataFromAddressReplacement) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *DropAction) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *HttpMirrorSourceConfig) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -2110,6 +2345,17 @@ func (m *OAuth2ClientCredentials) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *PostgresMirrorSourceConfig) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *PostgresAwsIamAuth) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2167,7 +2413,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x68
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -2190,8 +2436,9 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x62
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
@@ -2199,7 +2446,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x58
 	}
 	if len(m.AccountTypes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
@@ -2222,8 +2469,9 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x52
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.MirrorSyncProgress != nil {
 		size, _ := m.MirrorSyncProgress.MarshalToSizedBufferVT(dAtA[:i])
@@ -2295,7 +2543,7 @@ func (m *SaveMetadataCommand) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -2318,8 +2566,9 @@ func (m *SaveMetadataCommand) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.Target != nil {
 		size, _ := m.Target.MarshalToSizedBufferVT(dAtA[:i])
@@ -2361,6 +2610,28 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.RevertsTransaction != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RevertsTransaction))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.RevertedAt != nil {
+		size, _ := m.RevertedAt.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	if len(m.Postings) > 0 {
+		for iNdEx := len(m.Postings) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.Postings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.Timestamp != nil {
 		size, _ := m.Timestamp.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
@@ -2369,7 +2640,7 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 		dAtA[i] = 0x22
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -2392,8 +2663,9 @@ func (m *TransactionState) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.RevertedByTransaction != 0 {
 		i -= 8
@@ -2488,7 +2760,7 @@ func (m *IdempotencyFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -2511,8 +2783,9 @@ func (m *IdempotencyFailure) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if len(m.Message) > 0 {
 		i -= len(m.Message)
@@ -2615,7 +2888,7 @@ func (m *AccountType) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.SegmentTypes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.SegmentTypes {
 			keys = append(keys, k)
@@ -2638,8 +2911,9 @@ func (m *AccountType) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, err
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Put(keysPtr)
 	}
 	if m.Persistence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Persistence))
@@ -2726,6 +3000,17 @@ func (m *QueryFilter) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *ReferenceCondition) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *RevertedCondition) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

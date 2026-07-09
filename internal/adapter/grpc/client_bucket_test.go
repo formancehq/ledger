@@ -58,13 +58,17 @@ func TestGetTransaction_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetTransaction(gomock.Any(), gomock.Any()).Return(
-		&servicepb.GetTransactionResponse{Transaction: expected}, nil,
+		&servicepb.GetTransactionResponse{Transaction: expected, Receipt: "leader-receipt"}, nil,
 	)
 
 	client := NewLedgerGrpcClient(mock)
-	tx, err := client.GetTransaction(context.Background(), "ledger1", 42)
+	tx, receipt, err := client.GetTransaction(context.Background(), "ledger1", 42)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), tx.GetId())
+	// The receipt the serving node signed must be surfaced as authoritative
+	// (non-nil), not discarded.
+	require.NotNil(t, receipt)
+	require.Equal(t, "leader-receipt", *receipt)
 }
 
 func TestGetTransaction_Error(t *testing.T) {
@@ -75,7 +79,7 @@ func TestGetTransaction_Error(t *testing.T) {
 	mock.EXPECT().GetTransaction(gomock.Any(), gomock.Any()).Return(nil, errors.New("not found"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.GetTransaction(context.Background(), "ledger1", 99)
+	_, _, err := client.GetTransaction(context.Background(), "ledger1", 99)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 }
@@ -959,7 +963,7 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 			Subject: "original-user",
 			Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
 		},
-		Scopes: []string{"transactions:write"},
+		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	ctx := auth.WithForwardedSnapshot(context.Background(), original)
 
@@ -971,5 +975,5 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	require.NotNil(t, fc)
 	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())
-	require.Equal(t, []string{"transactions:write"}, fc.GetScopes())
+	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetScopes())
 }

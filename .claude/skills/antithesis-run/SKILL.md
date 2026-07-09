@@ -1,19 +1,32 @@
 ---
 name: antithesis-run
-description: Trigger an Antithesis cloud run for ledger-v3-poc by building and pushing per-branch tagged images to ECR and POSTing to the Antithesis launch API. Default mode is k8s (`just k8s-run`, duration in hours, exercises the operator); compose mode (`just run`, duration in minutes) is available on request. Use this skill when the user wants to "lance un run antithesis", "trigger antithesis", "fire antithesis", "test sur antithesis", or any phrasing about kicking off a cloud Antithesis test for this repo.
+description: Trigger an Antithesis cloud run for ledger by building/pushing per-branch tagged SUT images and delegating the launch to `snouty launch` (the official Antithesis CLI). Default mode is k8s (`basic_k8s_test`, duration in hours, exercises the operator); compose mode (`basic_test`, duration in minutes) is available on request. Use this skill when the user wants to "lance un run antithesis", "trigger antithesis", "fire antithesis", "test sur antithesis", or any phrasing about kicking off a cloud Antithesis test for this repo.
 ---
 
 # /antithesis-run — Launch an Antithesis cloud run
 
 ## Purpose
 
-Antithesis runs are long, expensive, and produce a triage report sent by email. The user fires one when they want their current branch exercised under fault injection. The skill wraps `tests/antithesis/Justfile`'s `k8s-run` / `run` recipes, computes a per-branch image tag so concurrent runs do not clobber each other on ECR, and surfaces the launch result.
+Antithesis runs are long, expensive, and produce a triage report sent by email. The user fires one when they want their current branch exercised under fault injection.
+
+This skill orchestrates the repo-specific pieces (per-branch tag, dirty-tree guard, manifest substitution, SUT image build/push) and then delegates the actual launch to `snouty launch`. Snouty handles the config-image build/push and the POST to the Antithesis launch API.
 
 ## What this skill does NOT do
 
-- Read or parse the resulting triage report (Antithesis emails it; that path is owned by `antithesis-debug` and `antithesis-query-logs`).
-- Re-implement the build / push pipeline — it shells out to the existing justfile recipes.
+- Read or parse the resulting triage report — that path is owned by the `antithesis-triage`, `antithesis-debug`, and `antithesis-query-logs` skills (all installed globally via `npx skills add antithesishq/antithesis-skills`).
 - Run the local model checker — that is `just test-model` / `just test-model-cluster`, not an Antithesis cloud run.
+- Re-implement the launch protocol — that is owned by `snouty`. The skill is a thin orchestrator on top.
+
+## Why `snouty` and not the legacy `just k8s-run` / `just run`
+
+The `tests/antithesis/Justfile` recipes (`k8s-run`, `run`) embed a hand-rolled `curl` against `formance.antithesis.com/api/v1/launch/...`. They predate `snouty`. `snouty launch` is the supported interface for agents (see Antithesis "Using Antithesis with AI" docs) and handles:
+
+- Building and pushing the config image from a `--config <dir>` (containing `docker-compose.yaml` or `manifests/`) automatically.
+- Hour→minute conversion (via the `--duration` flag, no `bc` shell-out).
+- Auth via `ANTITHESIS_TENANT` + `ANTITHESIS_API_KEY` (preferred) or `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD`.
+- Surfacing API errors in a structured form.
+
+The legacy recipes are kept in-tree as a fallback while `snouty` is still <1.0, but every new run should go through `snouty`.
 
 ## Workflow
 
@@ -21,11 +34,17 @@ Antithesis runs are long, expensive, and produce a triage report sent by email. 
 
 Run from the repo root (`git rev-parse --show-toplevel`). Verify:
 
-- `tests/antithesis/Justfile` exists. If not, abort — wrong repo.
-- These environment variables are set in the shell: `ANTITHESIS_PASSWORD`, `ANTITHESIS_REPOSITORY`, `ANTITHESIS_REPORT_RECIPIENT`. The `tests/antithesis/Justfile` does not load `.env`, so they must come from the user's shell (typically via direnv or an exported profile). If any are missing, list which and abort.
+- `tests/antithesis/k8s/` (k8s mode) or `tests/antithesis/config/` (compose mode) exists. If not, abort — wrong repo.
+- `snouty --version` succeeds. If not, install per `https://github.com/antithesishq/snouty` and abort.
+- These environment variables are set in the shell (abort if any **required** value is missing; run `snouty doctor` to surface everything in one shot):
+  - `ANTITHESIS_TENANT` — **required**. The tenant slug (`formance` for this repo; embedded in the launch URL `formance.antithesis.com`).
+  - `ANTITHESIS_API_KEY` — **required**. Needed by both the launcher and every downstream triage skill (`snouty runs …`, `antithesis-triage`, `antithesis-query-logs`, …).
+  - `ANTITHESIS_REPOSITORY` — **required**. Registry for SUT images.
+  - `ANTITHESIS_REPORT_RECIPIENT` — **required**. Used as `--recipients` on the run.
+  - `ANTITHESIS_USERNAME` + `ANTITHESIS_PASSWORD` — *optional* fallback. Only relevant when `ANTITHESIS_API_KEY` is absent, and only for `snouty launch`/`snouty debug` (the `runs` subcommand rejects basic auth). Do **not** abort on their absence when `ANTITHESIS_API_KEY` is set.
 - `docker info` succeeds (daemon reachable). If not, abort.
 
-Note: images are pushed to `$ANTITHESIS_REPOSITORY` (the registry Antithesis provides for this tenant) — there is no AWS / ECR step. Auth to that registry is set up once by the user via `docker login`; this skill does not re-do it.
+Auth to `$ANTITHESIS_REPOSITORY` is set up once by the user via `docker login`; this skill does not re-do it.
 
 ### 2. Detect git state
 
@@ -39,7 +58,7 @@ Note: images are pushed to `$ANTITHESIS_REPOSITORY` (the registry Antithesis pro
 tag := antithesis-<slug>-<sha7>
 ```
 
-The shared `antithesis` tag (default in `tests/antithesis/Justfile`) is deliberately avoided so concurrent runs do not race on ECR.
+The shared `antithesis` tag (default in `tests/antithesis/*/Justfile`) is deliberately avoided so concurrent runs do not race on the registry.
 
 ### 4. Choose mode
 
@@ -48,30 +67,99 @@ Default to **k8s**. Only switch to compose if the user explicitly asked ("compos
 ### 5. Ask duration and description
 
 - **Duration**:
-  - k8s mode: hours, default `2`. Accept integers or decimals (`1.5`). Validate >0.
+  - k8s mode: hours, default `2`. Accept integers or decimals (`1.5`). Validate >0. Convert to minutes before passing to `snouty --duration`.
   - compose mode: minutes, default `30`. Validate >0.
 - **Description**: default = `<branch> — <last commit subject>` (use `git log -1 --format=%s HEAD`). Allow the user to override. This string goes into the email report header — keep it meaningful.
 
-  The description is interpolated unescaped into the Justfile's curl `-d` JSON payload and into the shell line that builds it (`{{description}}`); a literal `"`, `\`, `$`, backtick or single quote in the value would corrupt the POST body or be evaluated by the shell. **Sanitise** before passing it to `just`: collapse the value to `[A-Za-z0-9 ._-]` (replace every other byte with `-`) and trim leading/trailing whitespace. If the sanitised string is empty, fall back to the branch slug. Do not attempt to escape the original — escaping rules differ between the shell layer and the embedded JSON, and the report header is a free-form label anyway.
+  The description is passed verbatim to `snouty --description "<text>"`. Snouty escapes it correctly for the API payload, but the value still ends up in shell argv. **Sanitise** before passing: collapse the value to `[A-Za-z0-9 ._-]` (replace every other byte with `-`) and trim leading/trailing whitespace. If the sanitised string is empty, fall back to the branch slug.
 
 Use a single AskUserQuestion with two questions where possible. If the user said the duration/description in the original request ("lance un run de 4h"), skip the question for that field.
 
-### 6. Launch
+### 6. Build & push SUT images
 
-From the repo root, change into `tests/antithesis/`:
+Snouty's `--config` handles only the config image. The SUT images (ledger, operator, workload) are pushed by us because they reference the registry-specific name resolved at template time.
+
+**K8s mode** — from repo root:
 
 ```bash
-cd tests/antithesis
-just tag=<computed-tag> k8s-run <duration_hours> "<description>"
-# or, in compose mode:
-just tag=<computed-tag> run <duration_minutes> "<description>"
+export TAG=antithesis-<slug>-<sha7>
+
+# 1. Generate manifests with the per-branch tag substituted in.
+( cd tests/antithesis/k8s && ./generate-manifests.sh "$TAG" )
+
+# 2. Build & push ledger.
+docker build --platform linux/amd64 \
+  -f Dockerfile.antithesis \
+  -t "$ANTITHESIS_REPOSITORY/${LEDGER_IMAGE_NAME:-ledger}:$TAG" .
+docker push "$ANTITHESIS_REPOSITORY/${LEDGER_IMAGE_NAME:-ledger}:$TAG"
+
+# 3. Build & push operator.
+docker build --platform linux/amd64 \
+  -t "$ANTITHESIS_REPOSITORY/ledger-operator:$TAG" misc/operator
+docker push "$ANTITHESIS_REPOSITORY/ledger-operator:$TAG"
+
+# 4. Build & push workload.
+( cd tests/antithesis/workload && \
+  docker build --platform linux/amd64 \
+    --build-arg GOARCH=amd64 --build-arg GOOS=linux \
+    -f Dockerfile \
+    -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$TAG" ../../.. && \
+  docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$TAG" )
 ```
 
-The recipe builds, pushes, then POSTs. Stream the output. Build + push is typically 5–15 min; the API POST itself is sub-second.
+**Compose mode** — same image build/push, plus the etcd retag:
 
-If the curl fails (non-2xx), surface the response body — the API returns useful error JSON on auth / parameter issues.
+```bash
+docker pull --platform linux/amd64 quay.io/coreos/etcd:v3.5.9
+docker tag quay.io/coreos/etcd:v3.5.9 "$ANTITHESIS_REPOSITORY/etcd:v3.5.9"
+docker push "$ANTITHESIS_REPOSITORY/etcd:v3.5.9"
 
-### 7. Report
+# Substitute placeholders in docker-compose.yaml into a tmpdir snouty can consume.
+TMPCFG=$(mktemp -d)
+sed "s/__TAG__/$TAG/g; s/__IMAGE_NAME__/${LEDGER_IMAGE_NAME:-ledger}/g" \
+  tests/antithesis/config/docker-compose.yaml > "$TMPCFG/docker-compose.yaml"
+```
+
+These steps replace the legacy `just k8s-push-images` / `just push-images`. Build + push is typically 5–15 min on a cold cache.
+
+### 7. Launch with `snouty`
+
+**K8s mode**:
+
+```bash
+# Force amd64 for the config image snouty builds internally (see note below).
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+
+snouty launch \
+  --webhook basic_k8s_test \
+  --config tests/antithesis/k8s \
+  --description "<sanitised description>" \
+  --duration "<minutes>" \
+  --recipients "$ANTITHESIS_REPORT_RECIPIENT" \
+  --source "<branch-slug>"
+```
+
+Notes:
+- **`export DOCKER_DEFAULT_PLATFORM=linux/amd64` before invoking snouty on Apple Silicon.** When you pass `--config <dir>`, snouty builds the config image locally without forcing `--platform linux/amd64`; on an M-series Mac this yields an arm64 image, which Antithesis rejects at boot with `antithesis_error code=4005 "Unsupported container type"` — the run finishes as `Incomplete` at `input_hash=0 vtime=0` about two minutes in. Setting the env var is the smallest fix. Fallback if it does not stick: pre-build the config image manually (`docker build --platform linux/amd64 -f tests/antithesis/k8s/Dockerfile.config -t <ref>:$TAG tests/antithesis/k8s && docker push <ref>:$TAG`) and pass `--config-image <ref>:$TAG` to snouty instead of `--config`.
+- **Do NOT pass `--param antithesis.images=...`** — snouty 0.5.x rejects it (`do not specify antithesis.images as --param, use api webhook instead`). In k8s mode the platform reads image refs straight out of the manifests, so the param is unnecessary anyway.
+- **Always pass `--source <branch-slug>`** so the run is *not* marked ephemeral; ephemeral runs (`is_ephemeral=true`) do not appear in property history reports. The slug is the same per-branch slug used in the tag.
+
+**Compose mode**:
+
+```bash
+snouty launch \
+  --webhook basic_test \
+  --config "$TMPCFG" \
+  --description "<sanitised description>" \
+  --duration "<minutes>" \
+  --recipients "$ANTITHESIS_REPORT_RECIPIENT" \
+  --param custom.duration="<minutes>" \
+  --param custom.containers_to_exclude_from_network_faults="etcd-0 etcd-1 etcd-2 workload"
+```
+
+Snouty streams its progress to stderr; the resulting POST body (and run identifier, if any) lands on stdout. Pass `--verbose` if the launch errors out and you need to see the raw API request/response.
+
+### 8. Report
 
 Print a structured summary:
 
@@ -82,27 +170,31 @@ Antithesis run lancé
   Branche     : <branch> @ <sha7> (dirty: yes/no)
   Durée       : <N> heures | minutes
   Description : <description>
-  Rapport     : email à <ANTITHESIS_REPORT_RECIPIENT> (variable lue depuis le shell ; le rapport arrive typiquement sous quelques heures)
+  Rapport     : email à <ANTITHESIS_REPORT_RECIPIENT>
+  Snouty      : <stdout from snouty launch>
 ```
 
-The launch API does not return a run URL in the response, so do not invent one. The user knows their inbox.
+The launch API does not return a stable run URL, so do not invent one. Snouty may print the session ID in its response — surface it as-is if present, it is the handle the user gives to `antithesis-triage`/`antithesis-debug`/`antithesis-query-logs`.
 
 ## Invariants
 
-- **Never modify `tag := "antithesis"` in `tests/antithesis/Justfile`.** Pass the tag override via the CLI (`just tag=...`) — never edit the recipe file.
+- **Always use `snouty launch`, never re-issue the raw curl.** The legacy `just k8s-run` / `just run` recipes are kept only as a documented fallback; new runs go through `snouty`.
 - **Never run silently on a dirty working tree.** `docker build` packs the working tree, so uncommitted edits silently land in the image while the image tag still pins to the HEAD SHA. Always surface and confirm before launching.
+- **Never modify `tag := "antithesis"` in `tests/antithesis/*/Justfile`.** The per-branch tag is computed by the skill and threaded through env / args — the in-repo default is only for one-off manual invocations.
 - **No retries.** A failed launch (auth, parameter, image push) is the user's to diagnose. Do not loop.
 - **English in scripts, replies in the user's language** (typically French for this repo).
 
 ## Failure modes worth surfacing
 
-- `401` from the launch API → `ANTITHESIS_PASSWORD` is wrong.
-- `400` with `unknown image` → image push silently failed earlier (check the build/push step output).
+- `snouty doctor` flags `ANTITHESIS_TENANT not set` → add `export ANTITHESIS_TENANT=formance` to the shell profile (e.g. `~/.zshrc` next to the existing `ANTITHESIS_*` vars). After editing, either open a new shell or `source ~/.zshrc` — already-running bash sessions (including any Claude Code agent that started before the edit) do not pick the export up automatically.
+- `snouty launch` `401` → `ANTITHESIS_API_KEY` or `ANTITHESIS_PASSWORD` is wrong.
+- `snouty launch` `400` with `unknown image` → image push silently failed earlier (re-check the build/push step output).
 - `docker push` fails with `no basic auth credentials` / `denied` → not logged in to `$ANTITHESIS_REPOSITORY`; user needs to `docker login <registry>` with the credentials Antithesis provided.
+- `helm dependency update` in `generate-manifests.sh` fails → helm is missing or offline; the script will continue with the cached deps if any.
 - Build fails with a Go toolchain mismatch → retry with `GOROOT=` in the environment, same as the `develop` skill.
 
 ## Out of scope
 
 - Triggering from CI (none exists today; this is a manual operation).
-- Listing past runs (not exposed by the launch API; that lives in the Antithesis web UI).
-- Selecting a workload driver (today the workload image bundles all drivers; the test config in `tests/antithesis/config/` and `tests/antithesis/k8s/` selects what runs).
+- Listing past runs (snouty does not expose this in 0.5.x; the Antithesis web UI is the source of truth).
+- Selecting a workload driver (the workload image bundles all drivers; the manifests in `tests/antithesis/k8s/` and the compose file in `tests/antithesis/config/` select what runs).

@@ -52,6 +52,39 @@ ledgerctl --consistency leader ledgers list
 ledgerctl ledgers list
 ```
 
+### Distributed Tracing (OpenTelemetry)
+
+Every `ledgerctl` invocation is instrumented with OpenTelemetry. Each command opens a root span named after the command path (e.g. `ledgerctl transactions get`), and every gRPC call to the server is recorded as a child span. The W3C `traceparent` header is always propagated to the server, so the server-side spans join the same trace — this happens regardless of whether spans are exported, giving a single connected trace per invocation.
+
+Tracing is configured **entirely through the standard [OpenTelemetry SDK environment variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/)** — there are no `ledgerctl`-specific flags. Spans are only **exported** to a backend when an OTLP endpoint is configured; without one, the CLI never attempts a connection, so default usage is unaffected.
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | | OTLP endpoint (e.g. `http://collector:4317`). Setting it enables span export. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` takes precedence for traces. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | Transport: `grpc` or `http/protobuf`. `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` takes precedence for traces. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | | Extra headers sent to the collector (e.g. auth tokens). |
+| `OTEL_EXPORTER_OTLP_INSECURE` | `false` | Disable TLS for the OTLP connection. |
+| `OTEL_TRACES_EXPORTER` | | Set to `otlp` to force export, or `none` to disable. Only `otlp` and `none` are supported. |
+| `OTEL_SERVICE_NAME` | `ledgerctl` | Service name reported on spans. |
+| `OTEL_RESOURCE_ATTRIBUTES` | | Extra resource attributes (e.g. `deployment.environment=prod`). |
+| `OTEL_SDK_DISABLED` | `false` | Set to `true` to disable tracing entirely (no spans, no propagation). |
+
+```bash
+# Export traces to a local OpenTelemetry Collector over gRPC
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_INSECURE=true
+ledgerctl transactions list --ledger my-ledger
+
+# Export over HTTP to a remote collector with an auth header
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer <token>"
+export OTEL_SERVICE_NAME=ledgerctl-ci
+ledgerctl ledgers list
+```
+
+Buffered spans are flushed (with a 5s timeout) before the process exits — on both success and error paths — so short-lived invocations still deliver their traces.
+
 ### Shared Flag Contract
 
 All read subcommands (`list`, `get`, `inspect`) follow a uniform set of flags
@@ -211,7 +244,11 @@ ledgerctl ledgers create [flags]
 | `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
 | `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
 | `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
+| `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
+| `--mirror-rewrite-file` | | Path to a YAML/JSON file with CEL rewrite rules (`[{match, cel, stop}]`) applied to every mirror log entry during translation |
+| `--mirror-rewrite-rule` | | A single CEL rewrite rule as a JSON object `{"match":..,"cel":..,"stop":..}` (repeatable; appended after any `--mirror-rewrite-file` rules) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -247,6 +284,20 @@ ledgerctl ledgers create --name my-mirror \
   --mode mirror \
   --mirror-source-type postgres \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
+
+# Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds
+# [{match, cel, stop}] rules applied to every mirror log entry)
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-base-url https://v2-api.example.com \
+  --mirror-rewrite-file rewrite.yaml
+
+# Create a mirror ledger from an AWS RDS v2 source using IAM authentication
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-source-type postgres \
+  --mirror-dsn "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require" \
+  --mirror-aws-iam-region eu-west-1
 
 # Mirror with a different source ledger name
 ledgerctl ledgers create --name my-mirror \
@@ -554,7 +605,7 @@ ledgerctl indexes create [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
+| `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -565,7 +616,7 @@ ledgerctl indexes create [flags]
 |------|-------------|
 | `address` | Account-to-transaction mapping for any posting role |
 | `source-address` | Source account-to-transaction mapping |
-| `dest-address` | Destination account-to-transaction mapping |
+| `destination-address` | Destination account-to-transaction mapping |
 | `metadata` | Metadata field index (requires `--target` and `--key`) |
 | `reference` | Transaction reference exact-match index |
 | `timestamp` | Transaction timestamp (effective date) range-scan index |
@@ -578,6 +629,7 @@ ledgerctl indexes create [flags]
 - The index starts building in the background immediately
 - Queries using the index will be rejected until the index reaches READY status
 - Creating an index that already exists and is READY is idempotent (no error)
+- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `destination-address` all index transactions.
 
 **Example:**
 
@@ -622,7 +674,7 @@ ledgerctl indexes drop [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
+| `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -630,6 +682,7 @@ ledgerctl indexes drop [flags]
 **Behavior:**
 - Queries using the dropped index will be rejected after the drop
 - Dropping a non-existent index returns an error
+- `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected.
 
 **Example:**
 
@@ -2129,6 +2182,40 @@ ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-inde
 
 ---
 
+### store rebuild-audit-index
+
+Rebuild the Pebble audit secondary index from the Audit zone. This is a purely offline operation — no server needed. Use this after corruption or a restore when the audit index is missing or out of date.
+
+```bash
+ledgerctl store rebuild-audit-index --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir` | | Pebble data directory (required) |
+| `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
+| `--audit-index-batch-size` | `1000` | Audit entries per Pebble batch commit (0 = default 1000) |
+
+**Behavior:**
+
+1. Opens the Pebble data directory in read-only mode
+2. Opens or creates the Pebble read index database
+3. Drops the existing audit secondary index, then replays all entries from the Audit zone, rebuilding the index from scratch
+
+**Example:**
+
+```bash
+# Rebuild with default read index location
+ledgerctl store rebuild-audit-index --data-dir ./data
+
+# Rebuild to a custom read index directory with a larger batch size
+ledgerctl store rebuild-audit-index --data-dir ./data --read-index-dir ./custom-indexes --audit-index-batch-size 5000
+```
+
+---
+
 ### audit
 
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
@@ -2671,6 +2758,10 @@ ledgerctl auth login [flags]
 - Stores the token in the OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
 - Displays a JWT summary (subject, expiry, scopes)
 - Accepts a JSON key bundle via `--bundle <path>`, `--bundle -`, or a piped stdin
+- When `--profile <name>` targets a profile that does not yet exist, bootstraps it from the current connection flags (`--server`, `--insecure`, `--tls-ca-cert`, `--signing-key`, `--signing-key-id`, `--response-verify-key`); if no active profile is set, the new one becomes active. A profile-write failure fails the command so the just-stored token never diverges from the config
+- When `--profile <name>` targets an existing profile and `--server` is explicitly passed on the CLI, updates that profile's `server` so subsequent commands find the just-stored token
+- When no `--profile` is passed and the config has an active profile, updates the active profile's `server` if `--server` was explicitly passed — keeps the active-profile keychain lookup in sync with the token that was just stored
+- The resolved profile's `signingKeyId` (from `--profile <name>`, `LEDGERCTL_PROFILE`, or the active profile) is used as the default for `--key-id`, but only under the `auth` command tree (`auth login`, `auth generate-token`); signing management commands (`signing register-key`, `signing revoke-key`) still require an explicit `--key-id`
 
 **Bundle format:**
 
@@ -2709,6 +2800,14 @@ ledgerctl ledgers list
 ledgerctl --server prod:8888 auth login \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --subject ci-bot
+
+# Bootstrap a new connection profile in one shot (also stores the token
+# under the profile's server so later `--profile prod` calls just work).
+ledgerctl auth login --profile prod \
+  --server prod:8888 \
+  --signing-key ./keys/seed.hex \
+  --key-id prod-key-id \
   --subject ci-bot
 ```
 
@@ -3819,6 +3918,9 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-bytes-per-sync` | ByteSize | `512Ki` | Read index bytes written before sync |
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 | `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
+| `--audit-index-batch-size` | int | `1000` | Audit entries per Pebble batch commit when building the audit secondary index (0 = default 1000). |
+| `--audit-index-rebuild-threshold` | int | `0` | Drop and rebuild the audit index on boot when the cursor is this many entries behind the head (0 = never auto-rebuild). |
+| `--disable-audit-index` | bool | `false` | Disable the audit secondary index worker. When set, no audit index is built or maintained. |
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
@@ -3895,6 +3997,7 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
 | `--spool-segment-max-bytes` | ByteSize | `256Mi` | Maximum spool segment size before rotation/sealing (0 = use default 256Mi). Lower values seal (and thus prune) segments more often at the cost of more files |
+| `--backup-max-segment-bytes` | ByteSize | `4Gi` | Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi). Lower values produce more, smaller segments (smaller retry blast radius) at the cost of more objects |
 
 ```bash
 # Increase compaction margin for workloads with large snapshots
@@ -3902,6 +4005,9 @@ ledger run --raft-compaction-margin 5000 [other flags...]
 
 # Smaller spool segments (rotate/seal more often, e.g. for chaos testing)
 ledger run --spool-segment-max-bytes 256Ki [other flags...]
+
+# Smaller incremental-backup export segments
+ledger run --backup-max-segment-bytes 1Gi [other flags...]
 
 # More frequent maintenance (WAL snapshot + Pebble checkpoint)
 ledger run --maintenance-interval 15s [other flags...]
@@ -4233,9 +4339,9 @@ on/off TLS toggle workflow.
 |------|------|---------|-------------|
 | `--auth-scope-mapping-file` | string | `""` | Path to JSON file mapping virtual scopes (e.g. `ledger:read`) to granular scopes |
 | `--auth-anonymous-scopes` | string | `""` | Comma-separated granular scopes (or `*:read` / `*:write` wildcards) granted to requests that arrive without a bearer token |
-| `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches at startup (`0` = unbounded). Prevents a slow or blackholed issuer from hanging the process indefinitely. |
+| `--auth-discovery-timeout` | duration | `10s` | Bound the HTTP calls used for OIDC discovery and JWKS fetches (`0` = unbounded). Applies one operator-controlled timeout to both the discovery call and later JWKS key fetches. |
 
-Allows expanding virtual scopes into fine-grained scopes. For example, mapping `ledger:read` to a set of more specific scopes. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
+Allows expanding virtual scopes into granular Ledger scopes. For example, mapping `ledger:read` to scopes such as `ledger:LedgerRead` and `ledger:TransactionRead`. Granular Ledger scopes use the `ledger:<Resource><Action>` shape. The mapping can also be provided via the `AUTH_SCOPE_MAPPING` environment variable (JSON string).
 
 ```bash
 ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags...]
@@ -4252,7 +4358,7 @@ ledger run --auth-enabled --auth-issuer https://auth.example.com \
 
 With this configuration:
 
-- A read request without a token receives all `*:read` scopes and is allowed.
+- A read request without a token receives all granular read scopes matched by `*:read` and is allowed.
 - A read request with a **malformed/expired/invalid** token is rejected with `401` (a broken token is still treated as a client error — it is not silently ignored).
 - A write request without a token is rejected with `401` (anonymous scopes do not cover writes).
 - A write request with a valid token is allowed iff the token carries the required write scope (unchanged behavior).
@@ -4388,7 +4494,7 @@ ledger run \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. Three scopes are used: `ledger:read`, `ledger:write`, `ledger:admin`.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
@@ -4653,7 +4759,7 @@ ledgerctl events remove-sink --name primary
 | `--name` | *(required)* | Name of the sink to remove |
 | `--timeout` | `10s` | Request timeout |
 
-See [Event System Architecture](../technical/architecture/data-model/events.md) for details on the event system design.
+See [Event System Architecture](../technical/architecture/subsystems/events-mirror/events.md) for details on the event system design.
 
 ---
 

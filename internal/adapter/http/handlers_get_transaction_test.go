@@ -22,8 +22,8 @@ func TestHandleGetTransaction_Success(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, error) {
-			return &commonpb.Transaction{Id: txID}, nil
+		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, *string, error) {
+			return &commonpb.Transaction{Id: txID}, nil, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -36,6 +36,51 @@ func TestHandleGetTransaction_Success(t *testing.T) {
 	srv.handleGetTransaction(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleGetTransaction_RevertRelationshipFields(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
+			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
+		}).AnyTimes()
+	// Transaction 1 was reverted by transaction 2, which in turn reverts 1.
+	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, txID uint64) (*commonpb.Transaction, *string, error) {
+			if txID == 1 {
+				return &commonpb.Transaction{
+					Id:                    1,
+					Reverted:              true,
+					RevertedByTransaction: 2,
+					RevertedAt:            &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+				}, nil, nil
+			}
+
+			return &commonpb.Transaction{Id: 2, RevertsTransaction: 1}, nil, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	// The reverted original exposes the forward link and reverted_at.
+	wOrig := httptest.NewRecorder()
+	srv.handleGetTransaction(wOrig, newRequest(t, http.MethodGet, "/ledger1/transactions/1", nil, map[string]string{
+		"ledgerName":    "ledger1",
+		"transactionId": "1",
+	}))
+	require.Equal(t, http.StatusOK, wOrig.Code)
+	require.Contains(t, wOrig.Body.String(), `"reverted":true`)
+	require.Contains(t, wOrig.Body.String(), `"revertedByTransactionId":2`)
+	require.Contains(t, wOrig.Body.String(), `"revertedAt":`)
+
+	// The compensating transaction exposes the back link.
+	wRevert := httptest.NewRecorder()
+	srv.handleGetTransaction(wRevert, newRequest(t, http.MethodGet, "/ledger1/transactions/2", nil, map[string]string{
+		"ledgerName":    "ledger1",
+		"transactionId": "2",
+	}))
+	require.Equal(t, http.StatusOK, wRevert.Code)
+	require.Contains(t, wRevert.Body.String(), `"revertsTransactionId":1`)
 }
 
 func TestHandleGetTransaction_InvalidTxID(t *testing.T) {
@@ -63,8 +108,8 @@ func TestHandleGetTransaction_NotFound(t *testing.T) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
 	backend.EXPECT().GetTransaction(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, error) {
-			return nil, &domain.ErrTransactionNotFound{TransactionID: 999}
+		func(_ context.Context, _ string, _ uint64) (*commonpb.Transaction, *string, error) {
+			return nil, nil, &domain.ErrTransactionNotFound{TransactionID: 999}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

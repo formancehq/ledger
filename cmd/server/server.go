@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -16,12 +15,11 @@ import (
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/fx"
+	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
-	"gopkg.in/yaml.v3"
 
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
-	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
 	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -126,6 +124,7 @@ func NewRunCommand() *cobra.Command {
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
@@ -192,11 +191,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
 	runCmd.Flags().String("auth-anonymous-scopes", "", "Comma-separated granular scopes granted to requests without a bearer token (e.g. \"*:read\" for writes-only mode). Wildcards: *:read, *:write")
 
-	// OIDC discovery + JWKS HTTP timeout. A slow or blackholed issuer would
-	// otherwise hang startup indefinitely (go-libs supplies http.DefaultClient
-	// with no Timeout and discovery uses context.Background()). 0 keeps the
-	// legacy unbounded behavior for operators that need it.
-	runCmd.Flags().Duration("auth-discovery-timeout", 10*time.Second, "Bound the HTTP calls used for OIDC discovery and JWKS fetches at startup (0 = unbounded)")
+	// OIDC discovery + JWKS HTTP timeout, applied in buildAuthConfig: a context
+	// deadline bounds oidc.Discover and the keyset's http.Client.Timeout bounds
+	// JWKS fetches, so both share one operator-controlled ceiling. 0 leaves them
+	// unbounded for operators that need it.
+	runCmd.Flags().Duration("auth-discovery-timeout", 10*time.Second, "Bound the HTTP calls used for OIDC discovery and JWKS fetches (0 = unbounded)")
 
 	// Idempotency TTL and eviction
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
@@ -227,6 +226,11 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
 	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
 	registerPebbleFlags(runCmd, "read-index", readstore.DefaultConfig())
+
+	// Audit index configuration
+	runCmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per Pebble batch commit (0 = default 1000)")
+	runCmd.Flags().Uint64("audit-index-rebuild-threshold", 0, "Drop+rebuild the audit index on boot when the cursor is this far behind (0 = never)")
+	runCmd.Flags().Bool("disable-audit-index", false, "Disable the audit secondary index worker")
 
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
@@ -325,40 +329,17 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		appModule = bootstrap.Module()
 	}
 
-	// Build authentication module.
-	// Only use go-libs OIDC module when an issuer is configured; otherwise
-	// skip OIDC discovery to avoid a crash on empty issuer URL.
-	// Ed25519-only auth works without OIDC (the KeySet parameter in
-	// buildAuthConfig is optional).
-	//
-	// fx.Decorate replaces the http.DefaultClient that authnfx.JWTModule
-	// supplies (no Timeout — would hang startup on a slow/blackholed issuer)
-	// with one bounded by cfg.AuthConfig.OIDCDiscoveryTimeout. go-libs'
-	// NewKeySets receives this client and feeds it to oidc client.Discover
-	// and NewRemoteKeySet, so both discovery and JWKS fetches are bounded.
-	var authModule fx.Option
-	if cfg.AuthConfig.Issuer != "" {
-		discoveryTimeout := cfg.AuthConfig.OIDCDiscoveryTimeout
-		authModule = fx.Options(
-			authnfx.JWTModuleFromFlags(cmd),
-			fx.Decorate(func(*http.Client) *http.Client {
-				return bootstrap.TimeoutHTTPClient(discoveryTimeout)
-			}),
-		)
-	} else {
-		authModule = fx.Module("auth")
-	}
-
 	info := version.Get()
 
-	// Create fx application options
+	// Auth (OIDC discovery + JWKS reads, bounded by OIDCDiscoveryTimeout) is built in
+	// bootstrap.buildAuthConfig; there is no auth fx module. The go-libs authnfx JWT
+	// module is intentionally not wired in: nothing in this service consumes its
+	// map[string]oidc.KeySet or Authenticator, so its providers would never run.
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
 		// Provide build metadata for version reporting
 		fx.Supply(info),
-		// Add authentication module (OIDC discovery when issuer is configured)
-		authModule,
 		// Add OpenTelemetry modules from go-libs (using flags)
 		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
 		observefx.TracesModuleFromFlags(cmd),
@@ -515,24 +496,34 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	// Load Pebble configuration with defaults
 	cfg.PebbleConfig = loadPebbleConfig(cmd)
 
-	// Parse transport reception queues
-	// Default values based on commented code in transport.go: [10, 512, 512, 512, 128]
+	// Parse transport reception queues.
+	// Priority-0 is heartbeats + high-priority raft traffic (votes, MsgApp
+	// leader→follower during ConfChange bursts). Under AsyncStorageWrites
+	// each Ready cycle produces MORE rawNode.Step calls on the orchestrate
+	// goroutine (one per MsgStorageAppendResp / MsgStorageApplyResp instead
+	// of the single Advance() call in sync mode), so orchestrate spends
+	// more time between select turns and the per-peer high-priority recv
+	// queue can saturate faster. Antithesis 2h k8s run 81691b87... hit
+	// this: 47 "Channel full" events in 15s on priority-0 during a
+	// 3→7→5 scale-up/down burst. Bumped from 10 to 128 to absorb the burst
+	// without changing the code path.
 	receptionQueues := getIntSlice("raft-transport-reception-queues")
 	if len(receptionQueues) > 0 {
 		cfg.TransportConfig.Reception = receptionQueues
 	} else {
-		// Default values: [10, 512, 512, 512, 128] for priorities 0-4
-		cfg.TransportConfig.Reception = []int{10, 512, 512}
+		cfg.TransportConfig.Reception = []int{128, 512, 512}
 	}
 
-	// Parse transport send queues
-	// Default values based on commented code in transport.go: [10, 512, 512, 512, 128]
+	// Parse transport send queues.
+	// Symmetric bump on priority-0 send: same rationale — a stressed
+	// receiver rejects with peer-respond-with-error, which cascades to
+	// the sender's per-peer send buffer if it isn't sized to absorb the
+	// re-transmit / retry pressure.
 	sendQueues := getIntSlice("raft-transport-send-queues")
 	if len(sendQueues) > 0 {
 		cfg.TransportConfig.Send = sendQueues
 	} else {
-		// Default values: [10, 512, 512, 512, 128] for priorities 0-4
-		cfg.TransportConfig.Send = []int{10, 512, 512}
+		cfg.TransportConfig.Send = []int{128, 512, 512}
 	}
 
 	if cfg.RaftConfig.AdvertiseAddr == "" {
@@ -541,6 +532,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
 	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
+	cfg.BackupMaxSegmentBytes = bytesize.Get(cmd, "backup-max-segment-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 	cfg.MaxExecutionPlanSize = getInt("max-execution-plan-size", 4096)
@@ -675,6 +667,16 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		Dir:          getString("read-index-dir", ""),
 		BatchSize:    getInt("read-index-batch-size", 0),
 		PebbleConfig: loadReadIndexPebbleConfig(cmd),
+	}
+
+	// Audit index configuration
+	auditBatchSize, _ := cmd.Flags().GetInt("audit-index-batch-size")
+	auditRebuildThreshold, _ := cmd.Flags().GetUint64("audit-index-rebuild-threshold")
+	auditDisabled, _ := cmd.Flags().GetBool("disable-audit-index")
+	cfg.AuditIndexConfig = bootstrap.AuditIndexConfig{
+		BatchSize:        auditBatchSize,
+		RebuildThreshold: auditRebuildThreshold,
+		Disabled:         auditDisabled,
 	}
 
 	// Query profiling

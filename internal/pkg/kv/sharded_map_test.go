@@ -39,25 +39,6 @@ func TestShardedMap_GetMissing(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestShardedMap_Del(t *testing.T) {
-	t.Parallel()
-
-	sm := NewShardedMap[string, int](stringHash)
-	sm.Put("a", 1)
-	sm.Del("a")
-
-	_, ok := sm.Get("a")
-	require.False(t, ok)
-}
-
-func TestShardedMap_DelMissing(t *testing.T) {
-	t.Parallel()
-
-	sm := NewShardedMap[string, int](stringHash)
-	sm.Del("missing")
-	require.Equal(t, uint64(0), sm.Size())
-}
-
 func TestShardedMap_Size(t *testing.T) {
 	t.Parallel()
 
@@ -69,8 +50,31 @@ func TestShardedMap_Size(t *testing.T) {
 	sm.Put("c", 3)
 	require.Equal(t, uint64(3), sm.Size())
 
-	sm.Del("b")
+	require.NoError(t, sm.Del("b"))
 	require.Equal(t, uint64(2), sm.Size())
+}
+
+func TestShardedMap_Del(t *testing.T) {
+	t.Parallel()
+
+	sm := NewShardedMap[string, int](stringHash)
+	sm.Put("a", 1)
+
+	require.NoError(t, sm.Del("a"),
+		"ShardedMap has no primary/secondary store — Del always returns nil")
+
+	_, ok := sm.Get("a")
+	require.False(t, ok)
+}
+
+func TestShardedMap_DelMissing(t *testing.T) {
+	t.Parallel()
+
+	sm := NewShardedMap[string, int](stringHash)
+
+	require.NoError(t, sm.Del("missing"),
+		"Del on an absent key is an idempotent no-op — returns nil")
+	require.Equal(t, uint64(0), sm.Size())
 }
 
 func TestShardedMap_PutOverwrite(t *testing.T) {

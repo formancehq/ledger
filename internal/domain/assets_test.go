@@ -18,7 +18,7 @@ func TestParseAssetPrecision(t *testing.T) {
 		{"EUR/2", "EUR", 2},
 		{"BTC/8", "BTC", 8},
 		{"USD", "USD", 0},
-		{"CUSTOM_TOKEN/6", "CUSTOM_TOKEN", 6},
+		{"ABCDEFGHIJKLMNOPQ/6", "ABCDEFGHIJKLMNOPQ", 6},
 	}
 
 	for _, tt := range tests {

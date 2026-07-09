@@ -84,6 +84,32 @@ func (wb *WriteBatch) del(key []byte) error {
 	return nil
 }
 
+// DeleteReverseMapKey deletes a reverse-map key in the batch and records the
+// deletion in the read-your-writes overlay (rmapOverlay[key] = nil), so a
+// subsequent same-batch ReverseMapOverlay lookup reports the key as deleted
+// rather than surfacing a stale in-flight value. Use this for every reverse-map
+// delete so the overlay never drifts from the batch it tracks.
+func (wb *WriteBatch) DeleteReverseMapKey(reverseKey []byte) error {
+	if err := wb.del(reverseKey); err != nil {
+		return err
+	}
+
+	wb.rmapOverlay[string(reverseKey)] = nil
+
+	return nil
+}
+
+// RangeReverseMapOverlay calls fn for every reverse-map mutation buffered in the
+// current (uncommitted) batch: reverseKey -> encoded value last written (nil =
+// deleted in this batch). It is a read-only view of the read-your-writes
+// overlay — callers that need to delete matching keys must collect them and
+// delete after iteration returns, to avoid mutating the overlay mid-range.
+func (wb *WriteBatch) RangeReverseMapOverlay(fn func(reverseKey []byte, value []byte)) {
+	for k, v := range wb.rmapOverlay {
+		fn([]byte(k), v)
+	}
+}
+
 // Flush commits the batch and resets state.
 func (wb *WriteBatch) Flush() error {
 	if wb.batch == nil {
@@ -113,9 +139,9 @@ func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledgerName
 	return wb.put(key, nil)
 }
 
-// WriteDestAccountTxMapping records that an account is a destination in a transaction.
-func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledgerName string, account string, txID uint64) error {
-	key := AccountTxKey(kb, PrefixDestAccountTx, ledgerName, account, txID)
+// WriteDestinationAccountTxMapping records that an account is a destination in a transaction.
+func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledgerName string, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixDestinationAccountTx, ledgerName, account, txID)
 
 	return wb.put(key, nil)
 }
@@ -293,6 +319,13 @@ func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledgerN
 // WriteTransactionInsertedAtIndex inserts an entry in the transaction inserted_at index.
 func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
 	key := TransactionInsertedAtKey(kb, ledgerName, timestamp, txID)
+
+	return wb.put(key, nil)
+}
+
+// WriteTransactionRevertedAtIndex inserts an entry in the transaction reverted_at index.
+func (wb *WriteBatch) WriteTransactionRevertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
+	key := TransactionRevertedAtKey(kb, ledgerName, timestamp, txID)
 
 	return wb.put(key, nil)
 }

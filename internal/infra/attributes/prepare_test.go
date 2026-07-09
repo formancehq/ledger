@@ -172,6 +172,14 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	require.NoError(t, setAppliedIndex(batch, 200))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, []byte("node+cluster")))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00}, []byte("stale-block")))
+	// EN-1413: a peer entry left over from the source cluster — the
+	// restore path must drop these so the booting node does not dial
+	// the wrong pods.
+	require.NoError(t, batch.SetBytes(
+		append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07),
+		[]byte("stale-peer-7"),
+	))
 	require.NoError(t, batch.Commit())
 
 	require.NoError(t, PrepareForBackup(s))
@@ -185,6 +193,10 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 
 	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00})
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted bloom blocks must be dropped")
+
+	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
+	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
 }
 
 // TestPrepareForBackupRestorableOnFreshCluster runs the full backup->restore

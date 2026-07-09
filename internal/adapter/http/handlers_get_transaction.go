@@ -24,7 +24,8 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transaction, err := s.backend.GetTransaction(r.Context(), ledgerName, transactionID)
+	// The REST API does not surface receipts; discard the forwarded-receipt return.
+	transaction, _, err := s.backend.GetTransaction(r.Context(), ledgerName, transactionID)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":         ledgerName,

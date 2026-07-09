@@ -62,7 +62,7 @@ func ReplayLedgerLog(
 
 		txCanonical := domain.TransactionKey{LedgerName: ledger, ID: tx.GetId()}.Bytes()
 
-		if err := w.CreateTransaction(txCanonical, seq, tx.GetTimestamp(), tx.GetMetadata()); err != nil {
+		if err := w.CreateTransaction(txCanonical, seq, tx.GetTimestamp(), tx.GetMetadata(), tx.GetPostings(), 0); err != nil {
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
 		}
 
@@ -102,13 +102,15 @@ func ReplayLedgerLog(
 
 		origTxCanonical := domain.TransactionKey{LedgerName: ledger, ID: p.RevertedTransaction.GetRevertedTransactionId()}.Bytes()
 
-		if err := w.SetRevertedBy(origTxCanonical, revertTx.GetId()); err != nil {
+		// The reverted_at stamped on the original is the compensating transaction's
+		// timestamp (see processRevertTransaction); reconstruct it identically here.
+		if err := w.SetRevertedBy(origTxCanonical, revertTx.GetId(), revertTx.GetTimestamp()); err != nil {
 			return fmt.Errorf("putting revert marker for tx %d: %w", p.RevertedTransaction.GetRevertedTransactionId(), err)
 		}
 
 		revertTxCanonical := domain.TransactionKey{LedgerName: ledger, ID: revertTx.GetId()}.Bytes()
 
-		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetTimestamp(), revertTx.GetMetadata()); err != nil {
+		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetTimestamp(), revertTx.GetMetadata(), revertTx.GetPostings(), p.RevertedTransaction.GetRevertedTransactionId()); err != nil {
 			return fmt.Errorf("putting tx state for revert tx %d: %w", revertTx.GetId(), err)
 		}
 

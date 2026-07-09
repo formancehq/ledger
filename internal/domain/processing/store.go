@@ -115,7 +115,21 @@ type Scope interface {
 	// invariant enforced. Used by ValidateTransientVolumes which reads
 	// Derived.Volumes.Parent() directly to fetch the pre-batch base
 	// volume. No-op on the bare *WriteSet implementation.
-	CheckCoverage(kind byte, canonical []byte) error
+	//
+	// The key is passed as a CoverageKey (something that knows how to
+	// append its canonical bytes to a scratch buffer) rather than a
+	// pre-built []byte. This lets the gate reuse a single scratch buffer
+	// across every call in a proposal — key.Bytes() would allocate a
+	// fresh slice on every gated read (100 allocs / 50-tx proposal on
+	// the world-to-bank benchmark).
+	CheckCoverage(kind byte, key CoverageKey) error
+}
+
+// CoverageKey is the minimal shape a canonical key type must expose to
+// participate in the coverage gate: append its canonical bytes to a
+// caller-provided buffer. Every domain.*Key satisfies it via AppendBytes.
+type CoverageKey interface {
+	AppendBytes(dst []byte) []byte
 }
 
 // ScopeFactory builds a per-order Scope from the order's coverage_bits.
@@ -134,18 +148,18 @@ type Scope interface {
 //
 // NewScope returns an error when the ExecutionPlan / bits combination
 // is structurally inconsistent (e.g. a bit indexes past the
-// AttributePlan slice, an unknown attr_code is declared). This is
+// AttributeCoverage slice, an unknown attr_code is declared). This is
 // surfaced as a business-level rejection: detection happens BEFORE any
 // cache mutation so the in-memory state stays in lockstep with Pebble.
 type ScopeFactory interface {
 	// NewScope returns a per-order or per-TU scope narrowed by the
 	// caller's coverage_bits. nil or empty bits admits no plan —
 	// every CheckCoverage call will miss. Callers that need a
-	// proposal-wide scope (admit every declared AttributePlan, e.g.
+	// proposal-wide scope (admit every declared AttributeCoverage, e.g.
 	// for ValidateTransientVolumes) must use NewProposalScope.
 	NewScope(coverageBits []byte) (Scope, error)
 
-	// NewProposalScope returns a scope that admits every AttributePlan
+	// NewProposalScope returns a scope that admits every AttributeCoverage
 	// the proposal declared. Distinct from NewScope(nil) so a per-order
 	// caller passing empty bits (no declared needs) does not silently
 	// inherit coverage from other orders' plans in the same proposal.

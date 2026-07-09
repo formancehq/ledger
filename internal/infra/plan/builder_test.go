@@ -169,109 +169,6 @@ func TestPreloader_Loaders(t *testing.T) {
 	assert.Same(t, p.loaders, loaders)
 }
 
-// TestResolveLedgerID verifies the Builder.ResolveLedgerID resolution path:
-// bloom miss, Pebble fallback, and cache hit.
-func TestResolveLedgerID(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
-
-	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-
-	attrs := attributes.New()
-	c, err := cache.New(1000, meter)
-	require.NoError(t, err)
-
-	// Write a LedgerInfo{Name: "test", Id: 42} to Pebble via the Ledger attribute.
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
-	canonical := domain.LedgerKey{Name: "test"}.Bytes()
-
-	batch := store.OpenWriteSession()
-	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	tracker := node.NewIndexTracker(1)
-
-	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
-
-	// 1. Bloom miss: resolve a name that does not exist.
-	id, ok := p.ResolveLedgerID("nonexistent")
-	require.False(t, ok)
-	require.Equal(t, uint32(0), id)
-
-	// 2. Pebble fallback: resolve "test" (cache is empty, falls through to Pebble).
-	id, ok = p.ResolveLedgerID("test")
-	require.True(t, ok)
-	require.Equal(t, uint32(42), id)
-
-	// 3. Populate the cache with the LedgerInfo entry and verify cache hit.
-	attrID, _ := attributes.MakeKey(canonical)
-	c.Ledgers.Put(attrID, attributes.Entry[*commonpb.LedgerInfo]{Data: ledgerInfo})
-
-	id, ok = p.ResolveLedgerID("test")
-	require.True(t, ok)
-	require.Equal(t, uint32(42), id)
-}
-
-// TestResolveLedgerID_BloomNotReadyFallsThrough pins the fix for #318.
-// Bloom filters start empty at process start and are populated
-// asynchronously (restoreBloomFilters / StartAsyncBloomPopulate). During
-// that window IsReady() is false and the raw filter's MayContain returns
-// false for every input. ResolveLedgerID used to consult the raw filter
-// instead of the IsReady-guarded helper, so it returned (0, false) for
-// every pre-existing ledger and admission then rejected the matching
-// proposals (ErrBalanceNotPreloaded / ErrLedgerNotFound) until the
-// bloom rebuild finished.
-func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
-
-	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-
-	attrs := attributes.New()
-	c, err := cache.New(1000, meter)
-	require.NoError(t, err)
-
-	// Persist a ledger to Pebble only; nothing in the cache, nothing in
-	// the bloom yet — the exact state during a fresh boot.
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test", Id: 42}
-	canonical := domain.LedgerKey{Name: "test"}.Bytes()
-
-	batch := store.OpenWriteSession()
-	_, err = attrs.Ledger.Set(batch, canonical, ledgerInfo)
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	// Build a bloom FilterSet with the ledgers type enabled. Do NOT mark
-	// it ready: that's the exact window the bug used to break.
-	bfs := bloom.NewFilterSet(&commonpb.ClusterConfig{
-		BloomLedgers: &commonpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.01},
-	}, meter)
-	require.NotNil(t, bfs)
-	require.False(t, bfs.IsReady(), "precondition: bloom must be in the populating window")
-
-	tracker := node.NewIndexTracker(1)
-	p := NewBuilder(tracker, c, attrs, store, bfs, logger, 0)
-
-	// Pre-fix the call short-circuited on the empty bloom and returned
-	// (0, false). Post-fix the IsReady guard skips the bloom, the lookup
-	// falls through to Pebble, and finds the ledger.
-	id, ok := p.ResolveLedgerID("test")
-	require.True(t, ok,
-		"ResolveLedgerID must fall through to Pebble while the bloom is still populating (#318)")
-	require.Equal(t, uint32(42), id)
-}
-
 // TestBuildPreloads_DeclaresAbsentNonZeroKey pins the coverage-gap fix
 // reported on #451: a proposer that requests a key for a kind without
 // zero-value semantics (e.g. transaction references, prepared queries) and
@@ -279,7 +176,7 @@ func TestResolveLedgerID_BloomNotReadyFallsThrough(t *testing.T) {
 // the ExecutionPlan. With the strict Plan the FSM-side read would
 // crash the node on the missing declaration, breaking common create paths
 // (new transaction reference, new prepared query). Post-fix the resolve
-// loop emits a Declare-intent AttributePlan so the View admits the read
+// loop emits a Declare-intent AttributeCoverage so the View admits the read
 // and the underlying KeyStore returns ErrNotFound for legitimate absence.
 func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 	t.Parallel()
@@ -300,10 +197,10 @@ func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
 
 	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "fresh-ref"}
-	needs := NewNeeds()
-	needs.References[refKey] = struct{}{}
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrReference, refKey.Bytes())
 
-	build, err := p.Build([]WriteOperation{{Needs: needs}})
+	build, err := p.Build([]WriteOperation{{Coverage: needs}})
 	require.NoError(t, err)
 	defer build.ReleaseLoaders()
 
@@ -311,17 +208,195 @@ func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 	require.NotNil(t, ps)
 
 	// Pebble has nothing for this key and no zero-value preload exists for
-	// references — the resolver must emit a Declare-intent AttributePlan to
+	// references — the resolver must emit a Declare-intent AttributeCoverage to
 	// keep the key covered. Without this the FSM Plan would crash
 	// the node on read.
 	require.Len(t, ps.GetAttributes(), 1,
 		"absent non-zero-valued key must still be declared so the FSM-side View admits the read")
 
 	plan := ps.GetAttributes()[0]
-	_, isDeclare := plan.GetIntent().(*raftcmdpb.AttributePlan_Declare)
-	require.True(t, isDeclare, "intent must be Declare for an absent reference")
+	require.Nil(t, plan.GetValue(), "absent reference must produce a coverage-only entry (no seed value)")
 	require.Equal(t, uint32(dal.SubAttrReference), plan.GetAttrCode())
 
 	expectedID, _ := attributes.MakeKey(refKey.Bytes())
 	require.Equal(t, expectedID[:], plan.GetId().GetId())
+}
+
+// TestBuildPreloads_RejectsCacheHorizonExceeded covers the admission-level
+// guard against ≥2 cache rotations between propose and apply. With a low
+// rotation threshold (10) and the tracker pinned past two boundaries, the
+// resolver must short-circuit and surface ErrCacheHorizonExceeded so the
+// proposal never reaches Raft (and the audit log records nothing — it is a
+// system-level rejection, not a business outcome).
+func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	// Threshold 10: every 10 indices crosses a generation. Tracker starts
+	// past the second boundary so Gen(nextIndex) - currentGeneration >= 2.
+	c, err := cache.New(10, meter)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(0)
+
+	// Tracker at index 25 → Gen(25, 10) = 2, two rotations ahead of
+	// currentGeneration (0) → CheckCache returns CacheUnreachable.
+	tracker := node.NewIndexTracker(25)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref"}
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrReference, refKey.Bytes())
+
+	build, buildErr := p.Build([]WriteOperation{{Coverage: needs}})
+	defer build.ReleaseLoaders()
+
+	require.Error(t, buildErr, "admission must reject when 2+ rotations are predicted")
+	require.ErrorIs(t, buildErr, ErrCacheHorizonExceeded,
+		"reject must surface ErrCacheHorizonExceeded so the gRPC adapter maps to codes.Unavailable")
+}
+
+// TestBuildPreloads_EmitsDeclareOnCacheHit pins the unified coverage
+// model: when admission's CheckCache verdict is CacheHit (key in Gen0
+// at snapshot, or Gen1-only within reach), the resolver emits a
+// coverage-only entry — no Pebble read required. AttributeCache.Get's
+// gen0→gen1 fallback surfaces the value on read at apply time.
+func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+	id, _ := attributes.MakeKey(metaKey.Bytes())
+	c.AccountMetadata.Put(id, attributes.Entry[*commonpb.MetadataValue]{
+		Data: &commonpb.MetadataValue{},
+	})
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	isCoverageOnly := plan.GetValue() == nil
+	require.True(t, isCoverageOnly, "CacheHit must emit a coverage-only entry (value nil) — cache already has the value, no seed needed")
+	require.Equal(t, uint32(dal.SubAttrMetadata), plan.GetAttrCode())
+	require.Equal(t, id[:], plan.GetId().GetId())
+}
+
+// TestBuildPreloads_EmitsDeclareOnMissingKey confirms the CacheMiss
+// path under the unified coverage model: when admission's CheckCache
+// verdict is CacheMiss AND Pebble has nothing, the resolver emits a
+// coverage-only entry (no value seed). Preload skips coverage-only
+// entries; if a concurrent write populates the cache before apply,
+// Get's gen0→gen1 fallback surfaces it.
+func TestBuildPreloads_EmitsDeclareOnMissingKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, nil, logger, 0)
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	isCoverageOnly := plan.GetValue() == nil
+	require.True(t, isCoverageOnly, "CacheMiss + Pebble-absent must emit a coverage-only entry — nothing to seed")
+}
+
+// TestBuildPreloads_EmitsDeclareOnBloomShortcut confirms the
+// bloom-shortcut path: when admission's bloom filter says "definitely
+// not", the resolver skips the Pebble read and emits Declare directly.
+func TestBuildPreloads_EmitsDeclareOnBloomShortcut(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	attrs := attributes.New()
+	c, err := cache.New(1000, meter)
+	require.NoError(t, err)
+
+	bfs := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomMetadata: &commonpb.BloomTypeConfig{ExpectedKeys: 1024, FpRate: 0.001},
+	}, meter)
+	require.NotNil(t, bfs)
+	bfs.SetReady(true)
+	require.True(t, bfs.IsReady())
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "alice"},
+		Key:        "label",
+	}
+
+	tracker := node.NewIndexTracker(1)
+	p := NewBuilder(tracker, c, attrs, store, bfs, logger, 0)
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
+
+	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	defer build.ReleaseLoaders()
+
+	require.Len(t, build.ExecutionPlan.GetAttributes(), 1)
+	plan := build.ExecutionPlan.GetAttributes()[0]
+
+	isCoverageOnly := plan.GetValue() == nil
+	require.True(t, isCoverageOnly, "bloom-shortcut must emit a coverage-only entry (value nil) — the fast path bypasses Pebble entirely")
 }

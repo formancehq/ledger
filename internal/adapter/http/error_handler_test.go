@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -32,6 +34,20 @@ func TestHandleError(t *testing.T) {
 			err:            commonpb.ErrNoLeader,
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedCode:   "NO_LEADER",
+			checkRetry:     true,
+		},
+		{
+			name:           "cache horizon exceeded — infrastructure rejection, retryable",
+			err:            plan.ErrCacheHorizonExceeded,
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "CACHE_HORIZON_EXCEEDED",
+			checkRetry:     true,
+		},
+		{
+			name:           "cache horizon exceeded wrapped by admission",
+			err:            fmt.Errorf("building preloads: %w", plan.ErrCacheHorizonExceeded),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "CACHE_HORIZON_EXCEEDED",
 			checkRetry:     true,
 		},
 		{
@@ -140,6 +156,14 @@ func TestHandleError(t *testing.T) {
 			resp := decodeResponse[ErrorResponse](t, w)
 			require.Equal(t, tc.expectedCode, resp.ErrorCode)
 			require.NotEmpty(t, resp.ErrorMessage)
+
+			// The fallthrough branch (non-domain errors) must be sanitized:
+			// the raw error text must never reach the client, only a generic
+			// message with a correlation ID (EN-1442).
+			if tc.expectedCode == "INTERNAL_ERROR" {
+				require.NotContains(t, resp.ErrorMessage, "something unexpected")
+				require.Contains(t, resp.ErrorMessage, "correlation ID")
+			}
 
 			if tc.checkRetry {
 				require.Equal(t, "1", w.Header().Get("Retry-After"))

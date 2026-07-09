@@ -5,7 +5,7 @@ Raft cluster managed by the Formance ledger operator, without downtime.
 
 ## User-facing model
 
-The `LedgerService` CRD exposes a single boolean:
+The `Cluster` CRD exposes a single boolean:
 
 ```yaml
 spec:
@@ -56,7 +56,7 @@ transitional state during a TLS toggle.
 You can watch the migration with:
 
 ```
-kubectl get ledgerservice my-ledger -w \
+kubectl get cluster my-ledger -w \
   -o jsonpath='{.status.tlsMigrationPhase}{"\n"}'
 ```
 

@@ -21,8 +21,9 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
+var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
+
 const (
-	sentinelLedger        = "sentinel-scaling-structured"
 	convergenceTimeout    = 10 * time.Minute
 	stableWindow          = 20 * time.Second
 	cooldownBetweenRounds = 60 * time.Second
@@ -35,8 +36,8 @@ var scalingCycle = []int64{5, 3, 7, 3}
 func main() {
 	log.Println("composer: singleton_driver_scaling_structured")
 
-	ctx := context.Background()
-
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
@@ -51,7 +52,7 @@ func main() {
 	defer conn.Close()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
-	lsClient := dynClient.Resource(internal.LedgerServiceGVR).Namespace(internal.LedgerServiceNamespace())
+	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
 	if err := internal.CreateLedger(ctx, client, sentinelLedger); err != nil && !internal.IsTransient(err) {
 		log.Printf("cannot create sentinel ledger: %s", err)
@@ -84,7 +85,7 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 			"sentinel": sentinel.TxID,
 		}
 
-		err := internal.PatchReplicas(ctx, lsClient, internal.LedgerServiceName, target)
+		err := internal.PatchReplicas(ctx, lsClient, internal.ClusterName, target)
 		assert.Sometimes(err == nil, "structured scaling patch should succeed", details.With(internal.Details{"error": err}))
 		if err != nil {
 			log.Printf("structured-scaling: patch failed: %s", err)
@@ -125,7 +126,7 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 			},
 		},
 	}))
-	assert.Sometimes(err == nil || internal.IsTransient(err), "fresh commit during stable window should succeed", details.With(internal.Details{"error": err}))
+	assert.Sometimes(internal.IsTolerated(err), "fresh commit during stable window should succeed", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
 	}

@@ -208,7 +208,7 @@ The `store incremental-backup` command calls the `ClusterService.IncrementalBack
 3. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
 4. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
 5. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
-6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
+6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Each segment streams through an `io.Pipe` into a multipart upload, so memory stays bounded and a single object can exceed the 5 GB single-`PutObject` limit. A range whose serialized entries exceed `--backup-max-segment-bytes` (default 4Gi) is split into multiple segments at sequence boundaries. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
 7. **Update manifest**: Appends new export segments to the manifest.
 8. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
 
@@ -583,7 +583,7 @@ Chapters partition the ledger's history into sealed segments. Each chapter cover
 - **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of chapter archival.
 - To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived chapters).
 
-See [Chapters](../technical/architecture/data-model/chapters.md) for the full chapter lifecycle and cold storage documentation.
+See [Chapters](../technical/architecture/subsystems/chapters/lifecycle.md) for the full chapter lifecycle and cold storage documentation.
 
 ---
 

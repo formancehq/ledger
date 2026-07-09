@@ -16,10 +16,10 @@ spec:
                 -- mb --ignore-existing minio/e2e-manual-backup
             timeout: 60s
 
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -37,21 +37,21 @@ spec:
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    - name: Create LedgerBackup (no schedule) and verify it reaches Ready
+    - name: Create Backup (no schedule) and verify it reaches Ready
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-backup-ready.yaml
 
-    - name: Trigger a manual full LedgerBackupRun and assert it succeeds
+    - name: Trigger a manual full BackupRun and assert it succeeds
       try:
         - apply:
-            file: ledgerbackuprun.yaml
+            file: backuprun.yaml
         - assert:
             file: assert-run-succeeded.yaml
 
-    - name: Verify LedgerBackup status summary is populated from the Run
+    - name: Verify Backup status summary is populated from the Run
       try:
         - assert:
             file: assert-backup-summary.yaml

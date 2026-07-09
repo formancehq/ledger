@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 
@@ -36,21 +36,42 @@ import (
 )
 
 func main() {
+	// run() owns all deferred cleanup (notably the OpenTelemetry span flush);
+	// keeping os.Exit out here guarantees those defers run before the process
+	// terminates, even on the error path.
+	os.Exit(run())
+}
+
+func run() int {
 	rootCmd := newRootCommand()
 	rootCmd.SilenceErrors = true
 
 	bindSubcommandEnv(rootCmd)
 
-	err := rootCmd.Execute()
+	// Initialise OpenTelemetry from the standard OTEL_* env vars. The root span
+	// created here parents every per-RPC span emitted by the gRPC client handler,
+	// so a single invocation produces one connected trace.
+	ctx := context.Background()
+	shutdownTracing := cmdutil.SetupTracing(ctx, version.Get().Version)
+	defer shutdownTracing(context.Background())
+
+	ctx, span := cmdutil.StartRootSpan(ctx)
+	defer span.End()
+
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
+		cmdutil.RecordSpanError(span, err)
+
 		var cliErr *cmdutil.CLIError
 		if !errors.As(err, &cliErr) {
 			// Error was not already displayed — print it now.
 			pterm.Error.Println(err.Error())
 		}
 
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func newRootCommand() *cobra.Command {
@@ -60,6 +81,10 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Refine the root span name now that the target subcommand is known
+			// (e.g. "ledgerctl transactions get").
+			cmdutil.NameCommandSpan(cmd)
+
 			// Keep stdout reserved for machine-readable payloads when the
 			// caller asked for --json or --yaml. Spinners, success messages,
 			// errors — every pterm printer — gets redirected to stderr so a
@@ -68,47 +93,11 @@ func newRootCommand() *cobra.Command {
 			// EncodeStructured).
 			cmdutil.RoutePtermForStructuredOutput(cmd)
 
-			// Skip profile/env resolution for profile management commands —
-			// they define local flags with the same names and must not be
-			// contaminated by the active profile or environment variables.
-			if isProfileCommand(cmd) {
-				return nil
-			}
-
-			// Load config and resolve the active profile.
-			cfg, err := cmdutil.LoadConfig()
-			if err != nil {
-				return err
-			}
-
-			// Resolve profile name: --profile flag > LEDGERCTL_PROFILE env > config activeProfile.
-			profileName, _ := cmd.Flags().GetString("profile")
-			profileExplicit := cmd.Flags().Changed("profile")
-
-			if profileName == "" {
-				if v, ok := os.LookupEnv("LEDGERCTL_PROFILE"); ok && v != "" {
-					profileName = strings.TrimSpace(v)
-					profileExplicit = true
-				}
-			}
-
-			name, p := cmdutil.GetActiveProfile(cfg, profileName)
-			if profileExplicit && p == nil && !isProfileBootstrapCommand(cmd) {
-				return fmt.Errorf("profile %q not found", name)
-			}
-
-			// Resolve flags: explicit CLI flag > env var > profile value > cobra default.
-			resolveFlag(cmd, "server", "LEDGERCTL_SERVER", cmdutil.ProfileFlagValue(p, "server"))
-			resolveFlag(cmd, "insecure", "LEDGERCTL_INSECURE", cmdutil.ProfileFlagValue(p, "insecure"))
-			resolveFlag(cmd, "tls-ca-cert", "LEDGERCTL_TLS_CA_CERT", cmdutil.ProfileFlagValue(p, "tls-ca-cert"))
-			resolveFlag(cmd, "consistency", "LEDGERCTL_CONSISTENCY", "")
-			resolveFlag(cmd, "auth-token", "LEDGERCTL_AUTH_TOKEN", "")
-			resolveFlag(cmd, "signing-key", "LEDGERCTL_SIGNING_KEY", cmdutil.ProfileFlagValue(p, "signing-key"))
-			resolveFlag(cmd, "signing-key-id", "LEDGERCTL_SIGNING_KEY_ID", cmdutil.ProfileFlagValue(p, "signing-key-id"))
-			resolveFlag(cmd, "response-verify-key", "LEDGERCTL_RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
-			resolveFlag(cmd, "result-file", "LEDGERCTL_RESULT_FILE", "")
-
-			return nil
+			// Resolve connection/security flags from the active profile and
+			// environment. Shared with the shell-completion path, which must run
+			// the same resolution because cobra skips PersistentPreRunE during
+			// `__complete`.
+			return cmdutil.ResolveConnectionFlags(cmd)
 		},
 	}
 
@@ -130,6 +119,7 @@ func newRootCommand() *cobra.Command {
 
 	// Add persistent flag for read consistency level.
 	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: LEDGERCTL_CONSISTENCY)")
+	cmdutil.RegisterEnumCompletion(rootCmd, "consistency", "stale", "leader", "linearizable")
 
 	// Add persistent flag for bearer token authentication.
 	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: LEDGERCTL_AUTH_TOKEN)")
@@ -188,39 +178,6 @@ func registerLedgerFlagCompletion(cmd *cobra.Command) {
 	}
 }
 
-// isProfileCommand returns true when cmd is a subcommand of "profile".
-// Profile management commands define local flags that overlap with the
-// persistent connection flags (--server, --insecure, --tls-ca-cert) and
-// must not inherit values from the active profile or environment.
-func isProfileCommand(cmd *cobra.Command) bool {
-	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "profile" {
-			return true
-		}
-	}
-
-	return false
-}
-
-// resolveFlag sets a cobra flag's value using the first available source:
-// explicit CLI flag > environment variable > profile value > cobra default.
-// It only writes to the flag when it was not explicitly set on the command line.
-func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
-	if cmd.Flags().Changed(flagName) {
-		return
-	}
-
-	if v, ok := os.LookupEnv(envVar); ok && v != "" {
-		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
-
-		return
-	}
-
-	if profileValue != "" {
-		_ = cmd.Flags().Set(flagName, profileValue)
-	}
-}
-
 // ledgerctlOwnedFlagNames are the profile/connection/security flags ledgerctl
 // resolves exclusively through the LEDGERCTL_ prefix (root PersistentPreRunE for
 // inherited flags, ResolveTokenSource for the token). They must never be bound to
@@ -245,6 +202,14 @@ var ledgerctlOwnedFlagNames = map[string]struct{}{
 	"signing-key-id":      {},
 	"response-verify-key": {},
 	"result-file":         {},
+	// key-id is a per-command JWT/key identifier declared locally by
+	// auth login / auth generate-token / signing register-key / signing
+	// revoke-key. Skipping bare KEY_ID here keeps Changed("key-id") a
+	// reliable "CLI-typed" signal, which auth's resolveKeyID uses to
+	// prefer an explicit --signing-key-id over an env-derived KEY_ID.
+	// Callers who need env-driven auth setup use LEDGERCTL_SIGNING_KEY_ID
+	// (feeds --signing-key-id, which resolveKeyID falls back to).
+	"key-id": {},
 }
 
 // bindSubcommandEnv binds bare-name environment variables (the go-libs
@@ -295,21 +260,6 @@ func bindFlagSetSkippingOwned(set *pflag.FlagSet) {
 		// place, matching resolveFlag's best-effort env handling.
 		_ = set.Set(flag.Name, value)
 	})
-}
-
-// isProfileBootstrapCommand returns true for commands that should work even
-// when the referenced --profile does not exist yet (e.g. auth login, profile create).
-func isProfileBootstrapCommand(cmd *cobra.Command) bool {
-	for c := cmd; c != nil; c = c.Parent() {
-		switch c.Name() {
-		case "login", "create":
-			if p := c.Parent(); p != nil && (p.Name() == "auth" || p.Name() == "profile") {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 func newVersionCommand() *cobra.Command {

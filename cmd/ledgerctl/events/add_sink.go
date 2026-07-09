@@ -3,6 +3,7 @@ package events
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -79,6 +80,7 @@ Examples:
 	cmd.Flags().String("kafka-topic", "", "Kafka topic name")
 	cmd.Flags().Bool("kafka-tls", false, "Enable TLS for Kafka connection")
 	cmd.Flags().String("kafka-sasl-mechanism", "", "Kafka SASL mechanism (PLAIN, SCRAM-SHA-256, SCRAM-SHA-512)")
+	cmdutil.RegisterEnumCompletion(cmd, "kafka-sasl-mechanism", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512")
 	cmd.Flags().String("kafka-sasl-username", "", "Kafka SASL username")
 	cmd.Flags().String("kafka-sasl-password", "", "Kafka SASL password")
 	cmd.Flags().String("http-endpoint", "", "HTTP webhook endpoint URL")
@@ -93,9 +95,11 @@ Examples:
 	cmd.Flags().String("databricks-table", "ledger_events", "Databricks table name")
 	cmd.Flags().Int32("databricks-port", 443, "Databricks port number")
 	cmd.Flags().String("format", "json", "Event serialization format (json or protobuf)")
+	cmdutil.RegisterEnumCompletion(cmd, "format", "json", "protobuf")
 	cmd.Flags().Int32("batch-size", 0, "Max events per batch (default: 64)")
 	cmd.Flags().Int64("batch-delay-ms", 0, "Max delay before flush in ms (default: 10)")
 	cmd.Flags().String("event-types", "", "Comma-separated event types to filter (e.g. COMMITTED_TRANSACTION,REVERTED_TRANSACTION). Empty = all events")
+	_ = cmd.RegisterFlagCompletionFunc("event-types", completeEventTypes)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -408,6 +412,41 @@ var validEventTypes = func() map[string]commonpb.EventType {
 
 	return m
 }()
+
+// completeEventTypes provides shell completion for the comma-separated
+// --event-types flag. It completes the segment after the last comma, keeps the
+// already-typed prefix intact, and omits types the user has already selected.
+// ShellCompDirectiveNoSpace lets the user keep appending ",<next>" without a
+// space breaking the token.
+func completeEventTypes(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	prefix, last := "", toComplete
+	if idx := strings.LastIndex(toComplete, ","); idx >= 0 {
+		prefix, last = toComplete[:idx+1], toComplete[idx+1:]
+	}
+
+	selected := make(map[string]struct{})
+	for p := range strings.SplitSeq(prefix, ",") {
+		if p = strings.ToUpper(strings.TrimSpace(p)); p != "" {
+			selected[p] = struct{}{}
+		}
+	}
+
+	upperLast := strings.ToUpper(strings.TrimSpace(last))
+
+	var comps []string
+	for name := range validEventTypes {
+		if _, ok := selected[name]; ok {
+			continue
+		}
+
+		if strings.HasPrefix(name, upperLast) {
+			comps = append(comps, prefix+name)
+		}
+	}
+	sort.Strings(comps)
+
+	return comps, cobra.ShellCompDirectiveNoSpace | cobra.ShellCompDirectiveNoFileComp
+}
 
 // parseEventTypes parses a comma-separated list of event type names into proto enum values.
 func parseEventTypes(s string) ([]commonpb.EventType, error) {

@@ -1,18 +1,17 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
 	log.Println("composer: parallel_driver_ledger_create")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -23,8 +22,9 @@ func main() {
 	id := internal.Rand().Uint64() % 1e6
 	ledger := fmt.Sprintf("ledger-%d", id)
 
-	err = internal.CreateLedger(ctx, client, ledger)
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create ledger", internal.Details{"error": err})
+	// CreateLedger already emits the canonical "should be able to create ledger"
+	// Sometimes assertion with the proper IsTransient classification.
+	_ = internal.CreateLedger(ctx, client, ledger)
 
 	log.Println("composer: parallel_driver_ledger_create: done")
 }

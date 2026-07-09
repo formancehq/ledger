@@ -41,8 +41,6 @@ func DefaultConfig() Config {
 	}
 }
 
-var progressKey = ProgressKey()
-
 // Store wraps a Pebble database for the read-side inverted indexes.
 // It is safe for concurrent use: Pebble supports concurrent readers
 // and writers without a global write lock.
@@ -194,30 +192,12 @@ func (s *Store) Path() string {
 // ReadProgress returns the last indexed log sequence from the progress key.
 // Returns 0 if no progress has been recorded.
 func (s *Store) ReadProgress() (uint64, error) {
-	v, closer, err := s.db.Get(progressKey)
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
-		return 0, fmt.Errorf("reading progress: %w", err)
-	}
-
-	defer func() { _ = closer.Close() }()
-
-	if len(v) != 8 {
-		return 0, fmt.Errorf("corrupt progress value: expected 8 bytes, got %d", len(v))
-	}
-
-	return binary.BigEndian.Uint64(v), nil
+	return progressCursor.Read(s.db)
 }
 
 // WriteProgress stores the last indexed log sequence.
 func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], sequence)
-
-	return batch.SetBytes(progressKey, buf[:])
+	return progressCursor.Write(batch, sequence)
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).
@@ -234,30 +214,12 @@ func (s *Store) NotifyProgress() {
 // ReadAppliedProposalProgress returns the last consumed AppliedProposal
 // sequence. Returns 0 if no progress has been recorded yet.
 func (s *Store) ReadAppliedProposalProgress() (uint64, error) {
-	v, closer, err := s.db.Get(AppliedProposalProgressKey())
-	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
-		return 0, fmt.Errorf("reading applied proposal progress: %w", err)
-	}
-
-	defer func() { _ = closer.Close() }()
-
-	if len(v) != 8 {
-		return 0, nil
-	}
-
-	return binary.BigEndian.Uint64(v), nil
+	return appliedProposalCursor.Read(s.db)
 }
 
 // WriteAppliedProposalProgress stores the last consumed AppliedProposal sequence.
 func (s *Store) WriteAppliedProposalProgress(batch *dal.WriteSession, sequence uint64) error {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], sequence)
-
-	return batch.SetBytes(AppliedProposalProgressKey(), buf[:])
+	return appliedProposalCursor.Write(batch, sequence)
 }
 
 // WriteBackfillProgress stores a backfill cursor.

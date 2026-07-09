@@ -43,7 +43,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "empty CreateLedger name",
@@ -71,7 +71,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "null byte in SaveNumscript ledger",
@@ -85,7 +85,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrLedgerNameContainsNullByte,
+			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
 			name: "valid order without ledger (CloseChapter)",
@@ -278,7 +278,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "null byte in SaveLedgerMetadata key",
@@ -295,7 +295,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "empty metadata key in DeleteMetadata",
@@ -337,7 +337,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		// #322: revert orders silently bypassed validateApplyMetadataKeys
 		// (no case for LedgerApplyOrder_RevertTransaction). A client could
@@ -363,7 +363,7 @@ func TestValidateOrder_MetadataKeys(t *testing.T) {
 					},
 				},
 			},
-			wantErr: domain.ErrMetadataKeyContainsNullByte,
+			wantErr: domain.ErrMetadataKeyInvalidChar,
 		},
 		{
 			name: "empty metadata key in RevertTransaction",
@@ -801,4 +801,214 @@ func TestValidateOrderContent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     *commonpb.MirrorSourceConfig
+		wantErr error
+	}{
+		{
+			name: "no mirror source",
+			src:  nil,
+		},
+		{
+			name: "postgres mirror without IAM auth",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: "postgres://user:pass@host:5432/db"},
+			}},
+		},
+		{
+			name: "postgres mirror with IAM auth and region",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+		},
+		{
+			name: "postgres mirror with IAM auth missing region rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=require",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: ""},
+				},
+			}},
+			wantErr: ErrMirrorIAMRegionRequired,
+		},
+		{
+			name: "postgres mirror with IAM auth on non-TLS sslmode rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db?sslmode=disable",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorIAMRequiresTLS,
+		},
+		{
+			name: "postgres mirror with IAM auth on unset sslmode rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        "postgres://iam-user@host:5432/db",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorIAMRequiresTLS,
+		},
+		{
+			name: "postgres mirror with IAM auth on libpq keyword=value DSN rejected at admission",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Dsn:        `host=db.example.com user=iam-user dbname=ledger sslmode=require`,
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorIAMRequiresTLS,
+		},
+		{
+			name: "http mirror source unaffected",
+			src: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Http{
+				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+			}},
+		},
+		{
+			name: "valid rewrite rules accepted",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleRewriteAddress(":worker:\\d+", ""),
+					createdRuleSetMetadata(`log.metadata["type"].string_value == "payout"`, "category", "external", true),
+				},
+			},
+		},
+		{
+			name: "unset scope rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Stop: true},
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid cel expression rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleWithMatch(`this is not valid cel`),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "non-boolean match rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleWithMatch(`"a string"`),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid literal regex pattern rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleRewriteAddress("(", ""),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid literal metadata key rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					createdRuleSetMetadata("", "bad key", "v", false),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			order := &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "default",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{
+								Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+								MirrorSource: tt.src,
+							},
+						},
+					},
+				},
+			}
+
+			err := validateOrder(order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass reproduces the exact
+// bypass NumaryBot reported: pgxpool.ParseConfig folds PGSSLMODE from the
+// process env, so a DSN without sslmode= would inherit that env var and
+// pass a naive TLSConfig check. The admission gate must anchor the TLS
+// requirement in the raw DSN, independent of pod env.
+//
+// This test cannot share a t.Parallel outer with the table above because
+// t.Setenv forbids parallel siblings mutating the process env.
+func TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass(t *testing.T) {
+	t.Setenv("PGSSLMODE", "require")
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "default",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{
+							Postgres: &commonpb.PostgresMirrorSourceConfig{
+								Dsn:        "postgres://iam-user@host:5432/db",
+								AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+
+	err := validateOrder(order)
+	require.ErrorIs(t, err, ErrMirrorIAMRequiresTLS,
+		"PGSSLMODE=require in the pod env must not satisfy the admission TLS gate — the persisted DSN must carry sslmode= itself")
 }

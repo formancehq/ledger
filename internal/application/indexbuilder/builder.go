@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
+	"github.com/formancehq/ledger/v3/internal/pkg/tailworker"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -38,10 +40,11 @@ type Builder struct {
 	notifications *signal.Notifications
 	w             worker.Worker
 
-	lastIndexedSeq      atomic.Uint64
-	pebbleLastSeq       atomic.Uint64
-	logsIndexed         atomic.Uint64
-	metricsRegistration metric.Registration
+	lastIndexedSeq          atomic.Uint64
+	pebbleLastSeq           atomic.Uint64
+	logsIndexed             atomic.Uint64
+	metricsRegistration     metric.Registration // tailworker gauge triplet
+	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
 
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
@@ -365,8 +368,8 @@ func (b *Builder) SetNotifications(n *signal.Notifications) {
 
 // Start begins the background index-building loop and registers OTEL metrics.
 func (b *Builder) Start() {
-	if reg, err := b.registerMetrics(); err == nil {
-		b.metricsRegistration = reg
+	if err := b.registerMetrics(); err != nil {
+		b.logger.Errorf("register index builder metrics: %v", err)
 	}
 
 	b.w = worker.New()
@@ -380,6 +383,9 @@ func (b *Builder) Stop() {
 	if b.metricsRegistration != nil {
 		_ = b.metricsRegistration.Unregister()
 	}
+	if b.logsIndexedRegistration != nil {
+		_ = b.logsIndexedRegistration.Unregister()
+	}
 }
 
 // LastIndexedSequence returns the last indexed sequence (from the atomic cache).
@@ -392,59 +398,38 @@ func (b *Builder) PebbleLastSequence() uint64 {
 	return b.pebbleLastSeq.Load()
 }
 
-// registerMetrics registers observable gauges for index builder progress.
-func (b *Builder) registerMetrics() (metric.Registration, error) {
-	lastIndexedGauge, err := b.meter.Int64ObservableGauge(
-		"index.builder.last_indexed_sequence",
-		metric.WithDescription("Last log sequence indexed in Pebble read store"),
-	)
+// registerMetrics registers the shared tail-worker progress gauges plus the
+// builder-specific logs_indexed_total counter-gauge. Two registrations are
+// stored on the receiver so Stop can unregister both.
+func (b *Builder) registerMetrics() error {
+	triplet, err := tailworker.RegisterTailGauges(b.meter, "index.builder", "pebble", &b.lastIndexedSeq, &b.pebbleLastSeq)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	pebbleLastGauge, err := b.meter.Int64ObservableGauge(
-		"index.builder.pebble_last_sequence",
-		metric.WithDescription("Last log sequence in Pebble"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	lagGauge, err := b.meter.Int64ObservableGauge(
-		"index.builder.lag",
-		metric.WithDescription("Number of logs the index builder is behind Pebble"),
-	)
-	if err != nil {
-		return nil, err
-	}
+	b.metricsRegistration = triplet
 
 	logsIndexedGauge, err := b.meter.Int64ObservableGauge(
 		"index.builder.logs_indexed_total",
 		metric.WithDescription("Total number of logs indexed since process start"),
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return b.meter.RegisterCallback(
+	reg, err := b.meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			indexed := int64(b.lastIndexedSeq.Load())
-			pebbleLast := int64(b.pebbleLastSeq.Load())
-
-			lag := max(pebbleLast-indexed, 0)
-
-			o.ObserveInt64(lastIndexedGauge, indexed)
-			o.ObserveInt64(pebbleLastGauge, pebbleLast)
-			o.ObserveInt64(lagGauge, lag)
 			o.ObserveInt64(logsIndexedGauge, int64(b.logsIndexed.Load()))
 
 			return nil
 		},
-		lastIndexedGauge,
-		pebbleLastGauge,
-		lagGauge,
 		logsIndexedGauge,
 	)
+	if err != nil {
+		return err
+	}
+	b.logsIndexedRegistration = reg
+
+	return nil
 }
 
 func (b *Builder) loop(ctx context.Context) {
@@ -456,39 +441,32 @@ func (b *Builder) loop(ctx context.Context) {
 	// (same signal, same semantics).
 	stop := ctx.Done()
 
-	// Initialize index config cache from Pebble before processing any logs.
-	b.initIndexConfig(ctx)
+	// Boot init: rebuild the index-config cache and seed cursors. Any
+	// transient Pebble/read-store failure here must NOT advance the
+	// persisted cursor against an incomplete config, so retry with
+	// backoff until it succeeds or shutdown is requested. initIndexConfig
+	// resets its own state, so re-running it on retry is idempotent.
+	var (
+		cursor     uint64
+		pebbleLast uint64
+		err        error
+	)
+	worker.RetryWithBackoff(stop, b.logger, func() error {
+		cursor, pebbleLast, err = b.bootInit(ctx)
 
-	cursor, err := b.readStore.LastIndexedSequence()
-	if err != nil {
-		b.logger.Errorf("Failed to read progress: %v", err)
+		return err
+	})
 
+	// RetryWithBackoff returns only on success or when stop is closed. If
+	// the context was cancelled we never got a good init — return without
+	// processing any log.
+	if ctx.Err() != nil {
 		return
 	}
 
 	b.lastIndexedSeq.Store(cursor)
+	b.pebbleLastSeq.Store(pebbleLast)
 
-	// Recover AppliedProposal sync progress.
-	if seq, err := b.readStore.ReadAppliedProposalProgress(); err == nil {
-		b.lastAppliedProposalSeq = seq
-	}
-
-	// Seed pebble last sequence. The handle is closed immediately after use
-	// to release the RLock — keeping it open would deadlock with
-	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
-	var pebbleLast uint64
-	if handle, err := b.pebbleStore.NewDirectReadHandle(); err != nil {
-		b.logger.Errorf("Failed to create read handle: %v", err)
-
-		return
-	} else {
-		if v, err := query.ReadLastSequence(handle); err == nil {
-			pebbleLast = v
-			b.pebbleLastSeq.Store(v)
-		}
-
-		_ = handle.Close()
-	}
 	b.logger.WithFields(map[string]any{
 		"cursor":     cursor,
 		"pebbleLast": pebbleLast,
@@ -599,4 +577,48 @@ func (b *Builder) loop(ctx context.Context) {
 		// the broadcast and block until new logs arrive.
 		b.readStore.NotifyProgress()
 	}
+}
+
+// bootInit runs the index builder's boot prologue as a single retryable unit:
+// rebuild the index-config cache from Pebble/the read store, then read the
+// persisted indexed cursor and seed the last-known Pebble sequence. It returns
+// the recovered cursor and pebbleLast, or an error if any required read failed
+// — the caller (loop) retries with backoff so a transient failure never
+// advances the cursor against an incomplete config. ReadAppliedProposalProgress
+// and query.ReadLastSequence stay best-effort (they tolerate failure today);
+// only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
+func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
+	if err := b.initIndexConfig(ctx); err != nil {
+		return 0, 0, fmt.Errorf("initializing index config: %w", err)
+	}
+
+	cursor, err = b.readStore.LastIndexedSequence()
+	if err != nil {
+		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+	}
+
+	// Recover AppliedProposal sync progress (best-effort: a corrupt cursor
+	// surfaces loudly and falls back to a full re-sync from 0, since the
+	// projection is rebuildable, rather than aborting the whole builder).
+	if seq, err := b.readStore.ReadAppliedProposalProgress(); err != nil {
+		b.logger.Errorf("read applied-proposal cursor (re-syncing from 0): %v", err)
+	} else {
+		b.lastAppliedProposalSeq = seq
+	}
+
+	// Seed pebble last sequence. The handle is closed immediately after use
+	// to release the RLock — keeping it open would deadlock with
+	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return 0, 0, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	if v, err := query.ReadLastSequence(handle); err == nil {
+		pebbleLast = v
+	}
+
+	_ = handle.Close()
+
+	return cursor, pebbleLast, nil
 }

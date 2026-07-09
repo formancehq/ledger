@@ -22,11 +22,11 @@ func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 
 	require.Len(t, headlessServiceName(name47), dns1035LabelMaxLength)
 
-	require.NoError(t, validateSpec(&ledgerv1alpha1.LedgerService{
+	require.NoError(t, validateSpec(&ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name47},
 	}), "a 47-char name yields a 63-char headless Service name and must be accepted")
 
-	err := validateSpec(&ledgerv1alpha1.LedgerService{
+	err := validateSpec(&ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name48},
 	})
 	require.Error(t, err, "a 48-char name overflows the 63-char DNS-1035 limit and must be rejected")
@@ -35,8 +35,8 @@ func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{}))
-	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{}))
+	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Cache: &ledgerv1alpha1.CacheConfig{},
 		Bloom: &ledgerv1alpha1.BloomConfig{},
 	}))
@@ -46,12 +46,12 @@ func TestValidateClusterConfig_RejectsNonPositiveRotation(t *testing.T) {
 	t.Parallel()
 	zero := int32(0)
 	neg := int32(-5)
-	err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Cache: &ledgerv1alpha1.CacheConfig{RotationThreshold: &zero},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "rotationThreshold")
-	err = validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	err = validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Cache: &ledgerv1alpha1.CacheConfig{RotationThreshold: &neg},
 	})
 	require.Error(t, err)
@@ -60,7 +60,7 @@ func TestValidateClusterConfig_RejectsNonPositiveRotation(t *testing.T) {
 func TestValidateClusterConfig_AcceptsPositiveRotation(t *testing.T) {
 	t.Parallel()
 	v := int32(1000)
-	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Cache: &ledgerv1alpha1.CacheConfig{RotationThreshold: &v},
 	}))
 }
@@ -68,7 +68,7 @@ func TestValidateClusterConfig_AcceptsPositiveRotation(t *testing.T) {
 func TestValidateClusterConfig_RejectsNegativeExpectedKeys(t *testing.T) {
 	t.Parallel()
 	bad := int64(-1)
-	err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Bloom: &ledgerv1alpha1.BloomConfig{
 			Volumes: &ledgerv1alpha1.BloomFilterConfig{ExpectedKeys: &bad},
 		},
@@ -81,7 +81,7 @@ func TestValidateClusterConfig_AcceptsZeroExpectedKeys(t *testing.T) {
 	t.Parallel()
 	// Zero is explicitly the "disable this filter" sentinel.
 	zero := int64(0)
-	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Bloom: &ledgerv1alpha1.BloomConfig{
 			Volumes: &ledgerv1alpha1.BloomFilterConfig{ExpectedKeys: &zero},
 		},
@@ -94,7 +94,7 @@ func TestValidateClusterConfig_RejectsInvalidFPRate(t *testing.T) {
 	for _, c := range cases {
 		t.Run("fpRate="+c, func(t *testing.T) {
 			t.Parallel()
-			err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 				Bloom: &ledgerv1alpha1.BloomConfig{
 					Volumes: &ledgerv1alpha1.BloomFilterConfig{FPRate: c},
 				},
@@ -107,7 +107,7 @@ func TestValidateClusterConfig_RejectsInvalidFPRate(t *testing.T) {
 func TestValidateClusterConfig_AcceptsValidFPRate(t *testing.T) {
 	t.Parallel()
 	for _, c := range []string{"0.001", "0.01", "0.05", "0.5", "0.999"} {
-		require.NoError(t, validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+		require.NoError(t, validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 			Bloom: &ledgerv1alpha1.BloomConfig{
 				Volumes: &ledgerv1alpha1.BloomFilterConfig{FPRate: c},
 			},
@@ -118,7 +118,7 @@ func TestValidateClusterConfig_AcceptsValidFPRate(t *testing.T) {
 func TestValidateClusterConfig_CoversLedgerMetadata(t *testing.T) {
 	t.Parallel()
 	// New CRD field — validation must cover it too.
-	err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Bloom: &ledgerv1alpha1.BloomConfig{
 			LedgerMetadata: &ledgerv1alpha1.BloomFilterConfig{FPRate: "2.0"},
 		},
@@ -130,7 +130,7 @@ func TestValidateClusterConfig_CoversLedgerMetadata(t *testing.T) {
 func TestValidateClusterConfig_CoversPreparedQueries(t *testing.T) {
 	t.Parallel()
 	// New CRD field — validation must cover it too.
-	err := validateClusterConfig(&ledgerv1alpha1.LedgerServiceSpec{
+	err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
 		Bloom: &ledgerv1alpha1.BloomConfig{
 			PreparedQueries: &ledgerv1alpha1.BloomFilterConfig{FPRate: "2.0"},
 		},

@@ -8,13 +8,13 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-// computeSpecHash returns a SHA-256 hash of the serialized LedgerService spec,
+// computeSpecHash returns a SHA-256 hash of the serialized Cluster spec,
 // excluding fields that don't affect the pod template.
 // This is used as a pod template annotation to trigger rolling updates on spec changes.
 //
 // Fields that map to separate Kubernetes resources (Service, Ingress, NetworkPolicy,
 // DNSEndpoint) are excluded because changes to them do not require a pod restart.
-func computeSpecHash(spec *ledgerv1alpha1.LedgerServiceSpec) string {
+func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	// Copy the spec and nil out fields that should not trigger a rolling update.
 	cp := *spec
 
@@ -32,18 +32,18 @@ func computeSpecHash(spec *ledgerv1alpha1.LedgerServiceSpec) string {
 	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
 	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
 	// Persistence is a value field, so zeroing it on the shallow copy is safe.
-	cp.Persistence.DeletionProtection = false
+	cp.Persistence.DeletionProtection = nil
 
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-// computeAuthKeysHash returns a SHA-256 hash of the sorted agent key info list.
+// computeAuthKeysHash returns a SHA-256 hash of the sorted credentials key info list.
 // This is used as a pod template annotation to trigger rolling updates when
 // the set of auth keys changes.
-func computeAuthKeysHash(agents []agentKeyInfo) string {
-	data, _ := json.Marshal(agents) //nolint:errchkjson // agents is always serializable
+func computeAuthKeysHash(credentials []credentialsKeyInfo) string {
+	data, _ := json.Marshal(credentials) //nolint:errchkjson // credentials is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

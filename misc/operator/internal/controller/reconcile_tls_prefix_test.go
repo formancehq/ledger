@@ -30,16 +30,16 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 		namespace = "ledger-v3"
 	)
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
 			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
 		},
 	}
-	backup := &ledgerv1alpha1.LedgerBackup{
+	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "bk", Namespace: namespace},
-		Spec: ledgerv1alpha1.LedgerBackupSpec{
+		Spec: ledgerv1alpha1.BackupSpec{
 			ServiceRef: crName,
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
@@ -47,13 +47,13 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 			},
 		},
 	}
-	run := &ledgerv1alpha1.LedgerBackupRun{
+	run := &ledgerv1alpha1.BackupRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "bk-manual-abc", Namespace: namespace},
-		Spec:       ledgerv1alpha1.LedgerBackupRunSpec{BackupRef: "bk", Type: ledgerv1alpha1.BackupRunTypeFull},
+		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "bk", Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	// makeSTS builds a running StatefulSet carrying TLS_MODE=required, mirroring
-	// what the reconciler renders for a TLS-required LedgerService.
+	// what the reconciler renders for a TLS-required Cluster.
 	makeSTS := func(name string) *appsv1.StatefulSet {
 		return &appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -103,7 +103,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 				WithObjects(makeSTS(tt.stsName)).
 				Build()
 
-			r := &LedgerBackupRunReconciler{Client: c, Scheme: scheme}
+			r := &BackupRunReconciler{Client: c, Scheme: scheme}
 
 			job, err := r.ensureBackupJob(context.Background(), run, backup, ls)
 			require.NoError(t, err)

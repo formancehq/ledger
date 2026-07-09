@@ -14,9 +14,9 @@ import (
 func TestBuildStatefulSetSpec_ExplicitRollingUpdate(t *testing.T) {
 	t.Parallel()
 
-	ls := &ledgerv1alpha1.LedgerService{
+	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "ls", Namespace: "default"},
-		Spec:       ledgerv1alpha1.LedgerServiceSpec{},
+		Spec:       ledgerv1alpha1.ClusterSpec{},
 	}
 
 	spec := buildStatefulSetSpec(ls, "hash", nil, "disabled")
@@ -31,11 +31,11 @@ func TestBuildStatefulSetSpec_ExplicitRollingUpdate(t *testing.T) {
 func TestBuildVolumeClaimTemplates_DeletionProtectionLabel(t *testing.T) {
 	t.Parallel()
 
-	newLedger := func(protect bool) *ledgerv1alpha1.LedgerService {
-		return &ledgerv1alpha1.LedgerService{
+	newLedger := func(protect bool) *ledgerv1alpha1.Cluster {
+		return &ledgerv1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: "ls", Namespace: "default"},
-			Spec: ledgerv1alpha1.LedgerServiceSpec{
-				Persistence: ledgerv1alpha1.PersistenceSpec{DeletionProtection: protect},
+			Spec: ledgerv1alpha1.ClusterSpec{
+				Persistence: ledgerv1alpha1.PersistenceSpec{DeletionProtection: &protect},
 			},
 		}
 	}

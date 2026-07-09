@@ -1,0 +1,13 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Backup
+metadata:
+  name: bad-ref
+spec:
+  serviceRef: nonexistent-service
+  destination:
+    driver: s3
+    s3:
+      bucket: unused
+      region: us-east-1
+  schedule:
+    full: "0 2 * * 0"

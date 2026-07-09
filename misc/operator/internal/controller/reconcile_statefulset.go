@@ -29,7 +29,7 @@ import (
 // StatefulSet status churn.
 const volumeBindRequeueInterval = 10 * time.Second
 
-func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) (ctrl.Result, error) {
+func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
 
@@ -84,7 +84,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 			ledger.Spec.Replicas = &previousReplicas
 			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 				sts.Labels = commonLabels(ledger)
-				desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
+				desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
 				if sts.CreationTimestamp.IsZero() {
 					sts.Spec = desired
@@ -124,7 +124,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		},
 	}
 
-	desired := buildStatefulSetSpec(ledger, specHash, agents, targetTLSMode)
+	desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
 	// VCTs are immutable — we must delete-recreate with orphan propagation.
@@ -191,7 +191,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	// unstamping a PVC born from a still-labeled immutable VCT after an opt-out.
 	if r.Clientset != nil {
 		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtection)
+		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
 		}
@@ -203,7 +203,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	return ctrl.Result{}, nil
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, targetTLSMode string) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -229,14 +229,14 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string,
 			MatchLabels: selectorLabels(ledger),
 		},
 		PersistentVolumeClaimRetentionPolicy: buildRetentionPolicy(ledger),
-		Template:                             buildPodTemplate(ledger, specHash, agents, targetTLSMode),
+		Template:                             buildPodTemplate(ledger, specHash, credentials, targetTLSMode),
 		VolumeClaimTemplates:                 buildVolumeClaimTemplates(ledger),
 	}
 
 	return spec
 }
 
-func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
+func buildRetentionPolicy(ledger *ledgerv1alpha1.Cluster) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 
@@ -256,15 +256,15 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.Stateful
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, targetTLSMode string) corev1.PodTemplateSpec {
 	spec := &ledger.Spec
 
 	// Pod annotations with spec hash for rolling updates
 	podAnnotations := make(map[string]string)
 	maps.Copy(podAnnotations, ledger.Spec.PodAnnotations)
 	podAnnotations[annotationSpecHash] = specHash
-	if len(agents) > 0 {
-		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(agents)
+	if len(credentials) > 0 {
+		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(credentials)
 	}
 
 	// Container ports
@@ -361,7 +361,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
-	if len(agents) > 0 {
+	if len(credentials) > 0 {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "auth-keys",
 			MountPath: "/auth-keys",
@@ -379,7 +379,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
-	envVars := buildEnvVars(ledger, targetTLSMode, agents)
+	envVars := buildEnvVars(ledger, targetTLSMode, credentials)
 	// Inject CLUSTER_SECRET only when TLS is at least partially active:
 	// the secret is a static bearer token and must never travel in
 	// plaintext. During a TLS toggle, the secret appears together with the
@@ -469,7 +469,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 	}
 }
 
-func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
+func buildAffinity(ledger *ledgerv1alpha1.Cluster) *corev1.Affinity {
 	var affinity *corev1.Affinity
 
 	if ledger.Spec.Affinity != nil {
@@ -529,8 +529,8 @@ func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
 
 // buildTopologySpreadConstraints returns a deep-copied list of the user-provided
 // topologySpreadConstraints with a default LabelSelector pointing to the
-// LedgerService selector when the user did not supply one.
-func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []corev1.TopologySpreadConstraint {
+// Cluster selector when the user did not supply one.
+func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.Cluster) []corev1.TopologySpreadConstraint {
 	in := ledger.Spec.TopologySpreadConstraints
 	out := make([]corev1.TopologySpreadConstraint, len(in))
 	selector := selectorLabels(ledger)
@@ -550,7 +550,7 @@ func buildTopologySpreadConstraints(ledger *ledgerv1alpha1.LedgerService) []core
 // deriving the Raft NODE_ID and choosing between bootstrap / join / restore
 // for the cluster startup flag. Everything else is plain configuration and
 // is passed through env vars built by buildEnvVars.
-func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
+func buildCommand(ledger *ledgerv1alpha1.Cluster) []string {
 	spec := &ledger.Spec
 
 	var clusterLogic string
@@ -603,7 +603,7 @@ exec ./ledger-server run --node-id $NODE_ID $CLUSTER_FLAG`, clusterLogic)
 	return []string{"/bin/sh", "-c", script}
 }
 
-func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.PersistentVolumeClaim {
+func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.PersistentVolumeClaim {
 	type vctDef struct {
 		name string
 		spec *ledgerv1alpha1.VolumeSpec
@@ -647,7 +647,7 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 		// fully would mean recreating the StatefulSet just to re-emit templates,
 		// which is too disruptive for a running Raft cluster.
 		var labels map[string]string
-		if ledger.Spec.Persistence.DeletionProtection {
+		if ledger.Spec.Persistence.DeletionProtectionEnabled() {
 			labels = map[string]string{labelDeletionProtection: labelDeletionProtectionValue}
 		}
 

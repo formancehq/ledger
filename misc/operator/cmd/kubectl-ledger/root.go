@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	agentscmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/agents"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/backup"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/create"
+	credentialscmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/credentials"
 	deletecmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/delete"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
 	"github.com/formance/ledger/operator/cmd/kubectl-ledger/get"
@@ -23,8 +23,8 @@ func newRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "kubectl-ledger",
-		Short:         "Manage LedgerService deployments on Kubernetes",
-		Long:          "A kubectl plugin for managing LedgerService CRDs deployed by the Formance LedgerService Operator.",
+		Short:         "Manage Cluster deployments on Kubernetes",
+		Long:          "A kubectl plugin for managing Cluster CRDs deployed by the Formance Cluster Operator.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -41,7 +41,7 @@ func newRootCommand() *cobra.Command {
 		restart.NewCommand(opts),
 		logs.NewCommand(opts),
 		portforward.NewCommand(opts),
-		agentscmd.NewCommand(opts),
+		credentialscmd.NewCommand(opts),
 		backup.NewCommand(opts),
 		explain.NewCommand(opts.RESTConfig),
 		newVersionCommand(),

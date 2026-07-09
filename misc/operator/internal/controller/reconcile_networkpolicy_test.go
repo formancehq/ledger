@@ -17,7 +17,7 @@ import (
 
 func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-basic", ns)
+	ls := newCluster("np-basic", ns)
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
 	}
@@ -81,7 +81,7 @@ func TestReconcile_NetworkPolicyEnabled(t *testing.T) {
 
 func TestReconcile_NetworkPolicyCustomCIDR(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-cidr", ns)
+	ls := newCluster("np-cidr", ns)
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled:            true,
 		ExternalCIDRExcept: []string{"10.0.0.0/8", "100.64.0.0/10"},
@@ -101,7 +101,7 @@ func TestReconcile_NetworkPolicyCustomCIDR(t *testing.T) {
 
 func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-cleanup", ns)
+	ls := newCluster("np-cleanup", ns)
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
 	}
@@ -114,7 +114,7 @@ func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 	}, "NetworkPolicy should be created")
 
 	// Disable NetworkPolicy.
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "np-cleanup", Namespace: ns}, updated))
 	updated.Spec.NetworkPolicy.Enabled = false
 	require.NoError(t, k8sClient.Update(ctx, updated))
@@ -128,7 +128,7 @@ func TestReconcile_NetworkPolicyDisabledCleansUp(t *testing.T) {
 
 func TestReconcile_NetworkPolicyNotCreatedByDefault(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-absent", ns)
+	ls := newCluster("np-absent", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for the main service to appear (proves reconciliation ran).
@@ -144,7 +144,7 @@ func TestReconcile_NetworkPolicyNotCreatedByDefault(t *testing.T) {
 
 func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-ports", ns)
+	ls := newCluster("np-ports", ns)
 	ls.Spec.Service.RaftPort = 17777
 	ls.Spec.Service.GrpcPort = 18888
 	ls.Spec.Service.HttpPort = 19000
@@ -168,7 +168,7 @@ func TestReconcile_NetworkPolicyCustomPorts(t *testing.T) {
 
 func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("np-update", ns)
+	ls := newCluster("np-update", ns)
 	ls.Spec.NetworkPolicy = &ledgerv1alpha1.NetworkPolicySpec{
 		Enabled: true,
 	}
@@ -184,7 +184,7 @@ func TestReconcile_NetworkPolicyUpdate(t *testing.T) {
 	assert.Equal(t, defaultExternalCIDRExcept, np.Spec.Egress[2].To[0].IPBlock.Except)
 
 	// Update to custom CIDR.
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "np-update", Namespace: ns}, updated))
 	updated.Spec.NetworkPolicy.ExternalCIDRExcept = []string{"10.0.0.0/8"}
 	require.NoError(t, k8sClient.Update(ctx, updated))

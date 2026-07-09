@@ -32,6 +32,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
 	cmd.Flags().String("persistence", "normal", "Volume persistence mode: normal, ephemeral (purge on zero), transient (never persisted, must be zero at batch end)")
+	cmdutil.RegisterEnumCompletion(cmd, "persistence", "normal", "ephemeral", "transient")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("ledger")
 

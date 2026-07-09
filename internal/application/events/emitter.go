@@ -483,7 +483,7 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 	}}
 
 	// One WriteOperation per TU. applyEventsSinkUpdate reads no cache
-	// state, so Needs stays nil and the runner takes the fast path
+	// state, so Coverage stays nil and the runner takes the fast path
 	// (tracker mutex held just long enough to inject PredictedIndex +
 	// proposer.Propose).
 	operations := []plan.WriteOperation{{

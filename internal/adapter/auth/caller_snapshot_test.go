@@ -91,7 +91,7 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 			Subject: "original-user",
 			Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 		},
-		Scopes: []string{"transactions:write"},
+		Scopes: []string{"ledger:TransactionWrite"},
 	}
 
 	ctx := WithClaims(context.Background(), claims)
@@ -102,7 +102,7 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 	require.Equal(t, "original-user", got.GetIdentity().GetSubject(),
 		"forwarded snapshot must win over local peer claims")
 	require.Equal(t, "https://idp.example.com", got.GetIdentity().GetIssuer())
-	require.Equal(t, []string{"transactions:write"}, got.GetScopes())
+	require.Equal(t, []string{"ledger:TransactionWrite"}, got.GetScopes())
 }
 
 func TestIsClusterInternal_DefaultsFalse(t *testing.T) {

@@ -194,12 +194,12 @@ func runWorker(
 	}
 }
 
-// Per-run fleet names: model-<runID>-0, model-<runID>-1, ... The "model-"
-// prefix is reserved in internal.restrictedPrefixes so generic drivers skip them.
+// Per-run fleet names: model-<runID>-0, model-<runID>-1, ... PrefixModel
+// is in internal.ownedLedgerPrefixes so generic drivers skip them.
 func ledgerNames(runID string, n int) []string {
 	out := make([]string, n)
 	for i := 0; i < n; i++ {
-		out[i] = fmt.Sprintf("model-%s-%d", runID, i)
+		out[i] = internal.PrefixModel.WithSuffix(fmt.Sprintf("%s-%d", runID, i))
 	}
 	return out
 }

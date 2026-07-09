@@ -30,12 +30,10 @@ type AuthFlagConfig struct {
 	// writes require a valid token. Empty (default) preserves the historical
 	// strict behavior where every request must authenticate.
 	AnonymousScopes string
-	// OIDCDiscoveryTimeout bounds the OIDC discovery + JWKS HTTP calls made
-	// during startup. A slow or blackholed issuer would otherwise hang the
-	// process indefinitely (the go-libs path injects http.DefaultClient with
-	// no Timeout, and the local fallback calls oidc.Discover with
-	// context.Background()). 0 keeps the legacy unbounded behavior; the
-	// default (set in cmd/server/server.go) is 10s.
+	// OIDCDiscoveryTimeout bounds OIDC discovery (via a context deadline) and the
+	// keyset's JWKS fetches (via the HTTP client timeout) under one
+	// operator-controlled ceiling. 0 leaves them unbounded; the default (set in
+	// cmd/server/server.go) is 10s.
 	OIDCDiscoveryTimeout time.Duration
 }
 
@@ -107,6 +105,13 @@ type ReadIndexConfig struct {
 	PebbleConfig pebblecfg.Config // Pebble tunables for the read index
 }
 
+// AuditIndexConfig holds configuration for the audit secondary index worker.
+type AuditIndexConfig struct {
+	BatchSize        int    // audit entries per Pebble batch (0 = default 1000)
+	RebuildThreshold uint64 // boot drop+rebuild when (last - cursor) exceeds this (0 = never)
+	Disabled         bool   // ops kill switch
+}
+
 // SnapshotSyncConfig holds configuration for the session-based snapshot sync protocol.
 type SnapshotSyncConfig struct {
 	SessionTTL     time.Duration // Server-side session lifetime before reaper cleanup
@@ -174,14 +179,19 @@ type Config struct {
 	// SpoolSegmentMaxBytes caps the size of a spool segment before rotation
 	// (sealing). 0 means use the spool default (256Mi).
 	SpoolSegmentMaxBytes int64
-	NumscriptCacheSize   int
-	MirrorMaxBatchSize   int
-	// MaxExecutionPlanSize caps the number of AttributePlan entries an
+	// BackupMaxSegmentBytes caps the on-storage size of an incremental-backup
+	// export segment before it splits into a new segment. 0 means use the
+	// backup default (4Gi).
+	BackupMaxSegmentBytes int64
+	NumscriptCacheSize    int
+	MirrorMaxBatchSize    int
+	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int
 	UnsafeSkipConfigValidation  bool
 	SentinelMode                bool
 	ReadIndexConfig             ReadIndexConfig
+	AuditIndexConfig            AuditIndexConfig
 	QueryProfileThreshold       time.Duration
 	GRPCSlowThreshold           time.Duration
 	BloomConfig                 *commonpb.ClusterConfig

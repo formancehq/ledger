@@ -2,8 +2,10 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/spool"
@@ -34,6 +35,28 @@ type applyWork struct {
 	barrier         chan struct{} // non-nil = drain; closed when processed
 	syncLeader      uint64        // non-zero = trigger SyncSnapshot from Run goroutine
 	installSnapshot chan struct{} // non-nil = prepare for snapshot install; closed when ready
+	// responses are MsgStorageApplyResp messages attached to the
+	// MsgStorageApply that carried these entries. They must be Step()-ed back
+	// into rawNode AFTER the entries are applied to the FSM — that is what
+	// bumps raft.Applied and aligns it with FSM-applied. Used only when
+	// raft.Config.AsyncStorageWrites is true.
+	responses []raftpb.Message
+}
+
+// decodedApplyWork is the post-prefetch shape consumed by Run's main loop.
+// The decoder goroutine (see Run) reads applyWork from a.ch, invokes
+// state.DecodeEntries for work items carrying entries, and forwards the
+// result here so the Prepare stage never blocks on the UnmarshalVT
+// pass. Non-entries work items (barrier, syncLeader, installSnapshot) are
+// forwarded with `decoded` nil and `err` nil — the decoder is a strict
+// pass-through for them, preserving ordering vs entries.
+//
+// If DecodeEntries fails, `err` carries the wrapped error and `decoded` is
+// nil. The main loop propagates the error immediately without applying.
+type decodedApplyWork struct {
+	work    applyWork
+	decoded []state.DecodedEntry
+	err     error
 }
 
 // gatingResult carries the outcome of a maintenance task back to the Run
@@ -64,12 +87,29 @@ type Applier struct {
 	gatingReason     atomic.Int32 // gatingReason* constants — for observability
 	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan gatingResult
-	ch               chan applyWork  // buffered(1)
-	commitCh         chan commitWork // buffered(1), read by the committer goroutine
+	ch               chan applyWork        // buffered(1); producer-facing input
+	decodedCh        chan decodedApplyWork // buffered(1); read by Run, populated by the decoder goroutine
+	commitCh         chan commitWork       // buffered(1), read by the committer goroutine
 
 	// pending holds the in-flight commit result channel, if any.
 	// At most one at a time. Drained before barriers, checkpoints, and shutdown.
 	pending *pendingCommit
+
+	// onSnapshotInstalled is invoked by the maintenance-task wrapper
+	// AFTER a leader-checkpoint sync + subsequent replaySpool have both
+	// landed on Pebble. Running it post-replay is deliberate: an
+	// earlier position would race with the still-spooled post-snapshot
+	// ConfChanges and drop those peers from the Membership cache. The
+	// hook fires inside the maintenance goroutine, synchronously with
+	// the restore, so the next Raft tick already sees the up-to-date
+	// cache + transport. (EN-1413)
+	onSnapshotInstalled func()
+
+	// responseSink receives MsgStorageApplyResp messages after the apply (or
+	// spool append) completes for a batch. Same channel instance the Node
+	// drains in its orchestrate loop. Required (non-nil) — NewApplier
+	// rejects a nil sink; tests build it via newTestApplierSetupWithSink.
+	responseSink LocalResponses
 
 	// Metrics
 	applyEntriesHistogram           metric.Int64Histogram
@@ -114,7 +154,13 @@ type commitWork struct {
 	// uses it to fail any pending future whose stored term is strictly
 	// smaller — those proposals were truncated.
 	maxTerm uint64
-	done    chan error
+	// responses are MsgStorageApplyResp messages tied to this commit. On
+	// commit success, runCommitter sends them on Applier.responseSink so
+	// raft.Applied advances only after CommitPreparedBatch has landed.
+	// Empty on all but the last sub-batch of an applyDecodedEntriesToFSM call,
+	// and always empty for the replay path (applyEntriesAndResolveCommands).
+	responses []raftpb.Message
+	done      chan error
 }
 
 type pendingCommit struct {
@@ -134,11 +180,18 @@ func NewApplier(
 	compactionMargin uint64,
 	replayBatchSize int,
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
+	onSnapshotInstalled func(),
+	responseSink LocalResponses,
 ) (*Applier, error) {
+	if responseSink == nil {
+		return nil, errors.New("responseSink is required (nil LocalResponses)")
+	}
+
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
 	a := &Applier{
+		onSnapshotInstalled:     onSnapshotInstalled,
 		fsm:                     fsm,
 		recovery:                recovery,
 		synchronizer:            synchronizer,
@@ -151,8 +204,10 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
+		responseSink:            responseSink,
 		status:                  &initialStatus,
 		ch:                      make(chan applyWork, 1),
+		decodedCh:               make(chan decodedApplyWork, 1),
 		commitCh:                make(chan commitWork, 1),
 	}
 
@@ -370,18 +425,36 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 	})
 }
 
-// sweepBelowTerm computes the max term across the supplied raft entries and
-// fails every pending future whose stored term is strictly smaller. Callers
-// should invoke this AFTER per-commandID resolution for the same batch, so
-// committed older-term entries get their futures resolved first.
-func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
-	var maxTerm uint64
-
-	for i := range entries {
-		if entries[i].Term > maxTerm {
-			maxTerm = entries[i].Term
-		}
+// batchMaxTerm returns the highest Raft term in entries.
+//
+// Within any batch of committed entries delivered by raft, terms are
+// monotonically non-decreasing: raft delivers entries in log order, and a
+// new leader can only append at a term strictly higher than any preceding
+// entry's. The last entry's term is therefore the max. Returns 0 for an
+// empty slice — callers skip the sweep when maxTerm == 0.
+func batchMaxTerm(entries []raftpb.Entry) uint64 {
+	if len(entries) == 0 {
+		return 0
 	}
+
+	return entries[len(entries)-1].Term
+}
+
+// batchMaxTermDecoded is the DecodedEntry variant of batchMaxTerm.
+func batchMaxTermDecoded(decoded []state.DecodedEntry) uint64 {
+	if len(decoded) == 0 {
+		return 0
+	}
+
+	return decoded[len(decoded)-1].Entry.Term
+}
+
+// sweepBelowTerm fails every pending future whose stored term is strictly
+// smaller than the max term in entries. Callers should invoke this AFTER
+// per-commandID resolution for the same batch, so committed older-term
+// entries get their futures resolved first.
+func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
+	maxTerm := batchMaxTerm(entries)
 
 	if maxTerm > 0 {
 		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
@@ -541,11 +614,57 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// fireOutcome enumerates the ways fireResponses can return, so each caller
+// can react without duplicating the select-plus-drop plumbing.
+type fireOutcome int
+
+const (
+	// fireSent — responses reached the sink; raft.Applied will advance
+	// once orchestrate Steps them.
+	fireSent fireOutcome = iota
+	// fireStopped — the task's stop channel closed. Caller should treat
+	// this as a shutdown signal and return without further work.
+	fireStopped
+	// fireCtxDone — ctx cancelled. Same shutdown story as fireStopped,
+	// but arriving via the context path (fx OnStop outer timeout, etc.).
+	fireCtxDone
+)
+
+// fireResponses hands a batch of MsgStorageApplyResp / MsgStorageAppendResp
+// messages to the response sink, aborting on stop or ctx cancellation. It
+// is the single place that owns the "fire before work.done, drop on
+// shutdown" contract that findings af4915f6 / 34540caa / 9047f08a /
+// 70740916 accumulated across separate call sites. Callers decide via the
+// returned outcome whether to fall through, propagate an existing error,
+// or terminate.
+//
+// len(responses) == 0 is a no-op (returns fireSent) so callers can hand a
+// possibly-empty slice unconditionally — the empty-guard doesn't need to
+// live at every call site.
+func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, responses []raftpb.Message) fireOutcome {
+	if len(responses) == 0 {
+		return fireSent
+	}
+
+	select {
+	case a.responseSink <- responses:
+		return fireSent
+	case <-ctx.Done():
+		return fireCtxDone
+	case <-stop:
+		return fireStopped
+	}
+}
+
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
-func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, stop chan struct{}) {
+//
+// responses (AsyncStorageWrites only) are MsgStorageApplyResp messages that
+// must be Step()-ed back into rawNode after the apply completes for this
+// batch. Pass nil in tests / sync mode.
+func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, responses []raftpb.Message, stop chan struct{}) {
 	select {
-	case a.ch <- applyWork{entries: entries, confState: confState}:
+	case a.ch <- applyWork{entries: entries, confState: confState, responses: responses}:
 	case <-stop:
 	}
 }
@@ -590,13 +709,66 @@ func (a *Applier) Status() int32 {
 
 // Run is the Applier goroutine. It processes submitted work items and
 // handles gating termination (unspool after maintenance tasks).
+//
+// Concurrency layout inside Run:
+//
+//	Submit / Barrier / SyncFromLeader / ... ─▶ a.ch
+//	                                             │
+//	                                             ▼
+//	                                      [decoder goroutine]
+//	                                       - reads a.ch
+//	                                       - state.DecodeEntries for entries
+//	                                       - forwards everything else as-is
+//	                                             │
+//	                                             ▼
+//	                                          a.decodedCh
+//	                                             │
+//	                                             ▼
+//	                                    [main loop below]
+//	                                     - Prepare / async commit
+//	                                     - Barrier / status transitions
+//	                                             │
+//	                                             ▼
+//	                                          a.commitCh
+//	                                             │
+//	                                             ▼
+//	                                      [committer goroutine]
+//	                                       - CommitPreparedBatch
+//
+// The decoder stage is what lets Prepare(N) overlap with Decode(N+1):
+// UnmarshalVT of the next batch runs on a spare core while the applier
+// holds fsm.mu for the current batch.
 func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
+	// Tag this goroutine (the applier main loop / Prepare stage) so pprof /
+	// pyroscope profiles can be filtered by `component` label — necessary to
+	// tell "prepare saturates one core" apart from "aggregate CPU is spread"
+	// in the process-wide profile.
+	mainCtx := pprof.WithLabels(ctx, pprof.Labels("component", "applier.main"))
+	pprof.SetGoroutineLabels(mainCtx)
+
 	// Start the dedicated committer goroutine. It exits when commitCh is closed.
 	committerDone := make(chan struct{})
 
 	go func() {
-		a.runCommitter(ctx)
+		commitCtx := pprof.WithLabels(ctx, pprof.Labels("component", "applier.committer"))
+		pprof.SetGoroutineLabels(commitCtx)
+		a.runCommitter(ctx, stop)
 		close(committerDone)
+	}()
+
+	// Start the decoder goroutine. It exits when its context is cancelled
+	// (below on Run's exit) OR when a.ch is closed. We use a local cancel
+	// tied to Run's lifetime so the decoder unwinds even on normal exit
+	// where the outer ctx is still live (e.g. tests that stop the applier
+	// via a stop channel without cancelling ctx).
+	decoderCtx, cancelDecoder := context.WithCancel(ctx)
+	decoderDone := make(chan struct{})
+
+	go func() {
+		labeledCtx := pprof.WithLabels(decoderCtx, pprof.Labels("component", "applier.decoder"))
+		pprof.SetGoroutineLabels(labeledCtx)
+		defer close(decoderDone)
+		a.runDecoder(decoderCtx)
 	}()
 
 	defer func() {
@@ -607,17 +779,50 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 		close(a.commitCh)
 		<-committerDone
+
+		// Signal the decoder to stop, then drain any batches it managed to
+		// hand off before cancellation. Every release returns pooled
+		// proposals to vtproto's pool.
+		cancelDecoder()
+		<-decoderDone
+		for dw := range a.decodedCh {
+			state.ReleaseDecodedEntries(dw.decoded)
+		}
 	}()
 
 	var (
 		readiesDuringGating int64
 		gatingStart         time.Time
 		waitStart           = time.Now()
+		// syncingLeader is the leader of the sync currently in flight (0 when
+		// not syncing). Run-goroutine-local: read and written only here, so it
+		// needs no synchronization. Used to coalesce duplicate syncLeader
+		// requests for the same leader (see the syncLeader branch below).
+		syncingLeader uint64
 	)
+
+	// Local handle on the decoded channel so we can stop selecting on it once
+	// the decoder has closed it. The decoder only ever closes decodedCh from
+	// its ctx.Done() path (a.ch is never closed), i.e. runCtx was cancelled —
+	// the OnStart/OnStop-timeout fallback in bootstrap, NOT a graceful stop.
+	// A closed channel always wins the select with a zero value, so without
+	// disabling this branch the loop would busy-spin on the empty batch. We
+	// do NOT return here: the applier task must exit via `stop` (see the fx
+	// hook rationale in bootstrap/module.go — a spontaneous task return is
+	// treated as a fatal task-pool error), and we must NOT nil a.decodedCh
+	// itself or the deferred `range a.decodedCh` drain would block forever.
+	decodedCh := a.decodedCh
 
 	for {
 		select {
-		case work := <-a.ch:
+		case dw, ok := <-decodedCh:
+			if !ok {
+				decodedCh = nil
+
+				continue
+			}
+
+			work := dw.work
 			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
 
 			if work.barrier != nil {
@@ -633,6 +838,24 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			}
 
 			if work.syncLeader != 0 {
+				// Coalesce a duplicate sync request for the leader we are
+				// already syncing from. The decoder stage adds a second
+				// buffered slot (a.ch → decodedCh) between processReady's
+				// TrySyncSnapshot and this status transition, so a back-to-back
+				// Ready can enqueue a second syncLeader before processReady's
+				// statusOutOfSync gate closes. Re-running startSyncSnapshot
+				// would Interrupt() the in-flight checkpoint fetch and restart
+				// it from scratch. Drop the duplicate here; a genuinely new
+				// leader (leadership changed mid-sync) still falls through and
+				// preempts.
+				if work.syncLeader == syncingLeader &&
+					a.status.Load() == statusGated &&
+					a.gatingReason.Load() == gatingReasonSyncing {
+					waitStart = time.Now()
+
+					continue
+				}
+
 				// Drain pending commit before starting sync.
 				if err := a.waitPendingCommit(ctx); err != nil {
 					return err
@@ -640,6 +863,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 				a.status.Store(statusGated)
 				a.gatingReason.Store(gatingReasonSyncing)
+				syncingLeader = work.syncLeader
 				a.startSyncSnapshot(ctx, work.syncLeader)
 				waitStart = time.Now()
 
@@ -677,11 +901,39 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			switch a.status.Load() {
 			case statusNormal:
-				err := a.applyEntriesToFSM(ctx, work.confState, work.entries...)
+				// Fail fast on a decode error surfaced by the prefetcher —
+				// the raft entry payload is corrupt (or the wire schema
+				// version is wrong), no point going further.
+				if dw.err != nil {
+					return dw.err
+				}
+				// applyDecodedEntriesToFSM threads work.responses down to the
+				// last applyEntriesPipelined call, which attaches them to the
+				// commitWork sent to runCommitter. runCommitter fires the
+				// responses AFTER CommitPreparedBatch succeeds, so
+				// raft.Applied advances in lockstep with FSM-applied without
+				// serializing prepare-N+1 against commit-N (the
+				// applier→committer pipeline is preserved).
+				//
+				// The dw.decoded slice is pre-decoded by the runDecoder
+				// goroutine; applyDecodedEntriesToFSM takes ownership and
+				// releases it back to the pool via its defer.
+				err := a.applyDecodedEntriesToFSM(ctx, stop, work.confState, work.responses, dw.decoded)
 				if err != nil {
 					return err
 				}
 			default:
+				// Non-normal status: the pre-decoded proposals will not be
+				// applied by the FSM (entries go to the spool instead). Return
+				// them to the pool immediately so we don't leak on a
+				// long-running gating period.
+				//
+				// A decode error is non-fatal on this path — the raw entry
+				// bytes are still valid and get spooled as-is; a subsequent
+				// replay will re-attempt the decode with a matching wire
+				// schema.
+				state.ReleaseDecodedEntries(dw.decoded)
+
 				// Drain pending commit before switching to spool mode.
 				if err := a.waitPendingCommit(ctx); err != nil {
 					return err
@@ -695,6 +947,13 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				if err != nil {
 					return fmt.Errorf("spooling committed entries: %w", err)
 				}
+
+				// Entries are durably staged in the spool and will be
+				// re-applied via unspool without further raft involvement,
+				// so acknowledging Applied now is safe.
+				if a.fireResponses(ctx, stop, work.responses) == fireStopped {
+					return nil
+				}
 			}
 
 			waitStart = time.Now()
@@ -704,6 +963,11 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
 			a.gatingTerminated = nil
+			// The in-flight sync (if any) has ended — succeeded, failed, or was
+			// an install-snapshot gating. Clear the coalescing guard so the next
+			// syncLeader request starts fresh, even for the same leader (e.g. a
+			// failed sync that processReady legitimately retries).
+			syncingLeader = 0
 
 			if a.status.Load() == statusInstallingSnapshot {
 				// Run set this status via the installSnapshot command.
@@ -763,6 +1027,22 @@ func (a *Applier) SyncSnapshot(leader uint64, stop chan struct{}) {
 	}
 }
 
+// TrySyncSnapshot is a non-blocking variant of SyncSnapshot: returns true
+// if the sync request was enqueued, false if the work channel is full
+// (another item is already pending). Callers that fire from a per-Ready
+// polling loop (e.g. the out-of-sync fallback in processReady) MUST use
+// this variant — blocking would stall the raft-ready goroutine and enqueuing
+// duplicate syncLeader items causes startMaintenanceTask to interrupt its
+// own in-flight fetch, restarting checkpoint download from scratch.
+func (a *Applier) TrySyncSnapshot(leader uint64) bool {
+	select {
+	case a.ch <- applyWork{syncLeader: leader}:
+		return true
+	default:
+		return false
+	}
+}
+
 // startSyncSnapshot is called from Run to perform the actual sync.
 func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	syncDetails := map[string]any{
@@ -801,7 +1081,15 @@ func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		return maintenanceTaskResult{frozenAtIndex: syncedIndex}, nil
+		// The onSnapshotInstalled hook is deliberately NOT fired here.
+		// The outer maintenance wrapper fires it AFTER replaySpool so
+		// any post-snapshot ConfChange sitting in the spool has landed
+		// in Pebble before Rehydrate reads it (EN-1413). See
+		// maintenanceTaskResult.snapshotInstalled.
+		return maintenanceTaskResult{
+			frozenAtIndex:     syncedIndex,
+			snapshotInstalled: true,
+		}, nil
 	}, nil)
 }
 
@@ -844,21 +1132,31 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 // futures. Used by replay paths (spool, WAL) that do not need pipelining.
 //
 // Callers must ensure no checkpoint trigger appears mid-slice; use
-// applyReplayEntries when iterating an arbitrary slice.
-func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
+// applyReplayEntries when iterating an arbitrary slice. The caller owns
+// the lifetime of decoded[].Proposal — this method does not release them.
+func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
 
-	result, err := a.fsm.ApplyEntries(ctx, a.store, entries...)
+	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
 	if err != nil {
-		return nil, fmt.Errorf("applying entries to Machine: %w", err)
+		return nil, fmt.Errorf("preparing entries on Machine: %w", err)
 	}
+
+	if err := a.fsm.CommitPreparedBatch(ctx, pb); err != nil {
+		return nil, fmt.Errorf("committing entries on Machine: %w", err)
+	}
+
+	result := pb.Result
 
 	a.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
 
 	a.resolveFutures(result)
-	a.sweepBelowTerm(entries)
+
+	if maxTerm := batchMaxTermDecoded(decoded); maxTerm > 0 {
+		a.FailFuturesBelowTerm(maxTerm, ErrLeadershipLost)
+	}
 
 	return result, nil
 }
@@ -869,15 +1167,19 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 // (createReplayCheckpoint / createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
 func (a *Applier) applyReplayEntries(ctx context.Context, entries []raftpb.Entry) error {
-	for offset := 0; offset < len(entries); {
-		boundary, err := findCheckpointBoundary(entries[offset:])
-		if err != nil {
-			return fmt.Errorf("classifying replay batch: %w", err)
-		}
+	decoded, err := state.DecodeEntries(entries)
+	if err != nil {
+		return fmt.Errorf("decoding replay entries: %w", err)
+	}
+
+	defer state.ReleaseDecodedEntries(decoded)
+
+	for offset := 0; offset < len(decoded); {
+		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
 
 		end := offset + boundary
 
-		result, err := a.applyEntriesAndResolveCommands(ctx, entries[offset:end]...)
+		result, err := a.applyEntriesAndResolveCommands(ctx, decoded[offset:end]...)
 		if err != nil {
 			return err
 		}
@@ -913,18 +1215,103 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 // submitAsyncCommit sends a commit to the dedicated committer goroutine.
 // maxTerm carries the highest term seen in the source entries so the
 // committer can fail older-term pending futures after resolving this batch.
-func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64) {
+// responses (AsyncStorageWrites only) are MsgStorageApplyResp messages to
+// fire on the response sink AFTER commit completes; pass nil to skip.
+func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64, responses []raftpb.Message) {
 	done := make(chan error, 1)
 	a.pending = &pendingCommit{done: done}
-	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, done: done}
+	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, responses: responses, done: done}
+}
+
+// runDecoder is the prefetching decoder goroutine started by Run. It reads
+// applyWork items from a.ch, invokes state.DecodeEntries when the item
+// carries raft entries, and forwards the decoded batch (or a decode error)
+// on a.decodedCh. Non-entries work items (barrier / syncLeader /
+// installSnapshot) are forwarded verbatim with a nil decoded slice — the
+// decoder is a strict pass-through for them so ordering vs. entries is
+// preserved via a single goroutine.
+//
+// The only exit is ctx.Done(): a.ch is never closed (closing it would panic
+// the producers — Submit/SyncSnapshot/Barrier/…), so the decoder runs until
+// runCtx is cancelled. That cancel is the bootstrap OnStart/OnStop-timeout
+// fallback, never a graceful stop — graceful stop goes through the task
+// `stop` channel, which the decoder does not watch. On ctx.Done() the decoder
+// drops any in-flight decode result (releasing its pooled Proposals) and
+// returns; the deferred close(a.decodedCh) then unblocks the main loop, which
+// disables its decodedCh select branch (see Run), and the Run defer drains
+// anything still buffered.
+//
+// The buffer=1 on a.decodedCh lets this goroutine race one batch ahead of
+// the applier: while Prepare(N) runs under fsm.mu, UnmarshalVT(N+1) runs on
+// a separate core. If Prepare(N) finishes before Decode(N+1) — unlikely on
+// the observed workload — the main loop simply waits on <-a.decodedCh.
+func (a *Applier) runDecoder(ctx context.Context) {
+	defer close(a.decodedCh)
+
+	for {
+		var work applyWork
+
+		select {
+		case <-ctx.Done():
+			return
+		case work = <-a.ch:
+		}
+
+		dw := decodedApplyWork{work: work}
+		if len(work.entries) > 0 {
+			decoded, err := state.DecodeEntries(work.entries)
+			if err != nil {
+				dw.err = fmt.Errorf("decoding entries: %w", err)
+			} else {
+				dw.decoded = decoded
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			// Handoff aborted: release any pooled proposals we just
+			// decoded so vtproto's pool doesn't leak.
+			state.ReleaseDecodedEntries(dw.decoded)
+
+			return
+		case a.decodedCh <- dw:
+		}
+	}
 }
 
 // runCommitter is the dedicated goroutine that processes commits sequentially.
 // It reads from commitCh and commits each batch, resolving futures on success
 // or failure. Exits when commitCh is closed.
-func (a *Applier) runCommitter(ctx context.Context) {
+//
+// stop is the Applier task's shutdown channel — closed by taskSet.stop() at
+// the same instant as orchestrate's stop. It's a second escape hatch on the
+// response-sink send: node.Stop closes the task stop channels but does NOT
+// cancel ctx (only fx OnStop's outer timeout might), so a runCommitter that
+// races into the sink send AFTER orchestrate stopped draining would sit
+// forever on ctx.Done alone (finding 70740916). Selecting on stop too
+// unblocks the send synchronously with orchestrate's exit.
+func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 	for work := range a.commitCh {
 		err := a.fsm.CommitPreparedBatch(ctx, work.prepared)
+
+		// Fire MsgStorageApplyResp responses BEFORE resolving futures /
+		// failing older-term stragglers, and only on success. This is what
+		// bumps raft.Applied in lockstep with FSM-applied under
+		// AsyncStorageWrites. On commit failure we intentionally don't fire:
+		// raft.Applied stays behind, the committed entries will be re-emitted
+		// on the next boot (raft.Config.Applied re-reads from Pebble), and
+		// re-apply is idempotent via the applied-index guard.
+		//
+		// The fireResponses outcome is intentionally ignored: on ctx.Done or
+		// stop we drop the response and fall through — we MUST NOT return
+		// here, otherwise the trailing `work.done <- err` never fires and
+		// Applier.Run's deferred `waitPendingCommit` deadlocks on
+		// `<-a.pending.done` during shutdown (findings 34540caa / 9047f08a /
+		// 70740916).
+		if err == nil {
+			_ = a.fireResponses(ctx, stop, work.responses)
+		}
+
 		if err == nil {
 			// 1. Resolve futures owned by THIS batch. Ownership was taken
 			//    via extractBatchFutures in applyEntriesPipelined (which
@@ -992,10 +1379,13 @@ func (a *Applier) runCommitter(ctx context.Context) {
 // applyEntriesPipelined prepares entries (CPU-bound) and starts the commit
 // asynchronously. The previous batch's commit runs concurrently with this
 // batch's prepare. Used by the hot path in Run (statusNormal).
-func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
+//
+// The caller (applyDecodedEntriesToFSM) owns the lifetime of decoded[].Proposal
+// pointers — this method does not release them.
+func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []raftpb.Message, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
 
-	pb, err := a.fsm.PrepareEntries(ctx, a.store, entries...)
+	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
 	if err != nil {
 		_ = a.waitPendingCommit(ctx)
 
@@ -1022,18 +1412,15 @@ func (a *Applier) applyEntriesPipelined(ctx context.Context, entries ...raftpb.E
 	pfs := a.extractBatchFutures(pb.Result)
 
 	// Highest term seen in this batch, used by the post-resolve sweep
-	// (issue #172). Computed once and reused below.
-	var maxTerm uint64
-
-	for i := range entries {
-		if entries[i].Term > maxTerm {
-			maxTerm = entries[i].Term
-		}
-	}
+	// (issue #172). See batchMaxTermDecoded for the monotonic-term shortcut.
+	maxTerm := batchMaxTermDecoded(decoded)
 
 	// Send to the committer goroutine. Futures are resolved when the
-	// commit completes. No need to wait for the next batch.
-	a.submitAsyncCommit(pb, pfs, maxTerm)
+	// commit completes. No need to wait for the next batch. responses (may be
+	// nil for non-last sub-batches of the current applyDecodedEntriesToFSM call, or
+	// when AsyncStorageWrites is off) rides with the commit and is fired by
+	// runCommitter on success.
+	a.submitAsyncCommit(pb, pfs, maxTerm, responses)
 
 	// Checkpoint batches must be drained synchronously so the caller can
 	// safely create the Pebble checkpoint on a fully-committed store. Without
@@ -1059,10 +1446,16 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 	}
 }
 
-// applyEntriesToFSM applies entries to the Machine using pipelined commits.
-// The prepare phase (CPU-bound) runs immediately while the previous batch's
-// commit may still be in-flight. The commit is deferred until the next batch
-// arrives or a drain is required.
+// applyDecodedEntriesToFSM applies pre-decoded entries to the Machine using
+// pipelined commits. The prepare phase (CPU-bound) runs immediately while
+// the previous batch's commit may still be in-flight; the commit is
+// deferred until the next batch arrives or a drain is required.
+//
+// The hot path in Run reads batches from the prefetching decoder goroutine
+// (Run → runDecoder → decodedCh) and calls this method directly, so the
+// UnmarshalVT cost is masked behind the previous batch's
+// PrepareDecodedEntries. The caller passes ownership of `decoded` — this
+// method releases it before returning.
 //
 // To preserve the "one PrepareEntries call = one commit through runCommitter"
 // invariant, callers must never mix a checkpoint-trigger entry with later
@@ -1078,18 +1471,29 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // When that happens we MUST continue processing the tail in subsequent FSM
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
-func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	for offset := 0; offset < len(entries); {
-		boundary, err := findCheckpointBoundary(entries[offset:])
-		if err != nil {
-			return fmt.Errorf("classifying checkpoint boundary: %w", err)
-		}
+func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, decoded []state.DecodedEntry) error {
+	defer state.ReleaseDecodedEntries(decoded)
+
+	for offset := 0; offset < len(decoded); {
+		boundary := findCheckpointBoundaryDecoded(decoded[offset:])
 
 		end := offset + boundary
-		head := entries[offset:end]
-		tail := entries[end:]
+		head := decoded[offset:end]
+		tail := decoded[end:]
 
-		result, err := a.applyEntriesPipelined(ctx, head...)
+		// Attach responses only to the sub-batch that reaches the end of
+		// the decoded slice — that commit's completion means "everything
+		// in this applyWork is durably in the FSM". Earlier sub-batches
+		// commit head-only, so their responses would ack tail-not-yet-
+		// applied. If a checkpoint fires here (end < len(decoded)), the
+		// tail is spooled below and we fire responses eagerly after
+		// handleCheckpointRequired returns.
+		var subResponses []raftpb.Message
+		if end == len(decoded) {
+			subResponses = responses
+		}
+
+		result, err := a.applyEntriesPipelined(ctx, subResponses, head...)
 		if err != nil {
 			return err
 		}
@@ -1109,19 +1513,59 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		// agnostic of "leftover entries" and makes the pre-split contract
 		// explicit at the call site.
 		if len(tail) > 0 {
-			if err := a.spool.AppendCommittedEntries(ctx, tail...); err != nil {
+			if err := a.spool.AppendCommittedEntries(ctx, rawEntriesFromDecoded(tail)...); err != nil {
 				return fmt.Errorf("spooling entries past checkpoint trigger: %w", err)
 			}
 		}
 
+		headRaw := rawEntriesFromDecoded(head)
+
+		var checkpointErr error
 		if result.QueryCheckpointID > 0 {
-			return a.handleQueryCheckpointRequired(ctx, head, result)
+			checkpointErr = a.handleQueryCheckpointRequired(ctx, headRaw, result)
+		} else {
+			checkpointErr = a.handleCheckpointRequired(ctx, headRaw, result)
 		}
 
-		return a.handleCheckpointRequired(ctx, head, result)
+		// Checkpoint returned. If end < len(decoded) then subResponses was
+		// nil (no commit above carried the responses); tail is now durable
+		// in the spool and will apply via unspool without further raft
+		// involvement — safe to acknowledge Applied. When end reaches
+		// len(decoded), runCommitter already fired the response after
+		// applyEntriesPipelined's synchronous drain (line ~1147), so we
+		// skip the fallback fire.
+		if end < len(decoded) {
+			switch a.fireResponses(ctx, stop, responses) {
+			case fireCtxDone:
+				if checkpointErr != nil {
+					return checkpointErr
+				}
+
+				return ctx.Err()
+			case fireStopped, fireSent:
+				// Shutdown-stopped: drop the response and return normally
+				// (raft.Applied stays behind, entries re-emit on next boot).
+				// Sent: nothing more to do.
+			}
+		}
+
+		return checkpointErr
 	}
 
 	return nil
+}
+
+// rawEntriesFromDecoded extracts the underlying raftpb.Entry values from a
+// slice of DecodedEntry for APIs that take raw entries (spool, replay
+// fallbacks, maintenance handoff). The returned slice is freshly allocated
+// and does not share storage with the input.
+func rawEntriesFromDecoded(decoded []state.DecodedEntry) []raftpb.Entry {
+	out := make([]raftpb.Entry, len(decoded))
+	for i := range decoded {
+		out[i] = decoded[i].Entry
+	}
+
+	return out
 }
 
 // findCheckpointBoundary returns the length of the prefix of entries that
@@ -1132,37 +1576,33 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 //
 // Returns len(entries) when no trigger is present (apply the whole slice as
 // one batch).
+//
+// Convenience wrapper around findCheckpointBoundaryDecoded: decodes
+// entries, scans, and releases. Hot-path callers should decode once at the
+// applier boundary and use findCheckpointBoundaryDecoded directly so the
+// pipeline never re-unmarshals the same payload.
 func findCheckpointBoundary(entries []raftpb.Entry) (int, error) {
-	for i := range entries {
-		hasTrigger, err := entryRequiresCheckpoint(&entries[i])
-		if err != nil {
-			return 0, fmt.Errorf("inspecting entry index %d: %w", entries[i].Index, err)
-		}
-
-		if hasTrigger {
-			return i + 1, nil
-		}
+	decoded, err := state.DecodeEntries(entries)
+	if err != nil {
+		return 0, err
 	}
 
-	return len(entries), nil
+	defer state.ReleaseDecodedEntries(decoded)
+
+	return findCheckpointBoundaryDecoded(decoded), nil
 }
 
-// entryRequiresCheckpoint reports whether the proposal carried by entry
-// contains a checkpoint trigger order. Returns false for non-normal entries
-// (raftpb.EntryConfChange*, empty entries) which never carry a proposal.
-func entryRequiresCheckpoint(entry *raftpb.Entry) (bool, error) {
-	if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
-		return false, nil
+// findCheckpointBoundaryDecoded is the no-unmarshal variant used on the
+// hot path. It mirrors findCheckpointBoundary but operates on entries that
+// have already been decoded once at the applier boundary.
+func findCheckpointBoundaryDecoded(decoded []state.DecodedEntry) int {
+	for i := range decoded {
+		if state.DecodedEntryRequiresCheckpoint(decoded[i]) {
+			return i + 1
+		}
 	}
 
-	cmd := raftcmdpb.ProposalFromVTPool()
-	defer cmd.ReturnToVTPool()
-
-	if err := cmd.UnmarshalVT(entry.Data); err != nil {
-		return false, fmt.Errorf("unmarshaling proposal: %w", err)
-	}
-
-	return state.ProposalRequiresCheckpoint(cmd), nil
+	return len(decoded)
 }
 
 // maintenanceTask is the body of a gated maintenance task. It receives the
@@ -1179,7 +1619,7 @@ type maintenanceTask func(
 // gateAndLaunchMaintenance is the shared setup for every "checkpoint
 // required during apply" flow:
 //  1. Compute frozenAtIndex (the last applied index — the trigger entry is
-//     the last in the slice by construction; see applyEntriesToFSM).
+//     the last in the slice by construction; see applyDecodedEntriesToFSM).
 //  2. Mark the applier as gated with the given gatingReason.
 //  3. Extract the deferred future (the proposal that triggered gating).
 //  4. Sweep stale-term futures so they don't survive the gating window
@@ -1191,7 +1631,7 @@ type maintenanceTask func(
 // resolve the future with the checkpoint path on success or with the
 // error on failure.
 //
-// There are no remaining entries to spool here: applyEntriesToFSM pre-splits
+// There are no remaining entries to spool here: applyDecodedEntriesToFSM pre-splits
 // the slice so the checkpoint trigger is always the last entry it applies.
 // Any entries received from raft AFTER gating starts go to the spool via the
 // normal hot-path routing.
@@ -1313,6 +1753,15 @@ func slicesEqual(a, b []uint64) bool {
 type maintenanceTaskResult struct {
 	frozenAtIndex uint64
 	syncFailed    bool // if true, skip spool replay and mark node out-of-sync
+	// snapshotInstalled is set by startSyncSnapshot when a leader
+	// checkpoint has just replaced our Pebble. The outer wrapper fires
+	// onSnapshotInstalled AFTER replaySpool has drained the spool onto
+	// the fresh Pebble — if the hook fired inside the sync task
+	// (i.e., BEFORE replaySpool), Rehydrate would see leader's Pebble
+	// without the post-snapshot ConfChanges still sitting in the spool
+	// and would remove those peers from the cache, leaving the node
+	// unable to dial them until the next rehydrate. (EN-1413)
+	snapshotInstalled bool
 }
 
 // startMaintenanceTask creates a gating channel and runs the maintenance task
@@ -1359,6 +1808,17 @@ func (a *Applier) startMaintenanceTask(
 
 		if _, err := a.replaySpool(ctx, taskResult.frozenAtIndex); err != nil {
 			return err
+		}
+
+		// Fire the snapshot-installed hook now — post-replaySpool — so
+		// the node's rehydrate sees a Pebble that already reflects any
+		// post-snapshot ConfChanges we spooled during the sync. Firing
+		// before the spool drained would remove those peers from the
+		// cache (Rehydrate treats Pebble as authoritative and finds
+		// them missing), leaving the node with a stale transport view
+		// until the next rehydrate. (EN-1413)
+		if taskResult.snapshotInstalled {
+			a.onSnapshotInstalled()
 		}
 
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))

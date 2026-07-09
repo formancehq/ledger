@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
@@ -44,12 +44,13 @@ type EditableMetaField struct {
 
 // EditableIndexes represents the set of enabled builtin indexes.
 type EditableIndexes struct {
-	Reference     bool `json:"reference"     yaml:"reference"`
-	Timestamp     bool `json:"timestamp"     yaml:"timestamp"`
-	Address       bool `json:"address"       yaml:"address"`
-	SourceAddress bool `json:"sourceAddress" yaml:"sourceAddress"`
-	DestAddress   bool `json:"destAddress"   yaml:"destAddress"`
-	InsertedAt    bool `json:"insertedAt"    yaml:"insertedAt"`
+	Reference          bool `json:"reference"          yaml:"reference"`
+	Timestamp          bool `json:"timestamp"          yaml:"timestamp"`
+	Address            bool `json:"address"            yaml:"address"`
+	SourceAddress      bool `json:"sourceAddress"      yaml:"sourceAddress"`
+	DestinationAddress bool `json:"destinationAddress" yaml:"destinationAddress"`
+	InsertedAt         bool `json:"insertedAt"         yaml:"insertedAt"`
+	RevertedAt         bool `json:"revertedAt"         yaml:"revertedAt"`
 }
 
 // EditablePreparedQuery is the editable subset of a prepared query.
@@ -158,10 +159,12 @@ func ConfigFromProto(
 			cfg.Indexes.Address = true
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
 			cfg.Indexes.SourceAddress = true
-		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
-			cfg.Indexes.DestAddress = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+			cfg.Indexes.DestinationAddress = true
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 			cfg.Indexes.InsertedAt = true
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			cfg.Indexes.RevertedAt = true
 		}
 	}
 
@@ -564,8 +567,9 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 		{"timestamp", current.Indexes.Timestamp, desired.Indexes.Timestamp, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP},
 		{"address", current.Indexes.Address, desired.Indexes.Address, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS},
 		{"source-address", current.Indexes.SourceAddress, desired.Indexes.SourceAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS},
-		{"dest-address", current.Indexes.DestAddress, desired.Indexes.DestAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS},
+		{"destination-address", current.Indexes.DestinationAddress, desired.Indexes.DestinationAddress, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS},
 		{"inserted-at", current.Indexes.InsertedAt, desired.Indexes.InsertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT},
+		{"reverted-at", current.Indexes.RevertedAt, desired.Indexes.RevertedAt, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT},
 	}
 
 	for _, b := range builtins {

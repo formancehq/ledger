@@ -100,6 +100,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	txState := &commonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Timestamp:    timestamp,
+		Postings:     result.Postings,
 	}
 
 	// Validate account addresses in resolved postings (covers Numscript-resolved addresses).
@@ -190,7 +191,11 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
+		var err domain.Describable
+		postCommitVolumes, err = buildPostCommitVolumes(s, ledger, result.Postings)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Get the current open chapter ID for the receipt

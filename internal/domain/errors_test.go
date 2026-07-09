@@ -170,6 +170,14 @@ func TestErrorTypes(t *testing.T) {
 			err:      &ErrInvalidReceipt{Detail: "expired"},
 			expected: "invalid receipt: expired",
 		},
+		{
+			name: "ErrTransientAccountNonZero",
+			err: &ErrTransientAccountNonZero{Accounts: []AccountAssetKey{
+				{Account: "staging:a", Asset: "USD"},
+				{Account: "staging:b", Asset: "EUR"},
+			}},
+			expected: "transient accounts with non-zero balance at end of batch (input != output): staging:a/USD, staging:b/EUR",
+		},
 	}
 
 	for _, tc := range tests {
@@ -178,6 +186,24 @@ func TestErrorTypes(t *testing.T) {
 			require.Equal(t, tc.expected, tc.err.Error())
 		})
 	}
+}
+
+// TestErrTransientAccountNonZeroMetadata pins the structured "accounts" context
+// (comma-separated account/asset) hashed into the AuditFailure, and that the
+// zero value renders without panicking.
+func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
+	t.Parallel()
+
+	err := &ErrTransientAccountNonZero{Accounts: []AccountAssetKey{
+		{Account: "staging:a", Asset: "USD"},
+		{Account: "staging:b", Asset: "EUR"},
+	}}
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:b/EUR"}, err.Metadata())
+
+	// Zero value (nil slice) must render an empty list, never panic.
+	empty := &ErrTransientAccountNonZero{}
+	require.Equal(t, map[string]string{"accounts": ""}, empty.Metadata())
+	require.Equal(t, "transient accounts with non-zero balance at end of batch (input != output): ", empty.Error())
 }
 
 func TestWrapCompileError(t *testing.T) {
@@ -321,6 +347,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		// package-level Describable var (ErrColdStorageDisabled, etc.)
 		// and must implement the interface.
 		"validationSentinel":        &validationSentinel{},
+		"errValidation":             &errValidation{},
 		"errColdStorageDisabled":    errColdStorageDisabled{},
 		"errAuditDisabled":          errAuditDisabled{},
 		"errMaintenanceMode":        errMaintenanceMode{},

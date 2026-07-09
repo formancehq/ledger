@@ -24,7 +24,7 @@ import (
 //   - B touches the same account (must read its volume at apply time)
 //
 // Both are admitted while the cache holds the account, so CheckCache returns
-// CacheGuaranteed and neither admission emits a preload for it. If they
+// CacheHit and neither admission emits a preload for it. If they
 // co-batch on apply with A first, A's applyEphemeralPurge calls
 // fsm.Registry.Volumes.Delete which clears the in-memory cache immediately.
 // B then runs in the same batch with no preload and an empty cache, and

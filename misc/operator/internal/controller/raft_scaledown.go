@@ -75,7 +75,7 @@ func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interfa
 // configured accordingly so its connection matches what the pod's gRPC server
 // expects.
 func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	ledger *ledgerv1alpha1.LedgerService, currentReplicas, desiredReplicas int32, tlsMode string,
+	ledger *ledgerv1alpha1.Cluster, currentReplicas, desiredReplicas int32, tlsMode string,
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort
@@ -210,10 +210,30 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 // CA cert mounted in the pod is used for server verification, otherwise the
 // connection is plaintext.
 func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
+	// Wrap each caller-supplied arg in single quotes so shell metacharacters
+	// surfaced from CRD fields (e.g. mirror-aws-iam-region, mirror-dsn) or
+	// Kubernetes Secrets (e.g. operator-built DSN carrying a passwordFrom
+	// value) cannot be interpreted by /bin/sh -- defense-in-depth even when
+	// the producer already URL-encodes the value. serverAddr and the
+	// TLS-flag fragment stay unquoted because they contain intentional
+	// shell-expanded variables ($POD_NAME, $POD_NAMESPACE, $TLS_CA_CERT_FILE);
+	// both are produced by trusted internal helpers, never from user input.
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = shellSingleQuote(arg)
+	}
+
 	cmd := fmt.Sprintf(`./ledgerctl %s --server "%s" %s --auth-token "$CLUSTER_SECRET"`,
-		strings.Join(args, " "), serverAddr, ledgerctlTLSFlag(tlsMode))
+		strings.Join(quoted, " "), serverAddr, ledgerctlTLSFlag(tlsMode))
 
 	return []string{"/bin/sh", "-c", cmd}
+}
+
+// shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
+// A single quote inside the string is encoded as `'\”` (close, escaped
+// literal, reopen), the canonical POSIX-safe escape.
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // podSelfServerAddr is the host:port a ledger container should dial to reach

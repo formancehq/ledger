@@ -1,9 +1,12 @@
 package http
 
 import (
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -28,6 +31,12 @@ type mirrorSourceBody struct {
 	OAuth2Scopes        []string `json:"oauth2Scopes,omitempty"`        // HTTP source OAuth2
 	DSN                 string   `json:"dsn,omitempty"`                 // Postgres source
 	BatchSize           uint32   `json:"batchSize,omitempty"`           // Max logs per batch (0 = default 100)
+	// RewriteRules are mirror rewrite rules applied, in order, to every mirror
+	// log entry during translation (per-variant match + declarative actions).
+	// Each element must be a JSON object that matches the MirrorRewriteRule
+	// proto — the default JSON decoder can't dispatch its `scope` oneof, so we
+	// route each rule through protojson.
+	RewriteRules []stdjson.RawMessage `json:"rewriteRules,omitempty"`
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
@@ -111,6 +120,20 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 		LedgerName: body.LedgerName,
 		BatchSize:  body.BatchSize,
 	}
+
+	for i, raw := range body.RewriteRules {
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil, fmt.Errorf("rewriteRules[%d]: rule must not be empty", i)
+		}
+
+		rule := &commonpb.MirrorRewriteRule{}
+		if err := protojson.Unmarshal(raw, rule); err != nil {
+			return nil, fmt.Errorf("rewriteRules[%d]: %w", i, err)
+		}
+
+		cfg.RewriteRules = append(cfg.RewriteRules, rule)
+	}
+
 	switch body.Type {
 	case "http", "":
 		httpCfg := &commonpb.HttpMirrorSourceConfig{

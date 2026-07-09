@@ -13,8 +13,8 @@ func TestParseScopeMappingJSON_Valid(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"ledger:read": ["ledgers:read", "transactions:read", "accounts:read"],
-		"ledger:write": ["ledgers:write", "transactions:write", "metadata:write"]
+		"ledger:read": ["ledger:LedgerRead", "ledger:TransactionRead", "ledger:AccountRead"],
+		"ledger:write": ["ledger:LedgerWrite", "ledger:TransactionWrite", "ledger:MetadataWrite"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)
@@ -32,7 +32,7 @@ func TestParseScopeMappingJSON_UnknownScope(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"ledger:read": ["ledgers:read", "nonexistent:scope"]
+		"ledger:read": ["ledger:LedgerRead", "nonexistent:scope"]
 	}`)
 
 	_, err := ParseScopeMappingJSON(data)
@@ -61,8 +61,8 @@ func TestLoadScopeMappingFromFile(t *testing.T) {
 	t.Parallel()
 
 	content := `{
-		"custom:read": ["ledgers:read", "transactions:read"],
-		"custom:write": ["ledgers:write"]
+		"custom:read": ["ledger:LedgerRead", "ledger:TransactionRead"],
+		"custom:write": ["ledger:LedgerWrite"]
 	}`
 
 	dir := t.TempDir()
@@ -88,8 +88,8 @@ func TestParseScopeMappingJSON_AllScopes(t *testing.T) {
 
 	// Verify all 14 granular scopes can be used in a mapping
 	data := []byte(`{
-		"all:read": ["ledgers:read", "transactions:read", "accounts:read", "audit:read", "ops:read", "queries:read", "cluster:read"],
-		"all:write": ["ledgers:write", "transactions:write", "metadata:write", "audit:write", "ops:write", "queries:write", "cluster:write"]
+		"all:read": ["ledger:LedgerRead", "ledger:TransactionRead", "ledger:AccountRead", "ledger:AuditRead", "ledger:OpsRead", "ledger:QueryRead", "ledger:ClusterRead"],
+		"all:write": ["ledger:LedgerWrite", "ledger:TransactionWrite", "ledger:MetadataWrite", "ledger:AuditWrite", "ledger:OpsWrite", "ledger:QueryWrite", "ledger:ClusterWrite"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)
@@ -121,7 +121,7 @@ func TestParseScopeMappingJSON_WildcardMixedWithExplicit(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{
-		"anonymous": ["*:read", "metadata:write"]
+		"anonymous": ["*:read", "ledger:MetadataWrite"]
 	}`)
 
 	mapping, err := ParseScopeMappingJSON(data)

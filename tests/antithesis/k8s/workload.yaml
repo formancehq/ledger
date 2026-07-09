@@ -1,5 +1,5 @@
 ---
-# RBAC: allow the workload pod to read and update LedgerService CRDs.
+# RBAC: allow the workload pod to read and update Cluster CRDs.
 # This enables test drivers to perform rolling updates, scaling, etc.
 apiVersion: v1
 kind: ServiceAccount
@@ -12,7 +12,7 @@ metadata:
   name: workload-ledger-updater
 rules:
 - apiGroups: ["ledger.formance.com"]
-  resources: ["ledgerservices"]
+  resources: ["clusters"]
   verbs: ["get", "list", "watch", "update", "patch"]
 # Operational drivers (rolling_restart, quorum_recovery) delete pods and
 # observe the StatefulSet they belong to.

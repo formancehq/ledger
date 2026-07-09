@@ -154,9 +154,9 @@ func TestRemove_DispatchesDeleteIndex(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	writer.EXPECT().Delete(indexes.KeyFor("main", ref()))
+	writer.EXPECT().Delete(indexes.KeyFor("main", ref())).Return(nil)
 
-	indexes.Remove(writer, "main", ref())
+	require.NoError(t, indexes.Remove(writer, "main", ref()))
 }
 
 func TestRemove_NoOpOnNilID(t *testing.T) {
@@ -165,7 +165,7 @@ func TestRemove_NoOpOnNilID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	indexes.Remove(writer, "main", nil)
+	require.NoError(t, indexes.Remove(writer, "main", nil))
 }
 
 // TestKeyFor_BucketScopeUsesEmptyLedgerName pins the bucket-scope sentinel:

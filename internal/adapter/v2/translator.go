@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -36,7 +37,7 @@ var (
 // TranslateBatch translates a batch of v2 logs into v3 Raft orders.
 // It generates FillGap orders for any gaps in log IDs or transaction IDs.
 // expectedNextLogID and expectedNextTxID are used to detect gaps.
-func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64) ([]*raftcmdpb.Order, uint64, uint64, error) {
+func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNextTxID uint64, rewriter *celrewrite.Rewriter) ([]*raftcmdpb.Order, uint64, uint64, error) {
 	orders := make([]*raftcmdpb.Order, 0, len(v2Logs))
 
 	for _, v2Log := range v2Logs {
@@ -59,6 +60,15 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 		expectedNextTxID = newNextTxID
 
 		if entry != nil {
+			// Apply the mirror's CEL rewrite rules to the translated entry. This
+			// runs on the leader and its output is baked into the proposed order,
+			// so followers apply identical bytes. A rule may drop the entry, in
+			// which case Apply returns a fill-gap that still advances the tx ID.
+			entry, err = rewriter.Apply(entry)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("rewriting v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
+			}
+
 			orders = append(orders, makeMirrorOrder(ledger, entry))
 		}
 
@@ -142,13 +152,7 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 		}
 	}
 
-	var accountMetadata map[string]*commonpb.MetadataMap
-	if len(data.AccountMetadata) > 0 {
-		accountMetadata = make(map[string]*commonpb.MetadataMap, len(data.AccountMetadata))
-		for account, meta := range data.AccountMetadata {
-			accountMetadata[account] = &commonpb.MetadataMap{Values: translateMetadataMap(meta)}
-		}
-	}
+	accountMetadata := translateAccountMetadata(data.AccountMetadata)
 
 	entry := &raftcmdpb.MirrorLogEntry{
 		V2LogId: v2Log.ID,
@@ -372,6 +376,22 @@ func translateTarget(targetType string, rawID stdjson.RawMessage) (*commonpb.Tar
 	default:
 		return nil, fmt.Errorf("unknown target type: %s", targetType)
 	}
+}
+
+// translateAccountMetadata builds the account-address-keyed metadata map.
+// Address rewriting (and any collision merging it induces) is handled later by
+// the CEL rewrite engine, so this is a plain, distinct-keyed projection.
+func translateAccountMetadata(accountMetadata map[string]map[string]string) map[string]*commonpb.MetadataMap {
+	if len(accountMetadata) == 0 {
+		return nil
+	}
+
+	result := make(map[string]*commonpb.MetadataMap, len(accountMetadata))
+	for account, meta := range accountMetadata {
+		result[account] = &commonpb.MetadataMap{Values: translateMetadataMap(meta)}
+	}
+
+	return result
 }
 
 // translateMetadataMap converts v2 string metadata to proto metadata values.

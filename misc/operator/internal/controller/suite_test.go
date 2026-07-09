@@ -33,6 +33,11 @@ var (
 	nsCounter atomic.Int64
 )
 
+// testOperatorNamespace is the fixed namespace the Credentials
+// reconciler treats as the operator's own — where every canonical seed
+// Secret is created. Provisioned once in TestMain.
+const testOperatorNamespace = "ledger-operator-system"
+
 func TestMain(m *testing.M) {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
@@ -63,6 +68,12 @@ func TestMain(m *testing.M) {
 
 	ctx, cancel = context.WithCancel(context.Background())
 
+	if err := k8sClient.Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: testOperatorNamespace},
+	}); err != nil {
+		panic(fmt.Sprintf("creating operator namespace: %v", err))
+	}
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -73,31 +84,33 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("creating manager: %v", err))
 	}
 
-	if err := (&LedgerServiceReconciler{
+	if err := (&ClusterReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ledgerservice-controller"),
+		Recorder: mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerService controller: %v", err))
+		panic(fmt.Sprintf("setting up Cluster controller: %v", err))
 	}
 
-	if err := (&LedgerClusterAgentReconciler{
+	if err := (&CredentialsReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		OperatorNamespace: testOperatorNamespace,
+		APIReader:         mgr.GetAPIReader(),
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up Credentials controller: %v", err))
+	}
+
+	if err := (&BackupReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
+		panic(fmt.Sprintf("setting up Backup controller: %v", err))
 	}
 
-	if err := (&LedgerBackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up LedgerBackup controller: %v", err))
-	}
-
-	// NOTE: LedgerBackupRunReconciler is intentionally NOT wired into envtest because
+	// NOTE: BackupRunReconciler is intentionally NOT wired into envtest because
 	// it would attempt to exec ledgerctl in non-existent pods. Tests in this suite
-	// cover LedgerBackup → Run creation, scheduling, and retention. End-to-end Run
+	// cover Backup → Run creation, scheduling, and retention. End-to-end Run
 	// execution is covered by chainsaw e2e tests against a real cluster.
 
 	go func() {
@@ -130,27 +143,27 @@ func createTestNamespace(t *testing.T) string {
 	return name
 }
 
-// newLedgerService returns a minimal valid LedgerService CR.
-func newLedgerService(name, namespace string) *ledgerv1alpha1.LedgerService {
+// newCluster returns a minimal valid Cluster CR.
+func newCluster(name, namespace string) *ledgerv1alpha1.Cluster {
 	replicas := int32(3)
-	return &ledgerv1alpha1.LedgerService{
+	return &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: ledgerv1alpha1.LedgerServiceSpec{
+		Spec: ledgerv1alpha1.ClusterSpec{
 			Replicas: &replicas,
 		},
 	}
 }
 
-// newLedgerClusterAgent returns a cluster-scoped LedgerClusterAgent with a label selector.
-func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.LedgerClusterAgent {
-	return &ledgerv1alpha1.LedgerClusterAgent{
+// newCredentials returns a cluster-scoped Credentials with a label selector.
+func newCredentials(name string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.Credentials {
+	return &ledgerv1alpha1.Credentials{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: ledgerv1alpha1.LedgerClusterAgentSpec{
+		Spec: ledgerv1alpha1.CredentialsSpec{
 			Scopes: scopes,
 			Selector: metav1.LabelSelector{
 				MatchLabels: matchLabels,
@@ -159,14 +172,14 @@ func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]
 	}
 }
 
-// newLedgerClusterAgentWithAdditional returns a cluster-scoped LedgerClusterAgent
+// newCredentialsWithAdditional returns a cluster-scoped Credentials
 // that distributes its Secret to the given additional namespaces (regardless of
-// matched services). Useful for tests that only need a Secret to exist somewhere.
-func newLedgerClusterAgentWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.LedgerClusterAgent {
-	agent := newLedgerClusterAgent(name, scopes, matchLabels)
-	agent.Spec.AdditionalNamespaces = additional
+// matched clusters). Useful for tests that only need a Secret to exist somewhere.
+func newCredentialsWithAdditional(name string, scopes []string, matchLabels map[string]string, additional ...string) *ledgerv1alpha1.Credentials {
+	credentials := newCredentials(name, scopes, matchLabels)
+	credentials.Spec.AdditionalNamespaces = additional
 
-	return agent
+	return credentials
 }
 
 // requireEventually wraps require.Eventually with standard timeouts for envtest.

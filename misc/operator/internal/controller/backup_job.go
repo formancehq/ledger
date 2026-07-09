@@ -20,7 +20,7 @@ const (
 	// backupJobContainerName is the single container running ledgerctl in the backup Job.
 	backupJobContainerName = "ledgerctl"
 
-	// backupJobLabelRun carries the owning LedgerBackupRun name so we can find
+	// backupJobLabelRun carries the owning BackupRun name so we can find
 	// the Job and its pod from the reconciler.
 	backupJobLabelRun = "ledger.formance.com/backup-run"
 )
@@ -80,11 +80,11 @@ func backupFlags(dest *ledgerv1alpha1.BackupDestination) []string {
 	return args
 }
 
-// backupServerAddr is the host:port a backup Job dials. The LedgerService
+// backupServerAddr is the host:port a backup Job dials. The Cluster
 // Service routes to any pod; the leader proxies the backup internally so we
 // don't need to target a specific pod. Using the cluster-internal service
 // DNS keeps the TLS SNI inside the server certificate's SAN coverage.
-func backupServerAddr(ls *ledgerv1alpha1.LedgerService) string {
+func backupServerAddr(ls *ledgerv1alpha1.Cluster) string {
 	port := ls.Spec.GrpcPort
 	if port == 0 {
 		port = 8888
@@ -93,14 +93,14 @@ func backupServerAddr(ls *ledgerv1alpha1.LedgerService) string {
 	return fmt.Sprintf("%s.%s.svc.cluster.local:%d", resourceName(ls.Name), ls.Namespace, port)
 }
 
-// backupJobName returns the Job name for a given LedgerBackupRun.
-func backupJobName(run *ledgerv1alpha1.LedgerBackupRun) string {
+// backupJobName returns the Job name for a given BackupRun.
+func backupJobName(run *ledgerv1alpha1.BackupRun) string {
 	return prefixedName(run.Name)
 }
 
-// buildBackupJob renders the desired batchv1.Job for a LedgerBackupRun. The
+// buildBackupJob renders the desired batchv1.Job for a BackupRun. The
 // Job runs `ledgerctl store backup` (or incremental-backup) in a one-shot
-// pod that connects to the LedgerService over its cluster DNS.
+// pod that connects to the Cluster over its cluster DNS.
 //
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
@@ -108,11 +108,11 @@ func backupJobName(run *ledgerv1alpha1.LedgerBackupRun) string {
 // ServiceAccount so IRSA / IAM bindings transfer transparently.
 //
 // The caller is expected to set the owner reference on the returned Job
-// (LedgerBackupRun → Job) for cascade deletion.
+// (BackupRun → Job) for cascade deletion.
 func buildBackupJob(
-	run *ledgerv1alpha1.LedgerBackupRun,
-	backup *ledgerv1alpha1.LedgerBackup,
-	ls *ledgerv1alpha1.LedgerService,
+	run *ledgerv1alpha1.BackupRun,
+	backup *ledgerv1alpha1.Backup,
+	ls *ledgerv1alpha1.Cluster,
 	tlsMode string,
 ) (*batchv1.Job, error) {
 	subcmd, err := backupSubcommand(run.Spec.Type)
@@ -186,8 +186,8 @@ func buildBackupJob(
 	}
 
 	labels := map[string]string{
-		ledgerv1alpha1.LabelLedgerBackup: backup.Name,
-		backupJobLabelRun:                run.Name,
+		ledgerv1alpha1.LabelBackup: backup.Name,
+		backupJobLabelRun:          run.Name,
 	}
 
 	job := &batchv1.Job{

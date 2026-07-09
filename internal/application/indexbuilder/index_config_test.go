@@ -959,7 +959,7 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fsmBatch.Commit())
 
-	b.initIndexConfig(context.Background())
+	require.NoError(t, b.initIndexConfig(context.Background()))
 
 	// The rewrite task is scheduled, mid-cursor, NOT a backfill task.
 	require.Len(t, b.schemaRewriteTasks, 1, "pending_version != 0 must schedule a rewrite task")
@@ -999,3 +999,68 @@ func (n noopLogger) WithField(string, any) logging.Logger       { return n }
 func (n noopLogger) WithContext(context.Context) logging.Logger { return n }
 func (noopLogger) Writer() io.Writer                            { return io.Discard }
 func (noopLogger) Enabled(logging.Level) bool                   { return false }
+
+// TestInitIndexConfig_PropagatesReadError pins EN-1441: a boot read failure
+// must surface as an error, not a swallowed log-and-return. Closing the FSM
+// store makes NewDirectReadHandle fail deterministically.
+func TestInitIndexConfig_PropagatesReadError(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	// Close the FSM store so the first boot read (NewDirectReadHandle)
+	// fails. This is the error-injection seam — no mock store exists.
+	require.NoError(t, b.pebbleStore.Close())
+
+	err := b.initIndexConfig(context.Background())
+	require.Error(t, err, "a boot read failure must propagate, not be swallowed")
+}
+
+// TestInitIndexConfig_IdempotentAcrossRetries pins EN-1441: initIndexConfig
+// may run more than once (the loop retries it on a transient boot error), so
+// a second call must not double-schedule the backfillTasks / schemaRewriteTasks
+// slices. A BUILDING index with no persisted version state (current == 0)
+// schedules exactly one backfill task per call.
+func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const (
+		ledger = "customer"
+		key    = "role"
+	)
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+
+	// Persist a LedgerInfo (so seedLedgerIndexConfig -> ReadLedgers returns
+	// it and the index is not dropped as an orphan) and a BUILDING Index
+	// registry entry with no version state, so loadIndexRegistry schedules
+	// a backfill (versionFor defaults current == 0).
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(fsmBatch, &commonpb.LedgerInfo{
+		Name: ledger,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				key: {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}))
+	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes()
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+		Ledger:                 ledger,
+		Id:                     id,
+		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		ForwardEncodingVersion: 1,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	require.NoError(t, b.initIndexConfig(context.Background()))
+	firstBackfills := len(b.backfillTasks)
+	firstRewrites := len(b.schemaRewriteTasks)
+	require.Equal(t, 1, firstBackfills, "one BUILDING index must schedule one backfill")
+
+	require.NoError(t, b.initIndexConfig(context.Background()))
+	assert.Equal(t, firstBackfills, len(b.backfillTasks), "retry must not double-schedule backfills")
+	assert.Equal(t, firstRewrites, len(b.schemaRewriteTasks), "retry must not double-schedule rewrites")
+}

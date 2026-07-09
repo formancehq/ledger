@@ -5,3 +5,13 @@ metadata:
 spec:
   name: my-ledger
   serviceRef: crd-svc
+  indexes:
+    transaction:
+      - reference
+      - address
+    account:
+      - asset
+    metadata:
+      - target: account
+        key: category
+        type: string

@@ -32,7 +32,7 @@ func main() {
 		details := internal.Details{"ledger": ledger, "idempotencyKey": idemKey}
 
 		resp1, err := client.Apply(ctx, req)
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create idempotent transaction (first)", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to create idempotent transaction (first)", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
@@ -43,7 +43,7 @@ func main() {
 		}
 
 		resp2, err := client.Apply(ctx, req)
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create idempotent transaction (second)", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to create idempotent transaction (second)", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}

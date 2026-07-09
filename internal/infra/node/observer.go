@@ -1,16 +1,5 @@
 package node
 
-import (
-	"go.etcd.io/raft/v3/raftpb"
-)
-
-// ConfChangeEvent is emitted when a Raft configuration change is committed.
-type ConfChangeEvent struct {
-	NodeID     uint64
-	ChangeType raftpb.ConfChangeType
-	Context    []byte
-}
-
 // LeadershipChangeEvent is emitted when the node's leadership status changes.
 // Emitted synchronously in the Raft processing loop, BEFORE the FSM catches up.
 type LeadershipChangeEvent struct {

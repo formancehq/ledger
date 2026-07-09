@@ -16,11 +16,11 @@ import (
 
 func TestReconcile_StatusPending(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("pending", ns)
+	ls := newCluster("pending", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// envtest has no kubelet, so ReadyReplicas will always be 0 → Pending
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "pending", Namespace: ns}, updated); err != nil {
 			return false
@@ -39,10 +39,10 @@ func TestReconcile_StatusPending(t *testing.T) {
 
 func TestReconcile_ObservedGeneration(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("obsgen", ns)
+	ls := newCluster("obsgen", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	updated := &ledgerv1alpha1.LedgerService{}
+	updated := &ledgerv1alpha1.Cluster{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "obsgen", Namespace: ns}, updated); err != nil {
 			return false

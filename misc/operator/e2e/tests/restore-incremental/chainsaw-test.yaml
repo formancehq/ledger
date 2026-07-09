@@ -16,10 +16,10 @@ spec:
                 -- mb --ignore-existing minio/e2e-restore-incr
             timeout: 60s
 
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -40,7 +40,7 @@ spec:
     - name: Run full backup
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-full-done.yaml
 
@@ -59,21 +59,21 @@ spec:
             file: assert-incremental-done.yaml
 
     # Destroy everything.
-    - name: Destroy LedgerService and PVCs
+    - name: Destroy Cluster and PVCs
       try:
         - script:
             content: |
-              kubectl delete ledgerbackup ri-bk -n $NAMESPACE --ignore-not-found
-              kubectl delete ledgerservice ri-svc -n $NAMESPACE --wait=true --timeout=60s
+              kubectl delete backup ri-bk -n $NAMESPACE --ignore-not-found
+              kubectl delete cluster ri-svc -n $NAMESPACE --wait=true --timeout=60s
               kubectl wait --for=delete pod/ledger-ri-svc-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
               kubectl delete pvc wal-ledger-ri-svc-0 data-ledger-ri-svc-0 cold-cache-ledger-ri-svc-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
     # Restore from full + incremental backup.
-    - name: Deploy LedgerService in restore mode
+    - name: Deploy Cluster in restore mode
       try:
         - apply:
-            file: ledgerservice-restore.yaml
+            file: cluster-restore.yaml
         - assert:
             resource:
               apiVersion: v1
@@ -110,7 +110,7 @@ spec:
     - name: Switch to normal mode
       try:
         - apply:
-            file: ledgerservice-normal.yaml
+            file: cluster-normal.yaml
         - script:
             content: |
               sleep 5

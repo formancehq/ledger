@@ -25,8 +25,8 @@ func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
 		if err != nil {
-			if internal.IsUnavailable(err) {
-				log.Printf("composer: barrier #%d unavailable, retrying: %s", attempt, err)
+			if internal.IsTransient(err) {
+				log.Printf("composer: barrier #%d transient, retrying: %s", attempt, err)
 				continue
 			}
 
@@ -55,7 +55,8 @@ func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient
 func main() {
 	log.Println("composer: eventually_correct")
 
-	ctx := context.Background()
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -72,7 +73,7 @@ func main() {
 	}
 
 	ledgers, err := internal.ListLedgers(ctx, client)
-	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list ledgers", internal.Details{
+	assert.Sometimes(internal.IsTolerated(err), "should be able to list ledgers", internal.Details{
 		"error": err,
 	})
 	if err != nil {
@@ -128,7 +129,7 @@ func parseBalance(s string) *big.Int {
 // checkBalanced verifies that all aggregated volumes sum to zero for each asset.
 func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	accounts, err := listAccounts(ctx, client, ledger)
-	if err != nil && !internal.IsUnavailable(err) {
+	if err != nil && !internal.IsTransient(err) {
 		assert.Unreachable("listAccounts returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"error":  err,
@@ -177,7 +178,7 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 			Address: address,
 		})
 		if err != nil {
-			if !internal.IsUnavailable(err) {
+			if !internal.IsTransient(err) {
 				assert.Unreachable("GetAccount returned unexpected error", internal.Details{
 					"ledger":  ledger,
 					"address": address,
@@ -210,7 +211,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 	details := internal.Details{"ledger": ledger}
 
 	accounts, err := listAccounts(ctx, client, ledger)
-	if err != nil && !internal.IsUnavailable(err) {
+	if err != nil && !internal.IsTransient(err) {
 		assert.Unreachable("listAccounts returned unexpected error in checkVolumesConsistent", details.With(internal.Details{
 			"error": err,
 		}))
@@ -233,7 +234,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				Address: account.Address,
 			})
 			if err != nil {
-				if !internal.IsUnavailable(err) {
+				if !internal.IsTransient(err) {
 					assert.Unreachable("GetAccount returned unexpected error in cross-check", details.With(internal.Details{
 						"account": account.Address,
 						"error":   err,
@@ -268,7 +269,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				}
 
 				// Commit index didn't advance — this is a real consistency bug.
-				assert.Always(false, "list balance should match getaccount balance", details.With(internal.Details{
+				assert.Always(false, "list/get balance divergence persisted past quiescence", details.With(internal.Details{
 					"account":       account.Address,
 					"asset":         asset,
 					"listBalance":   balance.String(),
@@ -280,7 +281,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				continue
 			}
 
-			assert.Always(true, "list balance should match getaccount balance", details.With(internal.Details{
+			assert.Reachable("list/get balance pair verified matching", details.With(internal.Details{
 				"account":       account.Address,
 				"asset":         asset,
 				"listBalance":   balance.String(),
@@ -304,7 +305,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 	}
 
 	if !checked {
-		assert.Always(true, "list balance should match getaccount balance", details.With(internal.Details{
+		assert.Reachable("eventually_correct found no list/get balance pairs to compare", details.With(internal.Details{
 			"note": "no accounts with volumes or stream error",
 		}))
 	}

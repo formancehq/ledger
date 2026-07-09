@@ -9,13 +9,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 const wrapperTestLedger = "books"
 
 // TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant pins the contract
 // that every payload variant under LedgerScopedOrder contributes at minimum
-// the wrapper ledger to the preload Needs. The wrapper-level dispatch is
+// the wrapper ledger to the preload Coverage. The wrapper-level dispatch is
 // what guarantees audit attribution + admission scope after #511 — a regression
 // where a new payload variant is added without a matching case here would
 // silently leak it past coverage checks.
@@ -27,7 +28,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 	cases := []struct {
 		name    string
 		payload *raftcmdpb.LedgerScopedOrder
-		assert  func(t *testing.T, n *plan.Needs)
+		assert  func(t *testing.T, n *plan.Coverage)
 	}{
 		{
 			name: "create_ledger",
@@ -35,8 +36,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger:  wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Ledgers, ledgerKey)
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
 			},
 		},
 		{
@@ -45,8 +46,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger:  wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_DeleteLedger{DeleteLedger: &raftcmdpb.DeleteLedgerOrder{}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Ledgers, ledgerKey)
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
 			},
 		},
 		{
@@ -55,8 +56,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger:  wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_PromoteLedger{PromoteLedger: &raftcmdpb.PromoteLedgerOrder{}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Ledgers, ledgerKey)
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
 			},
 		},
 		{
@@ -80,21 +81,21 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Ledgers, ledgerKey)
-				require.Contains(t, n.Boundaries, ledgerKey)
-				require.Contains(t, n.Volumes, domain.VolumeKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
+				require.True(t, n.Has(dal.SubAttrBoundary, ledgerKey.Bytes()))
+				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "world"},
 					Asset:      "USD",
-				})
-				require.Contains(t, n.Volumes, domain.VolumeKey{
+				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:alice"},
 					Asset:      "USD",
-				})
-				require.Contains(t, n.Metadata, domain.MetadataKey{
+				}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:alice"},
 					Key:        "tag",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -116,11 +117,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Metadata, domain.MetadataKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:bob"},
 					Key:        "score",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -137,8 +138,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 7})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 7}.Bytes()))
 			},
 		},
 		{
@@ -158,11 +159,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Metadata, domain.MetadataKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:carol"},
 					Key:        "score",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -179,8 +180,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 9})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 9}.Bytes()))
 			},
 		},
 		{
@@ -200,12 +201,12 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				}},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 11})
-				require.Contains(t, n.Volumes, domain.VolumeKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 11}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:alice"},
 					Asset:      "USD",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -218,9 +219,9 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Ledgers, ledgerKey)
-				require.Contains(t, n.PreparedQueries, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedger, ledgerKey.Bytes()))
+				require.True(t, n.Has(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"}.Bytes()))
 			},
 		},
 		{
@@ -231,8 +232,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.PreparedQueries, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"}.Bytes()))
 			},
 		},
 		{
@@ -243,8 +244,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{Name: "q1"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.PreparedQueries, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: wrapperTestLedger, Name: "q1"}.Bytes()))
 			},
 		},
 		{
@@ -255,10 +256,10 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Name: "tx", Version: "latest"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.NumscriptVersions, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"}.Bytes()))
 				// latest does not preload a specific version content
-				require.Empty(t, n.NumscriptContents)
+				require.Zero(t, n.Count(dal.SubAttrNumscriptContent))
 			},
 		},
 		{
@@ -269,13 +270,13 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Name: "tx", Version: "1.2.3"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
+			assert: func(t *testing.T, n *plan.Coverage) {
 				// semver saves preload the specific (name, version) for immutability check
-				require.Contains(t, n.NumscriptContents, domain.NumscriptEntryKey{
+				require.True(t, n.Has(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{
 					LedgerName: wrapperTestLedger,
 					Name:       "tx",
 					Version:    "1.2.3",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -286,8 +287,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{Name: "tx"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.NumscriptVersions, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"}.Bytes()))
 			},
 		},
 		{
@@ -302,8 +303,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.LedgerMetadata, domain.LedgerMetadataKey{LedgerName: wrapperTestLedger, Key: "owner"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: wrapperTestLedger, Key: "owner"}.Bytes()))
 			},
 		},
 		{
@@ -314,8 +315,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					DeleteLedgerMetadata: &raftcmdpb.DeleteLedgerMetadataOrder{Key: "owner"},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.LedgerMetadata, domain.LedgerMetadataKey{LedgerName: wrapperTestLedger, Key: "owner"})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: wrapperTestLedger, Key: "owner"}.Bytes()))
 			},
 		},
 		{
@@ -335,12 +336,12 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.References, domain.TransactionReferenceKey{LedgerName: wrapperTestLedger, Reference: "order-42"})
-				require.Contains(t, n.Volumes, domain.VolumeKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrReference, domain.TransactionReferenceKey{LedgerName: wrapperTestLedger, Reference: "order-42"}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:dan"},
 					Asset:      "EUR",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -360,12 +361,12 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13})
-				require.Contains(t, n.Volumes, domain.VolumeKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13}.Bytes()))
+				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:eve"},
 					Asset:      "USD",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -387,11 +388,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Metadata, domain.MetadataKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:fran"},
 					Key:        "badge",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -408,8 +409,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 17})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 17}.Bytes()))
 			},
 		},
 		{
@@ -429,11 +430,11 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Metadata, domain.MetadataKey{
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: wrapperTestLedger, Account: "user:gina"},
 					Key:        "badge",
-				})
+				}.Bytes()))
 			},
 		},
 		{
@@ -451,8 +452,8 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 					},
 				},
 			},
-			assert: func(t *testing.T, n *plan.Needs) {
-				require.Contains(t, n.Transactions, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 19})
+			assert: func(t *testing.T, n *plan.Coverage) {
+				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 19}.Bytes()))
 			},
 		},
 	}
@@ -461,7 +462,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			needs := plan.NewNeeds()
+			needs := plan.NewCoverage()
 			extractLedgerScopedNeeds(needs, tc.payload)
 			tc.assert(t, needs)
 		})
@@ -471,31 +472,31 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 // TestExtractSystemScopedNeeds_OnlySinkConfigsContribute pins the contract
 // that, of all system-scoped payloads, only sink-config writes contribute
 // preload keys. Every other variant is intentionally a no-op (no cache
-// preload required), so the test sweeps each variant and asserts the Needs
+// preload required), so the test sweeps each variant and asserts the Coverage
 // stays empty.
 func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add_events_sink", func(t *testing.T) {
 		t.Parallel()
-		needs := plan.NewNeeds()
+		needs := plan.NewCoverage()
 		extractSystemScopedNeeds(needs, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
 				Config: &commonpb.SinkConfig{Name: "kafka-main"},
 			}},
 		})
-		require.Contains(t, needs.SinkConfigs, domain.SinkConfigKey{Name: "kafka-main"})
+		require.True(t, needs.Has(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: "kafka-main"}.Bytes()))
 	})
 
 	t.Run("remove_events_sink", func(t *testing.T) {
 		t.Parallel()
-		needs := plan.NewNeeds()
+		needs := plan.NewCoverage()
 		extractSystemScopedNeeds(needs, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
 				Name: "kafka-main",
 			}},
 		})
-		require.Contains(t, needs.SinkConfigs, domain.SinkConfigKey{Name: "kafka-main"})
+		require.True(t, needs.Has(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: "kafka-main"}.Bytes()))
 	})
 
 	noOpVariants := []struct {
@@ -522,10 +523,10 @@ func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			needs := plan.NewNeeds()
+			needs := plan.NewCoverage()
 			extractSystemScopedNeeds(needs, tc.payload)
-			require.Empty(t, needs.SinkConfigs, "%s must not contribute sink configs", tc.name)
-			require.Empty(t, needs.Ledgers, "%s must not contribute a ledger", tc.name)
+			require.Zero(t, needs.Count(dal.SubAttrSinkConfig), "%s must not contribute sink configs", tc.name)
+			require.Zero(t, needs.Count(dal.SubAttrLedger), "%s must not contribute a ledger", tc.name)
 		})
 	}
 }

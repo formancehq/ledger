@@ -12,6 +12,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -49,6 +50,7 @@ type Worker struct {
 	ledgerName     string
 	batchSize      int
 	source         v2.Source
+	rewriter       *celrewrite.Rewriter
 	store          *dal.Store
 	proposer       Proposer
 	builder        *plan.Builder
@@ -82,6 +84,7 @@ func NewWorker(
 	ledgerName string,
 	batchSize int,
 	source v2.Source,
+	rewriter *celrewrite.Rewriter,
 	store *dal.Store,
 	proposer Proposer,
 	builder *plan.Builder,
@@ -124,6 +127,7 @@ func NewWorker(
 		ledgerName: ledgerName,
 		batchSize:  batchSize,
 		source:     source,
+		rewriter:   rewriter,
 		store:      store,
 		proposer:   proposer,
 		builder:    builder,
@@ -329,7 +333,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	// Translate v2 logs to v3 orders
 	translateStart := time.Now()
 
-	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID)
+	orders, _, newNextTxID, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID, w.rewriter)
 	if err != nil {
 		return false, err
 	}
@@ -365,13 +369,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	// One WriteOperation per Order + one for the cursor TU. The cursor
 	// TU reads Registry.Ledgers[w.ledgerName] in applyMirrorSyncUpdate.
-	tuNeeds := plan.NewNeeds()
-	tuNeeds.Ledgers[domain.LedgerKey{Name: w.ledgerName}] = struct{}{}
+	tuNeeds := plan.NewCoverage()
+	tuNeeds.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
 	for i := range orders {
 		operations = append(operations, plan.WriteOperation{
-			Needs: perOrder[i],
+			Coverage: perOrder[i],
 			SetCoverage: func(bits []byte) {
 				cmd.GetOrders()[i].CoverageBits = bits
 			},
@@ -379,7 +383,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	}
 
 	operations = append(operations, plan.WriteOperation{
-		Needs: tuNeeds,
+		Coverage: tuNeeds,
 		SetCoverage: func(bits []byte) {
 			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
 		},
@@ -518,11 +522,11 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 	// read and the mirror status update silently skips — the FSM would
 	// emit no audit entry and the error would never reach the store.
 	// One WriteOperation for the error TU with its ledger needs declared.
-	needs := plan.NewNeeds()
-	needs.Ledgers[domain.LedgerKey{Name: w.ledgerName}] = struct{}{}
+	needs := plan.NewCoverage()
+	needs.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
 	operations := []plan.WriteOperation{{
-		Needs: needs,
+		Coverage: needs,
 		SetCoverage: func(bits []byte) {
 			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
 		},
@@ -576,21 +580,31 @@ func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
 	return vtmarshal.MarshalCopy(cmd)
 }
 
-// extractMirrorNeeds builds plan.Needs from a mirror proposal's orders.
-// Returns the proposal-wide aggregate Needs alongside a parallel slice with
-// one Needs per order, used to compute Order.coverage_bits after
+// extractMirrorNeeds builds plan.Coverage from a mirror proposal's orders.
+// Returns the proposal-wide aggregate Coverage alongside a parallel slice with
+// one Coverage per order, used to compute Order.coverage_bits after
 // Build. Mirror only touches ledger info, boundaries, volumes and
 // account metadata.
-func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*plan.Needs) {
-	aggregate := plan.NewNeeds()
-	perOrder := make([]*plan.Needs, len(cmd.GetOrders()))
+func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []*plan.Coverage) {
+	aggregate := plan.NewCoverage()
+	perOrder := make([]*plan.Coverage, len(cmd.GetOrders()))
 
-	ledgerKey := domain.LedgerKey{Name: w.ledgerName}
+	ledgerBytes := domain.LedgerKey{Name: w.ledgerName}.Bytes()
+
+	addAccountMetadata := func(p *plan.Coverage, account, key string) {
+		p.Add(dal.SubAttrMetadata, domain.MetadataKey{
+			AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
+			Key:        key,
+		}.Bytes())
+	}
+	addTx := func(p *plan.Coverage, txID uint64) {
+		p.Add(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: w.ledgerName, ID: txID}.Bytes())
+	}
 
 	for orderIdx, order := range cmd.GetOrders() {
-		p := plan.NewNeeds()
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.Boundaries[ledgerKey] = struct{}{}
+		p := plan.NewCoverage()
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 
 		mi := order.GetLedgerScoped().GetMirrorIngest()
 		if mi == nil {
@@ -612,7 +626,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*pl
 				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
 				{AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
 			} {
-				p.Volumes[volKey] = struct{}{}
+				p.Add(dal.SubAttrVolume, volKey.Bytes())
 			}
 		}
 
@@ -620,10 +634,7 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*pl
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: account},
-						Key:        key,
-					}] = struct{}{}
+					addAccountMetadata(p, account, key)
 				}
 			}
 		}
@@ -632,30 +643,31 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Needs, []*pl
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
-						Key:        key,
-					}] = struct{}{}
+					addAccountMetadata(p, target.Account.GetAddr(), key)
 				}
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: target.TransactionId}] = struct{}{}
+				addTx(p, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
-				p.Metadata[domain.MetadataKey{
+				// Same Del coverage as the admission-side
+				// MirrorIngest.DeletedMetadata path (see admission.go) —
+				// AttributeCache.Del lazy-fabricates the Gen0 tombstone
+				// from Gen1's tag if a race occurred.
+				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
-				}] = struct{}{}
+				}.Bytes())
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: target.TransactionId}] = struct{}{}
+				addTx(p, target.TransactionId)
 			}
 		}
 
 		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			p.Transactions[domain.TransactionKey{LedgerName: w.ledgerName, ID: rt.GetRevertedTransactionId()}] = struct{}{}
+			addTx(p, rt.GetRevertedTransactionId())
 		}
 
 		perOrder[orderIdx] = p

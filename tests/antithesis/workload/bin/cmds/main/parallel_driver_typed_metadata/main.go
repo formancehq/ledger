@@ -172,7 +172,7 @@ func main() {
 					},
 				},
 			}))
-			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
+			assert.AlwaysOrUnreachable(internal.IsClassified(err),
 				"changing metadata type should not crash", details.With(internal.Details{
 					"newType": newType.String(),
 					"error":   err,
@@ -200,7 +200,7 @@ func main() {
 		if err != nil {
 			internal.LogCleanupError("read account after type changes", err)
 		}
-		assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
+		assert.AlwaysOrUnreachable(internal.IsClassified(err),
 			"account should be readable after metadata type changes", details.With(internal.Details{"error": err}))
 
 		if err == nil {
@@ -247,7 +247,7 @@ func main() {
 					},
 				},
 			}))
-			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
+			assert.AlwaysOrUnreachable(internal.IsClassified(err),
 				"declaring an int64 type over an uncoercible value should not crash",
 				internal.Details{
 					"key":    badKey,
@@ -266,7 +266,7 @@ func main() {
 					},
 				},
 			}))
-			assert.AlwaysOrUnreachable(err == nil || internal.IsTransient(err),
+			assert.AlwaysOrUnreachable(internal.IsClassified(err),
 				"declaring a bool type over a numeric value should not crash",
 				internal.Details{
 					"key":    metaKey,

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -16,6 +17,8 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -127,7 +130,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{manifestBody: body}
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 	require.Error(t, err, "RunIncrementalBackup must fail when a sequence read fails")
 
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -163,7 +166,7 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{} // empty manifest is fine; we fail before the no-op check
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail when the audit sequence read fails")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -194,7 +197,7 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: []byte("{ not valid json")}
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket")
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail on a corrupt existing manifest")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -300,6 +303,214 @@ func TestRunBackup_InvokesPruneForBothPrefixes(t *testing.T) {
 	require.Zero(t, result.OrphansDeleted)
 }
 
+// inMemoryBackupStorage is a fully-functional in-memory Storage implementation
+// (unlike recordingStorage which discards PutFile bodies). It lets tests
+// round-trip through RunIncrementalBackup → ApplyExports without a real
+// storage backend.
+type inMemoryBackupStorage struct {
+	mu    sync.Mutex
+	files map[string][]byte
+}
+
+func newInMemoryBackupStorage() *inMemoryBackupStorage {
+	return &inMemoryBackupStorage{files: make(map[string][]byte)}
+}
+
+func (s *inMemoryBackupStorage) PutFile(_ context.Context, key string, data io.Reader, _ int64) error {
+	body, err := io.ReadAll(data)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	s.files[key] = body
+	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *inMemoryBackupStorage) GetFile(_ context.Context, key string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	body, ok := s.files[key]
+	s.mu.Unlock()
+
+	if !ok {
+		return nil, ErrFileNotFound
+	}
+
+	return io.NopCloser(bytes.NewReader(body)), nil
+}
+
+func (s *inMemoryBackupStorage) DeleteFile(_ context.Context, key string) error {
+	s.mu.Lock()
+	delete(s.files, key)
+	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *inMemoryBackupStorage) ListFiles(_ context.Context, prefix string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var keys []string
+	for k := range s.files {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys, nil
+}
+
+// writeFailureAuditEntry writes a single AuditEntry proto with a Failure
+// outcome under [ZoneCold][SubColdAudit][seq]. No AuditItem is written —
+// this mirrors the FSM's failure path (state.machine.go calls
+// writeAuditEntry(failureEntry, nil, "failure"), and appendAuditItems on an
+// empty slice is a no-op), producing the "audit count > 0, auditItem
+// count == 0" state that EN-1424 targets.
+func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
+	t.Helper()
+
+	entry := &auditpb.AuditEntry{
+		Sequence: seq,
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
+		},
+	}
+
+	batch := store.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+	require.NoError(t, batch.SetProto(key, entry))
+	require.NoError(t, batch.Commit())
+}
+
+// writeSuccessAuditEntryWithItem writes a success AuditEntry AND its matching
+// AuditItem under seq / order 0, mirroring what the FSM produces on the
+// success path.
+func writeSuccessAuditEntryWithItem(t *testing.T, store *dal.Store, seq uint64) {
+	t.Helper()
+
+	entry := &auditpb.AuditEntry{
+		Sequence: seq,
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{MinLogSequence: seq, MaxLogSequence: seq},
+		},
+	}
+	item := &auditpb.AuditItem{OrderIndex: 0}
+
+	batch := store.OpenWriteSession()
+	entryKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+	itemKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(0).Build()
+	require.NoError(t, batch.SetProto(entryKey, entry))
+	require.NoError(t, batch.SetProto(itemKey, item))
+	require.NoError(t, batch.Commit())
+}
+
+// findExport returns the ExportSegment of the given Type from a manifest, or
+// nil if no such segment exists.
+func findExport(manifest *Manifest, segType string) *ExportSegment {
+	for i := range manifest.Exports {
+		if manifest.Exports[i].Type == segType {
+			return &manifest.Exports[i]
+		}
+	}
+
+	return nil
+}
+
+// TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment is the
+// EN-1424 regression: an incremental range whose entries are ALL failure
+// AuditEntries produces zero AuditItems, so exportEntries uploads no
+// auditItem object. The manifest must not reference the missing key, or a
+// subsequent ApplyExports fails on GetFile and the backup is silently
+// un-restorable. Mirrors the guard already applied to the appliedProposal
+// branch.
+func TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// Three failure-only audit entries at seqs 1..3: no matching AuditItem,
+	// no AppliedProposal.
+	writeFailureAuditEntry(t, store, 1)
+	writeFailureAuditEntry(t, store, 2)
+	writeFailureAuditEntry(t, store, 3)
+
+	// Prior manifest with LastAuditSequence=0 so the incremental range is
+	// (0, 3] — entirely failures.
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
+	}))
+
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+
+	// The audit segment must be present (three failure entries were exported).
+	auditSeg := findExport(manifest, "audit")
+	require.NotNil(t, auditSeg, "audit segment must be exported for failure-only range")
+	require.EqualValues(t, 1, auditSeg.StartSeq)
+	require.EqualValues(t, 3, auditSeg.EndSeq)
+
+	// The bug: manifest referenced an auditItem segment even when count==0
+	// (no failure produced any item), leaving a dangling reference to a
+	// non-existent object.
+	require.Nil(t, findExport(manifest, "auditItem"),
+		"auditItem segment must NOT be referenced when the range contains no items (regression: EN-1424)")
+
+	// The appliedProposal branch already had this guard; assert it still holds.
+	require.Nil(t, findExport(manifest, "appliedProposal"),
+		"appliedProposal segment must NOT be referenced when the range contains no successes")
+
+	// Round-trip: ApplyExports against a fresh store must succeed with the
+	// generated manifest. Pre-fix, this failed at GetFile("...auditItem/...")
+	// with ErrFileNotFound.
+	restoreStore := newBackupTestStore(t)
+	require.NoError(t, ApplyExports(context.Background(), logging.Testing(), storage, restoreStore, manifest.Exports),
+		"ApplyExports must round-trip on a failure-only incremental backup")
+}
+
+// TestRunIncrementalBackup_MixedRange_ExportsAuditItem locks the positive
+// side of the guard: a range that DOES contain audit items must still
+// export the auditItem segment. Prevents an overly-eager future fix from
+// dropping the segment unconditionally.
+func TestRunIncrementalBackup_MixedRange_ExportsAuditItem(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// Two failures followed by one success — auditItem count > 0 because of
+	// the one success at seq 3.
+	writeFailureAuditEntry(t, store, 1)
+	writeFailureAuditEntry(t, store, 2)
+	writeSuccessAuditEntryWithItem(t, store, 3)
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
+	}))
+
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+
+	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+
+	require.NotNil(t, findExport(manifest, "audit"), "audit segment must be exported")
+	require.NotNil(t, findExport(manifest, "auditItem"),
+		"auditItem segment must be exported when the range contains at least one item")
+
+	restoreStore := newBackupTestStore(t)
+	require.NoError(t, ApplyExports(context.Background(), logging.Testing(), storage, restoreStore, manifest.Exports))
+}
+
 // TestRunIncrementalBackup_InvokesPruneForExportsOnly verifies the wiring:
 // the incremental backup must only touch exports/ (data/ is owned by the
 // full backup and must remain untouched).
@@ -324,8 +535,189 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 	// data/ must NOT be listed by the incremental path. Any other ListFiles
 	// call would fail the strict mock.
 
-	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID)
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)
+}
+
+func coldAuditItemKey(seq uint64, idx uint32) []byte {
+	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(idx).Build()
+}
+
+// TestExportEntries_SplitsLargeRangeAndRoundTrips is the headline coverage for
+// the fix: a range whose serialized entries exceed the segment cap streams into
+// several bounded segments (no full-segment buffer), those segments cover the
+// range contiguously, and applying them reconstructs every entry.
+func TestExportEntries_SplitsLargeRangeAndRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+
+	const (
+		n         = 50
+		valueSize = 1024
+		capBytes  = 8 * 1024
+	)
+
+	want := make(map[uint64][]byte, n)
+
+	batch := src.OpenWriteSession()
+	for seq := uint64(1); seq <= n; seq++ {
+		val := bytes.Repeat([]byte{byte(seq)}, valueSize)
+		require.NoError(t, batch.SetBytes(coldLogKey(seq), val))
+		want[seq] = val
+	}
+
+	require.NoError(t, batch.Commit())
+
+	storage := newInMemoryBackupStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdLog, 0, n, "log",
+		func(part int) string { return ExportLogSegmentKey("bucket", 1, n, part) },
+		capBytes,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(n), count)
+	require.Greater(t, len(segs), 1, "a range larger than the cap must split into multiple segments")
+
+	require.Equal(t, uint64(1), segs[0].StartSeq)
+	require.Equal(t, uint64(n), segs[len(segs)-1].EndSeq)
+
+	for i, seg := range segs {
+		require.Equal(t, "log", seg.Type)
+		require.LessOrEqual(t, seg.StartSeq, seg.EndSeq)
+		require.Positive(t, seg.Size)
+		require.Equal(t, ExportLogSegmentKey("bucket", 1, n, i), seg.Key)
+		require.Contains(t, storage.files, seg.Key)
+
+		if i > 0 {
+			require.Equal(t, segs[i-1].EndSeq+1, seg.StartSeq, "segments must be contiguous")
+		}
+
+		if i < len(segs)-1 {
+			require.GreaterOrEqual(t, seg.Size, int64(capBytes), "non-final segments are bounded near the cap")
+		}
+	}
+
+	// Restore round-trip: applying the split segments reconstructs every entry.
+	dst := newBackupTestStore(t)
+	require.NoError(t, ApplyExports(ctx, logging.Testing(), storage, dst, segs))
+
+	dstHandle, err := dst.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dstHandle.Close() })
+
+	for seq := uint64(1); seq <= n; seq++ {
+		got, closer, err := dstHandle.Get(coldLogKey(seq))
+		require.NoError(t, err, "seq %d", seq)
+		require.Equal(t, want[seq], got, "seq %d", seq)
+		_ = closer.Close()
+	}
+}
+
+// TestExportEntries_SplitsOnlyAtSequenceBoundaries proves a single sequence's
+// keys (audit items share a sequence) never straddle two segments, even when
+// the cap falls mid-sequence.
+func TestExportEntries_SplitsOnlyAtSequenceBoundaries(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+
+	const (
+		seqs        = 10
+		itemsPerSeq = 5
+		valueSize   = 1024
+		capBytes    = 4 * 1024 // ~4 items → cap lands inside a sequence
+	)
+
+	batch := src.OpenWriteSession()
+	for seq := uint64(1); seq <= seqs; seq++ {
+		for idx := range uint32(itemsPerSeq) {
+			val := bytes.Repeat([]byte{byte(seq), byte(idx)}, valueSize/2)
+			require.NoError(t, batch.SetBytes(coldAuditItemKey(seq, idx), val))
+		}
+	}
+
+	require.NoError(t, batch.Commit())
+
+	storage := newInMemoryBackupStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdAuditItem, 0, seqs, "auditItem",
+		func(part int) string { return ExportAuditItemSegmentKey("bucket", 1, seqs, part) },
+		capBytes,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(seqs*itemsPerSeq), count)
+	require.Greater(t, len(segs), 1)
+
+	// Each sequence's items must all live in exactly one segment.
+	seen := make(map[uint64]int)
+
+	for _, seg := range segs {
+		rc, err := storage.GetFile(ctx, seg.Key)
+		require.NoError(t, err)
+
+		reader := NewKVStreamReader(rc)
+		require.NoError(t, reader.ReadHeader())
+
+		segSeqs := make(map[uint64]int)
+
+		for {
+			k, _, err := reader.ReadEntry()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			require.NoError(t, err)
+			segSeqs[seqFromKey(k)]++
+		}
+
+		_ = rc.Close()
+
+		for seq, itemCount := range segSeqs {
+			require.Equal(t, itemsPerSeq, itemCount, "seq %d must have all its items in one segment", seq)
+			require.NotContains(t, seen, seq, "seq %d must not appear in more than one segment", seq)
+			seen[seq]++
+		}
+	}
+
+	require.Len(t, seen, seqs, "every sequence must be exported exactly once")
+}
+
+// TestExportEntries_EmptyRangeUploadsNothing verifies that a range with no
+// entries produces no segments and no upload — the appliedProposal-only-failures
+// case that must not leave a manifest entry pointing at a missing object.
+func TestExportEntries_EmptyRangeUploadsNothing(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	src := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+
+	readHandle, err := src.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
+	segs, count, err := exportEntries(ctx, storage, readHandle,
+		dal.ZoneCold, dal.SubColdAppliedProposal, 0, 100, "appliedProposal",
+		func(part int) string { return ExportAppliedProposalSegmentKey("bucket", 1, 100, part) },
+		maxExportSegmentBytes,
+	)
+	require.NoError(t, err)
+	require.Empty(t, segs)
+	require.Zero(t, count)
+	require.Empty(t, storage.files)
 }

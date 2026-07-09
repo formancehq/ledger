@@ -3,16 +3,20 @@
 
 package clusterbootstrappb
 
+import (
+	bytes "bytes"
+)
+
 // GetPeersRequestReader provides read-only access to GetPeersRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetPeersRequestReader interface {
 	Mutate() *GetPeersRequest
 }
 
-type getPeersRequestReadonly struct{ v *GetPeersRequest }
+type getPeersRequestReadonly GetPeersRequest
 
 func (r *getPeersRequestReadonly) Mutate() *GetPeersRequest {
-	return r.v.CloneVT()
+	return (*GetPeersRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this GetPeersRequest.
@@ -20,7 +24,7 @@ func (m *GetPeersRequest) AsReader() GetPeersRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &getPeersRequestReadonly{v: m}
+	return (*getPeersRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this GetPeersRequest.
@@ -72,14 +76,14 @@ type GetPeersResponseReader interface {
 	Mutate() *GetPeersResponse
 }
 
-type getPeersResponseReadonly struct{ v *GetPeersResponse }
+type getPeersResponseReadonly GetPeersResponse
 
 func (r *getPeersResponseReadonly) GetPeers() PeerInfoListReader {
-	return NewPeerInfoListReader(r.v.GetPeers())
+	return NewPeerInfoListReader((*GetPeersResponse)(r).GetPeers())
 }
 
 func (r *getPeersResponseReadonly) Mutate() *GetPeersResponse {
-	return r.v.CloneVT()
+	return (*GetPeersResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this GetPeersResponse.
@@ -87,7 +91,7 @@ func (m *GetPeersResponse) AsReader() GetPeersResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &getPeersResponseReadonly{v: m}
+	return (*getPeersResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this GetPeersResponse.
@@ -141,22 +145,22 @@ type PeerInfoReader interface {
 	Mutate() *PeerInfo
 }
 
-type peerInfoReadonly struct{ v *PeerInfo }
+type peerInfoReadonly PeerInfo
 
 func (r *peerInfoReadonly) GetId() uint64 {
-	return r.v.GetId()
+	return (*PeerInfo)(r).GetId()
 }
 
 func (r *peerInfoReadonly) GetRaftAddress() string {
-	return r.v.GetRaftAddress()
+	return (*PeerInfo)(r).GetRaftAddress()
 }
 
 func (r *peerInfoReadonly) GetServiceAddress() string {
-	return r.v.GetServiceAddress()
+	return (*PeerInfo)(r).GetServiceAddress()
 }
 
 func (r *peerInfoReadonly) Mutate() *PeerInfo {
-	return r.v.CloneVT()
+	return (*PeerInfo)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PeerInfo.
@@ -164,7 +168,7 @@ func (m *PeerInfo) AsReader() PeerInfoReader {
 	if m == nil {
 		return nil
 	}
-	return &peerInfoReadonly{v: m}
+	return (*peerInfoReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PeerInfo.
@@ -213,25 +217,30 @@ type JoinAsLearnerRequestReader interface {
 	GetNodeId() uint64
 	GetRaftAddress() string
 	GetServiceAddress() string
+	GetInstanceId() []byte
 	Mutate() *JoinAsLearnerRequest
 }
 
-type joinAsLearnerRequestReadonly struct{ v *JoinAsLearnerRequest }
+type joinAsLearnerRequestReadonly JoinAsLearnerRequest
 
 func (r *joinAsLearnerRequestReadonly) GetNodeId() uint64 {
-	return r.v.GetNodeId()
+	return (*JoinAsLearnerRequest)(r).GetNodeId()
 }
 
 func (r *joinAsLearnerRequestReadonly) GetRaftAddress() string {
-	return r.v.GetRaftAddress()
+	return (*JoinAsLearnerRequest)(r).GetRaftAddress()
 }
 
 func (r *joinAsLearnerRequestReadonly) GetServiceAddress() string {
-	return r.v.GetServiceAddress()
+	return (*JoinAsLearnerRequest)(r).GetServiceAddress()
+}
+
+func (r *joinAsLearnerRequestReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*JoinAsLearnerRequest)(r).GetInstanceId())
 }
 
 func (r *joinAsLearnerRequestReadonly) Mutate() *JoinAsLearnerRequest {
-	return r.v.CloneVT()
+	return (*JoinAsLearnerRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this JoinAsLearnerRequest.
@@ -239,7 +248,7 @@ func (m *JoinAsLearnerRequest) AsReader() JoinAsLearnerRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &joinAsLearnerRequestReadonly{v: m}
+	return (*joinAsLearnerRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this JoinAsLearnerRequest.
@@ -290,10 +299,10 @@ type JoinAsLearnerResponseReader interface {
 	Mutate() *JoinAsLearnerResponse
 }
 
-type joinAsLearnerResponseReadonly struct{ v *JoinAsLearnerResponse }
+type joinAsLearnerResponseReadonly JoinAsLearnerResponse
 
 func (r *joinAsLearnerResponseReadonly) Mutate() *JoinAsLearnerResponse {
-	return r.v.CloneVT()
+	return (*JoinAsLearnerResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this JoinAsLearnerResponse.
@@ -301,7 +310,7 @@ func (m *JoinAsLearnerResponse) AsReader() JoinAsLearnerResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &joinAsLearnerResponseReadonly{v: m}
+	return (*joinAsLearnerResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this JoinAsLearnerResponse.

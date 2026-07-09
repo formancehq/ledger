@@ -16,14 +16,14 @@ type StartDownloadBackupRequestReader interface {
 	Mutate() *StartDownloadBackupRequest
 }
 
-type startDownloadBackupRequestReadonly struct{ v *StartDownloadBackupRequest }
+type startDownloadBackupRequestReadonly StartDownloadBackupRequest
 
 func (r *startDownloadBackupRequestReadonly) GetBucketId() string {
-	return r.v.GetBucketId()
+	return (*StartDownloadBackupRequest)(r).GetBucketId()
 }
 
 func (r *startDownloadBackupRequestReadonly) GetStorage() commonpb.BackupStorageReader {
-	v := r.v.GetStorage()
+	v := (*StartDownloadBackupRequest)(r).GetStorage()
 	if v == nil {
 		return nil
 	}
@@ -31,7 +31,7 @@ func (r *startDownloadBackupRequestReadonly) GetStorage() commonpb.BackupStorage
 }
 
 func (r *startDownloadBackupRequestReadonly) Mutate() *StartDownloadBackupRequest {
-	return r.v.CloneVT()
+	return (*StartDownloadBackupRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this StartDownloadBackupRequest.
@@ -39,7 +39,7 @@ func (m *StartDownloadBackupRequest) AsReader() StartDownloadBackupRequestReader
 	if m == nil {
 		return nil
 	}
-	return &startDownloadBackupRequestReadonly{v: m}
+	return (*startDownloadBackupRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this StartDownloadBackupRequest.
@@ -91,14 +91,14 @@ type StartDownloadBackupResponseReader interface {
 	Mutate() *StartDownloadBackupResponse
 }
 
-type startDownloadBackupResponseReadonly struct{ v *StartDownloadBackupResponse }
+type startDownloadBackupResponseReadonly StartDownloadBackupResponse
 
 func (r *startDownloadBackupResponseReadonly) GetJobId() string {
-	return r.v.GetJobId()
+	return (*StartDownloadBackupResponse)(r).GetJobId()
 }
 
 func (r *startDownloadBackupResponseReadonly) Mutate() *StartDownloadBackupResponse {
-	return r.v.CloneVT()
+	return (*StartDownloadBackupResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this StartDownloadBackupResponse.
@@ -106,7 +106,7 @@ func (m *StartDownloadBackupResponse) AsReader() StartDownloadBackupResponseRead
 	if m == nil {
 		return nil
 	}
-	return &startDownloadBackupResponseReadonly{v: m}
+	return (*startDownloadBackupResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this StartDownloadBackupResponse.
@@ -158,14 +158,14 @@ type GetDownloadStatusRequestReader interface {
 	Mutate() *GetDownloadStatusRequest
 }
 
-type getDownloadStatusRequestReadonly struct{ v *GetDownloadStatusRequest }
+type getDownloadStatusRequestReadonly GetDownloadStatusRequest
 
 func (r *getDownloadStatusRequestReadonly) GetJobId() string {
-	return r.v.GetJobId()
+	return (*GetDownloadStatusRequest)(r).GetJobId()
 }
 
 func (r *getDownloadStatusRequestReadonly) Mutate() *GetDownloadStatusRequest {
-	return r.v.CloneVT()
+	return (*GetDownloadStatusRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this GetDownloadStatusRequest.
@@ -173,7 +173,7 @@ func (m *GetDownloadStatusRequest) AsReader() GetDownloadStatusRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &getDownloadStatusRequestReadonly{v: m}
+	return (*getDownloadStatusRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this GetDownloadStatusRequest.
@@ -233,46 +233,46 @@ type GetDownloadStatusResponseReader interface {
 	Mutate() *GetDownloadStatusResponse
 }
 
-type getDownloadStatusResponseReadonly struct{ v *GetDownloadStatusResponse }
+type getDownloadStatusResponseReadonly GetDownloadStatusResponse
 
 func (r *getDownloadStatusResponseReadonly) GetState() DownloadState {
-	return r.v.GetState()
+	return (*GetDownloadStatusResponse)(r).GetState()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetFilesDownloaded() uint64 {
-	return r.v.GetFilesDownloaded()
+	return (*GetDownloadStatusResponse)(r).GetFilesDownloaded()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetTotalFiles() uint64 {
-	return r.v.GetTotalFiles()
+	return (*GetDownloadStatusResponse)(r).GetTotalFiles()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetBytesDownloaded() uint64 {
-	return r.v.GetBytesDownloaded()
+	return (*GetDownloadStatusResponse)(r).GetBytesDownloaded()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetTotalBytes() uint64 {
-	return r.v.GetTotalBytes()
+	return (*GetDownloadStatusResponse)(r).GetTotalBytes()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetCurrentFile() string {
-	return r.v.GetCurrentFile()
+	return (*GetDownloadStatusResponse)(r).GetCurrentFile()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetErrorMessage() string {
-	return r.v.GetErrorMessage()
+	return (*GetDownloadStatusResponse)(r).GetErrorMessage()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetStartedAtUnix() uint64 {
-	return r.v.GetStartedAtUnix()
+	return (*GetDownloadStatusResponse)(r).GetStartedAtUnix()
 }
 
 func (r *getDownloadStatusResponseReadonly) GetFinishedAtUnix() uint64 {
-	return r.v.GetFinishedAtUnix()
+	return (*GetDownloadStatusResponse)(r).GetFinishedAtUnix()
 }
 
 func (r *getDownloadStatusResponseReadonly) Mutate() *GetDownloadStatusResponse {
-	return r.v.CloneVT()
+	return (*GetDownloadStatusResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this GetDownloadStatusResponse.
@@ -280,7 +280,7 @@ func (m *GetDownloadStatusResponse) AsReader() GetDownloadStatusResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &getDownloadStatusResponseReadonly{v: m}
+	return (*getDownloadStatusResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this GetDownloadStatusResponse.
@@ -332,14 +332,14 @@ type CancelDownloadRequestReader interface {
 	Mutate() *CancelDownloadRequest
 }
 
-type cancelDownloadRequestReadonly struct{ v *CancelDownloadRequest }
+type cancelDownloadRequestReadonly CancelDownloadRequest
 
 func (r *cancelDownloadRequestReadonly) GetJobId() string {
-	return r.v.GetJobId()
+	return (*CancelDownloadRequest)(r).GetJobId()
 }
 
 func (r *cancelDownloadRequestReadonly) Mutate() *CancelDownloadRequest {
-	return r.v.CloneVT()
+	return (*CancelDownloadRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CancelDownloadRequest.
@@ -347,7 +347,7 @@ func (m *CancelDownloadRequest) AsReader() CancelDownloadRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &cancelDownloadRequestReadonly{v: m}
+	return (*cancelDownloadRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CancelDownloadRequest.
@@ -398,10 +398,10 @@ type CancelDownloadResponseReader interface {
 	Mutate() *CancelDownloadResponse
 }
 
-type cancelDownloadResponseReadonly struct{ v *CancelDownloadResponse }
+type cancelDownloadResponseReadonly CancelDownloadResponse
 
 func (r *cancelDownloadResponseReadonly) Mutate() *CancelDownloadResponse {
-	return r.v.CloneVT()
+	return (*CancelDownloadResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CancelDownloadResponse.
@@ -409,7 +409,7 @@ func (m *CancelDownloadResponse) AsReader() CancelDownloadResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &cancelDownloadResponseReadonly{v: m}
+	return (*cancelDownloadResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CancelDownloadResponse.
@@ -460,10 +460,10 @@ type ValidateRestoreRequestReader interface {
 	Mutate() *ValidateRestoreRequest
 }
 
-type validateRestoreRequestReadonly struct{ v *ValidateRestoreRequest }
+type validateRestoreRequestReadonly ValidateRestoreRequest
 
 func (r *validateRestoreRequestReadonly) Mutate() *ValidateRestoreRequest {
-	return r.v.CloneVT()
+	return (*ValidateRestoreRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ValidateRestoreRequest.
@@ -471,7 +471,7 @@ func (m *ValidateRestoreRequest) AsReader() ValidateRestoreRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &validateRestoreRequestReadonly{v: m}
+	return (*validateRestoreRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ValidateRestoreRequest.
@@ -523,14 +523,14 @@ type ValidateRestoreEventReader interface {
 	Mutate() *ValidateRestoreEvent
 }
 
-type validateRestoreEventReadonly struct{ v *ValidateRestoreEvent }
+type validateRestoreEventReadonly ValidateRestoreEvent
 
 func (r *validateRestoreEventReadonly) GetType() isValidateRestoreEvent_Type {
-	return r.v.GetType()
+	return (*ValidateRestoreEvent)(r).GetType()
 }
 
 func (r *validateRestoreEventReadonly) Mutate() *ValidateRestoreEvent {
-	return r.v.CloneVT()
+	return (*ValidateRestoreEvent)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ValidateRestoreEvent.
@@ -538,7 +538,7 @@ func (m *ValidateRestoreEvent) AsReader() ValidateRestoreEventReader {
 	if m == nil {
 		return nil
 	}
-	return &validateRestoreEventReadonly{v: m}
+	return (*validateRestoreEventReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ValidateRestoreEvent.
@@ -590,14 +590,14 @@ type ValidateRestoreErrorReader interface {
 	Mutate() *ValidateRestoreError
 }
 
-type validateRestoreErrorReadonly struct{ v *ValidateRestoreError }
+type validateRestoreErrorReadonly ValidateRestoreError
 
 func (r *validateRestoreErrorReadonly) GetMessage() string {
-	return r.v.GetMessage()
+	return (*ValidateRestoreError)(r).GetMessage()
 }
 
 func (r *validateRestoreErrorReadonly) Mutate() *ValidateRestoreError {
-	return r.v.CloneVT()
+	return (*ValidateRestoreError)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ValidateRestoreError.
@@ -605,7 +605,7 @@ func (m *ValidateRestoreError) AsReader() ValidateRestoreErrorReader {
 	if m == nil {
 		return nil
 	}
-	return &validateRestoreErrorReadonly{v: m}
+	return (*validateRestoreErrorReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ValidateRestoreError.
@@ -658,18 +658,18 @@ type ValidateRestoreProgressReader interface {
 	Mutate() *ValidateRestoreProgress
 }
 
-type validateRestoreProgressReadonly struct{ v *ValidateRestoreProgress }
+type validateRestoreProgressReadonly ValidateRestoreProgress
 
 func (r *validateRestoreProgressReadonly) GetLogsChecked() uint64 {
-	return r.v.GetLogsChecked()
+	return (*ValidateRestoreProgress)(r).GetLogsChecked()
 }
 
 func (r *validateRestoreProgressReadonly) GetTotalLogs() uint64 {
-	return r.v.GetTotalLogs()
+	return (*ValidateRestoreProgress)(r).GetTotalLogs()
 }
 
 func (r *validateRestoreProgressReadonly) Mutate() *ValidateRestoreProgress {
-	return r.v.CloneVT()
+	return (*ValidateRestoreProgress)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this ValidateRestoreProgress.
@@ -677,7 +677,7 @@ func (m *ValidateRestoreProgress) AsReader() ValidateRestoreProgressReader {
 	if m == nil {
 		return nil
 	}
-	return &validateRestoreProgressReadonly{v: m}
+	return (*validateRestoreProgressReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this ValidateRestoreProgress.
@@ -728,10 +728,10 @@ type PreviewRestoreRequestReader interface {
 	Mutate() *PreviewRestoreRequest
 }
 
-type previewRestoreRequestReadonly struct{ v *PreviewRestoreRequest }
+type previewRestoreRequestReadonly PreviewRestoreRequest
 
 func (r *previewRestoreRequestReadonly) Mutate() *PreviewRestoreRequest {
-	return r.v.CloneVT()
+	return (*PreviewRestoreRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PreviewRestoreRequest.
@@ -739,7 +739,7 @@ func (m *PreviewRestoreRequest) AsReader() PreviewRestoreRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &previewRestoreRequestReadonly{v: m}
+	return (*previewRestoreRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PreviewRestoreRequest.
@@ -799,46 +799,46 @@ type PreviewRestoreResponseReader interface {
 	Mutate() *PreviewRestoreResponse
 }
 
-type previewRestoreResponseReadonly struct{ v *PreviewRestoreResponse }
+type previewRestoreResponseReadonly PreviewRestoreResponse
 
 func (r *previewRestoreResponseReadonly) GetLastAppliedIndex() uint64 {
-	return r.v.GetLastAppliedIndex()
+	return (*PreviewRestoreResponse)(r).GetLastAppliedIndex()
 }
 
 func (r *previewRestoreResponseReadonly) GetLastAppliedTimestamp() uint64 {
-	return r.v.GetLastAppliedTimestamp()
+	return (*PreviewRestoreResponse)(r).GetLastAppliedTimestamp()
 }
 
 func (r *previewRestoreResponseReadonly) GetLastSequence() uint64 {
-	return r.v.GetLastSequence()
+	return (*PreviewRestoreResponse)(r).GetLastSequence()
 }
 
 func (r *previewRestoreResponseReadonly) GetLedgerCount() uint32 {
-	return r.v.GetLedgerCount()
+	return (*PreviewRestoreResponse)(r).GetLedgerCount()
 }
 
 func (r *previewRestoreResponseReadonly) GetLedgerNames() []string {
-	return slices.Clone(r.v.GetLedgerNames())
+	return slices.Clone((*PreviewRestoreResponse)(r).GetLedgerNames())
 }
 
 func (r *previewRestoreResponseReadonly) GetFirstLogSequence() uint64 {
-	return r.v.GetFirstLogSequence()
+	return (*PreviewRestoreResponse)(r).GetFirstLogSequence()
 }
 
 func (r *previewRestoreResponseReadonly) GetFirstAuditSequence() uint64 {
-	return r.v.GetFirstAuditSequence()
+	return (*PreviewRestoreResponse)(r).GetFirstAuditSequence()
 }
 
 func (r *previewRestoreResponseReadonly) GetHasExports() bool {
-	return r.v.GetHasExports()
+	return (*PreviewRestoreResponse)(r).GetHasExports()
 }
 
 func (r *previewRestoreResponseReadonly) GetExportCount() uint32 {
-	return r.v.GetExportCount()
+	return (*PreviewRestoreResponse)(r).GetExportCount()
 }
 
 func (r *previewRestoreResponseReadonly) Mutate() *PreviewRestoreResponse {
-	return r.v.CloneVT()
+	return (*PreviewRestoreResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PreviewRestoreResponse.
@@ -846,7 +846,7 @@ func (m *PreviewRestoreResponse) AsReader() PreviewRestoreResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &previewRestoreResponseReadonly{v: m}
+	return (*previewRestoreResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PreviewRestoreResponse.
@@ -897,10 +897,10 @@ type FinalizeRestoreRequestReader interface {
 	Mutate() *FinalizeRestoreRequest
 }
 
-type finalizeRestoreRequestReadonly struct{ v *FinalizeRestoreRequest }
+type finalizeRestoreRequestReadonly FinalizeRestoreRequest
 
 func (r *finalizeRestoreRequestReadonly) Mutate() *FinalizeRestoreRequest {
-	return r.v.CloneVT()
+	return (*FinalizeRestoreRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this FinalizeRestoreRequest.
@@ -908,7 +908,7 @@ func (m *FinalizeRestoreRequest) AsReader() FinalizeRestoreRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &finalizeRestoreRequestReadonly{v: m}
+	return (*finalizeRestoreRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this FinalizeRestoreRequest.
@@ -960,14 +960,14 @@ type FinalizeRestoreResponseReader interface {
 	Mutate() *FinalizeRestoreResponse
 }
 
-type finalizeRestoreResponseReadonly struct{ v *FinalizeRestoreResponse }
+type finalizeRestoreResponseReadonly FinalizeRestoreResponse
 
 func (r *finalizeRestoreResponseReadonly) GetMessage() string {
-	return r.v.GetMessage()
+	return (*FinalizeRestoreResponse)(r).GetMessage()
 }
 
 func (r *finalizeRestoreResponseReadonly) Mutate() *FinalizeRestoreResponse {
-	return r.v.CloneVT()
+	return (*FinalizeRestoreResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this FinalizeRestoreResponse.
@@ -975,7 +975,7 @@ func (m *FinalizeRestoreResponse) AsReader() FinalizeRestoreResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &finalizeRestoreResponseReadonly{v: m}
+	return (*finalizeRestoreResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this FinalizeRestoreResponse.

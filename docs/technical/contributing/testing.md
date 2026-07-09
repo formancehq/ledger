@@ -522,10 +522,10 @@ go tool cover -html=coverage.out
 
 1. Installs CRDs from `config/crd/bases/`
 2. Creates a controller-runtime manager with metrics disabled
-3. Registers `LedgerServiceReconciler`
+3. Registers `ClusterReconciler`
 4. Starts the manager in a background goroutine
 
-Each test gets an isolated namespace via `createTestNamespace(t)`. Helpers `newLedgerService` and `newLedgerDefaults` create minimal valid CRs.
+Each test gets an isolated namespace via `createTestNamespace(t)`. Helpers `newCluster` and `newLedgerDefaults` create minimal valid CRs.
 
 ### Test Files
 
@@ -702,5 +702,5 @@ jobs:
 To learn more:
 
 1. [Development](./development.md) - How to write testable code
-2. [Architecture](../architecture/core/architecture.md) - Understand the system to test
-3. [Data Flows](../architecture/data-model/data-flows.md) - Understand the flows to test
+2. [Architecture](../architecture/overview.md) - Understand the system to test
+3. [Data Flows](../architecture/data-flows.md) - Understand the flows to test

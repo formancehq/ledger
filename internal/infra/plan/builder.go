@@ -36,7 +36,14 @@ type Builder struct {
 	bloomFilters *bloom.FilterSet
 	logger       logging.Logger
 
-	// maxPlanSize is the cap on the number of AttributePlan entries an
+	// resolvers[attrCode] holds the per-attribute-cache resolve pipeline
+	// (cache, loader, getValue, bloom, typeName). Populated once at
+	// NewBuilder; buildPreloadsAt iterates over needs.Attributes and
+	// dispatches through this map. Adding a new attribute cache is a
+	// single-line change in buildAttrResolvers.
+	resolvers map[byte]attrResolver
+
+	// maxPlanSize is the cap on the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. Build returns domain.ErrExecutionPlanTooLarge
 	// past this threshold so admission rejects pathological payloads up
 	// front rather than paying for proportionally-large coverage slices
@@ -50,7 +57,7 @@ type Builder struct {
 //
 // operations is captured here so Run can iterate them right before each
 // (re-)marshal without the caller re-passing the slice. aggregate is the
-// merged Needs across all operations — used for preload boundary
+// merged Coverage across all operations — used for preload boundary
 // validation under the guard.
 type BuildResult struct {
 	ExecutionPlan *raftcmdpb.ExecutionPlan
@@ -58,7 +65,7 @@ type BuildResult struct {
 	nextIndex     uint64
 	nextIndexGen  uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
 	operations    []WriteOperation
-	aggregate     *Needs
+	aggregate     *Coverage
 }
 
 // ReleaseLoaders releases the loader cleanup token from the build.
@@ -109,10 +116,10 @@ func (g *ProposalGuard) ReleaseAll() {
 }
 
 // NewBuilder creates a Builder using the given IndexTracker for Raft index
-// prediction. maxPlanSize caps the number of AttributePlan entries an
+// prediction. maxPlanSize caps the number of AttributeCoverage entries an
 // ExecutionPlan may carry (0 = unlimited); see Builder.maxPlanSize.
 func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, bloomFilters *bloom.FilterSet, logger logging.Logger, maxPlanSize int) *Builder {
-	return &Builder{
+	b := &Builder{
 		tracker:      tracker,
 		cache:        c,
 		attrs:        attrs,
@@ -122,62 +129,15 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 		logger:       logger,
 		maxPlanSize:  maxPlanSize,
 	}
+	b.resolvers = buildAttrResolvers(c, attrs, b.loaders, b.bloomFilter)
+
+	return b
 }
 
 // Loaders returns the shared preload.Loaders instance, allowing callers to
 // release tokens from a BuildResult on error paths.
 func (p *Builder) Loaders() *preload.Loaders {
 	return p.loaders
-}
-
-// ResolveLedgerID resolves a ledger name to its uint32 ID using the standard
-// attribute resolution path: bloom → cache → Pebble.
-// Returns (0, false) if the ledger does not exist.
-func (p *Builder) ResolveLedgerID(name string) (uint32, bool) {
-	canonical := domain.LedgerKey{Name: name}.Bytes()
-	id, _ := attributes.MakeKey(canonical)
-
-	// 1. Bloom filter: if definitely absent, skip. Use the IsReady-guarded
-	// helper — the raw FilterForAttrType returns the (still-empty) filter
-	// even while restoreBloomFilters / StartAsyncBloomPopulate is rebuilding
-	// it on boot or after a rebuild. During that window every MayContain
-	// returns false, so ResolveLedgerID would falsely answer "not found"
-	// for every pre-existing ledger and admission would reject the matching
-	// proposals with ErrBalanceNotPreloaded / reverts with ErrLedgerNotFound
-	// (#318).
-	bf := p.bloomFilter(dal.SubAttrLedger)
-	if bf != nil && !bf.MayContain(id) {
-		return 0, false
-	}
-
-	// bf == nil with bloom configured but not ready means the populate window
-	// (#318) is open and we are falling through to cache/Pebble. Re-reading
-	// readiness here can race SetReady: the window may close between the two
-	// reads, which only under-reports the condition — it never over-reports
-	// (a bloom-disabled deployment keeps bloomFilters == nil and a ready
-	// snapshot keeps Ready() == true).
-	bloomPopulating := bf == nil && p.bloomFilters != nil && !p.bloomFilters.Snapshot().Ready()
-
-	var (
-		resolvedID uint32
-		resolved   bool
-	)
-
-	// 2. Cache: check gen0/gen1.
-	if entry, ok := p.cache.Ledgers.Get(id); ok && entry.Data != nil {
-		resolvedID, resolved = entry.Data.GetId(), true
-	} else if info, err := p.attrs.Ledger.Get(p.store, canonical); err == nil && info != nil {
-		// 3. Pebble fallback (single point read, no snapshot needed).
-		resolvedID, resolved = info.GetId(), true
-	}
-
-	// Antithesis anchor: a pre-existing ledger was successfully resolved
-	// through the fallback path while the bloom filters were still
-	// populating — proves the not-ready window degrades gracefully instead
-	// of faking absence.
-	assert.Sometimes(bloomPopulating && resolved, "ledger resolved while bloom filters not ready", nil)
-
-	return resolvedID, resolved
 }
 
 // ReadBoundaries reads the current LedgerBoundaries for the given ledger
@@ -205,17 +165,17 @@ func (p *Builder) LockTracker() { p.tracker.Lock() }
 func (p *Builder) UnlockTracker() { p.tracker.Unlock() }
 
 // Build resolves all preload needs optimistically without holding the
-// proposal lock. operations contribute their per-operation Needs to a
+// proposal lock. operations contribute their per-operation Coverage to a
 // single aggregate that drives the preload; the slice is retained on
 // the BuildResult so Run can assign each operation's coverage_bits at
 // marshal time.
 //
 // On error, the caller must call build.ReleaseLoaders().
 func (p *Builder) Build(operations []WriteOperation) (*BuildResult, error) {
-	aggregate := NewNeeds()
+	aggregate := NewCoverage()
 	for _, op := range operations {
-		if op.Needs != nil {
-			aggregate.Merge(op.Needs)
+		if op.Coverage != nil {
+			aggregate.Merge(op.Coverage)
 		}
 	}
 
@@ -335,7 +295,7 @@ type buildResult struct {
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
 // Each attribute type uses independent caches and loaders, so they are resolved
 // in parallel to reduce wall-clock time and shard lock hold duration.
-func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Needs) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
+func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
 
 	if p.logger.Enabled(logging.TraceLevel) {
@@ -347,72 +307,71 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		}).Tracef("Builder: buildPreloadsAt")
 	}
 
-	// Each goroutine writes to a distinct results[slot]. Bump this constant
-	// whenever a new launch() call is added: with the Indexes attribute
-	// (PR #453) the count went from 12 to 13, and `results[12]` would
-	// otherwise panic with an out-of-range index when every category fires.
-	const maxTypes = 13
-	results := make([]buildResult, maxTypes)
+	// Pre-count active attribute caches so results[] can be
+	// fixed-size: each goroutine writes to a distinct index without
+	// any synchronization on the slice header.
+	activeAttrCodes := make([]byte, 0, len(needs.Attributes))
+	for attrCode, set := range needs.Attributes {
+		if len(set) == 0 {
+			continue
+		}
+
+		activeAttrCodes = append(activeAttrCodes, attrCode)
+	}
+
+	// Pre-validate every attrCode has a resolver BEFORE spawning any
+	// goroutine. Bailing mid-loop after a `launch` call would leave
+	// in-flight goroutines writing to results[] on a slice the caller
+	// no longer sees AND leak their `loader.LoadOrWait` inflight-map
+	// entries (no CleanupToken assembled → the loader keeps them
+	// pinned forever). Validating first makes the error path leak-free.
+	for _, attrCode := range activeAttrCodes {
+		if _, ok := p.resolvers[attrCode]; !ok {
+			// Admission emitted a preload for a cache the builder
+			// wasn't told about (new attrCode landed in dal.SubAttr*
+			// without a matching entry in buildAttrResolvers).
+			// Silent no-op would leave the FSM without seeded values
+			// on the apply side, violating invariant #6.
+			assert.Unreachable("plan builder: no resolver registered for attrCode — extend buildAttrResolvers", map[string]any{
+				"attrCode": attrCode,
+				"keys":     len(needs.Attributes[attrCode]),
+			})
+
+			return nil, nil, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
+		}
+	}
+
+	slotCount := len(activeAttrCodes)
+	if len(needs.IdempotencyKeys) > 0 {
+		slotCount++
+	}
+
+	results := make([]buildResult, slotCount)
 
 	var wg sync.WaitGroup
-
-	slot := 0
-
-	// launch spawns a resolve goroutine that writes to results[slot].
+	nextSlot := 0
 	launch := func(fn func(i int)) {
-		i := slot
-		slot++
+		i := nextSlot
+		nextSlot++
 
 		wg.Go(func() {
 			fn(i)
 		})
 	}
 
-	if len(needs.Ledgers) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Ledgers, nextIndex, boundary, snap.Epoch,
-				p.cache.Ledgers, p.loaders.Ledgers,
-				p.attrs.Ledger.Get, p.store,
-				dal.SubAttrLedger, nil,
-				p.bloomFilter(dal.SubAttrLedger),
-				p.logger, "ledgers",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Ledgers
-		})
-	}
+	for _, attrCode := range activeAttrCodes {
+		set := needs.Attributes[attrCode]
+		resolver := p.resolvers[attrCode] // pre-validated non-nil above
 
-	if len(needs.Boundaries) > 0 {
 		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Boundaries, nextIndex, boundary, snap.Epoch,
-				p.cache.Boundaries, p.loaders.Boundaries,
-				p.attrs.Boundary.Get, p.store,
-				dal.SubAttrBoundary, nil,
-				p.bloomFilter(dal.SubAttrBoundary),
-				p.logger, "boundaries",
+			r, err := resolver.Resolve(
+				set,
+				nextIndex, boundary, snap.Epoch,
+				p.store, p.logger,
 			)
 			results[i].resolve = r
-			results[i].loader = p.loaders.Boundaries
-		})
-	}
-
-	if len(needs.Volumes) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Volumes, nextIndex, boundary, snap.Epoch,
-				p.cache.Volumes, p.loaders.Volumes,
-				p.attrs.Volume.Get, p.store,
-				dal.SubAttrVolume, nil,
-				p.bloomFilter(dal.SubAttrVolume),
-				p.logger, "volumes",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Volumes
+			results[i].err = err
+			results[i].loader = resolver.Loader()
 		})
 	}
 
@@ -446,150 +405,6 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		})
 	}
 
-	if len(needs.References) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.References, nextIndex, boundary, snap.Epoch,
-				p.cache.References, p.loaders.References,
-				p.attrs.References.Get, p.store,
-				dal.SubAttrReference, nil,
-				p.bloomFilter(dal.SubAttrReference),
-				p.logger, "references",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.References
-		})
-	}
-
-	if len(needs.SinkConfigs) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.SinkConfigs, nextIndex, boundary, snap.Epoch,
-				p.cache.SinkConfigs, p.loaders.SinkConfigs,
-				p.attrs.SinkConfig.Get, p.store,
-				dal.SubAttrSinkConfig, nil,
-				p.bloomFilter(dal.SubAttrSinkConfig),
-				p.logger, "sink_configs",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.SinkConfigs
-		})
-	}
-
-	if len(needs.NumscriptVersions) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptVersions, nextIndex, boundary, snap.Epoch,
-				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
-				p.attrs.NumscriptVersion.Get, p.store,
-				dal.SubAttrNumscriptVersion, nil,
-				p.bloomFilter(dal.SubAttrNumscriptVersion),
-				p.logger, "numscript_versions",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.NumscriptVersions
-		})
-	}
-
-	if len(needs.NumscriptContents) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.NumscriptContents, nextIndex, boundary, snap.Epoch,
-				p.cache.NumscriptContents, p.loaders.NumscriptContents,
-				p.attrs.NumscriptContent.Get, p.store,
-				dal.SubAttrNumscriptContent, nil,
-				p.bloomFilter(dal.SubAttrNumscriptContent),
-				p.logger, "numscript_contents",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.NumscriptContents
-		})
-	}
-
-	if len(needs.Transactions) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Transactions, nextIndex, boundary, snap.Epoch,
-				p.cache.Transactions, p.loaders.Transactions,
-				p.attrs.Transaction.Get, p.store,
-				dal.SubAttrTransaction, nil,
-				p.bloomFilter(dal.SubAttrTransaction),
-				p.logger, "transactions",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Transactions
-		})
-	}
-
-	if len(needs.Metadata) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Metadata, nextIndex, boundary, snap.Epoch,
-				p.cache.AccountMetadata, p.loaders.AccountMetadata,
-				p.attrs.Metadata.Get, p.store,
-				dal.SubAttrMetadata, nil,
-				p.bloomFilter(dal.SubAttrMetadata),
-				p.logger, "metadata",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.AccountMetadata
-		})
-	}
-
-	if len(needs.PreparedQueries) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.PreparedQueries, nextIndex, boundary, snap.Epoch,
-				p.cache.PreparedQueries, p.loaders.PreparedQueries,
-				p.attrs.PreparedQuery.Get, p.store,
-				dal.SubAttrPreparedQuery, nil,
-				p.bloomFilter(dal.SubAttrPreparedQuery),
-				p.logger, "prepared_queries",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.PreparedQueries
-		})
-	}
-
-	if len(needs.LedgerMetadata) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.LedgerMetadata, nextIndex, boundary, snap.Epoch,
-				p.cache.LedgerMetadata, p.loaders.LedgerMetadata,
-				p.attrs.LedgerMetadata.Get, p.store,
-				dal.SubAttrLedgerMetadata, nil,
-				p.bloomFilter(dal.SubAttrLedgerMetadata),
-				p.logger, "ledger_metadata",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.LedgerMetadata
-		})
-	}
-
-	if len(needs.Indexes) > 0 {
-		launch(func(i int) {
-			var r *resolveResult
-			r, results[i].err = resolveAttributePreload(
-				needs.Indexes, nextIndex, boundary, snap.Epoch,
-				p.cache.Indexes, p.loaders.Indexes,
-				p.attrs.Index.Get, p.store,
-				dal.SubAttrIndex, nil,
-				p.bloomFilter(dal.SubAttrIndex),
-				p.logger, "indexes",
-			)
-			results[i].resolve = r
-			results[i].loader = p.loaders.Indexes
-		})
-	}
-
 	wg.Wait()
 
 	// Build preload.CleanupToken and merge results, returning first error encountered.
@@ -599,9 +414,9 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		CacheEpoch:         snap.Epoch,
 	}
 
-	for i := range slot {
+	for i := range results {
 		// Always promote any tracker entries into the cleanup token,
-		// even when the slot returned an error. resolveAttributePreload
+		// even when the slot returned an error. resolveCoverage
 		// can populate the tracker for keys that loaded successfully
 		// before a concurrent sibling set firstErr; if we returned
 		// before draining them, the caller's ReleaseLoaders would skip

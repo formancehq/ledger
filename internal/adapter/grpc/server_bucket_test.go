@@ -24,7 +24,7 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 			Subject: "alice",
 			Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
 		},
-		Scopes: []string{"transactions:write"},
+		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
 

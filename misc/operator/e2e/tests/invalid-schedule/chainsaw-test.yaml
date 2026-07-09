@@ -6,10 +6,10 @@ spec:
   timeouts:
     assert: 30s
   steps:
-    - name: Deploy a LedgerService so serviceRef passes
+    - name: Deploy a Cluster so serviceRef passes
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -22,6 +22,6 @@ spec:
     - name: Backup with invalid cron schedule should fail
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-failed.yaml

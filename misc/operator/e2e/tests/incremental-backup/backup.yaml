@@ -1,0 +1,17 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Backup
+metadata:
+  name: incr-bk
+spec:
+  serviceRef: bk-incr-svc
+  destination:
+    driver: s3
+    s3:
+      bucket: e2e-incr-backup
+      region: us-east-1
+      endpoint: http://minio.minio.svc.cluster.local:9000
+    s3AccessKeyId: minioadmin
+    s3SecretAccessKey: minioadmin
+  schedule:
+    full: "* * * * *"
+    incremental: "* * * * *"

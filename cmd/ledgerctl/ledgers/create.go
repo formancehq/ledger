@@ -34,10 +34,13 @@ func NewCreateCommand() *cobra.Command {
 
 	// Account type enforcement
 	cmd.Flags().String("default-enforcement-mode", "", "Default enforcement mode for unmatched accounts: STRICT or AUDIT (default: STRICT)")
+	cmdutil.RegisterEnumCompletion(cmd, "default-enforcement-mode", "STRICT", "AUDIT")
 
 	// Mirror mode flags
 	cmd.Flags().String("mode", "normal", "Ledger mode: normal or mirror")
+	cmdutil.RegisterEnumCompletion(cmd, "mode", "normal", "mirror")
 	cmd.Flags().String("mirror-source-type", "http", "Mirror source type: http or postgres")
+	cmdutil.RegisterEnumCompletion(cmd, "mirror-source-type", "http", "postgres")
 	cmd.Flags().String("mirror-ledger-name", "", "Source ledger name in the v2 system (defaults to ledger name)")
 	cmd.Flags().String("mirror-base-url", "", "Base URL of the v2 API (for http source)")
 	cmd.Flags().String("mirror-oauth2-client-id", "", "OAuth2 client ID for the v2 API (for http source)")
@@ -45,7 +48,11 @@ func NewCreateCommand() *cobra.Command {
 	cmd.Flags().String("mirror-oauth2-token-endpoint", "", "OAuth2 token endpoint URL (for http source)")
 	cmd.Flags().StringArray("mirror-oauth2-scopes", nil, "OAuth2 scopes (for http source, can be repeated)")
 	cmd.Flags().String("mirror-dsn", "", "PostgreSQL DSN (for postgres source)")
+	cmd.Flags().String("mirror-aws-iam-region", "", "Enable AWS RDS IAM authentication using the given region (for postgres source); credentials are taken from the ambient AWS chain (IRSA, instance profile, env)")
+	cmd.Flags().String("mirror-aws-iam-assume-role-arn", "", "Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors); requires --mirror-aws-iam-region")
 	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
+	cmd.Flags().String("mirror-rewrite-file", "", "Path to a YAML/JSON list of MirrorRewriteRule objects applied to every mirror log entry during translation. Each rule sets exactly one scope (createdTransaction | revertedTransaction | savedMetadata | deletedMetadata | anyVariant), an optional CEL `match` predicate, and typed `actions` (rewriteAddress, setMetadata, drop, ...). See docs/technical/architecture/subsystems/events-mirror/cel-rewrite.md")
+	cmd.Flags().StringArray("mirror-rewrite-rule", nil, "A single MirrorRewriteRule as a YAML/JSON object, e.g. {\"anyVariant\":{\"actions\":[{\"rewriteAddress\":{\"pattern\":\":worker:\\\\d+\",\"replacement\":\"\"}}]}} (repeatable; appended after any --mirror-rewrite-file rules)")
 
 	return cmd
 }

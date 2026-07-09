@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolUint64 = sync.Pool{
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoClusterpbClusterUint64 = sync.Pool{
 		New: func() any { s := make([]uint64, 0, 16); return &s },
 	}
 )
@@ -103,7 +103,7 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		dAtA[i] = 0x49
 	}
 	if len(m.Progress) > 0 {
-		keysPtr := _dethashKeyPoolUint64.Get().(*[]uint64)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoClusterpbClusterUint64.Get().(*[]uint64)
 		keys := (*keysPtr)[:0]
 		for k := range m.Progress {
 			keys = append(keys, k)
@@ -125,7 +125,7 @@ func (m *RaftStatus) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			dAtA[i] = 0x42
 		}
 		*keysPtr = keys
-		_dethashKeyPoolUint64.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoClusterpbClusterUint64.Put(keysPtr)
 	}
 	if m.Vote != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Vote))

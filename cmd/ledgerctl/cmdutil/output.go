@@ -8,9 +8,9 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -291,7 +291,7 @@ func protoToAny(msg proto.Message) (any, error) {
 func isNilProto(msg proto.Message) bool {
 	rv := reflect.ValueOf(msg)
 
-	return rv.Kind() == reflect.Ptr && rv.IsNil()
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 // IsStructuredOutput returns true when --json or --yaml is active.

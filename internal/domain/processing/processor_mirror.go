@@ -116,9 +116,15 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 // v2LogID belongs to the wrapping MirrorLogEntry, not the FillGap message
 // itself — passing it as an extra arg avoids reaching back into the entry.
 func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Context) *commonpb.LedgerLogPayload {
-	// Advance NextTransactionId for each skipped transaction
-	for range gap.GetSkippedTransactionIds() {
-		ctx.Boundaries.NextTransactionId++
+	// Advance NextTransactionId past every skipped transaction id, using the id
+	// values rather than the element count. This matches the created/reverted
+	// apply paths (NextTransactionId = id + 1) and stays correct even if a
+	// dropped id is not contiguous with the current boundary — incrementing by
+	// count would leave the boundary too low.
+	for _, id := range gap.GetSkippedTransactionIds() {
+		if ctx.Boundaries.GetNextTransactionId() <= id {
+			ctx.Boundaries.NextTransactionId = id + 1
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -163,6 +169,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		CreatedByLog: s.GetNextSequenceID(),
 		Metadata:     ct.GetMetadata(),
 		Timestamp:    timestamp,
+		Postings:     ct.GetPostings(),
 	})
 
 	// Store reference if provided
@@ -280,7 +287,9 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 				AccountKey: domain.AccountKey{LedgerName: ledger, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
 			}
-			s.AccountMetadata().Delete(metaKey)
+			if err := s.AccountMetadata().Delete(metaKey); err != nil {
+				return nil, &domain.ErrStorageOperation{Operation: "deleting account metadata", Cause: err}
+			}
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
@@ -333,7 +342,13 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	boundaries.PostingCount += uint64(len(rt.GetReversePostings()))
 	boundaries.RevertCount++
 
-	// Update the original transaction's state to record the reversion
+	timestamp := rt.GetTimestamp()
+	if timestamp == nil {
+		timestamp = s.GetDate().Mutate()
+	}
+
+	// Update the original transaction's state to record the reversion: the id of
+	// the compensating transaction and the effective time it was reverted.
 	origKey := domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}
 
 	origReader, err := s.TransactionStates().Get(origKey)
@@ -344,19 +359,18 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	if origReader != nil {
 		origState := origReader.Mutate()
 		origState.RevertedByTransaction = revertTxID
+		origState.RevertedAt = timestamp
 		s.TransactionStates().Put(origKey, origState)
 	}
 
-	timestamp := rt.GetTimestamp()
-	if timestamp == nil {
-		timestamp = s.GetDate().Mutate()
-	}
-
-	// Store the revert transaction's state (include metadata from the mirror revert)
+	// Store the revert transaction's state (include metadata from the mirror
+	// revert); RevertsTransaction back-links it to the transaction it compensates.
 	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
-		CreatedByLog: s.GetNextSequenceID(),
-		Metadata:     rt.GetMetadata(),
-		Timestamp:    timestamp,
+		CreatedByLog:       s.GetNextSequenceID(),
+		Metadata:           rt.GetMetadata(),
+		Timestamp:          timestamp,
+		Postings:           rt.GetReversePostings(),
+		RevertsTransaction: rt.GetRevertedTransactionId(),
 	})
 
 	return &commonpb.LedgerLogPayload{
@@ -364,12 +378,13 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: rt.GetRevertedTransactionId(),
 				RevertTransaction: &commonpb.Transaction{
-					Postings:   rt.GetReversePostings(),
-					Metadata:   rt.GetMetadata(),
-					Timestamp:  timestamp,
-					Id:         revertTxID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:           rt.GetReversePostings(),
+					Metadata:           rt.GetMetadata(),
+					Timestamp:          timestamp,
+					Id:                 revertTxID,
+					InsertedAt:         s.GetDate().Mutate(),
+					UpdatedAt:          s.GetDate().Mutate(),
+					RevertsTransaction: rt.GetRevertedTransactionId(),
 				},
 			},
 		},

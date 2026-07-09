@@ -11,9 +11,9 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const ledgerServiceCRDName = "ledgerservices.ledger.formance.com"
+const clusterCRDName = "clusters.ledger.formance.com"
 
-// FetchSpecFields fetches the LedgerService CRD from the cluster and builds
+// FetchSpecFields fetches the Cluster CRD from the cluster and builds
 // the field tree from its OpenAPI v3 schema. Returns descriptions, defaults,
 // and validation info that reflection alone cannot provide.
 func FetchSpecFields(ctx context.Context, cfg *rest.Config) ([]Field, error) {
@@ -22,23 +22,23 @@ func FetchSpecFields(ctx context.Context, cfg *rest.Config) ([]Field, error) {
 		return nil, fmt.Errorf("creating apiextensions client: %w", err)
 	}
 
-	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, ledgerServiceCRDName, metav1.GetOptions{})
+	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, clusterCRDName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("fetching CRD %s: %w", ledgerServiceCRDName, err)
+		return nil, fmt.Errorf("fetching CRD %s: %w", clusterCRDName, err)
 	}
 
 	if len(crd.Spec.Versions) == 0 {
-		return nil, fmt.Errorf("CRD %s has no versions", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no versions", clusterCRDName)
 	}
 
 	schema := crd.Spec.Versions[0].Schema
 	if schema == nil || schema.OpenAPIV3Schema == nil {
-		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", clusterCRDName)
 	}
 
 	specProp, ok := schema.OpenAPIV3Schema.Properties["spec"]
 	if !ok {
-		return nil, fmt.Errorf("CRD %s has no spec property", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no spec property", clusterCRDName)
 	}
 
 	return fieldsFromOpenAPI(specProp.Properties), nil
@@ -51,23 +51,23 @@ func FetchStatusFields(ctx context.Context, cfg *rest.Config) ([]Field, error) {
 		return nil, fmt.Errorf("creating apiextensions client: %w", err)
 	}
 
-	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, ledgerServiceCRDName, metav1.GetOptions{})
+	crd, err := client.ApiextensionsV1().CustomResourceDefinitions().Get(ctx, clusterCRDName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("fetching CRD %s: %w", ledgerServiceCRDName, err)
+		return nil, fmt.Errorf("fetching CRD %s: %w", clusterCRDName, err)
 	}
 
 	if len(crd.Spec.Versions) == 0 {
-		return nil, fmt.Errorf("CRD %s has no versions", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no versions", clusterCRDName)
 	}
 
 	schema := crd.Spec.Versions[0].Schema
 	if schema == nil || schema.OpenAPIV3Schema == nil {
-		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no OpenAPI v3 schema", clusterCRDName)
 	}
 
 	statusProp, ok := schema.OpenAPIV3Schema.Properties["status"]
 	if !ok {
-		return nil, fmt.Errorf("CRD %s has no status property", ledgerServiceCRDName)
+		return nil, fmt.Errorf("CRD %s has no status property", clusterCRDName)
 	}
 
 	return fieldsFromOpenAPI(statusProp.Properties), nil

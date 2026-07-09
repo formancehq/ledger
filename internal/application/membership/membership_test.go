@@ -36,7 +36,7 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr)
+			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, nil)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})

@@ -11,7 +11,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	name := resourceName(ledger.Name)
 
 	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
@@ -55,7 +55,7 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 	return err
 }
 
-func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
+func buildHTTPIngressRules(ledger *ledgerv1alpha1.Cluster, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
 	rules := make([]networkingv1.IngressRule, 0, len(hosts))
 	httpPort := serviceHttpPort(ledger)
 

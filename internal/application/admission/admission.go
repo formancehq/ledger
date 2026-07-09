@@ -360,22 +360,18 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
-			attribute.Int("preload.ledgers", len(needs.Ledgers)),
-			attribute.Int("preload.boundaries", len(needs.Boundaries)),
-			attribute.Int("preload.volumes", len(needs.Volumes)),
+			attribute.Int("preload.attributes_total", needs.AttributeKeysCount()),
 			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
-			attribute.Int("preload.references", len(needs.References)),
-			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
 	// Build the per-order WriteOperation slice. Each operation carries
-	// its Needs (for preload aggregation) and a SetCoverage closure
+	// its Coverage (for preload aggregation) and a SetCoverage closure
 	// that the runner invokes at marshal time to write the computed
 	// bitset onto Order.CoverageBits.
 	operations := make([]plan.WriteOperation, len(orders))
 	for i := range orders {
 		operations[i] = plan.WriteOperation{
-			Needs: perOrder[i],
+			Coverage: perOrder[i],
 			SetCoverage: func(bits []byte) {
 				cmd.GetOrders()[i].CoverageBits = bits
 			},
@@ -396,7 +392,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	var storeReads int64
 	for _, plan := range build.ExecutionPlan.GetAttributes() {
-		if _, ok := plan.GetIntent().(*raftcmdpb.AttributePlan_Value); ok {
+		if plan.GetValue() != nil {
 			storeReads++
 		}
 	}
@@ -417,7 +413,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// patches PredictedIndex onto the pre-marshaled buffer (or
 	// re-marshals on the rare boundary-shift rebuild).
 	//
-	// Per-order coverage bits depend on the final AttributePlan slice
+	// Per-order coverage bits depend on the final AttributeCoverage slice
 	// (positions in cmd.ExecutionPlan.Attributes), and AcquireProposalGuard may
 	// swap cmd.ExecutionPlan for a rebuilt ExecutionPlan on a generation shift.
 	// Compute the bits inside marshalFn so every (re-)marshal sees the
@@ -782,39 +778,52 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 // balance (see `processing.readVolumeOrZero`). A `*state.ErrCoverageMiss`
 // (admission contract violation — need never declared) stays distinct
 // and propagates loud through `ErrStorageOperation{Cause: covErr}`.
-func addVolumeNeed(p *plan.Needs, ledgerName string, account, asset string) {
-	p.Volumes[domain.VolumeKey{
+func addVolumeNeed(p *plan.Coverage, ledgerName string, account, asset string) {
+	p.Add(dal.SubAttrVolume, domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Asset:      asset,
-	}] = struct{}{}
+	}.Bytes())
 }
 
 // addTransactionTargetNeeds preloads the TransactionState entry for a
 // TargetTransaction so the FSM can read it from cache.
-func addTransactionTargetNeeds(p *plan.Needs, ledgerName string, txID uint64) {
-	p.Transactions[domain.TransactionKey{
+func addTransactionTargetNeeds(p *plan.Coverage, ledgerName string, txID uint64) {
+	p.Add(dal.SubAttrTransaction, domain.TransactionKey{
 		LedgerName: ledgerName,
 		ID:         txID,
-	}] = struct{}{}
+	}.Bytes())
 }
 
-// extractLedgerScopedNeeds populates the preload Needs for a ledger-scoped
+// extractLedgerScopedNeeds populates the preload Coverage for a ledger-scoped
 // order. The ledger lives once on the wrapper; every payload variant reads it
 // from there instead of carrying its own field.
-func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
+func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder) {
 	ledgerName := ls.GetLedger()
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
 
+	ledgerBytes := ledgerKey.Bytes()
+
 	switch payload := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_CreateLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// LogPayload_DeleteLedger cascades via WriteSet.Absorb into
+		// b.Derived.Boundaries.Delete(...) directly (NOT via
+		// gatedAccessor.Delete — the Absorb path calls the concrete
+		// DerivedKeyStore), which flushes at Merge to
+		// KeyStore.Delete → AttributeCache.Del. The coverage gate is
+		// therefore NOT enforced on this cascade; the Boundary preload
+		// declared here is what makes the FSM's cache read horizon match
+		// admission's intent under invariant #6. AttributeCache.Del still
+		// lazy-fabricates a Gen0 tombstone from Gen1's tag if a
+		// concurrent write raced with the rotation.
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.Boundaries[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
 
 		mi := payload.MirrorIngest
 
@@ -833,10 +842,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
 			for account, mm := range ct.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 		}
@@ -845,80 +854,86 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			switch target := sm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
 				for key := range sm.GetMetadata() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         target.TransactionId,
-				}] = struct{}{}
+				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
-				p.Metadata[domain.MetadataKey{
+				// Mirror-ingested v2 DELETE_METADATA log applies via
+				// processMirrorDeletedMetadata → AccountMetadata.Delete
+				// → AttributeCache.Del. Declare coverage; Del itself
+				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
+				// only Gen1 has the entry.
+				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        dm.GetKey(),
-				}] = struct{}{}
+				}.Bytes())
 			case *commonpb.Target_TransactionId:
-				p.Transactions[domain.TransactionKey{
-					LedgerName: ledgerName,
-					ID:         target.TransactionId,
-				}] = struct{}{}
+				// Transaction metadata lives inside the TransactionState
+				// map — no strict-Del path, no extra coverage needed.
+				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
 
 		if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
-			p.Transactions[domain.TransactionKey{
-				LedgerName: ledgerName,
-				ID:         rt.GetRevertedTransactionId(),
-			}] = struct{}{}
+			addTransactionTargetNeeds(p, ledgerName, rt.GetRevertedTransactionId())
 		}
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.CreatePreparedQuery.GetQuery().GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.UpdatePreparedQuery.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.UpdatePreparedQuery.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.PreparedQueries[domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// processDeletePreparedQuery calls PreparedQueries.Delete →
+		// AttributeCache.Del. Declare coverage; Del itself lazy-
+		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
+		// Create + rotation raced with admission.
+		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}.Bytes())
 
 		// For semver saves, preload the specific version content for immutability check.
 		version := payload.SaveNumscript.GetVersion()
 		if version != "" && version != "latest" {
-			p.NumscriptContents[domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}] = struct{}{}
+			p.Add(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}.Bytes())
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.NumscriptVersions[domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 		for key := range payload.SaveLedgerMetadata.GetMetadata() {
-			p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: key}] = struct{}{}
+			p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: key}.Bytes())
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
-		p.Ledgers[ledgerKey] = struct{}{}
-		p.LedgerMetadata[domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}] = struct{}{}
+		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// Delete's apply calls KeyStore.Delete → AttributeCache.Del.
+		// Declare coverage (invariant #6 / #9); Del itself lazy-
+		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
+		// Save + rotation raced with admission.
+		p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_Apply:
-		p.Boundaries[ledgerKey] = struct{}{}
-		p.Ledgers[ledgerKey] = struct{}{}
+		p.Add(dal.SubAttrBoundary, ledgerBytes)
+		p.Add(dal.SubAttrLedger, ledgerBytes)
 
 		switch applyData := payload.Apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 			if applyData.CreateTransaction.GetReference() != "" {
-				p.References[domain.TransactionReferenceKey{
+				p.Add(dal.SubAttrReference, domain.TransactionReferenceKey{
 					LedgerName: ledgerName,
 					Reference:  applyData.CreateTransaction.GetReference(),
-				}] = struct{}{}
+				}.Bytes())
 			}
 
 			// Caller-supplied account metadata always preloads here,
@@ -929,10 +944,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			// themselves are discovered later by the script pass.
 			for account, mm := range applyData.CreateTransaction.GetAccountMetadata() {
 				for key := range mm.GetValues() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 
@@ -952,10 +967,7 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-			p.Transactions[domain.TransactionKey{
-				LedgerName: ledgerName,
-				ID:         applyData.RevertTransaction.GetTransactionId(),
-			}] = struct{}{}
+			addTransactionTargetNeeds(p, ledgerName, applyData.RevertTransaction.GetTransactionId())
 
 			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset())
@@ -965,10 +977,10 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
 			if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				for key := range applyData.AddMetadata.GetMetadata() {
-					p.Metadata[domain.MetadataKey{
+					p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 						Key:        key,
-					}] = struct{}{}
+					}.Bytes())
 				}
 			}
 
@@ -978,42 +990,60 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
-				p.Metadata[domain.MetadataKey{
+				// Account-metadata Delete's apply routes through
+				// KeyStore.Delete → AttributeCache.Del. Declare
+				// coverage (invariant #6 / #9); Del itself lazy-
+				// fabricates a Gen0 tombstone from Gen1's tag if a
+				// concurrent Save + rotation raced with admission.
+				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: target.Account.GetAddr()},
 					Key:        applyData.DeleteMetadata.GetKey(),
-				}] = struct{}{}
+				}.Bytes())
 			}
 
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
+				// Transaction metadata lives inside the transaction state
+				// (a TransactionState.Metadata map, not a separate cache
+				// attribute), so strict-Del does not apply.
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
 			// processCreateIndex consults the registry to short-circuit on
 			// READY duplicates — preload the matching entry.
-			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}] = struct{}{}
+			p.Add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
-			// processDropIndex calls DeleteIndex unconditionally, but
-			// preloading keeps the FSM read side consistent with invariant 3.
-			p.Indexes[domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.DropIndex.GetId())}] = struct{}{}
+			// processDropIndex calls DeleteIndex unconditionally.
+			// indexes.Remove → w.Delete → AttributeCache.Del.
+			// Declare coverage; Del itself lazy-fabricates a Gen0
+			// tombstone from Gen1's tag across a
+			// CreateIndex→DropIndex race.
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
+				LedgerName: ledgerName,
+				Canonical:  indexes.Canonical(applyData.DropIndex.GetId()),
+			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
 			// Schema changes touch the matching metadata index entry to
 			// flip it back to BUILDING; preload so processSetMetadataFieldType
 			// finds the current state.
-			p.Indexes[domain.IndexKey{
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.SetMetadataFieldType.GetTargetType(), applyData.SetMetadataFieldType.GetKey())),
-			}] = struct{}{}
+			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 			// Removing a schema field cascades into dropping the index;
 			// processRemoveMetadataFieldType probes the registry first.
-			p.Indexes[domain.IndexKey{
+			// The cascade Find→indexes.Remove reaches Del on hit.
+			// Declare coverage; Del itself lazy-fabricates a Gen0
+			// tombstone from Gen1's tag across a
+			// CreateIndex→RemoveMetadataFieldType race.
+			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.RemoveMetadataFieldType.GetTargetType(), applyData.RemoveMetadataFieldType.GetKey())),
-			}] = struct{}{}
+			}.Bytes())
 		}
 	default:
 		// Loud failure for an unmapped ledger-scoped payload. The processor
@@ -1031,18 +1061,27 @@ func extractLedgerScopedNeeds(p *plan.Needs, ls *raftcmdpb.LedgerScopedOrder) {
 	}
 }
 
-// extractSystemScopedNeeds populates the preload Needs for a system-scoped
+// extractSystemScopedNeeds populates the preload Coverage for a system-scoped
 // order. Only sink-config orders contribute preload keys today; every other
 // variant is enumerated as an explicit no-op so adding a new payload
 // without a matching case here trips the loud default — matching the
 // invariant-7 contract that an unmapped wrapper variant must fail loudly
 // rather than degrade to a silent cache miss at apply time.
-func extractSystemScopedNeeds(p *plan.Needs, ss *raftcmdpb.SystemScopedOrder) {
+func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder) {
 	switch payload := ss.GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_AddEventsSink:
-		p.SinkConfigs[domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}] = struct{}{}
+		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.AddEventsSink.GetConfig().GetName()}.Bytes())
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
-		p.SinkConfigs[domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}] = struct{}{}
+		// LogPayload_RemovedEventsSink cascades via WriteSet.Absorb into
+		// b.Derived.SinkConfigs.Delete(...) directly (NOT via
+		// gatedAccessor.Delete — the Absorb path calls the concrete
+		// DerivedKeyStore), then flushes at Merge to KeyStore.Delete →
+		// AttributeCache.Del. The coverage gate is therefore NOT enforced
+		// on this cascade; the SinkConfig preload declared here is what
+		// makes the FSM's cache read horizon match admission's intent
+		// under invariant #6. Del itself lazy-fabricates a Gen0 tombstone
+		// from Gen1's tag across an Add→Remove race.
+		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}.Bytes())
 
 	// Explicit no-op cases: every other system-scoped variant intentionally
 	// touches no cache attribute. Listed individually (not lumped into
@@ -1075,14 +1114,14 @@ func extractSystemScopedNeeds(p *plan.Needs, ss *raftcmdpb.SystemScopedOrder) {
 }
 
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
-// Returns the proposal-wide aggregate Needs and a parallel slice with one
-// Needs per order (used to compute Order.coverage_bits after Build).
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*plan.Needs, []*plan.Needs, error) {
-	aggregate := plan.NewNeeds()
-	perOrder := make([]*plan.Needs, len(orders))
+// Returns the proposal-wide aggregate Coverage and a parallel slice with one
+// Coverage per order (used to compute Order.coverage_bits after Build).
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*plan.Coverage, []*plan.Coverage, error) {
+	aggregate := plan.NewCoverage()
+	perOrder := make([]*plan.Coverage, len(orders))
 
 	for orderIdx, order := range orders {
-		p := plan.NewNeeds()
+		p := plan.NewCoverage()
 
 		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_LedgerScoped:
@@ -1100,11 +1139,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 // resolveScriptsAndEnrichNeeds resolves ScriptReferences and discovers volume/metadata
 // dependencies from all script-based CreateTransaction orders. It enriches the given
-// Needs with the discovered dependencies so that a single Build call covers everything.
+// Coverage with the discovered dependencies so that a single Build call covers everything.
 //
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Needs, perOrder []*plan.Needs) error {
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage) error {
 	for orderIdx, order := range orders {
 		ls := order.GetLedgerScoped()
 		if ls == nil {
@@ -1187,8 +1226,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			}
 
 			for key := range discovered.WrittenMetadata {
-				p.Metadata[key] = struct{}{}
-				orderNeeds.Metadata[key] = struct{}{}
+				canonical := key.Bytes()
+				p.Add(dal.SubAttrMetadata, canonical)
+				orderNeeds.Add(dal.SubAttrMetadata, canonical)
 			}
 		}
 
@@ -1201,9 +1241,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				LedgerName: ledgerName,
 				Name:       ref.GetName(),
 				Version:    resolvedVersion,
-			}
-			p.NumscriptContents[contentKey] = struct{}{}
-			orderNeeds.NumscriptContents[contentKey] = struct{}{}
+			}.Bytes()
+			p.Add(dal.SubAttrNumscriptContent, contentKey)
+			orderNeeds.Add(dal.SubAttrNumscriptContent, contentKey)
 		}
 	}
 
@@ -1660,10 +1700,22 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			return nil, err
 		}
 
+		// Fetch the original postings so admission can (a) declare volume
+		// coverage for each posting account (invariant #9 — the FSM's
+		// applyPosting call reads Volumes().Get through the coverage gate)
+		// and (b) attach them to the order as a migration bridge for
+		// pre-EN-1242 TxStates that don't yet carry Postings.
+		//
+		// A receipt-signed revert bypasses the store fetch: admission trusts
+		// the signed claims. On the non-receipt path a fetch miss (missing
+		// ledger, missing tx, or persistence lag racing a just-applied create)
+		// yields nil postings and the proposal still enters Raft; the FSM
+		// apply is the audit authority for the resulting business rejection
+		// (invariant #8) — processApply.loadBoundaries audits missing ledgers,
+		// processRevertTransaction's boundary check audits missing txs.
 		var originalPostings []*commonpb.Posting
 
 		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
-			// Verify receipt and extract postings
 			claims, err := a.receiptSigner.Verify(data.RevertTransaction.GetReceipt())
 			if err != nil {
 				return nil, fmt.Errorf("invalid receipt: %w", err)
@@ -1679,7 +1731,6 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 
 			originalPostings = receipt.ClaimsToPostings(claims.Postings)
 		} else {
-			// Fall back to reading from Pebble
 			originalPostings, err = a.getTransactionPostings(apply.GetLedger(), txID)
 			if err != nil {
 				return nil, fmt.Errorf("getting original transaction postings: %w", err)
@@ -1840,54 +1891,32 @@ func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *se
 	return id, nil
 }
 
-// getTransactionPostings retrieves the postings of an original transaction from the store.
-// It uses FindTransactionCreationLog to locate the creation log and extract postings.
+// getTransactionPostings reads the target transaction's postings directly
+// from the Transaction attribute (single Pebble point read, no log scan).
+// Admission needs them to declare volume coverage for the reversed
+// postings' accounts (invariant #9). A missing ledger or missing tx is
+// NOT a business rejection here — invariant #8 says every business
+// decision must appear in the audit chain, and only the FSM apply path
+// writes audit entries. On ErrNotFound the fetch returns (nil, nil) and
+// the proposal proceeds; the FSM apply's processApply → loadBoundaries
+// audits ErrLedgerNotFound, processRevertTransaction's
+// `txID >= boundaries.GetNextTransactionId()` check audits
+// ErrTransactionNotFound.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	_, ok := a.builder.ResolveLedgerID(ledgerName)
-	if !ok {
-		return nil, &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: ledgerName}}
-	}
+	canonical := domain.TransactionKey{LedgerName: ledgerName, ID: transactionID}.Bytes()
 
-	log, err := query.FindTransactionCreationLog(context.Background(), a.store, a.attrs.Transaction, ledgerName, transactionID)
+	state, err := a.attrs.Transaction.Get(a.store, canonical)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}
+			return nil, nil
 		}
 
-		return nil, fmt.Errorf("finding transaction creation log: %w", err)
+		return nil, fmt.Errorf("reading transaction state: %w", err)
 	}
 
-	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
-	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
-		return nil, fmt.Errorf(
-			"log at sequence %d for ledger %s txID %d does not contain an apply payload (got %T)",
-			log.GetSequence(), ledgerName, transactionID, log.GetPayload().GetType(),
-		)
+	if state == nil {
+		return nil, nil
 	}
 
-	switch payload := applyLog.Apply.GetLog().GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		if payload.CreatedTransaction == nil || payload.CreatedTransaction.GetTransaction() == nil {
-			return nil, fmt.Errorf(
-				"log at sequence %d for ledger %s txID %d has a CreatedTransaction payload but the transaction is nil",
-				log.GetSequence(), ledgerName, transactionID,
-			)
-		}
-
-		return payload.CreatedTransaction.GetTransaction().GetPostings(), nil
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		if payload.RevertedTransaction == nil || payload.RevertedTransaction.GetRevertTransaction() == nil {
-			return nil, fmt.Errorf(
-				"log at sequence %d for ledger %s txID %d has a RevertedTransaction payload but the revert transaction is nil",
-				log.GetSequence(), ledgerName, transactionID,
-			)
-		}
-
-		return payload.RevertedTransaction.GetRevertTransaction().GetPostings(), nil
-	default:
-		return nil, fmt.Errorf(
-			"log at sequence %d for ledger %s txID %d has unexpected payload type %T (expected CreatedTransaction or RevertedTransaction)",
-			log.GetSequence(), ledgerName, transactionID, applyLog.Apply.GetLog().GetData().GetPayload(),
-		)
-	}
+	return state.GetPostings(), nil
 }

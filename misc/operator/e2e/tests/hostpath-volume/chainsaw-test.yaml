@@ -6,10 +6,10 @@ spec:
   timeouts:
     assert: 2m
   steps:
-    - name: Deploy LedgerService with data volume on hostPath
+    - name: Deploy Cluster with data volume on hostPath
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -37,7 +37,7 @@ spec:
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: hp-test
               status:

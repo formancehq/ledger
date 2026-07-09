@@ -74,17 +74,30 @@ func listLedgerContains(s *dal.Store, name string) bool {
 
 // testApplierSetup holds all the infrastructure needed to test the Applier in isolation.
 type testApplierSetup struct {
-	applier   *Applier
-	store     *dal.Store
-	wal       wal.WAL
-	spool     *spool.Default
-	fsm       *state.Machine
-	stop      chan struct{}
-	confState *raftpb.ConfState
+	applier      *Applier
+	store        *dal.Store
+	wal          wal.WAL
+	spool        *spool.Default
+	fsm          *state.Machine
+	stop         chan struct{}
+	confState    *raftpb.ConfState
+	responseSink LocalResponses
 }
 
-// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM).
+// newTestApplierSetup creates a minimal Applier with real infrastructure (Pebble, WAL, spool, FSM)
+// and a buffered async-storage response sink that no test observer drains. Tests that assert on
+// response delivery use newTestApplierSetupWithSink and pass their own channel; tests that don't
+// care get a large-enough buffer so runCommitter never blocks on the send during Drain.
 func newTestApplierSetup(t *testing.T) *testApplierSetup {
+	t.Helper()
+
+	return newTestApplierSetupWithSink(t, make(LocalResponses, 1024))
+}
+
+// newTestApplierSetupWithSink is newTestApplierSetup with a caller-provided
+// LocalResponses channel wired into the applier. Tests that assert on
+// MsgStorageApplyResp delivery use this variant.
+func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplierSetup {
 	t.Helper()
 
 	logger := logging.Testing()
@@ -117,6 +130,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
+		func(raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
 
@@ -129,7 +143,7 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
-		0, 1000, nil,
+		0, 1000, nil, func() {}, sink,
 	)
 	require.NoError(t, err)
 
@@ -142,13 +156,14 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 	})
 
 	return &testApplierSetup{
-		applier:   applier,
-		store:     pebbleStore,
-		wal:       w,
-		spool:     defaultSpool,
-		fsm:       fsm,
-		stop:      stop,
-		confState: &confState,
+		applier:      applier,
+		store:        pebbleStore,
+		wal:          w,
+		spool:        defaultSpool,
+		fsm:          fsm,
+		stop:         stop,
+		confState:    &confState,
+		responseSink: sink,
 	}
 }
 
@@ -173,9 +188,8 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entr
 	// processCreateLedger performs on WriteSet.GetLedger before writing.
 	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}},
 	}
 
@@ -209,7 +223,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -283,7 +297,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -351,7 +365,7 @@ func TestApplierSubmitAbortsOnStop(t *testing.T) {
 
 	go func() {
 		entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
-		setup.applier.Submit([]raftpb.Entry{entry2}, nil, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry2}, nil, nil, setup.stop)
 		close(submitDone)
 	}()
 
@@ -386,6 +400,37 @@ func TestApplierRunExitsOnStop(t *testing.T) {
 	}
 }
 
+// TestApplierTrySyncSnapshotIsNonBlocking verifies the EN-1431 follow-up
+// invariant: TrySyncSnapshot must never block. When the applier's work
+// channel is full (buffered size 1), a second call returns false rather
+// than blocking. The processReady out-of-sync fallback fires on every
+// Ready; blocking would stall the raft-ready goroutine, and enqueuing
+// duplicate syncLeader items causes startMaintenanceTask to interrupt
+// its own in-flight checkpoint fetch.
+func TestApplierTrySyncSnapshotIsNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+
+	// First call succeeds: channel has capacity 1.
+	require.True(t, setup.applier.TrySyncSnapshot(1),
+		"first TrySyncSnapshot must enqueue with an empty channel")
+
+	// Second call must return false immediately (channel is full — the
+	// Run goroutine isn't started in this test, so nothing drains it).
+	done := make(chan bool, 1)
+	go func() {
+		done <- setup.applier.TrySyncSnapshot(1)
+	}()
+
+	select {
+	case result := <-done:
+		require.False(t, result, "second TrySyncSnapshot on a full channel must return false")
+	case <-time.After(1 * time.Second):
+		t.Fatal("TrySyncSnapshot blocked instead of returning false when channel was full")
+	}
+}
+
 func TestApplierFutureResolution(t *testing.T) {
 	t.Parallel()
 
@@ -406,7 +451,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	}()
 
 	// Submit the entry.
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 
 	// Wait for the future to resolve.
 	resultCh := make(chan state.ApplyResult, 1)
@@ -463,9 +508,8 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 
 	ledgerID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
 	cmd.ExecutionPlan = &raftcmdpb.ExecutionPlan{
-		Attributes: []*raftcmdpb.AttributePlan{{
+		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
-			Intent: &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}},
 	}
 	order.CoverageBits = []byte{0b1}
@@ -553,7 +597,7 @@ func TestApplierTermOlderThanBatchFails(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
@@ -584,7 +628,7 @@ func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	// committed future resolves with success (commandID match, leader-completeness).
@@ -797,7 +841,7 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 // makeStaleCreateQueryCheckpointEntry builds a CreateQueryCheckpoint entry
 // whose PredictedIndex deliberately differs from the raft index, so
 // checkStaleProposal rejects it before any order runs. Used to exercise the
-// "structural trigger that does not actually fire" branch of applyEntriesToFSM.
+// "structural trigger that does not actually fire" branch of applyDecodedEntriesToFSM.
 func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uint64) (raftpb.Entry, uint64) {
 	t.Helper()
 
@@ -876,7 +920,7 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 // panic with "task pool error: preparing entries: invalid index, got 231,
 // expected 230 [recovered, repanicked]".
 //
-// Root cause: applyEntriesToFSM pre-splits the committed entries slice at any
+// Root cause: applyDecodedEntriesToFSM pre-splits the committed entries slice at any
 // CreateQueryCheckpoint / CloseChapter trigger so each FSM batch contains at
 // most one trigger as its last entry. The pre-split is purely structural — it
 // does not know whether the trigger will actually fire at apply time. When
@@ -908,7 +952,7 @@ func TestApplierRejectedTriggerDoesNotDropTail(t *testing.T) {
 	// the entry being dropped by the bug.
 	tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
 
-	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, setup.stop)
+	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	require.True(t, listLedgerContains(setup.store, "tail-ledger"),
@@ -943,7 +987,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 	// Entries 6-8 are spooled during gating, then replayed after unspool.
 	for i := uint64(1); i <= 8; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("gating-ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, setup.stop)
+		setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 	}
 
 	// Eventually all 8 ledgers should exist (after unspool replays the spooled entries).

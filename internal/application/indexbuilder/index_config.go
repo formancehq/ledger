@@ -47,12 +47,23 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
 // to any ledger and don't trigger per-ledger backfill paths.
-func (b *Builder) initIndexConfig(ctx context.Context) {
+func (b *Builder) initIndexConfig(ctx context.Context) error {
+	// Reset builder-local init state so every attempt (including a retry
+	// after a partial failure) starts from a clean slate. backfillTasks
+	// and schemaRewriteTasks are slices appended to by
+	// scheduleBackfillForIndex / scheduleResumedRewrites; without this
+	// reset a retry would double-schedule them. The maps are keyed and
+	// would only be overwritten, but are reset too for a self-contained
+	// attempt.
+	b.indexConfig = make(map[string]*ledgerIndexConfig)
+	b.bucketIndexConfig = nil
+	b.backfillTasks = nil
+	b.schemaRewriteTasks = nil
+	b.indexVersions = nil
+
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
-		b.logger.Errorf("Failed to create read handle for index config: %v", err)
-
-		return
+		return fmt.Errorf("creating read handle for index config: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
@@ -62,9 +73,7 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	// consult the cache when deciding whether to schedule a backfill.
 	versionEntries, err := b.readStore.ReadAllIndexVersionStates()
 	if err != nil {
-		b.logger.Errorf("Failed to read index version state: %v", err)
-
-		return
+		return fmt.Errorf("reading index version state: %w", err)
 	}
 
 	for _, e := range versionEntries {
@@ -72,15 +81,11 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	}
 
 	if err := b.seedLedgerIndexConfig(ctx, handle); err != nil {
-		b.logger.Errorf("Failed to seed ledger index config: %v", err)
-
-		return
+		return fmt.Errorf("seeding ledger index config: %w", err)
 	}
 
 	if err := b.loadIndexRegistry(handle); err != nil {
-		b.logger.Errorf("Failed to load index registry: %v", err)
-
-		return
+		return fmt.Errorf("loading index registry: %w", err)
 	}
 
 	// Load persisted backfill progress from Pebble.
@@ -124,6 +129,8 @@ func (b *Builder) initIndexConfig(ctx context.Context) {
 	if err := b.purgeOrphanVersions(); err != nil {
 		b.logger.Errorf("Failed to purge orphan index versions: %v", err)
 	}
+
+	return nil
 }
 
 // seedLedgerIndexConfig enumerates every (non-deleted) ledger and seeds an
@@ -344,7 +351,7 @@ func (c *ledgerIndexConfig) isBuiltinIndexed(index commonpb.TransactionBuiltinIn
 func (c *ledgerIndexConfig) indexesPostingAddressMappings() bool {
 	return c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS) ||
 		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS) ||
-		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
+		c.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
 }
 
 // indexesPostingDerived reports whether any enabled index is derived from

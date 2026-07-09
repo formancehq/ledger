@@ -9,7 +9,7 @@ import (
 )
 
 // PrepareForBackup makes a checkpoint portable and restartable on a fresh
-// cluster. It performs three Global-zone resets and does NOT touch the
+// cluster. It performs four Global-zone resets and does NOT touch the
 // attribute zone.
 //
 // There is no attribute compaction to do: since the raft-index suffix was
@@ -17,13 +17,16 @@ import (
 // exactly one Pebble entry that Set overwrites in place, so there are no
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
-// The three resets are:
+// The four resets are:
 //  1. lastAppliedIndex -> 0, so the restored cluster starts fresh without
 //     raft-index conflicts.
 //  2. persisted config (nodeId, clusterId) deleted, so the backup is portable
 //     to any cluster.
 //  3. persisted bloom blocks dropped, so the booting node rebuilds the bloom
 //     from a full attribute scan using its own config.
+//  4. persisted Raft peers dropped (EN-1413), so the restored cluster does
+//     not dial the source cluster's pods. NewNode reseeds [ZoneGlobal]
+//     [SubGlobPeers] from cfg.Peers + self on the next boot.
 //
 // The caller must ensure all in-memory state has been flushed to Pebble before
 // the checkpoint was taken. The backup flow achieves this by running the flush
@@ -79,6 +82,20 @@ func PrepareForBackup(s *dal.Store) error {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("deleting persisted bloom blocks: %w", err)
+	}
+
+	// Drop persisted Raft peers (EN-1413). Cluster membership is local to
+	// the source cluster; carrying it over would make a restored node dial
+	// the source pods. The booting node reseeds membership from cfg.Peers
+	// + self via n.RegisterPeer in the bootstrap module.
+	if err := batch.DeleteRange(
+		[]byte{dal.ZoneGlobal, dal.SubGlobPeers},
+		[]byte{dal.ZoneGlobal, dal.SubGlobPeers + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting persisted Raft peers: %w", err)
 	}
 
 	if err := batch.Commit(); err != nil {

@@ -11,7 +11,7 @@ import (
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileService(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName(ledger.Name),

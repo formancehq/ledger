@@ -14,13 +14,14 @@ const (
 	PrefixReverseMap            byte = 0x03 // rmap — reverse metadata map
 	PrefixAccountTx             byte = 0x04 // atxm — account→tx (any role)
 	PrefixSourceAccountTx       byte = 0x05 // satx — source account→tx
-	PrefixDestAccountTx         byte = 0x06 // datx — dest account→tx
+	PrefixDestinationAccountTx  byte = 0x06 // datx — destination account→tx
 	PrefixTransactionReference  byte = 0x07 // txref — transaction reference
 	PrefixTransactionTimestamp  byte = 0x08 // tstmp — transaction timestamp
 	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
 	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
 	PrefixAccountByAsset        byte = 0x0C // abya — account-by-asset inverted index (asset→account)
+	PrefixTransactionRevertedAt byte = 0x0D // rvat — transaction reverted_at
 
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
@@ -33,6 +34,24 @@ const (
 	// pending_version, rewrite_progress) for each indexed metadata
 	// field. Key shape: [0xFE][0x04][ledgerName padded 64B][indexID canonical].
 	SubInternalIndexVersion byte = 0x04
+
+	// SubInternalAuditIndex is the keyspace for the audit secondary index.
+	// Layout: [PrefixInternal][SubInternalAuditIndex][AuditField][value][audit_seq BE8] -> ∅.
+	SubInternalAuditIndex byte = 0x05
+	// SubInternalAuditProgress holds the per-replica audit indexing cursor.
+	// Layout: [PrefixInternal][SubInternalAuditProgress] -> last_indexed_audit_sequence BE8.
+	SubInternalAuditProgress byte = 0x06
+)
+
+// AuditField discriminates the indexed field within the audit-index keyspace.
+const (
+	AuditFieldOutcome       byte = 0x01 // 1 byte value: 0=failure, 1=success
+	AuditFieldLedger        byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
+	AuditFieldCallerSubject byte = 0x03 // string value
+	AuditFieldOrderType     byte = 0x04 // string token (match-any over items)
+	AuditFieldTimestamp     byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
+	AuditFieldProposalID    byte = 0x06 // BE uint64 (range)
+	AuditFieldLogSeq        byte = 0x07 // BE uint64 (range, match-any over items)
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -416,6 +435,28 @@ func TransactionInsertedAtRangePrefix(kb *dal.KeyBuilder, ledgerName string) []b
 		Snapshot()
 }
 
+// TransactionRevertedAtKey builds a full key in the transaction reverted_at index.
+//
+//	[0x0D][ledgerName padded 64B][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionRevertedAtKey(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionRevertedAt).
+		PutLedgerNameFixed(ledgerName).
+		PutUint64(timestamp).
+		PutUint64(txID).
+		Consume()
+}
+
+// TransactionRevertedAtRangePrefix returns the ledger prefix for range scans in the reverted_at index.
+//
+//	[0x0D][ledgerName padded 64B]
+func TransactionRevertedAtRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionRevertedAt).
+		PutLedgerNameFixed(ledgerName).
+		Snapshot()
+}
+
 // LedgerLogKey builds a full key in the ledger logs index.
 //
 //	[0x09][ledgerName padded 64B][ledgerLogID_BE(8B)]
@@ -515,4 +556,64 @@ func IndexVersionStatePrefix() []byte {
 //	[0xFE][0x02]
 func AppliedProposalProgressKey() []byte {
 	return []byte{PrefixInternal, SubInternalAppliedProposalProgress}
+}
+
+// AuditProgressKey returns the full key for the audit indexing cursor.
+//
+//	[0xFE][0x06]
+func AuditProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalAuditProgress}
+}
+
+// AuditIndexPrefix returns the global prefix for the whole audit index,
+// used for DeleteRange on rebuild.
+//
+//	[0xFE][0x05]
+func AuditIndexPrefix() []byte {
+	return []byte{PrefixInternal, SubInternalAuditIndex}
+}
+
+// AuditIndexStringKey builds [0xFE][0x05][field][value\x00][seq BE8] for a
+// string-valued field (ledger, caller_subject, order_type).
+//
+// The value is NUL-terminated and matched by prefix scan (AuditSeqsByString),
+// so the encoding is unambiguous only while indexed values are themselves
+// NUL-free — true today for order_type (fixed vocabulary), ledger (validated
+// names) and caller.subject (auth subject). EN-1305, which wires the
+// equality/range filter path over arbitrary caller subjects, MUST disambiguate
+// before relying on it (an exact-length check len(key) == len(prefix)+8, or a
+// length-prefixed string encoding); otherwise an "alice" lookup would also
+// match a value indexed as "alice\x00evil".
+func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutStringNull(value).
+		PutUint64(seq).
+		Build()
+}
+
+// AuditIndexUint64Key builds [0xFE][0x05][field][value BE8][seq BE8] for a
+// numeric range field (timestamp, proposal_id, log_seq).
+func AuditIndexUint64Key(kb *dal.KeyBuilder, field byte, value, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutUint64(value).
+		PutUint64(seq).
+		Build()
+}
+
+// AuditIndexByteKey builds [0xFE][0x05][field][value][seq BE8] for a
+// single-byte field (outcome).
+func AuditIndexByteKey(kb *dal.KeyBuilder, field, value byte, seq uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutByte(value).
+		PutUint64(seq).
+		Build()
 }

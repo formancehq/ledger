@@ -1,12 +1,15 @@
 package backup
 
 import (
-	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -267,14 +270,23 @@ func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, p
 // RunIncrementalBackup exports new log and audit entries since the last backup.
 // It reads the manifest to determine the starting sequences, streams new entries
 // as KV stream segments to S3, and updates the manifest.
+//
+// maxSegmentBytes caps the on-storage size of each export segment; a range
+// larger than that splits into multiple segments. 0 selects the default
+// (maxExportSegmentBytes).
 func RunIncrementalBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
 	storage Storage,
 	bucketID string,
+	maxSegmentBytes int64,
 ) (*IncrementalBackupResult, error) {
 	start := time.Now()
+
+	if maxSegmentBytes <= 0 {
+		maxSegmentBytes = maxExportSegmentBytes
+	}
 
 	manifestKey := ManifestKey(bucketID)
 
@@ -343,98 +355,84 @@ func RunIncrementalBackup(
 
 	// 6. Export new log entries
 	if currentLogSeq > afterLogSeq {
-		count, err := exportEntries(
-			ctx, storage, readHandle, bucketID,
-			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq,
-			ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq),
+		segs, count, err := exportEntries(
+			ctx, storage, readHandle,
+			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq, "log",
+			func(part int) string { return ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq, part) },
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting log entries: %w", err)
 		}
 
 		logEntriesExported = count
-
-		manifest.Exports = append(manifest.Exports, ExportSegment{
-			Type:     "log",
-			StartSeq: afterLogSeq + 1,
-			EndSeq:   currentLogSeq,
-			Key:      ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq),
-		})
-
-		segmentsUploaded++
+		manifest.Exports = append(manifest.Exports, segs...)
+		segmentsUploaded += len(segs)
 	}
 
 	// 7. Export new audit entries
 	if currentAuditSeq > afterAuditSeq {
-		count, err := exportEntries(
-			ctx, storage, readHandle, bucketID,
-			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq,
-			ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		segs, count, err := exportEntries(
+			ctx, storage, readHandle,
+			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq, "audit",
+			func(part int) string { return ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part) },
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting audit entries: %w", err)
 		}
 
 		auditEntriesExported = count
-
-		manifest.Exports = append(manifest.Exports, ExportSegment{
-			Type:     "audit",
-			StartSeq: afterAuditSeq + 1,
-			EndSeq:   currentAuditSeq,
-			Key:      ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-		})
-
-		segmentsUploaded++
+		manifest.Exports = append(manifest.Exports, segs...)
+		segmentsUploaded += len(segs)
 
 		// Export the audit items (per-order detail) for the same range.
-		// The audit hash is computed over these orders, so a restored
-		// incremental backup that lacks them cannot reconstruct the hash
-		// chain (the checker fails at the first restored audit sequence).
-		// Items share the audit sequence range but live in a separate
-		// subzone; their composite [seq][order_idx] keys fall within the
-		// same [seq+1, endSeq+1) prefix bounds exportEntries uses.
-		if _, err := exportEntries(
-			ctx, storage, readHandle, bucketID,
-			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq,
-			ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-		); err != nil {
+		// On success proposals the audit hash covers the per-item payloads,
+		// so a restored backup missing them cannot reconstruct the chain.
+		// Failure proposals write an AuditEntry with zero items (see
+		// state.machine.go writeAuditEntry(failureEntry, nil, ...) and
+		// state.batch.go appendAuditItems), and their hash is bound to the
+		// header alone. An incremental range consisting of only failures
+		// therefore has audit count > 0 but auditItem count == 0 —
+		// exportEntries then returns no segments, so appending its result
+		// adds nothing and we never reference a key that does not exist on
+		// storage (subsequent ApplyExports would fail on GetFile). Same
+		// guard as the appliedProposal branch below.
+		itemSegs, _, err := exportEntries(
+			ctx, storage, readHandle,
+			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
+			func(part int) string {
+				return ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
+			},
+			maxSegmentBytes,
+		)
+		if err != nil {
 			return nil, fmt.Errorf("exporting audit items: %w", err)
 		}
 
-		manifest.Exports = append(manifest.Exports, ExportSegment{
-			Type:     "auditItem",
-			StartSeq: afterAuditSeq + 1,
-			EndSeq:   currentAuditSeq,
-			Key:      ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-		})
-
-		segmentsUploaded++
+		manifest.Exports = append(manifest.Exports, itemSegs...)
+		segmentsUploaded += len(itemSegs)
 
 		// Export the AppliedProposal entries for the same range. Sequences
 		// are 1:1 with AuditEntry on the success path; ranges that contain
-		// only failed proposals carry NO AppliedProposal entries. In that
-		// case exportEntries uploads no object (count == 0) — we must not
-		// add a manifest entry referencing a key that does not exist on
-		// storage, or a subsequent ApplyExports will fail on GetFile.
-		appliedCount, err := exportEntries(
-			ctx, storage, readHandle, bucketID,
-			dal.ZoneCold, dal.SubColdAppliedProposal, afterAuditSeq, currentAuditSeq,
-			ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
+		// only failed proposals carry NO AppliedProposal entries. exportEntries
+		// then returns no segments — we must not add a manifest entry
+		// referencing a key that does not exist on storage, or a subsequent
+		// ApplyExports will fail on GetFile.
+		appliedSegs, _, err := exportEntries(
+			ctx, storage, readHandle,
+			dal.ZoneCold, dal.SubColdAppliedProposal, afterAuditSeq, currentAuditSeq, "appliedProposal",
+			func(part int) string {
+				return ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
+			},
+			maxSegmentBytes,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("exporting applied proposals: %w", err)
 		}
 
-		if appliedCount > 0 {
-			manifest.Exports = append(manifest.Exports, ExportSegment{
-				Type:     "appliedProposal",
-				StartSeq: afterAuditSeq + 1,
-				EndSeq:   currentAuditSeq,
-				Key:      ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq),
-			})
-
-			segmentsUploaded++
-		}
+		manifest.Exports = append(manifest.Exports, appliedSegs...)
+		segmentsUploaded += len(appliedSegs)
 	}
 
 	// 8. Write updated manifest
@@ -470,17 +468,31 @@ func RunIncrementalBackup(
 	}, nil
 }
 
+// maxExportSegmentBytes bounds the on-storage size of a single export object.
+// A range whose serialized entries exceed this is split into multiple segments
+// at sequence boundaries. This keeps each S3 object well under the multipart
+// ceiling, shrinks the retry blast radius, and lets a restore apply parts
+// independently. It is not the S3 single-PutObject limit — the S3 backend
+// uploads via multipart, so any single part could in principle reach 5 TB.
+const maxExportSegmentBytes = 4 << 30 // 4 GiB
+
 // exportEntries streams entries for a given prefix from (afterSeq, endSeq] into
-// a KV stream segment uploaded to storage. Returns the number of entries exported.
+// one or more KV stream segments uploaded to storage, starting a new segment
+// whenever the current one reaches maxSegmentBytes (splitting only at sequence
+// boundaries, so a sequence's keys never straddle two segments). It returns the
+// segments written — empty when the range holds no entries — and the total
+// number of entries exported. Each segment is streamed through an io.Pipe so
+// memory stays bounded regardless of range size.
 func exportEntries(
 	ctx context.Context,
 	storage Storage,
 	reader dal.PebbleReader,
-	_ string,
 	zone, sub byte,
 	afterSeq, endSeq uint64,
-	segmentKey string,
-) (uint64, error) {
+	segType string,
+	keyFn func(part int) string,
+	maxSegmentBytes int64,
+) ([]ExportSegment, uint64, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(zone, sub)
 
@@ -496,46 +508,160 @@ func exportEntries(
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
-		return 0, fmt.Errorf("creating iterator: %w", err)
+		return nil, 0, fmt.Errorf("creating iterator: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
-	// Buffer the segment in memory then upload.
-	// For very large exports, this could be switched to a streaming upload.
-	var buf bytes.Buffer
-	writer := NewKVStreamWriter(&buf)
-
-	if err := writer.WriteHeader(); err != nil {
-		return 0, err
+	iter.First()
+	if err := iter.Error(); err != nil {
+		return nil, 0, fmt.Errorf("iterating %s: %w", segType, err)
 	}
 
-	var count uint64
+	var (
+		segments   []ExportSegment
+		totalCount uint64
+		part       int
+	)
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
+	for iter.Valid() {
+		startSeq := seqFromKey(iter.Key())
+		key := keyFn(part)
+
+		endSeqPart, count, size, err := uploadSegmentPart(ctx, storage, key, iter, maxSegmentBytes)
 		if err != nil {
-			return 0, fmt.Errorf("reading value: %w", err)
+			return nil, 0, err
 		}
 
-		if err := writer.WriteEntry(iter.Key(), value); err != nil {
-			return 0, err
+		// A part that consumed no entry cannot advance the iterator, so the loop
+		// would spin forever. iter.Valid() above guarantees at least one entry,
+		// so a zero count is impossible by design and must fail loudly.
+		if count == 0 {
+			return nil, 0, fmt.Errorf("invariant: export segment %s consumed no entries", key)
 		}
 
-		count++
+		segments = append(segments, ExportSegment{
+			Type:     segType,
+			StartSeq: startSeq,
+			EndSeq:   endSeqPart,
+			Key:      key,
+			Size:     size,
+		})
+		totalCount += count
+		part++
 	}
 
-	if err := writer.WriteFooter(); err != nil {
-		return 0, err
+	return segments, totalCount, nil
+}
+
+// uploadSegmentPart streams one KV segment from the iterator's current position
+// through an io.Pipe into storage.PutFile. It writes entries until the segment
+// reaches maxSegmentBytes at a sequence boundary or the iterator is exhausted,
+// leaving the iterator positioned at the first entry of the next segment (or
+// invalid). It returns the last sequence written, the entry count, and the
+// segment's on-storage byte size.
+func uploadSegmentPart(
+	ctx context.Context,
+	storage Storage,
+	key string,
+	iter *pebble.Iterator,
+	maxSegmentBytes int64,
+) (endSeq, count uint64, size int64, err error) {
+	pr, pw := io.Pipe()
+
+	type result struct {
+		endSeq, count uint64
+		size          int64
+		err           error
 	}
 
-	if count > 0 {
-		if err := storage.PutFile(ctx, segmentKey, bytes.NewReader(buf.Bytes()), int64(buf.Len())); err != nil {
-			return 0, fmt.Errorf("uploading segment %s: %w", segmentKey, err)
-		}
+	resCh := make(chan result, 1)
+
+	go func() {
+		cw := &countingWriter{w: pw}
+		writer := NewKVStreamWriter(cw)
+
+		var r result
+
+		r.err = func() error {
+			if err := writer.WriteHeader(); err != nil {
+				return err
+			}
+
+			for iter.Valid() {
+				value, err := iter.ValueAndErr()
+				if err != nil {
+					return fmt.Errorf("reading value: %w", err)
+				}
+
+				k := iter.Key()
+				if err := writer.WriteEntry(k, value); err != nil {
+					return err
+				}
+
+				r.count++
+				r.endSeq = seqFromKey(k)
+
+				iter.Next()
+
+				// Split once the size cap is reached, but only when the next
+				// entry begins a new sequence — a sequence's keys (audit items
+				// share one) must never straddle two segments.
+				if cw.n >= maxSegmentBytes && iter.Valid() && seqFromKey(iter.Key()) != r.endSeq {
+					break
+				}
+			}
+
+			if err := iter.Error(); err != nil {
+				return fmt.Errorf("iterating: %w", err)
+			}
+
+			return writer.WriteFooter()
+		}()
+
+		r.size = cw.n
+		_ = pw.CloseWithError(r.err)
+		resCh <- r
+	}()
+
+	uploadErr := storage.PutFile(ctx, key, pr, -1)
+	if uploadErr != nil {
+		// Unblock the writer goroutine if the uploader stopped reading early.
+		_ = pr.CloseWithError(uploadErr)
 	}
 
-	return count, nil
+	r := <-resCh
+
+	if r.err != nil {
+		return 0, 0, 0, fmt.Errorf("writing segment %s: %w", key, r.err)
+	}
+
+	if uploadErr != nil {
+		return 0, 0, 0, fmt.Errorf("uploading segment %s: %w", key, uploadErr)
+	}
+
+	return r.endSeq, r.count, r.size, nil
+}
+
+// seqFromKey extracts the 8-byte big-endian sequence that follows the 2-byte
+// [zone][sub] prefix of a cold-zone key. Every key exportEntries iterates is
+// built with PutZonePrefix followed by PutUint64, so it is always long enough.
+func seqFromKey(key []byte) uint64 {
+	return binary.BigEndian.Uint64(key[2:10])
+}
+
+// countingWriter counts the bytes written through it, used to size and split
+// export segments as they stream.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+
+	return n, err
 }
 
 func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filename string) error {

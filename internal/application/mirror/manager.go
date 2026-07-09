@@ -11,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -165,12 +166,21 @@ func (m *Manager) reconcile() {
 			continue
 		}
 
+		rewriter, err := celrewrite.NewRewriter(info.GetMirrorSource().GetRewriteRules())
+		if err != nil {
+			// Rules are validated at admission time, so a compile failure here
+			// indicates corrupted config; skip the worker rather than crash.
+			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror rewriter: %v", err)
+
+			continue
+		}
+
 		batchSize := int(info.GetMirrorSource().GetBatchSize())
 		if m.maxBatchSize > 0 && (batchSize <= 0 || batchSize > m.maxBatchSize) {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
+		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
 	}
@@ -198,7 +208,7 @@ func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 
 		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
-		return v2.NewPostgresSource(context.Background(), s.Postgres.GetDsn(), cfg.GetLedgerName())
+		return v2.NewPostgresSource(context.Background(), s.Postgres, cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)
 	}

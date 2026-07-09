@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,27 +26,28 @@ import (
 )
 
 const (
-	ledgerFinalizer       = "ledger.formance.com/finalizer"
-	ledgerServiceGRPCPort = 8888
-	ledgerContainer       = "ledger"
-	ledgerExecTimeout     = 5 * time.Second
-	ledgerRequeueDelay    = 15 * time.Second
+	ledgerFinalizer    = "ledger.formance.com/finalizer"
+	clusterGRPCPort    = 8888
+	ledgerContainer    = "ledger"
+	ledgerExecTimeout  = 5 * time.Second
+	ledgerRequeueDelay = 15 * time.Second
 
 	conditionEndpointResolved = "EndpointResolved"
 	conditionLedgerSynced     = "LedgerSynced"
 	conditionSpecDrifted      = "SpecDrifted"
+	conditionIndexesSynced    = "IndexesSynced"
 )
 
-var ledgerServiceGVR = schema.GroupVersionResource{
+var clusterGVR = schema.GroupVersionResource{
 	Group:    "ledger.formance.com",
 	Version:  "v1alpha1",
-	Resource: "ledgerservices",
+	Resource: "clusters",
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 
@@ -99,11 +101,11 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return r.reconcileReady(ctx, &ledger)
 	}
 
-	// Resolve LedgerService endpoint.
+	// Resolve Cluster endpoint.
 	grpcPort, err := r.resolveEndpoint(ctx, &ledger)
 	if err != nil {
 		ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
-		ledger.Status.Message = fmt.Sprintf("waiting for LedgerService: %v", err)
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
@@ -164,7 +166,8 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 
 	log.Info("ledger ready", "name", ledger.Spec.Name, "mode", mode)
 
-	return ctrl.Result{}, nil
+	// Reconcile declarative indexes now that the ledger exists.
+	return r.handleIndexReconcile(ctx, &ledger, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcileReady handles reconciliation for a Ledger that is already in Ready phase.
@@ -177,7 +180,8 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		return r.reconcilePromotion(ctx, ledger)
 	}
 
-	// Detect spec drift.
+	// Detect spec drift. The hash excludes indexes, so a mismatch means an
+	// immutable field (name/serviceRef/mode/mirrorSource) changed.
 	currentHash := computeLedgerSpecHash(&ledger.Spec)
 	if ledger.Status.AppliedSpecHash != "" && currentHash != ledger.Status.AppliedSpecHash {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -188,11 +192,42 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 			ObservedGeneration: ledger.Generation,
 		})
 		log.Info("spec drift detected on immutable ledger", "name", ledger.Spec.Name)
-	} else {
-		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
+
+		// Do NOT run index reconciliation while an immutable field has drifted:
+		// spec.name / spec.serviceRef may now point at a different ledger or
+		// cluster, so creating/dropping indexes here would mutate the wrong
+		// target. Hold until the drift is resolved by delete + recreate.
+		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, nil
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
+
+	// Reconcile declarative indexes (mutable, independent of ledger immutability).
+	if ledger.Spec.Indexes == nil {
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionIndexesSynced)
+
+		return ctrl.Result{}, nil
+	}
+
+	grpcPort, err := r.resolveEndpoint(ctx, ledger)
+	if err != nil {
+		// Index reconciliation did not run for this generation. Mark
+		// IndexesSynced=False so a prior True is not left stale (consumers such
+		// as `kubectl wait` / Chainsaw must not see the new desired set as
+		// synced while no create/drop actually ran).
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               conditionIndexesSynced,
+			Status:             metav1.ConditionFalse,
+			Reason:             "EndpointUnavailable",
+			Message:            fmt.Sprintf("waiting for Cluster before reconciling indexes: %v", err),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for index reconcile: %v", err)
+
+		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+	}
+
+	return r.handleIndexReconcile(ctx, ledger, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcilePromotion handles mirror→normal promotion.
@@ -201,7 +236,7 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 
 	grpcPort, err := r.resolveEndpoint(ctx, ledger)
 	if err != nil {
-		ledger.Status.Message = fmt.Sprintf("waiting for LedgerService for promotion: %v", err)
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for promotion: %v", err)
 
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
@@ -238,7 +273,9 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 
 	log.Info("ledger promoted", "name", ledger.Spec.Name)
 
-	return ctrl.Result{}, nil
+	// Requeue so the next pass (now Ready + normal) reconciles declarative
+	// indexes for the promoted ledger.
+	return ctrl.Result{Requeue: true}, nil
 }
 
 // reconcileDelete handles ledger deletion with best-effort cleanup.
@@ -275,21 +312,21 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 	return ctrl.Result{}, nil
 }
 
-// resolveEndpoint resolves the gRPC port and verifies the LedgerService is Running.
+// resolveEndpoint resolves the gRPC port and verifies the Cluster is Running.
 // Sets the EndpointResolved condition accordingly.
 func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (int32, error) {
-	ls, err := r.Dynamic.Resource(ledgerServiceGVR).Namespace(ledger.Namespace).Get(
+	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(ledger.Namespace).Get(
 		ctx, ledger.Spec.ServiceRef, metav1.GetOptions{})
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
-			Reason:             "LedgerServiceNotFound",
-			Message:            fmt.Sprintf("LedgerService %q not found: %v", ledger.Spec.ServiceRef, err),
+			Reason:             "ClusterNotFound",
+			Message:            fmt.Sprintf("Cluster %q not found: %v", ledger.Spec.ServiceRef, err),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("get LedgerService %q: %w", ledger.Spec.ServiceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ServiceRef, err)
 	}
 
 	phase, _, _ := nestedFieldNoCopy(ls.Object, "status", "phase")
@@ -297,17 +334,17 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
-			Reason:             "LedgerServiceNotReady",
-			Message:            fmt.Sprintf("LedgerService %q is not Running (phase: %v)", ledger.Spec.ServiceRef, phase),
+			Reason:             "ClusterNotReady",
+			Message:            fmt.Sprintf("Cluster %q is not Running (phase: %v)", ledger.Spec.ServiceRef, phase),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("LedgerService %q is not Running", ledger.Spec.ServiceRef)
+		return 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ServiceRef)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
 	if err != nil || !found || port == 0 {
-		port = ledgerServiceGRPCPort
+		port = clusterGRPCPort
 	}
 
 	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -345,6 +382,20 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			args = append(args, "--mirror-batch-size", strconv.Itoa(int(*src.BatchSize)))
 		}
 
+		// CEL rewrite rules apply to the shared v2 translator, so they are
+		// independent of the source transport (HTTP or Postgres). Each rule is
+		// passed as a repeatable JSON object via --mirror-rewrite-rule (ledgerctl
+		// runs over k8s exec with an arg list, so a JSON arg composes where a file
+		// path would not).
+		for _, rule := range src.RewriteRules {
+			encoded, err := json.Marshal(rule)
+			if err != nil {
+				return nil, fmt.Errorf("encoding rewrite rule: %w", err)
+			}
+
+			args = append(args, "--mirror-rewrite-rule", string(encoded))
+		}
+
 		switch {
 		case src.HTTP != nil:
 			args = append(args, "--mirror-source-type", "http")
@@ -369,18 +420,75 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			}
 
 		case src.Postgres != nil:
-			args = append(args, "--mirror-source-type", "postgres")
-
-			dsn, err := r.readSecretKey(ctx, ledger.Namespace,
-				src.Postgres.DSNFrom.Name, src.Postgres.DSNFrom.Key)
+			pgArgs, err := r.buildPostgresMirrorArgs(ctx, ledger.Namespace, src.Postgres)
 			if err != nil {
-				return nil, fmt.Errorf("reading Postgres DSN secret: %w", err)
+				return nil, err
 			}
 
-			args = append(args, "--mirror-dsn", dsn)
+			args = append(args, pgArgs...)
 
 		default:
 			return nil, errors.New("mirrorSource must specify either http or postgres")
+		}
+	}
+
+	return args, nil
+}
+
+// buildPostgresMirrorArgs assembles ledgerctl flags for a Postgres mirror
+// source: explicit Host/Port/User/Database/SSLMode fields are joined into a
+// DSN, then either the static password (looked up from a Secret) is inlined,
+// or AWS RDS IAM auth is signalled via --mirror-aws-iam-region (and the DSN
+// stays passwordless; the ledger pod mints SigV4 tokens per connection).
+// Exactly one of PasswordFrom or AWSIAMAuth must be set.
+func (r *LedgerReconciler) buildPostgresMirrorArgs(ctx context.Context, namespace string, pg *ledgerv1alpha1.PostgresMirrorSource) ([]string, error) {
+	if pg.PasswordFrom == nil && pg.AWSIAMAuth == nil {
+		return nil, errors.New("mirrorSource.postgres: one of passwordFrom or awsIamAuth must be set")
+	}
+
+	if pg.PasswordFrom != nil && pg.AWSIAMAuth != nil {
+		return nil, errors.New("mirrorSource.postgres: passwordFrom and awsIamAuth are mutually exclusive")
+	}
+
+	port := int32(5432)
+	if pg.Port != 0 {
+		port = pg.Port
+	}
+
+	sslmode := pg.SSLMode
+	if sslmode == "" {
+		sslmode = "require"
+	}
+
+	userInfo := url.User(pg.User)
+
+	if pg.PasswordFrom != nil {
+		password, err := r.readSecretKey(ctx, namespace, pg.PasswordFrom.Name, pg.PasswordFrom.Key)
+		if err != nil {
+			return nil, fmt.Errorf("reading Postgres password secret: %w", err)
+		}
+
+		userInfo = url.UserPassword(pg.User, password)
+	}
+
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     userInfo,
+		Host:     fmt.Sprintf("%s:%d", pg.Host, port),
+		Path:     "/" + pg.Database,
+		RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
+	}
+
+	args := []string{
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", dsn.String(),
+	}
+
+	if pg.AWSIAMAuth != nil {
+		args = append(args, "--mirror-aws-iam-region", pg.AWSIAMAuth.Region)
+
+		if pg.AWSIAMAuth.AssumeRoleArn != "" {
+			args = append(args, "--mirror-aws-iam-assume-role-arn", pg.AWSIAMAuth.AssumeRoleArn)
 		}
 	}
 
@@ -402,38 +510,49 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 	return string(data), nil
 }
 
-// ledgerctlExec runs a ledgerctl command inside pod-0 of the LedgerService
+// ledgerctlExec runs a ledgerctl command inside pod-0 of the Cluster
 // StatefulSet. It resolves the TLS_MODE from the StatefulSet env so that
 // ledgerctl negotiates the same transport (plaintext or TLS) as the running
 // gRPC server expects — a mismatch surfaces as "error reading server preface".
 // The server address dialed is the pod's own headless DNS so the SNI matches
 // the server certificate's SANs.
 func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
+	_, err := r.ledgerctlExecOutput(ctx, namespace, serviceName, pod, grpcPort, args...)
+
+	return err
+}
+
+// ledgerctlExecOutput runs a ledgerctl command like ledgerctlExec but returns
+// its captured stdout. When the command is invoked with --json, pterm output
+// (spinners, messages) is routed to stderr by the CLI, so stdout carries only
+// the JSON payload — safe to parse.
+func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) (string, error) {
 	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, resourceName(serviceName))
 	if err != nil {
-		return fmt.Errorf("resolving TLS mode for LedgerService %q: %w", serviceName, err)
+		return "", fmt.Errorf("resolving TLS mode for Cluster %q: %w", serviceName, err)
 	}
 
 	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
 	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
 
-	if _, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd); err != nil {
-		return fmt.Errorf("ledgerctl %s: %w", args[0], err)
+	res, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
+	if err != nil {
+		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}
 
-	return nil
+	return res.Stdout, nil
 }
 
-// resolveGRPCPort reads the gRPC port from the LedgerService spec (defaults to 8888).
+// resolveGRPCPort reads the gRPC port from the Cluster spec (defaults to 8888).
 func (r *LedgerReconciler) resolveGRPCPort(ctx context.Context, namespace, serviceRef string) (int32, error) {
-	ls, err := r.Dynamic.Resource(ledgerServiceGVR).Namespace(namespace).Get(ctx, serviceRef, metav1.GetOptions{})
+	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(namespace).Get(ctx, serviceRef, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("get LedgerService %q: %w", serviceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", serviceRef, err)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
 	if err != nil || !found || port == 0 {
-		return ledgerServiceGRPCPort, nil
+		return clusterGRPCPort, nil
 	}
 
 	return int32(port), nil
@@ -446,9 +565,14 @@ func (r *LedgerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// computeLedgerSpecHash returns a SHA-256 hash of the Ledger spec.
+// computeLedgerSpecHash returns a SHA-256 hash of the Ledger spec used to
+// detect drift on immutable ledgers. The indexes field is excluded because it
+// is mutable and reconciled continuously — an index-only edit must not trip the
+// SpecDrifted condition.
 func computeLedgerSpecHash(spec *ledgerv1alpha1.LedgerCRDSpec) string {
-	data, _ := json.Marshal(spec) //nolint:errchkjson // spec is always serializable
+	forHash := *spec
+	forHash.Indexes = nil
+	data, _ := json.Marshal(&forHash) //nolint:errchkjson // spec is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

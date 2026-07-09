@@ -156,6 +156,23 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Revert metadata
 - ✅ Verification that transaction is not already reverted
 
+**Navigable revert relationship.** The revert link is a first-class part of the
+transaction representation (`GET`/list), not metadata — the platform never writes
+`com.formance.spec/*` keys. A transaction exposes:
+- `reverted` (bool) and `revertedAt` (timestamp) — set on the reverted original.
+- `revertedByTransactionId` — on the reverted original, the id of the compensating transaction.
+- `revertsTransactionId` — on the compensating transaction, the id of the original it reverts.
+
+`revertedAt` is the compensating transaction's effective timestamp (so under
+`atEffectiveDate` it equals the original's timestamp). All three are derived from
+the structural `TransactionState`, so they hold identically after replay/backfill
+and on the mirror revert path.
+
+Both `reverted` and `revertedAt` are queryable (upstream v2 parity). `reverted` is
+always available (served from the reversion bitset, no index); `revertedAt` requires
+the `reverted-at` builtin index. `revertedByTransactionId`/`revertsTransactionId` are
+navigable in the representation but not queryable (v3-only, no parity baseline).
+
 ### 3. Metadata Management
 
 **Endpoints:**
@@ -173,7 +190,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 
 ### 4. Bulk Operations
 
-**Endpoint:** `POST /v3/{ledgerName}/_bulk`
+**Endpoint:** `POST /v3/{ledgerName}/bulk`
 
 **Supported actions:**
 - ✅ `CREATE_TRANSACTION`
@@ -185,7 +202,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 - ✅ `continueOnFailure` - Continue even on error
 - ✅ `atomic` - All operations or nothing (supports cross-ledger operations)
 
-> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/core/global-log.md).
+> **Note:** Unlike v2, v3 supports **system-level atomic bulk operations** that can span multiple ledgers. This is enabled by the [Global Log Architecture](../architecture/subsystems/consensus/global-log.md).
 
 ### 5. Ledger Management
 
@@ -236,7 +253,7 @@ ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 
 ### 7. Chapters
 
-Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/data-model/chapters.md) for full documentation.
+Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/subsystems/chapters/lifecycle.md) for full documentation.
 
 **gRPC Methods:**
 - `Apply(CloseChapterRequest)` - Close the current open chapter (write, leader-only)
@@ -286,7 +303,7 @@ Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying
 
 **Source types:**
 - **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
-- **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`.
+- **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`. AWS RDS IAM authentication is provisioned via the operator `Ledger` CRD (`mirrorSource.postgres.awsIamAuth.region` + optional `assumeRoleArn` for cross-account / multi-tenant mirrors) — see `misc/operator/api/v1alpha1/ledger_crd_types.go`. The mirror pod mints SigV4 tokens per connection from the ambient AWS credential chain (IRSA on EKS).
 
 If `type` is omitted, defaults to `"http"`.
 
@@ -368,7 +385,9 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `ReferenceCondition` — transaction reference exact match | transactions | yes (`reference` builtin index) |
 | `BuiltinUintCondition` with `TIMESTAMP` — effective date range | transactions | yes (`timestamp` builtin index) |
 | `BuiltinUintCondition` with `INSERTED_AT` — creation date range | transactions | yes (`inserted_at` builtin index) |
+| `BuiltinUintCondition` with `REVERTED_AT` — revert date range | transactions | yes (`reverted_at` builtin index) |
 | `BuiltinUintCondition` with `ID` — transaction ID range or equality | transactions | no (direct range scan) |
+| `RevertedCondition` — transaction revert status (true/false) | transactions | no (reversion bitset) |
 | `AccountHasAssetCondition` — accounts that have ever touched an asset | accounts | yes (`account-asset` index) |
 
 **User-configurable indexes** control which filters are available. Each index has a lifecycle: BUILDING (backfill in progress) → READY (queries enabled).
@@ -377,14 +396,24 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 |------------|----------|---------|
 | `address` | `--type address` | `AddressMatch` on transaction queries |
 | `source-address` | `--type source-address` | source-only address matching |
-| `dest-address` | `--type dest-address` | destination-only address matching |
+| `destination-address` | `--type destination-address` | destination-only address matching |
 | `metadata` | `--type metadata --target … --key …` | `FieldCondition` on the specified field |
 | `reference` | `--type reference` | `ReferenceCondition` |
 | `timestamp` | `--type timestamp` | `BuiltinUintCondition(TIMESTAMP)` |
 | `inserted-at` | `--type inserted-at` | `BuiltinUintCondition(INSERTED_AT)` |
+| `reverted-at` | `--type reverted-at` | `BuiltinUintCondition(REVERTED_AT)` |
 | `account-asset` | `--type account-asset` | `AccountHasAssetCondition` — `has asset <BASE>[/<PRECISION>]` filter on account queries |
 
-> Filtering by transaction ID (`BuiltinUintCondition(ID)`) is always available with no index required.
+> Filtering by transaction ID (`BuiltinUintCondition(ID)`) and by revert status
+> (`RevertedCondition`) are always available with no index required — the latter is
+> served from the per-ledger reversion bitset.
+
+> **Revert querying (upstream v2 parity).** v2 queries transactions by both
+> `reverted` and `reverted_at`; v3 matches this: `RevertedCondition` for the boolean
+> and `BuiltinUintCondition(REVERTED_AT)` (behind the `reverted-at` index) for the
+> date range. The v3-only navigable ids `revertedByTransactionId` /
+> `revertsTransactionId` are exposed in the representation but are not queryable
+> (no v2 baseline); adding them would follow the same builtin-index recipe.
 
 **CLI commands:**
 ```bash
@@ -542,7 +571,7 @@ The response will include a `postCommitVolumes` field:
 
 **Status:** ✅ Compliant
 
-See [Idempotency](../architecture/data-model/idempotency.md) for detailed documentation.
+See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detailed documentation.
 
 ### 5. Index readiness and metadata schema retypes (EN-1323)
 
@@ -670,7 +699,7 @@ This architecture impacts certain implementation decisions:
 - Import must respect log sequence
 - Export can be done from any node (local read)
 
-See [Global Log Architecture](../architecture/core/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
+See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md) for details on how the two-level log architecture enables cross-ledger atomic operations.
 
 ---
 

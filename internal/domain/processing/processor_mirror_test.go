@@ -70,9 +70,10 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	require.NotNil(t, fillGap)
 	require.Equal(t, uint64(5), fillGap.GetOriginalId())
 
-	// NextTransactionId should have advanced by 2 (two skipped IDs)
+	// NextTransactionId advances past the skipped IDs by value (max id + 1),
+	// not by count — so skipping 10 and 11 moves the boundary to 12.
 	require.NotNil(t, putBoundaries)
-	require.Equal(t, uint64(3), putBoundaries.GetNextTransactionId())
+	require.Equal(t, uint64(12), putBoundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_CreatedTransaction(t *testing.T) {
@@ -475,7 +476,9 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
 	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
 	expectPutTransactionState(t, mockStore,
-		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+			require.Equal(t, uint64(5), st.GetRevertsTransaction())
+		})
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
@@ -510,6 +513,85 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 
 	_, err = processor.ProcessOrder(order, mockStore)
 	require.NoError(t, err)
+}
+
+// When the reverted original is present in the FSM cache, the mirror path records
+// the reversion on it (reverted_by_transaction + reverted_at) just like the
+// non-mirror revert, keeping the read representation identical across nodes.
+func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "mirror-ledger",
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+	}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+
+	revertTimestamp := &commonpb.Timestamp{Data: 1234567890}
+
+	origKey := domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}
+
+	mockStore.EXPECT().PutReverted(origKey, true)
+	expectGetTransactionState(mockStore, origKey, (&commonpb.TransactionState{CreatedByLog: 7}).AsReader(), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "users:rare-account", "USD/2"), nil)
+	expectPutVolume(t, mockStore, domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), nil)
+	expectPutTransactionState(t, mockStore, origKey, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+		require.Equal(t, uint64(42), st.GetRevertedByTransaction())
+		require.Equal(t, revertTimestamp, st.GetRevertedAt())
+	})
+	expectPutTransactionState(t, mockStore,
+		domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
+			require.Equal(t, uint64(5), st.GetRevertsTransaction())
+		})
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	mockStore.EXPECT().GetDate().Return(revertTimestamp.AsReader()).AnyTimes()
+
+	reversePostings := []*commonpb.Posting{{
+		Source:      "users:rare-account",
+		Destination: "world",
+		Amount:      commonpb.NewUint256FromUint64(500),
+		Asset:       "USD/2",
+	}}
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "mirror-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 2,
+						Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+							RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+								RevertedTransactionId: 5,
+								NewTransactionId:      42,
+								ReversePostings:       reversePostings,
+							},
+						},
+					},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+
+	revertedTx := result.GetApply().GetLog().GetData().GetRevertedTransaction()
+	require.Equal(t, uint64(5), revertedTx.GetRevertedTransactionId())
+	require.Equal(t, uint64(5), revertedTx.GetRevertTransaction().GetRevertsTransaction())
 }
 
 func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {

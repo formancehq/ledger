@@ -54,7 +54,9 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 	}
 
 	id := order.GetId()
-	indexes.Remove(ctx.Scope.Indexes(), info.GetName(), id)
+	if err := indexes.Remove(ctx.Scope.Indexes(), info.GetName(), id); err != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "dropping index", Cause: err}
+	}
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DropIndex{

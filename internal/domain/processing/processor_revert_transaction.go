@@ -33,10 +33,36 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
 
+	// Admission attaches OriginalPostings from either the signed receipt or
+	// its own read of TxState.Postings (via attrs.Transaction.Get). A revert
+	// order that reaches the FSM with an empty OriginalPostings means the
+	// tx was not visible to admission at propose time — a business
+	// rejection that must appear in the audit chain (invariant #8).
+	originalPostings := order.GetOriginalPostings()
+	if len(originalPostings) == 0 {
+		return nil, &domain.ErrTransactionNotFound{TransactionID: order.GetTransactionId()}
+	}
+
+	origStateReader, err := s.TransactionStates().Get(txKey)
+	if errors.Is(err, domain.ErrNotFound) {
+		// Impossible by design under invariants #1/#6: the len(originalPostings)
+		// check above already established the tx was visible to admission at
+		// propose time (so admission preloaded TxState). A miss here implies
+		// a cache/Pebble desync, not a routine business "not found" — surface
+		// loudly with the invariant-violation error class.
+		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
+	}
+
+	if err != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
+	}
+
+	origState := origStateReader.Mutate()
+
 	// Create reversed postings and update volumes
 	// For a revert: original destination becomes source, original source becomes destination
-	revertPostings := make([]*commonpb.Posting, len(order.GetOriginalPostings()))
-	for i, originalPosting := range order.GetOriginalPostings() {
+	revertPostings := make([]*commonpb.Posting, len(originalPostings))
+	for i, originalPosting := range originalPostings {
 		// Create reversed posting
 		revertPostings[i] = &commonpb.Posting{
 			Source:      originalPosting.GetDestination(), // Original destination is now source
@@ -70,20 +96,6 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	boundaries.PostingCount += uint64(len(revertPostings))
 	boundaries.RevertCount++
 
-	// Update the original transaction's state to record the reversion
-	origStateReader, err := s.TransactionStates().Get(txKey)
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
-	}
-
-	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
-	}
-
-	origState := origStateReader.Mutate()
-	origState.RevertedByTransaction = revertTxID
-	s.TransactionStates().Put(txKey, origState)
-
 	// Resolve the revert timestamp. When at_effective_date is set, the compensating
 	// transaction inherits the original's effective timestamp (parity with
 	// formancehq/ledger). Otherwise it stamps with the current FSM date.
@@ -98,17 +110,30 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		revertTimestamp = origState.GetTimestamp()
 	}
 
-	// Store the revert transaction's state (include metadata from the revert order)
+	// Record the reversion on the original transaction's state: the id of the
+	// compensating transaction and the effective time it was reverted.
+	origState.RevertedByTransaction = revertTxID
+	origState.RevertedAt = revertTimestamp
+	s.TransactionStates().Put(txKey, origState)
+
+	// Store the revert transaction's state (include metadata from the revert
+	// order); RevertsTransaction back-links it to the transaction it compensates.
 	s.TransactionStates().Put(domain.TransactionKey{LedgerName: ledger, ID: revertTxID}, &commonpb.TransactionState{
-		CreatedByLog: s.GetNextSequenceID(),
-		Metadata:     order.GetMetadata(),
-		Timestamp:    revertTimestamp,
+		CreatedByLog:       s.GetNextSequenceID(),
+		Metadata:           order.GetMetadata(),
+		Timestamp:          revertTimestamp,
+		Postings:           revertPostings,
+		RevertsTransaction: order.GetTransactionId(),
 	})
 
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
+		var err domain.Describable
+		postCommitVolumes, err = buildPostCommitVolumes(s, ledger, revertPostings)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -116,12 +141,13 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 			RevertedTransaction: &commonpb.RevertedTransaction{
 				RevertedTransactionId: order.GetTransactionId(),
 				RevertTransaction: &commonpb.Transaction{
-					Postings:   revertPostings,
-					Metadata:   order.GetMetadata(),
-					Timestamp:  revertTimestamp,
-					Id:         revertTxID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:           revertPostings,
+					Metadata:           order.GetMetadata(),
+					Timestamp:          revertTimestamp,
+					Id:                 revertTxID,
+					InsertedAt:         s.GetDate().Mutate(),
+					UpdatedAt:          s.GetDate().Mutate(),
+					RevertsTransaction: order.GetTransactionId(),
 				},
 				PostCommitVolumes: postCommitVolumes,
 			},

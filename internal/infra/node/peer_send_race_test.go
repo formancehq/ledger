@@ -45,6 +45,7 @@ func newRaceTestPeerConn(t *testing.T) *peerConnection {
 		stopCancel:             stopCancel,
 		loopDone:               loopDone,
 		logger:                 logging.Testing(),
+		pushUnreachable:        func(uint64) bool { return true },
 		sendQueueLoadHistogram: [3]metric.Int64Histogram{loadH, loadH, loadH},
 		sendQueueFullCounter:   [3]metric.Float64Counter{fullC, fullC, fullC},
 	}

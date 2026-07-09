@@ -145,6 +145,20 @@ linters:
       linters: [forbidigo]
     - path: internal/bootstrap/config_validation\.go
       linters: [forbidigo]
+    # peer_store.go persists Raft cluster membership in Pebble. Writes
+    # happen at two declared call sites: the ConfChange apply path
+    # (finishReady, hot path triggered by Raft) and the bootstrap
+    # module's initial-peer registration (before the Raft loop starts).
+    # Both go through *Membership methods that wrap *PeerStore — never
+    # via a raw OpenWriteSession outside this file. (EN-1413)
+    - path: internal/infra/membership/peer_store\.go
+      linters: [forbidigo]
+    # membership.go owns the ForceRemoveNode atomic batch (peer row
+    # delete + RemovedMemberEntry write) via m.store.OpenWriteSession()
+    # — cluster-topology lifecycle path, EN-1045. See
+    # docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
+    - path: internal/infra/membership/membership\.go
+      linters: [forbidigo]
     # The readstore manages its own Pebble DB and uses NewWriteSessionFromDB
     # (not OpenWriteSession on the main store).
     - path: internal/storage/readstore/

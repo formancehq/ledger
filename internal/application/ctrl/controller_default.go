@@ -164,8 +164,12 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 	return cursor.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	return ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
+	// No receipt signer at this layer: a locally-served read returns a nil receipt
+	// so the gRPC layer signs it from the same snapshot.
+	tx, err := ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
+
+	return tx, nil, err
 }
 
 // WithStores returns a shallow copy of the controller whose reads are served
@@ -191,7 +195,14 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, store, ledgerName)
+	handle, err := store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -199,13 +210,6 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 
 		return nil, err
 	}
-
-	handle, err := store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
 
 	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID)
 }
@@ -265,10 +269,17 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 
 	tx.Reverted = state.GetRevertedByTransaction() > 0
 
-	// Override metadata from the state (which is the current truth)
-	if len(state.GetMetadata()) > 0 {
-		tx.Metadata = state.GetMetadata()
-	}
+	// The revert relationship is tracked structurally on the state, not in the
+	// create log: reverted_by_transaction + reverted_at on the reverted original,
+	// reverts_transaction on the compensating transaction.
+	tx.RevertedByTransaction = state.GetRevertedByTransaction()
+	tx.RevertedAt = state.GetRevertedAt()
+	tx.RevertsTransaction = state.GetRevertsTransaction()
+
+	// The state carries the current metadata (the create-time snapshot plus
+	// every applied add/delete) and is authoritative even when empty; the
+	// create log only holds the create-time snapshot.
+	tx.Metadata = state.GetMetadata()
 
 	return tx, nil
 }
@@ -466,7 +477,16 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	// One snapshot so the existence check and the account scan observe the same
+	// committed state.
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -474,15 +494,6 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 		return nil, err
 	}
-
-	// Single-entity lookup reads directly from Pebble without index filtering,
-	// so no cross-store consistency cap is needed. Use ^uint64(0) to read all entries.
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
 
 	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ctrl.logger)
 }
@@ -490,21 +501,20 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 // GetLedgerStats returns aggregate statistics for a ledger.
 // All counters are O(1) reads from the LedgerBoundaries attribute.
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
-	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
-		}
-
-		return nil, err
-	}
-
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+
+		return nil, err
+	}
 
 	boundaries, err := ctrl.attrs.Boundary.Get(handle, domain.LedgerKey{Name: ledgerName}.Bytes())
 	if err != nil {
@@ -611,7 +621,14 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 // Uses a direct Pebble key scan to extract account addresses, asset names, and
 // metadata key names without reading values or going through the read index.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -619,13 +636,6 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
 	}
-
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
 
 	it, err := query.NewCompactAccountIterator(handle, ledgerInfo.GetName())
 	if err != nil {
@@ -774,7 +784,13 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -782,12 +798,6 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 		return nil, err
 	}
-
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-	defer func() { _ = handle.Close() }()
 
 	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
 	// No index interaction needed — Pebble snapshot is the source of truth.
@@ -848,7 +858,15 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, req.GetLedger())
+	// One snapshot for the schema gate and the index-registry lookup so they
+	// observe the same committed state.
+	handleForIndex, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
+	}
+	defer func() { _ = handleForIndex.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handleForIndex, req.GetLedger())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", req.GetLedger())
@@ -878,12 +896,6 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
 	}
-
-	handleForIndex, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
-	}
-	defer func() { _ = handleForIndex.Close() }()
 
 	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handleForIndex)
 
@@ -1032,7 +1044,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		_ = handle.Close()
 
@@ -1233,18 +1245,18 @@ func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Curs
 
 // ListPreparedQueries returns all prepared queries for a ledger.
 func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledger)
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
 	if err != nil {
 		return nil, err
 	}
 
-	pqHandle, handleErr := ctrl.store.NewDirectReadHandle()
-	if handleErr != nil {
-		return nil, fmt.Errorf("creating read handle: %w", handleErr)
-	}
-	defer func() { _ = pqHandle.Close() }()
-
-	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, pqHandle, ledgerInfo.GetName())
+	return query.ReadPreparedQueries(ctx, ctrl.attrs.PreparedQuery, handle, ledgerInfo.GetName())
 }
 
 // entityEnricher returns an EntityEnricher that uses the controller's attributes
@@ -1269,17 +1281,17 @@ func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *se
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
 func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledger)
-	if err != nil {
-		return nil, err
-	}
-
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
+	if err != nil {
+		return nil, err
+	}
 
 	info, err := query.ReadNumscript(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName(), name, version)
 	if err != nil {
@@ -1295,17 +1307,17 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 
 // ListNumscripts returns the latest version of all numscripts for a ledger.
 func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledger)
-	if err != nil {
-		return nil, err
-	}
-
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
+	if err != nil {
+		return nil, err
+	}
 
 	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName())
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"log"
 
@@ -13,7 +12,8 @@ import (
 func main() {
 	log.Println("composer: parallel_driver_check_store")
 
-	ctx := context.Background()
+	ctx, cancel := internal.DriverContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
@@ -23,8 +23,8 @@ func main() {
 
 	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 	if err != nil {
-		if internal.IsUnavailable(err) {
-			log.Printf("CheckStore unavailable: %s", err)
+		if internal.IsTransient(err) {
+			log.Printf("CheckStore transient: %s", err)
 			return
 		}
 
@@ -41,7 +41,7 @@ func main() {
 			break
 		}
 		if err != nil {
-			if internal.IsUnavailable(err) {
+			if internal.IsTransient(err) {
 				return
 			}
 

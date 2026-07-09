@@ -60,3 +60,55 @@ func TestRevertedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	require.False(t, strings.Contains(out, "revertedTransactionID"),
 		"casing must follow the Go convention (Id, not ID)")
 }
+
+// TestTransaction_MarshalJSON_RevertRelationship pins the first-class revert
+// relationship fields: revertedByTransactionId + revertedAt on the reverted
+// original, revertsTransactionId on the compensating transaction. Casing follows
+// the Go convention (Id, not ID) and unset links are omitted.
+func TestTransaction_MarshalJSON_RevertRelationship(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reverted original", func(t *testing.T) {
+		t.Parallel()
+
+		data, err := (&Transaction{
+			Id:                    1,
+			Reverted:              true,
+			RevertedByTransaction: 2,
+			RevertedAt:            &Timestamp{Data: 1_700_000_000_000_000},
+		}).MarshalJSON()
+		require.NoError(t, err)
+
+		out := string(data)
+		require.Contains(t, out, `"reverted":true`)
+		require.Contains(t, out, `"revertedByTransactionId":2`)
+		require.Contains(t, out, `"revertedAt":`)
+		require.NotContains(t, out, "revertsTransactionId")
+		require.NotContains(t, out, "revertedByTransactionID", "casing must follow the Go convention (Id, not ID)")
+	})
+
+	t.Run("compensating transaction", func(t *testing.T) {
+		t.Parallel()
+
+		data, err := (&Transaction{Id: 2, RevertsTransaction: 1}).MarshalJSON()
+		require.NoError(t, err)
+
+		out := string(data)
+		require.Contains(t, out, `"revertsTransactionId":1`)
+		require.Contains(t, out, `"reverted":false`)
+		require.NotContains(t, out, "revertedByTransactionId")
+		require.NotContains(t, out, "revertedAt")
+	})
+
+	t.Run("plain transaction omits revert links", func(t *testing.T) {
+		t.Parallel()
+
+		data, err := (&Transaction{Id: 3}).MarshalJSON()
+		require.NoError(t, err)
+
+		out := string(data)
+		require.NotContains(t, out, "revertedByTransactionId")
+		require.NotContains(t, out, "revertsTransactionId")
+		require.NotContains(t, out, "revertedAt")
+	})
+}

@@ -33,7 +33,7 @@ func newBackupProposer(builder *plan.Builder, proposer plan.Proposer) *backupPro
 	return &backupProposer{builder: builder, proposer: proposer}
 }
 
-// Propose pushes the proposal through proposeTechnical with empty Needs
+// Propose pushes the proposal through proposeTechnical with empty Coverage
 // per TU. The backup apply handlers (state.applyBackupOrder /
 // applyIncrementalBackupOrder) do not read from the FSM cache — they
 // only mutate BackupJobsState's in-memory map and write to Pebble — so
@@ -45,7 +45,7 @@ func (b *backupProposer) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) e
 
 	for i := range tus {
 		operations = append(operations, plan.WriteOperation{
-			Needs: nil, // backup apply does not read FSM cache
+			Coverage: nil, // backup apply does not read FSM cache
 			SetCoverage: func(bits []byte) {
 				cmd.GetTechnicalUpdates()[i].CoverageBits = bits
 			},

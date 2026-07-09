@@ -81,7 +81,7 @@ type gatedScope struct {
 
 	// plans is the proposal's ExecutionPlan. NewScope re-applies a
 	// subset (selected by coverage_bits) into coverage every call.
-	plans []*raftcmdpb.AttributePlan
+	plans []*raftcmdpb.AttributeCoverage
 
 	// coverage is a dense slot table — one entry per supported
 	// sub-attribute kind (see cacheAttrKinds). coverageSlotIndex maps
@@ -94,6 +94,13 @@ type gatedScope struct {
 	logger    logging.Logger
 	miss      metric.Int64Counter
 	raftIndex uint64
+
+	// scratch is a reusable buffer for building canonical key bytes on
+	// the fly (see CheckCoverage). The FSM apply path is single-threaded
+	// under fsm.mu, and every consumer of the produced bytes (xxh3 hash
+	// in attributes.MakeKey, hex encoding on miss) copies or consumes
+	// them synchronously — safe to reuse across every gated read/write.
+	scratch []byte
 
 	// Per-kind gated accessors — built once at NewScopeFactory time,
 	// wrap the embedded WriteSet's bare accessors with CheckCoverage on
@@ -112,36 +119,28 @@ type gatedScope struct {
 	gatedIndexes               *gatedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
-// validatePlan rejects AttributePlans whose envelope is malformed:
+// validatePlan rejects AttributeCoverages whose envelope is malformed:
 //   - missing AttributeID or an ID payload that is not the 16-byte U128
 //     we expect (attributes.U128FromBytes would silently zero-pad);
-//   - missing intent oneof (the preloader would skip it but the scope
-//     would still admit the resulting coverage slot);
-//   - attr_code that the FSM does not handle (MirrorTouch /
-//     MirrorPreload route it to an orphan 0xFF Pebble slot; scope
-//     validation only catches selected plans later).
+//   - attr_code that the FSM does not handle (a seed intent's
+//     MirrorPreload would route the write to an orphan 0xFF Pebble
+//     slot; scope validation only catches selected plans later).
 //
 // Run at every gate that touches plans (Preload entry, applyPlans,
 // applyAllPlans) so a forged ExecutionPlan never reaches a side-effecting
 // call. The shared check keeps the three sites in lock-step.
-func validatePlan(plan *raftcmdpb.AttributePlan, idx int) *domain.ErrInvalidExecutionPlan {
+func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalidExecutionPlan {
 	id := plan.GetId()
 	if id == nil || len(id.GetId()) != 16 {
 		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan must carry a 16-byte AttributeID (got %d bytes)", idx, len(id.GetId())),
-		}
-	}
-
-	if plan.GetIntent() == nil {
-		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan has no intent set", idx),
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage must carry a 16-byte AttributeID (got %d bytes)", idx, len(id.GetId())),
 		}
 	}
 
 	kind := byte(plan.GetAttrCode())
 	if coverageSlotIndex[kind] < 0 {
 		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributePlan declares attr_code 0x%02x which the FSM does not handle", idx, kind),
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%02x which the FSM does not handle", idx, kind),
 		}
 	}
 
@@ -173,7 +172,7 @@ func validatePlan(plan *raftcmdpb.AttributePlan, idx int) *domain.ErrInvalidExec
 // plans slice or when a plan declares an attr_code the FSM does not
 // handle. On error, the partial reset is harmless: the caller does not
 // use the scope and the next NewScope call truncates again.
-func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan, coverageBits []byte) *domain.ErrInvalidExecutionPlan {
+func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributeCoverage, coverageBits []byte) *domain.ErrInvalidExecutionPlan {
 	for i := range coverage {
 		coverage[i] = coverage[i][:0]
 	}
@@ -230,7 +229,7 @@ func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan, cover
 //
 // Returns *ErrInvalidExecutionPlan when a plan declares an attr_code
 // the FSM does not handle.
-func applyAllPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributePlan) *domain.ErrInvalidExecutionPlan {
+func applyAllPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributeCoverage) *domain.ErrInvalidExecutionPlan {
 	for i := range coverage {
 		coverage[i] = coverage[i][:0]
 	}
@@ -276,7 +275,7 @@ func NewScopeFactory(
 	missCounter metric.Int64Counter,
 	raftIndex uint64,
 ) processing.ScopeFactory {
-	var plans []*raftcmdpb.AttributePlan
+	var plans []*raftcmdpb.AttributeCoverage
 	if plan != nil {
 		plans = plan.GetAttributes()
 	}
@@ -323,7 +322,7 @@ func (g *gatedScope) NewScope(coverageBits []byte) (processing.Scope, error) {
 	return g, nil
 }
 
-// NewProposalScope reconfigures the scope to admit every AttributePlan
+// NewProposalScope reconfigures the scope to admit every AttributeCoverage
 // the proposal declared. Used by ValidateTransientVolumes and other
 // cross-order checks that must reach into any ledger the proposal may
 // have touched.
@@ -338,18 +337,28 @@ func (g *gatedScope) NewProposalScope() (processing.Scope, error) {
 // CheckCoverage exposes the gate for paths that bypass the engine's
 // overlay reads. ValidateTransientVolumes uses it before a direct
 // Derived.Volumes.Parent().GetKey to keep the coverage invariant.
-func (g *gatedScope) CheckCoverage(kind byte, canonical []byte) error {
-	id, _ := attributes.MakeKey(canonical)
+//
+// The key's canonical bytes are built into g.scratch — a single
+// per-scope buffer reused across every gated call on the FSM apply
+// path (single-threaded under fsm.mu). The bytes are consumed
+// synchronously by attributes.MakeKey (xxh3 hash) and, on miss, by
+// hex.EncodeToString (which copies into a fresh string) — no consumer
+// retains a reference past the return, so overwriting the scratch on
+// the next call is safe.
+func (g *gatedScope) CheckCoverage(kind byte, key processing.CoverageKey) error {
+	g.scratch = key.AppendBytes(g.scratch[:0])
+
+	id, _ := attributes.MakeKey(g.scratch)
 	slot := coverageSlotIndex[kind]
 	if slot < 0 {
-		return g.coverageMiss(kind, canonical, id)
+		return g.coverageMiss(kind, g.scratch, id)
 	}
 
 	if slices.Contains(g.coverage[slot], id) {
 		return nil
 	}
 
-	return g.coverageMiss(kind, canonical, id)
+	return g.coverageMiss(kind, g.scratch, id)
 }
 
 func (g *gatedScope) coverageMiss(kind byte, canonical []byte, id attributes.U128) *ErrCoverageMiss {
@@ -513,7 +522,7 @@ func (g *gatedScope) Indexes() processing.Accessor[domain.IndexKey, *commonpb.In
 // --- Gated discrete reads (signatures that do not fit the Accessor trio) ---
 
 func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: name}); err != nil {
 		return nil, err
 	}
 
@@ -521,7 +530,7 @@ func (g *gatedScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, erro
 }
 
 func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}); err != nil {
 		return "", err
 	}
 
@@ -529,7 +538,7 @@ func (g *gatedScope) GetNumscriptLatestVersion(ledgerName string, name string) (
 }
 
 func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, version string) (commonpb.NumscriptInfoReader, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
 		return nil, err
 	}
 
@@ -537,7 +546,7 @@ func (g *gatedScope) ResolveNumscriptContent(ledgerName string, name string, ver
 }
 
 func (g *gatedScope) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
-	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes()); err != nil {
+	if err := g.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}); err != nil {
 		return false, err
 	}
 

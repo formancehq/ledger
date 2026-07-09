@@ -31,7 +31,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to create tx for metadata test", internal.Details{"ledger": ledger, "error": err})
+		assert.Sometimes(internal.IsTolerated(err), "should be able to create tx for metadata test", internal.Details{"ledger": ledger, "error": err})
 		if err != nil {
 			return
 		}
@@ -61,7 +61,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to save transaction metadata", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to save transaction metadata", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}
@@ -99,7 +99,7 @@ func main() {
 			},
 		}))
 
-		assert.Sometimes(err == nil || internal.IsTransient(err), "should be able to delete transaction metadata", details.With(internal.Details{"error": err}))
+		assert.Sometimes(internal.IsTolerated(err), "should be able to delete transaction metadata", details.With(internal.Details{"error": err}))
 		if err != nil {
 			return
 		}

@@ -90,10 +90,10 @@ func appendIfQuantity(envs []corev1.EnvVar, name string, value *resource.Quantit
 // spec.TLS.Enabled during a TLS toggle, when the operator first walks the
 // StatefulSet through "optional".
 //
-// The agents slice drives whether AUTH_ED25519_KEYS is exposed: it is set
-// only when at least one agent is registered AND auth is not explicitly
+// The credentials slice drives whether AUTH_ED25519_KEYS is exposed: it is set
+// only when at least one credentials is registered AND auth is not explicitly
 // disabled.
-func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, agents []agentKeyInfo) []corev1.EnvVar {
+func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credentials []credentialsKeyInfo) []corev1.EnvVar {
 	spec := &ledger.Spec
 	hlsSvcName := headlessServiceName(ledger.Name)
 
@@ -304,10 +304,10 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService, targetTLSMode string, ag
 	}
 
 	// AUTH_ED25519_KEYS points at the configmap-mounted JSON file when
-	// agents are registered and auth is not explicitly disabled. The path
+	// credentials are registered and auth is not explicitly disabled. The path
 	// is fixed by the volume mount declared in reconcileStatefulSet.
 	authExplicitlyDisabled := spec.Auth != nil && spec.Auth.Enabled != nil && !*spec.Auth.Enabled
-	if len(agents) > 0 && !authExplicitlyDisabled {
+	if len(credentials) > 0 && !authExplicitlyDisabled {
 		envs = append(envs, strEnv("AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json"))
 	}
 

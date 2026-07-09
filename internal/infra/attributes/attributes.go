@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
@@ -312,7 +313,7 @@ func IncrementBytes(b []byte) []byte {
 	result := make([]byte, len(b))
 	copy(result, b)
 
-	for i := len(result) - 1; i >= 0; i-- {
+	for i := range slices.Backward(result) {
 		result[i]++
 		if result[i] != 0 {
 			return result

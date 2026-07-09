@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -346,7 +347,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 // oldest and returns the first one that carries a non-empty ConfState.
 // Returns nil if no usable record is found.
 func recoverConfStateFromWALRecords(walSnaps []walpb.Snapshot) *walpb.Snapshot {
-	for i := len(walSnaps) - 1; i >= 0; i-- {
+	for i := range slices.Backward(walSnaps) {
 		if walSnaps[i].ConfState != nil && len(walSnaps[i].ConfState.Voters) > 0 {
 			return &walSnaps[i]
 		}

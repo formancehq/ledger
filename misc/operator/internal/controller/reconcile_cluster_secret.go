@@ -28,7 +28,7 @@ const clusterSecretKey = "cluster-secret"
 // appears at the same time the StatefulSet moves into the "optional" mode,
 // and is symmetrically removed (via deleteClusterSecret) when TLS is
 // turned off again.
-func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) reconcileClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterSecretName(ledger.Name),
@@ -61,7 +61,7 @@ func (r *LedgerServiceReconciler) reconcileClusterSecret(ctx context.Context, le
 // when TLS is turned off (mode=disabled): the secret is no longer needed
 // and must not be left around for someone to harvest it from a plaintext
 // cluster.
-func (r *LedgerServiceReconciler) deleteClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
 	secret := &corev1.Secret{}
 
 	err := r.Get(ctx, types.NamespacedName{Name: clusterSecretName(ledger.Name), Namespace: ledger.Namespace}, secret)

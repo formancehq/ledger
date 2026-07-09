@@ -1,0 +1,19 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Ledger
+metadata:
+  name: test-ledger
+spec:
+  name: my-ledger
+  serviceRef: crd-svc
+  indexes:
+    # "address" removed (must be dropped), "timestamp" added (must be created);
+    # "reference", "account-asset" and the metadata index are retained.
+    transaction:
+      - reference
+      - timestamp
+    account:
+      - asset
+    metadata:
+      - target: account
+        key: category
+        type: string

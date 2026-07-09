@@ -62,7 +62,7 @@ func (o *Options) ResolvedNamespace() (string, error) {
 	return ns, err
 }
 
-// CRDClient creates a controller-runtime client with the LedgerService CRD scheme.
+// CRDClient creates a controller-runtime client with the Cluster CRD scheme.
 func (o *Options) CRDClient() (client.Client, error) {
 	rc, err := o.RESTConfig()
 	if err != nil {

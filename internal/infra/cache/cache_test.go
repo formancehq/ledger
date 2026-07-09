@@ -142,77 +142,6 @@ func TestAttributeCache_PutGet(t *testing.T) {
 	assert.Equal(t, uint64(123), result.Tag)
 }
 
-func TestAttributeCache_Del(t *testing.T) {
-	t.Parallel()
-
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	ac := cache.Volumes
-
-	key := attributes.NewU128(1, 2)
-	entry := attributes.Entry[*raftcmdpb.VolumePair]{
-		Tag:  123,
-		Data: &raftcmdpb.VolumePair{},
-	}
-
-	ac.Put(key, entry)
-	result, ok := ac.Get(key)
-	require.True(t, ok)
-	assert.False(t, result.Deleted)
-
-	ac.Del(key)
-	// Del marks as tombstone — the entry is still present but flagged as deleted.
-	// KeyStore.Get filters tombstones, but AttributeCache.Get returns them
-	// so that CheckCache/MirrorTouch still see the key as present.
-	result, ok = ac.Get(key)
-	assert.True(t, ok)
-	assert.True(t, result.Deleted)
-	// Data is reset to the zero value: a tombstone's payload is unreadable by
-	// contract, and retaining it has historically caused snapshot/restore
-	// foot-guns (EN-1377).
-	assert.Nil(t, result.Data, "Del must reset entry.Data to the zero value")
-}
-
-func TestAttributeCache_DelResetsDataAcrossGenerations(t *testing.T) {
-	t.Parallel()
-
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	ac := cache.Volumes
-
-	key1 := attributes.NewU128(1, 1)
-	key2 := attributes.NewU128(2, 2)
-
-	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{
-		Tag:  10,
-		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)},
-	})
-
-	ac.Rotate()
-
-	// key1 is now in Gen1 (post-rotation). Add key2 to Gen0 with the same id
-	// signature so both generations carry a payload — Del must clear both.
-	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{
-		Tag:  20,
-		Data: &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)},
-	})
-
-	ac.Del(key1)
-	ac.Del(key2)
-
-	got, ok := ac.Gen1().Get(key1)
-	require.True(t, ok, "tombstone must remain visible in Gen1 for the cache predictor")
-	assert.True(t, got.Deleted)
-	assert.Nil(t, got.Data, "Gen1 tombstone payload must be reset")
-
-	got, ok = ac.Gen0().Get(key2)
-	require.True(t, ok, "tombstone must remain visible in Gen0 for the cache predictor")
-	assert.True(t, got.Deleted)
-	assert.Nil(t, got.Data, "Gen0 tombstone payload must be reset")
-}
-
 func TestAttributeCache_Size(t *testing.T) {
 	t.Parallel()
 
@@ -244,33 +173,31 @@ func TestAttributeCache_Rotate(t *testing.T) {
 	// Add to Gen0
 	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 1})
 
-	// Rotate: Gen0 -> Gen1, new empty Gen0
+	// Rotate: Gen0 -> Gen1, new empty Gen0.
 	ac.Rotate()
 
-	// key1 should still be accessible (now in Gen1)
+	// Get falls back to Gen1 when Gen0 misses.
 	_, ok := ac.Get(key1)
-	assert.True(t, ok, "key1 should be in Gen1 after rotation")
+	assert.True(t, ok, "key1 must be reachable via Get's Gen1 fallback after rotation")
 
-	// Add key2 to new Gen0
+	// Add key2 to new Gen0.
 	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2})
 
-	// Both keys should be accessible
+	// Both keys visible via Get.
 	_, ok = ac.Get(key1)
 	assert.True(t, ok)
 	_, ok = ac.Get(key2)
 	assert.True(t, ok)
 
-	// Rotate again: Gen1 (with key1) is discarded
+	// Rotate again: Gen1 (with key1) is discarded.
 	ac.Rotate()
-
-	// key1 should be gone, key2 should be in Gen1
 	_, ok = ac.Get(key1)
-	assert.False(t, ok, "key1 should be gone after second rotation")
+	assert.False(t, ok, "key1 fully evicted after two rotations")
 	_, ok = ac.Get(key2)
-	assert.True(t, ok, "key2 should be in Gen1 after second rotation")
+	assert.True(t, ok, "key2 sits in Gen1 after the second rotation")
 }
 
-func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
+func TestAttributeCache_CheckCache_SameGeneration(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
@@ -279,24 +206,25 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 	ac := cache.Volumes
 	cache.SetCurrentGeneration(0)
 
-	key := attributes.NewU128(1, 1)
-	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
+	// Gen0 hit → CacheHit.
+	gen0Key := attributes.NewU128(1, 1)
+	ac.Put(gen0Key, attributes.Entry[*raftcmdpb.VolumePair]{})
+	assert.Equal(t, CacheHit, ac.CheckCache(5, gen0Key))
 
-	// Index 5 is in generation 0 (same as current), key is in Gen0 -> true
-	assert.True(t, ac.IsGuaranteedInCache(5, key))
-
-	// Non-existent key
-	nonExistent := attributes.NewU128(99, 99)
-	assert.False(t, ac.IsGuaranteedInCache(5, nonExistent))
-
-	// Key in Gen1 only needs a touch — not guaranteed (would be lost after next rotation)
+	// Gen1-only entry within the same-generation horizon: the FSM apply
+	// path reads via AttributeCache.Get which falls back to Gen1, so
+	// admission does not need to distinguish "already Gen0" from
+	// "Gen1-only" — both return CacheHit.
 	gen1Key := attributes.NewU128(3, 3)
 	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{})
-	assert.False(t, ac.IsGuaranteedInCache(5, gen1Key))
-	assert.Equal(t, CacheNeedsTouch, ac.CheckCache(5, gen1Key))
+	assert.Equal(t, CacheHit, ac.CheckCache(5, gen1Key))
+
+	// Absent from both generations → CacheMiss.
+	nonExistent := attributes.NewU128(99, 99)
+	assert.Equal(t, CacheMiss, ac.CheckCache(5, nonExistent))
 }
 
-func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
+func TestAttributeCache_CheckCache_NextGeneration(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
@@ -308,21 +236,23 @@ func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
 	keyInGen0 := attributes.NewU128(1, 1)
 	keyInGen1 := attributes.NewU128(2, 2)
 
-	// Put keyInGen0 in Gen0
+	// Put keyInGen0 in Gen0 (rotation will move it to new Gen1 by apply
+	// time; Get's gen0→gen1 fallback still surfaces it, and lazy Del
+	// promotes it if the handler tombstones).
 	ac.Put(keyInGen0, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Simulate keyInGen1 being in Gen1 only
+	// Simulate keyInGen1 being in Gen1 only (rotation will discard it —
+	// no promote can save it).
 	ac.Gen1().Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Index 15 is in generation 1 (next generation)
-	// keyInGen0 is in Gen0, will survive one rotation -> true
-	assert.True(t, ac.IsGuaranteedInCache(15, keyInGen0))
-
-	// keyInGen1 is in Gen1, will be discarded after rotation -> false
-	assert.False(t, ac.IsGuaranteedInCache(15, keyInGen1))
+	// Index 15 is in generation 1 (next generation): one rotation expected.
+	assert.Equal(t, CacheHit, ac.CheckCache(15, keyInGen0),
+		"Gen0-hit at next-gen horizon still reaches apply via the gen0→gen1 fallback")
+	assert.Equal(t, CacheMiss, ac.CheckCache(15, keyInGen1),
+		"Gen1-only at next-gen horizon is discarded by rotation")
 }
 
-func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
+func TestAttributeCache_CheckCache_TwoGenerationsAhead(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
@@ -334,9 +264,16 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Index 25 is in generation 2 (two generations ahead)
-	// Data will be lost after two rotations -> false
-	assert.False(t, ac.IsGuaranteedInCache(25, key))
+	// Index 25 is in generation 2 (two generations ahead): any preload
+	// computed now would be rotated out before apply. CheckCache surfaces
+	// CacheUnreachable so admission rejects the proposal transiently.
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, key),
+		"≥2 generations ahead must report CacheUnreachable")
+
+	// Same regime for a key absent from the cache: still Unreachable; the
+	// admission-level reject takes precedence over the per-key miss path.
+	absent := attributes.NewU128(9, 9)
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, absent))
 }
 
 func TestCache_NewCache(t *testing.T) {
@@ -364,11 +301,69 @@ func TestCache_ResetWithThresholdIncrementsEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cache.Epoch())
 
-	cache.ResetWithThreshold(200)
+	cache.ResetWithThreshold(200, 0)
 	assert.Equal(t, uint64(2), cache.Epoch())
 
-	cache.ResetWithThreshold(300)
+	cache.ResetWithThreshold(300, 0)
 	assert.Equal(t, uint64(3), cache.Epoch())
+}
+
+// TestCache_ResetWithThresholdAtNonZeroIndex covers the atomic realignment
+// path: when the caller passes a raftIndex that falls into a non-zero
+// generation under the new threshold, ResetWithThreshold must set
+// currentGeneration and BaseIndex accordingly in the SAME critical section
+// so admission's next CheckCache never observes a transient
+// (currentGeneration=0, threshold=new) window.
+func TestCache_ResetWithThresholdAtNonZeroIndex(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	// raftIndex=25 with newThreshold=10 → Gen=2, BaseIndex.Gen0=genEndIndex(1, 10)=20.
+	cache.ResetWithThreshold(10, 25)
+
+	assert.Equal(t, uint64(2), cache.CurrentGeneration())
+	assert.Equal(t, uint64(20), cache.BaseIndex.Gen0)
+	assert.Equal(t, uint64(0), cache.BaseIndex.Gen1)
+	assert.Equal(t, uint64(2), cache.Epoch())
+}
+
+// TestAttributeCache_CheckCache_StaleBehindReportsMiss: when the caller's
+// nextIndex maps to a generation the FSM has already left behind
+// (actualGeneration > futureGeneration), the uint64 subtraction would
+// otherwise underflow into the CacheUnreachable default branch. Guard
+// against that: report CacheMiss so higher-level staleness checks
+// (checkStaleProposal / AcquireProposalGuard) handle the actual mismatch,
+// instead of falsely returning a horizon violation.
+func TestAttributeCache_CheckCache_StaleBehindReportsMiss(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(10, nil)
+	require.NoError(t, err)
+	c.SetCurrentGeneration(5) // FSM already at gen 5
+
+	// nextIndex=15 → Gen(15, 10) = 1 (behind actualGeneration=5). Would
+	// underflow: 1 - 5 = huge → default branch → CacheUnreachable.
+	assert.Equal(t, CacheMiss, c.Volumes.CheckCache(15, attributes.NewU128(1, 1)),
+		"stale-behind build must report CacheMiss, not underflow into CacheUnreachable")
+}
+
+// TestCache_ResetWithThresholdRejectsZero: threshold=0 is a config invariant
+// violation — cache.New rejects it up front, and no legitimate call path can
+// reach ResetWithThreshold with 0. Panicking makes the violation impossible
+// to silently mask by disabling rotations (which would freeze
+// currentGeneration=0 forever and break the CacheUnreachable contract).
+func TestCache_ResetWithThresholdRejectsZero(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(100, nil)
+	require.NoError(t, err)
+
+	require.PanicsWithValue(t,
+		"cache.ResetWithThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.ResetWithThreshold(0, 0) },
+	)
 }
 
 func TestCache_CheckRotationNeeded_SameGeneration(t *testing.T) {
@@ -406,9 +401,9 @@ func TestCache_CheckRotationNeeded_NewGeneration(t *testing.T) {
 	cache.CheckRotationNeeded(11)
 	assert.Equal(t, uint64(1), cache.CurrentGeneration())
 
-	// Data should now be in Gen1 (still accessible)
+	// Get falls back to Gen1 after a rotation.
 	_, ok := cache.Volumes.Get(key)
-	assert.True(t, ok)
+	assert.True(t, ok, "rotated entry still reachable via Get's Gen1 fallback")
 
 	// BaseIndex should be the canonical boundary genEndIndex(0, 10) = 10
 	assert.Equal(t, uint64(10), cache.BaseIndex.Gen0)
@@ -431,21 +426,21 @@ func TestCache_CheckRotationNeeded_MultipleGenerations(t *testing.T) {
 	keyGen1 := attributes.NewU128(2, 2)
 	cache.Volumes.Put(keyGen1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 2})
 
-	// Both keys accessible
+	// Both keys visible via Get (keyGen0 via the Gen1 fallback).
 	_, ok := cache.Volumes.Get(keyGen0)
-	assert.True(t, ok)
+	assert.True(t, ok, "keyGen0 in Gen1 reachable via Get's fallback")
 	_, ok = cache.Volumes.Get(keyGen1)
-	assert.True(t, ok)
+	assert.True(t, ok, "keyGen1 was just written to Gen0")
 
 	// Move to generation 2
 	cache.CheckRotationNeeded(21)
 	assert.Equal(t, uint64(2), cache.CurrentGeneration())
 
-	// keyGen0 should be gone, keyGen1 should still be there
+	// keyGen0 is fully evicted; keyGen1 is now in Gen1.
 	_, ok = cache.Volumes.Get(keyGen0)
-	assert.False(t, ok, "keyGen0 should be gone after second rotation")
+	assert.False(t, ok, "keyGen0 gone after second rotation")
 	_, ok = cache.Volumes.Get(keyGen1)
-	assert.True(t, ok, "keyGen1 should still be accessible")
+	assert.True(t, ok, "keyGen1 still reachable via Gen1 fallback after the second rotation")
 }
 
 func TestCache_NewCache_ZeroThresholdReturnsError(t *testing.T) {
@@ -545,64 +540,20 @@ func TestAttributeCache_Gen0Gen1_Accessors(t *testing.T) {
 	require.NotSame(t, ac.Gen0(), ac.Gen1())
 }
 
-func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
-	t.Parallel()
-
-	// Create a cache and forcibly set threshold to 0
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	cache.SetGenerationThreshold(0)
-
-	rotated, _ := cache.CheckRotationNeeded(100)
-	assert.False(t, rotated)
-}
-
-func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
+// TestCache_SetGenerationThresholdRejectsZero locks the invariant that a
+// running cache never observes threshold=0. cache.New rejects it, and every
+// setter (SetGenerationThreshold, ResetWithThreshold) panics loudly rather
+// than silently disabling rotations.
+func TestCache_SetGenerationThresholdRejectsZero(t *testing.T) {
 	t.Parallel()
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
 
-	cache.SetGenerationThreshold(0)
-
-	key := attributes.NewU128(1, 1)
-	cache.Volumes.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
-
-	// Should return false when threshold is 0
-	assert.False(t, cache.Volumes.IsGuaranteedInCache(5, key))
-}
-
-func TestAttributeCache_Touch_DoesNotOverwriteGen0(t *testing.T) {
-	t.Parallel()
-
-	cache, err := New(10, nil)
-	require.NoError(t, err)
-
-	ac := cache.Volumes
-
-	key := attributes.NewU128(1, 1)
-
-	// Put a value in Gen0, then rotate so it moves to Gen1
-	gen1Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 100}
-	ac.Put(key, gen1Entry)
-	ac.Rotate()
-
-	// Touch promotes Gen1 → Gen0 (Gen0 is empty)
-	ac.Touch(key)
-	v, ok := ac.Gen0().Get(key)
-	require.True(t, ok)
-	assert.Equal(t, uint64(100), v.Tag)
-
-	// Simulate a Merge updating Gen0 with a newer value
-	gen0Entry := attributes.Entry[*raftcmdpb.VolumePair]{Tag: 200}
-	ac.Gen0().Put(key, gen0Entry)
-
-	// A redundant Touch (from a concurrent admission) must NOT overwrite the newer Gen0 value
-	ac.Touch(key)
-	v, ok = ac.Gen0().Get(key)
-	require.True(t, ok)
-	assert.Equal(t, uint64(200), v.Tag, "Touch must not overwrite existing Gen0 entry")
+	require.PanicsWithValue(t,
+		"cache.SetGenerationThreshold: threshold must be > 0 (invariant enforced by cache.New)",
+		func() { cache.SetGenerationThreshold(0) },
+	)
 }
 
 func TestCache_AllAttributeCachesRotate(t *testing.T) {
@@ -619,16 +570,17 @@ func TestCache_AllAttributeCachesRotate(t *testing.T) {
 	// Trigger rotation
 	cache.CheckRotationNeeded(11)
 
-	// All data should still be accessible (in Gen1)
+	// After rotation, Get's gen0→gen1 fallback still surfaces the entry
+	// (Gen0 is fresh empty, Gen1 holds what used to be Gen0).
 	_, ok := cache.Volumes.Get(key)
-	assert.True(t, ok)
+	assert.True(t, ok, "Volumes still reachable via gen1 fallback after first rotation")
 	_, ok = cache.AccountMetadata.Get(key)
-	assert.True(t, ok)
+	assert.True(t, ok, "AccountMetadata still reachable via gen1 fallback after first rotation")
 
-	// Trigger another rotation
+	// Trigger another rotation — the old Gen1 (which was Gen0) is now
+	// discarded and both generations are empty.
 	cache.CheckRotationNeeded(21)
 
-	// All data should be gone
 	_, ok = cache.Volumes.Get(key)
 	assert.False(t, ok)
 	_, ok = cache.AccountMetadata.Get(key)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 	"strings"
@@ -22,7 +21,8 @@ import (
 func main() {
 	log.Println("composer: scenario_blocks")
 
-	ctx := context.Background()
+	ctx, cancel := internal.SingletonContext()
+	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)

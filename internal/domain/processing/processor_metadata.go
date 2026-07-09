@@ -142,7 +142,9 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
 		}
 
-		s.AccountMetadata().Delete(metaKey)
+		if err := s.AccountMetadata().Delete(metaKey); err != nil {
+			return nil, &domain.ErrStorageOperation{Operation: "deleting account metadata", Cause: err}
+		}
 	case *commonpb.Target_TransactionId:
 		txID := target.TransactionId
 		if resolveErr := validateTransactionTarget(txID, boundaries); resolveErr != nil {

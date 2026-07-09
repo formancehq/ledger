@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
@@ -33,6 +32,7 @@ import (
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
+	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/events"
@@ -47,6 +47,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
@@ -290,6 +291,7 @@ func Module() fx.Option {
 					cfg.SnapshotSyncConfig.FileRetryCount,
 				)
 			},
+			node.NewLocalResponses,
 			func(
 				cfg node.NodeConfig,
 				logger logging.Logger,
@@ -301,6 +303,8 @@ func Module() fx.Option {
 				machine *state.Machine,
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
+				membership *raftmembership.Membership,
+				localResponses node.LocalResponses,
 			) (*node.Applier, error) {
 				return node.NewApplier(
 					machine,
@@ -314,6 +318,8 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
+					membership.OnSnapshotInstalled,
+					localResponses,
 				)
 			},
 			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
@@ -337,6 +343,22 @@ func Module() fx.Option {
 			func(machine *state.Machine, recovery *state.Recovery, store *dal.Store) *state.Synchronizer {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
+			// PeerStore persists Raft cluster membership in Pebble under
+			// [ZoneGlobal][SubGlobPeers] (EN-1413). Membership wraps it
+			// with the in-memory cache, owns the transport / service-pool
+			// wiring, and exposes the OnSnapshotInstalled /
+			// WriteConfChange callbacks injected into Applier and Machine
+			// via constructor.
+			raftmembership.NewPeerStore,
+			fx.Annotate(func(
+				store *raftmembership.PeerStore,
+				defaultTransport *node.DefaultTransport,
+				servicePool *transport.ConnectionPool,
+				cfg node.NodeConfig,
+				logger logging.Logger,
+			) (*raftmembership.Membership, error) {
+				return raftmembership.NewMembership(store, defaultTransport, servicePool, cfg.NodeID, cfg.AdvertiseAddr, cfg.ServiceAdvertiseAddr, cfg.InstanceID, logger)
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor).
 			// Events go through Builder.Run, which already holds the IndexTracker
 			// mutex around its proposer.Propose call. Wrapping the node in a
@@ -372,6 +394,7 @@ func Module() fx.Option {
 				mirrorNotifications *signal.Notifications,
 				indexNotifications *signal.Notifications,
 				bloomFilters *bloom.FilterSet,
+				membership *raftmembership.Membership,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
@@ -398,6 +421,7 @@ func Module() fx.Option {
 					bloomFilters,
 					cfg.ClusterID,
 					cfg.NumscriptCacheSize,
+					membership.WriteConfChange,
 				)
 				if err != nil {
 					return nil, err
@@ -408,20 +432,22 @@ func Module() fx.Option {
 				}).Infof("FSM Machine created")
 
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`, ``, ``)),
 			func(
 				params struct {
 					fx.In
 
-					NodeConfig    node.NodeConfig
-					Logger        logging.Logger
-					Transport     *node.DefaultTransport
-					MeterProvider metric.MeterProvider
-					WAL           *wal.DefaultWAL
-					Applier       *node.Applier
-					Machine       *state.Machine
-					Recovery      *state.Recovery
-					Synchronizer  *state.Synchronizer
+					NodeConfig     node.NodeConfig
+					Logger         logging.Logger
+					Transport      *node.DefaultTransport
+					MeterProvider  metric.MeterProvider
+					WAL            *wal.DefaultWAL
+					Applier        *node.Applier
+					Machine        *state.Machine
+					Recovery       *state.Recovery
+					Synchronizer   *state.Synchronizer
+					Membership     *raftmembership.Membership
+					LocalResponses node.LocalResponses
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -449,6 +475,8 @@ func Module() fx.Option {
 					params.Machine,
 					params.Recovery,
 					params.Synchronizer,
+					params.Membership,
+					params.LocalResponses,
 				)
 				if err != nil {
 					return nodeProvideResult{}, err
@@ -464,11 +492,23 @@ func Module() fx.Option {
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			buildResponseSigner,
-			func(cfg Config) node.NodeConfig {
+			func(cfg Config) (node.NodeConfig, error) {
 				cfg.RaftConfig.DataDir = cfg.DataDir
+				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
 				cfg.RaftConfig.SetDefaults()
 
-				return cfg.RaftConfig
+				// EN-1045: establish this peer's identity UUID before any
+				// membership plumbing runs. First boot generates and
+				// persists it in INSTANCE_ID under WalDir; later boots
+				// return the same value.
+				instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+				if err != nil {
+					return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
+				}
+
+				cfg.RaftConfig.InstanceID = instanceID
+
+				return cfg.RaftConfig, nil
 			},
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
@@ -542,15 +582,15 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *membership.Service {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
 				return membership.NewService(
-					n, raftTransport, servicePool, logger,
+					n, raftTransport, servicePool, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
-			func(builder *plan.Builder, n *node.Node, store *dal.Store, logger logging.Logger) *backupapp.Orchestrator {
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry())
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
+			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
 			},
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
@@ -610,6 +650,17 @@ func Module() fx.Option {
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
 				return indexbuilder.NewBuilder(store, rs, attrs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
+			},
+			// Audit indexer — tails the Audit zone to populate the readstore audit index.
+			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *auditindexer.Indexer {
+				return auditindexer.New(
+					auditindexer.Config{
+						BatchSize:        cfg.AuditIndexConfig.BatchSize,
+						RebuildThreshold: cfg.AuditIndexConfig.RebuildThreshold,
+						Disabled:         cfg.AuditIndexConfig.Disabled,
+					},
+					store, rs, logger, meterProvider.Meter("audit.index"),
+				)
 			},
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
@@ -920,21 +971,19 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Start Raft server (internal) - must start before adding peers
-			fx.Annotate(func(
+			// Start Raft server (internal). Peer wiring (transport +
+			// service pool) is owned by Membership; the initial wire
+			// runs here in OnStart AFTER the local Raft gRPC server is
+			// listening — that way ConnectionPool.AddPeer's optional-
+			// TLS probe against a remote pod has a fair chance to
+			// succeed. Post-Start, runtime Set / Remove wire inline.
+			// (EN-1413)
+			func(
 				lc fx.Lifecycle,
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
-				cfg node.NodeConfig,
-				n *node.Node,
-				fullCfg Config,
+				membership *raftmembership.Membership,
 			) {
-				// Store own address in Node so it gets included in the next snapshot.
-				// This ensures that after a snapshot cycle, all nodes know this node's address.
-				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
-
 				var waitRaft func()
 
 				lc.Append(fx.Hook{
@@ -958,37 +1007,7 @@ func Module() fx.Option {
 
 						logger.Infof("Raft gRPC server started successfully")
 
-						// Load peers from config (set during --join or --peers)
-						for _, peerEntry := range cfg.Peers {
-							logger := logger.WithFields(map[string]any{"peer": peerEntry})
-							logger.Infof("Adding peer to transport and service pool")
-							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
-
-							err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress)
-							if err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
-							}
-						}
-
-						// Recover peers from snapshot + WAL (populated by NewNode during recovery).
-						for nodeID, addr := range n.RecoveredPeers() {
-							if nodeID == cfg.NodeID {
-								continue // skip self
-							}
-
-							logger := logger.WithFields(map[string]any{
-								"peer_id":      nodeID,
-								"raft_addr":    addr.RaftAddress,
-								"service_addr": addr.ServiceAddress,
-							})
-							logger.Infof("Restoring recovered peer")
-							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
-
-							err := servicePool.AddPeer(nodeID, addr.ServiceAddress)
-							if err != nil {
-								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add recovered peer to service pool")
-							}
-						}
+						membership.Start()
 
 						return nil
 					},
@@ -1001,12 +1020,13 @@ func Module() fx.Option {
 						return err
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
-			// Wire Observer: handle ConfChange, LeadershipChange, and LeaderReady events
-			fx.Annotate(func(
+			},
+			// Wire Observer: handle LeadershipChange and LeaderReady events.
+			// ConfChange events are no longer dispatched here — Membership
+			// owns the transport / service-pool wiring and reacts directly
+			// to peer mutations (EN-1413).
+			func(
 				n *node.Node,
-				defaultTransport *node.DefaultTransport,
-				servicePool *transport.ConnectionPool,
 				store *dal.Store,
 				builder *plan.Builder,
 				cfg Config,
@@ -1017,8 +1037,6 @@ func Module() fx.Option {
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
-					case node.ConfChangeEvent:
-						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
 						// The backup orchestrator's OnLeadershipChange is cheap
 						// (it just swaps a context) and must observe leadership
@@ -1041,7 +1059,7 @@ func Module() fx.Option {
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
+			},
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
 				var cancelRun context.CancelFunc
 
@@ -1180,12 +1198,29 @@ func Module() fx.Option {
 			// member (e.g. after a crash-restart where the initial WAL was written
 			// but the AddLearner RPC never reached the leader), the server returns
 			// AlreadyExists which we treat as success.
+			//
+			// Skip entirely on restart: the CLUSTER_JOINED marker is written
+			// after the initial join succeeds (see tryAddLearner). On any
+			// subsequent boot — even one where --join is still in the CLI
+			// (e.g. E2E test framework that reuses Instruments across restarts)
+			// — re-running tryAddLearner would propose a redundant AddLearner
+			// for a node that is already a voter, racing leadership state and
+			// stalling the test's "should become follower" Eventually. The
+			// operator's StatefulSet entrypoint already gates --join on the
+			// same marker; this check makes the safety hold regardless of how
+			// the binary is invoked.
 			func(
 				lc fx.Lifecycle,
 				cfg Config,
 				logger logging.Logger,
 			) {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+					return
+				}
+
+				if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+					logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
+
 					return
 				}
 
@@ -1258,7 +1293,7 @@ func Module() fx.Option {
 							// applyIdempotencyEviction works through
 							// Registry.Idempotency.Evict (no cache-keyed
 							// Registry.Get); no preload needed. One
-							// WriteOperation with nil Needs so the runner
+							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
 								SetCoverage: func(bits []byte) {
@@ -1323,6 +1358,10 @@ func Module() fx.Option {
 				indexBuilder.SetNotifications(notifications)
 				lc.Append(worker.FxHook(indexBuilder))
 			}, fx.ParamTags(``, ``, `name:"index"`)),
+			// Start and stop the audit indexer.
+			func(lc fx.Lifecycle, auditIndexer *auditindexer.Indexer) {
+				lc.Append(worker.FxHook(auditIndexer))
+			},
 		),
 	)
 }
@@ -1340,10 +1379,20 @@ func Module() fx.Option {
 // otherwise leave us spinning on every retry.
 func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger logging.Logger) error {
 	peers := cfg.RaftConfig.Peers
+
+	// EN-1045: attach this peer's identity UUID to the join RPC so the
+	// leader can persist it in the peer row and refuse a rejoin from a
+	// blacklisted (nodeID, instanceID) tuple later on.
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return fmt.Errorf("ensuring instance id for JoinAsLearner: %w", err)
+	}
+
 	req := &clusterbootstrappb.JoinAsLearnerRequest{
 		NodeId:         cfg.RaftConfig.NodeID,
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
+		InstanceId:     instanceID,
 	}
 
 	creds, _, err := ClientTransportCredentials(tlsCfg)
@@ -1483,52 +1532,6 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 	}
 }
 
-// handleConfChangeEvent processes a single ConfChangeEvent by updating the
-// transport and service pool when a node joins or leaves the cluster.
-// Peer addresses are persisted in the Node (updated by processReady) and
-// included in Raft snapshots, so no separate PeerStore is needed.
-func handleConfChangeEvent(
-	e node.ConfChangeEvent,
-	defaultTransport *node.DefaultTransport,
-	servicePool *transport.ConnectionPool,
-	logger logging.Logger,
-) {
-	switch e.ChangeType {
-	case raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeAddNode:
-		if len(e.Context) == 0 {
-			return
-		}
-
-		ccCtx, err := node.UnmarshalConfChangeContext(e.Context)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange context")
-
-			return
-		}
-
-		logger.WithFields(map[string]any{
-			"node_id":         e.NodeID,
-			"raft_address":    ccCtx.RaftAddress,
-			"service_address": ccCtx.ServiceAddress,
-		}).Infof("Adding peer from ConfChange")
-		defaultTransport.AddPeer(e.NodeID, ccCtx.RaftAddress)
-
-		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
-		}
-	case raftpb.ConfChangeRemoveNode:
-		logger.WithFields(map[string]any{
-			"node_id": e.NodeID,
-		}).Infof("Removing peer from ConfChange")
-		defaultTransport.RemovePeer(context.Background(), e.NodeID)
-
-		err := servicePool.RemovePeer(e.NodeID)
-		if err != nil {
-			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
-		}
-	}
-}
-
 // buildResponseSigner returns the Ed25519 response signer for the gRPC
 // service plane.
 //
@@ -1572,10 +1575,8 @@ func discoveryContext(timeout time.Duration) (context.Context, context.CancelFun
 }
 
 // TimeoutHTTPClient returns an *http.Client with Timeout set when timeout > 0,
-// otherwise http.DefaultClient (which has no timeout). Used by cmd/server to
-// shadow — via fx.Decorate — the http.DefaultClient that go-libs'
-// authnfx.JWTModule injects into NewKeySets, so OIDC discovery + JWKS reads
-// don't hang startup on a slow issuer.
+// otherwise http.DefaultClient (which has no timeout). buildAuthConfig uses it
+// to bound the JWKS reads performed by the OIDC remote keyset.
 func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		return http.DefaultClient
@@ -1597,10 +1598,10 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	}
 
 	// When auth is enabled and an issuer is configured but no external KeySet was injected,
-	// discover the OIDC configuration and create a remote KeySet. The
-	// discovery HTTP call uses http.DefaultClient (no Timeout) inside go-libs,
-	// so a slow or blackholed issuer would otherwise hang startup forever —
-	// bound it via a context deadline derived from cfg.AuthConfig.OIDCDiscoveryTimeout.
+	// discover the OIDC configuration and create a remote KeySet. Both the discovery
+	// call and the keyset's JWKS reads are bounded by OIDCDiscoveryTimeout so a slow or
+	// blackholed issuer cannot hang the process: the context deadline bounds
+	// oidc.Discover, and the keyset's http.Client.Timeout bounds JWKS fetches.
 	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
 		ctx, cancel := discoveryContext(cfg.AuthConfig.OIDCDiscoveryTimeout)
 		discovery, err := oidc.Discover(ctx, cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
@@ -1609,7 +1610,7 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
 		}
 
-		oidcKeySet = oidcclient.NewRemoteKeySet(nil, discovery.JwksURI)
+		oidcKeySet = oidcclient.NewRemoteKeySet(TimeoutHTTPClient(cfg.AuthConfig.OIDCDiscoveryTimeout), discovery.JwksURI)
 
 		logger.WithFields(map[string]any{
 			"issuer":   cfg.AuthConfig.Issuer,

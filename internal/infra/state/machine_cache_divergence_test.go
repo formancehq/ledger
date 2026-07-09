@@ -22,7 +22,7 @@ import (
 // simulating a leader-follower pair where:
 //  1. Both machines apply the same entries with preloads computed by the leader
 //  2. The follower crashes and restarts (cache reset + RestoreFromStore)
-//  3. Post-restart entries use the leader's cache state (CacheGuaranteed)
+//  3. Post-restart entries use the leader's cache state (CacheHit)
 //     which may not match the follower's restored cache
 //
 // The test checks that volume values stay consistent between leader and follower.
@@ -319,13 +319,13 @@ func TestCacheDivergenceBatchReplay(t *testing.T) {
 
 // TestCacheDivergencePipelinedAdmission simulates the REAL bug scenario:
 // the leader admits MULTIPLE proposals from the SAME cache state before any
-// of them are applied. This creates entries with stale CacheGuaranteed that
-// don't include touches for keys that will move to gen1 after rotation.
+// of them are applied. This creates entries with stale CacheHit verdicts
+// that don't include seeds for keys that will move to gen1 after rotation.
 //
 // With threshold=3 and a pipeline depth of 6+ entries:
-//   - Entries are admitted when K is in gen0 → CacheGuaranteed
+//   - Entries are admitted when K is in gen0 → CacheHit
 //   - First entry triggers rotation → K moves to gen1
-//   - Next entries don't have Touch for K (CacheGuaranteed in preloads)
+//   - Next entries carry the same stale CacheHit-derived Declare plan
 //   - Second rotation → K in gen1 is PURGED
 //   - K is permanently lost from the follower's cache
 func TestCacheDivergencePipelinedAdmission(t *testing.T) {
@@ -558,7 +558,7 @@ func buildProposalWithLeaderPreloads(
 
 	boundary := cache.BoundaryIndex(nextIndex, threshold)
 
-	var plans []*raftcmdpb.AttributePlan
+	var plans []*raftcmdpb.AttributeCoverage
 
 	// For CreateLedger, we need to preload the ledger key (it won't be in cache)
 	for _, order := range orders {
@@ -592,10 +592,8 @@ func buildProposalWithLeaderPreloads(
 		ledgerU128, ledgerTag := attributes.MakeKey(ledgerCanonical)
 
 		switch leader.Registry.Cache.Ledgers.CheckCache(nextIndex, ledgerU128) {
-		case cache.CacheGuaranteed:
+		case cache.CacheHit:
 			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
-		case cache.CacheNeedsTouch:
-			plans = append(plans, touchTestPlan(ledgerU128, dal.SubAttrLedger))
 		case cache.CacheMiss:
 			info, _, err := leader.Registry.Ledgers.Get(ledgerCanonical)
 			if err == nil && info != nil {
@@ -608,10 +606,8 @@ func buildProposalWithLeaderPreloads(
 
 		// Check Boundaries in leader's cache
 		switch leader.Registry.Cache.Boundaries.CheckCache(nextIndex, ledgerU128) {
-		case cache.CacheGuaranteed:
+		case cache.CacheHit:
 			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrBoundary))
-		case cache.CacheNeedsTouch:
-			plans = append(plans, touchTestPlan(ledgerU128, dal.SubAttrBoundary))
 		case cache.CacheMiss:
 			boundaries, _, err := leader.Registry.Boundaries.Get(ledgerCanonical)
 			if err == nil && boundaries != nil {
@@ -647,10 +643,8 @@ func buildProposalWithLeaderPreloads(
 					volU128, volTag := attributes.MakeKey(volCanonical)
 
 					switch leader.Registry.Cache.Volumes.CheckCache(nextIndex, volU128) {
-					case cache.CacheGuaranteed:
+					case cache.CacheHit:
 						plans = append(plans, declareTestPlan(volU128, dal.SubAttrVolume))
-					case cache.CacheNeedsTouch:
-						plans = append(plans, touchTestPlan(volU128, dal.SubAttrVolume))
 					case cache.CacheMiss:
 						vol, _, err := leader.Registry.Volumes.Get(volCanonical)
 						if err != nil || vol == nil {

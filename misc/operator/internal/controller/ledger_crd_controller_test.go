@@ -147,6 +147,91 @@ func TestBuildCreateArgs_MirrorHTTPWithOptions(t *testing.T) {
 	}, args)
 }
 
+func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
+			{AnyVariant: &ledgerv1alpha1.AnyVariantRule{
+				Actions: []ledgerv1alpha1.AnyVariantAction{{
+					RewriteAddress: &ledgerv1alpha1.RewriteAddressAction{Pattern: ":worker:\\d+", Replacement: ""},
+				}},
+			}},
+			{CreatedTransaction: &ledgerv1alpha1.CreatedTransactionRule{
+				Match: `log.metadata["type"].string_value == "payout"`,
+				Actions: []ledgerv1alpha1.CreatedTransactionAction{{
+					SetMetadata: &ledgerv1alpha1.SetMetadataAction{Key: "category", Value: "external"},
+				}},
+			}, Stop: true},
+		},
+		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
+			BaseURL: "https://source.example.com",
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-rewrite-rule", `{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`,
+		"--mirror-rewrite-rule", `{"createdTransaction":{"match":"log.metadata[\"type\"].string_value == \"payout\"","actions":[{"setMetadata":{"key":"category","value":"external"}}]},"stop":true}`,
+		"--mirror-source-type", "http",
+		"--mirror-base-url", "https://source.example.com",
+	}, args)
+}
+
+func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pg-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"password": []byte("s3cr3t"),
+		},
+	}
+
+	r := newTestLedgerReconciler(secret)
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
+			{AnyVariant: &ledgerv1alpha1.AnyVariantRule{
+				Actions: []ledgerv1alpha1.AnyVariantAction{{
+					RewriteAddress: &ledgerv1alpha1.RewriteAddressAction{Pattern: ":worker:\\d+", Replacement: ""},
+				}},
+			}},
+		},
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			Port:     5432,
+			User:     "ledger",
+			Database: "ledger",
+			SSLMode:  "require",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
+				Name: "pg-secret",
+				Key:  "password",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-rewrite-rule", `{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`,
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
+	}, args)
+}
+
 func TestBuildCreateArgs_MirrorHTTPWithOAuth2(t *testing.T) {
 	t.Parallel()
 
@@ -222,7 +307,7 @@ func TestBuildCreateArgs_MirrorHTTPOAuth2SecretMissing(t *testing.T) {
 // Mirror mode — PostgreSQL source
 // ---------------------------------------------------------------------------
 
-func TestBuildCreateArgs_MirrorPostgres(t *testing.T) {
+func TestBuildCreateArgs_MirrorPostgresPassword(t *testing.T) {
 	t.Parallel()
 
 	secret := corev1.Secret{
@@ -231,7 +316,7 @@ func TestBuildCreateArgs_MirrorPostgres(t *testing.T) {
 			Namespace: "default",
 		},
 		Data: map[string][]byte{
-			"dsn": []byte("postgres://user:pass@host:5432/db"),
+			"password": []byte("s3cr3t"),
 		},
 	}
 
@@ -240,9 +325,14 @@ func TestBuildCreateArgs_MirrorPostgres(t *testing.T) {
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
-			DSNFrom: ledgerv1alpha1.SecretKeyRef{
+			Host:     "db.example.com",
+			Port:     5432,
+			User:     "ledger",
+			Database: "ledger",
+			SSLMode:  "require",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
 				Name: "pg-secret",
-				Key:  "dsn",
+				Key:  "password",
 			},
 		},
 	}
@@ -253,11 +343,48 @@ func TestBuildCreateArgs_MirrorPostgres(t *testing.T) {
 		"ledgers", "create", "--name", "ledger1",
 		"--mode", "mirror",
 		"--mirror-source-type", "postgres",
-		"--mirror-dsn", "postgres://user:pass@host:5432/db",
+		"--mirror-dsn", "postgres://ledger:s3cr3t@db.example.com:5432/ledger?sslmode=require",
 	}, args)
 }
 
-func TestBuildCreateArgs_MirrorPostgresSecretMissing(t *testing.T) {
+func TestBuildCreateArgs_MirrorPostgresPasswordSpecialChars(t *testing.T) {
+	t.Parallel()
+
+	// Passwords with URL-special characters must be percent-encoded so the
+	// generated DSN parses cleanly on the ledger side.
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pg-secret",
+			Namespace: "default",
+		},
+		Data: map[string][]byte{
+			"password": []byte("p@ss|word?#"),
+		},
+	}
+
+	r := newTestLedgerReconciler(secret)
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			User:     "ledger",
+			Database: "ledger",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
+				Name: "pg-secret",
+				Key:  "password",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	// Port and SSLMode fall back to their defaults (5432, require).
+	assert.Contains(t, args, "--mirror-dsn")
+	assert.Contains(t, args, "postgres://ledger:p%40ss%7Cword%3F%23@db.example.com:5432/ledger?sslmode=require")
+}
+
+func TestBuildCreateArgs_MirrorPostgresAWSIAMAuth(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
@@ -265,16 +392,122 @@ func TestBuildCreateArgs_MirrorPostgresSecretMissing(t *testing.T) {
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
-			DSNFrom: ledgerv1alpha1.SecretKeyRef{
-				Name: "missing",
-				Key:  "dsn",
+			Host:     "db.region.rds.amazonaws.com",
+			User:     "iam-user",
+			Database: "ledger",
+			AWSIAMAuth: &ledgerv1alpha1.AWSIAMAuthSpec{
+				Region: "eu-west-1",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require",
+		"--mirror-aws-iam-region", "eu-west-1",
+	}, args)
+}
+
+func TestBuildCreateArgs_MirrorPostgresAWSIAMAuthWithAssumeRole(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.region.rds.amazonaws.com",
+			User:     "iam-user",
+			Database: "ledger",
+			AWSIAMAuth: &ledgerv1alpha1.AWSIAMAuthSpec{
+				Region:        "eu-west-1",
+				AssumeRoleArn: "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+			},
+		},
+	}
+
+	args, err := r.buildCreateArgs(context.Background(), ledger)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"ledgers", "create", "--name", "ledger1",
+		"--mode", "mirror",
+		"--mirror-source-type", "postgres",
+		"--mirror-dsn", "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require",
+		"--mirror-aws-iam-region", "eu-west-1",
+		"--mirror-aws-iam-assume-role-arn", "arn:aws:iam::222222222222:role/cross-tenant-mirror",
+	}, args)
+}
+
+func TestBuildCreateArgs_MirrorPostgresMissingAuth(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			User:     "ledger",
+			Database: "ledger",
+		},
+	}
+
+	_, err := r.buildCreateArgs(context.Background(), ledger)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "passwordFrom or awsIamAuth must be set")
+}
+
+func TestBuildCreateArgs_MirrorPostgresBothAuthRejected(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			User:     "ledger",
+			Database: "ledger",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
+				Name: "pg-secret",
+				Key:  "password",
+			},
+			AWSIAMAuth: &ledgerv1alpha1.AWSIAMAuthSpec{
+				Region: "eu-west-1",
 			},
 		},
 	}
 
 	_, err := r.buildCreateArgs(context.Background(), ledger)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reading Postgres DSN secret")
+	assert.Contains(t, err.Error(), "mutually exclusive")
+}
+
+func TestBuildCreateArgs_MirrorPostgresPasswordSecretMissing(t *testing.T) {
+	t.Parallel()
+
+	r := newTestLedgerReconciler()
+	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger.Spec.Mode = "mirror"
+	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
+		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
+			Host:     "db.example.com",
+			User:     "ledger",
+			Database: "ledger",
+			PasswordFrom: &ledgerv1alpha1.SecretKeyRef{
+				Name: "missing",
+				Key:  "password",
+			},
+		},
+	}
+
+	_, err := r.buildCreateArgs(context.Background(), ledger)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading Postgres password secret")
 }
 
 // ---------------------------------------------------------------------------
@@ -308,4 +541,33 @@ func TestComputeLedgerSpecHash_DifferentMode(t *testing.T) {
 		Mode:       "mirror",
 	}
 	assert.NotEqual(t, computeLedgerSpecHash(spec1), computeLedgerSpecHash(spec2))
+}
+
+// TestComputeLedgerSpecHash_IgnoresIndexes asserts that index edits do not
+// change the spec hash — indexes are mutable and reconciled continuously, so
+// editing them must not trip the SpecDrifted (immutability) condition.
+func TestComputeLedgerSpecHash_IgnoresIndexes(t *testing.T) {
+	t.Parallel()
+
+	base := &ledgerv1alpha1.LedgerCRDSpec{
+		Name:       "test",
+		ServiceRef: "svc",
+		Mode:       "normal",
+	}
+	withIndexes := &ledgerv1alpha1.LedgerCRDSpec{
+		Name:       "test",
+		ServiceRef: "svc",
+		Mode:       "normal",
+		Indexes: &ledgerv1alpha1.LedgerIndexesSpec{
+			Transaction: []string{"reference", "address"},
+			Account:     []string{"asset"},
+			Metadata:    []ledgerv1alpha1.MetadataIndexSpec{{Target: "account", Key: "k", Type: "string"}},
+		},
+	}
+
+	assert.Equal(t, computeLedgerSpecHash(base), computeLedgerSpecHash(withIndexes))
+
+	// And the input spec must not be mutated by hashing (shallow copy nils the
+	// pointer on the copy, not the original).
+	require.NotNil(t, withIndexes.Indexes)
 }

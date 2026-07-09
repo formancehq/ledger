@@ -19,11 +19,11 @@ func newTestMaintenanceNode(t *testing.T) (*Node, *testApplierSetup) {
 	setup := newTestApplierSetup(t)
 
 	node := &Node{
-		logger:        logging.Testing(),
-		wal:           setup.wal,
-		fsm:           setup.fsm,
-		applier:       setup.applier,
-		peerAddresses: map[uint64]ConfChangeContext{},
+		logger:     logging.Testing(),
+		wal:        setup.wal,
+		fsm:        setup.fsm,
+		applier:    setup.applier,
+		membership: newTestMembership(t),
 	}
 	node.confState.Store(setup.confState)
 
@@ -42,7 +42,7 @@ func (s *testApplierSetup) applyEntry(t *testing.T, ctx context.Context, entry r
 		runDone <- s.applier.Run(ctx, s.stop)
 	}()
 
-	s.applier.Submit([]raftpb.Entry{entry}, nil, s.stop)
+	s.applier.Submit([]raftpb.Entry{entry}, nil, nil, s.stop)
 	s.applier.Drain(s.stop)
 
 	close(s.stop)

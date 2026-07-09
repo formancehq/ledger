@@ -105,7 +105,7 @@ func main() {
 		// rejected and a committed one is a genuine violation (no benign
 		// interleaving where another driver credits the source).
 		run := r.Uint64()
-		ledger := fmt.Sprintf("deferr-%d", run%1_000_000)
+		ledger := internal.PrefixDefinitiveErrors.WithSeed(run)
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}

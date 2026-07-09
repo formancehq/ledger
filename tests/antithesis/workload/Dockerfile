@@ -31,12 +31,29 @@ RUN mkdir -p /cmds
 # compile the unique main.go (~117 LOC each).
 RUN go build -race ./internal/...
 
+# Optional dev-loop filter: when INCLUDED_DRIVERS is a non-empty comma-separated
+# list of <template>/<driver> paths (e.g. "main/parallel_driver_bulk,main/first_default_ledger"),
+# only those binaries are built and shipped. The Antithesis composer then has
+# no choice but to schedule them — useful for iterating on a targeted fix
+# without waiting for the global composer to randomly pick the driver under
+# test. Leave empty (default) for full-coverage runs.
+ARG INCLUDED_DRIVERS=""
+
 # Build all workload binaries in parallel, preserving the
 # bin/cmds/<template>/<command> layout so each command lands in its own test
 # template directory. The shared dependency cache is warm from the previous step,
 # so each build only compiles main.go.
-RUN find ./bin/cmds -mindepth 2 -maxdepth 2 -type d \
-        | sed 's|^\./bin/cmds/||' \
+RUN set -e; \
+    find ./bin/cmds -mindepth 2 -maxdepth 2 -type d | sed 's|^\./bin/cmds/||' > /tmp/all-drivers.txt; \
+    if [ -n "$INCLUDED_DRIVERS" ]; then \
+        echo "$INCLUDED_DRIVERS" | tr ',' '\n' > /tmp/include.txt; \
+        grep -Fx -f /tmp/include.txt /tmp/all-drivers.txt > /tmp/targets.txt; \
+        echo "Filtered build ($(wc -l < /tmp/targets.txt) of $(wc -l < /tmp/all-drivers.txt) drivers):"; \
+        cat /tmp/targets.txt; \
+    else \
+        cp /tmp/all-drivers.txt /tmp/targets.txt; \
+    fi; \
+    cat /tmp/targets.txt \
         | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner

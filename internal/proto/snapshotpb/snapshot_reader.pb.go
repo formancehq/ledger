@@ -15,18 +15,18 @@ type PrepareSnapshotRequestReader interface {
 	Mutate() *PrepareSnapshotRequest
 }
 
-type prepareSnapshotRequestReadonly struct{ v *PrepareSnapshotRequest }
+type prepareSnapshotRequestReadonly PrepareSnapshotRequest
 
 func (r *prepareSnapshotRequestReadonly) GetNodeId() string {
-	return r.v.GetNodeId()
+	return (*PrepareSnapshotRequest)(r).GetNodeId()
 }
 
 func (r *prepareSnapshotRequestReadonly) GetMinAppliedIndex() uint64 {
-	return r.v.GetMinAppliedIndex()
+	return (*PrepareSnapshotRequest)(r).GetMinAppliedIndex()
 }
 
 func (r *prepareSnapshotRequestReadonly) Mutate() *PrepareSnapshotRequest {
-	return r.v.CloneVT()
+	return (*PrepareSnapshotRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PrepareSnapshotRequest.
@@ -34,7 +34,7 @@ func (m *PrepareSnapshotRequest) AsReader() PrepareSnapshotRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &prepareSnapshotRequestReadonly{v: m}
+	return (*prepareSnapshotRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PrepareSnapshotRequest.
@@ -87,14 +87,14 @@ type PrepareSnapshotResponseReader interface {
 	Mutate() *PrepareSnapshotResponse
 }
 
-type prepareSnapshotResponseReadonly struct{ v *PrepareSnapshotResponse }
+type prepareSnapshotResponseReadonly PrepareSnapshotResponse
 
 func (r *prepareSnapshotResponseReadonly) GetSessionId() string {
-	return r.v.GetSessionId()
+	return (*PrepareSnapshotResponse)(r).GetSessionId()
 }
 
 func (r *prepareSnapshotResponseReadonly) GetManifest() SnapshotManifestReader {
-	v := r.v.GetManifest()
+	v := (*PrepareSnapshotResponse)(r).GetManifest()
 	if v == nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (r *prepareSnapshotResponseReadonly) GetManifest() SnapshotManifestReader {
 }
 
 func (r *prepareSnapshotResponseReadonly) Mutate() *PrepareSnapshotResponse {
-	return r.v.CloneVT()
+	return (*PrepareSnapshotResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this PrepareSnapshotResponse.
@@ -110,7 +110,7 @@ func (m *PrepareSnapshotResponse) AsReader() PrepareSnapshotResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &prepareSnapshotResponseReadonly{v: m}
+	return (*prepareSnapshotResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this PrepareSnapshotResponse.
@@ -163,18 +163,18 @@ type FetchFileRequestReader interface {
 	Mutate() *FetchFileRequest
 }
 
-type fetchFileRequestReadonly struct{ v *FetchFileRequest }
+type fetchFileRequestReadonly FetchFileRequest
 
 func (r *fetchFileRequestReadonly) GetSessionId() string {
-	return r.v.GetSessionId()
+	return (*FetchFileRequest)(r).GetSessionId()
 }
 
 func (r *fetchFileRequestReadonly) GetPath() string {
-	return r.v.GetPath()
+	return (*FetchFileRequest)(r).GetPath()
 }
 
 func (r *fetchFileRequestReadonly) Mutate() *FetchFileRequest {
-	return r.v.CloneVT()
+	return (*FetchFileRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this FetchFileRequest.
@@ -182,7 +182,7 @@ func (m *FetchFileRequest) AsReader() FetchFileRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &fetchFileRequestReadonly{v: m}
+	return (*fetchFileRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this FetchFileRequest.
@@ -235,18 +235,18 @@ type FetchFileResponseReader interface {
 	Mutate() *FetchFileResponse
 }
 
-type fetchFileResponseReadonly struct{ v *FetchFileResponse }
+type fetchFileResponseReadonly FetchFileResponse
 
 func (r *fetchFileResponseReadonly) GetData() []byte {
-	return bytes.Clone(r.v.GetData())
+	return bytes.Clone((*FetchFileResponse)(r).GetData())
 }
 
 func (r *fetchFileResponseReadonly) GetEof() bool {
-	return r.v.GetEof()
+	return (*FetchFileResponse)(r).GetEof()
 }
 
 func (r *fetchFileResponseReadonly) Mutate() *FetchFileResponse {
-	return r.v.CloneVT()
+	return (*FetchFileResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this FetchFileResponse.
@@ -254,7 +254,7 @@ func (m *FetchFileResponse) AsReader() FetchFileResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &fetchFileResponseReadonly{v: m}
+	return (*fetchFileResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this FetchFileResponse.
@@ -306,14 +306,14 @@ type CloseSessionRequestReader interface {
 	Mutate() *CloseSessionRequest
 }
 
-type closeSessionRequestReadonly struct{ v *CloseSessionRequest }
+type closeSessionRequestReadonly CloseSessionRequest
 
 func (r *closeSessionRequestReadonly) GetSessionId() string {
-	return r.v.GetSessionId()
+	return (*CloseSessionRequest)(r).GetSessionId()
 }
 
 func (r *closeSessionRequestReadonly) Mutate() *CloseSessionRequest {
-	return r.v.CloneVT()
+	return (*CloseSessionRequest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CloseSessionRequest.
@@ -321,7 +321,7 @@ func (m *CloseSessionRequest) AsReader() CloseSessionRequestReader {
 	if m == nil {
 		return nil
 	}
-	return &closeSessionRequestReadonly{v: m}
+	return (*closeSessionRequestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CloseSessionRequest.
@@ -372,10 +372,10 @@ type CloseSessionResponseReader interface {
 	Mutate() *CloseSessionResponse
 }
 
-type closeSessionResponseReadonly struct{ v *CloseSessionResponse }
+type closeSessionResponseReadonly CloseSessionResponse
 
 func (r *closeSessionResponseReadonly) Mutate() *CloseSessionResponse {
-	return r.v.CloneVT()
+	return (*CloseSessionResponse)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this CloseSessionResponse.
@@ -383,7 +383,7 @@ func (m *CloseSessionResponse) AsReader() CloseSessionResponseReader {
 	if m == nil {
 		return nil
 	}
-	return &closeSessionResponseReadonly{v: m}
+	return (*closeSessionResponseReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this CloseSessionResponse.
@@ -435,14 +435,14 @@ type SnapshotManifestReader interface {
 	Mutate() *SnapshotManifest
 }
 
-type snapshotManifestReadonly struct{ v *SnapshotManifest }
+type snapshotManifestReadonly SnapshotManifest
 
 func (r *snapshotManifestReadonly) GetFiles() FileEntryListReader {
-	return NewFileEntryListReader(r.v.GetFiles())
+	return NewFileEntryListReader((*SnapshotManifest)(r).GetFiles())
 }
 
 func (r *snapshotManifestReadonly) Mutate() *SnapshotManifest {
-	return r.v.CloneVT()
+	return (*SnapshotManifest)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this SnapshotManifest.
@@ -450,7 +450,7 @@ func (m *SnapshotManifest) AsReader() SnapshotManifestReader {
 	if m == nil {
 		return nil
 	}
-	return &snapshotManifestReadonly{v: m}
+	return (*snapshotManifestReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this SnapshotManifest.
@@ -504,22 +504,22 @@ type FileEntryReader interface {
 	Mutate() *FileEntry
 }
 
-type fileEntryReadonly struct{ v *FileEntry }
+type fileEntryReadonly FileEntry
 
 func (r *fileEntryReadonly) GetPath() string {
-	return r.v.GetPath()
+	return (*FileEntry)(r).GetPath()
 }
 
 func (r *fileEntryReadonly) GetSize() uint64 {
-	return r.v.GetSize()
+	return (*FileEntry)(r).GetSize()
 }
 
 func (r *fileEntryReadonly) GetSha256() string {
-	return r.v.GetSha256()
+	return (*FileEntry)(r).GetSha256()
 }
 
 func (r *fileEntryReadonly) Mutate() *FileEntry {
-	return r.v.CloneVT()
+	return (*FileEntry)(r).CloneVT()
 }
 
 // AsReader returns a read-only view of this FileEntry.
@@ -527,7 +527,7 @@ func (m *FileEntry) AsReader() FileEntryReader {
 	if m == nil {
 		return nil
 	}
-	return &fileEntryReadonly{v: m}
+	return (*fileEntryReadonly)(m)
 }
 
 // Mutate returns a mutable deep clone of this FileEntry.

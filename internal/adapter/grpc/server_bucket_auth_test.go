@@ -15,7 +15,7 @@ import (
 )
 
 // TestBarrier_RequiresOpsReadScope guards the fix for the unauthenticated
-// Barrier RPC: it proposes a no-op through Raft, so it must require ops:read
+// Barrier RPC: it proposes a no-op through Raft, so it must require ledger:OpsRead
 // and must not reach the controller (i.e. must not propose) when the caller
 // lacks it.
 func TestBarrier_RequiresOpsReadScope(t *testing.T) {
@@ -57,17 +57,17 @@ func TestBarrier_RequiresOpsReadScope(t *testing.T) {
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
 	})
 
-	t.Run("rejects caller whose scopes omit ops:read", func(t *testing.T) {
+	t.Run("rejects caller whose scopes omit ledger:OpsRead", func(t *testing.T) {
 		t.Parallel()
 
-		// Effective scopes lack ops:read — the wrong-scope case.
+		// Effective scopes lack ledger:OpsRead — the wrong-scope case.
 		impl := newImpl(anonCfg(internalauth.ScopeAccountsRead, internalauth.ScopeTransactionsRead), false)
 
 		_, err := impl.Barrier(context.Background(), &servicepb.BarrierRequest{})
 		require.Error(t, err)
 	})
 
-	t.Run("allows caller with ops:read", func(t *testing.T) {
+	t.Run("allows caller with ledger:OpsRead", func(t *testing.T) {
 		t.Parallel()
 
 		impl := newImpl(anonCfg(internalauth.ScopeOpsRead), true)

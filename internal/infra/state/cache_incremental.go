@@ -77,14 +77,17 @@ func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attribut
 	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
 }
 
-// writeCacheTombstone writes a tombstone row to both gen bytes in 0xFF,
-// matching AttributeCache.Del's tombstone semantic. The on-disk form is
-// [tag 8][0x01] (no trailing bytes).
-func writeCacheTombstone(batch *dal.WriteSession, cacheType byte, id attributes.U128, tag uint64) error {
-	for _, genByte := range []byte{0, 1} {
-		if err := writeCacheRaw(batch, genByte, cacheType, id, tag, true, nil); err != nil {
-			return fmt.Errorf("writing cache tombstone: %w", err)
-		}
+// writeCacheTombstone writes a tombstone row to the current gen0 byte in 0xFF,
+// matching AttributeCache.Del's gen0-only tombstone semantic. The on-disk form
+// is [tag 8][0x01] (no trailing bytes).
+//
+// The gen1 byte is intentionally NOT touched: any pre-existing live entry sits
+// there as harmless stale data (gen0 wins on every read) and is purged on the
+// next rotation alongside the rest of gen1. Writing only gen0 keeps the
+// in-memory cache equal to disk for the same applied index (invariant #1).
+func writeCacheTombstone(batch *dal.WriteSession, genByte, cacheType byte, id attributes.U128, tag uint64) error {
+	if err := writeCacheRaw(batch, genByte, cacheType, id, tag, true, nil); err != nil {
+		return fmt.Errorf("writing cache tombstone: %w", err)
 	}
 
 	return nil
@@ -144,7 +147,7 @@ func flushAttributeAndCache[K attributes.Key, V proto.Message](
 			return fmt.Errorf("failed deleting %s attribute: %w", label, err)
 		}
 
-		if err := writeCacheTombstone(batch, cacheType, deletion.ID, deletion.Tag); err != nil {
+		if err := writeCacheTombstone(batch, genByte, cacheType, deletion.ID, deletion.Tag); err != nil {
 			return fmt.Errorf("failed writing %s cache tombstone: %w", label, err)
 		}
 	}

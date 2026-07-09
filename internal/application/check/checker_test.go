@@ -355,7 +355,7 @@ func (s *scopeImpl) ForOrder(_, _ []byte) processing.Scope { return s }
 
 // CheckCoverage is a no-op for the test scopeImpl: there is no coverage
 // to enforce, every read is admitted.
-func (s *scopeImpl) CheckCoverage(_ byte, _ []byte) error { return nil }
+func (s *scopeImpl) CheckCoverage(_ byte, _ processing.CoverageKey) error { return nil }
 
 // scopeFuncAccessor is the generic test-side Accessor: each operation is
 // a function closure wired against the scope's in-memory maps. The Put /
@@ -377,10 +377,12 @@ func (a *scopeFuncAccessor[K, V, R]) Put(key K, value V) {
 	}
 }
 
-func (a *scopeFuncAccessor[K, V, R]) Delete(key K) {
+func (a *scopeFuncAccessor[K, V, R]) Delete(key K) error {
 	if a.delete != nil {
 		a.delete(key)
 	}
+
+	return nil
 }
 
 func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {

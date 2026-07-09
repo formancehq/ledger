@@ -17,11 +17,11 @@ spec:
                 -- mb --ignore-existing minio/e2e-full-backup
             timeout: 60s
 
-    # 2. Create LedgerService and wait for StatefulSet readiness.
-    - name: Deploy LedgerService
+    # 2. Create Cluster and wait for StatefulSet readiness.
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -40,11 +40,11 @@ spec:
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
-    # 4. Create LedgerBackup and assert it reaches Ready with a completed full backup.
+    # 4. Create Backup and assert it reaches Ready with a completed full backup.
     - name: Run full backup
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-ready.yaml
 

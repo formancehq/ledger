@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
-  title: Ledger V3 POC API
-  description: API for the Ledger V3 Proof of Concept with Raft consensus
+  title: Ledger v3 API
+  description: API for the Ledger v3, a distributed accounting ledger with Raft consensus
   version: 1.0.0
   contact:
     name: Formance
@@ -320,7 +320,7 @@ paths:
       description: |
         Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
-        Supports cursor pagination via the `after` query parameter. Requires `ops:read` scope.
+        Supports cursor pagination via the `after` query parameter. Requires `ledger:OpsRead` scope.
       operationId: listLedgerLogs
       tags:
         - Logs
@@ -543,7 +543,11 @@ paths:
             type: string
         - name: prefix
           in: query
-          description: Filter accounts by address prefix (e.g. "users:")
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
+            Matching is not path-segment aware: `acc:1` also matches
+            `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
       responses:
@@ -614,7 +618,7 @@ paths:
       description: |
         Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
         Supports filtering by account address prefix, grouping by account prefixes, and max-precision merging.
-        Requires `accounts:read` scope.
+        Requires `ledger:AccountRead` scope.
       operationId: aggregateVolumes
       tags:
         - Volumes
@@ -625,7 +629,10 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - name: prefix
           in: query
-          description: Filter accounts by address prefix
+          description: |
+            Filter accounts whose address starts with this raw byte-level
+            prefix. Matching is not path-segment aware (see the note on the
+            `prefix` query parameter of `GET /v3/{ledgerName}/accounts`).
           schema:
             type: string
         - name: useMaxPrecision
@@ -1412,10 +1419,45 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/_bulk:
+  /v3/{ledgerName}/bulk:
     post:
       summary: Bulk operations
-      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request. Requires `ledger:write` scope.
+      description: |
+        Execute multiple operations (create transactions, add metadata,
+        revert transactions, delete metadata) in a single request. Requires
+        `ledger:write` scope.
+
+        The response status is decided in three tiers:
+
+        1. **Request-level failures** (before per-element processing):
+           malformed body → `400`, missing/insufficient scope → `401` or
+           `403`, oversized body → `413`, leader unavailable → `503`.
+           Returned unconditionally, `continueOnFailure` does not apply.
+        2. **Infrastructure failures during processing** (transport
+           timeout, cache-horizon exceeded, storage error): the overall
+           status is `500`, regardless of `continueOnFailure`. Callers
+           must retry the bulk — the top-level failure means the request
+           did not complete deterministically.
+        3. **Per-element errors during processing**: each element's error
+           carries the HTTP status it would surface as a single request
+           (via the same mapping `handleError` uses). The top-level
+           status is the "worst" of them, with `continueOnFailure`
+           applying only to per-element business failures (4xx):
+           - Business failures (validation, not-found, conflict,
+             precondition, permission — 4xx): rolled up per
+             `continueOnFailure`. `true` → `200`; `false` (default) →
+             the highest 4xx among failing elements (typically `400`).
+           - Rate-limit failures (`KindResourceExhausted`, `429`):
+             surface unconditionally as `429`.
+           - Retryable infrastructure failures (leader loss,
+             cache-horizon exceeded, `KindUnavailable`): surface as
+             `503` with `Retry-After: 1`, regardless of
+             `continueOnFailure`.
+           - Non-retryable infrastructure failures (transport / storage
+             errors, `KindInternal`, unclassified): surface as `500`.
+           - Aborted elements (`context.Canceled` from the sequential
+             runner after a prior failure): contribute nothing — the
+             originating error drives the rollup.
       operationId: bulkOperations
       tags:
         - Transactions
@@ -1457,69 +1499,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '413':
-          description: Request entity too large
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '405':
-          $ref: '#/components/responses/MethodNotAllowed'
-
-  /v3/{ledgerName}/bulk:
-    post:
-      summary: Bulk operations (alternate path)
-      description: |
-        Alias for `POST /{ledgerName}/_bulk`. Execute multiple operations
-        (create transactions, add metadata, revert transactions, delete metadata)
-        in a single request. Requires `ledger:write` scope.
-      operationId: bulkOperationsAlternate
-      tags:
-        - Transactions
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-        - name: continueOnFailure
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Continue processing remaining operations even if one fails
-        - name: atomic
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Execute all operations atomically (not yet supported)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/BulkElement'
-      responses:
-        '200':
-          description: Bulk operations completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BulkResponse'
-        '400':
-          description: Bulk operations completed with errors, or invalid request
+        '429':
+          description: |
+            A per-element error mapped to `KindResourceExhausted` (quota
+            or rate-limit hit during processing). Surfaces unconditionally,
+            regardless of `continueOnFailure`. Body carries the per-element
+            details in `data`.
           content:
             application/json:
               schema:
@@ -1548,7 +1533,7 @@ paths:
       summary: Create a prepared query
       description: |
         Creates a new prepared query for a ledger. A prepared query defines a reusable
-        filter that can be executed later with parameter substitution. Requires `queries:write` scope.
+        filter that can be executed later with parameter substitution. Requires `ledger:QueryWrite` scope.
       operationId: createPreparedQuery
       tags:
         - Prepared Queries
@@ -1585,7 +1570,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     get:
       summary: List prepared queries
-      description: Returns a list of all prepared queries for a ledger. Requires `queries:read` scope.
+      description: Returns a list of all prepared queries for a ledger. Requires `ledger:QueryRead` scope.
       operationId: listPreparedQueries
       tags:
         - Prepared Queries
@@ -1620,7 +1605,7 @@ paths:
     put:
       summary: Update a prepared query
       description: |
-        Updates the filter of an existing prepared query. Requires `queries:write` scope.
+        Updates the filter of an existing prepared query. Requires `ledger:QueryWrite` scope.
       operationId: updatePreparedQuery
       tags:
         - Prepared Queries
@@ -1655,7 +1640,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a prepared query
-      description: Deletes a prepared query from a ledger. Requires `queries:write` scope.
+      description: Deletes a prepared query from a ledger. Requires `ledger:QueryWrite` scope.
       operationId: deletePreparedQuery
       tags:
         - Prepared Queries
@@ -1689,7 +1674,7 @@ paths:
       description: |
         Executes a prepared query with optional parameter substitution. Supports LIST and
         AGGREGATE_VOLUMES modes with cursor pagination. Also accepts pageSize and cursor
-        as query parameters. Requires `queries:read` scope.
+        as query parameters. Requires `ledger:QueryRead` scope.
       operationId: executePreparedQuery
       tags:
         - Prepared Queries
@@ -1743,7 +1728,7 @@ paths:
       summary: Add an account type
       description: |
         Adds a new account type to a ledger's chart of accounts. Account types define
-        address patterns for account validation. Requires `metadata:write` scope.
+        address patterns for account validation. Requires `ledger:MetadataWrite` scope.
       operationId: addAccountType
       tags:
         - Account Types
@@ -1781,7 +1766,7 @@ paths:
       summary: List account types
       description: |
         Returns all account types defined on a ledger, sorted by name.
-        Requires `accounts:read` scope.
+        Requires `ledger:AccountRead` scope.
       operationId: listAccountTypes
       tags:
         - Account Types
@@ -1817,7 +1802,7 @@ paths:
       summary: Set default enforcement mode
       description: |
         Sets the default enforcement mode for accounts that do not match any defined
-        account type. Must be STRICT or AUDIT. Requires `metadata:write` scope.
+        account type. Must be STRICT or AUDIT. Requires `ledger:MetadataWrite` scope.
       operationId: setDefaultEnforcementMode
       tags:
         - Account Types
@@ -1853,7 +1838,7 @@ paths:
   /v3/{ledgerName}/account-types/{typeName}:
     get:
       summary: Get an account type
-      description: Retrieves a specific account type by name from a ledger. Requires `accounts:read` scope.
+      description: Retrieves a specific account type by name from a ledger. Requires `ledger:AccountRead` scope.
       operationId: getAccountType
       tags:
         - Account Types
@@ -1886,7 +1871,7 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove an account type
-      description: Removes an account type from a ledger's chart of accounts. Requires `metadata:write` scope.
+      description: Removes an account type from a ledger's chart of accounts. Requires `ledger:MetadataWrite` scope.
       operationId: removeAccountType
       tags:
         - Account Types
@@ -2482,9 +2467,12 @@ components:
           type: string
           description: Error description (present only on error)
         data:
-          description: Operation result data (transaction object for CREATE_TRANSACTION, null for others)
+          description: |
+            Operation result data. For `CREATE_TRANSACTION` this is the full
+            created transaction object. Omitted for other actions and on error.
           nullable: true
-          description: Log ID of the operation
+          allOf:
+            - $ref: '#/components/schemas/TransactionResponse'
 
     CreateTransactionResponse:
       type: object
@@ -2577,7 +2565,16 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/VolumesWithBalance'
-          description: Account volumes per asset (input, output, balance)
+          description: |
+            Per-asset input/output/balance. The field is defined here so
+            the schema stays stable across future wire changes, but it is
+            not populated on the current v3 wire — `Account.MarshalJSON`
+            drops it. For per-account balances, use a prepared query with
+            type `AGGREGATE_VOLUMES` and an exact-address filter
+            (`address.hardcodedExact`); the aggregated volumes returned by
+            `GET /v3/{ledgerName}/volumes?prefix=…` match by raw byte
+            prefix (`acc:1` matches `acc:10`) and will produce incorrect
+            balances for a single-account lookup.
 
     VolumesWithBalance:
       type: object
@@ -2622,6 +2619,11 @@ components:
 
     AggregatedVolume:
       type: object
+      description: |
+        Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
+        Prepared-query `AGGREGATE_VOLUMES` responses use the same shape
+        conceptually but currently leak the raw protojson encoding (numeric
+        Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
       required:
         - asset
         - input
@@ -2682,19 +2684,27 @@ components:
         reverted:
           type: boolean
           description: Whether this transaction has been reverted
-        inserted_at:
+        insertedAt:
           type: string
           format: date-time
           description: When the transaction was inserted into the ledger
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Last update timestamp
-        reverted_at:
+        revertedAt:
           type: string
           format: date-time
           description: When the transaction was reverted (null if not reverted)
           nullable: true
+        revertedByTransactionId:
+          type: integer
+          format: int64
+          description: ID of the transaction that reverted this one (absent when not reverted)
+        revertsTransactionId:
+          type: integer
+          format: int64
+          description: ID of the original transaction this transaction reverts (absent when this is not a revert)
 
     RevertedTransaction:
       type: object
@@ -3161,6 +3171,251 @@ components:
           minimum: 0
           default: 0
           description: Max logs per batch (0 = server default 100, capped by server's --mirror-max-batch-size)
+        rewriteRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MirrorRewriteRule'
+          description: >
+            Mirror rewrite rules applied, in order, to every mirror log entry as
+            v2 logs are translated into v3 orders. Each rule is scoped to exactly
+            one variant of the log's `data` oneof, with a CEL `match` predicate
+            and a list of typed actions.
+
+    MirrorRewriteRule:
+      type: object
+      description: >
+        Transforms a mirror log entry during v2→v3 translation. Exactly one
+        scope field (createdTransaction, revertedTransaction, savedMetadata,
+        deletedMetadata, or anyVariant) must be set. That scope determines both
+        the CEL type of `log` in the rule's `match` and the set of actions the
+        rule may carry. When `stop` is true and the rule matches (scope +
+        predicate), no further rules are evaluated. Rewriting is a
+        deterministic, translation-time projection; the source v2 ledger is
+        never modified.
+      properties:
+        createdTransaction:
+          $ref: '#/components/schemas/CreatedTransactionRule'
+        revertedTransaction:
+          $ref: '#/components/schemas/RevertedTransactionRule'
+        savedMetadata:
+          $ref: '#/components/schemas/SavedMetadataRule'
+        deletedMetadata:
+          $ref: '#/components/schemas/DeletedMetadataRule'
+        anyVariant:
+          $ref: '#/components/schemas/AnyVariantRule'
+        stop:
+          type: boolean
+
+    CreatedTransactionRule:
+      type: object
+      description: >
+        Rule scoped to MirrorCreatedTransaction. Inside `match`, `log` is the
+        created-transaction proto directly (e.g. `log.metadata["k"]`).
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreatedTransactionAction'
+
+    RevertedTransactionRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevertedTransactionAction'
+
+    SavedMetadataRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedMetadataAction'
+
+    DeletedMetadataRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletedMetadataAction'
+
+    AnyVariantRule:
+      type: object
+      description: >
+        Rule scoped to every variant. `log` is the full MirrorLogEntry — use
+        `has(log.<variant>)` guards to read variant-specific fields.
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyVariantAction'
+
+    CreatedTransactionAction:
+      type: object
+      description: Exactly one field must be set.
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        setAccountMetadata:
+          $ref: '#/components/schemas/SetAccountMetadataAction'
+        deleteAccountMetadata:
+          $ref: '#/components/schemas/DeleteAccountMetadataAction'
+        setAccountMetadataFromAddress:
+          $ref: '#/components/schemas/SetAccountMetadataFromAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RevertedTransactionAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    SavedMetadataAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    DeletedMetadataAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    AnyVariantAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RewriteAddressAction:
+      type: object
+      required: [pattern, replacement]
+      properties:
+        pattern:
+          type: string
+          description: RE2 pattern (validated at admission).
+        replacement:
+          type: string
+
+    SetMetadataAction:
+      type: object
+      description: >
+        `value` is a literal metadata string; `value_expr` is a CEL expression
+        typed against the current variant and evaluated at commit time (e.g.
+        `log.reference`). Exactly one of the two should be set; if neither is
+        set the value defaults to the empty string. Optional `type` coerces
+        the produced string into a typed MetadataValue via the platform
+        conversion matrix — one of "string" (default), "int64", "bool",
+        "uint64", "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32",
+        "datetime".
+      required: [key]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        value_expr:
+          type: string
+        type:
+          type: string
+
+    DeleteMetadataAction:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+
+    SetAccountMetadataAction:
+      type: object
+      description: >
+        See SetMetadataAction for the literal-vs-CEL and `type` semantics.
+      required: [account, key]
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+        value:
+          type: string
+        value_expr:
+          type: string
+        type:
+          type: string
+
+    DeleteAccountMetadataAction:
+      type: object
+      required: [account, key]
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+
+    SetAccountMetadataFromAddressAction:
+      type: object
+      description: >
+        For every posting address matching `pattern`, iterate every entry in
+        `replacements` and set accountMetadata[address][key] to the RE2
+        replacement of the address. Each replacement carries an optional
+        metadata `type` token (same tokens as SetMetadataAction.type).
+      required: [pattern, replacements]
+      properties:
+        pattern:
+          type: string
+        replacements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetAccountMetadataFromAddressReplacement'
+
+    SetAccountMetadataFromAddressReplacement:
+      type: object
+      required: [key, replacement]
+      properties:
+        key:
+          type: string
+        replacement:
+          type: string
+        type:
+          type: string
+
+    DropAction:
+      type: object
+      description: Turns the entry into a fill-gap that preserves log-ID and tx-ID continuity.
 
     SaveNumscriptRequest:
       type: object
@@ -3552,36 +3807,15 @@ components:
 
     ExecutePreparedQueryResponse:
       type: object
-      properties:
-        cursor:
-          type: object
-          properties:
-            hasMore:
-              type: boolean
-            next:
-              type: string
-              description: Cursor to pass for the next page
-            data:
-              type: array
-              items:
-                type: string
-              description: Entity IDs (account addresses or transaction IDs)
-        aggregateResult:
-          type: object
-          properties:
-            volumes:
-              type: array
-              items:
-                type: object
-                properties:
-                  asset:
-                    type: string
-                  input:
-                    type: string
-                    description: Total input as big integer string
-                  output:
-                    type: string
-                    description: Total output as big integer string
+      description: |
+        Response wraps either a paged cursor (list-style targets like
+        `LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) or an aggregate result
+        (`AGGREGATE_VOLUMES`). The current wire encoding leaks the raw
+        protobuf oneof shape (Go-cased `Result.Cursor` / `Result.Aggregate`
+        with nested proto field names). Reconciling the wire with a clean
+        top-level `cursor` / `aggregateResult` envelope is tracked in
+        EN-1465; this schema will be finalised together with that fix.
+      additionalProperties: true
 
     HealthResponse:
       type: object

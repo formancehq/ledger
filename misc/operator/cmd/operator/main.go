@@ -47,6 +47,17 @@ func main() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(ledgerv1alpha1.AddToScheme(scheme))
 
+	// Discover the operator's own namespace up-front. Canonical seed
+	// Secrets live there and are accessed via an uncached APIReader (see
+	// CredentialsReconciler.APIReader), so --watch-namespace scope
+	// stays exactly what the user asked for — the operator namespace is
+	// NOT added to the cache.
+	operatorNamespace, err := controller.DiscoverOperatorNamespace()
+	if err != nil {
+		setupLog.Error(err, "unable to determine operator namespace")
+		os.Exit(1)
+	}
+
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -82,22 +93,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerServiceReconciler{
+	if err = (&controller.ClusterReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,
 		Clientset: clientset,
-		Recorder:  mgr.GetEventRecorderFor("ledgerservice-controller"),
+		Recorder:  mgr.GetEventRecorderFor("cluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
+		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerClusterAgentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err = (&controller.CredentialsReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		OperatorNamespace: operatorNamespace,
+		APIReader:         mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
+		setupLog.Error(err, "unable to create controller", "controller", "Credentials")
 		os.Exit(1)
 	}
 
@@ -112,22 +125,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerBackupReconciler{
+	if err = (&controller.BackupReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackup")
+		setupLog.Error(err, "unable to create controller", "controller", "Backup")
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerBackupRunReconciler{
+	if err = (&controller.BackupRunReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "LedgerBackupRun")
+		setupLog.Error(err, "unable to create controller", "controller", "BackupRun")
 		os.Exit(1)
 	}
 

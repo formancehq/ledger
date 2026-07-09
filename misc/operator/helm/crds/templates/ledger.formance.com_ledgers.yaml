@@ -30,8 +30,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Ledger manages the lifecycle of a ledger on a LedgerService via
-          gRPC.
+        description: Ledger manages the lifecycle of a ledger on a Cluster via gRPC.
         properties:
           apiVersion:
             description: |-
@@ -53,6 +52,105 @@ spec:
           spec:
             description: LedgerCRDSpec defines the desired state of a Ledger.
             properties:
+              indexes:
+                description: |-
+                  Indexes declares the account/transaction indexes the operator maintains
+                  on this ledger. This is especially useful for mirror ledgers, which are
+                  read-only and provisioned entirely through this CRD: it lets you keep the
+                  mirror queryable without hand-running `ledgerctl indexes create`.
+
+                  Ownership semantics:
+                    - Field ABSENT (nil) => unmanaged. The operator never lists, creates,
+                      or drops indexes on this ledger. This is the safe default so an
+                      operator upgrade does not touch pre-existing indexes.
+                    - Field PRESENT (even empty {}) => managed. The operator reconciles the
+                      indexes it owns to match this spec: it creates the declared indexes
+                      and drops indexes it previously created that are no longer declared.
+                      It only ever drops indexes it created itself (tracked in
+                      status.appliedIndexes) — externally-created indexes and index kinds
+                      this CRD cannot express are left untouched. An empty {} therefore
+                      means "drop the indexes I previously managed", not "drop every index".
+
+                  Index maintenance is independent of ledger immutability: editing this
+                  field never trips the SpecDrifted condition.
+                properties:
+                  account:
+                    description: |-
+                      Account lists the builtin account indexes to maintain. Only "asset"
+                      (which backs the `has asset` filter) is supported today.
+                    items:
+                      enum:
+                      - asset
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  metadata:
+                    description: |-
+                      Metadata lists the metadata-key indexes to maintain on account or
+                      transaction metadata. Each (target, key) pair must be unique.
+                    items:
+                      description: |-
+                        MetadataIndexSpec declares one metadata-key index. Creating a metadata index
+                        requires the metadata field to exist in the ledger schema first, so the
+                        operator declares the field type (via `ledgers set-metadata-type`) before
+                        creating the index. The declared field type is reconciled too: changing Type
+                        re-declares the field, which the server treats as a schema change (it bumps
+                        the index forward-encoding version and schedules a rewrite).
+                      properties:
+                        key:
+                          description: Key is the metadata key name to index.
+                          maxLength: 256
+                          minLength: 1
+                          type: string
+                        target:
+                          description: Target of the metadata key.
+                          enum:
+                          - account
+                          - transaction
+                          type: string
+                        type:
+                          description: Type is the metadata field type declared before
+                            indexing.
+                          enum:
+                          - string
+                          - int64
+                          - bool
+                          - uint64
+                          - int8
+                          - int16
+                          - int32
+                          - uint8
+                          - uint16
+                          - uint32
+                          - datetime
+                          type: string
+                      required:
+                      - key
+                      - target
+                      - type
+                      type: object
+                    maxItems: 64
+                    type: array
+                    x-kubernetes-validations:
+                    - message: metadata index (target,key) pairs must be unique
+                      rule: self.all(x, self.exists_one(y, y.target == x.target &&
+                        y.key == x.key))
+                  transaction:
+                    description: Transaction lists the builtin transaction indexes
+                      to maintain.
+                    items:
+                      enum:
+                      - reference
+                      - timestamp
+                      - address
+                      - sourceAddress
+                      - destinationAddress
+                      - insertedAt
+                      - revertedAt
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                type: object
               mirrorSource:
                 description: |-
                   MirrorSource configures the replication source when mode is "mirror".
@@ -117,9 +215,61 @@ spec:
                     description: Postgres configures replication via direct PostgreSQL
                       access.
                     properties:
-                      dsnFrom:
-                        description: DSNFrom references a Kubernetes Secret containing
-                          the PostgreSQL connection string.
+                      awsIamAuth:
+                        description: |-
+                          AWSIAMAuth enables AWS RDS IAM authentication: the mirror mints a
+                          short-lived (15 min) SigV4 token per connection from the ambient AWS
+                          credential chain on the ledger pod (IRSA, instance profile, env, profile).
+                          Mutually exclusive with PasswordFrom.
+
+                          In a typical EKS deployment, IRSA is wired by annotating the
+                          Cluster ServiceAccount with eks.amazonaws.com/role-arn, e.g.:
+                            kind: Cluster
+                            spec:
+                              serviceAccount:
+                                annotations:
+                                  eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/mirror-rds-iam
+                          The bound IAM role must allow rds-db:connect on the RDS db-user ARN
+                          (arn:aws:rds-db:REGION:ACCOUNT:dbuser:DB-RESOURCE-ID/USER). The role is
+                          shared across every mirror in the Cluster, so its policy must
+                          cover every RDS endpoint addressed by Ledger CRDs in that service.
+                        properties:
+                          assumeRoleArn:
+                            description: |-
+                              AssumeRoleArn is an optional STS role ARN to assume before minting the
+                              RDS IAM token. When set, the mirror calls sts:AssumeRole on this ARN
+                              using the pod's ambient credentials and signs the RDS token with the
+                              assumed credentials. This decouples each mirror's IAM identity from the
+                              pod's base role, so a single Cluster can mirror RDS instances
+                              across multiple AWS accounts or tenants: the pod's base role only needs
+                              sts:AssumeRole on the listed targets (no direct rds-db:connect grant).
+
+                              When left empty, the pod's ambient credentials are used directly and
+                              must hold rds-db:connect on the target db-user ARN.
+                            minLength: 1
+                            type: string
+                          region:
+                            description: |-
+                              Region is the AWS region of the RDS instance (e.g. "eu-west-1").
+                              Required to sign the IAM authentication token (SigV4).
+                            minLength: 1
+                            type: string
+                        required:
+                        - region
+                        type: object
+                      database:
+                        description: Database is the PostgreSQL database name.
+                        minLength: 1
+                        type: string
+                      host:
+                        description: Host is the PostgreSQL endpoint hostname (e.g.
+                          RDS DB cluster endpoint).
+                        minLength: 1
+                        type: string
+                      passwordFrom:
+                        description: |-
+                          PasswordFrom references a Kubernetes Secret containing the PostgreSQL password.
+                          Mutually exclusive with AWSIAMAuth.
                         properties:
                           key:
                             description: Key is the key within the Secret.
@@ -131,9 +281,322 @@ spec:
                         - key
                         - name
                         type: object
+                      port:
+                        default: 5432
+                        description: Port is the PostgreSQL port. Defaults to 5432.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      sslMode:
+                        default: require
+                        description: |-
+                          SSLMode is the libpq sslmode parameter (disable, allow, prefer, require,
+                          verify-ca, verify-full). Defaults to "require".
+                        enum:
+                        - disable
+                        - allow
+                        - prefer
+                        - require
+                        - verify-ca
+                        - verify-full
+                        type: string
+                      user:
+                        description: User is the PostgreSQL user.
+                        minLength: 1
+                        type: string
                     required:
-                    - dsnFrom
+                    - database
+                    - host
+                    - user
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of passwordFrom or awsIamAuth must be set
+                      rule: has(self.passwordFrom) != has(self.awsIamAuth)
+                    - message: awsIamAuth requires sslMode in {require, verify-ca,
+                        verify-full}; non-TLS sslmodes would let the SigV4 bearer
+                        token travel in cleartext
+                      rule: '!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode
+                        in [''require'',''verify-ca'',''verify-full'']'
+                  rewriteRules:
+                    description: |-
+                      RewriteRules are CEL rewrite rules applied, in order, to every mirror log
+                      entry as the mirror translates v2 source logs into v3 orders. Each rule can
+                      rename address segments, transform metadata, or drop transactions (see
+                      MirrorRewriteRule). Applies to both HTTP and Postgres sources.
+                    items:
+                      description: |-
+                        MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
+                        A rule is scoped to exactly one variant of MirrorLogEntry.data. That scope
+                        determines the CEL type of `log` in the rule's predicate and the set of
+                        actions the rule can carry: `set_account_metadata` inside a
+                        `savedMetadata` rule is impossible to write, because the proto oneof
+                        doesn't include it. When Stop is true and the rule matches (scope +
+                        predicate), no further rules are evaluated. Rewriting is a deterministic
+                        translation-time projection: the source v2 ledger is never modified.
+
+                        Exactly one of the scope fields must be set.
+                      properties:
+                        anyVariant:
+                          description: |-
+                            AnyVariantRule scopes to every variant. `log` is typed as MirrorLogEntry, so
+                            the predicate must use `has(log.<variant>)` guards. The action set is
+                            restricted to operations that make sense on every variant.
+                          properties:
+                            actions:
+                              items:
+                                properties:
+                                  drop:
+                                    type: object
+                                  rewriteAddress:
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacement:
+                                        type: string
+                                    required:
+                                    - pattern
+                                    - replacement
+                                    type: object
+                                type: object
+                              type: array
+                            match:
+                              type: string
+                          type: object
+                        createdTransaction:
+                          description: |-
+                            CreatedTransactionRule scopes to MirrorCreatedTransaction. Inside `match`,
+                            `log` is typed as the created-transaction proto — write `log.metadata["k"]`
+                            directly, not `log.created_transaction.metadata["k"]`.
+                          properties:
+                            actions:
+                              items:
+                                properties:
+                                  deleteAccountMetadata:
+                                    properties:
+                                      account:
+                                        type: string
+                                      key:
+                                        type: string
+                                    required:
+                                    - account
+                                    - key
+                                    type: object
+                                  deleteMetadata:
+                                    properties:
+                                      key:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                  drop:
+                                    type: object
+                                  rewriteAddress:
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacement:
+                                        type: string
+                                    required:
+                                    - pattern
+                                    - replacement
+                                    type: object
+                                  setAccountMetadata:
+                                    description: |-
+                                      SetAccountMetadataAction — see SetMetadataAction for the literal / valueExpr /
+                                      type semantics on the value field.
+                                    properties:
+                                      account:
+                                        type: string
+                                      key:
+                                        type: string
+                                      type:
+                                        type: string
+                                      value:
+                                        type: string
+                                      valueExpr:
+                                        type: string
+                                    required:
+                                    - account
+                                    - key
+                                    type: object
+                                  setAccountMetadataFromAddress:
+                                    description: |-
+                                      SetAccountMetadataFromAddressAction runs a single RE2 pattern over every
+                                      posting address and, for each match, writes one or more metadata entries
+                                      on the matched account using group-capturing replacements.
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacements:
+                                        items:
+                                          properties:
+                                            key:
+                                              type: string
+                                            replacement:
+                                              type: string
+                                            type:
+                                              type: string
+                                          required:
+                                          - key
+                                          - replacement
+                                          type: object
+                                        type: array
+                                    required:
+                                    - pattern
+                                    - replacements
+                                    type: object
+                                  setMetadata:
+                                    description: |-
+                                      SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`
+                                      is a CEL expression evaluated against the current variant at commit time
+                                      (e.g. `log.reference`). Exactly one should be set; setting neither writes an
+                                      empty string. Optional `type` coerces the produced string into a typed
+                                      MetadataValue — one of "string" (default), "int64", "bool", "uint64",
+                                      "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32", "datetime".
+                                    properties:
+                                      key:
+                                        type: string
+                                      type:
+                                        type: string
+                                      value:
+                                        type: string
+                                      valueExpr:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                type: object
+                              type: array
+                            match:
+                              type: string
+                          type: object
+                        deletedMetadata:
+                          properties:
+                            actions:
+                              items:
+                                properties:
+                                  drop:
+                                    type: object
+                                  rewriteAddress:
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacement:
+                                        type: string
+                                    required:
+                                    - pattern
+                                    - replacement
+                                    type: object
+                                type: object
+                              type: array
+                            match:
+                              type: string
+                          type: object
+                        revertedTransaction:
+                          properties:
+                            actions:
+                              items:
+                                properties:
+                                  deleteMetadata:
+                                    properties:
+                                      key:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                  drop:
+                                    type: object
+                                  rewriteAddress:
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacement:
+                                        type: string
+                                    required:
+                                    - pattern
+                                    - replacement
+                                    type: object
+                                  setMetadata:
+                                    description: |-
+                                      SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`
+                                      is a CEL expression evaluated against the current variant at commit time
+                                      (e.g. `log.reference`). Exactly one should be set; setting neither writes an
+                                      empty string. Optional `type` coerces the produced string into a typed
+                                      MetadataValue — one of "string" (default), "int64", "bool", "uint64",
+                                      "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32", "datetime".
+                                    properties:
+                                      key:
+                                        type: string
+                                      type:
+                                        type: string
+                                      value:
+                                        type: string
+                                      valueExpr:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                type: object
+                              type: array
+                            match:
+                              type: string
+                          type: object
+                        savedMetadata:
+                          properties:
+                            actions:
+                              items:
+                                properties:
+                                  deleteMetadata:
+                                    properties:
+                                      key:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                  drop:
+                                    type: object
+                                  rewriteAddress:
+                                    properties:
+                                      pattern:
+                                        type: string
+                                      replacement:
+                                        type: string
+                                    required:
+                                    - pattern
+                                    - replacement
+                                    type: object
+                                  setMetadata:
+                                    description: |-
+                                      SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`
+                                      is a CEL expression evaluated against the current variant at commit time
+                                      (e.g. `log.reference`). Exactly one should be set; setting neither writes an
+                                      empty string. Optional `type` coerces the produced string into a typed
+                                      MetadataValue — one of "string" (default), "int64", "bool", "uint64",
+                                      "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32", "datetime".
+                                    properties:
+                                      key:
+                                        type: string
+                                      type:
+                                        type: string
+                                      value:
+                                        type: string
+                                      valueExpr:
+                                        type: string
+                                    required:
+                                    - key
+                                    type: object
+                                type: object
+                              type: array
+                            match:
+                              type: string
+                          type: object
+                        stop:
+                          description: Stop halts the rule chain once this rule matches
+                            (scope + predicate).
+                          type: boolean
+                      type: object
+                    type: array
                 type: object
               mode:
                 default: normal
@@ -149,7 +612,7 @@ spec:
                 type: string
               serviceRef:
                 description: |-
-                  ServiceRef is the name of the LedgerService in the same namespace
+                  ServiceRef is the name of the Cluster in the same namespace
                   that provides the gRPC endpoint.
                 type: string
             required:
@@ -159,10 +622,21 @@ spec:
           status:
             description: LedgerCRDStatus defines the observed state of a Ledger.
             properties:
+              appliedIndexes:
+                description: |-
+                  AppliedIndexes is the set of index identifiers (canonical form) the
+                  operator has created on this ledger. It is the operator-owned set that
+                  scopes index drops: only indexes listed here are ever dropped, so
+                  externally-created and CRD-unrepresentable indexes are preserved.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: atomic
               appliedSpecHash:
                 description: |-
                   AppliedSpecHash is the hash of the spec at the time of creation.
                   Used to detect post-creation modifications (ledgers are immutable).
+                  The indexes field is excluded from this hash since it is mutable.
                 type: string
               conditions:
                 description: Conditions represent the latest available observations

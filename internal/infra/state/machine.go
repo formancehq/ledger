@@ -172,6 +172,15 @@ type Machine struct {
 	// keyed) — see processing.NewFSMDigestChain. Stored as a single
 	// pointer because the FSM is single-goroutine: no concurrent advance.
 	digestChain dal.FSMDigestChain
+
+	// confChangeHandler is invoked from PrepareEntries for every
+	// EntryConfChange* in the batch. The handler receives the entry and
+	// the in-flight WriteSession so it can land its peer mutation in the
+	// SAME Pebble batch as the surrounding business writes. This keeps
+	// cluster membership atomic with FSM state and makes the spool/WAL
+	// replay path naturally idempotent — every replay of the entry
+	// re-asserts the membership row. EN-1413.
+	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -180,7 +189,11 @@ type Machine struct {
 // wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
 // callers must invoke Recovery.RecoverState() before the Machine applies
 // entries.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int) (*Machine, error) {
+//
+// confChangeHandler is invoked from PrepareEntries for every
+// EntryConfChange* in the in-flight batch (see the field comment on
+// Machine). Must be non-nil.
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -259,6 +272,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		digestChain:                    processing.NewFSMDigestChain(clusterID),
+		confChangeHandler:              confChangeHandler,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 	fsm.cacheSnapshotter = cacheSnapshotter
@@ -297,10 +311,10 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 // path, which reads it once (before node.Run starts) to seed
 // raft.Config.Applied so etcd-raft does not re-emit already-applied
 // entries on the first Ready. Other callers should prefer
-// LastPersistedIndex (the post-commit durable cursor) — there is exactly
-// one apply-cycle window during which LastPersistedIndex < LastAppliedIndex
-// (between PrepareEntries bumping the in-memory value and publishApplied
-// firing after Commit), so the two are NOT interchangeable for live
+// LastPersistedIndex (the post-commit durable cursor) — the two diverge
+// briefly during each apply cycle (LastAppliedIndex bumps in
+// PrepareEntries, LastPersistedIndex bumps in publishApplied at the tail
+// of CommitPreparedBatch), so they are NOT interchangeable for live
 // "is this index durable?" checks.
 func (fsm *Machine) LastAppliedIndex() uint64 {
 	return fsm.State.LastAppliedIndex
@@ -334,6 +348,13 @@ func (fsm *Machine) RestoreState(s *FSMState) {
 // sleeps until ctx cancellation. On an idle cluster (no further
 // publishes) the wake-up never arrives and node.Run's startup gate or
 // ReadIndex stalls until the context times out (#327).
+//
+// Called by CommitPreparedBatch immediately after pb.batch.Commit()
+// returns, and just before runCommitter emits the batch's
+// MsgStorageApplyResp on the response sink. That ordering makes
+// lastPersistedIndex the earliest post-commit visibility signal for the
+// batch — reads gating on it see the Pebble-durable state before raft's
+// own `Applied` cursor observes the same index.
 //
 // lastPersistedIndex stays atomic for the fast-path callers that only
 // need a one-shot read with no readiness wait (e.g. PrepareEntries).
@@ -407,18 +428,43 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	return nil
 }
 
-// PrepareEntries processes Raft entries and builds a Pebble batch without
-// committing it. All in-memory state (cache, KeyStore, counters) is updated.
-// The caller must either call CommitPreparedBatch or PreparedBatch.Close.
-//
-// This is the first half of the pipelining split: PrepareEntries is CPU-bound
-// and can run while a previous batch's commit is in-flight.
+// PrepareEntries decodes the raw Raft entries and delegates to
+// PrepareDecodedEntries. Convenience wrapper for callers (tests, replay)
+// that do not already hold decoded proposals. Hot-path callers should
+// decode once at the applier boundary and call PrepareDecodedEntries
+// directly so the apply pipeline never re-unmarshals the same payload.
 func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*PreparedBatch, error) {
+	decoded, err := DecodeEntries(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	// Safe to release after PrepareDecodedEntries returns: the returned
+	// *PreparedBatch does not retain any Proposal pointer — every per-entry
+	// effect is captured by-value into ApplyResult / WriteSession during
+	// the apply loop. See the post-loop assembly of pb below.
+	defer ReleaseDecodedEntries(decoded)
+
+	return fsm.PrepareDecodedEntries(ctx, sessions, decoded...)
+}
+
+// PrepareDecodedEntries processes pre-decoded Raft entries and builds a
+// Pebble batch without committing it. All in-memory state (cache,
+// KeyStore, counters) is updated. The caller must either call
+// CommitPreparedBatch or PreparedBatch.Close.
+//
+// This is the first half of the pipelining split: PrepareDecodedEntries
+// is CPU-bound and can run while a previous batch's commit is in-flight.
+//
+// The caller owns the lifetime of decoded[].Proposal pointers and must
+// keep them valid for the duration of this call; they may be released
+// immediately after return (see PrepareEntries for the canonical pattern).
+func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.WriteSessionFactory, decoded ...DecodedEntry) (*PreparedBatch, error) {
 	// Validate checkpoint trigger positions BEFORE taking the lock or mutating
 	// any in-memory state. A malformed batch (trigger not last) is rejected
 	// here so the FSM cannot be left with lastAppliedIndex bumped and proposal
 	// side effects applied for an entry that will never be committed.
-	if err := ValidateCheckpointEntryPositions(entries); err != nil {
+	if err := ValidateCheckpointEntryPositionsDecoded(decoded); err != nil {
 		return nil, err
 	}
 
@@ -438,17 +484,17 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 	// With pipelining, lastPersistedIndex may lag lastAppliedIndex by one batch
 	// (the pending commit). This is expected and safe.
 	persistedIdx := fsm.lastPersistedIndex.Load()
-	if persistedIdx != fsm.State.LastAppliedIndex && len(entries) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
+	if persistedIdx != fsm.State.LastAppliedIndex && len(decoded) > 0 && fsm.logger.Enabled(logging.TraceLevel) {
 		fsm.logger.WithFields(map[string]any{
 			"lastPersistedIndex": persistedIdx,
 			"lastAppliedIndex":   fsm.State.LastAppliedIndex,
 			"snapshotIndex":      fsm.State.SnapshotIndex,
-			"entryCount":         len(entries),
-			"firstEntryIndex":    entries[0].Index,
+			"entryCount":         len(decoded),
+			"firstEntryIndex":    decoded[0].Entry.Index,
 			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
-		}).Tracef("PrepareEntries: lastPersistedIndex lags (pending commit in-flight)")
+		}).Tracef("PrepareDecodedEntries: lastPersistedIndex lags (pending commit in-flight)")
 	}
 
 	if fsm.State.SnapshotIndex > fsm.State.LastAppliedIndex {
@@ -465,18 +511,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 
 	batch := sessions.OpenFSMWriteSession(fsm.digestChain)
 
-	cmd := raftcmdpb.ProposalFromVTPool()
-	defer func() { cmd.ReturnToVTPool() }()
-
 	ret := &ApplyEntriesResult{
-		Results: make([]ApplyResult, 0, len(entries)),
+		Results: make([]ApplyResult, 0, len(decoded)),
 	}
 	sinkConfigChanged := false
 	mirrorConfigChanged := false
 	needsArchiveDispatch := false
 	needsColdCompaction := false
 
-	for i, entry := range entries {
+	for i := range decoded {
+		entry := decoded[i].Entry
+		cmd := decoded[i].Proposal
+
 		if entry.Index <= fsm.State.LastAppliedIndex {
 			ret.Results = append(ret.Results, ApplyResult{})
 
@@ -559,6 +605,29 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
 			}
 
+			// EN-1413: ConfChange entries do not carry business state,
+			// but they carry cluster membership which must land in the
+			// same Pebble batch as the surrounding business writes.
+			// Otherwise a crash (or a snapshot restore that wipes
+			// Pebble) between the FSM commit and a separate peer-store
+			// commit would lose the membership change. The Node
+			// registers a handler that writes the peer entry via the
+			// supplied session; replay (boot WAL replay or post-
+			// snapshot spool replay) re-asserts the same row.
+			//
+			// The membership row lives in ZoneGlobal, which is NOT a
+			// hashed zone (see dal.isHashedZone), so this write does not
+			// feed the cross-node FSM digest — the ConfChange entry still
+			// folds as an empty-ops digest step below, identically on
+			// every node.
+			if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
+				if err := fsm.confChangeHandler(entry, batch); err != nil {
+					_ = batch.Cancel()
+
+					return nil, fmt.Errorf("applying ConfChange at index %d: %w", entry.Index, err)
+				}
+			}
+
 			// Advance the rolling cross-node FSM digest chain even for
 			// non-Normal entries (ConfChange) and empty-payload entries.
 			// They bump LastAppliedIndex on every node identically, so the
@@ -574,13 +643,18 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 			continue
 		}
 
-		cmd.ReturnToVTPool()
-		cmd = raftcmdpb.ProposalFromVTPool()
+		// cmd was set from decoded[i].Proposal at the top of the iteration:
+		// DecodeEntries unmarshalled it once at the applier boundary, so the
+		// hot path never re-decodes the same raft payload. The caller owns
+		// the *Proposal lifetime (VT pool); the FSM only reads from it.
+		if cmd == nil {
+			assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
+				"raftIndex": entry.Index,
+			})
 
-		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			_ = batch.Cancel()
 
-			return nil, err
+			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entry.Index)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
@@ -667,19 +741,19 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		sealReqBase := fsm.checkCloseChapter(result)
 		queryCheckpointCreated := result.QueryCheckpointCreated > 0
 
-		if (sealReqBase != nil || queryCheckpointCreated) && i != len(entries)-1 {
-			assert.Unreachable("checkpoint trigger entry not last in PrepareEntries batch", map[string]any{
+		if (sealReqBase != nil || queryCheckpointCreated) && i != len(decoded)-1 {
+			assert.Unreachable("checkpoint trigger entry not last in PrepareDecodedEntries batch", map[string]any{
 				"raftIndex":  entry.Index,
 				"proposalID": cmd.GetId(),
 				"position":   i,
-				"entryCount": len(entries),
+				"entryCount": len(decoded),
 			})
 
 			_ = batch.Cancel()
 
 			return nil, fmt.Errorf(
-				"checkpoint trigger entry at position %d/%d in PrepareEntries batch (raft index %d) — applier must pre-split",
-				i, len(entries), entry.Index,
+				"checkpoint trigger entry at position %d/%d in PrepareDecodedEntries batch (raft index %d) — applier must pre-split",
+				i, len(decoded), entry.Index,
 			)
 		}
 
@@ -723,7 +797,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 		needsColdCompaction:  needsColdCompaction,
 		sinkConfigChanged:    sinkConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
-		entryCount:           len(entries),
+		entryCount:           len(decoded),
 	}
 
 	// Capture sentinel data before releasing the lock.
@@ -917,7 +991,7 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		return nil
 	}
 
-	// Idempotency keys live outside the AttributePlan stream — they are not
+	// Idempotency keys live outside the AttributeCoverage stream — they are not
 	// a cache attribute (the FSM applies them to the dedicated Idempotency-
 	// Store, not the per-kind cache). Apply them first and unconditionally:
 	// a proposal carrying only idempotency keys (idempotent maintenance /
@@ -937,14 +1011,14 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		return nil
 	}
 
-	// Pre-validate every AttributePlan envelope before touching the
+	// Pre-validate every AttributeCoverage envelope before touching the
 	// cache. Without this, a forged plan with a nil/short AttributeID
-	// or no intent would silently zero-pad through MirrorTouch /
-	// MirrorPreload, mutating both the in-memory cache and the 0xFF
-	// Pebble writes. A later business rejection from the scope path
-	// commits its failure audit batch — and the cache mutations would
-	// commit with it. Run the same validation the scope path uses
-	// here, so a malformed plan is caught before the first MirrorTouch.
+	// or an unknown attr_code would silently zero-pad through MirrorPreload,
+	// mutating both the in-memory cache and the 0xFF Pebble writes. A
+	// later business rejection from the scope path commits its failure
+	// audit batch — and the cache mutations would commit with it. Run the
+	// same validation the scope path uses here, so a malformed plan is
+	// caught before the first MirrorPreload.
 	for i, plan := range executionPlan.GetAttributes() {
 		if err := validatePlan(plan, i); err != nil {
 			return err
@@ -988,22 +1062,25 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 
 	gen1Byte := genByte ^ 1
 	for _, plan := range executionPlan.GetAttributes() {
-		switch intent := plan.GetIntent().(type) {
-		case *raftcmdpb.AttributePlan_Declare:
-			// Pure coverage declaration: the value is already in Gen0 on
-			// every node. No FSM-side mutation; the Plan consumes
-			// the declaration separately.
+		value := plan.GetValue()
+		if value == nil {
+			// Coverage-only entry: nothing to seed. The gen0→gen1 fallback
+			// in AttributeCache.Get and the lazy gen1→gen0 promote in
+			// AttributeCache.Del cover the handler's reads and deletes
+			// respectively; coverage_bits (invariant #9) bounds the read
+			// horizon to admission's declared preload set. Keeps Preload
+			// O(seeds) instead of O(coverage entries).
+			continue
+		}
 
-		case *raftcmdpb.AttributePlan_Touch:
-			id := attributes.U128FromBytes(plan.GetId().GetId())
-			if err := fsm.cacheSnapshotter.MirrorTouch(batch, byte(plan.GetAttrCode()), genByte, id); err != nil {
-				return err
-			}
+		attrCode := byte(plan.GetAttrCode())
 
-		case *raftcmdpb.AttributePlan_Value:
-			if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), byte(plan.GetAttrCode()), intent.Value); err != nil {
-				return err
-			}
+		// Seed: MirrorPreload writes gen0+gen1 with the Pebble-loaded
+		// payload. Gen1-wins semantics preserve any fresher value a
+		// concurrent write may have already populated between admission's
+		// Pebble scan and apply.
+		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), attrCode, value); err != nil {
+			return err
 		}
 	}
 
@@ -1091,7 +1168,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // when err is some other kind of error (Pebble write failure, etc.) so
 // the caller can fall through to the FSM-killing path.
 //
-// Admission ships bits that don't match the AttributePlan slice →
+// Admission ships bits that don't match the AttributeCoverage slice →
 // *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both implement
 // Describable with KindInternal. Surfacing them via ApplyResult.Error
 // rejects the proposal as a business error instead of wedging the FSM
@@ -1149,10 +1226,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte); err != nil {
 		if invariant := planInvariantDescribable(err); invariant != nil {
-			// Malformed AttributePlan caught before any MirrorTouch /
-			// MirrorPreload — no cache mutation landed. Surface as a
-			// business rejection in the same shape as scope-level plan
-			// invariants so the admission side can diagnose its bug.
+			// Malformed AttributeCoverage caught before any MirrorPreload
+			// — no cache mutation landed. Surface as a business rejection
+			// in the same shape as scope-level plan invariants so the
+			// admission side can diagnose its bug.
 			return &ApplyResult{
 				ProposalID: proposal.GetId(),
 				Error:      &domain.BusinessError{Err: invariant},

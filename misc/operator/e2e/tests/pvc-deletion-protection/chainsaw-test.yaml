@@ -11,7 +11,7 @@ spec:
     - name: Deploy 1-replica cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -119,7 +119,7 @@ spec:
         - script:
             content: |
               set -e
-              kubectl patch ledgerservice protect-vol -n $NAMESPACE \
+              kubectl patch cluster protect-vol -n $NAMESPACE \
                 --type merge -p '{"spec":{"persistence":{"deletionProtection":false}}}'
               for i in $(seq 1 30); do
                 PVC_LABEL=$(kubectl get pvc wal-ledger-protect-vol-0 -n $NAMESPACE -o jsonpath='{.metadata.labels.ledger\.formance\.com/deletion-protection}')

@@ -7,10 +7,10 @@ spec:
     assert: 10m
   steps:
     # 1. Start the cluster without TLS.
-    - name: Deploy plaintext LedgerService
+    - name: Deploy plaintext Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -78,7 +78,7 @@ spec:
     - name: Enable TLS
       try:
         - apply:
-            file: ledgerservice-tls-enabled.yaml
+            file: cluster-tls-enabled.yaml
 
     # 6. Observe the migration walking through the "optional" phase. The
     #    operator must drive TLS_MODE through optional before landing on
@@ -91,7 +91,7 @@ spec:
               for i in $(seq 1 60); do
                 MODE=$(kubectl get statefulset ledger-tls-en -n $NAMESPACE \
                   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TLS_MODE")].value}' 2>/dev/null)
-                PHASE=$(kubectl get ledgerservice tls-en -n $NAMESPACE \
+                PHASE=$(kubectl get cluster tls-en -n $NAMESPACE \
                   -o jsonpath='{.status.tlsMigrationPhase}' 2>/dev/null)
                 echo "tick $i: TLS_MODE=$MODE migrationPhase=$PHASE"
                 if [ "$MODE" = "optional" ] || [ "$PHASE" = "transitioning-to-required" ]; then
@@ -111,7 +111,7 @@ spec:
         - assert:
             resource:
               apiVersion: ledger.formance.com/v1alpha1
-              kind: LedgerService
+              kind: Cluster
               metadata:
                 name: tls-en
               status:

@@ -469,8 +469,8 @@ ledgerctl cluster status
 **How it works:**
 
 1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log
-2. The updated `ConfState` is persisted to the WAL snapshot immediately
-3. The observer emits a `ConfChangeEvent` so the transport and service pool clean up the removed peer
+2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
+3. `Membership.Unregister` then deletes the peer row from Pebble (`[ZoneGlobal][SubGlobPeers]`) and drops the peer from the in-memory cache + transport + service pool in lockstep
 4. The reduced voter set immediately recalculates quorum, allowing the leader to resume normal operations
 
 **When to use:**
@@ -570,9 +570,9 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 
 ## Related Documentation
 
-- [Raft Consensus](../technical/architecture/core/raft-consensus.md) - Raft protocol details, elections, replication
-- [Data Flows](../technical/architecture/data-model/data-flows.md) - Spool mechanics, entry processing
-- [Spool](../technical/architecture/storage/spool.md) - Spool technical implementation
+- [Raft Consensus](../technical/architecture/subsystems/consensus/raft-consensus.md) - Raft protocol details, elections, replication
+- [Data Flows](../technical/architecture/data-flows.md) - Spool mechanics, entry processing
+- [Spool](../technical/architecture/subsystems/storage/spool.md) - Spool technical implementation
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
 - [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact

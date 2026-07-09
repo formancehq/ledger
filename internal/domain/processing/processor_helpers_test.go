@@ -111,13 +111,15 @@ func (s *kindStub[K, V, R]) expectPut(t *testing.T, k K, hook func(K, V)) {
 	}
 }
 
-func (s *kindStub[K, V, R]) Delete(k K) {
+func (s *kindStub[K, V, R]) Delete(k K) error {
 	if _, ok := s.expectedDeletes[k]; ok {
 		s.expectedDeletes[k] = true
 	}
 	if s.deleteHook != nil {
 		s.deleteHook(k)
 	}
+
+	return nil
 }
 
 // expectDelete asserts that Delete is called for k by the end of the

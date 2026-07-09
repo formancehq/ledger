@@ -166,7 +166,7 @@ func TestReplayStoreTransactionCreate(t *testing.T) {
 
 	meta := strMetaMap("env", "prod")
 
-	require.NoError(t, rs.CreateTransaction(key, 42, nil, meta))
+	require.NoError(t, rs.CreateTransaction(key, 42, nil, meta, nil, 0))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(42), state.GetCreatedByLog())
@@ -181,7 +181,7 @@ func TestReplayStoreTransactionCreateWithTimestamp(t *testing.T) {
 	key := []byte("ledger\x00tx:1")
 
 	ts := &commonpb.Timestamp{Data: 1_700_000_000_000_000}
-	require.NoError(t, rs.CreateTransaction(key, 7, ts, nil))
+	require.NoError(t, rs.CreateTransaction(key, 7, ts, nil, nil, 0))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(7), state.GetCreatedByLog())
@@ -198,11 +198,11 @@ func TestReplayStoreTransactionCreatePreservesNilVsZeroTimestamp(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	keyNil := []byte("ledger\x00tx:1")
-	require.NoError(t, rs.CreateTransaction(keyNil, 1, nil, nil))
+	require.NoError(t, rs.CreateTransaction(keyNil, 1, nil, nil, nil, 0))
 	require.Nil(t, readTransaction(t, rs, keyNil).GetTimestamp())
 
 	keyZero := []byte("ledger\x00tx:2")
-	require.NoError(t, rs.CreateTransaction(keyZero, 2, &commonpb.Timestamp{Data: 0}, nil))
+	require.NoError(t, rs.CreateTransaction(keyZero, 2, &commonpb.Timestamp{Data: 0}, nil, nil, 0))
 	stateZero := readTransaction(t, rs, keyZero)
 	require.NotNil(t, stateZero.GetTimestamp())
 	require.Equal(t, uint64(0), stateZero.GetTimestamp().GetData())
@@ -214,7 +214,7 @@ func TestReplayStoreTransactionCreateWithoutMetadata(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	require.NoError(t, rs.CreateTransaction(key, 10, nil, nil))
+	require.NoError(t, rs.CreateTransaction(key, 10, nil, nil, nil, 0))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(10), state.GetCreatedByLog())
@@ -226,13 +226,20 @@ func TestReplayStoreTransactionRevertedBy(t *testing.T) {
 
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
+	revertedAt := &commonpb.Timestamp{Data: 1_800_000_000_000_000}
 
-	require.NoError(t, rs.CreateTransaction(key, 5, nil, nil))
-	require.NoError(t, rs.SetRevertedBy(key, 99))
+	require.NoError(t, rs.CreateTransaction(key, 5, nil, nil, nil, 0))
+	require.NoError(t, rs.SetRevertedBy(key, 99, revertedAt))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(5), state.GetCreatedByLog())
 	require.Equal(t, uint64(99), state.GetRevertedByTransaction())
+	require.Equal(t, revertedAt, state.GetRevertedAt())
+
+	// The compensating transaction back-links to the original via reverts_transaction.
+	revertKey := []byte("ledger\x00tx:99")
+	require.NoError(t, rs.CreateTransaction(revertKey, 6, nil, nil, nil, 1))
+	require.Equal(t, uint64(1), readTransaction(t, rs, revertKey).GetRevertsTransaction())
 }
 
 func TestReplayStoreTransactionSaveMeta(t *testing.T) {
@@ -241,7 +248,7 @@ func TestReplayStoreTransactionSaveMeta(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00tx:1")
 
-	require.NoError(t, rs.CreateTransaction(key, 1, nil, nil))
+	require.NoError(t, rs.CreateTransaction(key, 1, nil, nil, nil, 0))
 	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("env", "staging")))
 
 	state := readTransaction(t, rs, key)
@@ -257,7 +264,7 @@ func TestReplayStoreTransactionSaveMetaOverwrite(t *testing.T) {
 
 	meta := strMetaMap("env", "dev")
 
-	require.NoError(t, rs.CreateTransaction(key, 1, nil, meta))
+	require.NoError(t, rs.CreateTransaction(key, 1, nil, meta, nil, 0))
 	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("env", "prod")))
 
 	state := readTransaction(t, rs, key)
@@ -273,7 +280,7 @@ func TestReplayStoreTransactionDeleteMeta(t *testing.T) {
 
 	meta := strMetaMap("env", "prod", "region", "eu")
 
-	require.NoError(t, rs.CreateTransaction(key, 1, nil, meta))
+	require.NoError(t, rs.CreateTransaction(key, 1, nil, meta, nil, 0))
 	require.NoError(t, rs.DeleteTxMetadata(key, "env"))
 
 	state := readTransaction(t, rs, key)
@@ -288,7 +295,7 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	key := []byte("ledger\x00tx:1")
 
 	// Create with initial metadata
-	require.NoError(t, rs.CreateTransaction(key, 1, nil, strMetaMap("type", "payment")))
+	require.NoError(t, rs.CreateTransaction(key, 1, nil, strMetaMap("type", "payment"), nil, 0))
 
 	// Add metadata
 	require.NoError(t, rs.SaveTxMetadata(key, strMetaMap("status", "pending")))
@@ -300,11 +307,13 @@ func TestReplayStoreTransactionFullLifecycle(t *testing.T) {
 	require.NoError(t, rs.DeleteTxMetadata(key, "type"))
 
 	// Revert
-	require.NoError(t, rs.SetRevertedBy(key, 42))
+	revertedAt := &commonpb.Timestamp{Data: 1_800_000_000_000_000}
+	require.NoError(t, rs.SetRevertedBy(key, 42, revertedAt))
 
 	state := readTransaction(t, rs, key)
 	require.Equal(t, uint64(1), state.GetCreatedByLog())
 	require.Equal(t, uint64(42), state.GetRevertedByTransaction())
+	require.Equal(t, revertedAt, state.GetRevertedAt())
 	require.Len(t, state.GetMetadata(), 1)
 	require.Equal(t, "completed", state.GetMetadata()["status"].GetStringValue())
 }
@@ -318,7 +327,7 @@ func TestReplayStorePrefixIter(t *testing.T) {
 	require.NoError(t, rs.AddVolumeDelta([]byte("k1"), big.NewInt(10), big.NewInt(0)))
 	require.NoError(t, rs.AddVolumeDelta([]byte("k2"), big.NewInt(20), big.NewInt(0)))
 	require.NoError(t, rs.SetMetadata([]byte("m1"), "v1"))
-	require.NoError(t, rs.CreateTransaction([]byte("t1"), 1, nil, nil))
+	require.NoError(t, rs.CreateTransaction([]byte("t1"), 1, nil, nil, nil, 0))
 
 	// Volume prefix should yield exactly 2 entries.
 	iter, err := rs.newPrefixIter(replayPrefixVolume)

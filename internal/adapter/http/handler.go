@@ -57,6 +57,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		middleware.RequestID,
 		middleware.RealIP,
 		otelhttp.NewMiddleware("ledger-http-server"),
+		loggerMiddleware(logger),
 		middleware.RequestLogger(&chiLogFormatter{
 			logger: logger,
 		}),
@@ -66,7 +67,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	)
 
 	// Create server instance for handlers
-	server := NewServer(logger, backend, defaultBulkMaxSize)
+	server := NewServer(logger, backend, authCfg, defaultBulkMaxSize)
 
 	// Ops routes: not versioned (K8s probes, monitoring, profiling).
 	// /health, /livez, /readyz, /_info are also exempted from auth in
@@ -156,9 +157,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Put("/{ledgerName}/account-types/default-enforcement-mode", server.handleSetDefaultEnforcementMode)
 			})
 
-			// Bulk endpoints: per-element scope check handled inside the handler
+			// Bulk endpoint: per-element scope check handled inside the handler
 			r.Post("/{ledgerName}/bulk", server.handleBulk)
-			r.Post("/{ledgerName}/_bulk", server.handleBulk)
 
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {
@@ -179,6 +179,19 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	r.Route(APIVersionPrefix, registerAPIRoutes)
 
 	return r
+}
+
+// loggerMiddleware injects the configured logger into the request context so
+// downstream handlers and the error-sanitization boundary (jsonRecoverer,
+// writeInternalServerError) can resolve it via logging.FromContext. Without
+// this, FromContext degrades to a bare stderr logger because neither the chi
+// stack nor httpserver.NewHook propagates the app logger into request contexts.
+func loggerMiddleware(logger logging.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(logging.ContextWithLogger(r.Context(), logger)))
+		})
+	}
 }
 
 // contentTypeMiddleware sets Content-Type header for JSON responses

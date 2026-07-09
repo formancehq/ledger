@@ -16,10 +16,10 @@ spec:
                 -- mb --ignore-existing minio/e2e-incr-backup
             timeout: 60s
 
-    - name: Deploy LedgerService
+    - name: Deploy Cluster
       try:
         - apply:
-            file: ledgerservice.yaml
+            file: cluster.yaml
         - assert:
             resource:
               apiVersion: apps/v1
@@ -40,7 +40,7 @@ spec:
     - name: Run full backup
       try:
         - apply:
-            file: ledgerbackup.yaml
+            file: backup.yaml
         - assert:
             file: assert-full-done.yaml
 

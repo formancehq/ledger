@@ -10,6 +10,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -33,10 +34,20 @@ type keyKindInfo struct {
 	// goType is the Go literal for the key slice element (e.g. "string",
 	// "int64").
 	goType string
-	// pkgVar is the unique package-level variable name for this kind's pool,
-	// e.g. "_dethashKeyPoolString".
-	pkgVar string
-	// sortCall is the sort statement applied to a `keys` slice of this type.
+	// kindSuffix is the capitalized kind name appended to the pool variable
+	// (e.g. "String", "Uint64"). The full per-file variable name is built
+	// by poolVarName so that two .proto files sharing the same Go package
+	// don't collide on a single `_dethashKeyPool<Kind>` identifier.
+	kindSuffix string
+	// pointerContaining is true when the key type embeds Go pointers (today
+	// only `string`, whose header points at the underlying bytes). The
+	// generated code must `clear(keys)` before returning the slice to the
+	// pool — otherwise the backing array keeps those pointers reachable
+	// until the pool slot is overwritten or evicted, effectively trading
+	// the per-marshal allocation for unbounded heap retention on
+	// many-unique-key workloads (e.g. churn over metadata maps).
+	pointerContaining bool
+	// sortPkg/sortFunc is the sort statement applied to the keys slice.
 	// Generated as `<package>.<call>(keys)` so the import is tracked.
 	sortPkg  protogen.GoImportPath
 	sortFunc string
@@ -49,11 +60,63 @@ type keyKindInfo struct {
 // fastest std-lib option on ints; using a single sort function avoids
 // pulling the `sort` package into the generated file.
 var supportedKeyKinds = map[protoreflect.Kind]keyKindInfo{
-	protoreflect.StringKind: {goType: "string", pkgVar: "_dethashKeyPoolString", sortPkg: slicesPkg, sortFunc: "Sort"},
-	protoreflect.Int32Kind:  {goType: "int32", pkgVar: "_dethashKeyPoolInt32", sortPkg: slicesPkg, sortFunc: "Sort"},
-	protoreflect.Uint32Kind: {goType: "uint32", pkgVar: "_dethashKeyPoolUint32", sortPkg: slicesPkg, sortFunc: "Sort"},
-	protoreflect.Int64Kind:  {goType: "int64", pkgVar: "_dethashKeyPoolInt64", sortPkg: slicesPkg, sortFunc: "Sort"},
-	protoreflect.Uint64Kind: {goType: "uint64", pkgVar: "_dethashKeyPoolUint64", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.StringKind: {goType: "string", kindSuffix: "String", pointerContaining: true, sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Int32Kind:  {goType: "int32", kindSuffix: "Int32", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Uint32Kind: {goType: "uint32", kindSuffix: "Uint32", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Int64Kind:  {goType: "int64", kindSuffix: "Int64", sortPkg: slicesPkg, sortFunc: "Sort"},
+	protoreflect.Uint64Kind: {goType: "uint64", kindSuffix: "Uint64", sortPkg: slicesPkg, sortFunc: "Sort"},
+}
+
+// poolVarName builds the unique package-level pool variable name for a
+// given (file, kind) pair. The file suffix prevents collisions when two
+// .proto files share the same `go_package` — each generated file would
+// otherwise emit the same `_dethashKeyPool<Kind>` identifier, producing
+// a "redeclared in this block" compile error.
+func poolVarName(filePoolPrefix string, kind protoreflect.Kind) string {
+	return "_dethashKeyPool" + filePoolPrefix + supportedKeyKinds[kind].kindSuffix
+}
+
+// filePoolPrefix derives a Go-identifier-safe, capitalized suffix from a
+// proto file's GeneratedFilenamePrefix (the proto file path minus its
+// extension, e.g. "common" with `protoc -I misc/proto` or
+// "misc/proto/common" with `protoc -I .`). The full prefix is consumed —
+// not just the basename — so two .proto files that happen to share a
+// basename in different directories (e.g. `a/common.proto` and
+// `b/common.proto`) but compile into the same go_package still produce
+// distinct pool identifiers (`ACommon` vs `BCommon`). Stripping to
+// `path.Base` first would re-introduce the per-file collision the
+// per-file scheme exists to prevent.
+//
+// Non-identifier runes (including the path separator `/`) are dropped
+// and the next letter is re-capitalized, yielding a CamelCase suffix
+// that reads naturally inside the final `_dethashKeyPool<File><Kind>`
+// pool variable name.
+func filePoolPrefix(file *protogen.File) string {
+	prefix := file.GeneratedFilenamePrefix
+
+	var b strings.Builder
+	b.Grow(len(prefix) + 1)
+	upper := true
+	for _, r := range prefix {
+		switch {
+		case r >= 'a' && r <= 'z':
+			if upper {
+				r -= 'a' - 'A'
+				upper = false
+			}
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			upper = false
+		default:
+			// Non-identifier rune (e.g. '-' in a hypothetical "my-proto"
+			// file). Drop and re-capitalize the next letter so we don't
+			// emit '_' inside what is otherwise a CamelCase identifier.
+			upper = true
+		}
+	}
+
+	return b.String()
 }
 
 func main() {
@@ -74,6 +137,7 @@ func main() {
 			}
 			generateFile(gen, f, hasMapTransitive)
 		}
+
 		return nil
 	})
 }
@@ -88,15 +152,18 @@ func computeHasMap(msg *protogen.Message, cache map[string]bool) bool {
 	for _, f := range msg.Fields {
 		if f.Desc.IsMap() {
 			cache[key] = true
+
 			return true
 		}
 		if f.Desc.Kind() == protoreflect.MessageKind && f.Message != nil && !f.Message.Desc.IsMapEntry() {
 			if computeHasMap(f.Message, cache) {
 				cache[key] = true
+
 				return true
 			}
 		}
 	}
+
 	return cache[key]
 }
 
@@ -116,17 +183,19 @@ func generateFile(gen *protogen.Plugin, file *protogen.File, hasMap map[string]b
 	// First, find every map-key kind used in this file so we can emit one
 	// sync.Pool per kind. The pool reuses the sorted-keys slice across
 	// marshal calls, replacing the per-call `slices.Sorted(maps.Keys(m))`
-	// allocation. The pool is package-private so it does not leak into
-	// the public API.
+	// allocation. Pool variables are named per-file (`_dethashKeyPool<File><Kind>`)
+	// so two .proto files sharing a single Go package never collide on the
+	// same identifier.
 	usedKeyKinds := map[protoreflect.Kind]bool{}
 	for _, msg := range file.Messages {
 		collectMapKeyKinds(msg, usedKeyKinds)
 	}
 
-	emitKeyPools(g, usedKeyKinds)
+	poolPrefix := filePoolPrefix(file)
+	emitKeyPools(g, usedKeyKinds, poolPrefix)
 
 	for _, msg := range file.Messages {
-		walkMessages(g, msg, hasMap)
+		walkMessages(g, msg, hasMap, poolPrefix)
 	}
 }
 
@@ -156,7 +225,7 @@ func collectMapKeyKinds(msg *protogen.Message, out map[protoreflect.Kind]bool) {
 // initial slice capacity tuned for the typical metadata-style map (~16
 // entries — beyond that the pool's slice grows once and stays grown,
 // which is exactly the behaviour we want).
-func emitKeyPools(g *protogen.GeneratedFile, used map[protoreflect.Kind]bool) {
+func emitKeyPools(g *protogen.GeneratedFile, used map[protoreflect.Kind]bool, poolPrefix string) {
 	if len(used) == 0 {
 		return
 	}
@@ -187,7 +256,7 @@ func emitKeyPools(g *protogen.GeneratedFile, used map[protoreflect.Kind]bool) {
 		}
 
 		info := supportedKeyKinds[kind]
-		g.P("  ", info.pkgVar, " = ", syncPkg.Ident("Pool"), "{")
+		g.P("  ", poolVarName(poolPrefix, kind), " = ", syncPkg.Ident("Pool"), "{")
 		g.P("    New: func() any { s := make([]", info.goType, ", 0, 16); return &s },")
 		g.P("  }")
 	}
@@ -195,17 +264,17 @@ func emitKeyPools(g *protogen.GeneratedFile, used map[protoreflect.Kind]bool) {
 	g.P(")")
 }
 
-func walkMessages(g *protogen.GeneratedFile, msg *protogen.Message, hasMap map[string]bool) {
+func walkMessages(g *protogen.GeneratedFile, msg *protogen.Message, hasMap map[string]bool, poolPrefix string) {
 	if msg.Desc.IsMapEntry() {
 		return
 	}
-	generateMessage(g, msg, hasMap)
+	generateMessage(g, msg, hasMap, poolPrefix)
 	for _, nested := range msg.Messages {
-		walkMessages(g, nested, hasMap)
+		walkMessages(g, nested, hasMap, poolPrefix)
 	}
 }
 
-func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message, hasMap map[string]bool) {
+func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message, hasMap map[string]bool, poolPrefix string) {
 	key := string(msg.Desc.FullName())
 
 	g.P()
@@ -243,7 +312,7 @@ func generateMessage(g *protogen.GeneratedFile, msg *protogen.Message, hasMap ma
 			if f.Oneof != nil && !f.Oneof.Desc.IsSynthetic() {
 				continue
 			}
-			genFieldMarshal(g, f, hasMap)
+			genFieldMarshal(g, f, hasMap, poolPrefix)
 		}
 
 		// Oneofs in reverse
@@ -274,6 +343,7 @@ func genOneofMarshal(g *protogen.GeneratedFile, msg *protogen.Message, oo *proto
 		if f.Desc.Kind() == protoreflect.MessageKind && f.Message != nil {
 			if hasMap[string(f.Message.Desc.FullName())] {
 				anyHasMap = true
+
 				break
 			}
 		}
@@ -329,19 +399,21 @@ func marshalOneofField(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[
 
 // ---------- field ----------
 
-func genFieldMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[string]bool) {
+func genFieldMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[string]bool, poolPrefix string) {
 	goName := f.GoName
 	kind := f.Desc.Kind()
 	fieldNum := f.Desc.Number()
 	access := "m." + goName
 
 	if f.Desc.IsMap() {
-		genMapMarshal(g, f, hasMap)
+		genMapMarshal(g, f, hasMap, poolPrefix)
+
 		return
 	}
 
 	if f.Desc.IsList() {
 		genRepeatedMarshal(g, f, hasMap)
+
 		return
 	}
 
@@ -349,6 +421,7 @@ func genFieldMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[st
 		g.P("  if ", access, " != nil {")
 		marshalMessageField(g, access, f, fieldNum, hasMap)
 		g.P("  }")
+
 		return
 	}
 
@@ -358,6 +431,7 @@ func genFieldMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[st
 		g.P("  if ", access, " != nil {")
 		marshalScalarField(g, "*"+access, kind, fieldNum, wireType)
 		g.P("  }")
+
 		return
 	}
 
@@ -368,7 +442,7 @@ func genFieldMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[st
 
 // ---------- map ----------
 
-func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[string]bool) {
+func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[string]bool, poolPrefix string) {
 	goName := f.GoName
 	valField := f.Message.Fields[1]
 	fieldNum := f.Desc.Number()
@@ -380,11 +454,12 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 	if !ok {
 		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map key type %s in field %s", keyKind, f.Desc.FullName()))
 	}
+	poolVar := poolVarName(poolPrefix, keyKind)
 
 	// Borrow a sorted-keys scratch slice from the file-scoped pool, fill it,
 	// sort it in place, and return it after the loop. Steady-state zero alloc.
 	g.P("  if len(m.", goName, ") > 0 {")
-	g.P("    keysPtr := ", info.pkgVar, ".Get().(*[]", info.goType, ")")
+	g.P("    keysPtr := ", poolVar, ".Get().(*[]", info.goType, ")")
 	g.P("    keys := (*keysPtr)[:0]")
 	g.P("    for k := range m.", goName, " {")
 	g.P("      keys = append(keys, k)")
@@ -396,7 +471,8 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 
 	// Write value (field 2 of map entry)
 	valKind := valField.Desc.Kind()
-	if valKind == protoreflect.MessageKind {
+	switch valKind {
+	case protoreflect.MessageKind:
 		key := string(valField.Message.Desc.FullName())
 		if hasMap[key] {
 			g.P("      size, _ := v.MarshalToSizedBufferDeterministicVT(dAtA[:i])")
@@ -407,17 +483,17 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(size))")
 		g.P("      i--")
 		g.P("      dAtA[i] = 0x12")
-	} else if valKind == protoreflect.StringKind {
+	case protoreflect.StringKind:
 		g.P("      i -= len(v)")
 		g.P("      copy(dAtA[i:], v)")
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(len(v)))")
 		g.P("      i--")
 		g.P("      dAtA[i] = 0x12")
-	} else if valKind == protoreflect.EnumKind || valKind == protoreflect.Int32Kind || valKind == protoreflect.Uint32Kind || valKind == protoreflect.Int64Kind || valKind == protoreflect.Uint64Kind {
+	case protoreflect.EnumKind, protoreflect.Int32Kind, protoreflect.Uint32Kind, protoreflect.Int64Kind, protoreflect.Uint64Kind:
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(v))")
 		g.P("      i--")
 		g.P("      dAtA[i] = 0x10") // field 2, wire type varint
-	} else {
+	default:
 		panic(fmt.Sprintf("protoc-gen-dethash: unsupported map value type %s in field %s", valKind, f.Desc.FullName()))
 	}
 
@@ -445,8 +521,17 @@ func genMapMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map[stri
 	// Return the (possibly grown) scratch slice to the pool. The pool keeps
 	// the underlying capacity, so the next marshal that needs at most that
 	// many keys hits zero allocation.
+	//
+	// For pointer-containing key kinds (today: string headers), zero the
+	// slice elements first. Without this, the backing array keeps the last
+	// marshal's keys reachable until the pool slot is overwritten or
+	// evicted — turning the per-call allocation saved into unbounded heap
+	// retention of user metadata on many-unique-key workloads.
+	if info.pointerContaining {
+		g.P("    clear(keys)")
+	}
 	g.P("    *keysPtr = keys")
-	g.P("    ", info.pkgVar, ".Put(keysPtr)")
+	g.P("    ", poolVar, ".Put(keysPtr)")
 	g.P("  }")
 }
 
@@ -459,11 +544,12 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 
 	g.P("  if len(m.", goName, ") > 0 {")
 
-	if kind == protoreflect.MessageKind || kind == protoreflect.GroupKind {
+	switch kind {
+	case protoreflect.MessageKind, protoreflect.GroupKind:
 		g.P("    for iNdEx := len(m.", goName, ") - 1; iNdEx >= 0; iNdEx-- {")
 		marshalMessageField(g, "m."+goName+"[iNdEx]", f, fieldNum, hasMap)
 		g.P("    }")
-	} else if kind == protoreflect.StringKind {
+	case protoreflect.StringKind:
 		tag := encodeTag(fieldNum, 2)
 		g.P("    for iNdEx := len(m.", goName, ") - 1; iNdEx >= 0; iNdEx-- {")
 		g.P("      i -= len(m.", goName, "[iNdEx])")
@@ -471,7 +557,7 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(len(m.", goName, "[iNdEx])))")
 		writeTag(g, tag)
 		g.P("    }")
-	} else if kind == protoreflect.BytesKind {
+	case protoreflect.BytesKind:
 		tag := encodeTag(fieldNum, 2)
 		g.P("    for iNdEx := len(m.", goName, ") - 1; iNdEx >= 0; iNdEx-- {")
 		g.P("      i -= len(m.", goName, "[iNdEx])")
@@ -479,7 +565,7 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("      i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(len(m.", goName, "[iNdEx])))")
 		writeTag(g, tag)
 		g.P("    }")
-	} else if kind == protoreflect.Uint64Kind || kind == protoreflect.Int64Kind || kind == protoreflect.Uint32Kind || kind == protoreflect.Int32Kind || kind == protoreflect.EnumKind {
+	case protoreflect.Uint64Kind, protoreflect.Int64Kind, protoreflect.Uint32Kind, protoreflect.Int32Kind, protoreflect.EnumKind:
 		// Packed encoding for varint types
 		tag := encodeTag(fieldNum, 2) // packed = wire type LEN
 		g.P("    var pkBuf [10]byte")
@@ -491,7 +577,7 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("    }")
 		g.P("    i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(start-i))")
 		writeTag(g, tag)
-	} else if kind == protoreflect.Fixed64Kind || kind == protoreflect.Sfixed64Kind || kind == protoreflect.DoubleKind {
+	case protoreflect.Fixed64Kind, protoreflect.Sfixed64Kind, protoreflect.DoubleKind:
 		tag := encodeTag(fieldNum, 2)
 		g.P("    i -= 8 * len(m.", goName, ")")
 		g.P("    for iNdEx, v := range m.", goName, " {")
@@ -503,7 +589,7 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("    }")
 		g.P("    i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(8*len(m.", goName, ")))")
 		writeTag(g, tag)
-	} else if kind == protoreflect.Fixed32Kind || kind == protoreflect.Sfixed32Kind || kind == protoreflect.FloatKind {
+	case protoreflect.Fixed32Kind, protoreflect.Sfixed32Kind, protoreflect.FloatKind:
 		tag := encodeTag(fieldNum, 2)
 		g.P("    i -= 4 * len(m.", goName, ")")
 		g.P("    for iNdEx, v := range m.", goName, " {")
@@ -515,7 +601,7 @@ func genRepeatedMarshal(g *protogen.GeneratedFile, f *protogen.Field, hasMap map
 		g.P("    }")
 		g.P("    i = ", protohelpersPkg.Ident("EncodeVarint"), "(dAtA, i, uint64(4*len(m.", goName, ")))")
 		writeTag(g, tag)
-	} else if kind == protoreflect.BoolKind {
+	case protoreflect.BoolKind:
 		tag := encodeTag(fieldNum, 2)
 		g.P("    i -= len(m.", goName, ")")
 		g.P("    for iNdEx, v := range m.", goName, " {")
@@ -617,7 +703,7 @@ func zeroGuard(access string, kind protoreflect.Kind) string {
 	case protoreflect.StringKind, protoreflect.BytesKind:
 		return fmt.Sprintf("len(%s) > 0", access)
 	default:
-		return fmt.Sprintf("%s != 0", access)
+		return access + " != 0"
 	}
 }
 

@@ -17,7 +17,7 @@ import (
 // a given kind warms the pool with a 16-cap slice; larger maps grow it
 // once and the grown capacity persists.
 var (
-	_dethashKeyPoolString = sync.Pool{
+	_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString = sync.Pool{
 		New: func() any { s := make([]string, 0, 16); return &s },
 	}
 )
@@ -127,7 +127,7 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		dAtA[i] = 0x30
 	}
 	if len(m.AccountTypes) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountTypes {
 			keys = append(keys, k)
@@ -150,8 +150,9 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 			i--
 			dAtA[i] = 0x2a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if m.MirrorSource != nil {
 		size, _ := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -745,7 +746,7 @@ func (m *SaveLedgerMetadataRequest) MarshalToSizedBufferDeterministicVT(dAtA []b
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -768,8 +769,9 @@ func (m *SaveLedgerMetadataRequest) MarshalToSizedBufferDeterministicVT(dAtA []b
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -1054,7 +1056,7 @@ func (m *ScriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.Vars) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Vars {
 			keys = append(keys, k)
@@ -1077,8 +1079,9 @@ func (m *ScriptReference) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int,
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.Version) > 0 {
 		i -= len(m.Version)
@@ -1232,7 +1235,7 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		dAtA[i] = 0x38
 	}
 	if len(m.AccountMetadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountMetadata {
 			keys = append(keys, k)
@@ -1255,11 +1258,12 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 			i--
 			dAtA[i] = 0x32
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1282,8 +1286,9 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 			i--
 			dAtA[i] = 0x2a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.Reference) > 0 {
 		i -= len(m.Reference)
@@ -1355,7 +1360,7 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		dAtA[i] = 0x2a
 	}
 	if len(m.Metadata) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Metadata {
 			keys = append(keys, k)
@@ -1378,8 +1383,9 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 			i--
 			dAtA[i] = 0x22
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if m.AtEffectiveDate {
 		i--
@@ -1941,7 +1947,7 @@ func (m *GetMetadataSchemaStatusResponse) MarshalToSizedBufferDeterministicVT(dA
 		copy(dAtA[i:], m.unknownFields)
 	}
 	if len(m.LedgerFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.LedgerFields {
 			keys = append(keys, k)
@@ -1964,11 +1970,12 @@ func (m *GetMetadataSchemaStatusResponse) MarshalToSizedBufferDeterministicVT(dA
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.TransactionFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.TransactionFields {
 			keys = append(keys, k)
@@ -1991,11 +1998,12 @@ func (m *GetMetadataSchemaStatusResponse) MarshalToSizedBufferDeterministicVT(dA
 			i--
 			dAtA[i] = 0x12
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.AccountFields) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.AccountFields {
 			keys = append(keys, k)
@@ -2018,8 +2026,9 @@ func (m *GetMetadataSchemaStatusResponse) MarshalToSizedBufferDeterministicVT(dA
 			i--
 			dAtA[i] = 0xa
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	return len(dAtA) - i, nil
 }
@@ -2320,7 +2329,7 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferDeterministicVT(dAtA [
 		dAtA[i] = 0x20
 	}
 	if len(m.Parameters) > 0 {
-		keysPtr := _dethashKeyPoolString.Get().(*[]string)
+		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
 		for k := range m.Parameters {
 			keys = append(keys, k)
@@ -2343,8 +2352,9 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferDeterministicVT(dAtA [
 			i--
 			dAtA[i] = 0x1a
 		}
+		clear(keys)
 		*keysPtr = keys
-		_dethashKeyPoolString.Put(keysPtr)
+		_dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Put(keysPtr)
 	}
 	if len(m.QueryName) > 0 {
 		i -= len(m.QueryName)

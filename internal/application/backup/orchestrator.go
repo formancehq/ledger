@@ -147,6 +147,10 @@ type Orchestrator struct {
 	nodeID   uint64
 	registry *ExecutorRegistry
 
+	// maxSegmentBytes caps each incremental export segment before it splits.
+	// 0 lets RunIncrementalBackup pick its default.
+	maxSegmentBytes int64
+
 	// mu guards leaderCtx / leaderCancel. RunFull/RunIncremental read
 	// leaderCtx once and derive a child context for the run; the read
 	// is under the lock so a concurrent OnLeadershipChange cannot
@@ -166,18 +170,19 @@ type Orchestrator struct {
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	return &Orchestrator{
-		proposer:     proposer,
-		store:        store,
-		logger:       logger.WithField("cmp", "backup-orchestrator"),
-		nodeID:       nodeID,
-		registry:     registry,
-		leaderCtx:    cancelled,
-		leaderCancel: cancel,
+		proposer:        proposer,
+		store:           store,
+		logger:          logger.WithField("cmp", "backup-orchestrator"),
+		nodeID:          nodeID,
+		registry:        registry,
+		maxSegmentBytes: maxSegmentBytes,
+		leaderCtx:       cancelled,
+		leaderCancel:    cancel,
 	}
 }
 
@@ -321,7 +326,7 @@ func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.Backup
 		return nil, fmt.Errorf("propose incremental start: %w", err)
 	}
 
-	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId())
+	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), o.maxSegmentBytes)
 	if runErr != nil {
 		o.proposeTerminal(incrementalFail(jobID, runErr.Error()), jobID, "incremental fail")
 

@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -220,6 +221,75 @@ func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 	httpCfg := cfg.GetHttp()
 	require.NotNil(t, httpCfg)
 	require.Nil(t, httpCfg.GetOauth2ClientCredentials())
+}
+
+func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
+	t.Parallel()
+
+	body := &mirrorSourceBody{
+		LedgerName: "src-ledger",
+		Type:       "http",
+		BaseURL:    "http://localhost:3068",
+		RewriteRules: []stdjson.RawMessage{
+			stdjson.RawMessage(`{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`),
+			stdjson.RawMessage(`{"createdTransaction":{"match":"log.metadata[\"type\"].string_value == \"payout\"","actions":[{"setMetadata":{"key":"category","value":"external"}}]},"stop":true}`),
+		},
+	}
+
+	cfg, err := mirrorSourceToProto(body)
+	require.NoError(t, err)
+	require.Len(t, cfg.GetRewriteRules(), 2)
+
+	// Rule 0: cross-variant rewriteAddress.
+	require.NotNil(t, cfg.GetRewriteRules()[0].GetAnyVariant())
+	require.False(t, cfg.GetRewriteRules()[0].GetStop())
+
+	// Rule 1: created-transaction scoped, stop=true.
+	created := cfg.GetRewriteRules()[1].GetCreatedTransaction()
+	require.NotNil(t, created)
+	require.Equal(t, `log.metadata["type"].string_value == "payout"`, created.GetMatch())
+	require.True(t, cfg.GetRewriteRules()[1].GetStop())
+}
+
+func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
+	t.Parallel()
+
+	var capturedReq *servicepb.Request
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			capturedReq = req.GetUnsigned().GetRequests()[0]
+
+			return []*commonpb.Log{{
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_CreateLedger{
+						CreateLedger: &commonpb.CreatedLedgerLog{
+							Name: "mirror-rw",
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						},
+					},
+				},
+			}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","rewriteRules":[{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}]}}`
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/mirror-rw", strings.NewReader(body), map[string]string{
+		"ledgerName": "mirror-rw",
+	})
+	r.Header.Set("Content-Type", "application/json")
+
+	srv.handleCreateLedger(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	rules := capturedReq.GetCreateLedger().GetMirrorSource().GetRewriteRules()
+	require.Len(t, rules, 1)
+	anyRule := rules[0].GetAnyVariant()
+	require.NotNil(t, anyRule)
+	require.Len(t, anyRule.GetActions(), 1)
+	require.Equal(t, ":worker:\\d+", anyRule.GetActions()[0].GetRewriteAddress().GetPattern())
 }
 
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {

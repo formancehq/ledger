@@ -158,7 +158,7 @@ Use multi-source/multi-destination patterns when the business logic requires it,
 
 ### Use Bulk Mode for High Throughput
 
-The bulk API (`POST /{ledger}/_bulk` or gRPC `Apply` with multiple actions) amortizes the Raft consensus overhead across many transactions.
+The bulk API (`POST /v3/{ledger}/bulk` or gRPC `Apply` with multiple actions) amortizes the Raft consensus overhead across many transactions.
 
 | Approach | Raft entries | Network roundtrips |
 |----------|--------------|--------------------|
@@ -291,7 +291,7 @@ ledger run --hash-algorithm xxh3 [other flags...]
 ledger run --hash-algorithm blake3 [other flags...]
 ```
 
-The setting is cluster-wide and replicated via Raft. Changing it takes effect on the next log produced — existing logs retain their original hash and remain verifiable via the `hash_version` field stored on each log. See [Log Integrity](./correctness.md#hash-algorithm-selection) for details.
+The setting is cluster-wide and replicated via Raft. Changing it takes effect on the next log produced — existing logs retain their original hash and remain verifiable via the `hash_version` field stored on each log. See [audit hash chain — Hash primitive](../technical/architecture/subsystems/checker/audit-chain.md#hash-primitive) for details.
 
 ### 5.6 Numscript Cache Size
 
@@ -394,10 +394,10 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 
 - [Benchmark Results](../sales/benchmarks.md) - 106K tx/s benchmark details
 - [Numscript Reference](../technical/contributing/numscript.md) - Full Numscript language documentation
-- [Deterministic FSM Cache](../technical/architecture/core/deterministic-fsm.md) - Cache and preload architecture
-- [Uint256 Wire Format](../technical/architecture/data-model/uint256-wire-format.md) - Zero-allocation monetary amounts
-- [Attribute Key Hashing](../technical/architecture/storage/attribute-key-hashing.md) - XXH3 vs BLAKE3 performance
-- [Storage Drivers](../technical/architecture/storage/storage-drivers.md) - Pebble configuration details
+- [Deterministic FSM Cache](../technical/architecture/subsystems/fsm/deterministic-fsm.md) - Cache and preload architecture
+- [Uint256 Wire Format](../technical/architecture/primitives/uint256-wire-format.md) - Zero-allocation monetary amounts
+- [Attribute Key Hashing](../technical/architecture/subsystems/attributes/key-hashing.md) - XXH3 vs BLAKE3 performance
+- [Storage Drivers](../technical/architecture/subsystems/storage/storage-drivers.md) - Pebble configuration details
 - [Metrics Reference](./monitoring.md) - Complete metrics catalog and alerting rules
 - [Deployment Guide](./deployment.md) - Production deployment recommendations
 - [V2 Problems Solved](../sales/v2-vs-v3.md) - Hot account contention eliminated

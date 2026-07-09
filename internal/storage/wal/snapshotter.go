@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
@@ -186,8 +187,8 @@ func (s *Snapshotter) LoadNewestAvailable(walSnaps []walpb.Snapshot) (*raftpb.Sn
 		}
 
 		// Check if this snap file matches any WAL snapshot record.
-		for i := len(walSnaps) - 1; i >= 0; i-- {
-			if snap.Metadata.Term == walSnaps[i].Term && snap.Metadata.Index == walSnaps[i].Index {
+		for _, v := range slices.Backward(walSnaps) {
+			if snap.Metadata.Term == v.Term && snap.Metadata.Index == v.Index {
 				return &snap, nil
 			}
 		}

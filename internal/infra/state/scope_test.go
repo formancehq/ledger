@@ -41,7 +41,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	okID, _ := attributes.MakeKey(okKey.Bytes())
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{
 			declareTestPlan(okID, dal.SubAttrLedger),
 		},
 	}
@@ -121,7 +121,7 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	bID, _ := attributes.MakeKey(bKey.Bytes())
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
-		Attributes: []*raftcmdpb.AttributePlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{
 			declareTestPlan(aID, dal.SubAttrLedger), // bit 0
 			declareTestPlan(bID, dal.SubAttrLedger), // bit 1
 		},
@@ -187,4 +187,35 @@ func TestScope_OrderRead_RequiresCoverageEvenForOverlayHit(t *testing.T) {
 
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "Scope.GetLedger must surface ErrCoverageMiss instead of the overlay value")
+}
+
+// TestScope_OrderDelete_RequiresCoverage pins the delete-gate invariant
+// added in EN-1242: gatedAccessor.Delete must call CheckCoverage before
+// delegating, so a handler that tries to delete a key its coverage_bits
+// did not declare is rejected with ErrCoverageMiss rather than silently
+// tombstoning an undeclared entry. Symmetric with Get's gate.
+func TestScope_OrderDelete_RequiresCoverage(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+
+	// Empty ExecutionPlan → no plans declared → every gated operation must miss.
+	plan := &raftcmdpb.ExecutionPlan{}
+
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	buffer := fsm.writeSet
+	scope, err := NewScopeFactory(buffer, plan, fsm.logger, fsm.preloadMissCounter, 42).NewScope(nil)
+	require.NoError(t, err)
+
+	// A handler attempts to delete an undeclared metadata key. Put isn't
+	// gated (the batch overlay isolates it), but Delete IS — the coverage
+	// gate must reject before the deletion is queued.
+	err = scope.AccountMetadata().Delete(domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"},
+		Key:        "label",
+	})
+
+	var miss *ErrCoverageMiss
+	require.ErrorAs(t, err, &miss, "Scope.AccountMetadata().Delete on an undeclared key must surface ErrCoverageMiss")
+	require.Equal(t, "account_metadata", miss.Attribute)
 }

@@ -87,7 +87,7 @@ func TestApplyPlans_Errors(t *testing.T) {
 
 		var coverage coverageSlots
 
-		err := applyPlans(&coverage, []*raftcmdpb.AttributePlan{}, []byte{0b1})
+		err := applyPlans(&coverage, []*raftcmdpb.AttributeCoverage{}, []byte{0b1})
 		require.NotNil(t, err)
 		require.Contains(t, err.Reason_, "coverage_bits flags position 0 past plans length 0")
 	})
@@ -98,10 +98,9 @@ func TestApplyPlans_Errors(t *testing.T) {
 		var coverage coverageSlots
 
 		u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
-		plans := []*raftcmdpb.AttributePlan{{
+		plans := []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
 			AttrCode: 0xff, // not in cacheAttrKinds
-			Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}}
 
 		// applyAllPlans (the proposal-wide path used by NewProposalScope)
@@ -118,10 +117,9 @@ func TestApplyPlans_Errors(t *testing.T) {
 		var coverage coverageSlots
 
 		u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
-		plans := []*raftcmdpb.AttributePlan{{
+		plans := []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
 			AttrCode: 0xfe,
-			Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}}
 
 		err := applyPlans(&coverage, plans, []byte{0b1})
@@ -135,10 +133,9 @@ func TestApplyPlans_Errors(t *testing.T) {
 
 		var coverage coverageSlots
 
-		plans := []*raftcmdpb.AttributePlan{{
+		plans := []*raftcmdpb.AttributeCoverage{{
 			Id:       nil, // forged / decoded-incomplete envelope
 			AttrCode: uint32(dal.SubAttrLedger),
-			Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}}
 
 		err := applyPlans(&coverage, plans, []byte{0b1})
@@ -152,10 +149,9 @@ func TestApplyPlans_Errors(t *testing.T) {
 
 		var coverage coverageSlots
 
-		plans := []*raftcmdpb.AttributePlan{{
+		plans := []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: []byte{0x01, 0x02}}, // 2 bytes — would silently zero-pad
 			AttrCode: uint32(dal.SubAttrLedger),
-			Intent:   &raftcmdpb.AttributePlan_Declare{Declare: &raftcmdpb.Declare{}},
 		}}
 
 		err := applyAllPlans(&coverage, plans)
@@ -163,24 +159,6 @@ func TestApplyPlans_Errors(t *testing.T) {
 		require.Contains(t, err.Reason_, "plans[0]")
 		require.Contains(t, err.Reason_, "16-byte AttributeID")
 		require.Contains(t, err.Reason_, "got 2 bytes")
-	})
-
-	t.Run("plan with nil intent", func(t *testing.T) {
-		t.Parallel()
-
-		var coverage coverageSlots
-
-		u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
-		plans := []*raftcmdpb.AttributePlan{{
-			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
-			AttrCode: uint32(dal.SubAttrLedger),
-			Intent:   nil, // preloader would skip; coverage would still admit
-		}}
-
-		err := applyPlans(&coverage, plans, []byte{0b1})
-		require.NotNil(t, err)
-		require.Contains(t, err.Reason_, "plans[0]")
-		require.Contains(t, err.Reason_, "no intent set")
 	})
 }
 
