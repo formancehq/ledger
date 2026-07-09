@@ -551,17 +551,11 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait(ctx)
 
-	// Observe caller attribution for committed entries only. A success, or a
-	// business-rule rejection (insufficient funds, scope/transient validation),
-	// writes an audit entry carrying this caller snapshot; a stale proposal and
-	// the pre-commit rejections (queue-full, guard, marshal) write nothing.
-	committed := err == nil
-	if !committed {
-		var businessErr *domain.BusinessError
-		committed = errors.As(err, &businessErr) && !errors.Is(err, domain.ErrStaleProposal)
-	}
-
-	if committed {
+	// Observe caller attribution only when the FSM actually wrote an audit
+	// entry for this proposal — a success or a committed business-rule failure.
+	// Replays, stale proposals, and pre-commit rejections write no entry, so the
+	// caller snapshot they carry was never recorded and must not be counted.
+	if result.AuditEntryWritten {
 		a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
 	}
 
