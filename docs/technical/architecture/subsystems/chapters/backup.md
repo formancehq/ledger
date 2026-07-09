@@ -84,7 +84,10 @@ dangling reference.
 > content-addressed storage key. Restore resolves objects by that recorded
 > `key`, never by reconstructing `prefix + filename`. Backups written by an
 > older binary (bare-`data/<filename>` layout) are not readable by the new
-> restore path and must be retaken.
+> restore path and must be retaken. Reading a legacy manifest fails fast with a
+> typed, actionable error (`ErrLegacyManifestFormat`) rather than a cryptic JSON
+> decode error, so the operator knows to retake the backup. No in-place
+> migration is provided — deliberately, as this is a pre-GA break.
 
 The work is split between **Raft-coordinated lifecycle orders** (`BackupOrder`, `CompleteBackupOrder`, `FailBackupOrder` at `raft_cmd.proto:431-593`) and **executor work on the leader** (`internal/infra/backup/manager.go:40-180`). The FSM never blocks on the upload — it only records start, success, and failure.
 
