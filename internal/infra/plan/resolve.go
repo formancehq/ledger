@@ -110,11 +110,11 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 }
 
 // resolveCoverage resolves one attribute cache for the plan pipeline.
-// Keys arrive already hashed: the map key is the pre-computed U128
-// (attributes.MakeKey), the map value is the canonical bytes. No
-// string↔bytes round trip, no rehash on iteration — the (id, canonical)
-// pair travels intact from admission's Add through to the FSM's wire
-// payload.
+// Keys arrive already hashed: the map key is the pre-computed U128 id
+// and the map value bundles the canonical bytes with the XXH3-64 tag,
+// both computed once at Coverage.Add time. No string↔bytes round trip,
+// no rehash on iteration — the (id, canonical, tag) triple travels
+// intact from admission's Add through to the FSM's wire payload.
 //
 // For each key, resolveCoverage emits ONE AttributeCoverage entry based
 // on admission's CheckCache verdict:
@@ -139,7 +139,7 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, va
 func resolveCoverage[T interface {
 	MarshalVT() ([]byte, error)
 }](
-	keys map[attributes.U128][]byte,
+	keys map[attributes.U128]CoverageEntry,
 	nextIndex, boundary, cacheEpoch uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *preload.AttributeLoader[T],
@@ -161,12 +161,13 @@ func resolveCoverage[T interface {
 
 	sem := make(chan struct{}, resolveParallelism)
 
-	for id, canonicalKey := range keys {
-		// The XXH3-128 id was computed once at Add time and lives in
-		// the map key — no rehash. Only the XXH3-64 tag has to be
-		// derived here; option E (fused MakeKey) would eliminate this
-		// second pass entirely.
-		tag := attributes.Tag64(canonicalKey)
+	for id, entry := range keys {
+		// Both id (XXH3-128) and tag (XXH3-64) were computed at
+		// Coverage.Add time — MakeKey returns both in one call and
+		// we stored the tag alongside the canonical to avoid the
+		// second XXH3 pass here.
+		canonicalKey := entry.Canonical
+		tag := entry.Tag
 
 		switch attrCache.CheckCache(nextIndex, id) {
 		case cache.CacheUnreachable:

@@ -5,14 +5,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 )
 
+// CoverageEntry is the stored value for one attribute-cache key: the
+// canonical bytes (kept for Pebble Get in the resolver) alongside the
+// XXH3-64 tag pre-computed at Add time. Storing the tag here means
+// resolveCoverage doesn't have to rehash canonical bytes to compute
+// the AttributeID.Tag — MakeKey already returned it, and we were
+// discarding it under the old shape.
+type CoverageEntry struct {
+	Canonical []byte
+	Tag       uint64
+}
+
 // Coverage describes the preload / coverage requirements for a command.
 //
-// Attributes[attrCode][id] = canonical bytes. `id` is the U128 hash of the
-// canonical bytes (attributes.MakeKey) — pre-computed at Add time so the
-// downstream pipeline (parallel resolver, coverage_bits) never has to
-// rehash or shuttle the bytes through a string round-trip. The canonical
-// bytes stay on the map value because Pebble Get in the resolver still
-// needs them; on the wire only the U128 payload rides on AttributeID.
+// Attributes[attrCode][id] = (canonical bytes, tag). `id` is the U128
+// hash of the canonical bytes (attributes.MakeKey) — pre-computed at
+// Add time so the downstream pipeline (parallel resolver,
+// coverage_bits) never has to rehash or shuttle the bytes through a
+// string round-trip. `Tag` is the XXH3-64 collision detector; the FSM
+// uses it to reject preload seeds that don't match the cache entry's
+// tag on U128 collisions.
 //
 // IdempotencyKeys is lazily allocated on first AddIdempotencyKey — most
 // orders (system scoped, index management, chapter operations) carry
@@ -22,7 +34,7 @@ import (
 // into a single generic dispatch keyed by attribute code — the same code
 // the FSM uses to route through AttributeCoverage.attr_code.
 type Coverage struct {
-	Attributes      map[byte]map[attributes.U128][]byte
+	Attributes      map[byte]map[attributes.U128]CoverageEntry
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
 }
 
@@ -33,19 +45,19 @@ type Coverage struct {
 // MUST NOT mutate it afterwards.
 func (c *Coverage) Add(attrCode byte, canonical []byte) {
 	if c.Attributes == nil {
-		c.Attributes = make(map[byte]map[attributes.U128][]byte)
+		c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry)
 	}
 
 	m, ok := c.Attributes[attrCode]
 	if !ok {
-		m = make(map[attributes.U128][]byte)
+		m = make(map[attributes.U128]CoverageEntry)
 		c.Attributes[attrCode] = m
 	}
 
-	id, _ := attributes.MakeKey(canonical)
+	id, tag := attributes.MakeKey(canonical)
 
 	if _, exists := m[id]; !exists {
-		m[id] = canonical
+		m[id] = CoverageEntry{Canonical: canonical, Tag: tag}
 	}
 }
 
@@ -68,6 +80,7 @@ func (c *Coverage) Has(attrCode byte, canonical []byte) bool {
 	}
 
 	id, _ := attributes.MakeKey(canonical)
+
 	_, ok = m[id]
 
 	return ok
@@ -116,18 +129,18 @@ func (c *Coverage) Merge(src *Coverage) {
 		}
 
 		if c.Attributes == nil {
-			c.Attributes = make(map[byte]map[attributes.U128][]byte, len(src.Attributes))
+			c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry, len(src.Attributes))
 		}
 
 		dst, ok := c.Attributes[attrCode]
 		if !ok {
-			dst = make(map[attributes.U128][]byte, len(srcMap))
+			dst = make(map[attributes.U128]CoverageEntry, len(srcMap))
 			c.Attributes[attrCode] = dst
 		}
 
-		for id, canonical := range srcMap {
+		for id, entry := range srcMap {
 			if _, exists := dst[id]; !exists {
-				dst[id] = canonical
+				dst[id] = entry
 			}
 		}
 	}
