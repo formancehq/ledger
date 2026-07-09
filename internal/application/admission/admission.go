@@ -550,16 +550,26 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait(ctx)
+
+	// Observe caller attribution for committed entries only. A success, or a
+	// business-rule rejection (insufficient funds, scope/transient validation),
+	// writes an audit entry carrying this caller snapshot; a stale proposal and
+	// the pre-commit rejections (queue-full, guard, marshal) write nothing.
+	committed := err == nil
+	if !committed {
+		var businessErr *domain.BusinessError
+		committed = errors.As(err, &businessErr) && !errors.Is(err, domain.ErrStaleProposal)
+	}
+
+	if committed {
+		a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
-
-	// The proposal is committed and applied here — an audit entry carrying this
-	// caller snapshot has been written. Observing attribution gaps at this point
-	// excludes proposals rejected before commit (guard/marshal/stale/queue-full).
-	a.observeCallerSnapshot(ctx, cmd.GetCallerSnapshot())
 
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)
