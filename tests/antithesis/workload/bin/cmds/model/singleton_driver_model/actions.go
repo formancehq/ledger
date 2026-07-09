@@ -61,18 +61,22 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]st
 	picks := pickLedgers(ledgers)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
-	// make sense single-ledger.
+	// make sense single-ledger. Gate them by the same back-pressure as
+	// generateTransaction so their unreferenced fund/drain records don't grow the
+	// log past the cap.
 	if len(picks) == 1 {
 		ledger := picks[0]
 		ls := g.Ledger(ledger)
-		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
-		case 0:
-			if reqs := generateTransientBalancedBulk(ledger, ls); reqs != nil {
-				return oracle.Bulk{Requests: reqs}
-			}
-		case 1:
-			if reqs := generateTransientUnbalancedBulk(ledger, ls); reqs != nil {
-				return oracle.Bulk{Requests: reqs}
+		if rollTransaction(ls) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
+			case 0:
+				if reqs := generateTransientBalancedBulk(ledger, ls); reqs != nil {
+					return oracle.Bulk{Requests: reqs}
+				}
+			case 1:
+				if reqs := generateTransientUnbalancedBulk(ledger, ls); reqs != nil {
+					return oracle.Bulk{Requests: reqs}
+				}
 			}
 		}
 	}
@@ -131,10 +135,12 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]st
 }
 
 // rollTransaction reports whether to create a new transaction, tapering with the
-// ledger's committed-transaction count (see the txEmit* knobs) so tracked
-// references don't grow without bound.
+// ledger's full transaction-log size (see the txEmit* knobs) so the log — every
+// entry of which candidateBases clones and hashes on each fold — doesn't grow
+// without bound. Counting only referenced transactions would miss the
+// unreferenced records (reverts, drains, transient helpers) that also accumulate.
 func rollTransaction(ls oracle.LedgerState) bool {
-	switch n := len(ls.TxByRef()); {
+	switch n := len(ls.Txs()); {
 	case n < txEmitFull:
 		return true
 	case n < txEmitTaper:
