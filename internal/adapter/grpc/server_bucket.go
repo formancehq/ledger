@@ -414,20 +414,31 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	mainPath := impl.store.QueryCheckpointMainDir(checkpointID)
 	readIndexPath := impl.store.QueryCheckpointReadIndexDir(checkpointID)
 
-	// The read-index checkpoint is materialized asynchronously and per-replica by
-	// each node's index builder, at the moment its builder crosses the
-	// CreatedQueryCheckpoint log. Opening a not-yet-materialized directory would
-	// surface an opaque, non-retryable Unknown (EN-1460). The .ready marker
-	// distinguishes the cases:
-	//   - marker present -> materialized on this replica, open it.
-	//   - marker absent  -> resolve readiness vs existence (see resolveMissingMarker).
+	// A checkpoint has two independently-materialized directories on each replica:
+	// the main store (created by the applier during apply) and the read index
+	// (created by the index builder when it crosses the CreatedQueryCheckpoint
+	// log). Either can lag the other, and both lag the cluster on a follower.
+	// Opening a not-yet-materialized directory would surface an opaque,
+	// non-retryable Unknown (EN-1460).
+	//
+	// The read-index .ready marker is written atomically last by the builder, so
+	// it is a reliable readiness gate for the read index. The main store has no
+	// such marker (the applier checkpoints straight into {id}/main), so we gate it
+	// by attempting the read-only open: any failure on a checkpoint whose read
+	// index is ready is treated as "main store not materialized here yet" and
+	// routed through resolveMissingMarker, which returns a retryable
+	// ErrCheckpointNotReady for a registered checkpoint (or NotFound after a
+	// barrier confirms it does not exist).
 	if !readstore.CheckpointDirReady(readIndexPath) {
 		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+		// The read index is ready but the main store is not openable yet — most
+		// likely the applier's main checkpoint has not landed on this replica.
+		// Never surface a raw Unknown: classify as not-ready / not-found.
+		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
 	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
