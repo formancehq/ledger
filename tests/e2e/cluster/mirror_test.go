@@ -116,6 +116,28 @@ func newV2TransactionLog(id uint64, txID uint64, source, destination, amount, as
 	}
 }
 
+func newV2TransactionLogWithMetadata(id uint64, txID uint64, source, destination, amount, asset string, metadata map[string]string) v2.V2Log {
+	data, _ := json.Marshal(v2.V2NewTransactionData{
+		Transaction: v2.V2Transaction{
+			ID: txID,
+			Postings: []v2.V2Posting{{
+				Source:      source,
+				Destination: destination,
+				Amount:      json.Number(amount),
+				Asset:       asset,
+			}},
+			Metadata:  metadata,
+			Timestamp: time.Now().Format(time.RFC3339Nano),
+		},
+	})
+	return v2.V2Log{
+		ID:   id,
+		Type: "NEW_TRANSACTION",
+		Date: time.Now().Format(time.RFC3339Nano),
+		Data: data,
+	}
+}
+
 func newV2SetMetadataLog(id uint64, targetType, targetID string, metadata map[string]string) v2.V2Log {
 	rawTargetID, _ := json.Marshal(targetID)
 	data, _ := json.Marshal(v2.V2SetMetadataData{
@@ -328,6 +350,147 @@ var _ = Describe("Mirror", Ordered, func() {
 				g.Expect(roleVal).NotTo(BeNil())
 				g.Expect(roleVal.GetStringValue()).To(Equal("admin"))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When syncing with CEL rewrite rules", Ordered, func() {
+		var mockV2 *mockV2Server
+
+		BeforeAll(func() {
+			mockV2 = newMockV2Server()
+			DeferCleanup(mockV2.Close)
+
+			// tx 0: address carries a ":worker:001" lock-avoidance shard to strip,
+			// and metadata to transform.
+			mockV2.addLog(newV2TransactionLogWithMetadata(1, 0, "world", "users:acme:worker:001:main", "100", "USD/2", map[string]string{"kind": "payout"}))
+			// tx 1: marked to be dropped by a CEL rule.
+			mockV2.addLog(newV2TransactionLogWithMetadata(2, 1, "world", "users:bob", "5", "USD/2", map[string]string{"skip": "yes"}))
+			// tx 2: ordinary transaction that survives untouched.
+			mockV2.addLog(newV2TransactionLog(3, 2, "world", "users:carol", "7", "USD/2"))
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-cel",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+							RewriteRules: []*commonpb.MirrorRewriteRule{
+								// Strip ":worker:<n>" from every address, whichever variant carries it.
+								{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{
+									Actions: []*commonpb.AnyVariantAction{{
+										Action: &commonpb.AnyVariantAction_RewriteAddress{
+											RewriteAddress: &commonpb.RewriteAddressAction{Pattern: ":worker:\\d+", Replacement: ""},
+										},
+									}},
+								}}},
+								// Tag every created transaction with a marker.
+								{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransactionRule{
+									Actions: []*commonpb.CreatedTransactionAction{{
+										Action: &commonpb.CreatedTransactionAction_SetMetadata{
+											SetMetadata: &commonpb.SetMetadataAction{
+											Key:    "mirrored",
+											Source: &commonpb.SetMetadataAction_Value{Value: "true"},
+										},
+										},
+									}},
+								}}},
+								// Never mirror transactions flagged skip=yes.
+								{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransactionRule{
+									Match: `has(log.metadata.skip) && log.metadata["skip"].string_value == "yes"`,
+									Actions: []*commonpb.CreatedTransactionAction{{
+										Action: &commonpb.CreatedTransactionAction_Drop{Drop: &commonpb.DropAction{}},
+									}},
+								}}},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should rewrite posting addresses and drop matched transactions", func() {
+			// Only tx 0 (rewritten) and tx 2 (carol) survive; tx 1 is dropped
+			// into a fill-gap, so exactly two transactions are mirrored.
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, "mirror-cel", 10, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(2))
+
+				destinations := map[string]bool{}
+				for _, tx := range txs {
+					for _, p := range tx.GetPostings() {
+						destinations[p.GetDestination()] = true
+					}
+				}
+
+				// ":worker:001" stripped from the rewritten address.
+				g.Expect(destinations).To(HaveKey("users:acme:main"))
+				g.Expect(destinations).To(HaveKey("users:carol"))
+				// The dropped transaction's destination never lands.
+				g.Expect(destinations).NotTo(HaveKey("users:bob"))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should transform transaction metadata", func() {
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, "mirror-cel", 10, 0)
+				g.Expect(err).To(Succeed())
+
+				var rewritten *commonpb.Transaction
+				for _, tx := range txs {
+					for _, p := range tx.GetPostings() {
+						if p.GetDestination() == "users:acme:main" {
+							rewritten = tx
+						}
+					}
+				}
+				g.Expect(rewritten).NotTo(BeNil())
+
+				// setMetadata added the marker; the original v2 metadata is kept.
+				mirrored := actions.FindMetadataValue(rewritten.GetMetadata(), "mirrored")
+				g.Expect(mirrored).NotTo(BeNil())
+				g.Expect(mirrored.GetStringValue()).To(Equal("true"))
+
+				kind := actions.FindMetadataValue(rewritten.GetMetadata(), "kind")
+				g.Expect(kind).NotTo(BeNil())
+				g.Expect(kind.GetStringValue()).To(Equal("payout"))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should reject creating a mirror ledger with an invalid CEL rule", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-cel-invalid",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
+							},
+							RewriteRules: []*commonpb.MirrorRewriteRule{
+								// Scope is set but `match` is an invalid CEL expression:
+								// admission must reject the rule at compile time.
+								{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{
+									Match: `this is not valid cel`,
+								}}},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 		})
 	})
 

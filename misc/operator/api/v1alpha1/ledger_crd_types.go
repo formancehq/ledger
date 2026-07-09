@@ -57,33 +57,200 @@ type MirrorSourceSpec struct {
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
 
-	// AddressRewriteRules are applied, in order, to every account address as the
-	// mirror translates v2 source logs into v3 orders. Each rule drops or renames
-	// an address segment (see AddressRewriteRule). Applies to both HTTP and
-	// Postgres sources.
+	// RewriteRules are CEL rewrite rules applied, in order, to every mirror log
+	// entry as the mirror translates v2 source logs into v3 orders. Each rule can
+	// rename address segments, transform metadata, or drop transactions (see
+	// MirrorRewriteRule). Applies to both HTTP and Postgres sources.
 	// +optional
-	AddressRewriteRules []AddressRewriteRule `json:"addressRewriteRules,omitempty"`
+	RewriteRules []MirrorRewriteRule `json:"rewriteRules,omitempty"`
 }
 
-// AddressRewriteRule rewrites account addresses during v2→v3 mirror translation.
-// Pattern is a Go (RE2) regular expression matched against the full account
-// address; every match is replaced with Replacement, which may reference capture
-// groups (e.g. "$1"). An empty Replacement drops the matched segment, e.g.
-// pattern "(:worker:\\d+)" turns "payments:acme:worker:001:main" into
-// "payments:acme:main". Rewriting is a translation-time projection only: the
-// source v2 ledger is never modified, and the rewritten address must still be a
-// valid ledger account address.
-type AddressRewriteRule struct {
-	// Pattern is the RE2 regular expression matched against every account address.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Pattern string `json:"pattern"`
-
-	// Replacement replaces each match of Pattern. May reference capture groups
-	// (e.g. "$1"). An empty replacement drops the matched segment.
+// MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
+// A rule is scoped to exactly one variant of MirrorLogEntry.data. That scope
+// determines the CEL type of `log` in the rule's predicate and the set of
+// actions the rule can carry: `set_account_metadata` inside a
+// `savedMetadata` rule is impossible to write, because the proto oneof
+// doesn't include it. When Stop is true and the rule matches (scope +
+// predicate), no further rules are evaluated. Rewriting is a deterministic
+// translation-time projection: the source v2 ledger is never modified.
+//
+// Exactly one of the scope fields must be set.
+type MirrorRewriteRule struct {
 	// +optional
-	Replacement string `json:"replacement,omitempty"`
+	CreatedTransaction *CreatedTransactionRule `json:"createdTransaction,omitempty"`
+	// +optional
+	RevertedTransaction *RevertedTransactionRule `json:"revertedTransaction,omitempty"`
+	// +optional
+	SavedMetadata *SavedMetadataRule `json:"savedMetadata,omitempty"`
+	// +optional
+	DeletedMetadata *DeletedMetadataRule `json:"deletedMetadata,omitempty"`
+	// +optional
+	AnyVariant *AnyVariantRule `json:"anyVariant,omitempty"`
+
+	// Stop halts the rule chain once this rule matches (scope + predicate).
+	// +optional
+	Stop bool `json:"stop,omitempty"`
 }
+
+// CreatedTransactionRule scopes to MirrorCreatedTransaction. Inside `match`,
+// `log` is typed as the created-transaction proto — write `log.metadata["k"]`
+// directly, not `log.created_transaction.metadata["k"]`.
+type CreatedTransactionRule struct {
+	// +optional
+	Match string `json:"match,omitempty"`
+	// +optional
+	Actions []CreatedTransactionAction `json:"actions,omitempty"`
+}
+
+type RevertedTransactionRule struct {
+	// +optional
+	Match string `json:"match,omitempty"`
+	// +optional
+	Actions []RevertedTransactionAction `json:"actions,omitempty"`
+}
+
+type SavedMetadataRule struct {
+	// +optional
+	Match string `json:"match,omitempty"`
+	// +optional
+	Actions []SavedMetadataAction `json:"actions,omitempty"`
+}
+
+type DeletedMetadataRule struct {
+	// +optional
+	Match string `json:"match,omitempty"`
+	// +optional
+	Actions []DeletedMetadataAction `json:"actions,omitempty"`
+}
+
+// AnyVariantRule scopes to every variant. `log` is typed as MirrorLogEntry, so
+// the predicate must use `has(log.<variant>)` guards. The action set is
+// restricted to operations that make sense on every variant.
+type AnyVariantRule struct {
+	// +optional
+	Match string `json:"match,omitempty"`
+	// +optional
+	Actions []AnyVariantAction `json:"actions,omitempty"`
+}
+
+// Per-variant action oneofs. Exactly one field is set per action; setting
+// none, or more than one, is rejected server-side at admission.
+
+type CreatedTransactionAction struct {
+	// +optional
+	RewriteAddress *RewriteAddressAction `json:"rewriteAddress,omitempty"`
+	// +optional
+	SetMetadata *SetMetadataAction `json:"setMetadata,omitempty"`
+	// +optional
+	DeleteMetadata *DeleteMetadataAction `json:"deleteMetadata,omitempty"`
+	// +optional
+	SetAccountMetadata *SetAccountMetadataAction `json:"setAccountMetadata,omitempty"`
+	// +optional
+	DeleteAccountMetadata *DeleteAccountMetadataAction `json:"deleteAccountMetadata,omitempty"`
+	// +optional
+	SetAccountMetadataFromAddress *SetAccountMetadataFromAddressAction `json:"setAccountMetadataFromAddress,omitempty"`
+	// +optional
+	Drop *DropAction `json:"drop,omitempty"`
+}
+
+type RevertedTransactionAction struct {
+	// +optional
+	RewriteAddress *RewriteAddressAction `json:"rewriteAddress,omitempty"`
+	// +optional
+	SetMetadata *SetMetadataAction `json:"setMetadata,omitempty"`
+	// +optional
+	DeleteMetadata *DeleteMetadataAction `json:"deleteMetadata,omitempty"`
+	// +optional
+	Drop *DropAction `json:"drop,omitempty"`
+}
+
+type SavedMetadataAction struct {
+	// +optional
+	RewriteAddress *RewriteAddressAction `json:"rewriteAddress,omitempty"`
+	// +optional
+	SetMetadata *SetMetadataAction `json:"setMetadata,omitempty"`
+	// +optional
+	DeleteMetadata *DeleteMetadataAction `json:"deleteMetadata,omitempty"`
+	// +optional
+	Drop *DropAction `json:"drop,omitempty"`
+}
+
+type DeletedMetadataAction struct {
+	// +optional
+	RewriteAddress *RewriteAddressAction `json:"rewriteAddress,omitempty"`
+	// +optional
+	Drop *DropAction `json:"drop,omitempty"`
+}
+
+type AnyVariantAction struct {
+	// +optional
+	RewriteAddress *RewriteAddressAction `json:"rewriteAddress,omitempty"`
+	// +optional
+	Drop *DropAction `json:"drop,omitempty"`
+}
+
+// Shared action payloads. Each carries only the parameters an operator
+// supplies for that operation — no CEL, no evaluation.
+
+type RewriteAddressAction struct {
+	Pattern     string `json:"pattern"`
+	Replacement string `json:"replacement"`
+}
+
+// SetMetadataAction sets a metadata key. `value` is a literal string; `valueExpr`
+// is a CEL expression evaluated against the current variant at commit time
+// (e.g. `log.reference`). Exactly one should be set; setting neither writes an
+// empty string. Optional `type` coerces the produced string into a typed
+// MetadataValue — one of "string" (default), "int64", "bool", "uint64",
+// "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32", "datetime".
+type SetMetadataAction struct {
+	Key string `json:"key"`
+	// +optional
+	Value string `json:"value,omitempty"`
+	// +optional
+	ValueExpr string `json:"valueExpr,omitempty"`
+	// +optional
+	Type string `json:"type,omitempty"`
+}
+
+type DeleteMetadataAction struct {
+	Key string `json:"key"`
+}
+
+// SetAccountMetadataAction — see SetMetadataAction for the literal / valueExpr /
+// type semantics on the value field.
+type SetAccountMetadataAction struct {
+	Account string `json:"account"`
+	Key     string `json:"key"`
+	// +optional
+	Value string `json:"value,omitempty"`
+	// +optional
+	ValueExpr string `json:"valueExpr,omitempty"`
+	// +optional
+	Type string `json:"type,omitempty"`
+}
+
+type DeleteAccountMetadataAction struct {
+	Account string `json:"account"`
+	Key     string `json:"key"`
+}
+
+// SetAccountMetadataFromAddressAction runs a single RE2 pattern over every
+// posting address and, for each match, writes one or more metadata entries
+// on the matched account using group-capturing replacements.
+type SetAccountMetadataFromAddressAction struct {
+	Pattern      string                                     `json:"pattern"`
+	Replacements []SetAccountMetadataFromAddressReplacement `json:"replacements"`
+}
+
+type SetAccountMetadataFromAddressReplacement struct {
+	Key         string `json:"key"`
+	Replacement string `json:"replacement"`
+	// +optional
+	Type string `json:"type,omitempty"`
+}
+
+type DropAction struct{}
 
 // HTTPMirrorSource configures HTTP-based mirror replication.
 type HTTPMirrorSource struct {

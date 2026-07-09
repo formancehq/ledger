@@ -12,6 +12,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -49,7 +50,7 @@ type Worker struct {
 	ledgerName     string
 	batchSize      int
 	source         v2.Source
-	rewriter       *v2.AddressRewriter
+	rewriter       *celrewrite.Rewriter
 	store          *dal.Store
 	proposer       Proposer
 	builder        *plan.Builder
@@ -83,7 +84,7 @@ func NewWorker(
 	ledgerName string,
 	batchSize int,
 	source v2.Source,
-	rewriter *v2.AddressRewriter,
+	rewriter *celrewrite.Rewriter,
 	store *dal.Store,
 	proposer Proposer,
 	builder *plan.Builder,

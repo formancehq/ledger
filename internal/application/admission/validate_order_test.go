@@ -877,39 +877,76 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 			}},
 		},
 		{
-			name: "valid address rewrite rules accepted",
+			name: "valid rewrite rules accepted",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: `(:worker:\d+)`, Replacement: ""},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleRewriteAddress(":worker:\\d+", ""),
+					createdRuleSetMetadata(`log.metadata["type"].string_value == "payout"`, "category", "external", true),
 				},
 			},
 		},
 		{
-			name: "invalid address rewrite pattern rejected at admission",
+			name: "unset scope rejected at admission",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: `(unbalanced`, Replacement: ""},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					{Stop: true},
 				},
 			},
-			wantErr: ErrMirrorAddressRewritePatternInvalid,
+			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 		{
-			name: "empty address rewrite pattern rejected at admission",
+			name: "invalid cel expression rejected at admission",
 			src: &commonpb.MirrorSourceConfig{
 				Type: &commonpb.MirrorSourceConfig_Http{
 					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
 				},
-				AddressRewriteRules: []*commonpb.AddressRewriteRule{
-					{Pattern: "", Replacement: "x"},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleWithMatch(`this is not valid cel`),
 				},
 			},
-			wantErr: ErrMirrorAddressRewritePatternInvalid,
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "non-boolean match rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleWithMatch(`"a string"`),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid literal regex pattern rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					anyRuleRewriteAddress("(", ""),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
+		},
+		{
+			name: "invalid literal metadata key rejected at admission",
+			src: &commonpb.MirrorSourceConfig{
+				Type: &commonpb.MirrorSourceConfig_Http{
+					Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "http://v2:3068"},
+				},
+				RewriteRules: []*commonpb.MirrorRewriteRule{
+					createdRuleSetMetadata("", "bad key", "v", false),
+				},
+			},
+			wantErr: ErrMirrorRewriteRuleInvalid,
 		},
 	}
 

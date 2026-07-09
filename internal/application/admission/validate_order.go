@@ -2,11 +2,11 @@ package admission
 
 import (
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -261,19 +261,13 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	// Reject uncompilable address-rewrite patterns before the order reaches the
-	// audit chain, so a malformed rule fails fast instead of stalling the mirror
-	// worker on every batch.
-	for _, rule := range src.GetAddressRewriteRules() {
-		// An empty pattern compiles fine but matches at every boundary, so it
-		// would rewrite every address; reject it explicitly.
-		if rule.GetPattern() == "" {
-			return ErrMirrorAddressRewritePatternInvalid
-		}
-
-		if _, err := regexp.Compile(rule.GetPattern()); err != nil {
-			return ErrMirrorAddressRewritePatternInvalid
-		}
+	// Compile the CEL rewrite rules before the order reaches the audit chain, so
+	// a malformed rule (bad syntax, wrong output type, over the static caps)
+	// fails fast instead of stalling the mirror worker on every batch. NewRewriter
+	// performs exactly the same compilation the worker will, so a nil error here
+	// guarantees the worker can build the rewriter.
+	if _, err := celrewrite.NewRewriter(src.GetRewriteRules()); err != nil {
+		return ErrMirrorRewriteRuleInvalid
 	}
 
 	pg := src.GetPostgres()

@@ -6654,7 +6654,7 @@ func NewConfirmedArchiveChapterLogListReader(s []*ConfirmedArchiveChapterLog) Co
 type MirrorSourceConfigReader interface {
 	GetLedgerName() string
 	GetBatchSize() uint32
-	GetAddressRewriteRules() AddressRewriteRuleListReader
+	GetRewriteRules() MirrorRewriteRuleListReader
 	GetType() isMirrorSourceConfig_Type
 	Mutate() *MirrorSourceConfig
 }
@@ -6669,8 +6669,8 @@ func (r *mirrorSourceConfigReadonly) GetBatchSize() uint32 {
 	return (*MirrorSourceConfig)(r).GetBatchSize()
 }
 
-func (r *mirrorSourceConfigReadonly) GetAddressRewriteRules() AddressRewriteRuleListReader {
-	return NewAddressRewriteRuleListReader((*MirrorSourceConfig)(r).GetAddressRewriteRules())
+func (r *mirrorSourceConfigReadonly) GetRewriteRules() MirrorRewriteRuleListReader {
+	return NewMirrorRewriteRuleListReader((*MirrorSourceConfig)(r).GetRewriteRules())
 }
 
 func (r *mirrorSourceConfigReadonly) GetType() isMirrorSourceConfig_Type {
@@ -6731,53 +6731,53 @@ func NewMirrorSourceConfigListReader(s []*MirrorSourceConfig) MirrorSourceConfig
 	return mirrorSourceConfigListReadonly(s)
 }
 
-// AddressRewriteRuleReader provides read-only access to AddressRewriteRule.
+// MirrorRewriteRuleReader provides read-only access to MirrorRewriteRule.
 // Call Mutate() to obtain a mutable clone.
-type AddressRewriteRuleReader interface {
-	GetPattern() string
-	GetReplacement() string
-	Mutate() *AddressRewriteRule
+type MirrorRewriteRuleReader interface {
+	GetStop() bool
+	GetScope() isMirrorRewriteRule_Scope
+	Mutate() *MirrorRewriteRule
 }
 
-type addressRewriteRuleReadonly AddressRewriteRule
+type mirrorRewriteRuleReadonly MirrorRewriteRule
 
-func (r *addressRewriteRuleReadonly) GetPattern() string {
-	return (*AddressRewriteRule)(r).GetPattern()
+func (r *mirrorRewriteRuleReadonly) GetStop() bool {
+	return (*MirrorRewriteRule)(r).GetStop()
 }
 
-func (r *addressRewriteRuleReadonly) GetReplacement() string {
-	return (*AddressRewriteRule)(r).GetReplacement()
+func (r *mirrorRewriteRuleReadonly) GetScope() isMirrorRewriteRule_Scope {
+	return (*MirrorRewriteRule)(r).GetScope()
 }
 
-func (r *addressRewriteRuleReadonly) Mutate() *AddressRewriteRule {
-	return (*AddressRewriteRule)(r).CloneVT()
+func (r *mirrorRewriteRuleReadonly) Mutate() *MirrorRewriteRule {
+	return (*MirrorRewriteRule)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this AddressRewriteRule.
-func (m *AddressRewriteRule) AsReader() AddressRewriteRuleReader {
+// AsReader returns a read-only view of this MirrorRewriteRule.
+func (m *MirrorRewriteRule) AsReader() MirrorRewriteRuleReader {
 	if m == nil {
 		return nil
 	}
-	return (*addressRewriteRuleReadonly)(m)
+	return (*mirrorRewriteRuleReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this AddressRewriteRule.
-func (m *AddressRewriteRule) Mutate() *AddressRewriteRule {
+// Mutate returns a mutable deep clone of this MirrorRewriteRule.
+func (m *MirrorRewriteRule) Mutate() *MirrorRewriteRule {
 	return m.CloneVT()
 }
 
-// AddressRewriteRuleListReader provides read-only iteration over []*AddressRewriteRule.
-type AddressRewriteRuleListReader interface {
+// MirrorRewriteRuleListReader provides read-only iteration over []*MirrorRewriteRule.
+type MirrorRewriteRuleListReader interface {
 	Len() int
-	Get(i int) AddressRewriteRuleReader
-	Range(yield func(int, AddressRewriteRuleReader) bool)
+	Get(i int) MirrorRewriteRuleReader
+	Range(yield func(int, MirrorRewriteRuleReader) bool)
 }
 
-type addressRewriteRuleListReadonly []*AddressRewriteRule
+type mirrorRewriteRuleListReadonly []*MirrorRewriteRule
 
-func (l addressRewriteRuleListReadonly) Len() int { return len(l) }
+func (l mirrorRewriteRuleListReadonly) Len() int { return len(l) }
 
-func (l addressRewriteRuleListReadonly) Get(i int) AddressRewriteRuleReader {
+func (l mirrorRewriteRuleListReadonly) Get(i int) MirrorRewriteRuleReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -6785,9 +6785,9 @@ func (l addressRewriteRuleListReadonly) Get(i int) AddressRewriteRuleReader {
 	return v.AsReader()
 }
 
-func (l addressRewriteRuleListReadonly) Range(yield func(int, AddressRewriteRuleReader) bool) {
+func (l mirrorRewriteRuleListReadonly) Range(yield func(int, MirrorRewriteRuleReader) bool) {
 	for i, v := range l {
-		var r AddressRewriteRuleReader
+		var r MirrorRewriteRuleReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -6797,11 +6797,1285 @@ func (l addressRewriteRuleListReadonly) Range(yield func(int, AddressRewriteRule
 	}
 }
 
-// NewAddressRewriteRuleListReader wraps s for read-only iteration. The returned
+// NewMirrorRewriteRuleListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewAddressRewriteRuleListReader(s []*AddressRewriteRule) AddressRewriteRuleListReader {
-	return addressRewriteRuleListReadonly(s)
+func NewMirrorRewriteRuleListReader(s []*MirrorRewriteRule) MirrorRewriteRuleListReader {
+	return mirrorRewriteRuleListReadonly(s)
 }
+
+// CreatedTransactionRuleReader provides read-only access to CreatedTransactionRule.
+// Call Mutate() to obtain a mutable clone.
+type CreatedTransactionRuleReader interface {
+	GetMatch() string
+	GetActions() CreatedTransactionActionListReader
+	Mutate() *CreatedTransactionRule
+}
+
+type createdTransactionRuleReadonly CreatedTransactionRule
+
+func (r *createdTransactionRuleReadonly) GetMatch() string {
+	return (*CreatedTransactionRule)(r).GetMatch()
+}
+
+func (r *createdTransactionRuleReadonly) GetActions() CreatedTransactionActionListReader {
+	return NewCreatedTransactionActionListReader((*CreatedTransactionRule)(r).GetActions())
+}
+
+func (r *createdTransactionRuleReadonly) Mutate() *CreatedTransactionRule {
+	return (*CreatedTransactionRule)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CreatedTransactionRule.
+func (m *CreatedTransactionRule) AsReader() CreatedTransactionRuleReader {
+	if m == nil {
+		return nil
+	}
+	return (*createdTransactionRuleReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CreatedTransactionRule.
+func (m *CreatedTransactionRule) Mutate() *CreatedTransactionRule {
+	return m.CloneVT()
+}
+
+// CreatedTransactionRuleListReader provides read-only iteration over []*CreatedTransactionRule.
+type CreatedTransactionRuleListReader interface {
+	Len() int
+	Get(i int) CreatedTransactionRuleReader
+	Range(yield func(int, CreatedTransactionRuleReader) bool)
+}
+
+type createdTransactionRuleListReadonly []*CreatedTransactionRule
+
+func (l createdTransactionRuleListReadonly) Len() int { return len(l) }
+
+func (l createdTransactionRuleListReadonly) Get(i int) CreatedTransactionRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdTransactionRuleListReadonly) Range(yield func(int, CreatedTransactionRuleReader) bool) {
+	for i, v := range l {
+		var r CreatedTransactionRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedTransactionRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedTransactionRuleListReader(s []*CreatedTransactionRule) CreatedTransactionRuleListReader {
+	return createdTransactionRuleListReadonly(s)
+}
+
+// RevertedTransactionRuleReader provides read-only access to RevertedTransactionRule.
+// Call Mutate() to obtain a mutable clone.
+type RevertedTransactionRuleReader interface {
+	GetMatch() string
+	GetActions() RevertedTransactionActionListReader
+	Mutate() *RevertedTransactionRule
+}
+
+type revertedTransactionRuleReadonly RevertedTransactionRule
+
+func (r *revertedTransactionRuleReadonly) GetMatch() string {
+	return (*RevertedTransactionRule)(r).GetMatch()
+}
+
+func (r *revertedTransactionRuleReadonly) GetActions() RevertedTransactionActionListReader {
+	return NewRevertedTransactionActionListReader((*RevertedTransactionRule)(r).GetActions())
+}
+
+func (r *revertedTransactionRuleReadonly) Mutate() *RevertedTransactionRule {
+	return (*RevertedTransactionRule)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RevertedTransactionRule.
+func (m *RevertedTransactionRule) AsReader() RevertedTransactionRuleReader {
+	if m == nil {
+		return nil
+	}
+	return (*revertedTransactionRuleReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RevertedTransactionRule.
+func (m *RevertedTransactionRule) Mutate() *RevertedTransactionRule {
+	return m.CloneVT()
+}
+
+// RevertedTransactionRuleListReader provides read-only iteration over []*RevertedTransactionRule.
+type RevertedTransactionRuleListReader interface {
+	Len() int
+	Get(i int) RevertedTransactionRuleReader
+	Range(yield func(int, RevertedTransactionRuleReader) bool)
+}
+
+type revertedTransactionRuleListReadonly []*RevertedTransactionRule
+
+func (l revertedTransactionRuleListReadonly) Len() int { return len(l) }
+
+func (l revertedTransactionRuleListReadonly) Get(i int) RevertedTransactionRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revertedTransactionRuleListReadonly) Range(yield func(int, RevertedTransactionRuleReader) bool) {
+	for i, v := range l {
+		var r RevertedTransactionRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevertedTransactionRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevertedTransactionRuleListReader(s []*RevertedTransactionRule) RevertedTransactionRuleListReader {
+	return revertedTransactionRuleListReadonly(s)
+}
+
+// SavedMetadataRuleReader provides read-only access to SavedMetadataRule.
+// Call Mutate() to obtain a mutable clone.
+type SavedMetadataRuleReader interface {
+	GetMatch() string
+	GetActions() SavedMetadataActionListReader
+	Mutate() *SavedMetadataRule
+}
+
+type savedMetadataRuleReadonly SavedMetadataRule
+
+func (r *savedMetadataRuleReadonly) GetMatch() string {
+	return (*SavedMetadataRule)(r).GetMatch()
+}
+
+func (r *savedMetadataRuleReadonly) GetActions() SavedMetadataActionListReader {
+	return NewSavedMetadataActionListReader((*SavedMetadataRule)(r).GetActions())
+}
+
+func (r *savedMetadataRuleReadonly) Mutate() *SavedMetadataRule {
+	return (*SavedMetadataRule)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SavedMetadataRule.
+func (m *SavedMetadataRule) AsReader() SavedMetadataRuleReader {
+	if m == nil {
+		return nil
+	}
+	return (*savedMetadataRuleReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SavedMetadataRule.
+func (m *SavedMetadataRule) Mutate() *SavedMetadataRule {
+	return m.CloneVT()
+}
+
+// SavedMetadataRuleListReader provides read-only iteration over []*SavedMetadataRule.
+type SavedMetadataRuleListReader interface {
+	Len() int
+	Get(i int) SavedMetadataRuleReader
+	Range(yield func(int, SavedMetadataRuleReader) bool)
+}
+
+type savedMetadataRuleListReadonly []*SavedMetadataRule
+
+func (l savedMetadataRuleListReadonly) Len() int { return len(l) }
+
+func (l savedMetadataRuleListReadonly) Get(i int) SavedMetadataRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l savedMetadataRuleListReadonly) Range(yield func(int, SavedMetadataRuleReader) bool) {
+	for i, v := range l {
+		var r SavedMetadataRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSavedMetadataRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSavedMetadataRuleListReader(s []*SavedMetadataRule) SavedMetadataRuleListReader {
+	return savedMetadataRuleListReadonly(s)
+}
+
+// DeletedMetadataRuleReader provides read-only access to DeletedMetadataRule.
+// Call Mutate() to obtain a mutable clone.
+type DeletedMetadataRuleReader interface {
+	GetMatch() string
+	GetActions() DeletedMetadataActionListReader
+	Mutate() *DeletedMetadataRule
+}
+
+type deletedMetadataRuleReadonly DeletedMetadataRule
+
+func (r *deletedMetadataRuleReadonly) GetMatch() string {
+	return (*DeletedMetadataRule)(r).GetMatch()
+}
+
+func (r *deletedMetadataRuleReadonly) GetActions() DeletedMetadataActionListReader {
+	return NewDeletedMetadataActionListReader((*DeletedMetadataRule)(r).GetActions())
+}
+
+func (r *deletedMetadataRuleReadonly) Mutate() *DeletedMetadataRule {
+	return (*DeletedMetadataRule)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeletedMetadataRule.
+func (m *DeletedMetadataRule) AsReader() DeletedMetadataRuleReader {
+	if m == nil {
+		return nil
+	}
+	return (*deletedMetadataRuleReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeletedMetadataRule.
+func (m *DeletedMetadataRule) Mutate() *DeletedMetadataRule {
+	return m.CloneVT()
+}
+
+// DeletedMetadataRuleListReader provides read-only iteration over []*DeletedMetadataRule.
+type DeletedMetadataRuleListReader interface {
+	Len() int
+	Get(i int) DeletedMetadataRuleReader
+	Range(yield func(int, DeletedMetadataRuleReader) bool)
+}
+
+type deletedMetadataRuleListReadonly []*DeletedMetadataRule
+
+func (l deletedMetadataRuleListReadonly) Len() int { return len(l) }
+
+func (l deletedMetadataRuleListReadonly) Get(i int) DeletedMetadataRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedMetadataRuleListReadonly) Range(yield func(int, DeletedMetadataRuleReader) bool) {
+	for i, v := range l {
+		var r DeletedMetadataRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedMetadataRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedMetadataRuleListReader(s []*DeletedMetadataRule) DeletedMetadataRuleListReader {
+	return deletedMetadataRuleListReadonly(s)
+}
+
+// AnyVariantRuleReader provides read-only access to AnyVariantRule.
+// Call Mutate() to obtain a mutable clone.
+type AnyVariantRuleReader interface {
+	GetMatch() string
+	GetActions() AnyVariantActionListReader
+	Mutate() *AnyVariantRule
+}
+
+type anyVariantRuleReadonly AnyVariantRule
+
+func (r *anyVariantRuleReadonly) GetMatch() string {
+	return (*AnyVariantRule)(r).GetMatch()
+}
+
+func (r *anyVariantRuleReadonly) GetActions() AnyVariantActionListReader {
+	return NewAnyVariantActionListReader((*AnyVariantRule)(r).GetActions())
+}
+
+func (r *anyVariantRuleReadonly) Mutate() *AnyVariantRule {
+	return (*AnyVariantRule)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AnyVariantRule.
+func (m *AnyVariantRule) AsReader() AnyVariantRuleReader {
+	if m == nil {
+		return nil
+	}
+	return (*anyVariantRuleReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AnyVariantRule.
+func (m *AnyVariantRule) Mutate() *AnyVariantRule {
+	return m.CloneVT()
+}
+
+// AnyVariantRuleListReader provides read-only iteration over []*AnyVariantRule.
+type AnyVariantRuleListReader interface {
+	Len() int
+	Get(i int) AnyVariantRuleReader
+	Range(yield func(int, AnyVariantRuleReader) bool)
+}
+
+type anyVariantRuleListReadonly []*AnyVariantRule
+
+func (l anyVariantRuleListReadonly) Len() int { return len(l) }
+
+func (l anyVariantRuleListReadonly) Get(i int) AnyVariantRuleReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l anyVariantRuleListReadonly) Range(yield func(int, AnyVariantRuleReader) bool) {
+	for i, v := range l {
+		var r AnyVariantRuleReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAnyVariantRuleListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAnyVariantRuleListReader(s []*AnyVariantRule) AnyVariantRuleListReader {
+	return anyVariantRuleListReadonly(s)
+}
+
+// CreatedTransactionActionReader provides read-only access to CreatedTransactionAction.
+// Call Mutate() to obtain a mutable clone.
+type CreatedTransactionActionReader interface {
+	GetAction() isCreatedTransactionAction_Action
+	Mutate() *CreatedTransactionAction
+}
+
+type createdTransactionActionReadonly CreatedTransactionAction
+
+func (r *createdTransactionActionReadonly) GetAction() isCreatedTransactionAction_Action {
+	return (*CreatedTransactionAction)(r).GetAction()
+}
+
+func (r *createdTransactionActionReadonly) Mutate() *CreatedTransactionAction {
+	return (*CreatedTransactionAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CreatedTransactionAction.
+func (m *CreatedTransactionAction) AsReader() CreatedTransactionActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*createdTransactionActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CreatedTransactionAction.
+func (m *CreatedTransactionAction) Mutate() *CreatedTransactionAction {
+	return m.CloneVT()
+}
+
+// CreatedTransactionActionListReader provides read-only iteration over []*CreatedTransactionAction.
+type CreatedTransactionActionListReader interface {
+	Len() int
+	Get(i int) CreatedTransactionActionReader
+	Range(yield func(int, CreatedTransactionActionReader) bool)
+}
+
+type createdTransactionActionListReadonly []*CreatedTransactionAction
+
+func (l createdTransactionActionListReadonly) Len() int { return len(l) }
+
+func (l createdTransactionActionListReadonly) Get(i int) CreatedTransactionActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l createdTransactionActionListReadonly) Range(yield func(int, CreatedTransactionActionReader) bool) {
+	for i, v := range l {
+		var r CreatedTransactionActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCreatedTransactionActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCreatedTransactionActionListReader(s []*CreatedTransactionAction) CreatedTransactionActionListReader {
+	return createdTransactionActionListReadonly(s)
+}
+
+// RevertedTransactionActionReader provides read-only access to RevertedTransactionAction.
+// Call Mutate() to obtain a mutable clone.
+type RevertedTransactionActionReader interface {
+	GetAction() isRevertedTransactionAction_Action
+	Mutate() *RevertedTransactionAction
+}
+
+type revertedTransactionActionReadonly RevertedTransactionAction
+
+func (r *revertedTransactionActionReadonly) GetAction() isRevertedTransactionAction_Action {
+	return (*RevertedTransactionAction)(r).GetAction()
+}
+
+func (r *revertedTransactionActionReadonly) Mutate() *RevertedTransactionAction {
+	return (*RevertedTransactionAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RevertedTransactionAction.
+func (m *RevertedTransactionAction) AsReader() RevertedTransactionActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*revertedTransactionActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RevertedTransactionAction.
+func (m *RevertedTransactionAction) Mutate() *RevertedTransactionAction {
+	return m.CloneVT()
+}
+
+// RevertedTransactionActionListReader provides read-only iteration over []*RevertedTransactionAction.
+type RevertedTransactionActionListReader interface {
+	Len() int
+	Get(i int) RevertedTransactionActionReader
+	Range(yield func(int, RevertedTransactionActionReader) bool)
+}
+
+type revertedTransactionActionListReadonly []*RevertedTransactionAction
+
+func (l revertedTransactionActionListReadonly) Len() int { return len(l) }
+
+func (l revertedTransactionActionListReadonly) Get(i int) RevertedTransactionActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l revertedTransactionActionListReadonly) Range(yield func(int, RevertedTransactionActionReader) bool) {
+	for i, v := range l {
+		var r RevertedTransactionActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRevertedTransactionActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRevertedTransactionActionListReader(s []*RevertedTransactionAction) RevertedTransactionActionListReader {
+	return revertedTransactionActionListReadonly(s)
+}
+
+// SavedMetadataActionReader provides read-only access to SavedMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type SavedMetadataActionReader interface {
+	GetAction() isSavedMetadataAction_Action
+	Mutate() *SavedMetadataAction
+}
+
+type savedMetadataActionReadonly SavedMetadataAction
+
+func (r *savedMetadataActionReadonly) GetAction() isSavedMetadataAction_Action {
+	return (*SavedMetadataAction)(r).GetAction()
+}
+
+func (r *savedMetadataActionReadonly) Mutate() *SavedMetadataAction {
+	return (*SavedMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SavedMetadataAction.
+func (m *SavedMetadataAction) AsReader() SavedMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*savedMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SavedMetadataAction.
+func (m *SavedMetadataAction) Mutate() *SavedMetadataAction {
+	return m.CloneVT()
+}
+
+// SavedMetadataActionListReader provides read-only iteration over []*SavedMetadataAction.
+type SavedMetadataActionListReader interface {
+	Len() int
+	Get(i int) SavedMetadataActionReader
+	Range(yield func(int, SavedMetadataActionReader) bool)
+}
+
+type savedMetadataActionListReadonly []*SavedMetadataAction
+
+func (l savedMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l savedMetadataActionListReadonly) Get(i int) SavedMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l savedMetadataActionListReadonly) Range(yield func(int, SavedMetadataActionReader) bool) {
+	for i, v := range l {
+		var r SavedMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSavedMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSavedMetadataActionListReader(s []*SavedMetadataAction) SavedMetadataActionListReader {
+	return savedMetadataActionListReadonly(s)
+}
+
+// DeletedMetadataActionReader provides read-only access to DeletedMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type DeletedMetadataActionReader interface {
+	GetAction() isDeletedMetadataAction_Action
+	Mutate() *DeletedMetadataAction
+}
+
+type deletedMetadataActionReadonly DeletedMetadataAction
+
+func (r *deletedMetadataActionReadonly) GetAction() isDeletedMetadataAction_Action {
+	return (*DeletedMetadataAction)(r).GetAction()
+}
+
+func (r *deletedMetadataActionReadonly) Mutate() *DeletedMetadataAction {
+	return (*DeletedMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeletedMetadataAction.
+func (m *DeletedMetadataAction) AsReader() DeletedMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*deletedMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeletedMetadataAction.
+func (m *DeletedMetadataAction) Mutate() *DeletedMetadataAction {
+	return m.CloneVT()
+}
+
+// DeletedMetadataActionListReader provides read-only iteration over []*DeletedMetadataAction.
+type DeletedMetadataActionListReader interface {
+	Len() int
+	Get(i int) DeletedMetadataActionReader
+	Range(yield func(int, DeletedMetadataActionReader) bool)
+}
+
+type deletedMetadataActionListReadonly []*DeletedMetadataAction
+
+func (l deletedMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l deletedMetadataActionListReadonly) Get(i int) DeletedMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deletedMetadataActionListReadonly) Range(yield func(int, DeletedMetadataActionReader) bool) {
+	for i, v := range l {
+		var r DeletedMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeletedMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeletedMetadataActionListReader(s []*DeletedMetadataAction) DeletedMetadataActionListReader {
+	return deletedMetadataActionListReadonly(s)
+}
+
+// AnyVariantActionReader provides read-only access to AnyVariantAction.
+// Call Mutate() to obtain a mutable clone.
+type AnyVariantActionReader interface {
+	GetAction() isAnyVariantAction_Action
+	Mutate() *AnyVariantAction
+}
+
+type anyVariantActionReadonly AnyVariantAction
+
+func (r *anyVariantActionReadonly) GetAction() isAnyVariantAction_Action {
+	return (*AnyVariantAction)(r).GetAction()
+}
+
+func (r *anyVariantActionReadonly) Mutate() *AnyVariantAction {
+	return (*AnyVariantAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AnyVariantAction.
+func (m *AnyVariantAction) AsReader() AnyVariantActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*anyVariantActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AnyVariantAction.
+func (m *AnyVariantAction) Mutate() *AnyVariantAction {
+	return m.CloneVT()
+}
+
+// AnyVariantActionListReader provides read-only iteration over []*AnyVariantAction.
+type AnyVariantActionListReader interface {
+	Len() int
+	Get(i int) AnyVariantActionReader
+	Range(yield func(int, AnyVariantActionReader) bool)
+}
+
+type anyVariantActionListReadonly []*AnyVariantAction
+
+func (l anyVariantActionListReadonly) Len() int { return len(l) }
+
+func (l anyVariantActionListReadonly) Get(i int) AnyVariantActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l anyVariantActionListReadonly) Range(yield func(int, AnyVariantActionReader) bool) {
+	for i, v := range l {
+		var r AnyVariantActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAnyVariantActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAnyVariantActionListReader(s []*AnyVariantAction) AnyVariantActionListReader {
+	return anyVariantActionListReadonly(s)
+}
+
+// RewriteAddressActionReader provides read-only access to RewriteAddressAction.
+// Call Mutate() to obtain a mutable clone.
+type RewriteAddressActionReader interface {
+	GetPattern() string
+	GetReplacement() string
+	Mutate() *RewriteAddressAction
+}
+
+type rewriteAddressActionReadonly RewriteAddressAction
+
+func (r *rewriteAddressActionReadonly) GetPattern() string {
+	return (*RewriteAddressAction)(r).GetPattern()
+}
+
+func (r *rewriteAddressActionReadonly) GetReplacement() string {
+	return (*RewriteAddressAction)(r).GetReplacement()
+}
+
+func (r *rewriteAddressActionReadonly) Mutate() *RewriteAddressAction {
+	return (*RewriteAddressAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this RewriteAddressAction.
+func (m *RewriteAddressAction) AsReader() RewriteAddressActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*rewriteAddressActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this RewriteAddressAction.
+func (m *RewriteAddressAction) Mutate() *RewriteAddressAction {
+	return m.CloneVT()
+}
+
+// RewriteAddressActionListReader provides read-only iteration over []*RewriteAddressAction.
+type RewriteAddressActionListReader interface {
+	Len() int
+	Get(i int) RewriteAddressActionReader
+	Range(yield func(int, RewriteAddressActionReader) bool)
+}
+
+type rewriteAddressActionListReadonly []*RewriteAddressAction
+
+func (l rewriteAddressActionListReadonly) Len() int { return len(l) }
+
+func (l rewriteAddressActionListReadonly) Get(i int) RewriteAddressActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l rewriteAddressActionListReadonly) Range(yield func(int, RewriteAddressActionReader) bool) {
+	for i, v := range l {
+		var r RewriteAddressActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewRewriteAddressActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewRewriteAddressActionListReader(s []*RewriteAddressAction) RewriteAddressActionListReader {
+	return rewriteAddressActionListReadonly(s)
+}
+
+// SetMetadataActionReader provides read-only access to SetMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type SetMetadataActionReader interface {
+	GetKey() string
+	GetType() string
+	GetSource() isSetMetadataAction_Source
+	Mutate() *SetMetadataAction
+}
+
+type setMetadataActionReadonly SetMetadataAction
+
+func (r *setMetadataActionReadonly) GetKey() string {
+	return (*SetMetadataAction)(r).GetKey()
+}
+
+func (r *setMetadataActionReadonly) GetType() string {
+	return (*SetMetadataAction)(r).GetType()
+}
+
+func (r *setMetadataActionReadonly) GetSource() isSetMetadataAction_Source {
+	return (*SetMetadataAction)(r).GetSource()
+}
+
+func (r *setMetadataActionReadonly) Mutate() *SetMetadataAction {
+	return (*SetMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetMetadataAction.
+func (m *SetMetadataAction) AsReader() SetMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*setMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetMetadataAction.
+func (m *SetMetadataAction) Mutate() *SetMetadataAction {
+	return m.CloneVT()
+}
+
+// SetMetadataActionListReader provides read-only iteration over []*SetMetadataAction.
+type SetMetadataActionListReader interface {
+	Len() int
+	Get(i int) SetMetadataActionReader
+	Range(yield func(int, SetMetadataActionReader) bool)
+}
+
+type setMetadataActionListReadonly []*SetMetadataAction
+
+func (l setMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l setMetadataActionListReadonly) Get(i int) SetMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setMetadataActionListReadonly) Range(yield func(int, SetMetadataActionReader) bool) {
+	for i, v := range l {
+		var r SetMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetMetadataActionListReader(s []*SetMetadataAction) SetMetadataActionListReader {
+	return setMetadataActionListReadonly(s)
+}
+
+// DeleteMetadataActionReader provides read-only access to DeleteMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type DeleteMetadataActionReader interface {
+	GetKey() string
+	Mutate() *DeleteMetadataAction
+}
+
+type deleteMetadataActionReadonly DeleteMetadataAction
+
+func (r *deleteMetadataActionReadonly) GetKey() string {
+	return (*DeleteMetadataAction)(r).GetKey()
+}
+
+func (r *deleteMetadataActionReadonly) Mutate() *DeleteMetadataAction {
+	return (*DeleteMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteMetadataAction.
+func (m *DeleteMetadataAction) AsReader() DeleteMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteMetadataAction.
+func (m *DeleteMetadataAction) Mutate() *DeleteMetadataAction {
+	return m.CloneVT()
+}
+
+// DeleteMetadataActionListReader provides read-only iteration over []*DeleteMetadataAction.
+type DeleteMetadataActionListReader interface {
+	Len() int
+	Get(i int) DeleteMetadataActionReader
+	Range(yield func(int, DeleteMetadataActionReader) bool)
+}
+
+type deleteMetadataActionListReadonly []*DeleteMetadataAction
+
+func (l deleteMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l deleteMetadataActionListReadonly) Get(i int) DeleteMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteMetadataActionListReadonly) Range(yield func(int, DeleteMetadataActionReader) bool) {
+	for i, v := range l {
+		var r DeleteMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteMetadataActionListReader(s []*DeleteMetadataAction) DeleteMetadataActionListReader {
+	return deleteMetadataActionListReadonly(s)
+}
+
+// SetAccountMetadataActionReader provides read-only access to SetAccountMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type SetAccountMetadataActionReader interface {
+	GetAccount() string
+	GetKey() string
+	GetType() string
+	GetSource() isSetAccountMetadataAction_Source
+	Mutate() *SetAccountMetadataAction
+}
+
+type setAccountMetadataActionReadonly SetAccountMetadataAction
+
+func (r *setAccountMetadataActionReadonly) GetAccount() string {
+	return (*SetAccountMetadataAction)(r).GetAccount()
+}
+
+func (r *setAccountMetadataActionReadonly) GetKey() string {
+	return (*SetAccountMetadataAction)(r).GetKey()
+}
+
+func (r *setAccountMetadataActionReadonly) GetType() string {
+	return (*SetAccountMetadataAction)(r).GetType()
+}
+
+func (r *setAccountMetadataActionReadonly) GetSource() isSetAccountMetadataAction_Source {
+	return (*SetAccountMetadataAction)(r).GetSource()
+}
+
+func (r *setAccountMetadataActionReadonly) Mutate() *SetAccountMetadataAction {
+	return (*SetAccountMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetAccountMetadataAction.
+func (m *SetAccountMetadataAction) AsReader() SetAccountMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*setAccountMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetAccountMetadataAction.
+func (m *SetAccountMetadataAction) Mutate() *SetAccountMetadataAction {
+	return m.CloneVT()
+}
+
+// SetAccountMetadataActionListReader provides read-only iteration over []*SetAccountMetadataAction.
+type SetAccountMetadataActionListReader interface {
+	Len() int
+	Get(i int) SetAccountMetadataActionReader
+	Range(yield func(int, SetAccountMetadataActionReader) bool)
+}
+
+type setAccountMetadataActionListReadonly []*SetAccountMetadataAction
+
+func (l setAccountMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l setAccountMetadataActionListReadonly) Get(i int) SetAccountMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setAccountMetadataActionListReadonly) Range(yield func(int, SetAccountMetadataActionReader) bool) {
+	for i, v := range l {
+		var r SetAccountMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetAccountMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetAccountMetadataActionListReader(s []*SetAccountMetadataAction) SetAccountMetadataActionListReader {
+	return setAccountMetadataActionListReadonly(s)
+}
+
+// DeleteAccountMetadataActionReader provides read-only access to DeleteAccountMetadataAction.
+// Call Mutate() to obtain a mutable clone.
+type DeleteAccountMetadataActionReader interface {
+	GetAccount() string
+	GetKey() string
+	Mutate() *DeleteAccountMetadataAction
+}
+
+type deleteAccountMetadataActionReadonly DeleteAccountMetadataAction
+
+func (r *deleteAccountMetadataActionReadonly) GetAccount() string {
+	return (*DeleteAccountMetadataAction)(r).GetAccount()
+}
+
+func (r *deleteAccountMetadataActionReadonly) GetKey() string {
+	return (*DeleteAccountMetadataAction)(r).GetKey()
+}
+
+func (r *deleteAccountMetadataActionReadonly) Mutate() *DeleteAccountMetadataAction {
+	return (*DeleteAccountMetadataAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DeleteAccountMetadataAction.
+func (m *DeleteAccountMetadataAction) AsReader() DeleteAccountMetadataActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*deleteAccountMetadataActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DeleteAccountMetadataAction.
+func (m *DeleteAccountMetadataAction) Mutate() *DeleteAccountMetadataAction {
+	return m.CloneVT()
+}
+
+// DeleteAccountMetadataActionListReader provides read-only iteration over []*DeleteAccountMetadataAction.
+type DeleteAccountMetadataActionListReader interface {
+	Len() int
+	Get(i int) DeleteAccountMetadataActionReader
+	Range(yield func(int, DeleteAccountMetadataActionReader) bool)
+}
+
+type deleteAccountMetadataActionListReadonly []*DeleteAccountMetadataAction
+
+func (l deleteAccountMetadataActionListReadonly) Len() int { return len(l) }
+
+func (l deleteAccountMetadataActionListReadonly) Get(i int) DeleteAccountMetadataActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l deleteAccountMetadataActionListReadonly) Range(yield func(int, DeleteAccountMetadataActionReader) bool) {
+	for i, v := range l {
+		var r DeleteAccountMetadataActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDeleteAccountMetadataActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDeleteAccountMetadataActionListReader(s []*DeleteAccountMetadataAction) DeleteAccountMetadataActionListReader {
+	return deleteAccountMetadataActionListReadonly(s)
+}
+
+// SetAccountMetadataFromAddressActionReader provides read-only access to SetAccountMetadataFromAddressAction.
+// Call Mutate() to obtain a mutable clone.
+type SetAccountMetadataFromAddressActionReader interface {
+	GetPattern() string
+	GetReplacements() SetAccountMetadataFromAddressReplacementListReader
+	Mutate() *SetAccountMetadataFromAddressAction
+}
+
+type setAccountMetadataFromAddressActionReadonly SetAccountMetadataFromAddressAction
+
+func (r *setAccountMetadataFromAddressActionReadonly) GetPattern() string {
+	return (*SetAccountMetadataFromAddressAction)(r).GetPattern()
+}
+
+func (r *setAccountMetadataFromAddressActionReadonly) GetReplacements() SetAccountMetadataFromAddressReplacementListReader {
+	return NewSetAccountMetadataFromAddressReplacementListReader((*SetAccountMetadataFromAddressAction)(r).GetReplacements())
+}
+
+func (r *setAccountMetadataFromAddressActionReadonly) Mutate() *SetAccountMetadataFromAddressAction {
+	return (*SetAccountMetadataFromAddressAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetAccountMetadataFromAddressAction.
+func (m *SetAccountMetadataFromAddressAction) AsReader() SetAccountMetadataFromAddressActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*setAccountMetadataFromAddressActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetAccountMetadataFromAddressAction.
+func (m *SetAccountMetadataFromAddressAction) Mutate() *SetAccountMetadataFromAddressAction {
+	return m.CloneVT()
+}
+
+// SetAccountMetadataFromAddressActionListReader provides read-only iteration over []*SetAccountMetadataFromAddressAction.
+type SetAccountMetadataFromAddressActionListReader interface {
+	Len() int
+	Get(i int) SetAccountMetadataFromAddressActionReader
+	Range(yield func(int, SetAccountMetadataFromAddressActionReader) bool)
+}
+
+type setAccountMetadataFromAddressActionListReadonly []*SetAccountMetadataFromAddressAction
+
+func (l setAccountMetadataFromAddressActionListReadonly) Len() int { return len(l) }
+
+func (l setAccountMetadataFromAddressActionListReadonly) Get(i int) SetAccountMetadataFromAddressActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setAccountMetadataFromAddressActionListReadonly) Range(yield func(int, SetAccountMetadataFromAddressActionReader) bool) {
+	for i, v := range l {
+		var r SetAccountMetadataFromAddressActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetAccountMetadataFromAddressActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetAccountMetadataFromAddressActionListReader(s []*SetAccountMetadataFromAddressAction) SetAccountMetadataFromAddressActionListReader {
+	return setAccountMetadataFromAddressActionListReadonly(s)
+}
+
+// SetAccountMetadataFromAddressReplacementReader provides read-only access to SetAccountMetadataFromAddressReplacement.
+// Call Mutate() to obtain a mutable clone.
+type SetAccountMetadataFromAddressReplacementReader interface {
+	GetKey() string
+	GetReplacement() string
+	GetType() string
+	Mutate() *SetAccountMetadataFromAddressReplacement
+}
+
+type setAccountMetadataFromAddressReplacementReadonly SetAccountMetadataFromAddressReplacement
+
+func (r *setAccountMetadataFromAddressReplacementReadonly) GetKey() string {
+	return (*SetAccountMetadataFromAddressReplacement)(r).GetKey()
+}
+
+func (r *setAccountMetadataFromAddressReplacementReadonly) GetReplacement() string {
+	return (*SetAccountMetadataFromAddressReplacement)(r).GetReplacement()
+}
+
+func (r *setAccountMetadataFromAddressReplacementReadonly) GetType() string {
+	return (*SetAccountMetadataFromAddressReplacement)(r).GetType()
+}
+
+func (r *setAccountMetadataFromAddressReplacementReadonly) Mutate() *SetAccountMetadataFromAddressReplacement {
+	return (*SetAccountMetadataFromAddressReplacement)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetAccountMetadataFromAddressReplacement.
+func (m *SetAccountMetadataFromAddressReplacement) AsReader() SetAccountMetadataFromAddressReplacementReader {
+	if m == nil {
+		return nil
+	}
+	return (*setAccountMetadataFromAddressReplacementReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetAccountMetadataFromAddressReplacement.
+func (m *SetAccountMetadataFromAddressReplacement) Mutate() *SetAccountMetadataFromAddressReplacement {
+	return m.CloneVT()
+}
+
+// SetAccountMetadataFromAddressReplacementListReader provides read-only iteration over []*SetAccountMetadataFromAddressReplacement.
+type SetAccountMetadataFromAddressReplacementListReader interface {
+	Len() int
+	Get(i int) SetAccountMetadataFromAddressReplacementReader
+	Range(yield func(int, SetAccountMetadataFromAddressReplacementReader) bool)
+}
+
+type setAccountMetadataFromAddressReplacementListReadonly []*SetAccountMetadataFromAddressReplacement
+
+func (l setAccountMetadataFromAddressReplacementListReadonly) Len() int { return len(l) }
+
+func (l setAccountMetadataFromAddressReplacementListReadonly) Get(i int) SetAccountMetadataFromAddressReplacementReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setAccountMetadataFromAddressReplacementListReadonly) Range(yield func(int, SetAccountMetadataFromAddressReplacementReader) bool) {
+	for i, v := range l {
+		var r SetAccountMetadataFromAddressReplacementReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetAccountMetadataFromAddressReplacementListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetAccountMetadataFromAddressReplacementListReader(s []*SetAccountMetadataFromAddressReplacement) SetAccountMetadataFromAddressReplacementListReader {
+	return setAccountMetadataFromAddressReplacementListReadonly(s)
+}
+
+// DropActionReader provides read-only access to DropAction.
+// Call Mutate() to obtain a mutable clone.
+type DropActionReader interface {
+	Mutate() *DropAction
+}
+
+type dropActionReadonly DropAction
+
+func (r *dropActionReadonly) Mutate() *DropAction {
+	return (*DropAction)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DropAction.
+func (m *DropAction) AsReader() DropActionReader {
+	if m == nil {
+		return nil
+	}
+	return (*dropActionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DropAction.
+func (m *DropAction) Mutate() *DropAction {
+	return m.CloneVT()
+}
+
+// DropActionListReader provides read-only iteration over []*DropAction.
+type DropActionListReader interface {
+	Len() int
+	Get(i int) DropActionReader
+	Range(yield func(int, DropActionReader) bool)
+}
+
+type dropActionListReadonly []*DropAction
+
+func (l dropActionListReadonly) Len() int { return len(l) }
+
+func (l dropActionListReadonly) Get(i int) DropActionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l dropActionListReadonly) Range(yield func(int, DropActionReader) bool) {
+	for i, v := range l {
+		var r DropActionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDropActionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDropActionListReader(s []*DropAction) DropActionListReader { return dropActionListReadonly(s) }
 
 // HttpMirrorSourceConfigReader provides read-only access to HttpMirrorSourceConfig.
 // Call Mutate() to obtain a mutable clone.

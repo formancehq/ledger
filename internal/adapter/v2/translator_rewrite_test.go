@@ -6,17 +6,47 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// dropWorker drops the ":worker:<n>" lock-avoidance segment.
-func dropWorkerRewriter(t *testing.T) *AddressRewriter {
+// dropWorkerRewriter drops the ":worker:<n>" lock-avoidance segment from every
+// address, exercising the CEL rewrite engine end-to-end through TranslateBatch.
+// dropWorkerRewriter builds a Rewriter with a single any-variant rule that
+// strips ":worker:<n>" from every address slot across every variant.
+func dropWorkerRewriter(t *testing.T) *celrewrite.Rewriter {
 	t.Helper()
 
-	r, err := NewAddressRewriter([]*commonpb.AddressRewriteRule{rule(`(:worker:\d+)`, "")})
+	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+		anyRule("", rewriteAddress(":worker:\\d+", "")),
+	})
 	require.NoError(t, err)
 
 	return r
+}
+
+// Rule + action constructors, isolated so tests read like a config file.
+
+func anyRule(match string, actions ...*commonpb.AnyVariantAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_AnyVariant{
+		AnyVariant: &commonpb.AnyVariantRule{Match: match, Actions: actions},
+	}}
+}
+
+func createdRule(match string, actions ...*commonpb.CreatedTransactionAction) *commonpb.MirrorRewriteRule {
+	return &commonpb.MirrorRewriteRule{Scope: &commonpb.MirrorRewriteRule_CreatedTransaction{
+		CreatedTransaction: &commonpb.CreatedTransactionRule{Match: match, Actions: actions},
+	}}
+}
+
+func rewriteAddress(pattern, replacement string) *commonpb.AnyVariantAction {
+	return &commonpb.AnyVariantAction{Action: &commonpb.AnyVariantAction_RewriteAddress{
+		RewriteAddress: &commonpb.RewriteAddressAction{Pattern: pattern, Replacement: replacement},
+	}}
+}
+
+func dropCreated() *commonpb.CreatedTransactionAction {
+	return &commonpb.CreatedTransactionAction{Action: &commonpb.CreatedTransactionAction_Drop{Drop: &commonpb.DropAction{}}}
 }
 
 func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
@@ -156,14 +186,17 @@ func TestTranslateBatch_Rewrite_AccountMetadataCollisionMerges(t *testing.T) {
 	ct := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction()
 	merged := ct.GetAccountMetadata()["payments:acme:main"].GetValues()
 	require.Equal(t, "main", merged["kind"].GetStringValue())
-	// On conflict, the lexicographically-smallest source (worker:001) wins.
-	require.Equal(t, "001", merged["shard"].GetStringValue())
+	// Keys are rewritten in sorted source order with last-writer-wins, so
+	// worker:002 wins the "shard" conflict deterministically.
+	require.Equal(t, "002", merged["shard"].GetStringValue())
 }
 
 func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewAddressRewriter([]*commonpb.AddressRewriteRule{rule(`.+`, "")})
+	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+		anyRule("", rewriteAddress(".+", "")),
+	})
 	require.NoError(t, err)
 
 	v2Logs := []V2Log{{
@@ -184,4 +217,40 @@ func TestTranslateBatch_Rewrite_InvalidResultErrors(t *testing.T) {
 
 	_, _, _, err = TranslateBatch("default", v2Logs, 1, 0, r)
 	require.Error(t, err)
+}
+
+func TestTranslateBatch_Rewrite_DropBecomesFillGap(t *testing.T) {
+	t.Parallel()
+
+	r, err := celrewrite.NewRewriter([]*commonpb.MirrorRewriteRule{
+		createdRule(`log.metadata["skip"].string_value == "yes"`, dropCreated()),
+	})
+	require.NoError(t, err)
+
+	v2Logs := []V2Log{{
+		ID:   1,
+		Type: "NEW_TRANSACTION",
+		Data: mustMarshal(t, V2NewTransactionData{
+			Transaction: V2Transaction{
+				ID:       5,
+				Metadata: map[string]string{"skip": "yes"},
+				Postings: []V2Posting{{
+					Source:      "world",
+					Destination: "bank",
+					Amount:      "100",
+					Asset:       "USD/2",
+				}},
+			},
+		}),
+	}}
+
+	orders, _, nextTxID, err := TranslateBatch("default", v2Logs, 1, 5, r)
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+
+	gap := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetFillGap()
+	require.NotNil(t, gap, "dropped transaction must become a fill-gap")
+	require.Equal(t, []uint64{5}, gap.GetSkippedTransactionIds())
+	// The tx ID counter still advances past the dropped transaction.
+	require.Equal(t, uint64(6), nextTxID)
 }

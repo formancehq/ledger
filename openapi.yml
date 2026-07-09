@@ -3193,32 +3193,251 @@ components:
           minimum: 0
           default: 0
           description: Max logs per batch (0 = server default 100, capped by server's --mirror-max-batch-size)
-        addressRewriteRules:
+        rewriteRules:
           type: array
           items:
-            $ref: '#/components/schemas/AddressRewriteRule'
+            $ref: '#/components/schemas/MirrorRewriteRule'
           description: >
-            Rewrite rules applied, in order, to every account address as v2 logs
-            are translated into v3 orders. Used to drop or rename address
-            segments v2 only carried as lock-avoidance shards.
+            Mirror rewrite rules applied, in order, to every mirror log entry as
+            v2 logs are translated into v3 orders. Each rule is scoped to exactly
+            one variant of the log's `data` oneof, with a CEL `match` predicate
+            and a list of typed actions.
 
-    AddressRewriteRule:
+    MirrorRewriteRule:
       type: object
       description: >
-        Rewrites account addresses during mirror translation. `pattern` is an
-        RE2 regular expression matched against the full account address; matches
-        are replaced with `replacement` (which may reference capture groups). An
-        empty `replacement` drops the matched part, e.g. pattern `(:worker:\d+)`
-        turns `payments:acme:worker:001:main` into `payments:acme:main`. The
-        rewritten address must still be a valid account address.
-      required:
-        - pattern
-        - replacement
+        Transforms a mirror log entry during v2→v3 translation. Exactly one
+        scope field (createdTransaction, revertedTransaction, savedMetadata,
+        deletedMetadata, or anyVariant) must be set. That scope determines both
+        the CEL type of `log` in the rule's `match` and the set of actions the
+        rule may carry. When `stop` is true and the rule matches (scope +
+        predicate), no further rules are evaluated. Rewriting is a
+        deterministic, translation-time projection; the source v2 ledger is
+        never modified.
+      properties:
+        createdTransaction:
+          $ref: '#/components/schemas/CreatedTransactionRule'
+        revertedTransaction:
+          $ref: '#/components/schemas/RevertedTransactionRule'
+        savedMetadata:
+          $ref: '#/components/schemas/SavedMetadataRule'
+        deletedMetadata:
+          $ref: '#/components/schemas/DeletedMetadataRule'
+        anyVariant:
+          $ref: '#/components/schemas/AnyVariantRule'
+        stop:
+          type: boolean
+
+    CreatedTransactionRule:
+      type: object
+      description: >
+        Rule scoped to MirrorCreatedTransaction. Inside `match`, `log` is the
+        created-transaction proto directly (e.g. `log.metadata["k"]`).
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreatedTransactionAction'
+
+    RevertedTransactionRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevertedTransactionAction'
+
+    SavedMetadataRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SavedMetadataAction'
+
+    DeletedMetadataRule:
+      type: object
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeletedMetadataAction'
+
+    AnyVariantRule:
+      type: object
+      description: >
+        Rule scoped to every variant. `log` is the full MirrorLogEntry — use
+        `has(log.<variant>)` guards to read variant-specific fields.
+      properties:
+        match:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnyVariantAction'
+
+    CreatedTransactionAction:
+      type: object
+      description: Exactly one field must be set.
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        setAccountMetadata:
+          $ref: '#/components/schemas/SetAccountMetadataAction'
+        deleteAccountMetadata:
+          $ref: '#/components/schemas/DeleteAccountMetadataAction'
+        setAccountMetadataFromAddress:
+          $ref: '#/components/schemas/SetAccountMetadataFromAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RevertedTransactionAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    SavedMetadataAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        setMetadata:
+          $ref: '#/components/schemas/SetMetadataAction'
+        deleteMetadata:
+          $ref: '#/components/schemas/DeleteMetadataAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    DeletedMetadataAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    AnyVariantAction:
+      type: object
+      properties:
+        rewriteAddress:
+          $ref: '#/components/schemas/RewriteAddressAction'
+        drop:
+          $ref: '#/components/schemas/DropAction'
+
+    RewriteAddressAction:
+      type: object
+      required: [pattern, replacement]
       properties:
         pattern:
           type: string
+          description: RE2 pattern (validated at admission).
         replacement:
           type: string
+
+    SetMetadataAction:
+      type: object
+      description: >
+        `value` is a literal metadata string; `value_expr` is a CEL expression
+        typed against the current variant and evaluated at commit time (e.g.
+        `log.reference`). Exactly one of the two should be set; if neither is
+        set the value defaults to the empty string. Optional `type` coerces
+        the produced string into a typed MetadataValue via the platform
+        conversion matrix — one of "string" (default), "int64", "bool",
+        "uint64", "int8"/"int16"/"int32", "uint8"/"uint16"/"uint32",
+        "datetime".
+      required: [key]
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+        value_expr:
+          type: string
+        type:
+          type: string
+
+    DeleteMetadataAction:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+
+    SetAccountMetadataAction:
+      type: object
+      description: >
+        See SetMetadataAction for the literal-vs-CEL and `type` semantics.
+      required: [account, key]
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+        value:
+          type: string
+        value_expr:
+          type: string
+        type:
+          type: string
+
+    DeleteAccountMetadataAction:
+      type: object
+      required: [account, key]
+      properties:
+        account:
+          type: string
+        key:
+          type: string
+
+    SetAccountMetadataFromAddressAction:
+      type: object
+      description: >
+        For every posting address matching `pattern`, iterate every entry in
+        `replacements` and set accountMetadata[address][key] to the RE2
+        replacement of the address. Each replacement carries an optional
+        metadata `type` token (same tokens as SetMetadataAction.type).
+      required: [pattern, replacements]
+      properties:
+        pattern:
+          type: string
+        replacements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetAccountMetadataFromAddressReplacement'
+
+    SetAccountMetadataFromAddressReplacement:
+      type: object
+      required: [key, replacement]
+      properties:
+        key:
+          type: string
+        replacement:
+          type: string
+        type:
+          type: string
+
+    DropAction:
+      type: object
+      description: Turns the entry into a fill-gap that preserves log-ID and tx-ID continuity.
 
     SaveNumscriptRequest:
       type: object

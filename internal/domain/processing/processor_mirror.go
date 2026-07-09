@@ -116,9 +116,15 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 // v2LogID belongs to the wrapping MirrorLogEntry, not the FillGap message
 // itself — passing it as an extra arg avoids reaching back into the entry.
 func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Context) *commonpb.LedgerLogPayload {
-	// Advance NextTransactionId for each skipped transaction
-	for range gap.GetSkippedTransactionIds() {
-		ctx.Boundaries.NextTransactionId++
+	// Advance NextTransactionId past every skipped transaction id, using the id
+	// values rather than the element count. This matches the created/reverted
+	// apply paths (NextTransactionId = id + 1) and stays correct even if a
+	// dropped id is not contiguous with the current boundary — incrementing by
+	// count would leave the boundary too low.
+	for _, id := range gap.GetSkippedTransactionIds() {
+		if ctx.Boundaries.GetNextTransactionId() <= id {
+			ctx.Boundaries.NextTransactionId = id + 1
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{
