@@ -43,28 +43,70 @@ type resolveResult struct {
 	tracker         []attributes.U128
 }
 
-// coverageEntry returns a coverage-only AttributeCoverage — no seed.
-// The entry is only a declaration for coverage_bits (invariant #9);
-// the FSM's Preload skips it (no cache mutation), and the handler's
-// Get / Del rely on AttributeCache's built-in gen0→gen1 fallback and
-// lazy tombstone fabrication.
-func coverageEntry(id attributes.U128, attrCode byte, tag uint64) *raftcmdpb.AttributeCoverage {
-	return &raftcmdpb.AttributeCoverage{
-		Id:       &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
-		AttrCode: uint32(attrCode),
+// entrySlab holds three pre-sized backing arrays used to fabricate the
+// (AttributeCoverage, AttributeID, Id bytes) triple for every key in
+// one attribute-cache resolution. Sizing each with cap = len(keys)
+// (the resolve pass never emits more than one entry per input key)
+// guarantees append never reallocates — so every &covs[i] pointer
+// stays valid for the caller's retention window.
+//
+// Effect: 3 slab allocations per resolve pass instead of 3 heap
+// allocations per key. For a 100-order × 5-posting proposal this
+// removes ~3000 tiny allocations.
+type entrySlab struct {
+	covs  []raftcmdpb.AttributeCoverage
+	ids   []raftcmdpb.AttributeID
+	idPtr []byte // one contiguous 16-byte-per-entry pool so id[:] never escapes
+}
+
+func newEntrySlab(capHint int) *entrySlab {
+	return &entrySlab{
+		covs:  make([]raftcmdpb.AttributeCoverage, 0, capHint),
+		ids:   make([]raftcmdpb.AttributeID, 0, capHint),
+		idPtr: make([]byte, 0, capHint*16),
 	}
 }
 
-// seedEntry returns an AttributeCoverage carrying a Pebble-loaded seed —
-// the FSM's Preload path calls MirrorPreload to write the value into both
-// generations. attr_code lives on the envelope so the FSM apply path
-// routes the typed unmarshal without inspecting the value payload itself.
-func seedEntry(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
-	return &raftcmdpb.AttributeCoverage{
-		Id:       attrID,
+// appendCoverage carves a coverage-only entry out of the slab and
+// returns a pointer to it. Must be called under the caller's mu.Lock
+// since the underlying slabs are shared across resolver goroutines.
+func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte) *raftcmdpb.AttributeCoverage {
+	start := len(s.idPtr)
+	s.idPtr = append(s.idPtr, id[:]...)
+
+	s.ids = append(s.ids, raftcmdpb.AttributeID{
+		Id:  s.idPtr[start : start+16 : start+16],
+		Tag: tag,
+	})
+
+	s.covs = append(s.covs, raftcmdpb.AttributeCoverage{
+		Id:       &s.ids[len(s.ids)-1],
+		AttrCode: uint32(attrCode),
+	})
+
+	return &s.covs[len(s.covs)-1]
+}
+
+// appendSeed carves a seed entry (AttributeCoverage + AttributeID) out
+// of the slab and attaches the pre-marshaled value. The AttributeValue
+// wrapper is still individually allocated by buildPreloadPayload — a
+// small fixed cost per Pebble hit.
+func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, value *raftcmdpb.AttributeValue) *raftcmdpb.AttributeCoverage {
+	start := len(s.idPtr)
+	s.idPtr = append(s.idPtr, id[:]...)
+
+	s.ids = append(s.ids, raftcmdpb.AttributeID{
+		Id:  s.idPtr[start : start+16 : start+16],
+		Tag: tag,
+	})
+
+	s.covs = append(s.covs, raftcmdpb.AttributeCoverage{
+		Id:       &s.ids[len(s.ids)-1],
 		AttrCode: uint32(attrCode),
 		Value:    value,
-	}
+	})
+
+	return &s.covs[len(s.covs)-1]
 }
 
 // resolveCoverage resolves one attribute cache for the plan pipeline.
@@ -114,6 +156,7 @@ func resolveCoverage[T interface {
 		wg       sync.WaitGroup
 		firstErr error
 		plans    = make([]*raftcmdpb.AttributeCoverage, 0, len(keys))
+		slab     = newEntrySlab(len(keys))
 	)
 
 	sem := make(chan struct{}, resolveParallelism)
@@ -160,7 +203,7 @@ func resolveCoverage[T interface {
 			// read and Del's lazy promote fabricates a gen0 tombstone
 			// on delete. No Pebble read required.
 			mu.Lock()
-			plans = append(plans, coverageEntry(id, attrCode, tag))
+			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 			mu.Unlock()
 
 			continue
@@ -171,7 +214,7 @@ func resolveCoverage[T interface {
 			// (coverage-only, no value to seed).
 			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
-				plans = append(plans, coverageEntry(id, attrCode, tag))
+				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 				mu.Unlock()
 
 				continue
@@ -224,8 +267,6 @@ func resolveCoverage[T interface {
 				}
 
 				if hasValue {
-					attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-
 					attrValue, marshalErr := buildPreloadPayload(attrCode, result.Value)
 					if marshalErr != nil {
 						if firstErr == nil {
@@ -235,7 +276,7 @@ func resolveCoverage[T interface {
 						return
 					}
 
-					plans = append(plans, seedEntry(attrID, attrCode, attrValue))
+					plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
 
 					return
 				}
@@ -244,7 +285,7 @@ func resolveCoverage[T interface {
 				// concurrent write populated the cache between admission
 				// and apply, Get's gen0→gen1 fallback will surface it at
 				// apply time (bounded by CacheUnreachable at ≥2 rotations).
-				plans = append(plans, coverageEntry(id, attrCode, tag))
+				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 			})
 		}
 	}
