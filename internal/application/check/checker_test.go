@@ -2168,3 +2168,123 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	require.Contains(t, events[0].GetError().GetMessage(), "surviving a replayed DeleteLedger")
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
+
+func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *dal.Store) {
+	t.Helper()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	if len(ledgers) > 0 {
+		batch := store.OpenWriteSession()
+		for _, info := range ledgers {
+			require.NoError(t, state.SaveLedger(batch, info))
+		}
+		require.NoError(t, batch.Commit())
+	}
+
+	ctx := logging.TestingContext()
+
+	return NewChecker(store, attrs, "test-cluster", logging.FromContext(ctx)), store
+}
+
+func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {
+	return &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{key: {Type: typ}},
+	}
+}
+
+// TestCompareSchema_Identical: the stored schema matches the audit-derived
+// declarations, so the verifier stays silent.
+func TestCompareSchema_Identical(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events, "compareSchema must stay silent on a matching schema")
+}
+
+// TestCompareSchema_MissingFromStored is the restore-bug shape: the audit
+// declares a field type but the stored LedgerInfo carries no schema.
+func TestCompareSchema_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestCompareSchema_ExtraInStored is the tampering shape: the store carries a
+// field type the audit never declared.
+func TestCompareSchema_ExtraInStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		events[0].GetError().GetErrorType())
+}
+
+// TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
+// LedgerInfo (so the schema is seeded from the boundary state, not the live
+// store) and that the checker reads it back.
+func TestSeedExpectedSchemasFromBaseline(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	dest, err := store.BaselineSnapshotDir()
+	require.NoError(t, err)
+	require.NoError(t, attributes.CreateBaselineSnapshot(reader, attributes.New(), dest))
+	_ = reader.Close()
+
+	expected := map[string]*commonpb.MetadataSchema{}
+	checker.seedExpectedSchemasFromBaseline(context.Background(), expected)
+
+	require.Contains(t, expected, "L1")
+	require.Equal(t,
+		commonpb.MetadataType_METADATA_TYPE_STRING,
+		expected["L1"].GetAccountFields()["tier"].GetType())
+}

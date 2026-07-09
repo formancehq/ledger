@@ -14,13 +14,15 @@ import (
 // CreateBaselineSnapshot iterates all computed attribute values (volumes,
 // metadata, transactions) from the source reader and writes them into a
 // compact Pebble DB at destPath. Only the final value per canonical key is
-// stored at raft index 0 — no history, no logs, no system keys.
+// stored at raft index 0 — no history, no logs. It also copies the LedgerInfo
+// entries (one small proto per ledger, carrying the metadata schema) so the
+// checker can verify the schema projection against this boundary-time baseline
+// rather than the live store.
 //
 // The result is orders of magnitude smaller than a full Pebble checkpoint
-// because it contains only the seal-hash domain (attributes zone), not the
-// entire store. This is critical for archived chapters: the whole point of
-// archiving is to reclaim disk space, so a full checkpoint would be
-// counter-productive.
+// because it contains only the attributes zone plus LedgerInfo, not the entire
+// store. This is critical for archived chapters: the whole point of archiving
+// is to reclaim disk space, so a full checkpoint would be counter-productive.
 //
 // The write uses atomic rename: data is written to a temporary directory
 // first, then renamed to destPath. This eliminates TOCTOU races with
@@ -95,7 +97,38 @@ func writeBaselineAttributes(reader dal.PebbleReader, attrs *Attributes, db *peb
 		return fmt.Errorf("writing baseline transactions: %w", err)
 	}
 
+	if err := copyBaselineLedgers(reader, db); err != nil {
+		return fmt.Errorf("writing baseline ledgers: %w", err)
+	}
+
 	return nil
+}
+
+// copyBaselineLedgers copies the LedgerInfo entries (zone ZoneGlobal /
+// SubGlobLedgerInfo) verbatim into the baseline DB, preserving the exact key
+// layout so query.ReadLedgers reads them back identically. This is the only
+// system-key domain the baseline carries; it lets the checker verify each
+// ledger's metadata schema against the boundary state.
+func copyBaselineLedgers(reader dal.PebbleReader, db *pebble.DB) error {
+	lower := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo}
+	upper := []byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo + 1}
+
+	iter, err := dal.NewBoundedIter(reader, lower, upper)
+	if err != nil {
+		return fmt.Errorf("iterating ledger info: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		// Pebble copies key and value on Set, so the iterator's transient slices
+		// are safe to pass.
+		if err := db.Set(iter.Key(), iter.Value(), pebble.NoSync); err != nil {
+			return fmt.Errorf("writing ledger info entry: %w", err)
+		}
+	}
+
+	return iter.Error()
 }
 
 // writeBaselineAttr writes all computed entries for a single attribute type.

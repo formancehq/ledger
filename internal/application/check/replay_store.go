@@ -320,8 +320,9 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 }
 
 // SetMetadataFieldType / RemoveMetadataFieldType are no-ops here: the schema
-// lives on LedgerInfo, not in this attribute merge store. Verifying the schema
-// projection in the checker (the invariant-8 gap) is left as a follow-up.
+// lives on LedgerInfo, not in this attribute merge store. The checker re-derives
+// the expected schema in the Check() replay loop (as it does for index activity)
+// and verifies it against the stored LedgerInfo in compareSchema.
 func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
 	return nil
 }

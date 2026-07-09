@@ -185,6 +185,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// replay activity is recorded (e.g. CreateIndex was archived, so
 		// neither expectedIndexes nor replayActivity ever held the key).
 		deletedInReplay = make(map[string]struct{})
+		// Expected metadata schema per ledger, derived from
+		// CreateLedger.initial_schema + SetMetadataFieldType /
+		// RemovedMetadataFieldType logs. Compared against the stored
+		// LedgerInfo.MetadataSchema in compareSchema.
+		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -253,6 +258,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				}
 			}
 		}
+
+		// The pre-archive schema was declared in now-purged logs; seed it from
+		// the boundary-time baseline checkpoint (independent of the live store)
+		// so the post-archive replay applies its delta on top and compareSchema
+		// does not false-positive on pre-archive fields.
+		c.seedExpectedSchemasFromBaseline(ctx, expectedSchemas)
 
 		// Pre-populate knownTxIDs from archived transaction states so that
 		// reversion invariant checks work correctly for non-archived logs.
@@ -345,12 +356,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
-					knownLedgers[payload.CreateLedger.GetName()] = struct{}{}
+					name := payload.CreateLedger.GetName()
+					knownLedgers[name] = struct{}{}
+					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
+					delete(expectedSchemas, name)
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
@@ -414,7 +428,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								delete(expectedIndexes, key)
 								indexReplayActivity[key] = struct{}{}
 							}
+						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+							if l := d.SetMetadataFieldType; l != nil {
+								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
+							}
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+							if l := d.RemovedMetadataFieldType; l != nil {
+								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
+							}
+
 							// processRemoveMetadataFieldType cascades into a
 							// DropIndex when an index was attached to the
 							// removed field; the dropped id rides on the log
@@ -548,6 +570,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
+
+	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -1935,6 +1961,164 @@ func verifySealingHash(p *commonpb.Chapter, callback func(*servicepb.CheckStoreE
 			p.GetCloseSequence(), "", "", ""))
 	}
 }
+
+// compareSchema verifies each ledger's stored metadata schema
+// (LedgerInfo.MetadataSchema) against the field-type declarations re-derived
+// from the audit. The schema is a projection of CreateLedger.initial_schema +
+// SetMetadataFieldType / RemovedMetadataFieldType orders; a stored schema that
+// diverges from the replay is tampering or a restore-rebuild gap.
+func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for schema verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for schema verification: %w", err)
+	}
+
+	for _, info := range ledgers {
+		// A soft-deleted ledger's schema is no longer part of the live
+		// projection; its LedgerInfo is retained only as a tombstone.
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		name := info.GetName()
+		if !schemaEqual(expected[name], info.GetMetadataSchema()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+				fmt.Sprintf("ledger %q metadata schema diverges from the audit-derived declarations", name),
+				0, name, "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// seedExpectedSchemasFromBaseline loads the boundary-time metadata schema for
+// each ledger from the baseline checkpoint into expected, so the post-archive
+// replay applies its delta on top. It is the independent (non-live) source the
+// checker needs when the pre-archive declaration logs have been purged. A no-op
+// when no baseline exists — the caller (archived-chapters path) then skips
+// entry-by-entry comparison entirely.
+func (c *Checker) seedExpectedSchemasFromBaseline(ctx context.Context, expected map[string]*commonpb.MetadataSchema) {
+	path, exists := c.store.BaselineCheckpointPath()
+	if !exists {
+		return
+	}
+
+	db, err := pebble.Open(path, &pebble.Options{
+		Logger:   dal.NewPebbleLogger(c.logger),
+		ReadOnly: true,
+	})
+	if err != nil {
+		c.logger.Infof("failed to open baseline checkpoint for schema seeding: %v", err)
+
+		return
+	}
+
+	defer func() { _ = db.Close() }()
+
+	ledgerCursor, err := query.ReadLedgers(ctx, db)
+	if err != nil {
+		c.logger.Infof("failed to read baseline ledgers for schema seeding: %v", err)
+
+		return
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		c.logger.Infof("failed to collect baseline ledgers for schema seeding: %v", err)
+
+		return
+	}
+
+	for _, info := range ledgers {
+		if schema := info.GetMetadataSchema(); schema != nil {
+			expected[info.GetName()] = schema.CloneVT()
+		}
+	}
+}
+
+// setExpectedSchemaField records a field-type declaration on the ledger's
+// expected schema during replay, lazily creating it. Mirrors
+// processSetMetadataFieldType.
+func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
+	schema := schemas[ledger]
+	if schema == nil {
+		schema = &commonpb.MetadataSchema{}
+		schemas[ledger] = schema
+	}
+
+	field := &commonpb.MetadataFieldSchema{Type: typ}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		if schema.AccountFields == nil {
+			schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.AccountFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		if schema.TransactionFields == nil {
+			schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.TransactionFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		if schema.LedgerFields == nil {
+			schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.LedgerFields[key] = field
+	}
+}
+
+// removeExpectedSchemaField drops a field-type declaration during replay.
+// Mirrors processRemoveMetadataFieldType.
+func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string) {
+	schema := schemas[ledger]
+	if schema == nil {
+		return
+	}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		delete(schema.GetAccountFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		delete(schema.GetTransactionFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		delete(schema.GetLedgerFields(), key)
+	}
+}
+
+// schemaEqual compares two metadata schemas by field-type content, treating a
+// nil schema and one with no fields as equal (nil vs empty maps must not read
+// as a divergence).
+func schemaEqual(a, b *commonpb.MetadataSchema) bool {
+	return fieldTypesEqual(a.GetAccountFields(), b.GetAccountFields()) &&
+		fieldTypesEqual(a.GetTransactionFields(), b.GetTransactionFields()) &&
+		fieldTypesEqual(a.GetLedgerFields(), b.GetLedgerFields())
+}
+
+func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || av.GetType() != bv.GetType() {
+			return false
+		}
+	}
+
+	return true
+}
+
 func errorEvent(errorType servicepb.CheckStoreErrorType, message string, logSequence uint64, ledger, account, asset string) *servicepb.CheckStoreEvent {
 	return &servicepb.CheckStoreEvent{
 		Type: &servicepb.CheckStoreEvent_Error{
