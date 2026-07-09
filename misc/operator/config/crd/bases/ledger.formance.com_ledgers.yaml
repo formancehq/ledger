@@ -52,6 +52,103 @@ spec:
           spec:
             description: LedgerCRDSpec defines the desired state of a Ledger.
             properties:
+              indexes:
+                description: |-
+                  Indexes declares the account/transaction indexes the operator maintains
+                  on this ledger. This is especially useful for mirror ledgers, which are
+                  read-only and provisioned entirely through this CRD: it lets you keep the
+                  mirror queryable without hand-running `ledgerctl indexes create`.
+
+                  Ownership semantics:
+                    - Field ABSENT (nil) => unmanaged. The operator never lists, creates,
+                      or drops indexes on this ledger. This is the safe default so an
+                      operator upgrade does not touch pre-existing indexes.
+                    - Field PRESENT (even empty {}) => managed. The operator reconciles the
+                      indexes it owns to match this spec: it creates the declared indexes
+                      and drops indexes it previously created that are no longer declared.
+                      It only ever drops indexes it created itself (tracked in
+                      status.appliedIndexes) — externally-created indexes and index kinds
+                      this CRD cannot express are left untouched. An empty {} therefore
+                      means "drop the indexes I previously managed", not "drop every index".
+
+                  Index maintenance is independent of ledger immutability: editing this
+                  field never trips the SpecDrifted condition.
+                properties:
+                  account:
+                    description: |-
+                      Account lists the builtin account indexes to maintain. Only "asset"
+                      (which backs the `has asset` filter) is supported today.
+                    items:
+                      enum:
+                      - asset
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  metadata:
+                    description: |-
+                      Metadata lists the metadata-key indexes to maintain on account or
+                      transaction metadata. Each (target, key) pair must be unique.
+                    items:
+                      description: |-
+                        MetadataIndexSpec declares one metadata-key index. Creating a metadata index
+                        requires the metadata field to exist in the ledger schema first, so the
+                        operator declares the field type (via `ledgers set-metadata-type`) before
+                        creating the index. The declared field type is reconciled too: changing Type
+                        re-declares the field, which the server treats as a schema change (it bumps
+                        the index forward-encoding version and schedules a rewrite).
+                      properties:
+                        key:
+                          description: Key is the metadata key name to index.
+                          minLength: 1
+                          type: string
+                        target:
+                          description: Target of the metadata key.
+                          enum:
+                          - account
+                          - transaction
+                          type: string
+                        type:
+                          description: Type is the metadata field type declared before
+                            indexing.
+                          enum:
+                          - string
+                          - int64
+                          - bool
+                          - uint64
+                          - int8
+                          - int16
+                          - int32
+                          - uint8
+                          - uint16
+                          - uint32
+                          - datetime
+                          type: string
+                      required:
+                      - key
+                      - target
+                      - type
+                      type: object
+                    type: array
+                    x-kubernetes-validations:
+                    - message: metadata index (target,key) pairs must be unique
+                      rule: self.all(x, self.exists_one(y, y.target == x.target &&
+                        y.key == x.key))
+                  transaction:
+                    description: Transaction lists the builtin transaction indexes
+                      to maintain.
+                    items:
+                      enum:
+                      - reference
+                      - timestamp
+                      - address
+                      - sourceAddress
+                      - destinationAddress
+                      - insertedAt
+                      - revertedAt
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                type: object
               mirrorSource:
                 description: |-
                   MirrorSource configures the replication source when mode is "mirror".
@@ -523,10 +620,21 @@ spec:
           status:
             description: LedgerCRDStatus defines the observed state of a Ledger.
             properties:
+              appliedIndexes:
+                description: |-
+                  AppliedIndexes is the set of index identifiers (canonical form) the
+                  operator has created on this ledger. It is the operator-owned set that
+                  scopes index drops: only indexes listed here are ever dropped, so
+                  externally-created and CRD-unrepresentable indexes are preserved.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: atomic
               appliedSpecHash:
                 description: |-
                   AppliedSpecHash is the hash of the spec at the time of creation.
                   Used to detect post-creation modifications (ledgers are immutable).
+                  The indexes field is excluded from this hash since it is mutable.
                 type: string
               conditions:
                 description: Conditions represent the latest available observations

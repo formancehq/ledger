@@ -35,6 +35,7 @@ const (
 	conditionEndpointResolved = "EndpointResolved"
 	conditionLedgerSynced     = "LedgerSynced"
 	conditionSpecDrifted      = "SpecDrifted"
+	conditionIndexesSynced    = "IndexesSynced"
 )
 
 var clusterGVR = schema.GroupVersionResource{
@@ -165,7 +166,8 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 
 	log.Info("ledger ready", "name", ledger.Spec.Name, "mode", mode)
 
-	return ctrl.Result{}, nil
+	// Reconcile declarative indexes now that the ledger exists.
+	return r.handleIndexReconcile(ctx, &ledger, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcileReady handles reconciliation for a Ledger that is already in Ready phase.
@@ -178,7 +180,8 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		return r.reconcilePromotion(ctx, ledger)
 	}
 
-	// Detect spec drift.
+	// Detect spec drift. The hash excludes indexes, so a mismatch means an
+	// immutable field (name/serviceRef/mode/mirrorSource) changed.
 	currentHash := computeLedgerSpecHash(&ledger.Spec)
 	if ledger.Status.AppliedSpecHash != "" && currentHash != ledger.Status.AppliedSpecHash {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -189,11 +192,42 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 			ObservedGeneration: ledger.Generation,
 		})
 		log.Info("spec drift detected on immutable ledger", "name", ledger.Spec.Name)
-	} else {
-		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
+
+		// Do NOT run index reconciliation while an immutable field has drifted:
+		// spec.name / spec.serviceRef may now point at a different ledger or
+		// cluster, so creating/dropping indexes here would mutate the wrong
+		// target. Hold until the drift is resolved by delete + recreate.
+		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{}, nil
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionSpecDrifted)
+
+	// Reconcile declarative indexes (mutable, independent of ledger immutability).
+	if ledger.Spec.Indexes == nil {
+		meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionIndexesSynced)
+
+		return ctrl.Result{}, nil
+	}
+
+	grpcPort, err := r.resolveEndpoint(ctx, ledger)
+	if err != nil {
+		// Index reconciliation did not run for this generation. Mark
+		// IndexesSynced=False so a prior True is not left stale (consumers such
+		// as `kubectl wait` / Chainsaw must not see the new desired set as
+		// synced while no create/drop actually ran).
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               conditionIndexesSynced,
+			Status:             metav1.ConditionFalse,
+			Reason:             "EndpointUnavailable",
+			Message:            fmt.Sprintf("waiting for Cluster before reconciling indexes: %v", err),
+			ObservedGeneration: ledger.Generation,
+		})
+		ledger.Status.Message = fmt.Sprintf("waiting for Cluster for index reconcile: %v", err)
+
+		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+	}
+
+	return r.handleIndexReconcile(ctx, ledger, grpcPort, ctrl.Result{}), nil
 }
 
 // reconcilePromotion handles mirror→normal promotion.
@@ -239,7 +273,9 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 
 	log.Info("ledger promoted", "name", ledger.Spec.Name)
 
-	return ctrl.Result{}, nil
+	// Requeue so the next pass (now Ready + normal) reconciles declarative
+	// indexes for the promoted ledger.
+	return ctrl.Result{Requeue: true}, nil
 }
 
 // reconcileDelete handles ledger deletion with best-effort cleanup.
@@ -481,19 +517,30 @@ func (r *LedgerReconciler) readSecretKey(ctx context.Context, namespace, name, k
 // The server address dialed is the pod's own headless DNS so the SNI matches
 // the server certificate's SANs.
 func (r *LedgerReconciler) ledgerctlExec(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) error {
+	_, err := r.ledgerctlExecOutput(ctx, namespace, serviceName, pod, grpcPort, args...)
+
+	return err
+}
+
+// ledgerctlExecOutput runs a ledgerctl command like ledgerctlExec but returns
+// its captured stdout. When the command is invoked with --json, pterm output
+// (spinners, messages) is routed to stderr by the CLI, so stdout carries only
+// the JSON payload — safe to parse.
+func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, serviceName, pod string, grpcPort int32, args ...string) (string, error) {
 	tlsMode, err := fetchTLSMode(ctx, r.Client, namespace, resourceName(serviceName))
 	if err != nil {
-		return fmt.Errorf("resolving TLS mode for Cluster %q: %w", serviceName, err)
+		return "", fmt.Errorf("resolving TLS mode for Cluster %q: %w", serviceName, err)
 	}
 
 	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
 	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
 
-	if _, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd); err != nil {
-		return fmt.Errorf("ledgerctl %s: %w", args[0], err)
+	res, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
+	if err != nil {
+		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}
 
-	return nil
+	return res.Stdout, nil
 }
 
 // resolveGRPCPort reads the gRPC port from the Cluster spec (defaults to 8888).
@@ -518,9 +565,14 @@ func (r *LedgerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// computeLedgerSpecHash returns a SHA-256 hash of the Ledger spec.
+// computeLedgerSpecHash returns a SHA-256 hash of the Ledger spec used to
+// detect drift on immutable ledgers. The indexes field is excluded because it
+// is mutable and reconciled continuously — an index-only edit must not trip the
+// SpecDrifted condition.
 func computeLedgerSpecHash(spec *ledgerv1alpha1.LedgerCRDSpec) string {
-	data, _ := json.Marshal(spec) //nolint:errchkjson // spec is always serializable
+	forHash := *spec
+	forHash.Indexes = nil
+	data, _ := json.Marshal(&forHash) //nolint:errchkjson // spec is always serializable
 
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

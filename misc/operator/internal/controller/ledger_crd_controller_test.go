@@ -542,3 +542,32 @@ func TestComputeLedgerSpecHash_DifferentMode(t *testing.T) {
 	}
 	assert.NotEqual(t, computeLedgerSpecHash(spec1), computeLedgerSpecHash(spec2))
 }
+
+// TestComputeLedgerSpecHash_IgnoresIndexes asserts that index edits do not
+// change the spec hash — indexes are mutable and reconciled continuously, so
+// editing them must not trip the SpecDrifted (immutability) condition.
+func TestComputeLedgerSpecHash_IgnoresIndexes(t *testing.T) {
+	t.Parallel()
+
+	base := &ledgerv1alpha1.LedgerCRDSpec{
+		Name:       "test",
+		ServiceRef: "svc",
+		Mode:       "normal",
+	}
+	withIndexes := &ledgerv1alpha1.LedgerCRDSpec{
+		Name:       "test",
+		ServiceRef: "svc",
+		Mode:       "normal",
+		Indexes: &ledgerv1alpha1.LedgerIndexesSpec{
+			Transaction: []string{"reference", "address"},
+			Account:     []string{"asset"},
+			Metadata:    []ledgerv1alpha1.MetadataIndexSpec{{Target: "account", Key: "k", Type: "string"}},
+		},
+	}
+
+	assert.Equal(t, computeLedgerSpecHash(base), computeLedgerSpecHash(withIndexes))
+
+	// And the input spec must not be mutated by hashing (shallow copy nils the
+	// pointer on the copy, not the original).
+	require.NotNil(t, withIndexes.Indexes)
+}

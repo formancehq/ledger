@@ -128,6 +128,36 @@ message MirrorSourceConfig {
 
 A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
 
+## Declaring indexes on a mirror ledger (operator)
+
+A mirror ledger is read-only to clients, but index create/drop is explicitly allowed on it (`isMirrorSafeApply` whitelists `CreateIndex`/`DropIndex`), so a mirror can carry the same query indexes as its source. Because mirror ledgers are typically provisioned entirely through the Kubernetes operator's `Ledger` CRD, the CRD exposes a declarative `spec.indexes` block so the index set is part of the same GitOps manifest:
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: Ledger
+spec:
+  name: my-ledger
+  serviceRef: my-service
+  mode: mirror
+  mirrorSource: { ... }
+  indexes:
+    transaction: [reference, address, sourceAddress]   # transaction builtins
+    account: [asset]                                    # account builtins
+    metadata:                                           # metadata-key indexes
+      - target: account
+        key: category
+        type: string
+```
+
+The operator reconciles the index set by driving `ledgerctl` over pod-exec — there is **no** proto/FSM/checker change; index maintenance rides entirely on the existing `indexes create` / `indexes drop` / `ledgers set-metadata-type` commands. Key semantics (see `misc/operator/internal/controller/ledger_index_reconcile.go`):
+
+- **Ownership-scoped.** The operator tracks the indexes it created in `status.appliedIndexes` and only ever drops those. Externally-created indexes and index kinds the CRD cannot express (the `id` tx-builtin, log builtins, ledger-target metadata, bucket-scoped audit indexes) are left untouched.
+- **Unmanaged by default.** Omitting `spec.indexes` (nil) means the operator never lists, creates, or drops indexes on the ledger. A present-but-empty `indexes: {}` means "managed with zero indexes" — it drops only the indexes the operator previously created.
+- **Mutable, unlike the ledger itself.** `spec.indexes` is excluded from the immutability spec-hash, so editing it reconciles instead of raising `SpecDrifted`. Convergence is reported via the `IndexesSynced` status condition.
+- **Metadata schema is reconciled too.** A metadata index requires its field to be declared in the schema first, so the operator issues `ledgers set-metadata-type` before creating the index — and re-issues it when the declared `type` changes (which the server treats as a schema change that bumps the index forward-encoding version).
+
+This applies to any mode; it is documented here because mirror ledgers are the primary case where the ledger has no other declarative surface for indexes.
+
 ## Lifecycle on failure
 
 | Trigger | Worker behaviour |
