@@ -2273,6 +2273,14 @@ full-chain scan.
 > not the audit index. An *unfiltered* read (plain `audit list`, optionally with
 > `--reverse` / `audit[seq]` bounds) reads the audit zone directly and is
 > strongly consistent.
+>
+> **Checkpoint + filter caveat.** A query checkpoint snapshots the audit index
+> at creation time; checkpoint creation waits for the log index but not yet for
+> the audit indexer, so a *filtered* read against `--checkpoint-id` may omit
+> entries whose audit-zone rows exist in the checkpoint but were not indexed
+> when it was taken (a frozen checkpoint never catches up). Unfiltered checkpoint
+> reads scan the zone directly and are unaffected. Making the audit indexer catch
+> up before the checkpoint snapshot is a tracked follow-up.
 
 **Behavior:**
 - Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)

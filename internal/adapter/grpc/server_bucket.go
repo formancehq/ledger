@@ -1229,6 +1229,16 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 			_ = mainStore.Close()
 		}()
 
+		// Known limitation (tracked as a follow-up): CreateQueryCheckpoint waits
+		// for the log-index builder (readStore.WaitForSequence) before snapshotting
+		// the readstore, but NOT for the separate async audit indexer. If the
+		// audit index lagged its zone at snapshot time, a *filtered* checkpoint
+		// read can omit audit entries that do exist in the checkpoint's audit
+		// zone, and — the checkpoint being frozen — it never catches up. The
+		// unfiltered checkpoint read is unaffected (it scans the zone directly).
+		// The proper fix belongs in the checkpoint-creation path (make the audit
+		// indexer catch up before the readstore checkpoint, mirroring the
+		// log-index WaitForSequence); it is out of scope here.
 		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	} else {
 		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
