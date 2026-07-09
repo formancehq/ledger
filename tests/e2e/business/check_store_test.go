@@ -8,6 +8,8 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -694,6 +696,80 @@ var _ = Describe("CheckStore", Ordered, func() {
 			Expect(last.LogsChecked).To(Equal(last.TotalLogs))
 			// We created many logs across all the operations
 			Expect(last.TotalLogs).To(BeNumerically(">=", 15))
+		})
+	})
+
+	Context("With a declared metadata schema and account types", Ordered, func() {
+		const ledgerName = "check-schema-ledger"
+
+		BeforeAll(func() {
+			// initial_schema at creation.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+				})))
+			Expect(err).To(Succeed())
+
+			// Runtime schema declaration + account types.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}"),
+				actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}"),
+			))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should pass integrity check (schema + account types verified)", func() {
+			expectStoreValid(sharedCtx, sharedClient)
+		})
+	})
+
+	// Guards the baseline-backed schema/account-type verification: declarations
+	// made before a chapter is archived live only in the baseline checkpoint (their
+	// logs are purged), so the checker must seed them from the baseline and apply
+	// the post-archive delta rather than false-positive.
+	Context("Across a chapter-archive boundary", Ordered, func() {
+		const (
+			ledgerName = "check-schema-archived-ledger"
+			httpPort   = 15702
+			grpcPort   = 15802
+		)
+
+		var (
+			ctx    context.Context
+			client servicepb.BucketServiceClient
+		)
+
+		BeforeAll(func() {
+			// Own node with a filesystem cold-storage backend so chapters can be
+			// archived; the shared suite server has cold storage disabled.
+			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+				testserver.WithColdStorageDriver("filesystem"),
+			)
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+				})))
+			Expect(err).To(Succeed())
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
+			Expect(err).To(Succeed())
+
+			// Seal + archive: tier + wallet are now only in the baseline snapshot.
+			archiveChapterFull(ctx, client)
+
+			// Post-archive delta: replayed on top of the baseline seed.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING),
+				actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}"),
+			))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should pass integrity check without false positives across the archive boundary", func() {
+			expectStoreValid(ctx, client)
 		})
 	})
 })
