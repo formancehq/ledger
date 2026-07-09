@@ -295,20 +295,49 @@ func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter) (audi
 
 // intersectAudit combines two compiled sub-filters under AND semantics,
 // reconciling the index-narrowed seq sets and the zone sequence bounds.
+//
+// Invariant maintained for the caller: a NARROWED result returned here has its
+// [loSeq, hiSeq] window already baked into seqs (and its bounds reset to full).
+// A branch that mixes an index seq-set with a residual seq bound (e.g.
+// `outcome == failure and seq < 10`) would otherwise carry that bound only on
+// hiSeq; an enclosing OR unions seqs but cannot represent per-branch bounds, so
+// it would leak entries outside the branch predicate. Baking the bound into the
+// branch's seqs before it can be unioned closes that gap (NumaryBot finding).
 func intersectAudit(a, b auditCompiled) auditCompiled {
 	lo := max(a.loSeq, b.loSeq)
 	hi := min(a.hiSeq, b.hiSeq)
 
 	switch {
 	case a.narrowed && b.narrowed:
-		return auditCompiled{seqs: intersectSorted(a.seqs, b.seqs), narrowed: true, loSeq: lo, hiSeq: hi}
+		return bakeBounds(auditCompiled{seqs: intersectSorted(a.seqs, b.seqs), narrowed: true, loSeq: lo, hiSeq: hi})
 	case a.narrowed:
-		return auditCompiled{seqs: a.seqs, narrowed: true, loSeq: lo, hiSeq: hi}
+		return bakeBounds(auditCompiled{seqs: a.seqs, narrowed: true, loSeq: lo, hiSeq: hi})
 	case b.narrowed:
-		return auditCompiled{seqs: b.seqs, narrowed: true, loSeq: lo, hiSeq: hi}
+		return bakeBounds(auditCompiled{seqs: b.seqs, narrowed: true, loSeq: lo, hiSeq: hi})
 	default:
+		// Neither side is index-narrowed: only seq bounds constrain the result,
+		// which the caller carries forward as a zone-scan window.
 		return auditCompiled{narrowed: false, loSeq: lo, hiSeq: hi}
 	}
+}
+
+// bakeBounds materializes a narrowed result's [loSeq, hiSeq] window into its seq
+// set and resets the window to full, so the bound cannot be lost when the result
+// is later unioned by an enclosing OR. No-op for a non-narrowed result or one
+// whose window is already unconstrained.
+func bakeBounds(c auditCompiled) auditCompiled {
+	if !c.narrowed || (c.loSeq == 0 && c.hiSeq == math.MaxUint64) {
+		return c
+	}
+
+	filtered := c.seqs[:0:0]
+	for _, s := range c.seqs {
+		if s >= c.loSeq && s <= c.hiSeq {
+			filtered = append(filtered, s)
+		}
+	}
+
+	return auditCompiled{seqs: filtered, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}
 }
 
 // intersectSorted returns the sorted intersection of two ascending, de-duped

@@ -170,8 +170,9 @@ func TestCompileAuditFilter_SeqRange_BoundsOnly(t *testing.T) {
 func TestCompileAuditFilter_SeqRange_AndWithIndex(t *testing.T) {
 	t.Parallel()
 
-	// audit[outcome]==failure and audit[seq] >= 3 -> index set narrowed to {3,7},
-	// bounded to seq>=3.
+	// audit[outcome]==failure and audit[seq] >= 3 -> failures {1,3,7} filtered
+	// to seq>=3 = {3,7}, with the bound baked into the seq set (window reset to
+	// full) so an enclosing OR cannot lose it.
 	idx := &fakeAuditIndex{byOutcome: map[bool][]uint64{false: {1, 3, 7}}}
 
 	filter := &commonpb.QueryFilter{
@@ -186,8 +187,8 @@ func TestCompileAuditFilter_SeqRange_AndWithIndex(t *testing.T) {
 	seqs, lo, hi, narrowed, err := CompileAuditFilter(idx, filter)
 	require.NoError(t, err)
 	require.True(t, narrowed)
-	require.Equal(t, []uint64{1, 3, 7}, seqs)
-	require.Equal(t, uint64(3), lo)
+	require.Equal(t, []uint64{3, 7}, seqs)
+	require.Equal(t, uint64(0), lo)
 	require.Equal(t, uint64(math.MaxUint64), hi)
 }
 
@@ -429,6 +430,70 @@ func TestCompileAuditFilter_AndOfTwoSeqBounds(t *testing.T) {
 	require.Nil(t, seqs)
 	require.Equal(t, uint64(5), lo)
 	require.Equal(t, uint64(20), hi)
+}
+
+func TestCompileAuditFilter_OrDoesNotLeakBranchSeqBound(t *testing.T) {
+	t.Parallel()
+
+	// (audit[outcome] == failure and audit[seq] < 10) or audit[ledger] == main
+	// Failures are seqs {3, 12, 20}; the seq<10 bound must keep only {3} from
+	// that branch, then union with ledger==main {50}. Without baking the branch
+	// bound, 12 and 20 would leak in.
+	idx := &fakeAuditIndex{
+		byOutcome: map[bool][]uint64{false: {3, 12, 20}},
+		byString: map[string][]uint64{
+			string(readstore.AuditFieldLedger) + "main": {50},
+		},
+	}
+
+	andBranch := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+				auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"),
+				auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, nil, new(uint64(9))), // seq <= 9
+			}},
+		},
+	}
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
+				andBranch,
+				auditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "main"),
+			}},
+		},
+	}
+
+	seqs, lo, hi, narrowed, err := CompileAuditFilter(idx, filter)
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Equal(t, []uint64{3, 50}, seqs, "12 and 20 must be excluded by the branch-local seq bound")
+	require.Equal(t, uint64(0), lo)
+	require.Equal(t, uint64(math.MaxUint64), hi)
+}
+
+func TestCompileAuditFilter_AndBakesSeqBoundIntoSeqs(t *testing.T) {
+	t.Parallel()
+
+	// audit[outcome] == failure and audit[seq] <= 9 -> {3} (bound baked into seqs,
+	// window reset to full).
+	idx := &fakeAuditIndex{byOutcome: map[bool][]uint64{false: {3, 12, 20}}}
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+				auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"),
+				auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, nil, new(uint64(9))),
+			}},
+		},
+	}
+
+	seqs, lo, hi, narrowed, err := CompileAuditFilter(idx, filter)
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Equal(t, []uint64{3}, seqs)
+	require.Equal(t, uint64(0), lo)
+	require.Equal(t, uint64(math.MaxUint64), hi)
 }
 
 func TestCompileAuditFilter_EmptyOrMatchesNothing(t *testing.T) {
