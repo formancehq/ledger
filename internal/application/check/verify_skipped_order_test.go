@@ -783,11 +783,11 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: ref},
 							},
+							SkippableReasons: skipReasons,
 						},
 					},
 				},
 			},
-			SkippableReasons: skipReasons,
 		}
 	}
 
@@ -887,11 +887,11 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: "r"},
 							},
+							SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 						},
 					},
 				},
 			},
-			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		}).MarshalVT()
 		require.NoError(t, err)
 
@@ -1433,16 +1433,18 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 					Ledger: "L",
 					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-						Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Reference: "ref-A",
-								Metadata:  map[string]*commonpb.MetadataValue{"skipped": commonpb.NewStringValue("y")},
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Reference: "ref-A",
+									Metadata:  map[string]*commonpb.MetadataValue{"skipped": commonpb.NewStringValue("y")},
+								},
 							},
-						}},
+							SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+						},
 					},
 				},
 			},
-			SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 		}),
 		buildAuditItem(t, 14, &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{

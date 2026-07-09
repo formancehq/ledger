@@ -379,11 +379,11 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 								Reference: "ref-x",
 							},
 						},
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 					},
 				},
 			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 	}
 
 	response, err := processor.ProcessOrders([]*raftcmdpb.Order{order}, mockFactory(mockStore), noopSink{})

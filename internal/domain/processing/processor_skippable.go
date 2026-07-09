@@ -11,6 +11,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// orderSkippableReasons extracts the per-apply skippable_reasons list
+// off an Order. The field lives on LedgerApplyOrder (only apply
+// variants can be idempotent-skipped today), so we reach through the
+// LedgerScoped.Apply chain. Getters are nil-safe: non-Apply orders
+// (SystemScoped, CreateLedger, etc.) return an empty slice which the
+// caller interprets as "no opt-in".
+func orderSkippableReasons(order *raftcmdpb.Order) []commonpb.ErrorReason {
+	return order.GetLedgerScoped().GetApply().GetSkippableReasons()
+}
+
 // matchOrderSkip checks whether the error returned by a sub-processor can be
 // converted into an OrderSkippedLog given the order's `skippable_reasons`
 // whitelist. When it matches, it returns the LogPayload to emit in place of
@@ -26,7 +36,7 @@ import (
 // not need to perform their reads "dry" anymore; the overlay buffers their
 // reads-after-writes and drops the buffer on rollback.
 func matchOrderSkip(order *raftcmdpb.Order, err domain.Describable) (*commonpb.LogPayload, bool) {
-	allowed := order.GetSkippableReasons()
+	allowed := orderSkippableReasons(order)
 	if len(allowed) == 0 {
 		return nil, false
 	}

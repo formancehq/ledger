@@ -42,24 +42,13 @@ message Order {
   // ValidateTransientVolumes) go through state.ScopeFactory.NewProposalScope
   // instead, not through an "empty bits means admit all" convention.
   bytes coverage_bits = 5;
-  // skippable_reasons opts the order into a "continue-on-failure" mode: when
-  // the FSM produces a business error whose `Reason()` matches one of these
-  // entries, ProcessOrders swaps the failure for a common.OrderSkippedLog
-  // carrying the reason and the error's Metadata() and lets the proposal
-  // continue. Empty (default) preserves the historical fail-fast behaviour.
-  //
-  // Admission validates each entry against the per-operation business
-  // whitelist (see internal/application/admission/skippable.go) — structural
-  // reasons (INVALID_EXECUTION_PLAN, COVERAGE_MISS, STORAGE_OPERATION_FAILED,
-  // NUMSCRIPT_RUNTIME, MAINTENANCE_MODE, STALE_PROPOSAL, …) are never
-  // accepted. The FSM applies the same gate as defense-in-depth.
-  //
-  // A reason may be whitelisted only if the producing sub-processor is "dry"
-  // up to the matching detection point — i.e. no Scope.Put* runs before the
-  // branch that returns the error. The buffer is merged on Success, so a
-  // skip honoured AFTER mutation would persist a partial state. See
-  // processor_skippable.go for the per-reason audit log.
-  repeated common.ErrorReason skippable_reasons = 6;
+  // Field 6 previously held `repeated common.ErrorReason skippable_reasons`.
+  // The opt-in moved into LedgerApplyOrder because it only makes sense for
+  // ledger-apply variants — non-Apply orders (CreateLedger, SystemScoped
+  // signing key operations, etc.) have no business error that maps to an
+  // idempotent skip semantic. See LedgerApplyOrder.skippable_reasons below.
+  reserved 6;
+  reserved "skippable_reasons";
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -279,6 +268,31 @@ message LedgerApplyOrder {
     RemoveAccountTypeOrder remove_account_type = 10;
     UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 11;
   }
+  // skippable_reasons opts the apply order into a "continue-on-failure"
+  // mode: when the FSM produces a business error whose `Reason()`
+  // matches one of these entries, ProcessOrders swaps the failure for
+  // a common.OrderSkippedLog carrying the reason and the error's
+  // Metadata() and lets the proposal continue. Empty (default)
+  // preserves the historical fail-fast behaviour.
+  //
+  // Populated by admission from LedgerApplyRequest.skippable_reasons
+  // after validation against the per-action whitelist declared via
+  // (allowed_skippable_reasons) annotations on LedgerAction's oneof
+  // cases (see misc/proto/bucket.proto). Structural KindInternal
+  // reasons are rejected up front; the FSM applies the same gate as
+  // defense-in-depth.
+  //
+  // A reason may be whitelisted only if the producing sub-processor
+  // is "dry" up to the matching detection point (no Scope.Put runs
+  // before the branch that returns the error) or the sub-processor's
+  // scope is wrapped in an orderOverlayScope that buffers writes for
+  // rollback. See processor_skippable.go for the per-reason audit log.
+  //
+  // Located on LedgerApplyOrder (not Order) because only Apply
+  // variants can be idempotent-skipped today — CreateLedger,
+  // SystemScoped signing key operations, chapter management, etc.
+  // have no business error that maps to a legitimate skip semantic.
+  repeated common.ErrorReason skippable_reasons = 12;
 }
 
 // CreateIndexOrder requests the creation of a new index.

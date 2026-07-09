@@ -41,18 +41,6 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.SkippableReasons) > 0 {
-		var pkBuf [10]byte
-		start := i
-		for iNdEx := len(m.SkippableReasons) - 1; iNdEx >= 0; iNdEx-- {
-			n := protohelpers.EncodeVarint(pkBuf[:], 10, uint64(m.SkippableReasons[iNdEx]))
-			i -= 10 - n
-			copy(dAtA[i:], pkBuf[n:])
-		}
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(start-i))
-		i--
-		dAtA[i] = 0x32
-	}
 	if len(m.CoverageBits) > 0 {
 		i -= len(m.CoverageBits)
 		copy(dAtA[i:], m.CoverageBits)
@@ -940,6 +928,18 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.SkippableReasons) > 0 {
+		var pkBuf [10]byte
+		start := i
+		for iNdEx := len(m.SkippableReasons) - 1; iNdEx >= 0; iNdEx-- {
+			n := protohelpers.EncodeVarint(pkBuf[:], 10, uint64(m.SkippableReasons[iNdEx]))
+			i -= 10 - n
+			copy(dAtA[i:], pkBuf[n:])
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(start-i))
+		i--
+		dAtA[i] = 0x62
 	}
 	switch v := m.Data.(type) {
 	case *LedgerApplyOrder_CreateTransaction:

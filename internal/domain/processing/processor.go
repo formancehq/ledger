@@ -207,7 +207,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		processScope := orderScope
 
 		var overlay *orderOverlayScope
-		if len(order.GetSkippableReasons()) > 0 {
+		if len(orderSkippableReasons(order)) > 0 {
 			overlay = newOrderOverlayScope(orderScope)
 			processScope = newSkipSafeScope(overlay)
 		}

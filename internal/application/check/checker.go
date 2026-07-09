@@ -2015,7 +2015,7 @@ func collectExpectedSkippable(
 		// underlying condition true?".
 		recordChainBoundMutations(ls, ledger, logSeq, chainBound)
 
-		reasons := order.GetSkippableReasons()
+		reasons := apply.GetSkippableReasons()
 		if len(reasons) == 0 {
 			continue
 		}

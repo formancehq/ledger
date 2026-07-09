@@ -1361,7 +1361,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			return nil, err
 		}
 
-		order.SkippableReasons = skippable
+		applyOrder.SkippableReasons = skippable
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),

@@ -34,9 +34,15 @@ func TestMatchOrderSkip_AllowsListedReason(t *testing.T) {
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+					},
+				},
+			},
 		},
-		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 	}
 	err := &domain.ErrTransactionReferenceConflict{Ledger: "L", Reference: "ref-1", ExistingTransactionID: 42}
 
@@ -65,7 +71,15 @@ func TestMatchOrderSkip_RejectsNonWhitelistedReason(t *testing.T) {
 	t.Parallel()
 
 	order := &raftcmdpb.Order{
-		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+					},
+				},
+			},
+		},
 	}
 	err := &domain.ErrLedgerNotFound{Name: "missing"}
 
@@ -86,7 +100,15 @@ func TestMatchOrderSkip_RejectsKindInternal(t *testing.T) {
 		"this test assumes INVALID_EXECUTION_PLAN classifies as KindInternal")
 
 	order := &raftcmdpb.Order{
-		SkippableReasons: []commonpb.ErrorReason{internalReason},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{internalReason},
+					},
+				},
+			},
+		},
 	}
 	err := &domain.ErrInvalidExecutionPlan{Reason_: "boom"}
 
@@ -102,7 +124,15 @@ func TestMatchOrderSkip_UnspecifiedReason(t *testing.T) {
 	t.Parallel()
 
 	order := &raftcmdpb.Order{
-		SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+					},
+				},
+			},
+		},
 	}
 
 	payload, matched := matchOrderSkip(order, unknownReasonErr{})

@@ -14,7 +14,6 @@ import (
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
 	GetCoverageBits() []byte
-	GetSkippableReasons() []commonpb.ErrorReason
 	GetType() isOrder_Type
 	Mutate() *Order
 }
@@ -23,10 +22,6 @@ type orderReadonly Order
 
 func (r *orderReadonly) GetCoverageBits() []byte {
 	return bytes.Clone((*Order)(r).GetCoverageBits())
-}
-
-func (r *orderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
-	return slices.Clone((*Order)(r).GetSkippableReasons())
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {
@@ -2666,11 +2661,16 @@ func NewDeleteLedgerOrderListReader(s []*DeleteLedgerOrder) DeleteLedgerOrderLis
 // LedgerApplyOrderReader provides read-only access to LedgerApplyOrder.
 // Call Mutate() to obtain a mutable clone.
 type LedgerApplyOrderReader interface {
+	GetSkippableReasons() []commonpb.ErrorReason
 	GetData() isLedgerApplyOrder_Data
 	Mutate() *LedgerApplyOrder
 }
 
 type ledgerApplyOrderReadonly LedgerApplyOrder
+
+func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
+}
 
 func (r *ledgerApplyOrderReadonly) GetData() isLedgerApplyOrder_Data {
 	return (*LedgerApplyOrder)(r).GetData()
