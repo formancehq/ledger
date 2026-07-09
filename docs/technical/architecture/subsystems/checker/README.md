@@ -15,6 +15,12 @@ Two pages cover what the checker depends on and what it does.
 
 The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
 
+For new persisted state, first classify whether it is business truth, governance
+truth, operational consensus state, or a rebuildable projection using
+[Audit-Bound vs Technical State](../../audit-vs-technical-state.md). Only
+business truth and business-visible projections belong in the checker; purely
+operational state must remain unable to silently change ledger business results.
+
 ## Related
 
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
