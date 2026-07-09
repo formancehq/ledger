@@ -67,6 +67,15 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 			filter: fieldFilter("score", &FieldCondition_IntCond{IntCond: &IntCondition{ParamMin: "lo", ParamMax: "hi"}}),
 		},
 		{
+			name:     "metadata uint single bound (stays uint, lossless)",
+			filter:   fieldFilter("count", &FieldCondition_UintCond{UintCond: &UintCondition{Min: u64(9007199254740993)}}),
+			wantJSON: `{"$gte":{"metadata[count]":"9007199254740993"}}`,
+		},
+		{
+			name:   "metadata uint closed range",
+			filter: fieldFilter("count", &FieldCondition_UintCond{UintCond: &UintCondition{Min: u64(1), Max: u64(9)}}),
+		},
+		{
 			name:     "address hardcoded prefix",
 			filter:   addressFilter(&AddressMatch_HardcodedPrefix{HardcodedPrefix: "users:"}, AddressRole_ADDRESS_ROLE_ANY),
 			wantJSON: `{"$match":{"address":"users:"}}`,
@@ -90,6 +99,14 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 			name:     "address param prefix (like)",
 			filter:   addressFilter(&AddressMatch_ParamPrefix{ParamPrefix: "acc"}, AddressRole_ADDRESS_ROLE_ANY),
 			wantJSON: `{"$like":{"address":{"$param":"acc"}}}`,
+		},
+		{
+			// A hardcoded prefix without a trailing ":" cannot use the $match
+			// trailing-colon convention (it would look like an exact match), so it
+			// is carried via $like to stay lossless.
+			name:     "address hardcoded prefix without colon (like)",
+			filter:   addressFilter(&AddressMatch_HardcodedPrefix{HardcodedPrefix: "users"}, AddressRole_ADDRESS_ROLE_ANY),
+			wantJSON: `{"$like":{"address":"users"}}`,
 		},
 		{
 			name:     "reference",
@@ -211,6 +228,8 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"param empty name", `{"$match":{"reference":{"$param":""}}}`, "name is required"},
 		{"param not sole key", `{"$match":{"reference":{"$param":"p","x":1}}}`, "must be the only key"},
 		{"range unsupported field", `{"$gt":{"bogus":1}}`, "unsupported field"},
+		{"range on reference rejected", `{"$gt":{"reference":"x"}}`, "unsupported field"},
+		{"range on address rejected", `{"$gt":{"sourceAddress":"1"}}`, "unsupported field"},
 		{"in unsupported", `{"$in":{"address":["a"]}}`, "not supported"},
 	}
 

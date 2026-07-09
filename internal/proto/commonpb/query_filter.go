@@ -516,12 +516,25 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 
 	switch m := am.GetMatch().(type) {
 	case *AddressMatch_HardcodedPrefix:
-		v, err := literalValue(ensurePrefix(m.HardcodedPrefix))
+		// A prefix whose value already ends in ":" round-trips via $match (the
+		// trailing colon is the DSL prefix marker). A prefix WITHOUT a trailing
+		// colon (a byte-level prefix) would be indistinguishable from an exact
+		// match under $match, so it is emitted via $like with a literal value to
+		// preserve prefix intent losslessly.
+		if m.HardcodedPrefix != "" && m.HardcodedPrefix[len(m.HardcodedPrefix)-1] == ':' {
+			v, err := literalValue(m.HardcodedPrefix)
+			if err != nil {
+				return nil, err
+			}
+
+			return kv(opMatch, field, v), nil
+		}
+		v, err := literalValue(m.HardcodedPrefix)
 		if err != nil {
 			return nil, err
 		}
 
-		return kv(opMatch, field, v), nil
+		return kv(opLike, field, v), nil
 	case *AddressMatch_HardcodedExact:
 		v, err := literalValue(m.HardcodedExact)
 		if err != nil {
@@ -539,20 +552,6 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 	default:
 		return nil, errors.New("address: no match set")
 	}
-}
-
-// ensurePrefix guarantees the trailing ":" that marks a prefix match in the DSL.
-// Hardcoded prefixes without a segment separator (rare) still round-trip
-// because the decoder treats a trailing ":" as the prefix marker.
-func ensurePrefix(p string) string {
-	if p == "" {
-		return ":"
-	}
-	if p[len(p)-1] == ':' {
-		return p
-	}
-
-	return p + ":"
 }
 
 // ============================================================================
@@ -850,14 +849,24 @@ func decodeAddressMatch(field string, value jsonValue) (*QueryFilter, error) {
 }
 
 func decodeLike(field string, value jsonValue) (*QueryFilter, error) {
-	// $like is only used to carry a parameterised address prefix today.
+	// $like carries an address prefix — either a literal (hardcoded byte-level
+	// prefix that cannot be expressed via the trailing-":" $match convention) or
+	// a parameterised prefix resolved at execution time.
 	if field != "address" && field != "source" && field != "destination" {
 		return nil, fmt.Errorf("$like: unsupported field %q", field)
 	}
-	if !value.isParam() {
-		return nil, errors.New("$like: only a parameterised prefix is supported on this surface")
+
+	am := &AddressMatch{}
+	if value.isParam() {
+		am.Match = &AddressMatch_ParamPrefix{ParamPrefix: value.param}
+	} else {
+		s, err := value.asString()
+		if err != nil {
+			return nil, fmt.Errorf("$like: %w", err)
+		}
+		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: s}
 	}
-	am := &AddressMatch{Match: &AddressMatch_ParamPrefix{ParamPrefix: value.param}}
+
 	switch field {
 	case "source":
 		am.Role = AddressRole_ADDRESS_ROLE_SOURCE
@@ -943,6 +952,23 @@ func buildRange(field string, bounds []bound) (*QueryFilter, error) {
 		}}}, nil
 	default:
 		if key, ok := parseMetadataKey(field); ok {
+			// Metadata numeric ranges may be signed (IntCondition) or unsigned
+			// (UintCondition). We keep them distinguishable — and thus lossless —
+			// the same way the encoder does: unsigned bounds are decimal strings,
+			// signed bounds are JSON numbers. A param-only range carries no
+			// literal to inspect and defaults to the signed form.
+			if boundsAreUnsigned(bounds) {
+				uc, err := uintConditionFromBounds(bounds)
+				if err != nil {
+					return nil, err
+				}
+
+				return &QueryFilter{Filter: &QueryFilter_Field{Field: &FieldCondition{
+					Field:     &FieldRef{Metadata: key},
+					Condition: &FieldCondition_UintCond{UintCond: uc},
+				}}}, nil
+			}
+
 			ic, err := intConditionFromBounds(bounds)
 			if err != nil {
 				return nil, err
@@ -956,6 +982,25 @@ func buildRange(field string, bounds []bound) (*QueryFilter, error) {
 
 		return nil, fmt.Errorf("range: unsupported field %q", field)
 	}
+}
+
+// boundsAreUnsigned reports whether the literal bound values are JSON strings
+// (the unsigned encoding). Returns false when all bounds are params (no literal
+// to inspect) so the signed form is chosen by default.
+func boundsAreUnsigned(bounds []bound) bool {
+	sawLiteral := false
+	for _, b := range bounds {
+		if b.value.isParam() {
+			continue
+		}
+		sawLiteral = true
+		var s string
+		if err := json.Unmarshal(b.value.literal, &s); err != nil {
+			return false
+		}
+	}
+
+	return sawLiteral
 }
 
 func intConditionFromBounds(bounds []bound) (*IntCondition, error) {
