@@ -177,6 +177,64 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleCreatePreparedQuery_LogsTarget(t *testing.T) {
+	t.Parallel()
+
+	var captured *servicepb.Request
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			captured = reqs.GetUnsigned().GetRequests()[0]
+
+			return []*commonpb.Log{{}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"logs-q","target":"LOGS","filter":`+validFieldFilterJSON+`}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.NotNil(t, captured)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		captured.GetCreatePreparedQuery().GetQuery().GetTarget())
+}
+
+func TestHandleCreatePreparedQuery_UnknownTargetRejected(t *testing.T) {
+	t.Parallel()
+
+	// An unknown target must be rejected loudly, not silently coerced to a
+	// default (which would run a different query than requested).
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"q","target":"BOGUS","filter":`+validFieldFilterJSON+`}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleCreatePreparedQuery_MissingTargetRejected(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"q","filter":`+validFieldFilterJSON+`}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestHandleCreatePreparedQuery_AlreadyExists(t *testing.T) {
 	t.Parallel()
 

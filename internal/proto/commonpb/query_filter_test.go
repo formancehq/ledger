@@ -182,8 +182,12 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"address unknown operator", `{"match":{"type":"address","operator":"contains"}}`, "unknown operator"},
 		{"address unknown role", `{"match":{"type":"address","operator":"exact","value":"x","role":"middle"}}`, "unknown role"},
 		{"builtinUint unknown field", `{"match":{"type":"builtinUint","field":"bogus"}}`, "unknown field"},
+		{"builtinUint rejects non-uint field reference", `{"match":{"type":"builtinUint","field":"reference"}}`, "unknown field"},
+		{"builtinUint rejects non-uint field address", `{"match":{"type":"builtinUint","field":"sourceAddress"}}`, "unknown field"},
 		{"accountHasAsset missing assetBase", `{"match":{"type":"accountHasAsset"}}`, "assetBase is required"},
 		{"string cond both equals and param", `{"match":{"type":"field","metadata":"x","condition":{"type":"string","equals":"a","param":"b"}}}`, "only one of equals or param"},
+		{"address missing both value and param", `{"match":{"type":"address","operator":"prefix"}}`, "set one of value or param"},
+		{"reverted missing value", `{"match":{"type":"reverted"}}`, "value is required"},
 	}
 
 	for _, tc := range cases {

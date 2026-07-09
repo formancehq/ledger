@@ -40,9 +40,11 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	if body.Target == "TRANSACTIONS" {
-		target = commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	target, err := parsePreparedQueryTarget(body.Target)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
 	}
 
 	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{

@@ -3678,6 +3678,7 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
+            - LOGS
           description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
@@ -3749,6 +3750,7 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
+            - LOGS
           description: Target entity type
         filter:
           $ref: '#/components/schemas/QueryFilter'
@@ -4031,9 +4033,9 @@ components:
     BuiltinUintCondition:
       type: object
       description: >-
-        Matches a built-in transaction field carrying an unsigned value (id,
-        timestamp, inserted-at / reverted-at dates, or an address mapping) within
-        an unsigned range.
+        Matches a built-in transaction field carrying an unsigned value (id or
+        one of the timestamp/date fields) within an unsigned range. Address and
+        reference matching use the `address` / `reference` conditions instead.
       required:
         - type
         - field
@@ -4045,13 +4047,9 @@ components:
           type: string
           enum:
             - id
-            - reference
             - timestamp
             - insertedAt
             - revertedAt
-            - address
-            - sourceAddress
-            - destinationAddress
         min:
           type: string
         max:

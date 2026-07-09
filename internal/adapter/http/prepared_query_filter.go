@@ -8,6 +8,32 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// preparedQueryTargets maps the public REST target enum
+// (ACCOUNTS/TRANSACTIONS/LOGS, per openapi.yml) to the proto QueryTarget. All
+// three targets are supported by the query executor and creatable via
+// gRPC/CLI, so REST must accept them too.
+var preparedQueryTargets = map[string]commonpb.QueryTarget{
+	"ACCOUNTS":     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	"TRANSACTIONS": commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	"LOGS":         commonpb.QueryTarget_QUERY_TARGET_LOGS,
+}
+
+// parsePreparedQueryTarget resolves the `target` field of a prepared-query
+// request. An unknown value is rejected loudly rather than silently coerced to
+// a default (which would run a different query than the caller asked for).
+func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
+	if target == "" {
+		return 0, errors.New("target is required (ACCOUNTS, TRANSACTIONS or LOGS)")
+	}
+
+	t, ok := preparedQueryTargets[target]
+	if !ok {
+		return 0, fmt.Errorf("unknown target %q (use ACCOUNTS, TRANSACTIONS or LOGS)", target)
+	}
+
+	return t, nil
+}
+
 // decodePreparedQueryFilter decodes the `filter` JSON value of a prepared-query
 // create/update request. The value uses the canonical flat QueryFilter shape
 // documented in openapi.yml (combinators `and`/`or`/`not` plus a tagged-union
