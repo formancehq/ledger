@@ -3784,7 +3784,16 @@ components:
 
     Condition:
       description: >-
-        A leaf filter condition. Tagged union discriminated by `type`.
+        A leaf filter condition. Tagged union discriminated by `type`. This is
+        the shared filter grammar used by every filtered endpoint, so not every
+        condition applies to every query target: `ledger`, `logId` and
+        `logBuiltinUint` match log entries (log queries); `reference`, `reverted`
+        and `builtinUint` match transactions; `accountHasAsset` matches accounts;
+        `field` and `address` apply per the target's metadata/address model. A
+        condition that does not apply to the query's target is rejected at
+        execution. Note: prepared queries can only target accounts or
+        transactions today, so log-only conditions are usable there only once
+        log-targeted prepared queries are supported.
       oneOf:
         - $ref: '#/components/schemas/FieldCondition'
         - $ref: '#/components/schemas/AddressCondition'
