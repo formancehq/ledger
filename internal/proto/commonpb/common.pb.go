@@ -10189,7 +10189,7 @@ func (x *LogIdCondition) GetCond() *UintCondition {
 	return nil
 }
 
-// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, or inserted_at).
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, inserted_at, or reverted_at).
 type BuiltinUintCondition struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Field         TransactionBuiltinIndex `protobuf:"varint,1,opt,name=field,proto3,enum=common.TransactionBuiltinIndex" json:"field,omitempty"`
