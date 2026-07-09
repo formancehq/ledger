@@ -200,7 +200,7 @@ func TestBuildPreloads_DeclaresAbsentNonZeroKey(t *testing.T) {
 	needs := NewCoverage()
 	needs.Add(dal.SubAttrReference, refKey.Bytes())
 
-	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	build, err := p.Build(needs, []WriteOperation{{Coverage: needs}})
 	require.NoError(t, err)
 	defer build.ReleaseLoaders()
 
@@ -255,7 +255,7 @@ func TestBuildPreloads_RejectsCacheHorizonExceeded(t *testing.T) {
 	needs := NewCoverage()
 	needs.Add(dal.SubAttrReference, refKey.Bytes())
 
-	build, buildErr := p.Build([]WriteOperation{{Coverage: needs}})
+	build, buildErr := p.Build(needs, []WriteOperation{{Coverage: needs}})
 	defer build.ReleaseLoaders()
 
 	require.Error(t, buildErr, "admission must reject when 2+ rotations are predicted")
@@ -298,7 +298,7 @@ func TestBuildPreloads_EmitsDeclareOnCacheHit(t *testing.T) {
 	needs := NewCoverage()
 	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
 
-	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	build, err := p.Build(needs, []WriteOperation{{Coverage: needs}})
 	require.NoError(t, err)
 	defer build.ReleaseLoaders()
 
@@ -343,7 +343,7 @@ func TestBuildPreloads_EmitsDeclareOnMissingKey(t *testing.T) {
 	needs := NewCoverage()
 	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
 
-	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	build, err := p.Build(needs, []WriteOperation{{Coverage: needs}})
 	require.NoError(t, err)
 	defer build.ReleaseLoaders()
 
@@ -390,7 +390,7 @@ func TestBuildPreloads_EmitsDeclareOnBloomShortcut(t *testing.T) {
 	needs := NewCoverage()
 	needs.Add(dal.SubAttrMetadata, metaKey.Bytes())
 
-	build, err := p.Build([]WriteOperation{{Coverage: needs}})
+	build, err := p.Build(needs, []WriteOperation{{Coverage: needs}})
 	require.NoError(t, err)
 	defer build.ReleaseLoaders()
 

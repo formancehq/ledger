@@ -493,7 +493,9 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 		},
 	}}
 
-	build, err := e.builder.Build(operations)
+	// applyEventsSinkUpdate reads no cache state — an empty aggregate is
+	// enough for Build to skip the slow path entirely.
+	build, err := e.builder.Build(plan.NewCoverage(), operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()

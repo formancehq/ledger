@@ -439,7 +439,10 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	}
 
 	preloadStart := time.Now()
-	build, err := a.builder.Build(operations)
+	// extractPreloadNeeds already built the aggregate while iterating
+	// orders; hand it to Build directly instead of paying a second
+	// Merge pass over per-order Coverages.
+	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
 	if err != nil {
 		preloadSpan.End()

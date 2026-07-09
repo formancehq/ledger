@@ -136,7 +136,7 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 		_ = aggregate
 
 		// Step 2: Build → resolves every attribute cache in parallel.
-		build, err := p.Build(ops)
+		build, err := p.Build(aggregate, ops)
 		if err != nil {
 			b.Fatalf("Build: %v", err)
 		}

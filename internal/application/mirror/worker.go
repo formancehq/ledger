@@ -352,7 +352,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	preloadStart := time.Now()
 
-	_, perOrder := w.extractMirrorNeeds(cmd)
+	aggregate, perOrder := w.extractMirrorNeeds(cmd)
 
 	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
 	// The FSM processes TechnicalUpdates on any proposal (machine.go).
@@ -373,6 +373,10 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	tuNeeds := plan.NewCoverage()
 	tuNeeds.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
+	// Roll the cursor TU's need into the batch aggregate — Build no
+	// longer recomputes it from operations.
+	aggregate.Merge(tuNeeds)
+
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
 	for i := range orders {
 		operations = append(operations, plan.WriteOperation{
@@ -390,7 +394,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		},
 	})
 
-	build, err := w.builder.Build(operations)
+	build, err := w.builder.Build(aggregate, operations)
 	if err != nil {
 		build.ReleaseLoaders()
 
@@ -534,7 +538,7 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 		},
 	}}
 
-	build, err := w.builder.Build(operations)
+	build, err := w.builder.Build(needs, operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()

@@ -65,7 +65,15 @@ func proposeTechnical(ctx context.Context, builder *plan.Builder, proposer plan.
 }
 
 func proposeTechnicalOnce(ctx context.Context, builder *plan.Builder, proposer plan.Proposer, cmd *raftcmdpb.Proposal, operations []plan.WriteOperation) error {
-	build, err := builder.Build(operations)
+	// Technical proposals are cold-path (cluster config, idempotency
+	// eviction, index ready) — a rare per-call aggregate Merge is
+	// cheaper than plumbing the aggregate through every caller.
+	aggregate := plan.NewCoverage()
+	for _, op := range operations {
+		aggregate.Merge(op.Coverage)
+	}
+
+	build, err := builder.Build(aggregate, operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()
