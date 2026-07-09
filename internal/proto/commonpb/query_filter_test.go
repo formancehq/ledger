@@ -8,8 +8,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func u64(v uint64) *uint64 { return new(v) }
-func i64(v int64) *int64   { return new(v) }
+// u64/i64 build pointers to a copy of the argument. new(v) (the Go 1.26
+// new-with-value builtin) is valid and used elsewhere in this package, but some
+// review tooling still misreads it as new(type); a local copy is unambiguous.
+func u64(v uint64) *uint64 {
+	c := v
+
+	return &c
+}
+
+func i64(v int64) *int64 {
+	c := v
+
+	return &c
+}
 
 // TestQueryFilterRoundTrip marshals each proto variant to JSON and unmarshals
 // it back, asserting the proto is preserved. It covers every arm of the
