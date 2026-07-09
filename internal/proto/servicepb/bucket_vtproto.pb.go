@@ -13115,7 +13115,7 @@ func (m *ListAuditEntriesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -30515,7 +30515,7 @@ func (m *ListAuditEntriesRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: ListAuditEntriesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
+		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Options", wireType)
 			}
