@@ -1165,6 +1165,7 @@ enum ErrorReason {
   ERROR_REASON_CLUSTER_UNHEALTHY = 60;
   ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
   ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;
+  ERROR_REASON_CHECKPOINT_NOT_READY = 63;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

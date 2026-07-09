@@ -205,10 +205,20 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 	return s.ReadProgress()
 }
 
-// NotifyProgress wakes all goroutines waiting in WaitForSequence.
-// Must be called after WriteProgress commits successfully.
+// NotifyProgress wakes all goroutines waiting in WaitForSequence /
+// WaitForCheckpoint. Must be called after WriteProgress commits successfully.
+//
+// The broadcast is issued while holding progressMu: a waiter checks its
+// condition and calls cond.Wait() under the same lock, and Wait atomically
+// releases the lock only once it is parked. Taking progressMu here therefore
+// serializes against that window — the broadcast either lands before the waiter
+// locks (it will re-check the condition when it acquires the lock) or after it
+// has parked (it will be woken). Without the lock, a broadcast between the
+// condition check and Wait() would be missed until the next notification.
 func (s *Store) NotifyProgress() {
+	s.progressMu.Lock()
 	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
 }
 
 // ReadAppliedProposalProgress returns the last consumed AppliedProposal
@@ -554,6 +564,116 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 	}
 
 	return entries, nil
+}
+
+// checkpointReadyMarker is the sentinel file the index builder writes into a
+// query checkpoint read-index directory as the final step, only after the whole
+// directory has been atomically renamed into place. Its presence is the single
+// authoritative per-replica readiness signal: pebble hard-links SSTs last and a
+// checkpoint can fail mid-link (EN-1460's "link ... no such file or directory"),
+// so a directory or manifest merely existing is NOT sufficient — a half-written
+// or half-linked directory is indistinguishable from a complete one except by
+// the marker. The index builder therefore never trusts an unmarked directory; it
+// discards and rebuilds from scratch.
+const checkpointReadyMarker = ".ready"
+
+// CheckpointDirReady reports whether a query checkpoint read-index directory
+// has been fully materialized on THIS replica, i.e. the builder wrote the
+// readiness marker as the last step of an atomic materialization.
+func CheckpointDirReady(dirPath string) bool {
+	_, err := os.Stat(filepath.Join(dirPath, checkpointReadyMarker))
+
+	return err == nil
+}
+
+// MarkCheckpointReady writes the readiness marker into a completed checkpoint
+// directory and fsyncs both the marker and its parent directory so the marker
+// is durable and cannot be observed before the directory content it vouches for.
+func MarkCheckpointReady(dirPath string) error {
+	markerPath := filepath.Join(dirPath, checkpointReadyMarker)
+
+	f, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
+	if err != nil {
+		return fmt.Errorf("creating readiness marker: %w", err)
+	}
+
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+
+		return fmt.Errorf("syncing readiness marker: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing readiness marker: %w", err)
+	}
+
+	return FsyncDir(dirPath)
+}
+
+// FsyncDir fsyncs a directory so a rename/create inside it is durable.
+func FsyncDir(dirPath string) error {
+	d, err := os.Open(dirPath)
+	if err != nil {
+		return fmt.Errorf("opening dir for fsync: %w", err)
+	}
+
+	if err := d.Sync(); err != nil {
+		_ = d.Close()
+
+		return fmt.Errorf("fsync dir: %w", err)
+	}
+
+	return d.Close()
+}
+
+// WaitForCheckpoint blocks until the query checkpoint read-index directory at
+// dirPath is materialized on THIS replica (the .ready marker is present), or the
+// context is cancelled. CreateQueryCheckpoint uses it to block on the creator
+// node's local marker so the checkpoint is immediately readable there when the
+// call returns — replacing the old WaitForSequence-on-cursor fast path, which
+// returned before the directory existed (the EN-1460 root cause: the progress
+// cursor is persisted in the batch that precedes the physical checkpoint
+// creation).
+//
+// The index builder calls NotifyProgress after each materialization, waking
+// waiters to re-check the marker.
+func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
+	if CheckpointDirReady(dirPath) {
+		return nil
+	}
+
+	// Broadcast on cancellation while holding progressMu. Taking the lock is
+	// what closes the missed-wakeup window: the wait loop below holds progressMu
+	// across both the ctx.Err() check and cond.Wait(), and Wait() atomically
+	// releases the lock only once it is parked — so a cancellation broadcast can
+	// never slip between the check and the park.
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressMu.Lock()
+			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		if CheckpointDirReady(dirPath) {
+			return nil
+		}
+
+		s.progressCond.Wait()
+	}
 }
 
 // WaitForSequence blocks until LastIndexedSequence >= minSeq or the context

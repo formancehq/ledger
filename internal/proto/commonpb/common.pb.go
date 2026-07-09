@@ -684,6 +684,7 @@ const (
 	ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY                ErrorReason = 60
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL         ErrorReason = 61
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW        ErrorReason = 62
+	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY             ErrorReason = 63
 )
 
 // Enum value maps for ErrorReason.
@@ -752,6 +753,7 @@ var (
 		60: "ERROR_REASON_CLUSTER_UNHEALTHY",
 		61: "ERROR_REASON_WRITES_BLOCKED_DISK_FULL",
 		62: "ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW",
+		63: "ERROR_REASON_CHECKPOINT_NOT_READY",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -817,6 +819,7 @@ var (
 		"ERROR_REASON_CLUSTER_UNHEALTHY":                60,
 		"ERROR_REASON_WRITES_BLOCKED_DISK_FULL":         61,
 		"ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW":        62,
+		"ERROR_REASON_CHECKPOINT_NOT_READY":             63,
 	}
 )
 
@@ -13120,7 +13123,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xd8\x13\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xff\x13\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13185,7 +13188,8 @@ const file_common_proto_rawDesc = "" +
 	"%ERROR_REASON_NON_DETERMINISTIC_SCRIPT\x10;\x12\"\n" +
 	"\x1eERROR_REASON_CLUSTER_UNHEALTHY\x10<\x12)\n" +
 	"%ERROR_REASON_WRITES_BLOCKED_DISK_FULL\x10=\x12*\n" +
-	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>*Q\n" +
+	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>\x12%\n" +
+	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

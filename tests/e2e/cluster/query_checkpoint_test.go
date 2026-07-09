@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/big"
 	"strconv"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -14,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -371,6 +374,137 @@ var _ = Describe("Query Checkpoints", func() {
 
 			Expect(resp.GetVolumes()[asset].GetBalance()).To(Equal("400"))
 		})
+	})
+
+	// EN-1460: an immediate read at a freshly-created checkpoint used to race the
+	// asynchronous read-index materialization and return an opaque, non-retryable
+	// code=Unknown. CreateQueryCheckpoint now blocks on the CREATOR node's local
+	// .ready marker, so a read routed back to that node succeeds immediately.
+	// This single-node suite always hits the creator, so the read must succeed
+	// with zero delay — and any error must be a typed retryable Unavailable,
+	// never an opaque Unknown.
+	Context("immediate read after checkpoint creation is race-free", Ordered, func() {
+		var (
+			ctx           context.Context
+			client        servicepb.BucketServiceClient
+			clusterClient clusterpb.ClusterServiceClient
+		)
+
+		const (
+			httpPort   = 9224
+			grpcPort   = 8224
+			ledgerName = "qcp-race"
+		)
+
+		BeforeAll(func() {
+			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("reads the checkpoint immediately on the creator node, never Unknown", func() {
+			// Repeat create-then-read several times to shrink the odds the former
+			// race window is simply missed by chance.
+			for i := 0; i < 10; i++ {
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+				}, nil)))
+				Expect(err).To(Succeed())
+
+				// CreateQueryCheckpoint blocks until the read index is
+				// materialized on this (creator) node.
+				resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+				Expect(err).To(Succeed())
+				cpID := resp.GetCheckpointId()
+
+				// Read at the checkpoint with zero delay on the creator node.
+				// Before the fix this intermittently returned code=Unknown; now
+				// it must succeed because Create waited on the marker.
+				agg, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+					Ledger:       ledgerName,
+					CheckpointId: cpID,
+				})
+				Expect(err).To(Succeed(),
+					"read on the creator node must succeed immediately after Create returns (EN-1460); got %v", err)
+				Expect(aggregateAssets(agg)).To(ContainElement("USD"))
+			}
+		})
+	})
+})
+
+// EN-1460 (multi-node): the read-index checkpoint is materialized per-replica by
+// each node's index builder. A checkpoint read routed to a node whose builder
+// has not yet crossed the CreatedQueryCheckpoint log returns a typed retryable
+// Unavailable (CHECKPOINT_NOT_READY), never an opaque Unknown, and every node
+// eventually materializes the checkpoint and serves the read.
+var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
+	const (
+		countInstances = 3
+		ledgerName     = "qcp-multinode"
+	)
+
+	var (
+		ctx     context.Context
+		servers []*testutil.ServiceWithClient
+	)
+
+	BeforeAll(func() {
+		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
+			countInstances,
+			testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+		)
+
+		_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		Expect(err).To(Succeed())
+
+		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+		}, nil)))
+		Expect(err).To(Succeed())
+	})
+
+	AfterAll(func() {
+		testutil.StopServers(ctx, servers)
+	})
+
+	It("serves the checkpoint on every node — retryable, never Unknown, eventually consistent", func() {
+		resp, err := servers[0].ClusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		Expect(err).To(Succeed())
+		cpID := resp.GetCheckpointId()
+
+		for i := range servers {
+			node := servers[i]
+
+			// Any read may transiently fail while this node's builder catches
+			// up, but only with the typed retryable Unavailable — never Unknown.
+			// It must eventually succeed on every node (per-replica
+			// materialization).
+			Eventually(func(g Gomega) {
+				agg, aggErr := node.Client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+					Ledger:       ledgerName,
+					CheckpointId: cpID,
+				})
+				if aggErr != nil {
+					g.Expect(status.Code(aggErr)).To(Equal(codes.Unavailable),
+						"pre-ready checkpoint read must be retryable Unavailable, never Unknown; got %v", aggErr)
+					g.Expect(aggErr).To(HaveOccurred()) // force retry
+					return
+				}
+
+				g.Expect(aggregateAssets(agg)).To(ContainElement("USD"))
+			}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
+		}
+	})
+
+	It("returns NotFound (not Unavailable) for a checkpoint id that was never created", func() {
+		_, err := servers[0].Client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+			Ledger:       ledgerName,
+			CheckpointId: 999999,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.NotFound),
+			"a non-existent checkpoint id must be NotFound (permanent), not Unavailable; got %v", err)
 	})
 })
 

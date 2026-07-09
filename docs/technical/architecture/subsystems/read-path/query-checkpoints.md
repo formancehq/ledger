@@ -21,8 +21,19 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 2. The request is proposed through Raft consensus.
 3. The FSM commits pending state and records `QueryCheckpointState` metadata in Pebble.
 4. The Applier creates a physical Pebble checkpoint of the main store at `{dataDir}/query-checkpoints/{id}/main/`.
-5. The index builder detects the `CreatedQueryCheckpointLog` and creates a read index checkpoint at `{dataDir}/query-checkpoints/{id}/readindex/`.
+5. The index builder detects the `CreatedQueryCheckpointLog` and, **at the exact moment it crosses that log**, materializes the read index checkpoint at `{dataDir}/query-checkpoints/{id}/readindex/`. Because the builder breaks its batch on the checkpoint log, the live read index at that instant reflects precisely `MaxSequence` — the checkpoint's point-in-time. Materialization is **per-replica** (every node's builder does this independently) and **atomic**: it builds into a sibling `readindex.tmp/`, fsyncs, atomically renames into place, then writes the `.ready` marker **last**. A crash before the marker leaves no `.ready` file, so the checkpoint is never observed half-built. Pebble hard-links SST files last, so a checkpoint can fail mid-link (a concurrent compaction removing an SST); the builder retries the checkpoint on a `link ... no such file or directory` error, cleaning the temp directory between attempts.
 6. Both stores are opened read-only when a query specifies `checkpoint_id`.
+
+## Readiness and Error Contract
+
+The read index materializes asynchronously and **per-replica** (step 5). Readiness on a node is signalled solely by the local `.ready` marker; there is **no** cross-node readiness map and **no** background reconciler.
+
+- **`CreateQueryCheckpoint` blocks on the creator node's marker.** The handler waits (`readStore.WaitForCheckpoint`) for the local `.ready` marker before returning, so an immediate read at the returned `checkpoint_id` **routed back to the creator node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
+- **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node whose builder has not yet crossed the checkpoint log, `openCheckpointStores` finds no `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
+- **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above.
+- **Unrecoverable checkpoints degrade to `NotFound`, not wrong data.** There is no historical reconstruction: re-deriving a checkpoint at a past `MaxSequence` is infeasible (logs are purged per chapter after cold-storage archival) and unnecessary (inline materialization is already exactly point-in-time). If a node crashes between the atomic rename and the marker, or purged the checkpoint's logs before its builder reached them, that node will never have a `.ready` marker for the checkpoint. Since the checkpoint is still registered, reads there return the retryable `Unavailable` and never self-heal — the operator/client recreates the checkpoint (aligned with the existing `AcquireCheckpoint` client workaround, which deletes-and-recreates on timeout). Deleting the checkpoint then makes reads return `NotFound`.
+
+The `.ready` marker and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
 
 ## Automatic Checkpoint Creation (Cron Scheduler)
 
@@ -130,9 +141,11 @@ Physical checkpoint data is stored outside Pebble:
 data/
   query-checkpoints/
     1/
-      main/       # Pebble checkpoint of main store
-      readindex/  # Pebble checkpoint of read index
+      main/              # Pebble checkpoint of main store
+      readindex/         # Pebble checkpoint of read index
+        .ready           # readiness marker, written last by the index builder
     2/
       main/
       readindex/
+        .ready
 ```
