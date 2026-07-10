@@ -530,6 +530,15 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	}
 
+	// EN-1436: stale raft Progress (non-zero Match for a node whose caller
+	// cannot own that state) is a precondition failure, not an idempotent
+	// success. The bootstrap JoinAsLearner path builds its own richer status
+	// (with the STALE_RAFT_PROGRESS detail and remediation); this generic
+	// mapping covers the admin cluster.AddLearner path.
+	if errors.Is(err, node.ErrNodeStaleProgress) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
 	if errors.Is(err, node.ErrNodeRemoved) {
 		return status.Error(codes.FailedPrecondition, err.Error())
