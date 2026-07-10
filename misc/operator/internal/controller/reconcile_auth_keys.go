@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path"
@@ -27,6 +28,16 @@ import (
 // on distribution, so this poll is a safety net bounding convergence when the
 // watch event is missed, not the primary trigger.
 const authKeysPendingRequeueInterval = 10 * time.Second
+
+// errMalformedAuthKeys marks a failure that comes from the CONTENT of an
+// existing auth-keys ConfigMap being corrupt (unparseable auth-keys.json), as
+// opposed to the ConfigMap read (the API Get) itself failing. The caller treats
+// the two very differently: malformed content is self-healable — the reconcile
+// proceeds treating the corrupt prior state as absent and rebuilds from the
+// freshly-resolved set — whereas an API read error is transient and must NOT be
+// swallowed, because assuming "no prior key" on a transient blip would silently
+// drop a still-authorized key during partial resolution.
+var errMalformedAuthKeys = errors.New("malformed existing auth-keys ConfigMap")
 
 // credentialsKeyInfo holds the resolved key information for an credentials matching a Cluster.
 type credentialsKeyInfo struct {
@@ -164,22 +175,34 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// reconciliation on a corrupt ConfigMap the rebuild is about to repair.
 	//
 	// existingEntries is also the carry-forward source for case 3 and lets case 3
-	// detect a regression (a previously-present key vanishing). A missing or
-	// malformed ConfigMap degrades to empty maps: there is simply nothing to carry
-	// forward, and the freshly-resolved set (plus the empty-set crash-loop guard
-	// below) still protects an auth-enabled cluster.
+	// detect a regression (a previously-present key vanishing). A MISSING ConfigMap
+	// degrades to empty maps (nothing to carry forward); MALFORMED content likewise
+	// degrades and self-heals; but a TRANSIENT API read error must requeue, never
+	// degrade — see the switch below — so a still-authorized key is never dropped on
+	// a blip.
 	existingEntries := map[string]authKeyEntry{}
 	existingPubKeys := map[string]string{}
 	if len(unresolved) > 0 && !authExplicitlyDisabled {
 		entries, pubKeys, err := r.readExistingAuthKeys(ctx, ledger.Namespace, cmName)
-		if err != nil {
-			// A malformed existing ConfigMap must not fail the whole reconcile:
-			// carry-forward degrades to "no prior key" for every unresolved
-			// credential (handled below), and the crash-loop guard still holds the
-			// line if that would leave an auth-enabled cluster keyless.
-			logger.Info("could not read existing auth-keys for carry-forward, treating prior keys as absent",
+		switch {
+		case errors.Is(err, errMalformedAuthKeys):
+			// The ConfigMap read SUCCEEDED but its auth-keys.json is corrupt. This is
+			// self-healable: carry-forward degrades to "no prior key" for every
+			// unresolved credential (handled below) and the ConfigMap is rebuilt from
+			// the resolved set; the corrupt prior key is genuinely unrecoverable. The
+			// crash-loop guard still holds the line if this would leave an
+			// auth-enabled cluster keyless.
+			logger.Info("existing auth-keys ConfigMap is malformed, treating prior keys as absent (will self-heal)",
 				"error", err.Error())
-		} else {
+		case err != nil:
+			// The API Get itself failed (transient/transport). Do NOT proceed with
+			// empty prior keys: assuming "no prior key" here would drop a
+			// still-authorized credential's key during partial resolution (the merged
+			// set is non-empty because another credential resolved, so the crash-loop
+			// guard would not catch it). Fail safe: propagate so the reconcile
+			// requeues and retries once the API recovers.
+			return nil, false, fmt.Errorf("reading existing auth-keys for carry-forward: %w", err)
+		default:
 			existingEntries = entries
 			existingPubKeys = pubKeys
 		}
@@ -355,7 +378,9 @@ func (r *ClusterReconciler) readExistingAuthKeys(ctx context.Context, namespace,
 	if rawJSON, ok := cm.Data["auth-keys.json"]; ok {
 		var parsed authKeysJSON
 		if err := json.Unmarshal([]byte(rawJSON), &parsed); err != nil {
-			return nil, nil, fmt.Errorf("parsing existing auth-keys.json: %w", err)
+			// Wrap with errMalformedAuthKeys so the caller can distinguish corrupt
+			// content (self-heal) from a transient API read failure (requeue).
+			return nil, nil, fmt.Errorf("%w: parsing existing auth-keys.json: %w", errMalformedAuthKeys, err)
 		}
 		for _, e := range parsed.Keys {
 			entries[path.Base(e.PublicKeyFile)] = e

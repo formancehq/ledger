@@ -16,6 +16,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
 )
@@ -340,6 +341,151 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 	assert.NotContains(t, ids, "corrupt", "the corrupt prior content must be gone")
 	assert.Len(t, ids, 1)
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
+}
+
+// TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals covers the
+// carry-forward path when the existing ConfigMap read SUCCEEDS but its content is
+// corrupt: the malformed prior key for the still-unresolved credential is
+// genuinely unrecoverable, so it degrades to "no prior key" (contributes
+// nothing), while the freshly-resolved credential is still propagated and the
+// cluster is not frozen. This is the self-heal case — distinct from a transient
+// API read error, which must requeue (next test).
+func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-a-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	// Existing ConfigMap present but its auth-keys.json is corrupt.
+	malformedCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      authKeysConfigMapName(clusterName),
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // invalid JSON
+		},
+	}
+	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("aaaa"),
+			"key-id":     []byte("kid-a-new"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(malformedCM, credA, credB, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err, "malformed prior content must self-heal, not wedge the partial path")
+	assert.False(t, pending, "the resolved credential is non-empty, so not pending")
+	require.Len(t, credentials, 1, "only the resolved credential contributes; the corrupt prior key is unrecoverable")
+
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-a-new", "the resolved key must be propagated")
+	assert.NotContains(t, ids, "corrupt", "the corrupt content must be dropped")
+	assert.Len(t, ids, 1)
+}
+
+// TestReconcileAuthKeys_Partial_TransientReadError_DoesNotDropKey is the
+// regression for the fail-safe finding: during partial resolution, if the
+// existing-ConfigMap read (the API Get) fails TRANSIENTLY, reconcileAuthKeys must
+// NOT proceed treating prior keys as absent. Doing so would drop the
+// still-unresolved credential's still-authorized key — and because another
+// credential resolved, the merged set is non-empty so the crash-loop guard would
+// not catch it. Instead the reconcile must return an error so the controller
+// requeues and retries once the API recovers, leaving the existing ConfigMap
+// (with the prior key) untouched.
+func TestReconcileAuthKeys_Partial_TransientReadError_DoesNotDropKey(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-a-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+	cmName := authKeysConfigMapName(clusterName)
+
+	scheme := authKeysScheme(t)
+	// Valid existing ConfigMap holding the still-unresolved credential's prior key.
+	existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+		keyID  string
+		pubKey string
+	}{
+		"thierry-cred-b": {keyID: "kid-b-old", pubKey: "bbbb"},
+	})
+	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("aaaa"),
+			"key-id":     []byte("kid-a-new"),
+		},
+	}
+
+	// Fail ONLY the FIRST auth-keys ConfigMap Get transiently (a server-timeout API
+	// error, not NotFound); let every subsequent Get succeed. This models the exact
+	// race the finding describes: the carry-forward read fails on a blip, but a
+	// later CreateOrUpdate Get on the same ConfigMap would succeed — so under the
+	// buggy swallow-all behavior the reconcile would drop cred-b's still-authorized
+	// key and rewrite the ConfigMap without it (the crash-loop guard cannot catch
+	// it because cred-a resolved, keeping the merged set non-empty). With the fix
+	// the first failure propagates and the reconcile bails before any write.
+	var cmGets int
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, credA, credB, secret).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*corev1.ConfigMap); ok && key.Name == cmName && key.Namespace == namespace {
+					cmGets++
+					if cmGets == 1 {
+						return apierrors.NewServerTimeout(
+							corev1.Resource("configmaps"), "get", 1)
+					}
+				}
+
+				return cl.Get(ctx, key, obj, opts...)
+			},
+		}).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.Error(t, err, "a transient carry-forward read failure must not be swallowed")
+	assert.False(t, apierrors.IsNotFound(err), "the error must be the transient API error, not a NotFound")
+	assert.Nil(t, credentials, "no key set must be returned when the reconcile errors out")
+	assert.False(t, pending)
+	assert.Equal(t, 1, cmGets, "the reconcile must bail on the first failed carry-forward read, before any later Get")
+
+	// Read the ConfigMap back through the SAME store (subsequent Gets succeed): the
+	// existing ConfigMap must be preserved verbatim — the still-authorized prior key
+	// must NOT have been dropped, because the reconcile bailed before CreateOrUpdate.
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: cmName}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-b-old", "the still-authorized prior key must be preserved, not dropped")
+	assert.Equal(t, "bbbb", cm.Data[pubKeyFileName("credentials", "thierry-cred-b")],
+		"the still-authorized prior pubkey blob must be preserved")
 }
 
 // keyIDsInConfigMap parses the auth-keys.json in a ConfigMap and returns the set
