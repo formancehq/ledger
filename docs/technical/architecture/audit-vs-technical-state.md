@@ -17,7 +17,7 @@ record, or a read-side projection:
 
 | Class | Definition | Examples | Required control |
 | --- | --- | --- | --- |
-| Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, prepared queries, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
+| Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If represented as technical state, document why and expose an operator-visible control trail. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication is sufficient when corruption cannot silently change business truth. |
 | Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. | Readstore inverted indexes, bloom filters, cache mirrors, snapshots/spool. | Rebuild path plus checker coverage when the projection is persisted and business-visible. |
@@ -71,6 +71,22 @@ business truth, but it can affect API responses while it is corrupted or stale.
 When a readstore projection becomes authoritative for a business-visible query,
 add a checker or rebuild-health mechanism that proves the projection matches the
 audited logs before the system treats it as healthy.
+
+## Prepared Queries
+
+Prepared queries are persisted, business-visible state: they are named query
+definitions stored under `SubAttrPreparedQuery`, cached and bloom-filtered like
+other cache attributes, and they shape which business data an API caller gets
+back. They are created through an audited order (`CreatePreparedQuery`), so the
+audit source of truth exists.
+
+The stored projection is **not yet verified by the checker**: there is no
+`compare*` pass for prepared queries in `internal/application/check`. Until such
+a pass re-derives the expected prepared-query set from the audited create/update/
+delete logs and compares it to what is stored, treat prepared-query integrity as
+a known gap rather than a proven guarantee. When a prepared-query projection
+becomes authoritative for a business-visible response, add the missing checker
+pass before relying on it.
 
 ## Idempotency Eviction
 
