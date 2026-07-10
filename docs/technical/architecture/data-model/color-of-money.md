@@ -56,18 +56,40 @@ The color sits between account and asset so prefix scans behave naturally:
 
 ## Numscript contract
 
-The numscript interpreter (`github.com/formancehq/numscript`, branch
-`feat/color-on-posting`, see PR
-[formancehq/numscript#139](https://github.com/formancehq/numscript/pull/139))
-exposes color as a first-class property of the output `Posting`. The
-in-memory shapes are:
+The numscript interpreter (`github.com/formancehq/numscript`, pinned in
+`go.mod`) exposes color as a first-class property of the output `Posting` and
+carries it per row on the balance query/response contract. The user-facing
+shapes are row-based (not nested maps) — color is a column on each query item
+and each returned row:
 
 ```go
-type AssetColor   struct { Asset string; Color string }
-type BalanceQuery map[string][]AssetColor
-type ColorBalance map[string]*big.Int       // color -> amount
-type AccountBalance map[string]ColorBalance // asset -> ColorBalance
-type Balances map[string]AccountBalance     // account -> AccountBalance
+// BalanceQueryItem is one (account, asset, color) the script needs; a
+// BalanceQuery is the flat batch the store must answer.
+type BalanceQueryItem struct {
+	Account string
+	Asset   string
+	Color   string
+}
+type BalanceQuery []BalanceQueryItem
+
+// BalanceRow is one materialized (account, asset, color) balance; Balances is
+// the flat result set. Color is omitted from JSON when empty (uncolored).
+type BalanceRow struct {
+	Account string   `json:"account"`
+	Asset   string   `json:"asset"`
+	Amount  *big.Int `json:"amount"`
+	Color   string   `json:"color,omitempty"`
+}
+type Balances []BalanceRow
+
+// Posting carries the resolved color of the moved funds.
+type Posting struct {
+	Source      string   `json:"source"`
+	Destination string   `json:"destination"`
+	Amount      *big.Int `json:"amount"`
+	Asset       string   `json:"asset"`
+	Color       string   `json:"color,omitempty"`
+}
 ```
 
 The Numscript syntax `source = @alice \ "GRANTS"` produces a posting with

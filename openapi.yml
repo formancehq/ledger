@@ -2306,12 +2306,13 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: |
             Optional segregation key for "color of money". The empty string
             (or omitted field) means the uncolored bucket. Two postings on the
             same (account, asset) but different colors operate on strictly
-            isolated balances. Color is constrained to `^[A-Z]*$` and is
-            immutable once carried by funds.
+            isolated balances. Color is constrained to `^[A-Z]*$`, capped at
+            32 characters, and is immutable once carried by funds.
 
     Script:
       type: object
@@ -2614,6 +2615,7 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: Color of the bucket. Empty string is the uncolored bucket.
         volumes:
           $ref: '#/components/schemas/VolumesWithBalance'
@@ -2678,6 +2680,7 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: |
             Color of the aggregated bucket. By default the response contains
             one AggregatedVolume per (asset, color) tuple. With
@@ -2805,6 +2808,7 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: |
             Segregation key for "color of money". The empty string means the
             uncolored bucket. Always present on responses (never omitted); two
@@ -3200,6 +3204,7 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: Empty string for the uncolored bucket; always emitted.
         input:
           type: string
@@ -3710,6 +3715,7 @@ components:
         color:
           type: string
           pattern: '^[A-Z]*$'
+          maxLength: 32
           description: |
             Color discriminates postings on the same (source, destination, asset)
             but different color buckets in the FSM. Always emitted (even empty)

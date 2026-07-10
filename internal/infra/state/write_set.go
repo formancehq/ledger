@@ -1097,6 +1097,7 @@ func compareVolumeKeys(a, b domain.VolumeKey) int {
 	return cmp.Or(
 		cmp.Compare(a.Account, b.Account),
 		cmp.Compare(a.Asset, b.Asset),
+		cmp.Compare(a.Color, b.Color),
 		cmp.Compare(a.LedgerName, b.LedgerName),
 	)
 }
@@ -1185,13 +1186,17 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 	}
 
 	// One error listing every offending account, sorted by (Account, Asset,
-	// LedgerName) and deduplicated to (Account, Asset) granularity — the
-	// identity the error exposes. Sorting only the offenders (usually zero)
-	// keeps the byte-determinism guarantee off the happy path.
+	// Color, LedgerName) and deduplicated to (Account, Asset, Color)
+	// granularity — the identity the error exposes. Color is part of the
+	// identity: two color buckets of the same (account, asset) are distinct
+	// transient cells and must not fuse into one offender (matches the
+	// checker's exclusion set, which keys on Color — checker.go). Sorting
+	// only the offenders (usually zero) keeps the byte-determinism guarantee
+	// off the happy path.
 	slices.SortFunc(offenders, compareVolumeKeys)
 	accounts := make([]domain.AccountAssetKey, 0, len(offenders))
 	for _, key := range offenders {
-		account := domain.AccountAssetKey{Account: key.Account, Asset: key.Asset}
+		account := domain.AccountAssetKey{Account: key.Account, Asset: key.Asset, Color: key.Color}
 		if n := len(accounts); n > 0 && accounts[n-1] == account {
 			continue
 		}

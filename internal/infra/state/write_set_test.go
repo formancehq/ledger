@@ -752,10 +752,11 @@ func TestWriteSetPreparedQueryBloomFilterTracksKeys(t *testing.T) {
 	require.False(t, pqFilter.MayContain(absent), "never-inserted key must be reported absent")
 }
 
-// TestCompareVolumeKeys pins the (Account, Asset, LedgerName) precedence that
-// ValidateTransientVolumes relies on to pick a deterministic offender and avoid
-// forking the audit hash chain (EN-1423). Account dominates, Asset breaks ties,
-// LedgerName is the final tiebreaker; equal keys compare 0.
+// TestCompareVolumeKeys pins the (Account, Asset, Color, LedgerName) precedence
+// that ValidateTransientVolumes relies on to pick a deterministic offender and
+// avoid forking the audit hash chain (EN-1423). Account dominates, Asset breaks
+// ties, Color segregates same-(account, asset) buckets, LedgerName is the final
+// tiebreaker; equal keys compare 0.
 func TestCompareVolumeKeys(t *testing.T) {
 	t.Parallel()
 
@@ -763,6 +764,13 @@ func TestCompareVolumeKeys(t *testing.T) {
 		return domain.VolumeKey{
 			AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
 			Asset:      asset,
+		}
+	}
+	mkc := func(ledger, account, asset, color string) domain.VolumeKey {
+		return domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
+			Asset:      asset,
+			Color:      color,
 		}
 	}
 
@@ -774,6 +782,8 @@ func TestCompareVolumeKeys(t *testing.T) {
 		{"account dominates asset", mk("l1", "alpha", "USD"), mk("l1", "beta", "EUR"), -1},
 		{"account dominates ledger", mk("l9", "alpha", "USD"), mk("l1", "beta", "USD"), -1},
 		{"asset breaks account tie", mk("l1", "alpha", "EUR"), mk("l1", "alpha", "USD"), -1},
+		{"color breaks asset tie", mkc("l1", "alpha", "USD", ""), mkc("l1", "alpha", "USD", "RED"), -1},
+		{"color dominates ledger", mkc("l9", "alpha", "USD", ""), mkc("l1", "alpha", "USD", "RED"), -1},
 		{"ledger is final tiebreaker", mk("l1", "alpha", "USD"), mk("l3", "alpha", "USD"), -1},
 		{"equal keys compare 0", mk("l1", "alpha", "USD"), mk("l1", "alpha", "USD"), 0},
 	}
@@ -821,11 +831,14 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 		buf.Derived.Ledgers.Put(domain.LedgerKey{Name: li.GetName()}, li)
 	}
 
-	// Four offenders across two ledgers. The last shares (account, asset) with
-	// the second — a cross-ledger repeat that must dedup to a single entry.
+	// Offenders across two ledgers. The l-b/staging:a/USD entry shares
+	// (account, asset) with the l-a one — a cross-ledger repeat that must dedup
+	// to a single entry. The RED-colored staging:a/USD is a distinct bucket and
+	// must NOT fuse with its uncolored sibling.
 	offenders := []domain.VolumeKey{
 		domain.NewVolumeKey("l-a", "staging:z", "USD", ""),
 		domain.NewVolumeKey("l-a", "staging:a", "USD", ""),
+		domain.NewVolumeKey("l-a", "staging:a", "USD", "RED"),
 		domain.NewVolumeKey("l-b", "staging:m", "EUR", ""),
 		domain.NewVolumeKey("l-b", "staging:a", "USD", ""),
 	}
@@ -859,9 +872,11 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 	).NewProposalScope()
 	require.NoError(t, err)
 
-	// Sorted by (Account, Asset); the l-b/staging:a/USD repeat is deduped out.
+	// Sorted by (Account, Asset, Color); the l-b/staging:a/USD repeat is deduped
+	// out, but staging:a/USD/RED stays as its own offender (color is identity).
 	want := []domain.AccountAssetKey{
 		{Account: "staging:a", Asset: "USD"},
+		{Account: "staging:a", Asset: "USD", Color: "RED"},
 		{Account: "staging:m", Asset: "EUR"},
 		{Account: "staging:z", Asset: "USD"},
 	}

@@ -204,6 +204,15 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 	empty := &ErrTransientAccountNonZero{}
 	require.Equal(t, map[string]string{"accounts": ""}, empty.Metadata())
 	require.Equal(t, "transient accounts with non-zero balance at end of batch (input != output): ", empty.Error())
+
+	// Colored offenders render as account/asset/color so two color buckets of
+	// the same (account, asset) stay distinct — the uncolored bucket keeps the
+	// bare account/asset form.
+	colored := &ErrTransientAccountNonZero{Accounts: []AccountAssetKey{
+		{Account: "staging:a", Asset: "USD"},
+		{Account: "staging:a", Asset: "USD", Color: "RED"},
+	}}
+	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, colored.Metadata())
 }
 
 func TestWrapCompileError(t *testing.T) {
@@ -299,7 +308,6 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},
 		"ErrInsufficientFunds":             &ErrInsufficientFunds{},
 		"ErrVolumeOverflow":                &ErrVolumeOverflow{},
-		"ErrAggregateOverflow":             &ErrAggregateOverflow{},
 		"ErrBalanceNotFound":               &ErrBalanceNotFound{},
 		"ErrSinkAlreadyExists":             &ErrSinkAlreadyExists{},
 		"ErrSinkBatchSizeTooLarge":         &ErrSinkBatchSizeTooLarge{},

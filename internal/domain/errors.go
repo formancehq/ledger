@@ -159,16 +159,21 @@ func IsFreezableFailure(k ErrorKind) bool {
 // rename an existing constant. Each constant appears in exactly one
 // Reason() implementation below.
 const (
-	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
-	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
-	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionReferenceNotFound  = "TRANSACTION_REFERENCE_NOT_FOUND"
-	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
-	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
+	ErrReasonLedgerAlreadyExists          = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound               = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                = "LEDGER_DELETED"
+	ErrReasonIdempotencyKeyConflict       = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionReferenceNotFound = "TRANSACTION_REFERENCE_NOT_FOUND"
+	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
+	ErrReasonVolumeOverflow               = "VOLUME_OVERFLOW"
+	// ErrReasonAggregateOverflow is the wire constant for the read-side
+	// aggregator overflow. The error type itself (query.ErrAggregateOverflow)
+	// lives in internal/query — it is a query-only outcome, not FSM-emitted —
+	// but the reason string and its KindForReason classification are the
+	// shared wire contract and stay here.
 	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
@@ -592,24 +597,6 @@ func (e *ErrVolumeOverflow) Metadata() map[string]string {
 		"amount":  e.Amount,
 		"current": e.Current,
 	}
-}
-
-// ErrAggregateOverflow signals that summing colored or precision-rescaled
-// buckets in the read-side aggregator exceeded the 2^256 uint256 ceiling.
-// The FSM already rejects per-bucket overflow on write (#321); this guards
-// the aggregator with the same discipline since collapseColors and
-// use_max_precision can sum many buckets together.
-type ErrAggregateOverflow struct {
-	Stage string // "collapse-colors" or "max-precision-rescale"
-	Side  string // "input" or "output"
-}
-
-func (e *ErrAggregateOverflow) Error() string {
-	return fmt.Sprintf("aggregate volume %s overflowed 2^256 during %s", e.Side, e.Stage)
-}
-func (*ErrAggregateOverflow) Reason() string { return ErrReasonAggregateOverflow }
-func (e *ErrAggregateOverflow) Metadata() map[string]string {
-	return map[string]string{"stage": e.Stage, "side": e.Side}
 }
 
 // ErrBalanceNotFound — balance for a source account cannot be determined.
@@ -1090,12 +1077,18 @@ func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
 }
 
 // joinedAccounts renders the offenders as a deterministic, comma-separated
-// "account/asset" list. The slice is pre-sorted by the producer, so the output
-// is stable; a nil slice yields "".
+// list. Each entry is "account/asset" for the uncolored bucket and
+// "account/asset/color" when the offending cell carries a color, so two color
+// buckets of the same (account, asset) render distinctly. The slice is
+// pre-sorted by the producer, so the output is stable; a nil slice yields "".
 func (e *ErrTransientAccountNonZero) joinedAccounts() string {
 	parts := make([]string, len(e.Accounts))
 	for i, a := range e.Accounts {
-		parts[i] = a.Account + "/" + a.Asset
+		if a.Color == "" {
+			parts[i] = a.Account + "/" + a.Asset
+		} else {
+			parts[i] = a.Account + "/" + a.Asset + "/" + a.Color
+		}
 	}
 
 	return strings.Join(parts, ", ")

@@ -73,14 +73,14 @@ func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color 
 		if value.GetInput() != nil {
 			value.GetInput().IntoUint256(&tmp)
 			if _, overflow := agg.input.AddOverflow(agg.input, &tmp); overflow {
-				return &domain.ErrAggregateOverflow{Stage: "accumulate", Side: "input"}
+				return &ErrAggregateOverflow{Stage: "accumulate", Side: "input"}
 			}
 		}
 
 		if value.GetOutput() != nil {
 			value.GetOutput().IntoUint256(&tmp)
 			if _, overflow := agg.output.AddOverflow(agg.output, &tmp); overflow {
-				return &domain.ErrAggregateOverflow{Stage: "accumulate", Side: "output"}
+				return &ErrAggregateOverflow{Stage: "accumulate", Side: "output"}
 			}
 		}
 	}
@@ -147,10 +147,10 @@ func collapseColorBuckets(in map[assetKey]*aggregatedVol) (map[assetKey]*aggrega
 			out[k] = merged
 		}
 		if _, overflow := merged.input.AddOverflow(merged.input, agg.input); overflow {
-			return nil, &domain.ErrAggregateOverflow{Stage: "collapse-colors", Side: "input"}
+			return nil, &ErrAggregateOverflow{Stage: "collapse-colors", Side: "input"}
 		}
 		if _, overflow := merged.output.AddOverflow(merged.output, agg.output); overflow {
-			return nil, &domain.ErrAggregateOverflow{Stage: "collapse-colors", Side: "output"}
+			return nil, &ErrAggregateOverflow{Stage: "collapse-colors", Side: "output"}
 		}
 	}
 
@@ -197,27 +197,27 @@ func (va *volumeAggregator) resultWithMaxPrecision() (*commonpb.AggregateResult,
 
 		if key.precision == target {
 			if _, overflow := m.input.AddOverflow(m.input, agg.input); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-merge", Side: "input"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-merge", Side: "input"}
 			}
 			if _, overflow := m.output.AddOverflow(m.output, agg.output); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-merge", Side: "output"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-merge", Side: "output"}
 			}
 		} else {
 			factor := pow10(target - key.precision)
 
 			var scaled uint256.Int
 			if _, overflow := scaled.MulOverflow(agg.input, factor); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
 			}
 			if _, overflow := m.input.AddOverflow(m.input, &scaled); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "input"}
 			}
 
 			if _, overflow := scaled.MulOverflow(agg.output, factor); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
 			}
 			if _, overflow := m.output.AddOverflow(m.output, &scaled); overflow {
-				return nil, &domain.ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: "output"}
 			}
 		}
 	}
