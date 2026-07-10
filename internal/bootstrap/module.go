@@ -879,6 +879,26 @@ func Module() fx.Option {
 					},
 				})
 			},
+			// Join preflight (EN-1436): register this node as a learner on the
+			// leader and fail fast on stale raft Progress. Registered FIRST
+			// among the Raft startup hooks so its OnStart runs (and, on stale
+			// Progress, aborts boot) BEFORE any hook that lets inbound Raft
+			// traffic reach rawNode.Step — the Raft gRPC server start +
+			// membership.Start() and node.Run() below. fx runs OnStart hooks in
+			// Append order; keeping this closure ahead of those enforces the
+			// ordering the fail-fast depends on. See joinPreflightHook for the
+			// inbound-vs-outbound / no-deadlock rationale.
+			func(
+				lc fx.Lifecycle,
+				cfg Config,
+				logger logging.Logger,
+			) {
+				if !shouldRunJoinPreflight(cfg, logger) {
+					return
+				}
+
+				lc.Append(joinPreflightHook(cfg, logger))
+			},
 			func(
 				lc fx.Lifecycle,
 				t *node.DefaultTransport,
@@ -1198,50 +1218,10 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Join mode: auto-register as learner on the leader after raft starts.
-			// Any peer will forward the request to the current leader automatically.
-			// The AddLearner call is idempotent: if the node is already a cluster
-			// member (e.g. after a crash-restart where the initial WAL was written
-			// but the AddLearner RPC never reached the leader), the server returns
-			// AlreadyExists which we treat as success.
-			//
-			// Skip entirely on restart: the CLUSTER_JOINED marker is written
-			// after the initial join succeeds (see tryAddLearner). On any
-			// subsequent boot — even one where --join is still in the CLI
-			// (e.g. E2E test framework that reuses Instruments across restarts)
-			// — re-running tryAddLearner would propose a redundant AddLearner
-			// for a node that is already a voter, racing leadership state and
-			// stalling the test's "should become follower" Eventually. The
-			// operator's StatefulSet entrypoint already gates --join on the
-			// same marker; this check makes the safety hold regardless of how
-			// the binary is invoked.
-			func(
-				lc fx.Lifecycle,
-				cfg Config,
-				logger logging.Logger,
-			) {
-				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
-					return
-				}
-
-				if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
-					logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
-
-					return
-				}
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.WithFields(map[string]any{
-							"nodeID":         cfg.RaftConfig.NodeID,
-							"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-							"serviceAddress": cfg.ServiceAdvertiseAddr(),
-						}).Infof("Join mode: requesting peer to add this node as learner")
-
-						return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
-					},
-				})
-			},
+			// Join mode preflight is registered EARLIER (before the Raft
+			// transport/server/node startup hooks) so it runs before any inbound
+			// Raft traffic can be stepped — see the joinPreflightHook closure
+			// above and its doc comment for the EN-1436 ordering rationale.
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -1415,6 +1395,68 @@ func (e *JoinAuthError) Error() string {
 		"cluster join rejected by %s: inter-node authentication failed (%s); %s",
 		target, e.Detail, hint,
 	)
+}
+
+// shouldRunJoinPreflight reports whether the join preflight (tryAddLearner)
+// must run for this boot. It runs only for a node that is joining an existing
+// cluster and has not yet recorded a successful join:
+//
+//   - Bootstrap nodes and nodes with no configured peers never join — they
+//     ARE the seed of the cluster.
+//   - A node whose WAL already carries the CLUSTER_JOINED marker has joined on
+//     a previous boot; re-running tryAddLearner would propose a redundant
+//     AddLearner for a node that is already a voter, racing leadership state.
+//     The operator's StatefulSet entrypoint already gates --join on the same
+//     marker; this check makes the safety hold regardless of how the binary is
+//     invoked (e.g. an E2E framework that reuses instruments across restarts).
+func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
+	if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+		return false
+	}
+
+	if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+		logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
+
+		return false
+	}
+
+	return true
+}
+
+// joinPreflightHook builds the OnStart hook that registers this node as a
+// learner on the leader (and fails fast on stale raft Progress, EN-1436).
+//
+// EN-1436 ordering (flemzord review on #1478): this hook MUST run BEFORE the
+// node starts accepting/stepping inbound Raft traffic — i.e. before the Raft
+// gRPC transport server begins serving, before membership.Start() wires the
+// leader connection, and before node.Run() drains the recv queues into
+// rawNode.Step. Otherwise, once the leader can reach this pod, it may deliver a
+// stale MsgApp/heartbeat whose Commit points past our (empty) log and trip
+// etcd-raft's "tocommit out of range" panic BEFORE this preflight returns the
+// STALE_RAFT_PROGRESS fail-fast — losing exactly the race the fail-fast exists
+// to prevent. Registering this hook earlier in the fx lifecycle guarantees its
+// OnStart runs (and, on stale Progress, aborts boot) before any inbound Raft
+// message can be stepped.
+//
+// This does NOT deadlock: the preflight reaches the leader over an OUTBOUND,
+// short-lived gRPC client it dials itself (see tryAddLearner) — it depends on
+// neither the local Raft gRPC server (inbound serving) nor the transport
+// connection pool that membership.Start() wires. Only INBOUND stepping is
+// gated behind the preflight; OUTBOUND dialing is always available because it
+// is self-contained. Gating inbound-serving on an outbound-only preflight is
+// therefore safe.
+func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
+	return fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			logger.WithFields(map[string]any{
+				"nodeID":         cfg.RaftConfig.NodeID,
+				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
+
+			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
+		},
+	}
 }
 
 // tryAddLearner attempts to register this node as a learner on an existing
