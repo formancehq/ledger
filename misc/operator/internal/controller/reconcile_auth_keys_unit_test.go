@@ -280,6 +280,68 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
 }
 
+// TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals is the
+// regression for the delta finding: the fully-resolved path (no unresolved
+// credential) must stay self-healing. A pre-existing auth-keys ConfigMap whose
+// auth-keys.json is malformed must NOT wedge reconciliation — since every matched
+// credential is resolved there is nothing to carry forward, so reconcileAuthKeys
+// must skip reading the corrupt ConfigMap and rebuild it unconditionally from the
+// freshly-resolved set. Before the fix the unconditional read returned a parse
+// error that failed the whole reconcile, freezing a cluster on a bad ConfigMap.
+func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	// Malformed existing ConfigMap: auth-keys.json is not valid JSON.
+	malformedCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      authKeysConfigMapName(clusterName),
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			"auth-keys.json": `{"keys":[{"keyId":"corrupt",`, // truncated / invalid JSON
+		},
+	}
+	cred := matchingCredentials("thierry-cred", selector, true, namespace, secretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("deadbeef"),
+			"key-id":     []byte("kid-123"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(malformedCM, cred, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err, "a malformed existing ConfigMap must not wedge the fully-resolved path")
+	assert.False(t, pending, "everything resolved must not be pending")
+	require.Len(t, credentials, 1, "the resolved credential must be returned")
+
+	// The ConfigMap must be rebuilt (self-healed) from the resolved set, dropping
+	// the corrupt content entirely.
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-123", "the resolved key must be written")
+	assert.NotContains(t, ids, "corrupt", "the corrupt prior content must be gone")
+	assert.Len(t, ids, 1)
+	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
+}
+
 // keyIDsInConfigMap parses the auth-keys.json in a ConfigMap and returns the set
 // of keyIDs it advertises, for asserting union membership.
 func keyIDsInConfigMap(t *testing.T, cm *corev1.ConfigMap) map[string]struct{} {

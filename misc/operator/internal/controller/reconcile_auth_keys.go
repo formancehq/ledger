@@ -156,12 +156,33 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		return nil, true, nil
 	}
 
-	// Read the existing ConfigMap once. It is the carry-forward source for case 3
-	// and lets case 3 detect a regression (a previously-present key vanishing).
-	// A missing ConfigMap is fine — there is simply nothing to carry forward.
-	existingEntries, existingPubKeys, err := r.readExistingAuthKeys(ctx, ledger.Namespace, cmName)
-	if err != nil {
-		return nil, false, err
+	// Read the existing ConfigMap ONLY when there is a still-unresolved matched
+	// credential to carry forward. The fully-resolved path (unresolved empty) must
+	// stay self-healing: it rebuilds the ConfigMap unconditionally from the freshly
+	// resolved set below, so it must never read — and therefore never fail on — a
+	// malformed existing auth-keys.json. Reading there would wedge normal
+	// reconciliation on a corrupt ConfigMap the rebuild is about to repair.
+	//
+	// existingEntries is also the carry-forward source for case 3 and lets case 3
+	// detect a regression (a previously-present key vanishing). A missing or
+	// malformed ConfigMap degrades to empty maps: there is simply nothing to carry
+	// forward, and the freshly-resolved set (plus the empty-set crash-loop guard
+	// below) still protects an auth-enabled cluster.
+	existingEntries := map[string]authKeyEntry{}
+	existingPubKeys := map[string]string{}
+	if len(unresolved) > 0 && !authExplicitlyDisabled {
+		entries, pubKeys, err := r.readExistingAuthKeys(ctx, ledger.Namespace, cmName)
+		if err != nil {
+			// A malformed existing ConfigMap must not fail the whole reconcile:
+			// carry-forward degrades to "no prior key" for every unresolved
+			// credential (handled below), and the crash-loop guard still holds the
+			// line if that would leave an auth-enabled cluster keyless.
+			logger.Info("could not read existing auth-keys for carry-forward, treating prior keys as absent",
+				"error", err.Error())
+		} else {
+			existingEntries = entries
+			existingPubKeys = pubKeys
+		}
 	}
 
 	// Case 3 (EN-1491): partial — some resolved, some transiently non-distributed.
