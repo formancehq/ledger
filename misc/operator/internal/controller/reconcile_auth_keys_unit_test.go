@@ -114,6 +114,54 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 		"ConfigMap content must not be mutated during transient non-distribution")
 }
 
+// TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending covers
+// the auth-disabled carve-out: a Cluster with spec.auth.enabled=false has
+// matching-but-undistributed Credentials. Because buildEnvVars never emits
+// AUTH_ED25519_KEYS for an auth-disabled cluster, there is no crash-loop to
+// guard against, so reconcileAuthKeys must NOT report pending (which would stall
+// the StatefulSet pass during Credentials churn for a cluster that never needed
+// auth keys). It falls through to the removal path and deletes the ConfigMap.
+func TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	existingCM := existingAuthKeysConfigMap(clusterName, namespace)
+	cred := matchingCredentials("thierry-cred", selector, false, "", "")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, cred).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	// Auth explicitly disabled.
+	disabled := false
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace, Labels: selector},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: &disabled},
+		},
+	}
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "auth-disabled cluster must not report pending on transient non-distribution")
+	assert.Nil(t, credentials)
+
+	// With auth disabled there is no wiring to preserve; the ConfigMap is removed
+	// like any other no-effective-keys case.
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	assert.True(t, apierrors.IsNotFound(err),
+		"auth-keys ConfigMap must be deleted for an auth-disabled cluster")
+}
+
 // TestReconcileAuthKeys_NoMatch_DeletesConfigMap covers the legitimate removal
 // path: zero Credentials match the selector, so the ConfigMap is deleted and no
 // pending signal is raised.

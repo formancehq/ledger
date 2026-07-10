@@ -94,7 +94,14 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	cmName := authKeysConfigMapName(ledger.Name)
 
 	if len(credentials) == 0 {
-		if matched > 0 {
+		// The pending fail-safe only matters when a missing key would crash-loop
+		// the cluster, i.e. when buildEnvVars would emit AUTH_ED25519_KEYS. For a
+		// cluster with auth explicitly disabled that env var is never set (see
+		// envvars.go), so preserving stale wiring buys no safety and halting the
+		// StatefulSet pass would needlessly stall bootstrap/updates during
+		// Credentials churn. Mirror buildEnvVars' authExplicitlyDisabled gate.
+		authExplicitlyDisabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && !*ledger.Spec.Auth.Enabled
+		if matched > 0 && !authExplicitlyDisabled {
 			// Transient: Credentials match but none is distributed yet. Fail
 			// safe — do not touch the ConfigMap or the StatefulSet auth wiring.
 			// The caller sets the AuthKeysPending condition and requeues.
