@@ -166,7 +166,7 @@ func NewAdmission(
 
 	commandDurationHistogram, err := meter.Int64Histogram(
 		"admission.command.duration",
-		metric.WithDescription("Total time to resolve a command (from Apply call to future resolution)"),
+		metric.WithDescription("Total time to resolve a command, from batch resolution through future resolution (excludes the write-gate and leader-readiness waits). Decomposes into the resolve_batch, orders_preparation, scripts, preload, propose, and fsm_future.wait phase histograms."),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1000, 5000, 20000, 100000, 500000, 2000000,
@@ -417,6 +417,16 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// bytes and the trusted batch (ordered requests + idempotency key) is
 	// unmarshaled from those bytes — signing the batch authenticates its
 	// composition and ordering, not just individual request content.
+	// commandDurationHistogram measures the full command lifecycle "from Apply
+	// call to future resolution". Start the timer here — the first timed phase —
+	// so the per-phase histograms (resolve_batch, orders_preparation, scripts,
+	// preload, propose, fsm_future.wait) decompose command.duration rather than
+	// summing to more than it. The defer records on every return path below.
+	start := time.Now()
+	defer func() {
+		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
+	}()
+
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	resolveBatchStart := time.Now()
 	batch, err := a.resolveBatch(req)
@@ -534,12 +544,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// Compute the bits inside marshalFn so every (re-)marshal sees the
 	// current Preload — the runner calls marshalFn again after the
 	// rebuild, keeping bits and plans in sync.
-	start := time.Now()
-
-	defer func() {
-		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
-	}()
-
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 
 	runResult, err := a.builder.Run(

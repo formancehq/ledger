@@ -17,13 +17,22 @@ import (
 
 // handleBulk handles POST /{ledgerName}/bulk to create multiple transactions/operations.
 //
-// The handler goroutine is tagged with `component=admission.http` so Pyroscope
-// (CPU / block/delay / mutex profiles) can attribute its cost separately from
-// the FSM pipeline (applier.main, applier.decoder, applier.committer). The
-// label propagates to any child goroutines spawned inside the handler.
+// The handler body runs under `pprof.Do` with the `component=admission.http`
+// label so Pyroscope (CPU / block/delay / mutex profiles) can attribute its
+// cost separately from the FSM pipeline (applier.main, applier.decoder,
+// applier.committer). The label propagates to any child goroutines spawned
+// inside the handler and — unlike a bare SetGoroutineLabels — is scoped to this
+// call, so it does not leak onto subsequent requests served by the same
+// goroutine on a reused (HTTP/1 keep-alive) connection.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
-	pprof.SetGoroutineLabels(pprof.WithLabels(r.Context(), pprof.Labels("component", "admission.http")))
+	pprof.Do(r.Context(), pprof.Labels("component", "admission.http"), func(context.Context) {
+		s.serveBulk(w, r)
+	})
+}
 
+// serveBulk holds the actual bulk-handling logic, invoked under the
+// admission.http pprof label by handleBulk.
+func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
 		return
