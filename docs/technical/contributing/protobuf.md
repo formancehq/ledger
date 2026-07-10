@@ -41,7 +41,13 @@ Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_
 just generate-proto
 ```
 
-This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom `protoc-gen-dethash` plugin (in `tools/protoc-gen-dethash/`), and places files according to the `go_package` option.
+This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom plugins under `tools/` — `protoc-gen-dethash`, `protoc-gen-reader`, and `protoc-gen-queryfilter-validity` — and places files according to the `go_package` option.
+
+### Custom plugins
+
+- **`protoc-gen-dethash`** — deterministic (sorted-map) VT marshalers.
+- **`protoc-gen-reader`** — read-only interface / wrapper views.
+- **`protoc-gen-queryfilter-validity`** — emits `common_queryfilter_validity.pb.go`, the single source of truth for per-target `QueryFilter` condition validity (EN-1504). It reads the `common.allowed_query_targets` field-option extension annotating each arm of the `QueryFilter.filter` oneof with the `QueryTarget`s the condition is valid on, and generates the `ConditionKind` enum, `ConditionKindOf`, and the `ConditionValidForTarget` table. Both `internal/query` (compile + audit compilers) and `internal/adapter/http` (REST decode) consume the generated table, so validity rules cannot drift. To change what a condition is valid on, edit the annotation in `misc/proto/common.proto` and re-run `just generate-proto` — never edit the generated file. An arm left unannotated maps to "valid on no target" (the fail-safe default), so a forgotten annotation rejects the condition everywhere rather than silently widening results.
 
 ### Prerequisites
 

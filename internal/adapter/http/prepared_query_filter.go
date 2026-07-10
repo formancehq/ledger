@@ -125,6 +125,10 @@ func rejectConditionsInvalidForAllTargets(f *commonpb.QueryFilter, targets []com
 		}
 	}
 
+	// The only conditions that reach here today are the log-only fields
+	// (logId/date/ledger): audit is already rejected upstream by the JSON codec
+	// (gRPC-only), and every other kind is valid on ACCOUNTS or TRANSACTIONS.
+	// The wording therefore stays log-specific and actionable.
 	return fmt.Errorf(
 		"condition %q is only valid on log queries, which prepared queries cannot target over REST",
 		kind.String())

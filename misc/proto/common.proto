@@ -5,6 +5,7 @@ package common;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 
 import "signature.proto";
+import "google/protobuf/descriptor.proto";
 
 // ============================================================================
 // Core Data Types
@@ -1248,21 +1249,101 @@ message UpdatedDefaultEnforcementModeLog {
 // Prepared Queries — Filter Model
 // ============================================================================
 
+// allowed_query_targets is the single source of truth for per-target
+// QueryFilter condition validity (EN-1504). It annotates each arm of the
+// QueryFilter.filter oneof with the exact set of QueryTargets the condition is
+// valid on. protoc-gen-queryfilter-validity reads these annotations from the
+// descriptor and emits the query_target_validity.pb.go table consumed by both
+// the compile layer (internal/query) and the REST decode layer
+// (internal/adapter/http), so the two layers cannot drift and a new arm cannot
+// be added without declaring its validity (the generator fails on an
+// unannotated arm).
+//
+// Extension number 50123 is in the private, non-reserved range for
+// FieldOptions extensions (50000-99999, per descriptor.proto guidance).
+extend google.protobuf.FieldOptions {
+  repeated QueryTarget allowed_query_targets = 50123;
+}
+
 message QueryFilter {
   oneof filter {
-    FieldCondition field = 1;
-    AddressMatch address = 2;
-    AndFilter and = 3;
-    OrFilter or = 4;
-    NotFilter not = 5;
-    ReferenceCondition reference = 6;
-    BuiltinUintCondition builtin_uint = 7;
-    LedgerCondition ledger = 8;
-    LogIdCondition log_id = 9;
-    LogBuiltinUintCondition log_builtin_uint = 10;
-    AccountHasAssetCondition account_has_asset = 11;
-    RevertedCondition reverted = 12;
-    AuditCondition audit = 13;
+    // Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
+    // valid on every target; per-target index/schema availability is enforced
+    // separately by the compiler.
+    FieldCondition field = 1 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    // Address matches resolve to account addresses (ACCOUNTS) or to the
+    // account→transaction index (TRANSACTIONS). There is no account→log
+    // translation, so address is NOT valid on LOGS (it would silently feed
+    // transaction-keyed entities into a log result pipeline).
+    AddressMatch address = 2 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Combinators are structural — they recurse into children, each of which is
+    // validated on its own arm. And/Or are accepted by every compiler,
+    // including the audit compiler. Not is accepted by query.Compile
+    // (accounts/transactions/logs) but NOT by CompileAuditFilter, so it is not
+    // valid on the audit target.
+    AndFilter and = 3 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS,
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
+    OrFilter or = 4 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS,
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
+    NotFilter not = 5 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    // Reference matches read the transaction reference index and yield
+    // transaction-keyed entities: meaningful only on the transactions target.
+    // (No account or log translation exists.)
+    ReferenceCondition reference = 6 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Builtin uint fields (id/timestamp/insertedAt/revertedAt) read transaction
+    // indexes and yield transaction-keyed entities: transactions only.
+    BuiltinUintCondition builtin_uint = 7 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Log-only fields.
+    LedgerCondition ledger = 8 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    LogIdCondition log_id = 9 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    LogBuiltinUintCondition log_builtin_uint = 10 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    // Account has-asset filter: accounts only.
+    AccountHasAssetCondition account_has_asset = 11 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS
+    ];
+    // Reverted (revert-status) filter: transactions only.
+    RevertedCondition reverted = 12 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Audit conditions are valid only on the audit target: query.Compile
+    // (accounts/transactions/logs) rejects them, and CompileAuditFilter accepts
+    // them. Modeling audit as a first-class target keeps its condition validity
+    // in this single source of truth rather than as an undocumented exception.
+    // (A future arm left entirely unannotated maps to "valid on no target" —
+    // the fail-safe default — so it is rejected everywhere rather than silently
+    // widening results, invariant #7.)
+    AuditCondition audit = 13 [
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
   }
 }
 
@@ -1434,6 +1515,14 @@ enum QueryTarget {
   QUERY_TARGET_ACCOUNTS = 0;
   QUERY_TARGET_TRANSACTIONS = 1;
   QUERY_TARGET_LOGS = 2;
+  // Audit entries. Dispatched internally to query.CompileAuditFilter (not
+  // query.Compile), but modeled here as a first-class QueryFilter target so
+  // audit condition validity lives in the same source of truth as the other
+  // targets (EN-1241 / EN-1305 / EN-1339 / EN-1481 move ListAuditEntries onto
+  // the shared ListOptions.filter contract). CompileAuditFilter accepts only
+  // audit[...] leaves combined with and/or — not, and every non-audit
+  // condition, are rejected — which the per-arm annotations below reflect.
+  QUERY_TARGET_AUDIT = 3;
 }
 
 enum QueryMode {
