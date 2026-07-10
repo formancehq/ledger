@@ -77,13 +77,21 @@ func TestShouldRunJoinPreflight(t *testing.T) {
 // fx runs OnStart hooks in Append order and halts the sequence on the first
 // error, so if the preflight fails, the sentinel hook must never start. We make
 // the preflight fail deterministically (unreachable peer + a start context that
-// is cancelled almost immediately, driving tryAddLearner's backoff loop to
-// return ctx.Err()) and assert the sentinel never ran.
+// is cancelled once the preflight is under way, driving tryAddLearner's backoff
+// loop to return ctx.Err()) and assert the sentinel never ran.
 func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 	t.Parallel()
 
 	logger := logging.Testing()
 
+	// tryAddLearner calls wal.EnsureInstanceID, which writes an INSTANCE_ID file
+	// into WalDir from the preflight goroutine. fx's app.Start returns as soon
+	// as startCtx is cancelled — potentially while that goroutine is still
+	// writing — so we MUST join the goroutine before WalDir is removed,
+	// otherwise a late write races the cleanup's RemoveAll and yields
+	// "directory not empty". t.TempDir registers its RemoveAll cleanup here; the
+	// goroutine-join cleanup registered below runs before it (t.Cleanup is
+	// LIFO), guaranteeing no concurrent WAL writer remains at removal time.
 	cfg := Config{RaftConfig: node.NodeConfig{
 		NodeID: 2,
 		// Unreachable peer: the outbound dial fails, tryAddLearner enters its
@@ -98,14 +106,16 @@ func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 
 	var (
 		preflightStarted    atomic.Bool
+		preflightReturned   = make(chan struct{})
 		raftTrafficStarted  atomic.Bool
 		preflightBeforeRaft atomic.Bool
 	)
 
-	// startCtx is cancelled shortly after Start begins so the preflight's
-	// backoff loop returns promptly instead of retrying the unreachable peer
-	// forever. This models "the preflight did not pass" without any network.
+	// startCtx is cancelled once the preflight is under way so the backoff loop
+	// returns promptly instead of retrying the unreachable peer forever. This
+	// models "the preflight did not pass" without any network.
 	startCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	app := fx.New(
 		fx.NopLogger,
@@ -121,6 +131,10 @@ func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 			hook := joinPreflightHook(cfg, logger)
 			inner := hook.OnStart
 			hook.OnStart = func(ctx context.Context) error {
+				// Signal completion on EVERY return path so the test can join
+				// this goroutine before removing WalDir.
+				defer close(preflightReturned)
+
 				preflightStarted.Store(true)
 				// Record that the raft-traffic hook had not started yet at the
 				// moment the preflight began.
@@ -144,6 +158,17 @@ func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 	)
 
 	require.NoError(t, app.Err())
+
+	// Join the preflight goroutine before WalDir is removed. Registered AFTER
+	// t.TempDir's RemoveAll cleanup, so it runs BEFORE it (LIFO): the WAL
+	// writer is guaranteed to have returned when the dir is deleted.
+	t.Cleanup(func() {
+		select {
+		case <-preflightReturned:
+		case <-time.After(10 * time.Second):
+			t.Error("preflight goroutine did not return before cleanup")
+		}
+	})
 
 	// Cancel the start context once the preflight is under way so the backoff
 	// loop unwinds and Start returns the failure. Poll from a plain goroutine
@@ -170,7 +195,6 @@ func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 	}()
 
 	startErr := app.Start(startCtx)
-	t.Cleanup(func() { cancel() })
 
 	// The failing preflight must abort Start.
 	require.Error(t, startErr, "a failed preflight must abort fx startup")
