@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -18,10 +15,8 @@ func (s *Server) handleGetIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	canonical := chi.URLParam(r, "canonicalId")
-	if canonical == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("index id is required"))
-
+	canonical, ok := requireCanonicalID(w, r)
+	if !ok {
 		return
 	}
 

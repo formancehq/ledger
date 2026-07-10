@@ -42,6 +42,45 @@ func TestHandleGetIndex_Success(t *testing.T) {
 	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
 }
 
+// TestHandleGetIndex_NamespacedMetadataKey pins the canonical-id unescape fix.
+// A namespaced metadata key such as `formance.com/reviewed` contains a slash
+// and a colon, which a client must percent-encode (`%2F`, `%3A`) so they don't
+// split the chi route. chi routes on r.URL.RawPath and hands the still-escaped
+// segment back via URLParam, so the handler must url.PathUnescape it before
+// ParseCanonical — otherwise ParseCanonical sees the literal `%2F`/`%3A` and
+// resolves the wrong key. This test injects the escaped form (what chi
+// captures) and asserts the backend receives the decoded namespaced key.
+func TestHandleGetIndex_NamespacedMetadataKey(t *testing.T) {
+	t.Parallel()
+
+	var capturedReq *servicepb.GetIndexRequest
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+			capturedReq = req
+
+			return &commonpb.Index{Ledger: req.GetLedger()}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet,
+		"/ledger1/indexes/metadata%3ATARGET_TYPE_ACCOUNT%3Aformance.com%2Freviewed", nil,
+		map[string]string{
+			"ledgerName": "ledger1",
+			// The still-escaped segment, as chi captures it from RawPath.
+			"canonicalId": "metadata%3ATARGET_TYPE_ACCOUNT%3Aformance.com%2Freviewed",
+		})
+
+	srv.handleGetIndex(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, capturedReq)
+	require.Equal(t, "formance.com/reviewed", capturedReq.GetId().GetMetadata().GetKey())
+	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, capturedReq.GetId().GetMetadata().GetTarget())
+}
+
 func TestHandleGetIndex_NotFound(t *testing.T) {
 	t.Parallel()
 

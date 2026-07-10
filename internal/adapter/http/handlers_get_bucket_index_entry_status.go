@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -13,10 +10,8 @@ import (
 // handleGetBucketIndexEntryStatus handles GET /indexes/{canonicalId}/status
 // to fetch the per-replica status view of a bucket-scoped index.
 func (s *Server) handleGetBucketIndexEntryStatus(w http.ResponseWriter, r *http.Request) {
-	canonical := chi.URLParam(r, "canonicalId")
-	if canonical == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("index id is required"))
-
+	canonical, ok := requireCanonicalID(w, r)
+	if !ok {
 		return
 	}
 

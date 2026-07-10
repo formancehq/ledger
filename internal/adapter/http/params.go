@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -65,6 +66,36 @@ func requireTransactionID(w http.ResponseWriter, r *http.Request) (uint64, bool)
 	}
 
 	return transactionID, true
+}
+
+// requireCanonicalID extracts, path-unescapes, and non-empty-validates the
+// {canonicalId} URL parameter shared by every single-index route (get / status
+// / inspect / drop, both bucket- and ledger-scoped).
+//
+// A canonical index id can contain characters that are reserved in a path
+// segment — most importantly the metadata form `metadata:<target>:<key>` where
+// <key> is a namespaced metadata key such as `formance.com/reviewed`. The
+// slash and colon must be percent-encoded by the client (`%2F`, `%3A`); chi
+// routes on r.URL.RawPath and hands back the still-escaped segment via
+// URLParam, so ParseCanonical would otherwise see the literal `%2F`/`%3A` and
+// reject or mis-parse the id. Unescape here before handing it to the caller so
+// every canonical-id route addresses namespaced keys correctly.
+func requireCanonicalID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	raw := chi.URLParam(r, "canonicalId")
+	if raw == "" {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("index id is required"))
+
+		return "", false
+	}
+
+	canonical, err := url.PathUnescape(raw)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid index id encoding: %w", err))
+
+		return "", false
+	}
+
+	return canonical, true
 }
 
 const (

@@ -497,22 +497,12 @@ func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListI
 		return nil, fmt.Errorf("gRPC ListIndexes call failed: %w", err)
 	}
 
-	var entries []*commonpb.Index
-
-	for {
-		idx, recvErr := stream.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-
-		if recvErr != nil {
-			return nil, fmt.Errorf("receiving index: %w", recvErr)
-		}
-
-		entries = append(entries, idx)
-	}
-
-	return cursor.NewSliceCursor(entries), nil
+	// Stream lazily rather than draining the whole registry into a slice on
+	// the follower: NewUpstreamPeekCursor yields each Index as Recv delivers
+	// it, so the first item is available before the leader sends EOF and peak
+	// memory is O(1) instead of O(total). Matches ListTransactions /
+	// ListAccounts / ListLogs.
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

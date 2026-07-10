@@ -484,6 +484,96 @@ paths:
           $ref: '#/components/responses/InternalServerError'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
+    get:
+      summary: List transactions for a ledger
+      description: |
+        Lists transactions for a specific ledger. The default order is
+        newest-first (descending transaction id); pass `reverse=true` to
+        get oldest-first (ascending). Supports cursor pagination via the
+        `after` query parameter and optional date-range and reference
+        filters. Requires `ledger:TransactionRead` scope.
+      operationId: listLedgerTransactions
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Transaction id to start after (exclusive, for cursor pagination).
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Reverse the default order. Default (`false`) returns
+            newest-first (descending); `true` returns oldest-first
+            (ascending). Mirrors the gRPC `ListTransactions` reverse
+            flag semantic.
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: reference
+          in: query
+          schema:
+            type: string
+          description: Filter by exact-match transaction reference.
+      responses:
+        '200':
+          description: Transactions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Transaction (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /v3/{ledgerName}/transactions/{transactionId}:
     get:
@@ -1896,93 +1986,6 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/transactions:
-    get:
-      summary: List transactions for a ledger
-      description: |
-        Lists transactions for a specific ledger. The default order is
-        newest-first (descending transaction id); pass `reverse=true` to
-        get oldest-first (ascending). Supports cursor pagination via the
-        `after` query parameter and optional date-range and reference
-        filters. Requires `ledger:TransactionRead` scope.
-      operationId: listLedgerTransactions
-      tags:
-        - Transactions
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            format: uint32
-            minimum: 0
-            default: 0
-        - name: after
-          in: query
-          schema:
-            type: integer
-            format: uint64
-            minimum: 0
-          description: Transaction id to start after (exclusive, for cursor pagination).
-        - name: reverse
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: |
-            Reverse the default order. Default (`false`) returns
-            newest-first (descending); `true` returns oldest-first
-            (ascending). Mirrors the gRPC `ListTransactions` reverse
-            flag semantic.
-        - name: startDate
-          in: query
-          schema:
-            type: string
-            format: date-time
-          description: |
-            Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
-            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
-        - name: endDate
-          in: query
-          schema:
-            type: string
-            format: date-time
-          description: |
-            Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
-            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
-        - name: reference
-          in: query
-          schema:
-            type: string
-          description: Filter by exact-match transaction reference.
-      responses:
-        '200':
-          description: Transactions retrieved successfully.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  description: Transaction (protobuf JSON representation)
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-        '405':
-          $ref: '#/components/responses/MethodNotAllowed'
-
   /v3/logs/{sequence}:
     get:
       summary: Get a single system log by bucket-wide sequence
@@ -2010,7 +2013,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: System log entry (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: System log entry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2040,10 +2048,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: Chapter (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Chapter (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2071,10 +2084,15 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - data
                 properties:
-                  schedule:
-                    type: string
-                    description: Cron expression, or empty when disabled.
+                  data:
+                    type: object
+                    properties:
+                      schedule:
+                        type: string
+                        description: Cron expression, or empty when disabled.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2100,10 +2118,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: SinkConfig (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: SinkConfig (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2129,10 +2152,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: SigningKey (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: SigningKey (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2170,10 +2198,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: Index (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2213,7 +2246,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: Index (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2252,7 +2290,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: IndexEntry (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: IndexEntry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2292,7 +2335,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: GetIndexStatusResponse (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: GetIndexStatusResponse (protobuf JSON representation)
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2320,10 +2368,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: Index (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2414,7 +2467,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: Index (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: Index (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2493,7 +2551,12 @@ paths:
             application/json:
               schema:
                 type: object
-                description: IndexEntry (protobuf JSON representation)
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: IndexEntry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
