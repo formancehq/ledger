@@ -88,6 +88,9 @@ RECOVER_TIMEOUT="${RECOVER_TIMEOUT:-90}"
 DEAD_TIME="${DEAD_TIME:-30}"
 COMPACTION_MARGIN="${COMPACTION_MARGIN:-200}"
 MAINTENANCE_INTERVAL="${MAINTENANCE_INTERVAL:-10s}"
+# WAL/data disk-usage guard (fraction). Default matches the server; raise it when
+# the host filesystem is already above 80% used (the guard blocks writes then).
+HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.8}"
 CLUSTER_ID="model-test-cluster"
 # HMAC key for signed transaction receipts, so the driver can exercise the
 # receipt-carried revert path (admission verifies the receipt and reverses its
@@ -113,7 +116,7 @@ RAFT_BASE=$(( GRPC_BASE + 100 ))
 HTTP_BASE=$(( GRPC_BASE + 200 ))
 MINIO_PORT=$(( GRPC_BASE + 300 ))
 
-WORKDIR="$(mktemp -d /tmp/model-test.XXXXXX)"
+WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/model-test.XXXXXX")"
 DRIVER_LOG="$WORKDIR/driver.log"
 ASSERTIONS="$WORKDIR/assertions.json"
 SERVER_BIN="$WORKDIR/ledger-server"
@@ -259,6 +262,8 @@ start_node() {
 		--data-dir "${NODE_DIRS[$i]}/data" \
 		--raft-compaction-margin "$COMPACTION_MARGIN" \
 		--maintenance-interval "$MAINTENANCE_INTERVAL" \
+		--health-wal-threshold "$HEALTH_THRESHOLD" \
+		--health-data-threshold "$HEALTH_THRESHOLD" \
 		${flags[@]+"${flags[@]}"} \
 		>> "${SERVER_LOGS[$i]}" 2>&1 &
 	SERVER_PIDS[$i]=$!
