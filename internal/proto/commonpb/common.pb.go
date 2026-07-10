@@ -13409,11 +13409,11 @@ const file_common_proto_rawDesc = "" +
 	"\vAddressRole\x12\x14\n" +
 	"\x10ADDRESS_ROLE_ANY\x10\x00\x12\x17\n" +
 	"\x13ADDRESS_ROLE_SOURCE\x10\x01\x12\x1c\n" +
-	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*x\n" +
+	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*^\n" +
 	"\vQueryTarget\x12\x19\n" +
 	"\x15QUERY_TARGET_ACCOUNTS\x10\x00\x12\x1d\n" +
 	"\x19QUERY_TARGET_TRANSACTIONS\x10\x01\x12\x15\n" +
-	"\x11QUERY_TARGET_LOGS\x10\x02\"\x04\b\x03\x10\x03*\x12QUERY_TARGET_AUDIT*B\n" +
+	"\x11QUERY_TARGET_LOGS\x10\x02*B\n" +
 	"\tQueryMode\x12\x13\n" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
 	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01B9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"

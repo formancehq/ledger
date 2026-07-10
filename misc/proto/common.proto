@@ -1434,12 +1434,6 @@ enum QueryTarget {
   QUERY_TARGET_ACCOUNTS = 0;
   QUERY_TARGET_TRANSACTIONS = 1;
   QUERY_TARGET_LOGS = 2;
-
-  // 3 was QUERY_TARGET_AUDIT — removed: the audit list path calls
-  // query.CompileAuditFilter directly and never dispatches on QueryTarget, and
-  // prepared queries cannot target audit. Reserved so the number is not reused.
-  reserved 3;
-  reserved "QUERY_TARGET_AUDIT";
 }
 
 enum QueryMode {
