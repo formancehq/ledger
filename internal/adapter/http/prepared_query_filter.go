@@ -60,42 +60,72 @@ func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, erro
 	}
 
 	// REST prepared queries only target ACCOUNTS/TRANSACTIONS
-	// (see parsePreparedQueryTarget), so log-only conditions (logId, date,
-	// ledger) can never be satisfied here — they would compile a log iterator
-	// and silently return unrelated/empty results. Reject them up front.
-	if err := rejectLogOnlyConditions(filter); err != nil {
+	// (see parsePreparedQueryTarget), so a condition that is invalid on BOTH of
+	// those targets (logId, date, ledger — all log-only) can never be satisfied
+	// here: it would compile a log iterator and silently return unrelated/empty
+	// results. Reject such conditions up front, deriving the verdict from the
+	// same commonpb per-target validity table the compile layer uses, so the two
+	// layers cannot drift.
+	if err := rejectConditionsInvalidForAllTargets(filter, restPreparedQueryTargets); err != nil {
 		return nil, err
 	}
 
 	return filter, nil
 }
 
-// rejectLogOnlyConditions walks the filter tree and rejects conditions that only
-// make sense for log queries: logId, log date (logBuiltinUint), and ledger. The
-// REST prepared-query surface cannot target logs, so these are always invalid.
-func rejectLogOnlyConditions(f *commonpb.QueryFilter) error {
-	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_LogId:
-		return errors.New("logId filter is only valid on log queries, which prepared queries cannot target over REST")
-	case *commonpb.QueryFilter_LogBuiltinUint:
-		return errors.New("date filter is only valid on log queries, which prepared queries cannot target over REST")
-	case *commonpb.QueryFilter_Ledger:
-		return errors.New("ledger filter is only valid on log queries, which prepared queries cannot target over REST")
-	case *commonpb.QueryFilter_And:
-		for _, sub := range v.And.GetFilters() {
-			if err := rejectLogOnlyConditions(sub); err != nil {
-				return err
-			}
-		}
-	case *commonpb.QueryFilter_Or:
-		for _, sub := range v.Or.GetFilters() {
-			if err := rejectLogOnlyConditions(sub); err != nil {
-				return err
-			}
-		}
-	case *commonpb.QueryFilter_Not:
-		return rejectLogOnlyConditions(v.Not.GetFilter())
+// restPreparedQueryTargets is the set of QueryTargets a REST prepared query can
+// execute against, derived from preparedQueryTargets so the early-rejection walk
+// and the target parser stay in lock-step. When a new target becomes REST-
+// eligible (e.g. LOGS via EN-1503), adding it to preparedQueryTargets
+// automatically relaxes the early rejection to match.
+var restPreparedQueryTargets = func() []commonpb.QueryTarget {
+	targets := make([]commonpb.QueryTarget, 0, len(preparedQueryTargets))
+	for _, t := range preparedQueryTargets {
+		targets = append(targets, t)
 	}
 
-	return nil
+	return targets
+}()
+
+// rejectConditionsInvalidForAllTargets walks the filter tree and rejects any
+// leaf condition that is invalid on EVERY target in the given set, according to
+// the shared commonpb validity table. A condition invalid on all reachable
+// targets can never be satisfied, so admitting it would silently widen (or
+// empty) results — invariant #7. Combinators are structural and always valid;
+// the walk recurses into their children.
+func rejectConditionsInvalidForAllTargets(f *commonpb.QueryFilter, targets []commonpb.QueryTarget) error {
+	kind := commonpb.ConditionKindOf(f)
+
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.GetFilters() {
+			if err := rejectConditionsInvalidForAllTargets(sub, targets); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.GetFilters() {
+			if err := rejectConditionsInvalidForAllTargets(sub, targets); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case *commonpb.QueryFilter_Not:
+		return rejectConditionsInvalidForAllTargets(v.Not.GetFilter(), targets)
+	}
+
+	for _, t := range targets {
+		if commonpb.ConditionValidForTarget(t, kind) {
+			// Valid on at least one reachable target — a per-target check at
+			// compile time will accept or reject it precisely. Not our concern.
+			return nil
+		}
+	}
+
+	return fmt.Errorf(
+		"condition %q is only valid on log queries, which prepared queries cannot target over REST",
+		kind.String())
 }

@@ -59,22 +59,22 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 		{
 			name:    "logId rejected on prepared query (log-only field)",
 			raw:     `{"$gt":{"logId":"5"}}`,
-			wantErr: "logId filter is only valid on log queries",
+			wantErr: `condition "logId" is only valid on log queries`,
 		},
 		{
 			name:    "date rejected on prepared query (log-only field)",
 			raw:     `{"$gt":{"date":"5"}}`,
-			wantErr: "date filter is only valid on log queries",
+			wantErr: `condition "log field (date)" is only valid on log queries`,
 		},
 		{
 			name:    "ledger rejected on prepared query (log-only field)",
 			raw:     `{"$match":{"ledger":"main"}}`,
-			wantErr: "ledger filter is only valid on log queries",
+			wantErr: `condition "ledger" is only valid on log queries`,
 		},
 		{
 			name:    "logId nested in and rejected",
 			raw:     `{"$and":[{"$match":{"reference":"r"}},{"$gt":{"logId":"5"}}]}`,
-			wantErr: "logId filter is only valid on log queries",
+			wantErr: `condition "logId" is only valid on log queries`,
 		},
 		{
 			name:    "null value rejected",
