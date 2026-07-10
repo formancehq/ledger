@@ -61,6 +61,26 @@ func TestAuditEntry_MarshalJSON_CamelCase(t *testing.T) {
 	}
 }
 
+// TestAuditEntry_MarshalJSON_PropagatesSubmessageError asserts that a protojson
+// failure on a chain-bound submessage (here callerSnapshot, via an invalid-UTF8
+// scope string) surfaces as an error rather than silently dropping the field —
+// an incomplete audit record must never look valid (invariant #7).
+func TestAuditEntry_MarshalJSON_PropagatesSubmessageError(t *testing.T) {
+	t.Parallel()
+
+	entry := &AuditEntry{
+		Sequence: 7,
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			// Invalid UTF-8: protojson.Marshal rejects it.
+			Scopes: []string{"\xff\xfe"},
+		},
+	}
+
+	_, err := entry.MarshalJSON()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "callerSnapshot")
+}
+
 // TestAuditFailure_MarshalJSON renders the reason enum as its string name.
 func TestAuditFailure_MarshalJSON(t *testing.T) {
 	t.Parallel()

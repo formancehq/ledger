@@ -20,6 +20,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderReservedLedgerName(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	if err := validateOrderMetadata(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
@@ -52,6 +56,27 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 	}
 
 	return domain.ValidateLedgerName(ls.GetLedger())
+}
+
+// validateOrderReservedLedgerName rejects a CreateLedger order whose name
+// collides with a top-level static HTTP route segment. It only fires on create
+// (not on every ledger-scoped order): the goal is to prevent a shadowed ledger
+// from ever coming into existence; operations on other ledgers are unaffected.
+func validateOrderReservedLedgerName(order *raftcmdpb.Order) domain.Describable {
+	ls := order.GetLedgerScoped()
+	if ls == nil {
+		return nil
+	}
+
+	if _, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_CreateLedger); !ok {
+		return nil
+	}
+
+	if IsReservedLedgerName(ls.GetLedger()) {
+		return ErrLedgerNameReserved
+	}
+
+	return nil
 }
 
 // validateOrderMetadata validates that all metadata keys and values in the order

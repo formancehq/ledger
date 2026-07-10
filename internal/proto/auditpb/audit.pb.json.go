@@ -2,6 +2,7 @@ package auditpb
 
 import (
 	"encoding/hex"
+	"fmt"
 	"reflect"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -25,25 +26,33 @@ import (
 // also emits camelCase field names and the enum's string form.
 
 // protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
-// preserving camelCase field names. Returns nil for a nil message — including a
-// typed-nil pointer (e.g. a *CallerSnapshot that is nil), which does NOT compare
-// == nil as an interface and would otherwise marshal to "{}" and slip past the
-// omitempty guard.
-func protoFieldJSON(msg proto.Message) json.RawValue {
+// preserving camelCase field names.
+//
+// A nil message — including a typed-nil pointer (e.g. a *CallerSnapshot that is
+// nil), which does NOT compare == nil as an interface and would otherwise
+// marshal to "{}" and slip past the omitempty guard — yields (nil, nil): the
+// field is simply absent.
+//
+// A protojson failure is PROPAGATED, never swallowed. These fields
+// (callerSnapshot, idempotency, signature) are chain-bound audit evidence; a
+// serialization defect must surface as a failed response, not a valid-looking
+// record with the field silently dropped (invariant #7: never silently skip a
+// "should not happen" branch).
+func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 	if msg == nil {
-		return nil
+		return nil, nil
 	}
 
 	if v := reflect.ValueOf(msg); v.Kind() == reflect.Pointer && v.IsNil() {
-		return nil
+		return nil, nil
 	}
 
 	b, err := protojson.Marshal(msg)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return b
+	return b, nil
 }
 
 // MarshalJSON implements json.Marshaler for AuditEntry.
@@ -65,18 +74,29 @@ func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 	}
 
 	aux := Aux{
-		Sequence:       x.GetSequence(),
-		Timestamp:      x.GetTimestamp(),
-		ProposalId:     x.GetProposalId(),
-		Success:        x.GetSuccess(),
-		Failure:        x.GetFailure(),
-		OrderCount:     x.GetOrderCount(),
-		Items:          x.GetItems(),
-		Ledgers:        x.GetLedgers(),
-		HashVersion:    x.GetHashVersion(),
-		CallerSnapshot: protoFieldJSON(x.GetCallerSnapshot()),
-		Idempotency:    protoFieldJSON(x.GetIdempotency()),
-		Signature:      protoFieldJSON(x.GetSignature()),
+		Sequence:    x.GetSequence(),
+		Timestamp:   x.GetTimestamp(),
+		ProposalId:  x.GetProposalId(),
+		Success:     x.GetSuccess(),
+		Failure:     x.GetFailure(),
+		OrderCount:  x.GetOrderCount(),
+		Items:       x.GetItems(),
+		Ledgers:     x.GetLedgers(),
+		HashVersion: x.GetHashVersion(),
+	}
+
+	var err error
+
+	if aux.CallerSnapshot, err = protoFieldJSON(x.GetCallerSnapshot()); err != nil {
+		return nil, fmt.Errorf("audit entry %d: marshaling callerSnapshot: %w", x.GetSequence(), err)
+	}
+
+	if aux.Idempotency, err = protoFieldJSON(x.GetIdempotency()); err != nil {
+		return nil, fmt.Errorf("audit entry %d: marshaling idempotency: %w", x.GetSequence(), err)
+	}
+
+	if aux.Signature, err = protoFieldJSON(x.GetSignature()); err != nil {
+		return nil, fmt.Errorf("audit entry %d: marshaling signature: %w", x.GetSequence(), err)
 	}
 
 	if h := x.GetHash(); len(h) > 0 {

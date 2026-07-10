@@ -28,4 +28,35 @@ var (
 	// admission so a malformed rule fails fast before the config is persisted,
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
+
+	// ErrLedgerNameReserved rejects a CreateLedger order whose name collides with
+	// a top-level static HTTP route segment (see reservedLedgerNames). Such a
+	// ledger would be permanently unreachable over REST: the chi router matches
+	// the static segment before the `/v3/{ledgerName}` wildcard, so
+	// `GET /v3/<reserved>` and `GET /v3/<reserved>/<x>` bind to the reserved
+	// handler instead of the ledger. Reserving the name at admission (create
+	// time) is cheaper and safer than special-casing the router, and keeps the
+	// name available should a future release want to migrate the endpoint.
+	ErrLedgerNameReserved = domain.NewValidationSentinel("ledger name is reserved and cannot be used (it collides with a top-level API route)")
 )
+
+// reservedLedgerNames is the set of ledger names that collide with top-level
+// static HTTP routes served directly under the /v3 prefix (as opposed to under
+// /v3/{ledgerName}/...). A ledger with one of these names would be shadowed by
+// the static route and unreachable over REST, so creation is refused.
+//
+// Keep this in sync with the top-level static routes registered in
+// internal/adapter/http/handler.go. Today only the audit read routes
+// (/v3/audit-entries, EN-1481) live at that level; extend the set when new
+// top-level static routes are added.
+var reservedLedgerNames = map[string]struct{}{
+	"audit-entries": {},
+}
+
+// IsReservedLedgerName reports whether name collides with a top-level static
+// HTTP route segment and therefore cannot be used as a ledger name.
+func IsReservedLedgerName(name string) bool {
+	_, reserved := reservedLedgerNames[name]
+
+	return reserved
+}

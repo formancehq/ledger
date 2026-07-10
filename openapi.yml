@@ -179,6 +179,11 @@ paths:
       description: |
         Creates a new ledger with the specified name. Storage is configured at the server level.
         Each ledger has its own Raft group for data consistency. Requires `ledger:write` scope.
+
+        A small set of names is reserved because they collide with top-level API
+        routes served directly under `/v3` (e.g. `audit-entries`); creating a
+        ledger with such a name is rejected with a validation error, since it
+        would be unreachable over REST.
       operationId: createLedger
       tags:
         - Ledgers

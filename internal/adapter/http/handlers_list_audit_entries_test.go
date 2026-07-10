@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -57,6 +59,9 @@ func TestHandleListAuditEntries_Empty(t *testing.T) {
 	srv.handleListAuditEntries(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+
+	// An empty result must serialize as an array, not null (OpenAPI contract).
+	require.JSONEq(t, `{"data":[]}`, w.Body.String())
 }
 
 func TestHandleListAuditEntries_Pagination(t *testing.T) {
@@ -182,6 +187,29 @@ func TestHandleListAuditEntries_InvalidFilter(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("this is not a filter"), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestHandleListAuditEntries_UnsupportedFilterMapsTo400 covers a filter that
+// parses (filterexpr accepts it) but the audit compiler rejects with a gRPC
+// codes.InvalidArgument (e.g. `not audit[...]`, a non-audit condition). Such an
+// error must surface as a 400, not a 500.
+func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return nil, status.Error(codes.InvalidArgument, "unsupported filter for audit entries")
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	// `not audit[...]` parses fine but the compiler rejects it.
+	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("not audit[outcome] == failure"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 

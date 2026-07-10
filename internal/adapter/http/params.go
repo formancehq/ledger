@@ -121,12 +121,17 @@ func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*comm
 
 // drainCursor collects all items from a cursor into a slice.
 // Closes the cursor and writes an error response on failure, returning false.
+//
+// The returned slice is always non-nil (an empty cursor yields `[]T{}`, not
+// nil), so list handlers that pass it to writeOK serialize `{"data":[]}` rather
+// than `{"data":null}` — the empty-list shape the OpenAPI schemas promise, which
+// generated clients iterate safely.
 func drainCursor[T any](w http.ResponseWriter, r *http.Request, cursor cursor.Cursor[T]) ([]T, bool) {
 	defer func() {
 		_ = cursor.Close()
 	}()
 
-	var items []T
+	items := []T{}
 
 	for {
 		item, err := cursor.Next()
