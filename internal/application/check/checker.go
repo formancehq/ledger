@@ -242,62 +242,50 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ephemeralPurgeBuffer = domainreplay.NewEphemeralPurgeBuffer()
 	}
 
-	// If chapters were archived, pre-populate knownLedgers from Pebble
-	// since the CreateLedger logs have been purged.
+	// Open the baseline checkpoint once. Under archiving it is the checker's ONLY
+	// source of pre-archive state — the CreateLedger and declaration logs have
+	// been purged — so knownLedgers, schemas, account types, and reversion
+	// tracking are all seeded from it, never from the live store, keeping every
+	// check independent of the data it verifies.
+	var baselineDB *pebble.DB
+
 	if hasArchivedChapters {
-		ledgerCursor, err := query.ReadLedgers(ctx, snap)
-		if err != nil {
-			return fmt.Errorf("reading ledgers for archive recovery: %w", err)
-		}
+		baselinePath, exists := c.store.BaselineCheckpointPath()
+		if exists {
+			db, openErr := pebble.Open(baselinePath, &pebble.Options{
+				Logger:   dal.NewPebbleLogger(c.logger),
+				ReadOnly: true,
+			})
+			if openErr != nil {
+				c.logger.Infof("failed to open baseline checkpoint: %v", openErr)
+			} else {
+				baselineDB = db
 
-		ledgers, err := cursor.Collect(ledgerCursor)
-		if err != nil {
-			return fmt.Errorf("collecting ledgers: %w", err)
-		}
-
-		for _, info := range ledgers {
-			if info.GetDeletedAt() == nil {
-				knownLedgers[info.GetName()] = struct{}{}
+				defer func() { _ = baselineDB.Close() }()
 			}
 		}
 
-		// The pre-archive schema and account types were declared in now-purged
-		// logs; seed them from the boundary-time baseline checkpoint so the
-		// post-archive replay applies its delta on top. Seeding from the live
-		// store instead would be wrong: the replay would re-apply the same
-		// AddAccountType/SetMetadataFieldType orders onto their own end state, so
-		// every pre-change transaction would see account types that did not exist
-		// yet — corrupting the ephemeral-purge simulation.
-		c.seedExpectedFromBaseline(ctx, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes)
+		// Without the baseline there is no independent pre-archive state: the
+		// projection comparisons and the replay's UNKNOWN_LEDGER gate (which needs
+		// knownLedgers) would both run on a partial view, and we refuse to backfill
+		// from the live store. The audit hash chain — the real integrity guarantee
+		// — was already verified above. Expected after a checkpoint-only restore;
+		// warn and skip the entry-by-entry verification.
+		if baselineDB == nil {
+			c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
-		// Pre-populate knownTxIDs from archived transaction states so that
-		// reversion invariant checks work correctly for non-archived logs.
-		txIter, err := c.attrs.Transaction.NewStreamingIter(snap, nil)
-		if err != nil {
-			return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
+			return nil
 		}
 
-		for txIter.Next() {
-			entry := txIter.Entry()
+		// The pre-archive live ledger set, schema, and account types were declared
+		// in now-purged logs; seed them from the boundary-time baseline so the
+		// post-archive replay applies its delta on top.
+		c.seedExpectedFromBaseline(ctx, baselineDB, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes)
 
-			var tk domain.TransactionKey
-			if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
-				continue // skip unparsable keys
-			}
-
-			trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
-
-			if entry.Value.GetRevertedByTransaction() != 0 {
-				trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
-			}
-		}
-
-		if err := txIter.Close(); err != nil {
-			return fmt.Errorf("closing tx streaming iter: %w", err)
-		}
-
-		if err := txIter.Err(); err != nil {
-			return fmt.Errorf("pre-populating knownTxIDs: %w", err)
+		// Pre-populate the reversion tracking from the baseline's transaction
+		// states so reversion invariant checks cover pre-archive transactions.
+		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
+			return err
 		}
 	}
 
@@ -525,35 +513,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Both turn into spurious index entries downstream, so we surface
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
-
-	// Open baseline checkpoint for archived state comparison.
-	var baselineDB *pebble.DB
-
-	if hasArchivedChapters {
-		baselinePath, exists := c.store.BaselineCheckpointPath()
-		if exists {
-			db, openErr := pebble.Open(baselinePath, &pebble.Options{
-				Logger:   dal.NewPebbleLogger(c.logger),
-				ReadOnly: true,
-			})
-			if openErr != nil {
-				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
-			} else {
-				baselineDB = db
-
-				defer func() { _ = baselineDB.Close() }()
-			}
-		}
-	}
-
-	// If archived chapters exist but no baseline is available, we can't do
-	// entry-by-entry comparison (the replay only covers non-archived logs).
-	// This is expected after a restore. Warn and skip comparison passes.
-	if hasArchivedChapters && baselineDB == nil {
-		c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
-
-		return nil
-	}
 
 	// `excluded` was populated incrementally by the replay-time
 	// exclusionCollector. It is the audit-derived ground truth — the
@@ -2014,31 +1973,13 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 	return nil
 }
 
-// seedExpectedFromBaseline loads the boundary-time metadata schema, account
-// types, and live ledger set for each ledger from the baseline checkpoint, so
-// the post-archive replay applies its delta on top. It is the independent
-// (non-live) source the checker needs when the pre-archive declaration and
-// CreateLedger logs have been purged. A no-op when no baseline exists — the
-// caller (archived-chapters path) then skips entry-by-entry comparison entirely.
-func (c *Checker) seedExpectedFromBaseline(ctx context.Context, knownLedgers map[string]struct{}, schemas map[string]*commonpb.MetadataSchema, rawLedgerTypes map[string]map[string]*commonpb.AccountType, ledgerAccountTypes map[string][]accounttype.CompiledType) {
-	path, exists := c.store.BaselineCheckpointPath()
-	if !exists {
-		return
-	}
-
-	db, err := pebble.Open(path, &pebble.Options{
-		Logger:   dal.NewPebbleLogger(c.logger),
-		ReadOnly: true,
-	})
-	if err != nil {
-		c.logger.Infof("failed to open baseline checkpoint for seeding: %v", err)
-
-		return
-	}
-
-	defer func() { _ = db.Close() }()
-
-	ledgerCursor, err := query.ReadLedgers(ctx, db)
+// seedExpectedFromBaseline loads the boundary-time live ledger set, metadata
+// schema, and account types for each ledger from the already-open baseline
+// checkpoint, so the post-archive replay applies its delta on top. The baseline
+// is the independent (non-live) source the checker needs when the pre-archive
+// declaration and CreateLedger logs have been purged.
+func (c *Checker) seedExpectedFromBaseline(ctx context.Context, baseline *pebble.DB, knownLedgers map[string]struct{}, schemas map[string]*commonpb.MetadataSchema, rawLedgerTypes map[string]map[string]*commonpb.AccountType, ledgerAccountTypes map[string][]accounttype.CompiledType) {
+	ledgerCursor, err := query.ReadLedgers(ctx, baseline)
 	if err != nil {
 		c.logger.Infof("failed to read baseline ledgers for seeding: %v", err)
 
@@ -2068,6 +2009,42 @@ func (c *Checker) seedExpectedFromBaseline(ctx context.Context, knownLedgers map
 
 		seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, info.GetName(), info.GetAccountTypes())
 	}
+}
+
+// seedTxTrackingFromBaseline pre-populates the known / reverted transaction-ID
+// bitsets from the baseline's boundary-time transaction states, so reversion
+// invariant checks cover pre-archive transactions whose logs have been purged.
+// Reads the baseline, never the live store.
+func (c *Checker) seedTxTrackingFromBaseline(baseline *pebble.DB, ledgerKnownTxIDs, ledgerRevertedTxIDs map[string]*bitset.Bitset) error {
+	txIter, err := c.attrs.Transaction.NewStreamingIter(baseline, nil)
+	if err != nil {
+		return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
+	}
+
+	for txIter.Next() {
+		entry := txIter.Entry()
+
+		var tk domain.TransactionKey
+		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue // skip unparsable keys
+		}
+
+		trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
+
+		if entry.Value.GetRevertedByTransaction() != 0 {
+			trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
+		}
+	}
+
+	if err := txIter.Close(); err != nil {
+		return fmt.Errorf("closing tx streaming iter: %w", err)
+	}
+
+	if err := txIter.Err(); err != nil {
+		return fmt.Errorf("pre-populating knownTxIDs: %w", err)
+	}
+
+	return nil
 }
 
 // seedAccountTypes installs a ledger's initial account types into both the raw
@@ -2121,13 +2098,15 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 	return nil
 }
 
-// compareLedgerPresence verifies that every ledger the audit believes is live
-// has a live stored LedgerInfo entry. compareSchema / compareAccountTypes iterate
-// the ledgers Pebble returns and skip tombstones, so a LedgerInfo projection that
-// is deleted outright OR tampered to a soft-deleted tombstone (a ledger with only
-// schema / account-type declarations and no volumes leaves nothing else to
-// compare) would escape every projection check. This closes that blind spot — the
-// reverse of the UNKNOWN_LEDGER check on the replay path.
+// compareLedgerPresence verifies that the live ledger set in the store matches
+// the audit-derived one in both directions. compareSchema / compareAccountTypes
+// iterate the ledgers Pebble returns and skip tombstones, so neither a LedgerInfo
+// deleted outright / tampered to a tombstone (a ledger with only schema /
+// account-type declarations and no volumes leaves nothing else to compare) nor an
+// unaudited row injected into the store would surface — the projection passes see
+// nothing on one side. knownLedgers is the audit-derived set (replay, or the
+// baseline under archiving), never seeded from the live store, so both checks are
+// honest. This is the store-side counterpart of the replay's UNKNOWN_LEDGER gate.
 func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
@@ -2139,9 +2118,9 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		return fmt.Errorf("collecting ledgers for presence verification: %w", err)
 	}
 
-	// Only a live LedgerInfo satisfies presence. A ledger the audit still counts
-	// live but whose stored entry is soft-deleted is tampering, and it cannot
-	// false-positive: a legitimately deleted ledger is absent from knownLedgers
+	// Only a live LedgerInfo counts. A ledger the audit still counts live but
+	// whose stored entry is soft-deleted is tampering, and it cannot false-
+	// positive: a legitimately deleted ledger is absent from knownLedgers
 	// (DeleteLedger replay removes it; the baseline seed skips tombstones).
 	live := make(map[string]struct{}, len(ledgers))
 	for _, info := range ledgers {
@@ -2152,14 +2131,16 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		live[info.GetName()] = struct{}{}
 	}
 
+	// A ledger mid-deletion has had its LedgerInfo purged (or is about to) while
+	// its DeleteLedger log sits past the verified range, so the two sides can
+	// legitimately disagree on it. Not tampering, in either direction.
+
+	// audit says live → the store must hold a live LedgerInfo.
 	for name := range knownLedgers {
 		if _, ok := live[name]; ok {
 			continue
 		}
 
-		// A ledger mid-deletion has had its LedgerInfo purged by the deferred
-		// cleanup while its DeleteLedger log sits past the verified range, so the
-		// audit still counts it live. Not tampering.
 		if _, ok := pendingCleanup[name]; ok {
 			continue
 		}
@@ -2167,6 +2148,23 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
 			fmt.Sprintf("ledger %q is live in the audit but its stored LedgerInfo is missing or soft-deleted", name),
+			0, name, "", "",
+		))
+	}
+
+	// store holds a live LedgerInfo → the audit must have created it.
+	for name := range live {
+		if _, ok := knownLedgers[name]; ok {
+			continue
+		}
+
+		if _, ok := pendingCleanup[name]; ok {
+			continue
+		}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+			fmt.Sprintf("ledger %q has a stored LedgerInfo with no CreateLedger in the audit", name),
 			0, name, "", "",
 		))
 	}

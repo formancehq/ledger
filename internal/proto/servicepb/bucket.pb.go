@@ -77,6 +77,13 @@ const (
 	// so both shapes would otherwise escape every projection check. This is the
 	// reverse of UNKNOWN_LEDGER.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 13
+	// Emitted when the store holds a live LedgerInfo for a ledger the audit never
+	// created (no CreateLedger event, and — under archiving — not present in the
+	// baseline). Such a row exposes an unaudited ledger through ListLedgers while
+	// carrying no schema/account types the projection passes could otherwise flag.
+	// The audit-derived ledger set is never seeded from the live store, so this
+	// comparison stays honest.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER CheckStoreErrorType = 14
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -96,6 +103,7 @@ var (
 		11: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
 		12: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
 		13: "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER",
+		14: "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -112,6 +120,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             11,
 		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       12,
 		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              13,
+		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            14,
 	}
 )
 
@@ -9321,7 +9330,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\x96\x05\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xc3\x05\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9337,7 +9346,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12*\n" +
 	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\v\x120\n" +
 	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\f\x12)\n" +
-	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\r*W\n" +
+	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\r\x12+\n" +
+	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x0e*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

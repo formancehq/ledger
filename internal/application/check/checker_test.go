@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -2357,6 +2358,33 @@ func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
+// TestCompareLedgerPresence_UnauditedStored: the store holds a live LedgerInfo
+// for a ledger the audit never created. Its empty schema/account types match the
+// empty expected values, so only the presence check can surface it.
+func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+		{Name: "ghost", Id: 2},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "ghost", events[0].GetError().GetLedger())
+}
+
 // TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
 // LedgerInfo (so the schema is seeded from the boundary state, not the live
 // store) and that the checker reads it back.
@@ -2380,11 +2408,15 @@ func TestSeedExpectedFromBaseline(t *testing.T) {
 	require.NoError(t, attributes.CreateBaselineSnapshot(reader, attributes.New(), dest))
 	_ = reader.Close()
 
+	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baseline.Close() })
+
 	knownLedgers := map[string]struct{}{}
 	schemas := map[string]*commonpb.MetadataSchema{}
 	rawLedgerTypes := map[string]map[string]*commonpb.AccountType{}
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
-	checker.seedExpectedFromBaseline(context.Background(), knownLedgers, schemas, rawLedgerTypes, ledgerAccountTypes)
+	checker.seedExpectedFromBaseline(context.Background(), baseline, knownLedgers, schemas, rawLedgerTypes, ledgerAccountTypes)
 
 	require.Contains(t, knownLedgers, "L1", "live baseline ledger should be seeded into knownLedgers")
 	require.Contains(t, schemas, "L1")

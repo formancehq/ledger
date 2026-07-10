@@ -754,6 +754,13 @@ enum CheckStoreErrorType {
   // so both shapes would otherwise escape every projection check. This is the
   // reverse of UNKNOWN_LEDGER.
   CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 13;
+  // Emitted when the store holds a live LedgerInfo for a ledger the audit never
+  // created (no CreateLedger event, and — under archiving — not present in the
+  // baseline). Such a row exposes an unaudited ledger through ListLedgers while
+  // carrying no schema/account types the projection passes could otherwise flag.
+  // The audit-derived ledger set is never seeded from the live store, so this
+  // comparison stays honest.
+  CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 14;
 }
 
 message CheckStoreError {
