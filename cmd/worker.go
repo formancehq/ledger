@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
 	"github.com/formancehq/go-libs/v5/pkg/fx/storagefx"
 	"github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 	"github.com/formancehq/go-libs/v5/pkg/observe/traces"
@@ -132,6 +133,7 @@ func NewWorkerCommand() *cobra.Command {
 	connect.AddFlags(cmd.Flags())
 	metrics.AddFlags(cmd.Flags())
 	traces.AddFlags(cmd.Flags())
+	iam.AddFlags(cmd.Flags())
 
 	return cmd
 }
