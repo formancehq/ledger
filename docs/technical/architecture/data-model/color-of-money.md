@@ -40,13 +40,17 @@ but different colors operate on strictly isolated balances.
 `domain.VolumeKey` carries `Color string`. Canonical bytes:
 
 ```
-[ledgerID BE 4B] [account] \x00 [color] \x00 [asset_base] [precision 1B]
+[ledgerName padded 64B] [account] \x00 [color] \x00 [asset_base] [precision 1B]
 ```
+
+The ledger prefix is the ledger name written as a fixed-size, zero-padded
+64-byte block (`dal.LedgerNameFixedSize`) by `appendLedgerName`/`readLedgerName`
+in `internal/domain/keys.go` — not a numeric ledger ID.
 
 The color sits between account and asset so prefix scans behave naturally:
 
-- `[ledgerID][account]\x00` returns every `(color, asset)` for the account.
-- `[ledgerID][account]\x00[color]\x00` returns every asset for that color.
+- `[ledgerName][account]\x00` returns every `(color, asset)` for the account.
+- `[ledgerName][account]\x00[color]\x00` returns every asset for that color.
 - The trailing `precision` byte can be `0x00` (e.g. `"EUR"`) without
   encoding ambiguity because nothing follows it.
 

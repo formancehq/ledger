@@ -150,8 +150,8 @@ This document compares the POC's API with the original Formance ledger API and d
 
 **Color of money semantics (new in this POC):**
 - `Posting.color` is exposed on every read/write path. Direct postings
-  accept the new field through the `--color` CLI flag and the
-  `source,destination,amount,asset[,color]` `--posting` syntax on
+  accept the new field as the optional fifth component of the
+  `--posting source,destination,amount,asset[,color]` syntax on
   `ledgerctl transactions create`.
 - `Account.volumes` is a deterministic sorted list of
   `{asset, color, volumes}` entries. The HTTP query parameter

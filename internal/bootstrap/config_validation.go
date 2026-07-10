@@ -14,7 +14,13 @@ import (
 // CurrentStorageSchemaVersion is the storage schema version that this binary
 // expects. Increment this when the Pebble key layout or value encoding changes
 // in a way that is not backward-compatible.
-const CurrentStorageSchemaVersion uint32 = 1
+//
+// v2: color-of-money segregation. VolumeKey canonical bytes gained a
+// [color]\x00 segment between account and asset (see domain.VolumeKey), so a
+// schema-v1 store's volume keys no longer parse under the v2 layout. Refusing
+// to open a v1 store (via SchemaVersionError, non-bypassable) turns what would
+// otherwise be silent balance corruption into a fatal, actionable boot error.
+const CurrentStorageSchemaVersion uint32 = 2
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with

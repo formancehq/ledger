@@ -2802,6 +2802,14 @@ components:
           description: Amount as a big integer
         asset:
           type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          description: |
+            Segregation key for "color of money". The empty string means the
+            uncolored bucket. Always present on responses (never omitted); two
+            postings on the same (account, asset) but different colors operate
+            on strictly isolated balances.
 
     LedgerClusterStateResponse:
       type: object
