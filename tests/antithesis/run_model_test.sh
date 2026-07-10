@@ -43,16 +43,29 @@ set -uo pipefail
 
 # --- Arguments ------------------------------------------------------------
 NODES="${NODES:-1}"
+RESTORE="${RESTORE:-0}"
 DURATION=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--cluster)  NODES=3; shift ;;
 		--nodes)    NODES="$2"; shift 2 ;;
 		--nodes=*)  NODES="${1#*=}"; shift ;;
+		--restore)  RESTORE=1; shift ;;
 		-h|--help)  sed -n '2,40p' "$0"; exit 0 ;;
 		*)          DURATION="$1"; shift ;;
 	esac
 done
+
+case "$RESTORE" in ''|0|off|false|no) RESTORE=0 ;; *) RESTORE=1 ;; esac
+# The restore cycle periodically backs the node up, restores the backup into a
+# fresh store (exercising RebuildDelta), and relaunches the node on it while the
+# driver keeps running -- its ordinary checks validate the rebuilt state. Only
+# single-node is wired: a whole-store swap keeps the served state == RebuildDelta's
+# output (a cluster rejoin would snapshot-install over it).
+if [ "$RESTORE" = 1 ] && [ "$NODES" -ne 1 ]; then
+	echo "ERROR: --restore is only supported with a single node (got --nodes $NODES)" >&2
+	exit 2
+fi
 
 case "$NODES" in
 	''|*[!0-9]*) echo "ERROR: --nodes must be a positive integer (got '$NODES')" >&2; exit 2 ;;
@@ -98,6 +111,7 @@ REPO="${REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 GRPC_BASE="${GRPC_BASE:-$(( 20000 + RANDOM % 10000 ))}"
 RAFT_BASE=$(( GRPC_BASE + 100 ))
 HTTP_BASE=$(( GRPC_BASE + 200 ))
+MINIO_PORT=$(( GRPC_BASE + 300 ))
 
 WORKDIR="$(mktemp -d /tmp/model-test.XXXXXX)"
 DRIVER_LOG="$WORKDIR/driver.log"
@@ -108,6 +122,20 @@ LEDGERCTL_BIN="$WORKDIR/ledgerctl"
 DRIVER_PID=""
 RECOVERY_FAILED=0
 DRIVER_EXITED_EARLY=0
+
+# --- Restore cycle (single-node, --restore) -------------------------------
+RESTORE_INTERVAL="${RESTORE_INTERVAL:-45}"
+RESTORE_REQ="$WORKDIR/restore.req"
+RESTORE_RESP="$WORKDIR/restore.resp"
+RESTORED_DATA="$WORKDIR/restored-data"
+MINIO_CONTAINER="model-minio-$$"
+S3_BUCKET="backups"
+S3_FLAGS=(
+	--driver s3 --s3-bucket "$S3_BUCKET"
+	--s3-endpoint "http://127.0.0.1:$MINIO_PORT" --s3-region us-east-1
+	--s3-access-key-id minioadmin --s3-secret-access-key minioadmin
+	--bucket-id "$CLUSTER_ID"
+)
 
 GRPC_PORTS=() RAFT_PORTS=() HTTP_PORTS=() NODE_DIRS=() SERVER_LOGS=() SERVER_PIDS=()
 for i in $(seq 0 $(( NODES - 1 ))); do
@@ -129,10 +157,78 @@ cleanup() {
 	sleep 1
 	[ -n "$DRIVER_PID" ] && kill -9 "$DRIVER_PID" 2>/dev/null
 	for pid in "${SERVER_PIDS[@]}"; do [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null; done
+	[ "$RESTORE" = 1 ] && stop_minio
 	wait 2>/dev/null
 	if [ -z "${KEEP_WORKDIR:-}" ]; then rm -rf "$WORKDIR"; else log "work dir kept at $WORKDIR"; fi
 }
 trap cleanup EXIT INT TERM
+
+# --- MinIO (backup storage for --restore) ---------------------------------
+start_minio() {
+	docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1
+	docker run -d --rm --name "$MINIO_CONTAINER" -p "127.0.0.1:$MINIO_PORT:9000" \
+		-e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+		minio/minio:RELEASE.2024-06-13T22-53-53Z server /data >/dev/null 2>&1 || return 1
+	# Retry until MinIO is reachable, then create the bucket (idempotent). The mc
+	# image's entrypoint is mc itself, so override it to run a shell.
+	for _ in $(seq 1 30); do
+		if docker run --rm --network host --entrypoint sh minio/mc:RELEASE.2024-06-12T14-34-03Z -c \
+			"mc alias set m http://127.0.0.1:$MINIO_PORT minioadmin minioadmin && mc mb --ignore-existing m/$S3_BUCKET" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 1
+	done
+	return 1
+}
+stop_minio() { docker rm -f "$MINIO_CONTAINER" >/dev/null 2>&1; }
+
+# --- Restore orchestrator (single-node) -----------------------------------
+# One cycle: incremental-backup the (quiesced) node, kill it, bootstrap the
+# backup into a fresh store (RebuildDelta), then relaunch on it. The driver is
+# paused across this and resumes against the restored node.
+do_one_restore() {
+	local srv="127.0.0.1:${GRPC_PORTS[0]}" out
+	out="$("$LEDGERCTL_BIN" store incremental-backup --insecure --server "$srv" \
+		"${S3_FLAGS[@]}" --json --timeout 120s 2>&1)" \
+		|| { log "restore: incremental-backup failed: $(printf '%s' "$out" | tail -1)"; return 1; }
+
+	# RebuildDelta only runs when the manifest carries exports; a cycle that
+	# produced none would silently test nothing, so skip it loudly.
+	if command -v jq >/dev/null 2>&1; then
+		local segs logs
+		segs="$(printf '%s' "$out" | jq -r '.segmentsUploaded // 0' 2>/dev/null)"
+		logs="$(printf '%s' "$out" | jq -r '.logEntriesExported // 0' 2>/dev/null)"
+		if [ "${segs:-0}" = 0 ] && [ "${logs:-0}" = 0 ]; then
+			log "restore: incremental produced no exports (RebuildDelta would be a no-op); skipping"
+			return 1
+		fi
+	fi
+
+	kill -9 "${SERVER_PIDS[0]}" 2>/dev/null; wait "${SERVER_PIDS[0]}" 2>/dev/null; SERVER_PIDS[0]=""
+	rm -rf "$RESTORED_DATA"
+	if ! "$LEDGERCTL_BIN" store bootstrap --data-dir "$RESTORED_DATA" "${S3_FLAGS[@]}" -y >>"$WORKDIR/restore.log" 2>&1; then
+		log "restore: bootstrap failed; relaunching on original data"
+		start_node 0 rejoin; wait_leader 0
+		return 1
+	fi
+
+	# Swap the restored store in with a fresh WAL: on boot the RESTORED marker
+	# makes the node self-bootstrap as a single voter from the rebuilt data.
+	rm -rf "${NODE_DIRS[0]}/data" "${NODE_DIRS[0]}/wal"
+	mv "$RESTORED_DATA" "${NODE_DIRS[0]}/data"
+	start_node 0 bootstrap
+	wait_leader 0 || return 1
+	log "restore: node back up on restored (RebuildDelta) store"
+}
+
+# service_restore_request handles one pending request, if any. Runs in the main
+# shell (not a subshell) so start_node's SERVER_PIDS update is visible to cleanup.
+service_restore_request() {
+	[ "$RESTORE" = 1 ] && [ -f "$RESTORE_REQ" ] || return 0
+	rm -f "$RESTORE_REQ"
+	log "restore: cycle requested"
+	if do_one_restore; then printf 'ok\n' >"$RESTORE_RESP"; else printf 'err\n' >"$RESTORE_RESP"; fi
+}
 
 if [ ! -d "$REPO" ]; then
 	echo "ERROR: REPO not found at $REPO (set REPO=...)" >&2
@@ -237,9 +333,13 @@ check_fail_fast() {
 # ---------------------------------------------------------------------------
 # Build (server + driver; ledgerctl only when a cluster needs health checks).
 # ---------------------------------------------------------------------------
-build_cmd="go build -o '$SERVER_BIN' . && "
-if [ "$NODES" -gt 1 ]; then
-	build_cmd="${build_cmd}go build -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
+# --restore drives S3 backups (to MinIO), so the server and ledgerctl need the
+# s3 build tag; the light default build stubs S3 out.
+server_tags=""
+[ "$RESTORE" = 1 ] && server_tags="-tags s3"
+build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
+if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
+	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
 build_cmd="${build_cmd}cd tests/antithesis/workload && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
 
@@ -286,6 +386,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Restore setup (--restore): MinIO + one full backup as the checkpoint every
+# per-cycle incremental exports beyond (so bootstrap replays through RebuildDelta).
+# ---------------------------------------------------------------------------
+if [ "$RESTORE" = 1 ]; then
+	log "starting MinIO (:$MINIO_PORT) for backup storage..."
+	if ! start_minio; then echo "ERROR: MinIO did not start" >&2; exit 2; fi
+	log "taking initial full backup..."
+	if ! "$LEDGERCTL_BIN" store backup --insecure --server "127.0.0.1:${GRPC_PORTS[0]}" \
+		"${S3_FLAGS[@]}" --timeout 120s >>"$WORKDIR/restore.log" 2>&1; then
+		echo "ERROR: initial backup failed (see $WORKDIR/restore.log)" >&2
+		[ -n "${KEEP_WORKDIR:-}" ] || cat "$WORKDIR/restore.log" >&2
+		exit 2
+	fi
+	command -v jq >/dev/null 2>&1 || log "WARNING: jq not found; cannot verify each cycle produced exports"
+	log "restore cycle armed (interval ~${RESTORE_INTERVAL}s)"
+fi
+
+# ---------------------------------------------------------------------------
 # Run the driver against all node(s).
 # ---------------------------------------------------------------------------
 ADDR_LIST="127.0.0.1:${GRPC_PORTS[0]}"
@@ -295,12 +413,19 @@ log "running driver for ${DURATION}s against $ADDR_LIST ..."
 # MODEL_MAX_SECONDS makes the driver self-terminate even if this script never
 # gets to signal it (defence-in-depth against orphaned drivers). A small buffer
 # over DURATION lets the script-driven stop win in the normal case.
+RESTORE_REQ_ENV="" RESTORE_RESP_ENV="" RESTORE_INTERVAL_ENV=""
+if [ "$RESTORE" = 1 ]; then
+	RESTORE_REQ_ENV="$RESTORE_REQ"; RESTORE_RESP_ENV="$RESTORE_RESP"; RESTORE_INTERVAL_ENV="$RESTORE_INTERVAL"
+fi
 LEDGER_GRPC_ADDR="$ADDR_LIST" \
 ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 MODEL_DEBUG="${MODEL_DEBUG:-}" \
 MODEL_LEDGERS="${MODEL_LEDGERS:-}" \
 MODEL_WORKERS="${MODEL_WORKERS:-}" \
 MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \
+MODEL_RESTORE_REQ="$RESTORE_REQ_ENV" \
+MODEL_RESTORE_RESP="$RESTORE_RESP_ENV" \
+MODEL_RESTORE_INTERVAL="$RESTORE_INTERVAL_ENV" \
 	"$DRIVER_BIN" > "$DRIVER_LOG" 2>&1 &
 DRIVER_PID=$!
 
@@ -341,6 +466,8 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		next_restart=$(( $(date +%s) + RESTART_INTERVAL ))
 		continue
 	fi
+
+	service_restore_request
 	sleep 1
 done
 

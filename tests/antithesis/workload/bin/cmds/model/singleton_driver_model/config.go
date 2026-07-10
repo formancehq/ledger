@@ -125,3 +125,18 @@ const workerLoopPause = 100 * time.Millisecond
 
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
+
+// --- Restore cycle ------------------------------------------------------
+
+// Poll cadence while waiting for the driver to fully drain before a backup.
+const quiescePoll = 25 * time.Millisecond
+
+// Poll cadence and hard cap while waiting for the external orchestrator to finish
+// a restore. The cap is a lease: a dead orchestrator cannot park workers forever.
+const (
+	restorePoll    = 200 * time.Millisecond
+	restoreTimeout = 3 * time.Minute
+)
+
+// Base restore-cycle interval (seconds) when MODEL_RESTORE_INTERVAL is unset.
+const defaultRestoreIntervalSecs = 90
