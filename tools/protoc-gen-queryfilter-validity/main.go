@@ -46,6 +46,11 @@ const (
 	// allowedTargetsExtension is the fully-qualified name of the field-option
 	// extension declaring per-arm target validity.
 	allowedTargetsExtension = "common.allowed_query_targets"
+	// noneMarkerExtension is the fully-qualified name of the boolean field-option
+	// extension declaring an arm is intentionally valid on no target. It is the
+	// explicit opt-in the generator requires instead of inferring "valid
+	// nowhere" from a missing annotation.
+	noneMarkerExtension = "common.valid_on_no_query_target"
 )
 
 // armValidity captures one QueryFilter oneof arm and the targets it is valid on.
@@ -72,15 +77,24 @@ func main() {
 			return fmt.Errorf("extension %q not found in compiled protos", allowedTargetsExtension)
 		}
 
-		// The extension is declared in the compiled protos but is not present in
-		// the global registry, so options messages carry its value as an
-		// unresolved unknown field. Register a dynamic ExtensionType in a local
-		// resolver; readAllowedTargets re-parses each FieldOptions through it so
-		// proto.GetExtension can decode the value.
+		noneDesc := findExtension(gen, noneMarkerExtension)
+		if noneDesc == nil {
+			return fmt.Errorf("extension %q not found in compiled protos", noneMarkerExtension)
+		}
+
+		// The extensions are declared in the compiled protos but not present in
+		// the global registry, so options messages carry their values as
+		// unresolved unknown fields. Register dynamic ExtensionTypes in a local
+		// resolver; readArmAnnotation re-parses each FieldOptions through it so
+		// the values can be decoded.
 		extType := dynamicpb.NewExtensionType(extDesc)
+		noneType := dynamicpb.NewExtensionType(noneDesc)
 		resolver := &protoregistry.Types{}
 		if err := resolver.RegisterExtension(extType); err != nil {
 			return fmt.Errorf("registering %q extension type: %w", allowedTargetsExtension, err)
+		}
+		if err := resolver.RegisterExtension(noneType); err != nil {
+			return fmt.Errorf("registering %q extension type: %w", noneMarkerExtension, err)
 		}
 
 		msg := findMessage(gen, queryFilterMessage)
@@ -99,7 +113,7 @@ func main() {
 			return fmt.Errorf("could not locate the generated file for %q", queryFilterMessage)
 		}
 
-		arms, err := collectArms(msg, extType, resolver)
+		arms, err := collectArms(msg, extType, noneType, resolver)
 		if err != nil {
 			return err
 		}
@@ -163,9 +177,16 @@ func fileOf(gen *protogen.Plugin, msg *protogen.Message) *protogen.File {
 }
 
 // collectArms reads every arm of the QueryFilter.filter oneof and its declared
-// allowed targets from the extension. The arm order follows the proto field
+// allowed targets from the extensions. The arm order follows the proto field
 // declaration order, giving a stable, source-faithful generated file.
-func collectArms(msg *protogen.Message, extType protoreflect.ExtensionType, resolver *protoregistry.Types) ([]armValidity, error) {
+//
+// Every arm MUST carry an explicit validity declaration — a non-empty
+// allowed_query_targets OR valid_on_no_query_target = true. An arm with neither
+// is a build error: it would otherwise become a distinct ConditionKind with an
+// all-false row, silently swallowing a forgotten annotation and defeating the
+// anti-drift gate (flemzord review, #1561). An arm declaring both is also
+// rejected as contradictory.
+func collectArms(msg *protogen.Message, extType, noneType protoreflect.ExtensionType, resolver *protoregistry.Types) ([]armValidity, error) {
 	var oneof *protogen.Oneof
 	for _, oo := range msg.Oneofs {
 		if string(oo.Desc.Name()) == queryFilterOneof {
@@ -181,9 +202,23 @@ func collectArms(msg *protogen.Message, extType protoreflect.ExtensionType, reso
 
 	arms := make([]armValidity, 0, len(oneof.Fields))
 	for _, field := range oneof.Fields {
-		allowed, err := readAllowedTargets(field, extType, resolver)
+		allowed, validOnNone, err := readArmAnnotation(field, extType, noneType, resolver)
 		if err != nil {
 			return nil, err
+		}
+
+		switch {
+		case len(allowed) > 0 && validOnNone:
+			return nil, fmt.Errorf(
+				"QueryFilter oneof arm %q declares both allowed_query_targets and valid_on_no_query_target=true; "+
+					"they are contradictory — declare exactly one",
+				field.Desc.Name())
+		case len(allowed) == 0 && !validOnNone:
+			return nil, fmt.Errorf(
+				"QueryFilter oneof arm %q has no target-validity annotation: add one or more "+
+					"[(common.allowed_query_targets) = QUERY_TARGET_...], or "+
+					"[(common.valid_on_no_query_target) = true] if it is deliberately valid on no target",
+				field.Desc.Name())
 		}
 
 		arms = append(arms, armValidity{
@@ -196,54 +231,58 @@ func collectArms(msg *protogen.Message, extType protoreflect.ExtensionType, reso
 	return arms, nil
 }
 
-// readAllowedTargets reads the repeated QueryTarget extension on a oneof-arm
-// field, returning the Go constant names for each allowed target. An arm with no
-// annotation returns an empty slice — the fail-safe "valid on no target".
+// readArmAnnotation reads the two field-option extensions on a oneof-arm field:
+// the repeated allowed_query_targets (returned as Go constant names) and the
+// boolean valid_on_no_query_target marker. Presence/consistency of the pair is
+// enforced by the caller.
 //
-// The extension is declared in the compiled FileDescriptorSet but not in the
-// global registry, so protogen leaves its value as an unresolved unknown field
+// The extensions are declared in the compiled FileDescriptorSet but not in the
+// global registry, so protogen leaves their values as unresolved unknown fields
 // on the options message. We round-trip the FieldOptions bytes through a
-// resolver that knows the extension, then read it with proto.GetExtension. An
-// arm with no annotation returns an empty slice — the fail-safe "valid on no
-// target".
-func readAllowedTargets(field *protogen.Field, extType protoreflect.ExtensionType, resolver *protoregistry.Types) ([]string, error) {
+// resolver that knows the extensions, then read them via reflection.
+func readArmAnnotation(field *protogen.Field, extType, noneType protoreflect.ExtensionType, resolver *protoregistry.Types) (allowed []string, validOnNone bool, err error) {
 	opts := field.Desc.Options()
 	if opts == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	raw, err := proto.Marshal(opts)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling options for %q: %w", field.Desc.FullName(), err)
+		return nil, false, fmt.Errorf("marshaling options for %q: %w", field.Desc.FullName(), err)
 	}
 
 	resolved := dynamicpb.NewMessage(opts.ProtoReflect().Descriptor())
 	if err := (proto.UnmarshalOptions{Resolver: resolver}).Unmarshal(raw, resolved); err != nil {
-		return nil, fmt.Errorf("re-parsing options for %q: %w", field.Desc.FullName(), err)
+		return nil, false, fmt.Errorf("re-parsing options for %q: %w", field.Desc.FullName(), err)
+	}
+
+	noneDesc := noneType.TypeDescriptor()
+	if resolved.Has(noneDesc) {
+		validOnNone = resolved.Get(noneDesc).Bool()
 	}
 
 	typeDesc := extType.TypeDescriptor()
 	if !resolved.Has(typeDesc) {
-		return nil, nil
+		return nil, validOnNone, nil
 	}
 
 	list := resolved.Get(typeDesc).List()
 
 	enumValues := typeDesc.Enum().Values()
 
-	allowed := make([]string, 0, list.Len())
+	allowed = make([]string, 0, list.Len())
 	for i := range list.Len() {
 		enumNum := list.Get(i).Enum()
 		enumVal := enumValues.ByNumber(enumNum)
 		if enumVal == nil {
-			return nil, fmt.Errorf("field %q references unknown QueryTarget number %d",
+			return nil, false, fmt.Errorf("field %q references unknown QueryTarget number %d",
 				field.Desc.FullName(), enumNum)
 		}
 
 		allowed = append(allowed, goEnumConst(enumVal))
 	}
 
-	return allowed, nil
+	return allowed, validOnNone, nil
 }
 
 // targetInfo describes one QueryTarget enum value for the generated table.

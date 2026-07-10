@@ -10100,9 +10100,9 @@ type QueryFilter_Audit struct {
 	// (accounts/transactions/logs) rejects them, and CompileAuditFilter accepts
 	// them. Modeling audit as a first-class target keeps its condition validity
 	// in this single source of truth rather than as an undocumented exception.
-	// (A future arm left entirely unannotated maps to "valid on no target" —
-	// the fail-safe default — so it is rejected everywhere rather than silently
-	// widening results, invariant #7.)
+	// (An arm deliberately valid on no target must say so explicitly with
+	// [(common.valid_on_no_query_target) = true] — a missing annotation is a
+	// generation error, not a silent all-false row.)
 	Audit *AuditCondition `protobuf:"bytes,13,opt,name=audit,proto3,oneof"`
 }
 
@@ -12487,12 +12487,26 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50123,rep,packed,name=allowed_query_targets,enum=common.QueryTarget",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50124,
+		Name:          "common.valid_on_no_query_target",
+		Tag:           "varint,50124,opt,name=valid_on_no_query_target",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.FieldOptions.
 var (
 	// repeated common.QueryTarget allowed_query_targets = 50123;
 	E_AllowedQueryTargets = &file_common_proto_extTypes[0]
+	// valid_on_no_query_target declares that an arm is intentionally valid on no
+	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
+	// requires instead of inferring "valid nowhere" from a missing annotation.
+	//
+	// optional bool valid_on_no_query_target = 50124;
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[1]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -13473,7 +13487,8 @@ const file_common_proto_rawDesc = "" +
 	"\tQueryMode\x12\x13\n" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
 	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01:h\n" +
-	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargetsB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
+	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTargetB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -13955,11 +13970,12 @@ var file_common_proto_depIdxs = []int32{
 	20,  // 264: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
 	132, // 265: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
 	195, // 266: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	16,  // 267: common.allowed_query_targets:type_name -> common.QueryTarget
-	268, // [268:268] is the sub-list for method output_type
-	268, // [268:268] is the sub-list for method input_type
-	267, // [267:268] is the sub-list for extension type_name
-	266, // [266:267] is the sub-list for extension extendee
+	195, // 267: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	16,  // 268: common.allowed_query_targets:type_name -> common.QueryTarget
+	269, // [269:269] is the sub-list for method output_type
+	269, // [269:269] is the sub-list for method input_type
+	268, // [268:269] is the sub-list for extension type_name
+	266, // [266:268] is the sub-list for extension extendee
 	0,   // [0:266] is the sub-list for field type_name
 }
 
@@ -14158,7 +14174,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   176,
-			NumExtensions: 1,
+			NumExtensions: 2,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

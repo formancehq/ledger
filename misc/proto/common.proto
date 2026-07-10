@@ -1256,13 +1256,26 @@ message UpdatedDefaultEnforcementModeLog {
 // descriptor and emits the query_target_validity.pb.go table consumed by both
 // the compile layer (internal/query) and the REST decode layer
 // (internal/adapter/http), so the two layers cannot drift and a new arm cannot
-// be added without declaring its validity (the generator fails on an
-// unannotated arm).
+// be added without declaring its validity.
 //
-// Extension number 50123 is in the private, non-reserved range for
+// EVERY QueryFilter.filter oneof arm MUST carry an explicit validity
+// declaration: either a non-empty `allowed_query_targets`, OR
+// `valid_on_no_query_target = true` for an arm deliberately valid on no target.
+// protoc-gen-queryfilter-validity FAILS generation (so `just generate-proto`
+// fails) on an arm that declares neither — a forgotten annotation is a build
+// error, not a silently all-false row. An empty repeated `allowed_query_targets`
+// is indistinguishable from an absent one on the wire, which is exactly why the
+// "valid nowhere" intent needs its own boolean marker rather than being inferred
+// from absence.
+//
+// Extension numbers 50123-50124 are in the private, non-reserved range for
 // FieldOptions extensions (50000-99999, per descriptor.proto guidance).
 extend google.protobuf.FieldOptions {
   repeated QueryTarget allowed_query_targets = 50123;
+  // valid_on_no_query_target declares that an arm is intentionally valid on no
+  // QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
+  // requires instead of inferring "valid nowhere" from a missing annotation.
+  bool valid_on_no_query_target = 50124;
 }
 
 message QueryFilter {
@@ -1338,9 +1351,9 @@ message QueryFilter {
     // (accounts/transactions/logs) rejects them, and CompileAuditFilter accepts
     // them. Modeling audit as a first-class target keeps its condition validity
     // in this single source of truth rather than as an undocumented exception.
-    // (A future arm left entirely unannotated maps to "valid on no target" —
-    // the fail-safe default — so it is rejected everywhere rather than silently
-    // widening results, invariant #7.)
+    // (An arm deliberately valid on no target must say so explicitly with
+    // [(common.valid_on_no_query_target) = true] — a missing annotation is a
+    // generation error, not a silent all-false row.)
     AuditCondition audit = 13 [
       (allowed_query_targets) = QUERY_TARGET_AUDIT
     ];
