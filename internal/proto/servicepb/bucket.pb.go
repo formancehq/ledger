@@ -5573,12 +5573,6 @@ type ListAuditEntriesRequest struct {
 	// filters: ledger scope and outcome selection are expressed through
 	// options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
 	// failure`), exactly like every other filtered list endpoint.
-	//
-	// options keeps its ORIGINAL tag 1 (the shape on release/v3.0 was
-	// { options=1, failures_only=2, ledger=3 }); the two dedicated fields are
-	// removed and their tags/names reserved. Keeping options on tag 1 avoids
-	// renumbering a live field — a client that still sends options on tag 1
-	// continues to be understood.
 	Options       *commonpb.ListOptions `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -9055,9 +9049,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"k\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"H\n" +
 	"\x17ListAuditEntriesRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\rfailures_onlyR\x06ledger\"2\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xa2\x01\n" +
 	"\x0fListLogsRequest\x12\x16\n" +
