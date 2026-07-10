@@ -305,6 +305,84 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 	require.Empty(t, events, "the inverse check must stay permissive when the reference is not visible in the live chain")
 }
 
+// TestVerifyExpectedSkipNotElided_MetadataBaselineCoveredAbsenceIsDefinitive
+// pins the #12 fix: for METADATA_NOT_FOUND, an empty LIVE metadata timeline
+// under archived chapters is ambiguous ONLY when the baseline fold could not
+// cover the archived range. When the baseline IS available it already covers
+// the archive, so an empty live timeline is definitive proof of absence — a
+// non-skip projection at that seq is a proven elision and must be flagged.
+func TestVerifyExpectedSkipNotElided_MetadataBaselineCoveredAbsenceIsDefinitive(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	// Empty live metadata timeline: the key was never Set/Deleted in the
+	// live audit range (mutationStateWithWitness → present=false,
+	// witnessed=false).
+	chainBound := newChainBoundState()
+
+	const hasArchivedChapters = true
+
+	// Baseline UNAVAILABLE → ambiguous, stay permissive (an archived Set we
+	// cannot see could have made the delete succeed).
+	var permissive []*servicepb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, false, func(e *servicepb.CheckStoreEvent) {
+		permissive = append(permissive, e)
+	})
+	require.Empty(t, permissive, "baseline unavailable: empty-live-under-archives must stay permissive")
+
+	// Baseline AVAILABLE → the baseline covers the archive; empty-live is
+	// definitive absence, so the elision must be flagged.
+	var strict []*servicepb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, true, func(e *servicepb.CheckStoreEvent) {
+		strict = append(strict, e)
+	})
+	requireInvalidSkipEvent(t, strict, 7)
+}
+
+// TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefinitive
+// is the account-type sibling of the metadata test above (ACCOUNT_TYPE_NOT_FOUND):
+// empty live account-type timeline under archives is ambiguous without a
+// baseline but definitive once the baseline covers the archived range.
+func TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefinitive(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:         []commonpb.ErrorReason{reason},
+			ledger:          "L",
+			accountTypeName: "customer",
+		},
+	}
+
+	// Empty live account-type timeline: ACCOUNT_TYPE_NOT_FOUND expects the
+	// type absent (mustBePresent=false), which the empty timeline satisfies.
+	chainBound := newChainBoundState()
+
+	const hasArchivedChapters = true
+
+	var permissive []*servicepb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, false, func(e *servicepb.CheckStoreEvent) {
+		permissive = append(permissive, e)
+	})
+	require.Empty(t, permissive, "baseline unavailable: empty-live-under-archives must stay permissive")
+
+	var strict []*servicepb.CheckStoreEvent
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, true, func(e *servicepb.CheckStoreEvent) {
+		strict = append(strict, e)
+	})
+	requireInvalidSkipEvent(t, strict, 7)
+}
+
 // TestVerifySkippedOrder_RejectsNilInnerOrderSkipped catches the malformed
 // projection where the OrderSkipped oneof discriminant is set but the inner
 // OrderSkippedLog message is nil. dispatchElisionCheck classifies "oneof
@@ -359,7 +437,7 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 
 	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
 		events := []*servicepb.CheckStoreEvent{}
-		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
+		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
 			events = append(events, e)
 		})
 
@@ -421,7 +499,7 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 	}
 
 	events := []*servicepb.CheckStoreEvent{}
-	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1109,7 +1187,7 @@ func captureDispatchEvents(
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), false, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1539,6 +1617,9 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									Reference: "ref-A",
 									Metadata:  map[string]*commonpb.MetadataValue{"skipped": commonpb.NewStringValue("y")},
+									AccountMetadata: map[string]*commonpb.MetadataMap{
+										"alice": {Values: map[string]*commonpb.MetadataValue{"skipped-acct": commonpb.NewStringValue("z")}},
+									},
 								},
 							},
 							SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
@@ -1581,6 +1662,13 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 	// Skipped CreateTransaction @ seq=13 did NOT consume tx id 3 and
 	// did NOT leak its metadata onto the timeline.
 	require.Empty(t, cb.metadata["L"]["3"]["skipped"], "skipped CreateTransaction.metadata must not surface on the timeline")
+
+	// A skipped CreateTransaction never applies its account_metadata either
+	// (the sub-processor returns the conflict error before any Put), so it
+	// must not fabricate a presence for (account=alice, key=skipped-acct) —
+	// otherwise a later legitimate DeleteMetadata(METADATA_NOT_FOUND) on
+	// that key would be false-flagged as INVALID_SKIP.
+	require.Empty(t, cb.metadata["L"]["alice"]["skipped-acct"], "skipped CreateTransaction.account_metadata must not surface on the timeline")
 
 	// Counter: 1 (initial) + create(1→2) + create(2→3) + skip + revert(3→4) = 4.
 	require.Equal(t, uint64(4), cb.nextTxID["L"], "nextTxID must reflect only successful CreateTransaction/RevertTransaction orders")

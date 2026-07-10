@@ -540,7 +540,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// it also fires for tampered projections that never reach the
 		// well-formed Apply branch above — non-Apply payloads, nil
 		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
-		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters, callback)
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters, baselineChainStateAvailable, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -2172,31 +2172,34 @@ func recordChainBoundMutations(
 	}
 
 	if ct := apply.GetCreateTransaction(); ct != nil {
-		// account_metadata targets are known independently of the
-		// FSM-allocated tx id, so record them regardless of skip
-		// state.
-		for account, mm := range ct.GetAccountMetadata() {
-			if account == "" {
-				continue
-			}
-
-			for key := range mm.GetValues() {
-				appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
-			}
-		}
-
 		// Chain-bound tx id derivation: if the reference was already
 		// claimed at an earlier live seq, this order would be skipped
 		// by TRANSACTION_REFERENCE_CONFLICT and the counter is NOT
 		// bumped. Otherwise the order succeeds and takes the current
 		// slot.
 		//
-		// Tx-scoped metadata is only recorded when the ledger's counter
-		// is anchored (CreateLedger observed in live). For archived-
-		// history ledgers the counter is defaulted and mislabelling
-		// would cause false-negative INVALID_SKIP on future
-		// DeleteMetadata(target=<real tx id>). See ledgerCreationSeen.
+		// A skipped CreateTransaction never reaches FSM state — the
+		// sub-processor returns ErrTransactionReferenceConflict BEFORE
+		// applying ANY of its writes (see processor_transaction.go), so
+		// neither its account_metadata NOR its tx-scoped metadata land.
+		// Recording either regardless of skip state would fabricate a
+		// prior presence and false-positive a later legitimate
+		// DeleteMetadata(METADATA_NOT_FOUND) skip on the same key. Both
+		// records are therefore gated on the same skip predicate.
 		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) {
+			// account_metadata targets are known independently of the
+			// FSM-allocated tx id, so they don't need the anchored-ledger
+			// gate below — but they DO require the order to have applied.
+			for account, mm := range ct.GetAccountMetadata() {
+				if account == "" {
+					continue
+				}
+
+				for key := range mm.GetValues() {
+					appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+				}
+			}
+
 			txID := allocateChainBoundTxID(ledger, chainBound)
 
 			// The successful CreateTransaction owns its reference — record
@@ -3452,6 +3455,7 @@ func dispatchElisionCheck(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 	hasArchivedChapters bool,
+	baselineChainStateAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, isExpected := expectedSkippable[seq]
@@ -3471,7 +3475,7 @@ func dispatchElisionCheck(
 		}
 	}
 
-	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, hasArchivedChapters, callback)
+	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, hasArchivedChapters, baselineChainStateAvailable, callback)
 }
 
 // verifyExpectedSkipNotElided is the inverse-direction sibling of
@@ -3497,6 +3501,7 @@ func verifyExpectedSkipNotElided(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 	hasArchivedChapters bool,
+	baselineChainStateAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, ok := expectedSkippable[seq]
@@ -3555,10 +3560,17 @@ func verifyExpectedSkipNotElided(
 			return
 		}
 
-		if !witnessed && hasArchivedChapters {
+		if !witnessed && hasArchivedChapters && !baselineChainStateAvailable {
 			// Empty live timeline under archives is ambiguous — an
 			// archived Set could make the delete succeed, so the
 			// projection may legitimately be a non-skip. Be permissive.
+			//
+			// But when the baseline fold succeeded it already covers the
+			// archived range: an empty live timeline THEN is definitive
+			// proof the key was absent, so we must NOT downgrade to a
+			// silent pass — matching the stricter logic the forward
+			// verifier applies (see the METADATA_NOT_FOUND branch of
+			// verifySkippedOrder). Falling through fires the elision error.
 			return
 		}
 
@@ -3579,9 +3591,15 @@ func verifyExpectedSkipNotElided(
 			return
 		}
 
-		if !witnessed && hasArchivedChapters {
+		if !witnessed && hasArchivedChapters && !baselineChainStateAvailable {
 			// Empty live timeline under archives is ambiguous. The
 			// archived history could make either outcome legitimate.
+			//
+			// When the baseline fold succeeded it already covers the
+			// archived range (foldBaselineLedgers seeds accountTypes from
+			// the baseline LedgerInfo), so an empty live timeline is
+			// definitive — fall through and fire the elision error rather
+			// than passing silently.
 			return
 		}
 

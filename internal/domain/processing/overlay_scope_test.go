@@ -56,6 +56,65 @@ func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
 	return s
 }
 
+// failOnAnyParentWrite installs a catch-all Put/Delete hook on every parent
+// kindStub that fails the test on ANY write. Without it, kindStub.Put /
+// Delete silently no-op for keys that were never registered via
+// expectPut/expectDelete, so a rollback regression where the overlay wrote
+// straight through to the parent (instead of buffering) would go undetected
+// (NumaryBot finding: rollback leak-detection is illusory without a global
+// fail hook). The buffered path never touches the parent until Commit, so a
+// rollback test that never commits must see zero parent writes.
+func (s *overlayMockStubs) failOnAnyParentWrite(t *testing.T) {
+	t.Helper()
+
+	s.ledgers.onPut(func(k domain.LedgerKey, _ *commonpb.LedgerInfo) {
+		t.Errorf("rollback leak: parent Ledgers().Put(%v) called", k)
+	})
+	s.ledgers.onDelete(func(k domain.LedgerKey) { t.Errorf("rollback leak: parent Ledgers().Delete(%v) called", k) })
+	s.boundaries.onPut(func(k domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("rollback leak: parent Boundaries().Put(%v) called", k)
+	})
+	s.boundaries.onDelete(func(k domain.LedgerKey) { t.Errorf("rollback leak: parent Boundaries().Delete(%v) called", k) })
+	s.volumes.onPut(func(k domain.VolumeKey, _ *raftcmdpb.VolumePair) {
+		t.Errorf("rollback leak: parent Volumes().Put(%v) called", k)
+	})
+	s.volumes.onDelete(func(k domain.VolumeKey) { t.Errorf("rollback leak: parent Volumes().Delete(%v) called", k) })
+	s.accountMetadata.onPut(func(k domain.MetadataKey, _ *commonpb.MetadataValue) {
+		t.Errorf("rollback leak: parent AccountMetadata().Put(%v) called", k)
+	})
+	s.accountMetadata.onDelete(func(k domain.MetadataKey) {
+		t.Errorf("rollback leak: parent AccountMetadata().Delete(%v) called", k)
+	})
+	s.ledgerMetadata.onPut(func(k domain.LedgerMetadataKey, _ *commonpb.MetadataValue) {
+		t.Errorf("rollback leak: parent LedgerMetadata().Put(%v) called", k)
+	})
+	s.ledgerMetadata.onDelete(func(k domain.LedgerMetadataKey) {
+		t.Errorf("rollback leak: parent LedgerMetadata().Delete(%v) called", k)
+	})
+	s.transactionStates.onPut(func(k domain.TransactionKey, _ *commonpb.TransactionState) {
+		t.Errorf("rollback leak: parent TransactionStates().Put(%v) called", k)
+	})
+	s.transactionStates.onDelete(func(k domain.TransactionKey) {
+		t.Errorf("rollback leak: parent TransactionStates().Delete(%v) called", k)
+	})
+	s.transactionRefs.onPut(func(k domain.TransactionReferenceKey, _ *commonpb.TransactionReferenceValue) {
+		t.Errorf("rollback leak: parent TransactionReferences().Put(%v) called", k)
+	})
+	s.transactionRefs.onDelete(func(k domain.TransactionReferenceKey) {
+		t.Errorf("rollback leak: parent TransactionReferences().Delete(%v) called", k)
+	})
+	s.preparedQueries.onPut(func(k domain.PreparedQueryKey, _ *commonpb.PreparedQuery) {
+		t.Errorf("rollback leak: parent PreparedQueries().Put(%v) called", k)
+	})
+	s.preparedQueries.onDelete(func(k domain.PreparedQueryKey) {
+		t.Errorf("rollback leak: parent PreparedQueries().Delete(%v) called", k)
+	})
+	s.indexes.onPut(func(k domain.IndexKey, _ *commonpb.Index) {
+		t.Errorf("rollback leak: parent Indexes().Put(%v) called", k)
+	})
+	s.indexes.onDelete(func(k domain.IndexKey) { t.Errorf("rollback leak: parent Indexes().Delete(%v) called", k) })
+}
+
 // TestOrderOverlayScope_ReadYourWritesAcrossCategories pins the
 // read-your-writes contract every per-order sub-processor relies on:
 // every accessor kind that exposes a Get/Put pair must observe the staged
@@ -68,6 +127,9 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	defer ctrl.Finish()
 
 	s := wireOverlayParent(ctrl)
+	// This test never commits: reads must resolve against the staged
+	// buffer, and no write may reach the parent.
+	s.failOnAnyParentWrite(t)
 	overlay := newOrderOverlayScope(s.parent)
 
 	// Ledger
@@ -162,9 +224,9 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	_, err = overlay.Indexes().Get(ik)
 	require.NoError(t, err)
 
-	// No Commit. The kindStubs receive no expectPut/expectDelete — any
-	// flush leak would surface as an unexpected Put/Delete via the
-	// stub's bookkeeping.
+	// No Commit. The failOnAnyParentWrite catch-all hook fails the test on
+	// any Put/Delete that reaches the parent, so a write-through leak is
+	// caught even for keys no expectPut/expectDelete registered.
 }
 
 // TestOrderOverlayScope_RollbackOnNoCommit verifies the rollback semantics:
@@ -181,14 +243,18 @@ func TestOrderOverlayScope_RollbackOnNoCommit(t *testing.T) {
 	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 
+	// Any write that reaches the parent before Commit is a rollback leak.
+	s.failOnAnyParentWrite(t)
+
 	overlay := newOrderOverlayScope(s.parent)
 	overlay.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
 	overlay.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{})
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
 
-	// No Commit. The kindStubs received no expectPut and the mock got no
-	// Increment* expectation; any leak fails the test.
+	// No Commit. The catch-all parent write hook fails the test on any
+	// leak; the mock got no Increment* expectation so a counter leak also
+	// fails.
 }
 
 // TestOrderOverlayScope_CommitFlushesEveryCategory verifies the success
