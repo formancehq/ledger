@@ -394,4 +394,51 @@ var _ = Context("Ledger engine tests", func() {
 			})
 		})
 	})
+	When("reverting an already-reverted transaction inside a bulk", func() {
+		// Regression: a revert of an already-reverted transaction inside a bulk
+		// must report ALREADY_REVERT, like the standalone revert endpoint — not
+		// INTERNAL, which the bulk error mapping used to fall back to.
+		var (
+			err  error
+			txID *big.Int
+		)
+		BeforeEach(func(specContext SpecContext) {
+			client := Wait(specContext, DeferClient(testServer))
+			createResponse, createErr := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+				Ledger: "default",
+				V2PostTransaction: components.V2PostTransaction{
+					Metadata: map[string]string{},
+					Postings: []components.V2Posting{{
+						Amount:      big.NewInt(100),
+						Asset:       "USD/2",
+						Destination: "bank",
+						Source:      "world",
+					}},
+				},
+			})
+			Expect(createErr).To(Succeed())
+			txID = createResponse.V2CreateTransactionResponse.Data.ID
+
+			_, err = client.Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
+				Ledger: "default",
+				ID:     txID,
+			})
+			Expect(err).To(Succeed())
+		})
+		It("should report ALREADY_REVERT for that element", func(specContext SpecContext) {
+			bulkResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+				Ledger: "default",
+				RequestBody: []components.V2BulkElement{
+					components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
+						Data: &components.V2BulkElementRevertTransactionData{
+							ID: txID,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(bulkResponse.V2BulkResponse.Data[0].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
+			Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultError.ErrorCode).To(Equal("ALREADY_REVERT"))
+		})
+	})
 })

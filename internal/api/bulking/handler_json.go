@@ -112,6 +112,8 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 				errorCode = common.ErrInterpreterParse
 			case errors.Is(result.Error, ledgercontroller.ErrRuntime{}):
 				errorCode = common.ErrInterpreterRuntime
+			case errors.Is(result.Error, ledgercontroller.ErrAlreadyReverted{}):
+				errorCode = common.ErrAlreadyRevert
 			default:
 				errorCode = api.ErrorInternal
 			}
