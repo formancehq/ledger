@@ -465,10 +465,25 @@ The wrapper lives in `internal/domain/processing/numscript/discover.go` (`Discov
 
 1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is shared with real execution.
 2. **Resolve** dependencies against a `RecordingStore` wrapping the admission-time value source.
-3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys (color and scope collapse to `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition by color/scope).
+3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition volumes or metadata by color/scope.
 4. **Preload** the union of read and write keys so every FSM read/mutate resolves from cache.
 
 `meta()`, `oneof` (all branches), and multiple `send` blocks are all handled by the resolver — none is rejected. `ErrMetaNotSupported` and `ErrNonDeterministicScript` no longer exist.
+
+#### Color/scope-qualified balance reads are rejected
+
+Ledger volumes and account metadata have **no** color/scope dimension: every color/scope view of `(account, asset)` resolves to the *same* underlying volume, and every scope-qualified metadata read collapses to the same `(account, key)` entry. Rather than silently collapsing a qualified query onto the unqualified key — which would hand the script a full-balance view *per color* and let it spend the same funds once per color — the `Store` (`internal/domain/processing/numscript/store.go`) **rejects** any balance or metadata read that carries a non-empty `Color` or `Scope`, returning `domain.ErrColoredBalanceUnsupported` (a validation sentinel, so admission fails the transaction as a business error before proposing).
+
+The rejection triggers only when a color/scope-qualified read is actually *performed*. An **unbounded colored source** such as `send [COIN *] (source = @world \ "RED" ...)` reads no balance — an unbounded source draws whatever the destination requires without consulting a balance — so it is **not** rejected. Only bounded/capped colored sources and colored `balance()`/`overdraft()` reads, which must consult a per-color balance, hit the guard.
+
+#### Intra-batch effect accumulation
+
+When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of the preceding orders layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely:
+
+- after an order resolves, its net `(input − output)` **balance deltas** per `(ledger, account, asset)` and its **account-metadata writes** are folded into a `batchEffects` accumulator (`mergeDiscovery`);
+- the next order's `admissionValueSource` reads a balance as `snapshot value + accumulated delta`, and a metadata key as the batch's last-written value if any (last-writer-wins), so it resolves against exactly the state the FSM will present it.
+
+Without this, a batch where order N spends funds that order N−1 credits would resolve N against a stale (pre-batch) balance and mis-predict its outcome. Layering the effects keeps admission's resolution — and therefore the preload key set and the `inputs_resolution_hash` — consistent with sequential FSM apply.
 
 ### Stale-inputs Detection
 
