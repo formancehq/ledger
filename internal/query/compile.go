@@ -1122,6 +1122,17 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
 	}
 
+	// Transaction builtins (id/timestamp/insertedAt/revertedAt) are only
+	// meaningful on the transactions target: their compilers read transaction
+	// indexes and yield transaction-keyed entities. On any other target this
+	// would silently feed tx-keyed entities into a mismatched result pipeline,
+	// so reject it here — mirroring the reverted (transactions-only) and
+	// accountHasAsset (accounts-only) guards.
+	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		return nil, domain.NewFilterCompilationError(
+			"builtin field (id/timestamp/insertedAt/revertedAt) is only valid on transactions")
+	}
+
 	switch cond.GetField() {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
 		return compileTxIDCondition(ctx, cond.GetCond())
