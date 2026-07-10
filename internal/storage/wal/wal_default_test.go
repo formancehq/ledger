@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -181,6 +182,87 @@ func TestInitialState_AfterSnapshot(t *testing.T) {
 	_, gotCS, err := w.InitialState()
 	require.NoError(t, err)
 	require.Equal(t, cs.GetVoters(), gotCS.GetVoters())
+}
+
+// TestInitialState_ConcurrentNoRace is the regression for the RLock data race:
+// EnsureConfState mutates its argument in place (it fills a nil AutoLeave
+// pointer). If InitialState passed s.snapshot's own ConfState to EnsureConfState,
+// concurrent callers holding only an RLock would write through the shared pointer
+// and race with each other. InitialState must instead work on a copy. Run under
+// -race with many goroutines; the shared snapshot ConfState here deliberately has
+// a nil AutoLeave (the exact field EnsureConfState mutates).
+func TestInitialState_ConcurrentNoRace(t *testing.T) {
+	t.Parallel()
+
+	// Snapshot whose ConfState has a nil AutoLeave — this is what makes
+	// EnsureConfState want to mutate the shared value.
+	w := newTestWAL(t)
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+	require.Nil(t, cs.AutoLeave, "test precondition: shared ConfState must have nil AutoLeave")
+	require.NoError(t, w.CreateSnapshot(0, cs, nil))
+
+	const goroutines = 64
+
+	var (
+		start sync.WaitGroup
+		done  sync.WaitGroup
+	)
+	start.Add(1)
+	done.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer done.Done()
+			start.Wait()
+
+			_, gotCS, err := w.InitialState()
+			require.NoError(t, err)
+			require.NotNil(t, gotCS, "InitialState must return a non-nil ConfState")
+			require.NotNil(t, gotCS.AutoLeave, "returned ConfState must have non-nil AutoLeave")
+			require.Equal(t, []uint64{1, 2, 3}, gotCS.GetVoters())
+		}()
+	}
+
+	start.Done()
+	done.Wait()
+
+	// The shared snapshot's ConfState must remain untouched (its AutoLeave still
+	// nil): InitialState worked on a copy, it did not mutate shared state.
+	require.Nil(t, w.snapshot.GetMetadata().GetConfState().AutoLeave,
+		"InitialState must not mutate the shared snapshot ConfState")
+}
+
+// TestInitialState_ConcurrentEmptyWALNoRace runs many concurrent InitialState
+// calls on a fresh, never-snapshotted WAL under -race. Even with no shared
+// ConfState to copy, concurrent readers must not race.
+func TestInitialState_ConcurrentEmptyWALNoRace(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	const goroutines = 64
+
+	var (
+		start sync.WaitGroup
+		done  sync.WaitGroup
+	)
+	start.Add(1)
+	done.Add(goroutines)
+
+	for range goroutines {
+		go func() {
+			defer done.Done()
+			start.Wait()
+
+			_, gotCS, err := w.InitialState()
+			require.NoError(t, err)
+			require.NotNil(t, gotCS, "empty WAL must return a non-nil ConfState")
+			require.NotNil(t, gotCS.AutoLeave, "returned ConfState must have non-nil AutoLeave")
+		}()
+	}
+
+	start.Done()
+	done.Wait()
 }
 
 // --- Entries tests ---

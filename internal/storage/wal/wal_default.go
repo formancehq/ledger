@@ -370,11 +370,23 @@ func recoverConfStateFromWALRecords(walSnaps []*walpb.Snapshot) *walpb.Snapshot 
 // slice fields — a nil ConfState (as an empty WAL would otherwise yield, since
 // s.snapshot starts as &raftpb.Snapshot{} with a nil Metadata.ConfState) would
 // panic. This mirrors what raft's own MemoryStorage.InitialState does.
+//
+// EnsureConfState mutates its argument in place (it sets a nil AutoLeave pointer
+// field), so it must NOT be called on s.snapshot's ConfState: that value is owned
+// by the shared snapshot and is only guarded by an RLock here, so a write through
+// it races with concurrent InitialState / snapshot readers. We first clone the
+// shared ConfState (or start from nil when there is none) and let EnsureConfState
+// fill in the clone's pointer fields, leaving the shared value untouched.
 func (s *DefaultWAL) InitialState() (*raftpb.HardState, *raftpb.ConfState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.hardState, raftpb.EnsureConfState(s.snapshot.GetMetadata().GetConfState()), nil
+	var confStateCopy *raftpb.ConfState
+	if shared := s.snapshot.GetMetadata().GetConfState(); shared != nil {
+		confStateCopy = proto.Clone(shared).(*raftpb.ConfState)
+	}
+
+	return s.hardState, raftpb.EnsureConfState(confStateCopy), nil
 }
 
 // Entries returns a slice of log entries in the range [lo, hi).
