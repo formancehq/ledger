@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 )
@@ -56,8 +58,22 @@ func (c *Coverage) Add(attrCode byte, canonical []byte) {
 
 	id, tag := attributes.MakeKey(canonical)
 
-	if _, exists := m[id]; !exists {
+	if existing, exists := m[id]; !exists {
 		m[id] = CoverageEntry{Canonical: canonical, Tag: tag}
+	} else if existing.Tag != tag {
+		// Same XXH3-128 id but a different XXH3-64 tag means two distinct
+		// canonical keys genuinely collided on the 128-bit id (~2^-128).
+		// The map can only hold one entry per id, so the second key would
+		// be silently dropped and the order reaching apply without its
+		// Pebble seed — a silent cache miss instead of the loud collision
+		// the tag exists to surface (attributes.KeyStore.Get/Put rejects
+		// same-id/different-tag as ErrCollisionDetected). Keep the first
+		// entry but fail loudly: this is impossible by design (invariant #7).
+		assert.Unreachable("coverage: XXH3-128 collision between distinct canonical keys", map[string]any{
+			"attrCode":    attrCode,
+			"existingTag": existing.Tag,
+			"newTag":      tag,
+		})
 	}
 }
 
@@ -139,8 +155,18 @@ func (c *Coverage) Merge(src *Coverage) {
 		}
 
 		for id, entry := range srcMap {
-			if _, exists := dst[id]; !exists {
+			if existing, exists := dst[id]; !exists {
 				dst[id] = entry
+			} else if existing.Tag != entry.Tag {
+				// Genuine XXH3-128 collision across the two Coverages being
+				// merged (see Add): the second key would be silently dropped.
+				// Keep the first and fail loudly — impossible by design
+				// (invariant #7).
+				assert.Unreachable("coverage: XXH3-128 collision on Merge between distinct canonical keys", map[string]any{
+					"attrCode":    attrCode,
+					"existingTag": existing.Tag,
+					"newTag":      entry.Tag,
+				})
 			}
 		}
 	}
