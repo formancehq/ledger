@@ -69,6 +69,11 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 	cmd := NewServeCommand()
 	flags := cmd.Flags()
 
+	// Verify the IAM-enable flag defaults to false on serve as well
+	f := flags.Lookup(connect.PostgresAWSEnableIAMFlag)
+	require.NotNil(t, f, "--postgres-aws-enable-iam flag must be registered on the serve command")
+	assert.Equal(t, "false", f.DefValue)
+
 	iamFlags := []string{
 		connect.PostgresAWSEnableIAMFlag,
 		iam.AWSRegionFlag,
@@ -79,7 +84,6 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 	}
 
 	for _, flagName := range iamFlags {
-		flagName := flagName
 		t.Run(flagName+" is registered on serve", func(t *testing.T) {
 			t.Parallel()
 			f := flags.Lookup(flagName)
