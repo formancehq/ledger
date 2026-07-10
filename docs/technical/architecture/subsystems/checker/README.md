@@ -17,9 +17,15 @@ The audit chain and the checker are tightly coupled by an explicit invariant: **
 
 For new persisted state, first classify whether it is business truth, governance
 truth, operational consensus state, or a rebuildable projection using
-[Audit-Bound vs Technical State](../../audit-vs-technical-state.md). Only
-business truth and business-visible projections belong in the checker; purely
-operational state must remain unable to silently change ledger business results.
+[Audit-Bound vs Technical State](../../audit-vs-technical-state.md). Per invariant
+#8, every non-audit dataset persisted in the main Pebble store needs checker
+coverage unless it is genuinely discarded and rebuilt by a lifecycle path (e.g.
+bloom filters) or lives in a separate rebuildable side-store. Raft replication is
+not a substitute: it only guarantees replicas hold identical bytes, so a value
+corrupted or tampered before it is proposed is copied to every node and no
+cross-node comparison can detect it. Persisted projections that are not yet
+covered — the mirror cursor and the readstore inverted-index contents are the
+current examples — are tracked integrity gaps, not approved exemptions.
 
 ## Related
 
