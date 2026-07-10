@@ -272,7 +272,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// — was already verified above. Expected after a checkpoint-only restore;
 		// warn and skip the entry-by-entry verification.
 		if baselineDB == nil {
-			c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
+			c.logger.Error("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
 			return nil
 		}
