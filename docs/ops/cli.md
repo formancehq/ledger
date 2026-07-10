@@ -2260,7 +2260,7 @@ combined with `and` / `or`:
 | `log_seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Match-any over the entry's item log sequences. |
 | `outcome` | string | `==`, `in` | `success` or `failure`. |
 | `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
-| `caller.subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
+| `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
 | `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
 
 Unsupported conditions are rejected with `InvalidArgument` rather than silently

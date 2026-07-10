@@ -57,7 +57,7 @@ var auditFieldNames = map[commonpb.AuditField]string{
 	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:      "timestamp",
 	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:   "log_seq",
 	commonpb.AuditField_AUDIT_FIELD_OUTCOME:        "outcome",
-	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT: "caller.subject",
+	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT: "caller_subject",
 	commonpb.AuditField_AUDIT_FIELD_LEDGER:         "ledger",
 	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:     "order_type",
 }
