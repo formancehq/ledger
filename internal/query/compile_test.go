@@ -809,6 +809,72 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 		"a Pebble I/O failure must NOT be reported as ErrIndexBuilding — that would mask a real outage as a transient readiness state")
 }
 
+// TestCompile_RejectsUnsupportedTarget is the regression for flemzord's P2 on
+// #1563 (EN-1503). A prepared query stored via gRPC (which validates only the
+// name) can carry an unsupported/unknown QueryTarget. Before the fix,
+// compileUniverse's default arm returned an empty iterator for such a target,
+// which executeList turned into an empty-but-successful page BEFORE reaching its
+// own fail-loud switch — a silent success that masks the invariant violation.
+// Compile must now reject an unsupported target loudly at the earliest point,
+// for both the filtered and unfiltered (universe) paths.
+func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
+	t.Parallel()
+
+	// An enum value outside the wired set (ACCOUNTS/TRANSACTIONS/LOGS).
+	const badTarget = commonpb.QueryTarget(9999)
+
+	info := &commonpb.LedgerInfo{Name: "ledger1"}
+
+	cases := []struct {
+		name   string
+		filter *commonpb.QueryFilter
+	}{
+		{
+			name:   "nil filter (universe path)",
+			filter: nil,
+		},
+		{
+			name: "field filter",
+			filter: &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: fieldCondition("x", &commonpb.ExistsCondition{}),
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			iter, err := Compile(
+				nil, nil, tc.filter, badTarget, "ledger1",
+				nil, nil, info, nil, nil, nil, nil)
+			require.Error(t, err, "unsupported target must fail loudly, not return an (empty) iterator")
+			require.Nil(t, iter)
+
+			var compileErr *domain.ErrFilterCompilation
+			require.ErrorAs(t, err, &compileErr,
+				"unsupported target must surface as a filter-compilation error (got %T: %v)", err, err)
+			require.Contains(t, err.Error(), "unsupported query target")
+		})
+	}
+}
+
+// TestIsSupportedTarget pins the exact allow-list so a new QueryTarget enum
+// value is rejected until its iteration + enrichment paths are wired.
+func TestIsSupportedTarget(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	// No zero sentinel exists (ACCOUNTS == 0), so an unsupported value can only
+	// be an out-of-range enum — the shape a corrupt/forward-compat stored proto
+	// would take.
+	require.False(t, isSupportedTarget(commonpb.QueryTarget(9999)))
+}
+
 // staticIndexLookup is an in-memory indexes.Lookup for unit tests that
 // need to populate the bucket-scoped Index registry without spinning up
 // a Pebble store. Keyed exactly like the production registry.

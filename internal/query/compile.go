@@ -101,6 +101,16 @@ func Compile(
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
+	// Reject an unsupported/unknown target at the earliest point. Without this
+	// guard compileUniverse's default arm returns an empty iterator, which the
+	// caller (executeList) turns into an empty-but-successful page BEFORE its own
+	// fail-loud switch — so a stored prepared query with a bad target (gRPC
+	// create validates only the name) would silently succeed with an empty
+	// result instead of surfacing the invariant violation.
+	if !isSupportedTarget(target) {
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", target)
+	}
+
 	if indexVersionFor == nil {
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
@@ -243,7 +253,11 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 		}), nil
 
 	default:
-		return &SliceIterator{}, nil
+		// Unreachable: Compile rejects unsupported targets up front
+		// (isSupportedTarget), so every compileUniverse call runs under a
+		// validated target. Fail loudly rather than return an empty iterator,
+		// which would silently mask a target that slipped past the guard.
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", ctx.target)
 	}
 }
 
@@ -1587,6 +1601,21 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 	profile.Root = stats
 
 	return NewTrackedIterator(iter, stats)
+}
+
+// isSupportedTarget reports whether the compiler can materialize a query for
+// the given target. Kept as an explicit allow-list (not "!= 0") so a newly
+// added QueryTarget enum value is rejected until its iteration + enrichment
+// paths are wired, rather than silently falling through to an empty result.
+func isSupportedTarget(target commonpb.QueryTarget) bool {
+	switch target {
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return true
+	default:
+		return false
+	}
 }
 
 // targetHumanName returns a human-readable name for a query target. It
