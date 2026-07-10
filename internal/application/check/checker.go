@@ -2122,11 +2122,12 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 }
 
 // compareLedgerPresence verifies that every ledger the audit believes is live
-// has a stored LedgerInfo entry. compareSchema / compareAccountTypes iterate the
-// ledgers Pebble returns, so a LedgerInfo projection deleted outright (a ledger
-// with only schema / account-type declarations and no volumes leaves nothing
-// else to compare) would escape every projection check. This closes that blind
-// spot — the reverse of the UNKNOWN_LEDGER check on the replay path.
+// has a live stored LedgerInfo entry. compareSchema / compareAccountTypes iterate
+// the ledgers Pebble returns and skip tombstones, so a LedgerInfo projection that
+// is deleted outright OR tampered to a soft-deleted tombstone (a ledger with only
+// schema / account-type declarations and no volumes leaves nothing else to
+// compare) would escape every projection check. This closes that blind spot — the
+// reverse of the UNKNOWN_LEDGER check on the replay path.
 func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
@@ -2138,13 +2139,21 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		return fmt.Errorf("collecting ledgers for presence verification: %w", err)
 	}
 
-	stored := make(map[string]struct{}, len(ledgers))
+	// Only a live LedgerInfo satisfies presence. A ledger the audit still counts
+	// live but whose stored entry is soft-deleted is tampering, and it cannot
+	// false-positive: a legitimately deleted ledger is absent from knownLedgers
+	// (DeleteLedger replay removes it; the baseline seed skips tombstones).
+	live := make(map[string]struct{}, len(ledgers))
 	for _, info := range ledgers {
-		stored[info.GetName()] = struct{}{}
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		live[info.GetName()] = struct{}{}
 	}
 
 	for name := range knownLedgers {
-		if _, ok := stored[name]; ok {
+		if _, ok := live[name]; ok {
 			continue
 		}
 
@@ -2157,7 +2166,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
-			fmt.Sprintf("ledger %q is present in the audit but has no stored LedgerInfo", name),
+			fmt.Sprintf("ledger %q is live in the audit but its stored LedgerInfo is missing or soft-deleted", name),
 			0, name, "", "",
 		))
 	}

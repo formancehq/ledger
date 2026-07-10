@@ -71,10 +71,11 @@ const (
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 12
 	// Emitted when the audit says a ledger is live (a CreateLedger event with no
 	// later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
-	// archiving) but no LedgerInfo entry exists in the store. The stored-ledger
-	// loops in compareSchema / compareAccountTypes only visit ledgers Pebble
-	// returns, so an entirely deleted LedgerInfo projection would otherwise escape
-	// every projection check. This is the reverse of UNKNOWN_LEDGER.
+	// archiving) but the store has no live LedgerInfo for it — the entry is either
+	// absent or tampered to a soft-deleted tombstone. The stored-ledger loops in
+	// compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
+	// so both shapes would otherwise escape every projection check. This is the
+	// reverse of UNKNOWN_LEDGER.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 13
 )
 

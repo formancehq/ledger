@@ -2330,6 +2330,33 @@ func TestCompareLedgerPresence_PendingCleanupIgnored(t *testing.T) {
 	require.Empty(t, events)
 }
 
+// TestCompareLedgerPresence_SoftDeletedTreatedAsMissing: the audit knows a live
+// ledger but its stored LedgerInfo is tampered to a soft-deleted tombstone.
+// compareSchema / compareAccountTypes skip tombstones, so the presence check must
+// treat it as missing rather than counting it present.
+func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, DeletedAt: &commonpb.Timestamp{Data: 1_700_000_000_000_000}},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
 // TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
 // LedgerInfo (so the schema is seeded from the boundary state, not the live
 // store) and that the checker reads it back.
