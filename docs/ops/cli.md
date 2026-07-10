@@ -4341,11 +4341,32 @@ if a cluster secret is configured without TLS (`--tls-cert-file` and
 
 **The Raft transport server enforces the secret on every RPC.** When
 `--cluster-secret` is set, the Raft gRPC server (transport stream + snapshot
-service) installs a server-side interceptor that rejects any call whose
-`authorization: Bearer …` metadata does not match the configured secret with
-`codes.Unauthenticated`. The comparison is constant-time. Leaving
-`--cluster-secret` empty preserves the historical unauthenticated behavior for
-single-node setups; multi-node deployments **MUST** set it.
+service + the `ClusterBootstrapService` used by `--join`) installs a
+server-side interceptor that rejects any call whose `authorization: Bearer …`
+metadata does not match the configured secret with `codes.Unauthenticated`.
+The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
+historical unauthenticated behavior for single-node setups; multi-node
+deployments **MUST** set it.
+
+**Joining fails fast on a secret mismatch.** A node started with `--join`
+against a cluster whose RaftServer requires a secret will **not** retry
+indefinitely if its own secret is missing or wrong — that is a
+misconfiguration, never a transient condition. The joining node's startup
+aborts immediately with an actionable error instead of the raw gRPC status:
+
+```
+cluster join rejected by peer 1 (node-1:7777): inter-node authentication failed
+(missing authorization metadata on Raft RPC); this node was started without
+--cluster-secret, but the target cluster requires one: set --cluster-secret to
+the value configured on the existing cluster nodes (and --tls-mode, which
+--cluster-secret requires)
+```
+
+If the joining node *does* pass a secret but it does not match, the hint
+instead tells you to verify the secret against the existing cluster nodes. The
+Kubernetes operator injects `CLUSTER_SECRET` into every pod whenever TLS is
+active, so this failure surfaces only in manual/non-operator deployments where
+one node's secret drifted from the rest of the cluster.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \

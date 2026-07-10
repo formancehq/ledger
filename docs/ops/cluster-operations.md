@@ -86,6 +86,15 @@ cfg.RaftConfig.Peers = [{ID: 1, Addr: "...", ServiceAddr: "..."}]
 
 The retry loop allows the joining node to wait for the bootstrap node to be ready (useful when all pods start simultaneously in Kubernetes).
 
+**Fail-fast on a cluster-secret mismatch (EN-1080).** The retry loop treats
+transient conditions (peer not yet up, no leader) as retryable, but a
+`codes.Unauthenticated` from the target — the joining node's `--cluster-secret`
+is missing or wrong — is a hard configuration error. Instead of spinning until
+the 60-second deadline and surfacing an opaque "context deadline exceeded", the
+node aborts discovery immediately with a `JoinAuthError` that names the
+`--join` address and tells the operator whether to add or fix the secret.
+Learner registration (Phase 4) applies the same rule.
+
 #### Phase 2: Node Initialization
 
 `NewNode` detects an empty WAL and a non-empty `Peers` list:
