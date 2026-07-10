@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -236,10 +235,12 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 			"backup manifest exceeds %d bytes; refusing to read", maxRestoreManifestBytes)
 	}
 
-	var manifest backup.Manifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+	manifestPtr, err := backup.DecodeManifest(manifestData)
+	if err != nil {
 		return nil, nil, fmt.Errorf("parsing manifest: %w", err)
 	}
+
+	manifest := *manifestPtr
 
 	hasCheckpoint := manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0
 	if !hasCheckpoint && len(manifest.Exports) == 0 {

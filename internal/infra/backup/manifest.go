@@ -109,6 +109,17 @@ func ReadManifest(ctx context.Context, storage Storage, key string) (*Manifest, 
 		return nil, fmt.Errorf("reading manifest: %w", err)
 	}
 
+	return DecodeManifest(data)
+}
+
+// DecodeManifest decodes already-read manifest bytes, translating a decode
+// failure caused by the legacy pre-content-addressing schema into the
+// actionable ErrLegacyManifestFormat. Callers that read the manifest bytes
+// themselves (e.g. the gRPC restore path and the offline bootstrap command,
+// which each apply their own size guards and progress reporting around the
+// read) MUST decode through this helper rather than a bare json.Unmarshal so
+// legacy detection stays consistent everywhere.
+func DecodeManifest(data []byte) (*Manifest, error) {
 	var manifest Manifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		// A legacy manifest (checkpoint.files as filename→number) fails to

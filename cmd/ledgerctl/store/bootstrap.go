@@ -106,12 +106,14 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(fmt.Errorf("reading manifest data: %w", err))
 	}
 
-	var manifest backup.Manifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+	manifestPtr, err := backup.DecodeManifest(manifestData)
+	if err != nil {
 		spinner.Fail("Failed to parse manifest")
 
 		return cmdutil.Displayed(fmt.Errorf("parsing manifest: %w", err))
 	}
+
+	manifest := *manifestPtr
 
 	if manifest.Checkpoint == nil && len(manifest.Exports) == 0 {
 		spinner.Fail("Manifest contains no checkpoint and no exports")

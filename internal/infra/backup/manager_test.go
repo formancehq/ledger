@@ -189,6 +189,27 @@ func TestRunBackup_AbortsOnCorruptManifest(t *testing.T) {
 	require.Error(t, err, "RunBackup must fail on a corrupt existing manifest")
 }
 
+// TestRunBackup_ProceedsOnLegacyManifest verifies that a full backup does NOT
+// abort when the destination already holds a legacy pre-content-addressing
+// manifest: the full backup overwrites the manifest wholesale and never diffs
+// against it, so retaking a full backup is exactly the documented recovery path
+// out of a legacy manifest. It must proceed and publish a new manifest
+// (addresses the NumaryBot review on PR #1543). This is deliberately different
+// from the corrupt-JSON case above, which stays fatal.
+func TestRunBackup_ProceedsOnLegacyManifest(t *testing.T) {
+	t.Parallel()
+
+	store := newBackupTestStore(t)
+	legacy := []byte(`{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":123}},"exports":null}`)
+	storage := &recordingStorage{manifestBody: legacy}
+
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket", "test-backup")
+
+	require.NoError(t, err, "RunBackup must proceed past a legacy manifest and replace it")
+	require.True(t, storage.wrote(ManifestKey("bucket")),
+		"RunBackup must publish a fresh manifest, overwriting the legacy one")
+}
+
 // TestRunIncrementalBackup_AbortsOnCorruptManifest is the incremental
 // counterpart for the manifest-error branch.
 func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
