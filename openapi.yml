@@ -2670,6 +2670,7 @@ components:
         Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
       required:
         - asset
+        - color
         - input
         - output
         - balance
@@ -2794,6 +2795,7 @@ components:
         - destination
         - amount
         - asset
+        - color
       properties:
         source:
           type: string
@@ -3705,6 +3707,11 @@ components:
 
     NormalizedPosting:
       type: object
+      required:
+        - sourcePattern
+        - destinationPattern
+        - asset
+        - color
       properties:
         sourcePattern:
           type: string
