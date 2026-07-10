@@ -19,6 +19,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -40,17 +41,17 @@ type DefaultWAL struct {
 	mu sync.RWMutex
 
 	// HardState contains the current term and commit index
-	hardState raftpb.HardState
+	hardState *raftpb.HardState
 
 	// Snapshot stores the most recent snapshot
-	snapshot raftpb.Snapshot
+	snapshot *raftpb.Snapshot
 
 	// DefaultWAL for storing log entries
 	wal *wal.WAL
 
 	// In-memory cache of entries (for fast access)
 	// This is rebuilt from DefaultWAL on startup
-	entries []raftpb.Entry
+	entries []*raftpb.Entry
 
 	logger      logging.Logger
 	meter       metric.Meter
@@ -85,7 +86,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	s := &DefaultWAL{
-		entries:       make([]raftpb.Entry, 0),
+		entries:       make([]*raftpb.Entry, 0),
+		hardState:     &raftpb.HardState{},
+		snapshot:      &raftpb.Snapshot{},
 		logger:        logger,
 		meter:         meter,
 		dataDir:       dataDir,
@@ -135,7 +138,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		return nil, fmt.Errorf("checking DefaultWAL creation completion marker: %w", err)
 	}
 
-	var snap walpb.Snapshot
+	snap := &walpb.Snapshot{}
 
 	if err == nil {
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
@@ -161,17 +164,17 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		}
 
 		if loadedSnap != nil {
-			s.snapshot = *loadedSnap
+			s.snapshot = loadedSnap
 			s.logger.
 				WithFields(map[string]any{
-					"index":    s.snapshot.Metadata.Index,
-					"term":     s.snapshot.Metadata.Term,
+					"index":    s.snapshot.GetMetadata().GetIndex(),
+					"term":     s.snapshot.GetMetadata().GetTerm(),
 					"duration": time.Since(loadStart).String(),
 				}).
 				Infof("Loaded snapshot from disk")
-			snap = walpb.Snapshot{
-				Index: s.snapshot.Metadata.Index,
-				Term:  s.snapshot.Metadata.Term,
+			snap = &walpb.Snapshot{
+				Index: new(s.snapshot.GetMetadata().GetIndex()),
+				Term:  new(s.snapshot.GetMetadata().GetTerm()),
 			}
 		} else if recovered := recoverConfStateFromWALRecords(walSnaps); recovered != nil {
 			// Snap file lost (crash during non-atomic write, corrupted, or deleted).
@@ -181,31 +184,31 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			s.logger.Errorf("========================================")
 			s.logger.Errorf("SNAP FILE RECOVERY: no snap file matches any of %d WAL snapshot records", len(walSnaps))
 			s.logger.Errorf("Recovering ConfState from WAL record (index=%d, term=%d, voters=%v)",
-				recovered.Index, recovered.Term, recovered.ConfState.Voters)
+				recovered.GetIndex(), recovered.GetTerm(), recovered.GetConfState().GetVoters())
 			s.logger.Errorf("========================================")
 
 			// Torn-boot recovery is the correct answer to a lost snap file;
 			// asserting it confirms fault exploration actually reaches this
 			// lifecycle outcome.
 			assert.Reachable("snap file recovered from WAL snapshot records", map[string]any{
-				"index":      recovered.Index,
-				"term":       recovered.Term,
+				"index":      recovered.GetIndex(),
+				"term":       recovered.GetTerm(),
 				"walRecords": len(walSnaps),
 			})
 
-			s.snapshot = raftpb.Snapshot{
-				Metadata: raftpb.SnapshotMetadata{
-					Index:     recovered.Index,
-					Term:      recovered.Term,
-					ConfState: *recovered.ConfState,
+			s.snapshot = &raftpb.Snapshot{
+				Metadata: &raftpb.SnapshotMetadata{
+					Index:     new(recovered.GetIndex()),
+					Term:      new(recovered.GetTerm()),
+					ConfState: recovered.GetConfState(),
 				},
 				// Data is empty: only peer addresses are lost (they will be
 				// rediscovered via etcd). The FSM state lives in Pebble
 				// (separate volume) and is not affected.
 			}
-			snap = walpb.Snapshot{
-				Index: recovered.Index,
-				Term:  recovered.Term,
+			snap = &walpb.Snapshot{
+				Index: new(recovered.GetIndex()),
+				Term:  new(recovered.GetTerm()),
 			}
 
 			// Persist the recovered snapshot so subsequent restarts succeed normally.
@@ -238,13 +241,13 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		// not-populated: an unreadable WAL on this branch is the incomplete
 		// creation this branch exists to clean up.
 		if existing, globErr := filepath.Glob(filepath.Join(s.etcdWalDir, "*.wal")); globErr == nil && len(existing) > 0 {
-			if hs, verifyErr := wal.Verify(zapLogger, s.etcdWalDir, walpb.Snapshot{}); verifyErr == nil && hs != nil && (hs.Term > 0 || hs.Vote != 0 || hs.Commit > 0) {
+			if hs, verifyErr := wal.Verify(zapLogger, s.etcdWalDir, &walpb.Snapshot{}); verifyErr == nil && hs != nil && (hs.GetTerm() > 0 || hs.GetVote() != 0 || hs.GetCommit() > 0) {
 				assert.Unreachable("WAL recreation would discard an existing populated WAL directory", map[string]any{
 					"walFileCount": len(existing),
 					"walDir":       s.etcdWalDir,
-					"term":         hs.Term,
-					"vote":         hs.Vote,
-					"commit":       hs.Commit,
+					"term":         hs.GetTerm(),
+					"vote":         hs.GetVote(),
+					"commit":       hs.GetCommit(),
 				})
 			}
 		}
@@ -322,14 +325,17 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		s.logger.Errorf("WAL recovery complete — %d entries recovered", len(s.entries))
 		s.logger.Errorf("========================================")
 	}
+	if s.hardState == nil {
+		s.hardState = &raftpb.HardState{}
+	}
 
 	s.logger.
 		WithFields(map[string]any{
 			"entries":          len(s.entries),
-			"hardState.Term":   s.hardState.Term,
-			"hardState.Commit": s.hardState.Commit,
-			"snapshot.Index":   s.snapshot.Metadata.Index,
-			"snapshot.Term":    s.snapshot.Metadata.Term,
+			"hardState.Term":   s.hardState.GetTerm(),
+			"hardState.Commit": s.hardState.GetCommit(),
+			"snapshot.Index":   s.snapshot.GetMetadata().GetIndex(),
+			"snapshot.Term":    s.snapshot.GetMetadata().GetTerm(),
 		}).Infof("WAL replay completed")
 
 	// Start background purger to delete old WAL segment files that have been
@@ -346,10 +352,10 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 // recoverConfStateFromWALRecords scans WAL snapshot records from newest to
 // oldest and returns the first one that carries a non-empty ConfState.
 // Returns nil if no usable record is found.
-func recoverConfStateFromWALRecords(walSnaps []walpb.Snapshot) *walpb.Snapshot {
+func recoverConfStateFromWALRecords(walSnaps []*walpb.Snapshot) *walpb.Snapshot {
 	for i := range slices.Backward(walSnaps) {
-		if walSnaps[i].ConfState != nil && len(walSnaps[i].ConfState.Voters) > 0 {
-			return &walSnaps[i]
+		if walSnaps[i].GetConfState() != nil && len(walSnaps[i].GetConfState().GetVoters()) > 0 {
+			return walSnaps[i]
 		}
 	}
 
@@ -357,15 +363,34 @@ func recoverConfStateFromWALRecords(walSnaps []walpb.Snapshot) *walpb.Snapshot {
 }
 
 // InitialState returns the saved HardState and ConfState information.
-func (s *DefaultWAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
+//
+// The ConfState is wrapped with raftpb.EnsureConfState so it (and all of its
+// pointer fields) is never nil. raft v3.7 requires this: newRaft feeds the
+// returned ConfState straight into confchange.Restore, which dereferences its
+// slice fields — a nil ConfState (as an empty WAL would otherwise yield, since
+// s.snapshot starts as &raftpb.Snapshot{} with a nil Metadata.ConfState) would
+// panic. This mirrors what raft's own MemoryStorage.InitialState does.
+//
+// EnsureConfState mutates its argument in place (it sets a nil AutoLeave pointer
+// field), so it must NOT be called on s.snapshot's ConfState: that value is owned
+// by the shared snapshot and is only guarded by an RLock here, so a write through
+// it races with concurrent InitialState / snapshot readers. We first clone the
+// shared ConfState (or start from nil when there is none) and let EnsureConfState
+// fill in the clone's pointer fields, leaving the shared value untouched.
+func (s *DefaultWAL) InitialState() (*raftpb.HardState, *raftpb.ConfState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.hardState, s.snapshot.Metadata.ConfState, nil
+	var confStateCopy *raftpb.ConfState
+	if shared := s.snapshot.GetMetadata().GetConfState(); shared != nil {
+		confStateCopy = proto.Clone(shared).(*raftpb.ConfState)
+	}
+
+	return s.hardState, raftpb.EnsureConfState(confStateCopy), nil
 }
 
 // Entries returns a slice of log entries in the range [lo, hi).
-func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]*raftpb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -389,7 +414,7 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		return nil, raft.ErrUnavailable
 	}
 
-	offset := s.entries[0].Index
+	offset := s.entries[0].GetIndex()
 	if lo < offset {
 		return nil, raft.ErrCompacted
 	}
@@ -404,7 +429,7 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	// Limit size
 	size := uint64(0)
 	for i := range ents {
-		size += uint64(ents[i].Size())
+		size += uint64(proto.Size(ents[i]))
 		if size > maxSize {
 			ents = ents[:i+1]
 
@@ -434,10 +459,10 @@ func (s *DefaultWAL) LastIndex() (uint64, error) {
 // lastIndexLocked returns the last index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) lastIndexLocked() uint64 {
 	if len(s.entries) == 0 {
-		return s.snapshot.Metadata.Index
+		return s.snapshot.GetMetadata().GetIndex()
 	}
 
-	return s.entries[len(s.entries)-1].Index
+	return s.entries[len(s.entries)-1].GetIndex()
 }
 
 // FirstIndex returns the index of the first log entry.
@@ -451,14 +476,14 @@ func (s *DefaultWAL) FirstIndex() (uint64, error) {
 // firstIndexLocked returns the first index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) firstIndexLocked() uint64 {
 	if len(s.entries) == 0 {
-		return s.snapshot.Metadata.Index + 1
+		return s.snapshot.GetMetadata().GetIndex() + 1
 	}
 
-	return s.entries[0].Index
+	return s.entries[0].GetIndex()
 }
 
 // Snapshot returns the most recent snapshot.
-func (s *DefaultWAL) Snapshot() (raftpb.Snapshot, error) {
+func (s *DefaultWAL) Snapshot() (*raftpb.Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -466,10 +491,10 @@ func (s *DefaultWAL) Snapshot() (raftpb.Snapshot, error) {
 }
 
 // Append appends entries to the log.
-func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
+func (s *DefaultWAL) Append(hardState *raftpb.HardState, entries []*raftpb.Entry) error {
 	s.mu.Lock()
 
-	if hardState == s.hardState && len(entries) == 0 {
+	if hardStateEqual(hardState, s.hardState) && len(entries) == 0 {
 		s.mu.Unlock()
 
 		return nil
@@ -477,8 +502,8 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 
 	var firstIdx, lastIdx uint64
 	if len(entries) > 0 {
-		firstIdx = entries[0].Index
-		lastIdx = entries[len(entries)-1].Index
+		firstIdx = entries[0].GetIndex()
+		lastIdx = entries[len(entries)-1].GetIndex()
 	}
 
 	if s.logger.Enabled(logging.TraceLevel) {
@@ -486,10 +511,10 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 			"entries":          len(entries),
 			"firstIndex":       firstIdx,
 			"lastIndex":        lastIdx,
-			"hardState.Term":   hardState.Term,
-			"hardState.Vote":   hardState.Vote,
-			"hardState.Commit": hardState.Commit,
-			"prevCommit":       s.hardState.Commit,
+			"hardState.Term":   hardState.GetTerm(),
+			"hardState.Vote":   hardState.GetVote(),
+			"hardState.Commit": hardState.GetCommit(),
+			"prevCommit":       s.hardState.GetCommit(),
 			"cachedEntries":    len(s.entries),
 		})
 		logger.Tracef("WAL Append")
@@ -498,9 +523,9 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	// Update in-memory cache.
 	if len(entries) > 0 {
 		if len(s.entries) > 0 {
-			offset := s.entries[0].Index
+			offset := s.entries[0].GetIndex()
 
-			last := entries[0].Index + uint64(len(entries)) - 1
+			last := entries[0].GetIndex() + uint64(len(entries)) - 1
 			switch {
 			case last < offset:
 				// Stale append: every incoming entry precedes the cached
@@ -509,18 +534,18 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 				// continue with HardState persistence below so a piggy-
 				// backed term/vote/commit bump on the same call is not
 				// silently lost (#301).
-				if hardState == s.hardState {
+				if hardStateEqual(hardState, s.hardState) {
 					s.mu.Unlock()
 
 					return nil
 				}
 
 				entries = nil
-			case entries[0].Index > offset+uint64(len(s.entries)):
+			case entries[0].GetIndex() > offset+uint64(len(s.entries)):
 				s.entries = append(s.entries, entries...)
 			default:
-				truncateIndex := entries[0].Index
-				var kept []raftpb.Entry
+				truncateIndex := entries[0].GetIndex()
+				var kept []*raftpb.Entry
 				if truncateIndex > offset {
 					kept = s.entries[:truncateIndex-offset]
 				}
@@ -530,7 +555,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 				// that end up in MsgApp messages serialized asynchronously
 				// by the transport. Reusing the backing array after truncation
 				// would overwrite entries the transport is still reading.
-				merged := make([]raftpb.Entry, len(kept)+len(entries))
+				merged := make([]*raftpb.Entry, len(kept)+len(entries))
 				copy(merged, kept)
 				copy(merged[len(kept):], entries)
 				s.entries = merged
@@ -556,11 +581,17 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"error":            err,
-			"hardState.Commit": newHardState.Commit,
+			"hardState.Commit": newHardState.GetCommit(),
 		}).Errorf("WAL Save failed")
 	}
 
 	return err
+}
+
+// hardStateEqual returns true if a and b represent the same HardState.
+// Nil is treated as an empty HardState.
+func hardStateEqual(a, b *raftpb.HardState) bool {
+	return a.GetTerm() == b.GetTerm() && a.GetVote() == b.GetVote() && a.GetCommit() == b.GetCommit()
 }
 
 // CreateSnapshot creates a snapshot at the given index.
@@ -571,10 +602,10 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 
 	// Allow creating snapshot on empty storage (for initial cluster setup or restore).
 	// Otherwise, prevent creating snapshot at same or lower index.
-	isEmptyStorage := s.snapshot.Metadata.Index == 0 &&
-		len(s.snapshot.Metadata.ConfState.Voters) == 0 &&
+	isEmptyStorage := s.snapshot.GetMetadata().GetIndex() == 0 &&
+		len(s.snapshot.GetMetadata().GetConfState().GetVoters()) == 0 &&
 		len(s.entries) == 0
-	if !isEmptyStorage && index <= s.snapshot.Metadata.Index {
+	if !isEmptyStorage && index <= s.snapshot.GetMetadata().GetIndex() {
 		s.mu.Unlock()
 
 		return raft.ErrSnapOutOfDate
@@ -588,7 +619,7 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		err  error
 	)
 
-	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 {
+	if s.snapshot.GetMetadata().GetIndex() == 0 && len(s.entries) == 0 {
 		if index == 0 {
 			// Initial snapshot at index 0 - use term 0
 			term = 0
@@ -606,11 +637,11 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		}
 	}
 
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     index,
-			Term:      term,
-			ConfState: *cs,
+	snap := &raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{
+			Index:     new(index),
+			Term:      new(term),
+			ConfState: cs,
 		},
 		Data: data,
 	}
@@ -626,9 +657,9 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	// is still on disk and LoadNewestAvailable will fall back to it.
 	// Without this ordering, a crash would leave zero matching snap files,
 	// causing the node to enter the fresh-start branch and lose cache state.
-	if err := s.wal.SaveSnapshot(walpb.Snapshot{
-		Index:     snap.Metadata.Index,
-		Term:      snap.Metadata.Term,
+	if err := s.wal.SaveSnapshot(&walpb.Snapshot{
+		Index:     new(snap.GetMetadata().GetIndex()),
+		Term:      new(snap.GetMetadata().GetTerm()),
 		ConfState: cs,
 	}); err != nil {
 		return fmt.Errorf("saving snapshot record: %w", err)
@@ -636,7 +667,7 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 
 	// Safe to clean up old snap files now — the WAL record guarantees that
 	// LoadNewestAvailable will match the new snap file on restart.
-	s.snapshotter.CleanupOlderThan(snap.Metadata.Index)
+	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Snapshot created")
 
@@ -651,14 +682,22 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	s.mu.Lock()
 
 	// Nothing to update if there is no snapshot yet.
-	if s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 {
+	if s.snapshot.GetMetadata().GetIndex() == 0 && len(s.snapshot.GetMetadata().GetConfState().GetVoters()) == 0 {
 		s.mu.Unlock()
 
 		return nil
 	}
 
-	snap := s.snapshot
-	snap.Metadata.ConfState = *cs
+	// Clone the snapshot so we don't mutate the previous value in place;
+	// callers may still hold references (e.g. Snapshot() returned it).
+	snap := &raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{
+			Index:     new(s.snapshot.GetMetadata().GetIndex()),
+			Term:      new(s.snapshot.GetMetadata().GetTerm()),
+			ConfState: cs,
+		},
+		Data: s.snapshot.GetData(),
+	}
 	s.snapshot = snap
 	s.mu.Unlock()
 
@@ -667,9 +706,9 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
-	err = s.wal.SaveSnapshot(walpb.Snapshot{
-		Index:     snap.Metadata.Index,
-		Term:      snap.Metadata.Term,
+	err = s.wal.SaveSnapshot(&walpb.Snapshot{
+		Index:     new(snap.GetMetadata().GetIndex()),
+		Term:      new(snap.GetMetadata().GetTerm()),
 		ConfState: cs,
 	})
 	if err != nil {
@@ -677,7 +716,7 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	}
 
 	s.logger.WithFields(map[string]any{
-		"index": snap.Metadata.Index,
+		"index": snap.GetMetadata().GetIndex(),
 	}).Infof("Snapshot ConfState updated")
 
 	return nil
@@ -685,13 +724,13 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held).
 func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
-	firstIndex := s.snapshot.Metadata.Index + 1
+	firstIndex := s.snapshot.GetMetadata().GetIndex() + 1
 
 	var lastIndex uint64
 	if len(s.entries) == 0 {
-		lastIndex = s.snapshot.Metadata.Index
+		lastIndex = s.snapshot.GetMetadata().GetIndex()
 	} else {
-		lastIndex = s.entries[len(s.entries)-1].Index
+		lastIndex = s.entries[len(s.entries)-1].GetIndex()
 	}
 
 	if i < firstIndex-1 {
@@ -703,14 +742,14 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	}
 
 	if i == firstIndex-1 {
-		return s.snapshot.Metadata.Term, nil
+		return s.snapshot.GetMetadata().GetTerm(), nil
 	}
 
 	if len(s.entries) == 0 {
 		return 0, raft.ErrUnavailable
 	}
 
-	offset := s.entries[0].Index
+	offset := s.entries[0].GetIndex()
 	if i < offset {
 		return 0, raft.ErrCompacted
 	}
@@ -719,19 +758,19 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 		return 0, raft.ErrUnavailable
 	}
 
-	return s.entries[i-offset].Term, nil
+	return s.entries[i-offset].GetTerm(), nil
 }
 
 // ApplySnapshot applies a snapshot to the storage.
-func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
+func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{
-		"snapIndex":      snap.Metadata.Index,
-		"snapTerm":       snap.Metadata.Term,
-		"prevSnapIndex":  s.snapshot.Metadata.Index,
-		"prevHardCommit": s.hardState.Commit,
+		"snapIndex":      snap.GetMetadata().GetIndex(),
+		"snapTerm":       snap.GetMetadata().GetTerm(),
+		"prevSnapIndex":  s.snapshot.GetMetadata().GetIndex(),
+		"prevHardCommit": s.hardState.GetCommit(),
 		"cachedEntries":  len(s.entries),
 	}).Infof("WAL ApplySnapshot")
 
@@ -740,9 +779,12 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 
 	// Ensure the HardState commit index is at least as high as the snapshot.
 	// A snapshot at index N implies all entries up to N are committed.
-	if s.hardState.Commit < snap.Metadata.Index {
-		s.hardState.Commit = snap.Metadata.Index
-		s.hardState.Term = snap.Metadata.Term
+	if s.hardState.GetCommit() < snap.GetMetadata().GetIndex() {
+		s.hardState = &raftpb.HardState{
+			Term:   new(snap.GetMetadata().GetTerm()),
+			Vote:   new(s.hardState.GetVote()),
+			Commit: new(snap.GetMetadata().GetIndex()),
+		}
 	}
 
 	// Write the snapshot record + updated HardState to the etcd WAL first.
@@ -762,10 +804,10 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
-	walSnap := walpb.Snapshot{
-		Index:     snap.Metadata.Index,
-		Term:      snap.Metadata.Term,
-		ConfState: &snap.Metadata.ConfState,
+	walSnap := &walpb.Snapshot{
+		Index:     new(snap.GetMetadata().GetIndex()),
+		Term:      new(snap.GetMetadata().GetTerm()),
+		ConfState: snap.GetMetadata().GetConfState(),
 	}
 	if err := s.wal.SaveSnapshot(walSnap); err != nil {
 		return fmt.Errorf("saving snapshot to WAL: %w", err)
@@ -776,7 +818,7 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	}
 
 	// Safe to clean up old snap files now — the WAL record is persisted.
-	s.snapshotter.CleanupOlderThan(snap.Metadata.Index)
+	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
 
 	return nil
 }
@@ -785,13 +827,13 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	s.mu.Lock()
 
-	if compactIndex > s.snapshot.Metadata.Index {
+	if compactIndex > s.snapshot.GetMetadata().GetIndex() {
 		s.mu.Unlock()
 
 		return fmt.Errorf(
 			"index (%d) after last snapshot index(%d): %w",
 			compactIndex,
-			s.snapshot.Metadata.Index,
+			s.snapshot.GetMetadata().GetIndex(),
 			raft.ErrCompacted,
 		)
 	}
@@ -816,7 +858,7 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 		// Simply re-slicing with s.entries[truncateIndex:] keeps a reference
 		// to the original backing array, preventing GC from reclaiming memory.
 		remaining := len(s.entries) - int(truncateIndex)
-		newEntries := make([]raftpb.Entry, remaining)
+		newEntries := make([]*raftpb.Entry, remaining)
 		copy(newEntries, s.entries[truncateIndex:])
 		s.entries = newEntries
 	} else {

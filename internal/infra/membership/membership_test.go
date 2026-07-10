@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -225,26 +226,26 @@ func TestMembership_WriteConfChange(t *testing.T) {
 
 	// apply runs the handler on a fresh WriteSession + commits it, so
 	// the test exercises the same Pebble write path the FSM uses.
-	apply := func(t *testing.T, cc raftpb.ConfChangeV2, v2 bool) {
+	apply := func(t *testing.T, cc *raftpb.ConfChangeV2, v2 bool) {
 		t.Helper()
 
-		data, err := cc.Marshal()
+		data, err := proto.Marshal(cc)
 		require.NoError(t, err)
 
-		entry := raftpb.Entry{
-			Type: raftpb.EntryConfChangeV2,
+		entry := &raftpb.Entry{
+			Type: new(raftpb.EntryConfChangeV2),
 			Data: data,
 		}
 		if !v2 {
-			ccV1 := raftpb.ConfChange{
-				Type:    cc.Changes[0].Type,
-				NodeID:  cc.Changes[0].NodeID,
-				Context: cc.Context,
+			ccV1 := &raftpb.ConfChange{
+				Type:    new(cc.GetChanges()[0].GetType()),
+				NodeId:  new(cc.GetChanges()[0].GetNodeId()),
+				Context: cc.GetContext(),
 			}
-			d, err := ccV1.Marshal()
+			d, err := proto.Marshal(ccV1)
 			require.NoError(t, err)
 
-			entry = raftpb.Entry{Type: raftpb.EntryConfChange, Data: d}
+			entry = &raftpb.Entry{Type: new(raftpb.EntryConfChange), Data: d}
 		}
 
 		session := m.store.store.OpenWriteSession()
@@ -252,12 +253,12 @@ func TestMembership_WriteConfChange(t *testing.T) {
 		require.NoError(t, session.Commit())
 	}
 
-	apply(t, raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddLearnerNode, NodeID: 1}},
+	apply(t, &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(1)}},
 		Context: addCtx,
 	}, false)
-	apply(t, raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddLearnerNode, NodeID: 2}},
+	apply(t, &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddLearnerNode), NodeId: proto.Uint64(2)}},
 		Context: addLearnerCtx,
 	}, true)
 
@@ -272,8 +273,8 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	// PromoteLearner (ConfChangeAddNode without context) — must be a
 	// no-op for the peer payload: it's a role change, not an address
 	// change.
-	apply(t, raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeAddNode, NodeID: 2}},
+	apply(t, &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)}},
 		Context: nil,
 	}, true)
 
@@ -286,8 +287,8 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	// Context — WriteConfChange fails loudly otherwise.
 	removeCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: make([]byte, 16)})
 	require.NoError(t, err)
-	apply(t, raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{{Type: raftpb.ConfChangeRemoveNode, NodeID: 1}},
+	apply(t, &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)}},
 		Context: removeCtx,
 	}, true)
 
@@ -447,7 +448,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 		t.Parallel()
 		m := newSeeded(t)
 
-		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{
+		require.NoError(t, m.ReconcileAgainstConfState(&raftpb.ConfState{
 			Voters:   []uint64{1, 2, 7},
 			Learners: []uint64{3},
 		}))
@@ -464,7 +465,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 		t.Parallel()
 		m := newSeeded(t)
 
-		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{
+		require.NoError(t, m.ReconcileAgainstConfState(&raftpb.ConfState{
 			Voters: []uint64{1, 2},
 		}))
 
@@ -475,7 +476,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 		t.Parallel()
 		m := newSeeded(t)
 
-		require.NoError(t, m.ReconcileAgainstConfState(raftpb.ConfState{}))
+		require.NoError(t, m.ReconcileAgainstConfState(&raftpb.ConfState{}))
 
 		got := m.PeerAddresses()
 		require.Len(t, got, 1, "empty ConfState must clear everything except self")
@@ -486,7 +487,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 		t.Parallel()
 		m := newSeeded(t)
 
-		cs := raftpb.ConfState{Voters: []uint64{1, 2, 7}, Learners: []uint64{3}}
+		cs := &raftpb.ConfState{Voters: []uint64{1, 2, 7}, Learners: []uint64{3}}
 		require.NoError(t, m.ReconcileAgainstConfState(cs))
 		before := m.PeerAddresses()
 
@@ -512,10 +513,10 @@ func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	cc := raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{
-			{Type: raftpb.ConfChangeAddNode, NodeID: 1},
-			{Type: raftpb.ConfChangeAddNode, NodeID: 2},
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{
+			{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(1)},
+			{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)},
 		},
 		Context: ctx,
 	}
@@ -536,10 +537,10 @@ func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 func TestWalkConfChangeContexts_MultiRemoveAllowed(t *testing.T) {
 	t.Parallel()
 
-	cc := raftpb.ConfChangeV2{
-		Changes: []raftpb.ConfChangeSingle{
-			{Type: raftpb.ConfChangeRemoveNode, NodeID: 1},
-			{Type: raftpb.ConfChangeRemoveNode, NodeID: 2},
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{
+			{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(1)},
+			{Type: new(raftpb.ConfChangeRemoveNode), NodeId: proto.Uint64(2)},
 		},
 	}
 

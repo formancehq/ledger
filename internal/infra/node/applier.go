@@ -30,7 +30,7 @@ import (
 // applyWork represents a unit of work for the Applier goroutine.
 // Exactly one of (entries, barrier, syncLeader, installSnapshot) is set per work item.
 type applyWork struct {
-	entries         []raftpb.Entry
+	entries         []*raftpb.Entry
 	confState       *raftpb.ConfState
 	barrier         chan struct{} // non-nil = drain; closed when processed
 	syncLeader      uint64        // non-zero = trigger SyncSnapshot from Run goroutine
@@ -40,7 +40,7 @@ type applyWork struct {
 	// into rawNode AFTER the entries are applied to the FSM — that is what
 	// bumps raft.Applied and aligns it with FSM-applied. Used only when
 	// raft.Config.AsyncStorageWrites is true.
-	responses []raftpb.Message
+	responses []*raftpb.Message
 }
 
 // decodedApplyWork is the post-prefetch shape consumed by Run's main loop.
@@ -159,7 +159,7 @@ type commitWork struct {
 	// raft.Applied advances only after CommitPreparedBatch has landed.
 	// Empty on all but the last sub-batch of an applyDecodedEntriesToFSM call,
 	// and always empty for the replay path (applyEntriesAndResolveCommands).
-	responses []raftpb.Message
+	responses []*raftpb.Message
 	done      chan error
 }
 
@@ -432,12 +432,12 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 // new leader can only append at a term strictly higher than any preceding
 // entry's. The last entry's term is therefore the max. Returns 0 for an
 // empty slice — callers skip the sweep when maxTerm == 0.
-func batchMaxTerm(entries []raftpb.Entry) uint64 {
+func batchMaxTerm(entries []*raftpb.Entry) uint64 {
 	if len(entries) == 0 {
 		return 0
 	}
 
-	return entries[len(entries)-1].Term
+	return entries[len(entries)-1].GetTerm()
 }
 
 // batchMaxTermDecoded is the DecodedEntry variant of batchMaxTerm.
@@ -446,14 +446,14 @@ func batchMaxTermDecoded(decoded []state.DecodedEntry) uint64 {
 		return 0
 	}
 
-	return decoded[len(decoded)-1].Entry.Term
+	return decoded[len(decoded)-1].Entry.GetTerm()
 }
 
 // sweepBelowTerm fails every pending future whose stored term is strictly
 // smaller than the max term in entries. Callers should invoke this AFTER
 // per-commandID resolution for the same batch, so committed older-term
 // entries get their futures resolved first.
-func (a *Applier) sweepBelowTerm(entries []raftpb.Entry) {
+func (a *Applier) sweepBelowTerm(entries []*raftpb.Entry) {
 	maxTerm := batchMaxTerm(entries)
 
 	if maxTerm > 0 {
@@ -641,7 +641,7 @@ const (
 // len(responses) == 0 is a no-op (returns fireSent) so callers can hand a
 // possibly-empty slice unconditionally — the empty-guard doesn't need to
 // live at every call site.
-func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, responses []raftpb.Message) fireOutcome {
+func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, responses []*raftpb.Message) fireOutcome {
 	if len(responses) == 0 {
 		return fireSent
 	}
@@ -662,7 +662,7 @@ func (a *Applier) fireResponses(ctx context.Context, stop chan struct{}, respons
 // responses (AsyncStorageWrites only) are MsgStorageApplyResp messages that
 // must be Step()-ed back into rawNode after the apply completes for this
 // batch. Pass nil in tests / sync mode.
-func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, responses []raftpb.Message, stop chan struct{}) {
+func (a *Applier) Submit(entries []*raftpb.Entry, confState *raftpb.ConfState, responses []*raftpb.Message, stop chan struct{}) {
 	select {
 	case a.ch <- applyWork{entries: entries, confState: confState, responses: responses}:
 	case <-stop:
@@ -1166,7 +1166,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 // trigger entry (always last). Each checkpoint is handled synchronously
 // (createReplayCheckpoint / createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
-func (a *Applier) applyReplayEntries(ctx context.Context, entries []raftpb.Entry) error {
+func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entry) error {
 	decoded, err := state.DecodeEntries(entries)
 	if err != nil {
 		return fmt.Errorf("decoding replay entries: %w", err)
@@ -1217,7 +1217,7 @@ func (a *Applier) waitPendingCommit(ctx context.Context) error {
 // committer can fail older-term pending futures after resolving this batch.
 // responses (AsyncStorageWrites only) are MsgStorageApplyResp messages to
 // fire on the response sink AFTER commit completes; pass nil to skip.
-func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64, responses []raftpb.Message) {
+func (a *Applier) submitAsyncCommit(pb *state.PreparedBatch, pfs []pendingFuture, maxTerm uint64, responses []*raftpb.Message) {
 	done := make(chan error, 1)
 	a.pending = &pendingCommit{done: done}
 	a.commitCh <- commitWork{prepared: pb, futures: pfs, maxTerm: maxTerm, responses: responses, done: done}
@@ -1382,7 +1382,7 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 //
 // The caller (applyDecodedEntriesToFSM) owns the lifetime of decoded[].Proposal
 // pointers — this method does not release them.
-func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []raftpb.Message, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
+func (a *Applier) applyEntriesPipelined(ctx context.Context, responses []*raftpb.Message, decoded ...state.DecodedEntry) (*state.ApplyEntriesResult, error) {
 	prepareStart := time.Now()
 
 	pb, err := a.fsm.PrepareDecodedEntries(ctx, a.store, decoded...)
@@ -1471,7 +1471,7 @@ func (a *Applier) resolveFutures(result *state.ApplyEntriesResult) {
 // When that happens we MUST continue processing the tail in subsequent FSM
 // batches; dropping it produces an "entry index gap detected" panic in the
 // next PrepareEntries call. Hence the loop.
-func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []raftpb.Message, decoded []state.DecodedEntry) error {
+func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct{}, confState *raftpb.ConfState, responses []*raftpb.Message, decoded []state.DecodedEntry) error {
 	defer state.ReleaseDecodedEntries(decoded)
 
 	for offset := 0; offset < len(decoded); {
@@ -1488,7 +1488,7 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 		// applied. If a checkpoint fires here (end < len(decoded)), the
 		// tail is spooled below and we fire responses eagerly after
 		// handleCheckpointRequired returns.
-		var subResponses []raftpb.Message
+		var subResponses []*raftpb.Message
 		if end == len(decoded) {
 			subResponses = responses
 		}
@@ -1559,8 +1559,8 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 // slice of DecodedEntry for APIs that take raw entries (spool, replay
 // fallbacks, maintenance handoff). The returned slice is freshly allocated
 // and does not share storage with the input.
-func rawEntriesFromDecoded(decoded []state.DecodedEntry) []raftpb.Entry {
-	out := make([]raftpb.Entry, len(decoded))
+func rawEntriesFromDecoded(decoded []state.DecodedEntry) []*raftpb.Entry {
+	out := make([]*raftpb.Entry, len(decoded))
 	for i := range decoded {
 		out[i] = decoded[i].Entry
 	}
@@ -1581,7 +1581,7 @@ func rawEntriesFromDecoded(decoded []state.DecodedEntry) []raftpb.Entry {
 // entries, scans, and releases. Hot-path callers should decode once at the
 // applier boundary and use findCheckpointBoundaryDecoded directly so the
 // pipeline never re-unmarshals the same payload.
-func findCheckpointBoundary(entries []raftpb.Entry) (int, error) {
+func findCheckpointBoundary(entries []*raftpb.Entry) (int, error) {
 	decoded, err := state.DecodeEntries(entries)
 	if err != nil {
 		return 0, err
@@ -1637,12 +1637,12 @@ type maintenanceTask func(
 // normal hot-path routing.
 func (a *Applier) gateAndLaunchMaintenance(
 	ctx context.Context,
-	entries []raftpb.Entry,
+	entries []*raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
 	gatingReason int32,
 	task maintenanceTask,
 ) error {
-	frozenAtIndex := entries[len(entries)-1].Index
+	frozenAtIndex := entries[len(entries)-1].GetIndex()
 
 	a.status.Store(statusGated)
 	a.gatingReason.Store(gatingReason)
@@ -1665,7 +1665,7 @@ func (a *Applier) gateAndLaunchMaintenance(
 // being created, new committed entries are spooled and replayed afterward.
 func (a *Applier) handleCheckpointRequired(
 	ctx context.Context,
-	entries []raftpb.Entry,
+	entries []*raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
 ) error {
 	return a.gateAndLaunchMaintenance(ctx, entries, applyResult, gatingReasonSnapshotting,
@@ -1704,7 +1704,7 @@ func (a *Applier) handleCheckpointRequired(
 // created, new committed entries are spooled and replayed afterward.
 func (a *Applier) handleQueryCheckpointRequired(
 	ctx context.Context,
-	entries []raftpb.Entry,
+	entries []*raftpb.Entry,
 	applyResult *state.ApplyEntriesResult,
 ) error {
 	checkpointID := applyResult.QueryCheckpointID
@@ -1728,11 +1728,12 @@ func (a *Applier) handleQueryCheckpointRequired(
 }
 
 // confStatesEqual returns true when two ConfStates have identical membership.
+// Nil is treated as an empty ConfState.
 func confStatesEqual(a, b *raftpb.ConfState) bool {
-	return slicesEqual(a.Voters, b.Voters) &&
-		slicesEqual(a.Learners, b.Learners) &&
-		slicesEqual(a.VotersOutgoing, b.VotersOutgoing) &&
-		slicesEqual(a.LearnersNext, b.LearnersNext)
+	return slicesEqual(a.GetVoters(), b.GetVoters()) &&
+		slicesEqual(a.GetLearners(), b.GetLearners()) &&
+		slicesEqual(a.GetVotersOutgoing(), b.GetVotersOutgoing()) &&
+		slicesEqual(a.GetLearnersNext(), b.GetLearnersNext())
 }
 
 func slicesEqual(a, b []uint64) bool {
@@ -1915,7 +1916,7 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 		return fmt.Errorf("reading WAL initial state: %w", err)
 	}
 
-	commitIndex := hardState.Commit
+	commitIndex := hardState.GetCommit()
 	if commitIndex <= afterIndex {
 		return nil
 	}
@@ -1976,14 +1977,14 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 	count := 0
 	batchSize := a.replayBatchSize
-	batch := make([]raftpb.Entry, 0, batchSize)
+	batch := make([]*raftpb.Entry, 0, batchSize)
 	logFields := map[string]any{}
 
 	var lastEntry *raftpb.Entry
 
-	if err := a.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
+	if err := a.spool.ReplayUntil(ctx, *until, fromIndex, func(entry *raftpb.Entry) error {
 		// Skip uncommitted entries beyond the commit boundary.
-		if maxIndex > 0 && entry.Index > maxIndex {
+		if maxIndex > 0 && entry.GetIndex() > maxIndex {
 			return nil
 		}
 
@@ -1995,7 +1996,7 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 
 			count += len(batch)
 			batch = batch[:0]
-			lastEntry = &entry
+			lastEntry = entry
 		}
 
 		return nil
@@ -2010,11 +2011,11 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 			return count, err
 		}
 
-		lastEntry = new(batch[len(batch)-1])
+		lastEntry = batch[len(batch)-1]
 	}
 
 	if lastEntry != nil {
-		logFields["last_entry_index"] = lastEntry.Index
+		logFields["last_entry_index"] = lastEntry.GetIndex()
 	}
 
 	logFields["count"] = count

@@ -120,8 +120,9 @@ func (s *Synchronizer) restoreCheckpoint(ctx context.Context, snapshotFetcher Sn
 // InstallSnapshot updates in-memory snapshot bookkeeping on the Machine. The
 // underlying Pebble state is not changed here — the actual restore (when
 // needed) happens via SynchronizeWithLeader.
-func (s *Synchronizer) InstallSnapshot(_ context.Context, snapshot raftpb.Snapshot) error {
-	s.apply.State.SnapshotIndex = snapshot.Metadata.Index
+func (s *Synchronizer) InstallSnapshot(_ context.Context, snapshot *raftpb.Snapshot) error {
+	snapshotIndex := snapshot.GetMetadata().GetIndex()
+	s.apply.State.SnapshotIndex = snapshotIndex
 
 	// Reset the cache — it will be restored from Pebble later:
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
@@ -130,11 +131,11 @@ func (s *Synchronizer) InstallSnapshot(_ context.Context, snapshot raftpb.Snapsh
 	s.apply.Registry.Idempotency.Reset()
 
 	s.apply.logger.WithFields(map[string]any{
-		"snapshotIndex": snapshot.Metadata.Index,
+		"snapshotIndex": snapshotIndex,
 	}).Infof("InstallSnapshot complete")
 
 	lifecycle.SendEvent("install_snapshot", map[string]any{
-		"snapshotIndex": snapshot.Metadata.Index,
+		"snapshotIndex": snapshotIndex,
 	})
 
 	return nil

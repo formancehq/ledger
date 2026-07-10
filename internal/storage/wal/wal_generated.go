@@ -39,7 +39,7 @@ func (m *MockWAL) EXPECT() *MockWALMockRecorder {
 }
 
 // Append mocks base method.
-func (m *MockWAL) Append(state raftpb.HardState, entries []raftpb.Entry) error {
+func (m *MockWAL) Append(state *raftpb.HardState, entries []*raftpb.Entry) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Append", state, entries)
 	ret0, _ := ret[0].(error)
@@ -65,19 +65,19 @@ func (c *MockWALAppendCall) Return(arg0 error) *MockWALAppendCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALAppendCall) Do(f func(raftpb.HardState, []raftpb.Entry) error) *MockWALAppendCall {
+func (c *MockWALAppendCall) Do(f func(*raftpb.HardState, []*raftpb.Entry) error) *MockWALAppendCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALAppendCall) DoAndReturn(f func(raftpb.HardState, []raftpb.Entry) error) *MockWALAppendCall {
+func (c *MockWALAppendCall) DoAndReturn(f func(*raftpb.HardState, []*raftpb.Entry) error) *MockWALAppendCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ApplySnapshot mocks base method.
-func (m *MockWAL) ApplySnapshot(snapshot raftpb.Snapshot) error {
+func (m *MockWAL) ApplySnapshot(snapshot *raftpb.Snapshot) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ApplySnapshot", snapshot)
 	ret0, _ := ret[0].(error)
@@ -103,13 +103,13 @@ func (c *MockWALApplySnapshotCall) Return(arg0 error) *MockWALApplySnapshotCall 
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALApplySnapshotCall) Do(f func(raftpb.Snapshot) error) *MockWALApplySnapshotCall {
+func (c *MockWALApplySnapshotCall) Do(f func(*raftpb.Snapshot) error) *MockWALApplySnapshotCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALApplySnapshotCall) DoAndReturn(f func(raftpb.Snapshot) error) *MockWALApplySnapshotCall {
+func (c *MockWALApplySnapshotCall) DoAndReturn(f func(*raftpb.Snapshot) error) *MockWALApplySnapshotCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -229,10 +229,10 @@ func (c *MockWALCreateSnapshotCall) DoAndReturn(f func(uint64, *raftpb.ConfState
 }
 
 // Entries mocks base method.
-func (m *MockWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+func (m *MockWAL) Entries(lo, hi, maxSize uint64) ([]*raftpb.Entry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Entries", lo, hi, maxSize)
-	ret0, _ := ret[0].([]raftpb.Entry)
+	ret0, _ := ret[0].([]*raftpb.Entry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -250,19 +250,19 @@ type MockWALEntriesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockWALEntriesCall) Return(arg0 []raftpb.Entry, arg1 error) *MockWALEntriesCall {
+func (c *MockWALEntriesCall) Return(arg0 []*raftpb.Entry, arg1 error) *MockWALEntriesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALEntriesCall) Do(f func(uint64, uint64, uint64) ([]raftpb.Entry, error)) *MockWALEntriesCall {
+func (c *MockWALEntriesCall) Do(f func(uint64, uint64, uint64) ([]*raftpb.Entry, error)) *MockWALEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALEntriesCall) DoAndReturn(f func(uint64, uint64, uint64) ([]raftpb.Entry, error)) *MockWALEntriesCall {
+func (c *MockWALEntriesCall) DoAndReturn(f func(uint64, uint64, uint64) ([]*raftpb.Entry, error)) *MockWALEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -307,11 +307,11 @@ func (c *MockWALFirstIndexCall) DoAndReturn(f func() (uint64, error)) *MockWALFi
 }
 
 // InitialState mocks base method.
-func (m *MockWAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
+func (m *MockWAL) InitialState() (*raftpb.HardState, *raftpb.ConfState, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InitialState")
-	ret0, _ := ret[0].(raftpb.HardState)
-	ret1, _ := ret[1].(raftpb.ConfState)
+	ret0, _ := ret[0].(*raftpb.HardState)
+	ret1, _ := ret[1].(*raftpb.ConfState)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -329,19 +329,19 @@ type MockWALInitialStateCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockWALInitialStateCall) Return(arg0 raftpb.HardState, arg1 raftpb.ConfState, arg2 error) *MockWALInitialStateCall {
+func (c *MockWALInitialStateCall) Return(arg0 *raftpb.HardState, arg1 *raftpb.ConfState, arg2 error) *MockWALInitialStateCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALInitialStateCall) Do(f func() (raftpb.HardState, raftpb.ConfState, error)) *MockWALInitialStateCall {
+func (c *MockWALInitialStateCall) Do(f func() (*raftpb.HardState, *raftpb.ConfState, error)) *MockWALInitialStateCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALInitialStateCall) DoAndReturn(f func() (raftpb.HardState, raftpb.ConfState, error)) *MockWALInitialStateCall {
+func (c *MockWALInitialStateCall) DoAndReturn(f func() (*raftpb.HardState, *raftpb.ConfState, error)) *MockWALInitialStateCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -424,10 +424,10 @@ func (c *MockWALMarkClusterJoinedCall) DoAndReturn(f func() error) *MockWALMarkC
 }
 
 // Snapshot mocks base method.
-func (m *MockWAL) Snapshot() (raftpb.Snapshot, error) {
+func (m *MockWAL) Snapshot() (*raftpb.Snapshot, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Snapshot")
-	ret0, _ := ret[0].(raftpb.Snapshot)
+	ret0, _ := ret[0].(*raftpb.Snapshot)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -445,19 +445,19 @@ type MockWALSnapshotCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockWALSnapshotCall) Return(arg0 raftpb.Snapshot, arg1 error) *MockWALSnapshotCall {
+func (c *MockWALSnapshotCall) Return(arg0 *raftpb.Snapshot, arg1 error) *MockWALSnapshotCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockWALSnapshotCall) Do(f func() (raftpb.Snapshot, error)) *MockWALSnapshotCall {
+func (c *MockWALSnapshotCall) Do(f func() (*raftpb.Snapshot, error)) *MockWALSnapshotCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockWALSnapshotCall) DoAndReturn(f func() (raftpb.Snapshot, error)) *MockWALSnapshotCall {
+func (c *MockWALSnapshotCall) DoAndReturn(f func() (*raftpb.Snapshot, error)) *MockWALSnapshotCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

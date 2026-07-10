@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -16,14 +17,14 @@ func TestConfStateContainsNode(t *testing.T) {
 	t.Run("node in voters", func(t *testing.T) {
 		t.Parallel()
 
-		cs := raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+		cs := &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
 		require.True(t, confStateContainsNode(cs, 2))
 	})
 
 	t.Run("node in learners", func(t *testing.T) {
 		t.Parallel()
 
-		cs := raftpb.ConfState{
+		cs := &raftpb.ConfState{
 			Voters:   []uint64{1, 2},
 			Learners: []uint64{3, 4},
 		}
@@ -33,7 +34,7 @@ func TestConfStateContainsNode(t *testing.T) {
 	t.Run("node absent", func(t *testing.T) {
 		t.Parallel()
 
-		cs := raftpb.ConfState{
+		cs := &raftpb.ConfState{
 			Voters:   []uint64{1, 2},
 			Learners: []uint64{3},
 		}
@@ -43,7 +44,7 @@ func TestConfStateContainsNode(t *testing.T) {
 	t.Run("empty ConfState", func(t *testing.T) {
 		t.Parallel()
 
-		cs := raftpb.ConfState{}
+		cs := &raftpb.ConfState{}
 		require.False(t, confStateContainsNode(cs, 1))
 	})
 }
@@ -126,11 +127,11 @@ func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 
 	// Install a snapshot carrying a membership delta (node 3 added) into the
 	// real WAL, exactly as processReady does via wal.ApplySnapshot.
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     10,
-			Term:      2,
-			ConfState: raftpb.ConfState{Voters: []uint64{1, 2, 3}},
+	snap := &raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{
+			Index:     proto.Uint64(10),
+			Term:      proto.Uint64(2),
+			ConfState: &raftpb.ConfState{Voters: []uint64{1, 2, 3}},
 		},
 	}
 	require.NoError(t, node.wal.ApplySnapshot(snap))
@@ -138,7 +139,7 @@ func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 	// Sanity: the WAL now holds the correct ConfState.
 	_, csBefore, err := node.wal.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 3}, csBefore.Voters)
+	require.Equal(t, []uint64{1, 2, 3}, csBefore.GetVoters())
 
 	// Drive finishReady for the snapshot Ready.
 	stop := make(chan struct{})
@@ -151,10 +152,10 @@ func TestFinishReady_SnapshotInstall_PreservesWALConfState(t *testing.T) {
 	// The reconcile must NOT have overwritten the WAL with the stale shadow.
 	_, csAfter, err := node.wal.InitialState()
 	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 3}, csAfter.Voters,
+	require.Equal(t, []uint64{1, 2, 3}, csAfter.GetVoters(),
 		"WAL ConfState must match the installed snapshot, not the stale shadow")
 
 	// The in-memory shadow must also be refreshed for downstream readers.
-	require.Equal(t, []uint64{1, 2, 3}, node.confState.Load().Voters,
+	require.Equal(t, []uint64{1, 2, 3}, node.confState.Load().GetVoters(),
 		"in-memory confState shadow must be refreshed from the snapshot")
 }

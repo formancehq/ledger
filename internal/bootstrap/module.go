@@ -456,13 +456,13 @@ func Module() fx.Option {
 					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
 				}
 
-				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
+				freshStart := walFreshStart(len(snapshot.GetMetadata().GetConfState().GetVoters()) == 0)
 				params.Logger.WithFields(map[string]any{
 					"freshStart":    freshStart,
-					"walVoters":     snapshot.Metadata.ConfState.Voters,
-					"walLearners":   snapshot.Metadata.ConfState.Learners,
-					"snapshotIndex": snapshot.Metadata.Index,
-					"snapshotTerm":  snapshot.Metadata.Term,
+					"walVoters":     snapshot.GetMetadata().GetConfState().GetVoters(),
+					"walLearners":   snapshot.GetMetadata().GetConfState().GetLearners(),
+					"snapshotIndex": snapshot.GetMetadata().GetIndex(),
+					"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
 				}).Infof("WAL fresh start detection")
 
 				n, err := node.NewNode(

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
@@ -57,32 +58,34 @@ func UnmarshalConfChangeContext(data []byte) (ConfChangeContext, error) {
 }
 
 // UnmarshalConfChangeV2 decodes a ConfChange or ConfChangeV2 entry into a
-// unified ConfChangeV2. Returns false for entries that are not conf-changes.
-func UnmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error) {
-	var cc raftpb.ConfChangeV2
-
-	switch entry.Type {
+// unified ConfChangeV2. Returns nil for entries that are not conf-changes.
+func UnmarshalConfChangeV2(entry *raftpb.Entry) (*raftpb.ConfChangeV2, bool, error) {
+	switch entry.GetType() {
 	case raftpb.EntryConfChange:
 		var ccV1 raftpb.ConfChange
 
-		err := ccV1.Unmarshal(entry.Data)
+		err := proto.Unmarshal(entry.GetData(), &ccV1)
 		if err != nil {
-			return cc, false, fmt.Errorf("unmarshaling ConfChange: %w", err)
+			return nil, false, fmt.Errorf("unmarshaling ConfChange: %w", err)
 		}
 
-		cc = ccV1.AsV2()
+		cc := ccV1.AsV2()
 		// V1->V2 conversion does not copy Context; propagate it manually.
-		cc.Context = ccV1.Context
-	case raftpb.EntryConfChangeV2:
-		err := cc.Unmarshal(entry.Data)
-		if err != nil {
-			return cc, false, fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
-		}
-	default:
-		return cc, false, nil
-	}
+		cc.Context = ccV1.GetContext()
 
-	return cc, true, nil
+		return cc, true, nil
+	case raftpb.EntryConfChangeV2:
+		cc := &raftpb.ConfChangeV2{}
+
+		err := proto.Unmarshal(entry.GetData(), cc)
+		if err != nil {
+			return nil, false, fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
+		}
+
+		return cc, true, nil
+	default:
+		return nil, false, nil
+	}
 }
 
 // WalkConfChangeContexts iterates the Changes in cc and invokes fn once
@@ -112,30 +115,34 @@ func UnmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error
 // Used by both Membership.WriteConfChange (FSM Pebble write, incl. the
 // RemovedMemberEntry write) and Node.finishReady (post-commit cache +
 // transport wiring) so the decode + dispatch shape stays in one place.
-func WalkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
-	contextConsumingNodeIDs := make([]uint64, 0, len(cc.Changes))
-	for _, change := range cc.Changes {
-		switch change.Type {
+func WalkConfChangeContexts(cc *raftpb.ConfChangeV2, fn func(raftpb.ConfChangeType, uint64, *ConfChangeContext) error) error {
+	if cc == nil {
+		return nil
+	}
+
+	contextConsumingNodeIDs := make([]uint64, 0, len(cc.GetChanges()))
+	for _, change := range cc.GetChanges() {
+		switch change.GetType() {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
-			contextConsumingNodeIDs = append(contextConsumingNodeIDs, change.NodeID)
+			contextConsumingNodeIDs = append(contextConsumingNodeIDs, change.GetNodeId())
 		}
 	}
 
-	if len(contextConsumingNodeIDs) > 1 && len(cc.Context) > 0 {
+	if len(contextConsumingNodeIDs) > 1 && len(cc.GetContext()) > 0 {
 		return fmt.Errorf("invariant: ConfChangeV2 carries %d Add/AddLearner/Update/Remove changes with a non-empty Context (nodes=%v); one Context can only address a single peer, all local propose paths emit single-op batches", len(contextConsumingNodeIDs), contextConsumingNodeIDs)
 	}
 
 	var cached *ConfChangeContext
 
-	for _, change := range cc.Changes {
-		switch change.Type {
+	for _, change := range cc.GetChanges() {
+		switch change.GetType() {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode, raftpb.ConfChangeRemoveNode:
 			var ctx *ConfChangeContext
-			if len(cc.Context) > 0 {
+			if len(cc.GetContext()) > 0 {
 				if cached == nil {
-					decoded, err := UnmarshalConfChangeContext(cc.Context)
+					decoded, err := UnmarshalConfChangeContext(cc.GetContext())
 					if err != nil {
-						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.NodeID, err)
+						return fmt.Errorf("invariant: unmarshal ConfChange context for node %d: %w", change.GetNodeId(), err)
 					}
 
 					cached = &decoded
@@ -144,7 +151,7 @@ func WalkConfChangeContexts(cc raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTyp
 				ctx = cached
 			}
 
-			if err := fn(change.Type, change.NodeID, ctx); err != nil {
+			if err := fn(change.GetType(), change.GetNodeId(), ctx); err != nil {
 				return err
 			}
 		}
