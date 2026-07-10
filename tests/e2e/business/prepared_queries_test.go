@@ -37,6 +37,12 @@ func transactionIDs(txns []*commonpb.Transaction) []uint64 {
 	return ids
 }
 
+// ledgerLogID returns the per-ledger LedgerLog.Id of an Apply log — the value
+// the `logId` filter operates on (distinct from the global Log.sequence).
+func ledgerLogID(l *commonpb.Log) uint64 {
+	return l.GetPayload().GetApply().GetLog().GetId()
+}
+
 var _ = Describe("PreparedQueries", Ordered, func() {
 
 	// ========================================================================
@@ -766,7 +772,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 		})
 
 		It("Should honor a logId range filter", func() {
-			// Find the ledger's log sequences to build a bounded logId range.
+			// The logId filter operates on the per-ledger LedgerLog.Id (1-based,
+			// scoped to this ledger), NOT the global Log.sequence — the log index
+			// is keyed [0x09][ledger][ledgerLogID]. Read the per-ledger ids from
+			// the payload so the filter bound is expressed in the right space.
 			all, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
 				QueryName: "all-logs",
@@ -774,9 +783,11 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(all.GetCursor().LogData).To(HaveLen(3))
-			firstSeq := all.GetCursor().LogData[0].GetSequence()
 
-			// logId > firstSeq must drop the first log, leaving two.
+			firstLogID := ledgerLogID(all.GetCursor().LogData[0])
+			Expect(firstLogID).To(BeNumerically(">", uint64(0)), "first log must carry a per-ledger logId")
+
+			// logId > firstLogID must drop the first log, leaving two.
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
 
@@ -785,7 +796,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 					Target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 					Filter: actions.AndFilter(
 						actions.LedgerFilter(ledgerName),
-						actions.LogIdGreaterThanFilter(firstSeq),
+						actions.LogIdGreaterThanFilter(firstLogID),
 					),
 				},
 			})
@@ -805,7 +816,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			for _, l := range result.GetCursor().LogData {
-				Expect(l.GetSequence()).To(BeNumerically(">", firstSeq))
+				Expect(ledgerLogID(l)).To(BeNumerically(">", firstLogID))
 			}
 		})
 	})

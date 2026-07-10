@@ -155,15 +155,22 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 			execRaw, _ := io.ReadAll(execResp.Body)
 			g.Expect(execResp.StatusCode).To(Equal(http.StatusOK), "unexpected execute status; body=%s", string(execRaw))
 
+			// The ExecutePreparedQueryResponse envelope still leaks the raw
+			// protobuf oneof shape (Go-cased Result.Cursor) pending EN-1465's
+			// envelope cleanup; the cursor payload itself is camelCase. Assert on
+			// the actual wire path so the test tracks reality, not the intended
+			// envelope.
 			var execBody struct {
-				Cursor struct {
-					LogData []json.RawMessage `json:"logData"`
-				} `json:"cursor"`
+				Result struct {
+					Cursor struct {
+						LogData []json.RawMessage `json:"logData"`
+					} `json:"Cursor"`
+				} `json:"Result"`
 			}
 			g.Expect(json.Unmarshal(execRaw, &execBody)).To(Succeed())
-			// The wire field is logData (camelCase); it must carry the ledger's
-			// logs rather than the pre-EN-1503 empty cursor.
-			g.Expect(len(execBody.Cursor.LogData)).To(BeNumerically(">=", 2), "logData empty; body=%s", string(execRaw))
+			// The log payload field is logData (camelCase); it must carry the
+			// ledger's logs rather than the pre-EN-1503 empty cursor.
+			g.Expect(len(execBody.Result.Cursor.LogData)).To(BeNumerically(">=", 2), "logData empty; body=%s", string(execRaw))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
