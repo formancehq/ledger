@@ -111,6 +111,7 @@ func RunBackup(
 	}
 
 	prevCheckpointKeys := checkpointKeySet(prevManifest)
+	prevExportKeys := exportKeySet(prevManifest)
 
 	// 4. Determine which files still need uploading. A file whose
 	// content-addressed key already exists on storage is byte-identical to what
@@ -227,20 +228,30 @@ func RunBackup(
 
 	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, CheckpointPrefix(bucketID), expectedKeys)
 	// A full backup writes Exports: nil, so every export segment in storage is
-	// now orphaned and can be removed. Export objects are never referenced by a
-	// checkpoint manifest, so they always classify as orphans.
+	// removed here. When this full backup follows one or more incrementals, the
+	// previous committed manifest referenced those export segments as live
+	// objects now rolled up into the new checkpoint — deleting them is ordinary
+	// supersede churn (files_deleted), not a failed-run leftover (orphans_deleted).
 	deletedExportKeys := pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), nil)
 
-	// Classify the checkpoint deletions: a key the PREVIOUS manifest referenced
-	// is a stale checkpoint file this run superseded — that is ordinary churn and
-	// is what BackupResponse.files_deleted reports. A key no manifest referenced
-	// is a true orphan (leaked by a run that crashed before writing a manifest),
-	// reported as orphans_deleted. Export deletions are always orphans.
+	// Classify every deletion: a key the PREVIOUS manifest referenced — as a
+	// checkpoint file OR an export segment — is something this run superseded,
+	// ordinary churn reported as BackupResponse.files_deleted. A key no manifest
+	// referenced is a true orphan (leaked by a run that crashed before writing a
+	// manifest), reported as orphans_deleted.
 	filesDeleted := 0
-	orphansDeleted := len(deletedExportKeys)
+	orphansDeleted := 0
 
 	for _, key := range deletedCheckpointKeys {
 		if _, wasReferenced := prevCheckpointKeys[key]; wasReferenced {
+			filesDeleted++
+		} else {
+			orphansDeleted++
+		}
+	}
+
+	for _, key := range deletedExportKeys {
+		if _, wasReferenced := prevExportKeys[key]; wasReferenced {
 			filesDeleted++
 		} else {
 			orphansDeleted++
@@ -262,10 +273,11 @@ func RunBackup(
 
 	return &Result{
 		FilesUploaded: len(toUpload),
-		// FilesDeleted counts stale checkpoint objects this run superseded — keys
-		// the previous manifest referenced that the new manifest no longer does.
-		// OrphansDeleted counts everything else the post-manifest prune removed:
-		// obsolete export segments plus files leaked by earlier crashed runs.
+		// FilesDeleted counts objects this run superseded — checkpoint files and
+		// export segments the previous manifest referenced that the new manifest
+		// no longer does (normal roll-up churn). OrphansDeleted counts everything
+		// else the post-manifest prune removed: files leaked by earlier runs that
+		// crashed before writing a manifest.
 		FilesDeleted:      filesDeleted,
 		OrphansDeleted:    orphansDeleted,
 		TotalFiles:        len(checkpointFiles),
@@ -340,6 +352,24 @@ func checkpointKeySet(manifest *Manifest) map[string]struct{} {
 	keys := make(map[string]struct{}, len(manifest.Checkpoint.Files))
 	for _, cf := range manifest.Checkpoint.Files {
 		keys[cf.Key] = struct{}{}
+	}
+
+	return keys
+}
+
+// exportKeySet returns the set of export-segment object keys a manifest
+// references. Used to classify prune deletions: a deleted export key present
+// here was a live segment the previous manifest owned that a new full
+// checkpoint superseded — normal roll-up churn, not an orphan. A nil or
+// export-less manifest yields an empty set.
+func exportKeySet(manifest *Manifest) map[string]struct{} {
+	if manifest == nil {
+		return map[string]struct{}{}
+	}
+
+	keys := make(map[string]struct{}, len(manifest.Exports))
+	for _, seg := range manifest.Exports {
+		keys[seg.Key] = struct{}{}
 	}
 
 	return keys

@@ -405,6 +405,89 @@ func TestRunBackup_ClassifiesStaleVsOrphanDeletions(t *testing.T) {
 	require.ErrorIs(t, err, ErrFileNotFound, "the orphan must have been pruned")
 }
 
+// TestRunBackup_ClassifiesSupersededExportsAsFiles verifies that when a full
+// backup follows an incremental, the export segments the previous (incremental)
+// manifest referenced — now rolled up into the new checkpoint — are counted as
+// FilesDeleted (ordinary supersede churn), while an export object no manifest
+// ever referenced is counted as OrphansDeleted. Regression: previously every
+// export deletion was miscounted as an orphan.
+func TestRunBackup_ClassifiesSupersededExportsAsFiles(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+
+	seed := store.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, store.Flush())
+
+	storage := newInMemoryBackupStorage()
+
+	// 1. Full backup — baseline checkpoint, no exports.
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
+	require.NoError(t, err)
+
+	// 2. Add cold entries beyond the checkpoint and run an incremental so the
+	// committed manifest references live export segments under exports/.
+	more := store.OpenWriteSession()
+	for seq := uint64(2); seq <= 10; seq++ {
+		require.NoError(t, more.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+		require.NoError(t, more.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+	}
+	require.NoError(t, more.Commit())
+	require.NoError(t, store.Flush())
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+
+	incManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	prevExportKeys := exportKeySet(incManifest)
+	require.NotEmpty(t, prevExportKeys, "incremental must have produced export segments")
+	prevCheckpointKeys := checkpointKeySet(incManifest)
+
+	// 3. Inject a true orphan export object no manifest references.
+	orphanExport := ExportPrefix(bucketID) + "leaked-by-crashed-run.seg"
+	require.NoError(t, storage.PutFile(context.Background(), orphanExport,
+		bytes.NewReader([]byte("garbage")), int64(len("garbage"))))
+
+	// 4. Mutate + compact so the new full checkpoint's SST set differs, then run
+	// a full backup that rolls the exports up and prunes everything under exports/.
+	mutate := store.OpenWriteSession()
+	for seq := uint64(11); seq <= 30; seq++ {
+		require.NoError(t, mutate.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+	}
+	require.NoError(t, mutate.Commit())
+	require.NoError(t, store.CompactAll())
+
+	full, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-3")
+	require.NoError(t, err)
+
+	newManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	newCheckpointKeys := checkpointKeySet(newManifest)
+
+	expectedStaleCheckpoints := 0
+	for k := range prevCheckpointKeys {
+		if _, stillReferenced := newCheckpointKeys[k]; !stillReferenced {
+			expectedStaleCheckpoints++
+		}
+	}
+
+	// Every superseded checkpoint file AND every rolled-up export segment counts
+	// as FilesDeleted; the injected, never-referenced export is the only orphan.
+	require.Equal(t, expectedStaleCheckpoints+len(prevExportKeys), full.FilesDeleted,
+		"superseded checkpoint files and rolled-up export segments must all count as FilesDeleted")
+	require.Equal(t, 1, full.OrphansDeleted,
+		"only the never-referenced injected export must count as an orphan")
+
+	_, err = storage.GetFile(context.Background(), orphanExport)
+	require.ErrorIs(t, err, ErrFileNotFound, "the orphan export must have been pruned")
+}
+
 // inMemoryBackupStorage is a fully-functional in-memory Storage implementation
 // (unlike recordingStorage which discards PutFile bodies). It lets tests
 // round-trip through RunIncrementalBackup → ApplyExports without a real
