@@ -6,11 +6,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -322,4 +324,129 @@ func TestCredentialsToClusters_EnqueuesMatchingCluster(t *testing.T) {
 	requests := r.credentialsToClusters(context.Background(), client.Object(cred))
 	require.Len(t, requests, 1, "only the Cluster matched by the selector must be enqueued")
 	assert.Equal(t, types.NamespacedName{Name: clusterName, Namespace: namespace}, requests[0].NamespacedName)
+}
+
+// TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys is the core
+// EN-1487 Option A guarantee at the seam the AuthKeysPending branch now calls:
+// reconcileVolumeProtectionPass must maintain the deletion-protection labels
+// using nothing but the Cluster spec and the volumes already present in the
+// cluster. It takes no auth-keys credentials, no specHash and no TLS mode, so it
+// is safe to invoke while the rest of the StatefulSet pass is deferred during
+// Credentials churn. Here a single-replica cluster with a bound data PVC/PV must
+// have both stamped, and the pass must report no requeue.
+func TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+
+	// resourceName(clusterName) == "ledger-thierry"; the data PVC for ordinal 0 is
+	// "data-ledger-thierry-0".
+	stsName := resourceName(clusterName)
+	boundPVC, boundPV := boundPVCAndPV("data-"+stsName+"-0", "pv-thierry-0", namespace)
+	cs := k8sfake.NewClientset(boundPVC, boundPV)
+
+	r := &ClusterReconciler{Clientset: cs}
+
+	// Single replica, only the data volume PVC-backed — keep the fixture minimal
+	// while still exercising both the PVC and the bound PV stamping path.
+	replicas := int32(1)
+	hostPath := &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/wal"}
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				// hostPath volumes are not PVC-backed, so only "data" is reconciled.
+				WAL:       ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
+				ColdCache: ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
+			},
+		},
+	}
+
+	result, err := r.reconcileVolumeProtectionPass(context.Background(), cluster)
+	require.NoError(t, err)
+	require.True(t, result.IsZero(), "a bound PVC leaves nothing to requeue")
+
+	gotPVC, err := cs.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), "data-"+stsName+"-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, labelDeletionProtectionValue, gotPVC.Labels[labelDeletionProtection],
+		"deletion-protection label must be stamped on the PVC by the pass")
+
+	gotPV, err := cs.CoreV1().PersistentVolumes().Get(context.Background(), "pv-thierry-0", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, labelDeletionProtectionValue, gotPV.Labels[labelDeletionProtection],
+		"deletion-protection label must be stamped on the bound PV by the pass")
+}
+
+// TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet proves
+// the two halves of Option A live side by side: while AuthKeysPending, running
+// volume protection (a) requeues when a desired PVC does not exist yet — the
+// signal the pending branch folds into its own requeue — and (b) does NOT touch
+// the existing StatefulSet template, which the deferred StatefulSet pass is
+// responsible for preserving. The pass is given a pre-existing StatefulSet and
+// must leave it byte-for-byte unchanged.
+func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	stsName := resourceName(clusterName)
+
+	// A StatefulSet standing in for the auth-wired template that must survive the
+	// pending window untouched. The typed clientset holds it so we can assert the
+	// volume-protection pass never mutates it.
+	existingReplicas := int32(3)
+	existingSTS := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: stsName, Namespace: namespace, ResourceVersion: "424242"},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &existingReplicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{"preserve-me": "auth-wired"},
+				},
+				Spec: corev1.PodSpec{
+					Volumes: []corev1.Volume{{Name: "auth-keys"}},
+				},
+			},
+		},
+	}
+	// No PVCs exist yet -> the pass must report pending (requeue).
+	cs := k8sfake.NewClientset(existingSTS)
+
+	r := &ClusterReconciler{Clientset: cs}
+
+	replicas := int32(1)
+	hostPath := &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/wal"}
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				WAL:       ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
+				ColdCache: ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
+			},
+		},
+	}
+
+	result, err := r.reconcileVolumeProtectionPass(context.Background(), cluster)
+	require.NoError(t, err)
+	require.False(t, result.IsZero(), "an absent PVC under protection must requeue")
+	require.Equal(t, volumeBindRequeueInterval, result.RequeueAfter,
+		"the pass must requeue on the volume-bind interval, which the pending branch reuses")
+
+	// The StatefulSet template must be preserved verbatim: the pending path must
+	// never roll it while auth keys are undistributed.
+	gotSTS, err := cs.AppsV1().StatefulSets(namespace).Get(context.Background(), stsName, metav1.GetOptions{})
+	require.NoError(t, err, "the existing StatefulSet must still be present")
+	require.Equal(t, "424242", gotSTS.ResourceVersion,
+		"the StatefulSet must not be rewritten by the volume-protection pass")
+	require.Equal(t, "auth-wired", gotSTS.Spec.Template.Annotations["preserve-me"],
+		"the auth-wired pod template must be preserved untouched")
+	require.Equal(t, existingSTS.Spec.Template.Spec.Volumes, gotSTS.Spec.Template.Spec.Volumes,
+		"the auth-keys volume wiring must be preserved untouched")
 }

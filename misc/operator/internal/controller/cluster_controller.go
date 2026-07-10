@@ -251,6 +251,20 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				"matching Credentials are not distributed yet; StatefulSet auth wiring preserved, waiting for distribution")
 		}
 
+		// Option A (EN-1487): the StatefulSet template/rollout pass stays deferred
+		// while pending, but volume deletion-protection must NOT be gated behind
+		// that early return — it is independent of the auth-keys wiring and must
+		// keep tracking spec.persistence.deletionProtection (e.g. a scaled-out
+		// PVC/PV must still be stamped, or an opt-out unstamped) even during a
+		// prolonged Credentials-churn window. Run it here; its requeue folds into
+		// the pending requeue below (same short interval), so a volume still
+		// converging does not lose the AuthKeysPending re-check.
+		if _, err := r.reconcileVolumeProtectionPass(ctx, ledger); err != nil {
+			logger.Error(err, "failed to reconcile volume protection while auth keys pending")
+
+			return ctrl.Result{}, fmt.Errorf("reconciling volume protection while auth keys pending: %w", err)
+		}
+
 		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 	}
 
