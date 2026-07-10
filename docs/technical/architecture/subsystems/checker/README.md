@@ -21,9 +21,11 @@ truth, operational consensus state, or a rebuildable projection using
 #8, every non-audit dataset persisted in the main Pebble store needs checker
 coverage unless it is genuinely discarded and rebuilt by a lifecycle path (e.g.
 bloom filters) or lives in a separate rebuildable side-store. Raft replication is
-not a substitute: it only guarantees replicas hold identical bytes, so a value
-corrupted or tampered before it is proposed is copied to every node and no
-cross-node comparison can detect it. Persisted projections that are not yet
+not a substitute: it only guarantees every replica applies the same logical
+proposal (it does not even guarantee byte-identical serialization for map-bearing
+projections — see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)),
+so a value corrupted or tampered before it is proposed takes effect on every node
+and no cross-node comparison can detect it. Persisted projections that are not yet
 covered — the mirror cursor and the readstore inverted-index contents are the
 current examples — are tracked integrity gaps, not approved exemptions.
 

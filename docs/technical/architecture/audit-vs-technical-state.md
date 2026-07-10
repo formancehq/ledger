@@ -19,7 +19,7 @@ record, or a read-side projection:
 | --- | --- | --- | --- |
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
-| Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication keeps replicas identical; it is sufficient **only** when a corrupted-but-identically-replicated value cannot silently change a business result. Raft cannot detect a value that is tampered or corrupted before it is proposed and then replicated identically everywhere — any such projection needs checker coverage regardless of replication. |
+| Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
 | Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (dropped on every backup/restore and rebuilt from a full attribute scan, see `internal/infra/attributes/prepare.go`), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
 
 The boundary is about impact, not package location. A value under a technical
@@ -31,11 +31,14 @@ dataset persisted in the main Pebble store is a projection that the checker must
 verify, unless it is genuinely discarded and rebuilt by a lifecycle path (bloom
 filters) or lives in a separate rebuildable side-store outside the checker's
 scope. Raft replication is **not** a substitute for checker coverage: it only
-guarantees that every replica holds the *same* bytes, so a value that is
-corrupted or tampered before replication is faithfully copied to every node and
-no cross-node comparison can catch it. Where the sections below describe a
-persisted main-store projection that the checker does not yet verify, that is a
-tracked integrity gap, not an approved exemption.
+guarantees that every replica applies the *same logical proposal* and reaches the
+*same logical state* (it does not even guarantee byte-identical serialization —
+see the note in "Readstore and Indexes" on non-deterministic map marshaling). So
+a value that is corrupted or tampered *before* it is proposed takes effect on
+every node identically, and no cross-node comparison — logical or byte-wise — can
+catch it. Where the sections below describe a persisted main-store projection that
+the checker does not yet verify, that is a tracked integrity gap, not an approved
+exemption.
 
 ## TechnicalUpdate Gate
 
@@ -108,8 +111,8 @@ cases:
 This equality is **not** currently enforced: there is no `compare*` pass for
 `MirrorCursor` in `internal/application/check`, so per invariant #8 this is a
 known integrity gap, not an approved exemption. Raft replication does not close
-it — a cursor corrupted or tampered before it is proposed is replicated
-identically to every node. Mirror recovery, repair tooling, or a checker pass
+it — a cursor value corrupted or tampered before it is proposed takes effect on
+every node identically. Mirror recovery, repair tooling, or a checker pass
 that re-derives the expected cursor from the audited mirror-ingest logs must
 enforce the equality before the stored cursor can be trusted.
 
@@ -141,16 +144,34 @@ projection matches the audit before a READY index is served.
 
 Raft does not help here, but the reason differs from the main-store projections
 above. The readstore is a **separate, per-replica Pebble store** (opened
-independently in `internal/storage/readstore`), not the byte-replicated FSM
-store. It is populated **locally** by each node's index builder
+independently in `internal/storage/readstore`), not written through the FSM apply
+path at all. It is populated **locally** by each node's index builder
 (`internal/application/indexbuilder`) from the replicated log/audit stream, and
 `IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. Raft
-replicates the *source* audit/log stream, not the readstore bytes — so unlike a
-main-store value (which is copied bit-for-bit to every node), a bit-flip in one
-replica's readstore is **not** propagated to the others. Consequently Raft
+replicates the *source* audit/log stream, not the readstore bytes, so a bit-flip
+in one replica's readstore is **not** propagated to the others. Consequently Raft
 neither detects nor repairs replica-local index corruption: each replica can
 serve a differently-corrupted (or healthy) index, and only per-replica checker
 or rebuild-health validation can catch it.
+
+A note on what cross-replica identity actually means for main-store projections,
+so the contrast is precise. Raft plus the deterministic FSM guarantee that every
+replica applies the **same logical proposal** and reaches the **same logical
+state** — they do **not** guarantee byte-identical Pebble serialization. Several
+projections are marshalled **non-deterministically** on purpose: any
+map-bearing message serializes in Go's randomized map-iteration order, so the
+same proposal can persist byte-divergent values on different replicas.
+`AppliedProposal.TransientVolumes` documents this explicitly (`appendAppliedProposal`
+in `internal/infra/state/batch.go`: "two nodes will persist byte-divergent
+Cold-zone entries for the same proposal"), as do `Log` metadata maps and
+`saveIdempotencyKey` ("marshal order need not match across replicas"). Only the
+hash carrier is locked down: `AuditEntry` is marshalled via
+`MarshalDeterministicVT` (sorted map keys) precisely because it feeds the audit
+hash chain, and the sealer re-marshals deterministically for the cross-node state
+hash. This is why the checker must compare projections **logically** (decode and
+compare, or replay from the audit) rather than byte-wise — byte-equality is not a
+valid cross-replica integrity assumption for map-bearing main-store values, only
+for the deterministic audit stream.
 
 ## Prepared Queries
 
