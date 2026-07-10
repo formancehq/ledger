@@ -10,6 +10,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -2286,16 +2287,18 @@ func TestSeedExpectedFromBaseline(t *testing.T) {
 	_ = reader.Close()
 
 	schemas := map[string]*commonpb.MetadataSchema{}
-	accountTypes := map[string]map[string]*commonpb.AccountType{}
-	checker.seedExpectedFromBaseline(context.Background(), schemas, accountTypes)
+	rawLedgerTypes := map[string]map[string]*commonpb.AccountType{}
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
+	checker.seedExpectedFromBaseline(context.Background(), schemas, rawLedgerTypes, ledgerAccountTypes)
 
 	require.Contains(t, schemas, "L1")
 	require.Equal(t,
 		commonpb.MetadataType_METADATA_TYPE_STRING,
 		schemas["L1"].GetAccountFields()["tier"].GetType())
 
-	require.Contains(t, accountTypes, "L1")
-	require.Equal(t, "assets:*", accountTypes["L1"]["asset"].GetPattern())
+	require.Contains(t, rawLedgerTypes, "L1")
+	require.Equal(t, "assets:*", rawLedgerTypes["L1"]["asset"].GetPattern())
+	require.Contains(t, ledgerAccountTypes, "L1", "compiled account types should be seeded too")
 }
 
 // TestCompareAccountTypes_Identical: stored account types match the audit-derived

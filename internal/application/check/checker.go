@@ -159,7 +159,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
 		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
-		// Per-ledger account types for ephemeral purge simulation
+		// Per-ledger account types, seeded from the baseline under archiving and
+		// updated as AddAccountType/RemoveAccountType logs replay. Drives the
+		// ephemeral-purge simulation and is verified against the stored
+		// LedgerInfo.AccountTypes in compareAccountTypes.
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 		// Expected SubAttrIndex registry state derived from CreateIndex /
@@ -191,12 +194,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Expected account types per ledger, derived from AddAccountType /
-		// RemoveAccountType logs. Compared against the stored
-		// LedgerInfo.AccountTypes in compareAccountTypes. Kept separate from
-		// rawLedgerTypes (which drives the ephemeral-purge simulation and is
-		// seeded from the live store) so verification stays independent.
-		expectedAccountTypes = make(map[string]map[string]*commonpb.AccountType)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -258,20 +255,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		for _, info := range ledgers {
 			if info.GetDeletedAt() == nil {
 				knownLedgers[info.GetName()] = struct{}{}
-
-				if types := info.GetAccountTypes(); len(types) > 0 {
-					rawLedgerTypes[info.GetName()] = types
-					ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(types)
-				}
 			}
 		}
 
 		// The pre-archive schema and account types were declared in now-purged
-		// logs; seed them from the boundary-time baseline checkpoint (independent
-		// of the live store) so the post-archive replay applies its delta on top
-		// and compareSchema / compareAccountTypes do not false-positive on
-		// pre-archive declarations.
-		c.seedExpectedFromBaseline(ctx, expectedSchemas, expectedAccountTypes)
+		// logs; seed them from the boundary-time baseline checkpoint so the
+		// post-archive replay applies its delta on top. Seeding from the live
+		// store instead would be wrong: the replay would re-apply the same
+		// AddAccountType/SetMetadataFieldType orders onto their own end state, so
+		// every pre-change transaction would see account types that did not exist
+		// yet — corrupting the ephemeral-purge simulation.
+		c.seedExpectedFromBaseline(ctx, expectedSchemas, rawLedgerTypes, ledgerAccountTypes)
 
 		// Pre-populate knownTxIDs from archived transaction states so that
 		// reversion invariant checks work correctly for non-archived logs.
@@ -373,7 +367,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
 					delete(expectedSchemas, name)
-					delete(expectedAccountTypes, name)
+					delete(rawLedgerTypes, name)
+					delete(ledgerAccountTypes, name)
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
@@ -436,14 +431,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 								indexReplayActivity[key] = struct{}{}
-							}
-						case *commonpb.LedgerLogPayload_AddedAccountType:
-							if at := d.AddedAccountType.GetAccountType(); at != nil {
-								addExpectedAccountType(expectedAccountTypes, ledgerName, at)
-							}
-						case *commonpb.LedgerLogPayload_RemovedAccountType:
-							if l := d.RemovedAccountType; l != nil {
-								removeExpectedAccountType(expectedAccountTypes, ledgerName, l.GetName())
 							}
 						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 							if l := d.SetMetadataFieldType; l != nil {
@@ -592,7 +579,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	if err := c.compareAccountTypes(ctx, snap, expectedAccountTypes, callback); err != nil {
+	if err := c.compareAccountTypes(ctx, snap, rawLedgerTypes, callback); err != nil {
 		return err
 	}
 
@@ -2025,7 +2012,7 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 // needs when the pre-archive declaration logs have been purged. A no-op when no
 // baseline exists — the caller (archived-chapters path) then skips entry-by-entry
 // comparison entirely.
-func (c *Checker) seedExpectedFromBaseline(ctx context.Context, schemas map[string]*commonpb.MetadataSchema, accountTypes map[string]map[string]*commonpb.AccountType) {
+func (c *Checker) seedExpectedFromBaseline(ctx context.Context, schemas map[string]*commonpb.MetadataSchema, rawLedgerTypes map[string]map[string]*commonpb.AccountType, ledgerAccountTypes map[string][]accounttype.CompiledType) {
 	path, exists := c.store.BaselineCheckpointPath()
 	if !exists {
 		return
@@ -2066,7 +2053,8 @@ func (c *Checker) seedExpectedFromBaseline(ctx context.Context, schemas map[stri
 			cloned := make(map[string]*commonpb.AccountType, len(types))
 			maps.Copy(cloned, types)
 
-			accountTypes[info.GetName()] = cloned
+			rawLedgerTypes[info.GetName()] = cloned
+			ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
 		}
 	}
 }
@@ -2103,26 +2091,6 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 	}
 
 	return nil
-}
-
-// addExpectedAccountType records an account-type declaration on the ledger's
-// expected set during replay, lazily creating it. Mirrors processAddAccountType.
-func addExpectedAccountType(types map[string]map[string]*commonpb.AccountType, ledger string, at *commonpb.AccountType) {
-	m := types[ledger]
-	if m == nil {
-		m = make(map[string]*commonpb.AccountType)
-		types[ledger] = m
-	}
-
-	m[at.GetName()] = at
-}
-
-// removeExpectedAccountType drops an account-type declaration during replay.
-// Mirrors processRemoveAccountType.
-func removeExpectedAccountType(types map[string]map[string]*commonpb.AccountType, ledger, name string) {
-	if m := types[ledger]; m != nil {
-		delete(m, name)
-	}
 }
 
 // accountTypesEqual compares two account-type sets by content, treating a nil
