@@ -746,6 +746,13 @@ enum CheckStoreErrorType {
   // RemoveAccountType log payloads. The account-type chart is a projection of
   // those audit-bound orders.
   CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 12;
+  // Emitted when the audit says a ledger is live (a CreateLedger event with no
+  // later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
+  // archiving) but no LedgerInfo entry exists in the store. The stored-ledger
+  // loops in compareSchema / compareAccountTypes only visit ledgers Pebble
+  // returns, so an entirely deleted LedgerInfo projection would otherwise escape
+  // every projection check. This is the reverse of UNKNOWN_LEDGER.
+  CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 13;
 }
 
 message CheckStoreError {

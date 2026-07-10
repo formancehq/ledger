@@ -2263,6 +2263,73 @@ func TestCompareSchema_ExtraInStored(t *testing.T) {
 		events[0].GetError().GetErrorType())
 }
 
+// TestCompareLedgerPresence_Present: a ledger the audit knows is live has a
+// stored LedgerInfo, so the verifier stays silent.
+func TestCompareLedgerPresence_Present(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
+// TestCompareLedgerPresence_MissingFromStored: the audit knows a live ledger but
+// its LedgerInfo projection was deleted from the store — the tampering the
+// stored-ledger loops in compareSchema / compareAccountTypes would otherwise miss.
+func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}, "L2": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L2", events[0].GetError().GetLedger())
+}
+
+// TestCompareLedgerPresence_PendingCleanupIgnored: a ledger mid-deletion (its
+// LedgerInfo already purged, its DeleteLedger log past the verified range) is
+// still counted live by the audit but must not be flagged.
+func TestCompareLedgerPresence_PendingCleanupIgnored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, nil)
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, map[string]struct{}{"L1": {}},
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
 // TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
 // LedgerInfo (so the schema is seeded from the boundary state, not the live
 // store) and that the checker reads it back.
@@ -2286,11 +2353,13 @@ func TestSeedExpectedFromBaseline(t *testing.T) {
 	require.NoError(t, attributes.CreateBaselineSnapshot(reader, attributes.New(), dest))
 	_ = reader.Close()
 
+	knownLedgers := map[string]struct{}{}
 	schemas := map[string]*commonpb.MetadataSchema{}
 	rawLedgerTypes := map[string]map[string]*commonpb.AccountType{}
 	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
-	checker.seedExpectedFromBaseline(context.Background(), schemas, rawLedgerTypes, ledgerAccountTypes)
+	checker.seedExpectedFromBaseline(context.Background(), knownLedgers, schemas, rawLedgerTypes, ledgerAccountTypes)
 
+	require.Contains(t, knownLedgers, "L1", "live baseline ledger should be seeded into knownLedgers")
 	require.Contains(t, schemas, "L1")
 	require.Equal(t,
 		commonpb.MetadataType_METADATA_TYPE_STRING,
