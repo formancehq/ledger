@@ -385,6 +385,139 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/audit-entries:
+    get:
+      summary: List audit entries
+      description: |
+        Lists audit trail entries (one per proposal, success or failure) across
+        the whole bucket, ordered by audit sequence ascending. Audit reads are
+        not ledger-scoped in the path — a single proposal can touch several
+        ledgers — so ledger scope, outcome and other dimensions are expressed
+        through the `filter` query parameter.
+
+        Filtered reads are served by an asynchronous secondary index; the
+        consistency guarantee is the same as the gRPC `ListAuditEntries`
+        surface (no stronger promise is made over HTTP).
+
+        Requires `ledger:AuditRead` scope.
+      operationId: listAuditEntries
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+          description: Maximum number of audit entries to return (0 = server default, capped at 1000)
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Audit sequence to start after (exclusive, opaque cursor for pagination)
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Iterate newest-first (descending sequence) when true
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: |
+            Filter expression restricted to `audit[...]` conditions, using the
+            shared filter grammar (the same one accepted by `ledgerctl audit
+            list --filter`). Examples:
+              - `audit[outcome] == failure`
+              - `audit[ledger] == main`
+              - `audit[order_type] in (create_transaction, revert_transaction)`
+              - `audit[seq] between 1000 and 2000`
+              - `audit[timestamp] >= "2023-11-14T22:13:20Z"`
+            Supported fields: `seq`, `proposal_id`, `log_seq` (numeric);
+            `timestamp` (RFC3339 or unix microseconds); `outcome`
+            (success|failure), `ledger`, `caller_subject`, `order_type`
+            (string). This is deliberately NOT the JSON QueryFilter DSL used by
+            prepared queries, which cannot represent audit conditions.
+      responses:
+        '200':
+          description: List of audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v3/audit-entries/{sequence}:
+    get:
+      summary: Get an audit entry
+      description: |
+        Returns a single audit entry by its global sequence, with per-order
+        `items` populated (the list endpoint omits `items` for compactness).
+        Requires `ledger:AuditRead` scope.
+      operationId: getAuditEntry
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Audit entry sequence
+      responses:
+        '200':
+          description: The audit entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/promote:
     post:
       summary: Promote a mirror ledger
@@ -3996,3 +4129,100 @@ components:
         errorMessage:
           type: string
           description: Human-readable error message
+
+    AuditEntry:
+      type: object
+      description: |
+        A single audit trail entry for a proposal (success or failure). Exactly
+        one of `success` / `failure` is set. `items` is populated only by the
+        single-entry lookup, not by the list endpoint.
+      properties:
+        sequence:
+          type: integer
+          format: uint64
+          description: Global audit sequence number
+        timestamp:
+          type: string
+          format: date-time
+          description: Apply timestamp (RFC3339)
+        proposalId:
+          type: integer
+          format: uint64
+          description: Identifier of the proposal that produced this entry
+        success:
+          $ref: '#/components/schemas/AuditSuccess'
+        failure:
+          $ref: '#/components/schemas/AuditFailure'
+        orderCount:
+          type: integer
+          format: uint32
+          description: Number of orders in the proposal
+        items:
+          type: array
+          description: Per-order detail lines. Populated by the single-entry lookup; empty on list.
+          items:
+            $ref: '#/components/schemas/AuditItem'
+        ledgers:
+          type: array
+          description: Distinct ledger names targeted by the proposal's orders
+          items:
+            type: string
+        hash:
+          type: string
+          description: Hex-encoded batch integrity hash chaining audit entries
+        hashVersion:
+          type: integer
+          format: uint32
+          description: Hash algorithm version
+        callerSnapshot:
+          type: object
+          description: Admission-time auth snapshot (protobuf JSON); absent when auth is disabled or for system proposals
+        idempotency:
+          type: object
+          description: Batch identity / idempotency information (protobuf JSON)
+        signature:
+          type: object
+          description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+
+    AuditItem:
+      type: object
+      description: One order within a proposal.
+      properties:
+        orderIndex:
+          type: integer
+          format: uint32
+          description: Zero-based position of this order within the proposal
+        serializedOrder:
+          type: string
+          description: Hex-encoded deterministic serialized bytes of the order at apply time
+        logSequence:
+          type: integer
+          format: uint64
+          description: Sequence of the log produced by this order (0 for idempotent replay or failed proposals)
+
+    AuditSuccess:
+      type: object
+      description: The inclusive log sequence range created by a successful proposal.
+      properties:
+        minLogSequence:
+          type: integer
+          format: uint64
+        maxLogSequence:
+          type: integer
+          format: uint64
+
+    AuditFailure:
+      type: object
+      description: The reason and context for a failed proposal.
+      properties:
+        reason:
+          type: string
+          description: Typed error reason identifier (e.g. ERROR_REASON_INSUFFICIENT_FUNDS)
+        message:
+          type: string
+          description: Human-readable failure message
+        context:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional structured context for the failure

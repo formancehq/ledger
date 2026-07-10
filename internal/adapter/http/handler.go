@@ -35,6 +35,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
+	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
 	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
@@ -113,6 +114,15 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+			})
+
+			// Audit read scope. Audit reads are cluster/bucket-wide (a proposal can
+			// touch several ledgers), so these routes are NOT under {ledgerName};
+			// ledger scope is expressed via the `filter` query parameter. The static
+			// /audit-entries segment is matched before the /{ledgerName} wildcard.
+			r.With(requireAuditRead).Group(func(r chi.Router) {
+				r.Get("/audit-entries", server.handleListAuditEntries)
+				r.Get("/audit-entries/{sequence}", server.handleGetAuditEntry)
 			})
 
 			// Accounts read scope

@@ -1,0 +1,189 @@
+package http
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
+
+func TestHandleListAuditEntries_Success(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
+				{Sequence: 1},
+				{Sequence: 2},
+			}), nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	resp := decodeResponse[BaseResponse[[]map[string]any]](t, w)
+	require.Len(t, resp.Data, 2)
+	// camelCase JSON: sequence rendered as a JSON number.
+	require.EqualValues(t, 1, resp.Data[0]["sequence"])
+}
+
+func TestHandleListAuditEntries_Empty(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleListAuditEntries_Pagination(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(10), uint64(42), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			require.EqualValues(t, 10, pageSize)
+			require.EqualValues(t, 42, afterSequence)
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?pageSize=10&after=42", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleListAuditEntries_Reverse(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			require.True(t, reverse)
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?reverse=true", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleListAuditEntries_InvalidAfter(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?after=notanumber", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleListAuditEntries_InvalidPageSize(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?pageSize=abc", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestHandleListAuditEntries_LedgerFilter checks that a `filter` with an
+// audit[ledger] condition is parsed via filterexpr and forwarded to the backend.
+func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			require.NotNil(t, filter)
+			audit := filter.GetAudit()
+			require.NotNil(t, audit)
+			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, audit.GetField())
+			require.Equal(t, "main", audit.GetStringCond().GetHardcoded())
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("audit[ledger] == main"), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestHandleListAuditEntries_OutcomeFilter exercises a representative audit
+// outcome filter expression.
+func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			require.NotNil(t, filter)
+			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("audit[outcome] == failure"), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleListAuditEntries_InvalidFilter(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("this is not a filter"), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
