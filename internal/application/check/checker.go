@@ -361,6 +361,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
 					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
+					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
@@ -2049,14 +2050,25 @@ func (c *Checker) seedExpectedFromBaseline(ctx context.Context, schemas map[stri
 			schemas[info.GetName()] = schema.CloneVT()
 		}
 
-		if types := info.GetAccountTypes(); len(types) > 0 {
-			cloned := make(map[string]*commonpb.AccountType, len(types))
-			maps.Copy(cloned, types)
-
-			rawLedgerTypes[info.GetName()] = cloned
-			ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
-		}
+		seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, info.GetName(), info.GetAccountTypes())
 	}
+}
+
+// seedAccountTypes installs a ledger's initial account types into both the raw
+// map (verified against the stored LedgerInfo in compareAccountTypes) and the
+// compiled map (drives the ephemeral-purge simulation). The raw map is copied
+// so the replay's add/remove mutations don't touch the source. Serves the types
+// carried by CreateLedger and the boundary-time types seeded from the baseline.
+func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
+	if len(types) == 0 {
+		return
+	}
+
+	cloned := make(map[string]*commonpb.AccountType, len(types))
+	maps.Copy(cloned, types)
+
+	raw[ledger] = cloned
+	compiled[ledger] = accounttype.CompileTypes(cloned)
 }
 
 // compareAccountTypes verifies each ledger's stored account types

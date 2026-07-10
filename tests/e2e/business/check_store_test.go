@@ -724,6 +724,27 @@ var _ = Describe("CheckStore", Ordered, func() {
 		})
 	})
 
+	// Account types declared at ledger creation (CreateLedgerRequest.account_types)
+	// are logged in CreatedLedgerLog, not via a runtime AddAccountType. The checker
+	// must seed them from the CreateLedger log or it false-positives an
+	// ACCOUNT_TYPE_MISMATCH against the stored LedgerInfo.
+	Context("With account types declared at ledger creation", Ordered, func() {
+		const ledgerName = "check-initial-account-types"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerWithAccountTypesAction(ledgerName, map[string]*commonpb.AccountType{
+					"wallet": {Name: "wallet", Pattern: "wallet:{id}"},
+					"bank":   {Name: "bank", Pattern: "bank:{id}"},
+				})))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should pass integrity check (initial account types verified)", func() {
+			expectStoreValid(sharedCtx, sharedClient)
+		})
+	})
+
 	// Guards the baseline-backed schema/account-type verification: declarations
 	// made before a chapter is archived live only in the baseline checkpoint (their
 	// logs are purged), so the checker must seed them from the baseline and apply
