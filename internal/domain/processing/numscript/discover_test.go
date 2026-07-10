@@ -306,6 +306,7 @@ func TestDiscover_OverdraftFunctionIsRead(t *testing.T) {
 	t.Parallel()
 
 	script := `
+#![feature("experimental-overdraft-function")]
 vars {
   monetary $o = overdraft(@carol, EUR/2)
 }
@@ -331,6 +332,7 @@ func TestDiscover_GetAssetDecidesWriteAsset(t *testing.T) {
 	t.Parallel()
 
 	script := `
+#![feature("experimental-get-asset-function")]
 vars {
   monetary $m = balance(@treasury, USD/2)
   asset $a = get_asset($m)
@@ -354,6 +356,7 @@ func TestDiscover_GetAmountReadsBalance(t *testing.T) {
 	t.Parallel()
 
 	script := `
+#![feature("experimental-get-amount-function")]
 vars {
   monetary $m = balance(@treasury, USD/2)
   number $n = get_amount($m)
@@ -381,6 +384,7 @@ func TestDiscover_MidScriptFunctionCallReadsBalance(t *testing.T) {
 	t.Parallel()
 
 	script := `
+#![feature("experimental-mid-script-function-call")]
 send [USD/2 10] (source = @world destination = @out)
 set_tx_meta("bal", balance(@treasury, USD/2))
 `

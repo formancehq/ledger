@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -1213,6 +1214,15 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
 func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage) error {
+	// effects accumulates the state changes of orders already processed in this
+	// atomic batch so each subsequent order resolves against the state the FSM
+	// will see when it reaches that order — pre-batch storage plus predecessors'
+	// writes (EN-1406 P1-1). The FSM applies batch orders sequentially against a
+	// single mutated WriteSet; without this, an order whose balance()/meta()
+	// depends on an earlier order in the same batch would hash stale at admission
+	// and be rejected as STALE_INPUTS_RESOLUTION on every retry.
+	effects := newBatchEffects()
+
 	for orderIdx, order := range orders {
 		ls := order.GetLedgerScoped()
 		if ls == nil {
@@ -1269,11 +1279,37 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptText = script.GetPlain()
 			scriptVars = script.GetVars()
 		} else {
-			// Postings-only — handled by extractPreloadNeeds
+			// Postings-only — its preload keys are handled by extractPreloadNeeds,
+			// but its balance effects still feed later orders' resolution in this
+			// batch (EN-1406 P1-1), so fold them into the accumulator before moving
+			// on. balance = input − output: source −amount, destination +amount.
+			for _, posting := range createTx.CreateTransaction.GetPostings() {
+				amount := posting.GetAmount().ToBigInt()
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset()),
+					new(big.Int).Neg(amount),
+				)
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset()),
+					amount,
+				)
+			}
+
+			// Caller-supplied account metadata on a postings-only order is also a
+			// write a later meta() could read.
+			for account, mm := range createTx.CreateTransaction.GetAccountMetadata() {
+				for k, v := range mm.GetValues() {
+					effects.metadataWrites[domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+						Key:        k,
+					}] = commonpb.MetadataValueToString(v)
+				}
+			}
+
 			continue
 		}
 
-		valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName}
+		valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName, effects: effects}
 
 		discovered, err := numscript.DiscoverNumscriptDependencies(
 			a.numscriptCache,
@@ -1325,6 +1361,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// hash differs (inputs changed between admission and apply). Nil for
 			// fully-static scripts (nothing read) — the FSM then skips the check.
 			createTx.CreateTransaction.InputsResolutionHash = discovered.InputsHash
+
+			// Fold this script's effects into the batch accumulator so a later
+			// order in the same atomic batch resolves against them (EN-1406 P1-1).
+			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
 		}
 
 		// For references: preload the resolved content keyed by (ledger, name, version).

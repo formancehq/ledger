@@ -8,6 +8,8 @@ import (
 	"github.com/zeebo/blake3"
 
 	numscriptlib "github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 // MaxForceBalance is returned for all accounts when force mode is enabled.
@@ -59,6 +61,16 @@ func NewStore(source ValueSource, force bool) *Store {
 func (s *Store) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
 	out := make(numscriptlib.Balances, 0, len(query))
 	for _, item := range query {
+		// Ledger volumes have no color/scope dimension: every color/scope view of
+		// (account, asset) resolves to the SAME underlying volume. Answering a
+		// qualified query would hand the caller a full-balance view per color and
+		// let one script spend the same funds once per color (EN-1406 P1-2). The
+		// lookup already ignores Color/Scope, so reject the query outright rather
+		// than silently serving an unsound, double-counted view.
+		if item.Color != "" || item.Scope != "" {
+			return nil, domain.ErrColoredBalanceUnsupported
+		}
+
 		var balance *big.Int
 		if s.force {
 			balance = new(big.Int).Set(MaxForceBalance)
@@ -90,6 +102,14 @@ func (s *Store) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) 
 func (s *Store) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
 	var out numscriptlib.AccountsMetadata
 	for _, item := range query {
+		// Ledger account metadata is keyed by (ledger, account, key) with no scope
+		// dimension, so a scope-qualified metadata read would collapse to the same
+		// entry as the unscoped one — reject it for the same reason as colored
+		// balances (EN-1406 P1-2).
+		if item.Scope != "" {
+			return nil, domain.ErrColoredBalanceUnsupported
+		}
+
 		for _, key := range item.Keys {
 			value, present, err := s.source.Metadata(item.Account, key)
 			if err != nil {

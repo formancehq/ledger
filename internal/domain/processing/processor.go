@@ -261,18 +261,49 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 }
 
 // hashOrder computes a blake3 hash of one order's content, returning the hash
-// and the (grown) marshal buffer to reuse. CoverageBits is excluded: admission
-// rebuilds it from the proposal-wide ExecutionPlan, so the same logical order
-// in a different batch would otherwise hash differently.
+// and the (grown) marshal buffer to reuse.
+//
+// Two admission-derived fields are excluded so the SAME logical request always
+// hashes identically (idempotency dedup / replay must match across retries):
+//
+//   - CoverageBits: admission rebuilds it from the proposal-wide ExecutionPlan,
+//     so the same order in a different batch would otherwise hash differently.
+//   - CreateTransaction.InputsResolutionHash: admission recomputes it by
+//     re-resolving the Numscript against CURRENT balances/metadata, so a retry
+//     of a state-reading script re-resolves at a changed balance and would
+//     otherwise hash differently — turning a legitimate replay into an
+//     IDEMPOTENCY_KEY_CONFLICT (EN-1406 P1-3). It is a preload/staleness hint,
+//     not part of the request's logical identity.
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
-	// Temporarily nil CoverageBits, marshal, then restore it. Avoids a full
-	// CloneVT of the order.
+	// Temporarily nil the admission-derived fields, marshal, then restore them.
+	// Avoids a full CloneVT of the order.
 	savedCoverage := order.GetCoverageBits()
 	order.CoverageBits = nil
+
+	// InputsResolutionHash lives on the nested CreateTransactionOrder. Reach it
+	// only when the order actually carries one; other order shapes are untouched.
+	var (
+		createTx           *raftcmdpb.CreateTransactionOrder
+		savedResolutionHsh []byte
+	)
+	if ls := order.GetLedgerScoped(); ls != nil {
+		if apply, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply); ok {
+			if ct, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction); ok {
+				createTx = ct.CreateTransaction
+			}
+		}
+	}
+	if createTx != nil {
+		savedResolutionHsh = createTx.GetInputsResolutionHash()
+		createTx.InputsResolutionHash = nil
+	}
 
 	buf = order.MarshalDeterministicVT(buf[:0])
 
 	order.CoverageBits = savedCoverage
+	if createTx != nil {
+		createTx.InputsResolutionHash = savedResolutionHsh
+	}
 
 	sum := blake3.Sum256(buf)
 

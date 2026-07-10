@@ -62,7 +62,13 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
 		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED:
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
+		// DEPRECATED and no longer emitted (EN-1406), but a stored 59 in a frozen
+		// AuditFailure/IdempotencyFailure must still replay as KindValidation, so
+		// the mapping is retained deliberately. The staticcheck deprecation
+		// warning is expected here — this is exactly the compat path it protects.
+		//nolint:staticcheck // deprecated reason retained for replay of persisted failures
+		commonpb.ErrorReason_ERROR_REASON_NON_DETERMINISTIC_SCRIPT:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,

@@ -44,6 +44,43 @@ func TestHashOrders_ExcludesCoverageBits(t *testing.T) {
 		"CoverageBits must not change the idempotency hash")
 }
 
+// TestHashOrders_ExcludesInputsResolutionHash pins EN-1406 P1-3: the
+// per-CreateTransaction inputs_resolution_hash is admission-derived (admission
+// re-resolves the Numscript against CURRENT balances/metadata each time), so a
+// retry of the SAME state-reading request re-resolves at a changed balance and
+// carries a different hash. It MUST be excluded from the idempotency hash, or a
+// legitimate replay would be rejected as IDEMPOTENCY_KEY_CONFLICT.
+func TestHashOrders_ExcludesInputsResolutionHash(t *testing.T) {
+	t.Parallel()
+
+	makeOrder := func(resolutionHash []byte) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script:               &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+									InputsResolutionHash: resolutionHash,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	base := HashOrders([]*raftcmdpb.Order{makeOrder(nil)})
+
+	require.Equal(t, base, HashOrders([]*raftcmdpb.Order{makeOrder([]byte{0xde, 0xad})}),
+		"a resolution hash must not change the idempotency hash")
+	require.Equal(t, base, HashOrders([]*raftcmdpb.Order{makeOrder([]byte{0xbe, 0xef, 0x01})}),
+		"a DIFFERENT resolution hash (retry re-resolved at a changed balance) must still hash identically")
+}
+
 // TestHashOrders_MatchesHashProposal pins the equivalence the integrity checker
 // relies on: re-deriving a proposal's frozen hash via HashOrders (from the
 // audit orders) must be byte-identical to the hot-path HashProposal.

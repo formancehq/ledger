@@ -479,11 +479,11 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 		})
 
-		It("Should route funds by color if the feature is available (skip cleanly otherwise)", func() {
-			// Mint colored funds from world into a pool, then spend a specific
-			// color. Ledger volumes are keyed by (account, asset) only, so the
-			// resulting posting is a normal-asset posting; we assert the color
-			// send succeeds and the plain-asset balances settle.
+		It("Should allow a colored send from an UNbounded source (no balance read)", func() {
+			// world is unbounded, so a colored world source never reads a balance —
+			// nothing to collapse, nothing to double-spend. The destination volume
+			// is a plain (account, asset) volume. This is the only colored-source
+			// shape Ledger can serve soundly.
 			script := `
 #![feature("experimental-asset-colors")]
 
@@ -491,6 +491,27 @@ send [COIN 100] (
   source = @world \ "RED"
   destination = @clr:pool
 )
+`
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			if err != nil {
+				if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
+					info.Reason == domain.ErrReasonNumscriptParseError {
+					Skip("experimental-asset-colors not available on this build: " + info.Reason)
+				}
+				Expect(err).To(Succeed())
+			}
+
+			expectBalance(ledgerName, "clr:pool", "COIN", "100")
+		})
+
+		It("Should REJECT a colored send from a balance-checked source (P1-2)", func() {
+			// Spending a specific color from a funded account reads that color's
+			// balance. Ledger volumes have no color dimension, so this collapses to
+			// the single COIN volume; serving the colored view would let the script
+			// overspend. It must be rejected rather than silently double-counting.
+			script := `
+#![feature("experimental-asset-colors")]
 
 send [COIN 40] (
   source = @clr:pool \ "RED"
@@ -501,14 +522,18 @@ send [COIN 40] (
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if err != nil {
 				if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
-					(info.Reason == domain.ErrReasonNumscriptParseError || info.Reason == domain.ErrReasonNumscriptRuntime) {
+					info.Reason == domain.ErrReasonNumscriptParseError {
 					Skip("experimental-asset-colors not available on this build: " + info.Reason)
 				}
-				Expect(err).To(Succeed())
 			}
+			Expect(err).To(HaveOccurred())
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
+				"colored balance read must be rejected as validation, got %q", info.Reason)
 
-			expectBalance(ledgerName, "clr:pool", "COIN", "60")
-			expectBalance(ledgerName, "clr:spent", "COIN", "40")
+			// pool untouched.
+			expectBalance(ledgerName, "clr:pool", "COIN", "100")
 		})
 	})
 
@@ -730,6 +755,177 @@ send [USD/2 100] (
 
 			expectBalance(ledgerName, "stale:src", "USD/2", fmt.Sprintf("%d", funded-succeeded*perSend))
 			expectBalance(ledgerName, "stale:dst", "USD/2", fmt.Sprintf("%d", succeeded*perSend))
+		})
+	})
+
+	// EN-1406 P1-1: within a single atomic batch the FSM applies orders
+	// sequentially against a mutated WriteSet, so a later order whose
+	// balance()/meta() depends on an earlier order in the same batch must resolve
+	// against the earlier order's effect. Admission now layers preceding orders'
+	// effects into resolution; without the fix the dependent order hashed stale
+	// and was rejected as STALE_INPUTS_RESOLUTION on every retry (permanent fail).
+	Context("intra-batch dependent resolution (P1-1)", Ordered, func() {
+		const ledgerName = "nsx-intrabatch"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should resolve and commit an order that reads a balance an earlier batch order set", func() {
+			// Order 1 deposits 100 into bulk:source; order 2 sends
+			// balance(@bulk:source) onward. Order 2's resolution must see order 1's
+			// deposit (balance 100), send exactly 100, and both commit.
+			depositScript := `send [USD/2 100] (source = @world destination = @bulk:source)`
+			forwardScript := `
+vars {
+  monetary $all = balance(@bulk:source, USD/2)
+}
+send $all (
+  source = @bulk:source
+  destination = @bulk:dest
+)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, depositScript, nil, nil),
+				actions.CreateScriptTransactionAction(ledgerName, forwardScript, nil, nil),
+			))
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			forwardTx := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(forwardTx.Transaction.Postings).To(HaveLen(1))
+			Expect(forwardTx.Transaction.Postings[0].Source).To(Equal("bulk:source"))
+			Expect(forwardTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("100"))
+
+			expectBalance(ledgerName, "bulk:source", "USD/2", "0")
+			expectBalance(ledgerName, "bulk:dest", "USD/2", "100")
+		})
+
+		It("Should resolve meta() a preceding batch order wrote", func() {
+			// Order 1 sets routing metadata (a script needs at least one send, so it
+			// also moves a token amount); order 2 reads the metadata via meta() to
+			// pick the destination. Order 2 must see order 1's write within the same
+			// batch.
+			setMetaScript := `
+set_account_meta(@ib:cfg, "dest", "ib:resolved")
+send [USD/2 1] (source = @world destination = @ib:cfg)
+`
+			useMetaScript := `
+vars {
+  account $dst = meta(@ib:cfg, "dest")
+}
+send [USD/2 25] (source = @world destination = $dst)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, setMetaScript, nil, nil),
+				actions.CreateScriptTransactionAction(ledgerName, useMetaScript, nil, nil),
+			))
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			useTx := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(useTx.Transaction.Postings).To(HaveLen(1))
+			Expect(useTx.Transaction.Postings[0].Destination).To(Equal("ib:resolved"))
+
+			expectBalance(ledgerName, "ib:resolved", "USD/2", "25")
+		})
+	})
+
+	// EN-1406 P1-2: Ledger volumes carry no color/scope dimension, so a script
+	// that reads a color-qualified balance must be rejected — serving each color
+	// view the full balance would let one script spend the same funds once per
+	// color and drive the volume negative with no overdraft clause (double-spend).
+	Context("colored balance reads are rejected (P1-2)", Ordered, func() {
+		const ledgerName = "nsx-color-reject"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should reject a script that spends the same volume across two colors", func() {
+			// Fund the source with a plain COIN 100. The script tries to spend 80
+			// RED + 80 BLUE from it. Both colored views collapse to the one COIN
+			// volume, so allowing this would overspend to -60. Must be rejected.
+			fund(ledgerName, "clr:src", "COIN 100")
+
+			script := `
+#![feature("experimental-asset-colors")]
+
+send [COIN 80] (
+  source = @clr:src \ "RED"
+  destination = @clr:out
+)
+
+send [COIN 80] (
+  source = @clr:src \ "BLUE"
+  destination = @clr:out
+)
+`
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(HaveOccurred())
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
+				"colored balance reads must be rejected as a validation error, got %q", info.Reason)
+
+			// The source must be untouched — nothing committed.
+			expectBalance(ledgerName, "clr:src", "COIN", "100")
+		})
+	})
+
+	// EN-1406 P1-3: InputsResolutionHash must NOT participate in the idempotency
+	// hash. A retry of the SAME keyed request that reads state (balance) would
+	// otherwise re-resolve at a changed balance, hash differently, and be
+	// rejected as IDEMPOTENCY_KEY_CONFLICT instead of replaying the first log.
+	Context("idempotent replay of a state-reading script (P1-3)", Ordered, func() {
+		const ledgerName = "nsx-idem"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should replay (not conflict) when the same keyed request re-resolves at a changed balance", func() {
+			// Seed the source with 100. The keyed script reads balance and sends a
+			// fixed 10. The FIRST apply commits (balance 100 → 90). A second apply
+			// with the SAME idempotency key re-resolves at balance 90 — a different
+			// InputsResolutionHash — but must REPLAY the first log, not conflict.
+			fund(ledgerName, "idem:src", "USD/2 100")
+
+			const idemKey = "idem-key-p1-3"
+			script := `
+vars {
+  monetary $bal = balance(@idem:src, USD/2)
+}
+send [USD/2 10] (
+  source = @idem:src
+  destination = @idem:dst
+)
+`
+			resp1, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idemKey,
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp1.Logs).To(HaveLen(1))
+			txID1 := resp1.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			// Balance is now 90; a naive re-resolution hashes differently.
+			expectBalance(ledgerName, "idem:src", "USD/2", "90")
+
+			// Retry under the same key: must replay the original log (same tx id),
+			// NOT conflict and NOT double-spend.
+			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idemKey,
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed(), "identical keyed retry must replay, not conflict")
+			Expect(resp2.Logs).To(HaveLen(1))
+			txID2 := resp2.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+			Expect(txID2).To(Equal(txID1), "retry must replay the same transaction")
+
+			// Balance unchanged by the replay — no second debit.
+			expectBalance(ledgerName, "idem:src", "USD/2", "90")
+			expectBalance(ledgerName, "idem:dst", "USD/2", "10")
 		})
 	})
 })
