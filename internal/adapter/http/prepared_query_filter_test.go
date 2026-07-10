@@ -29,7 +29,7 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 		{
 			name:    "empty object",
 			raw:     "{}",
-			wantErr: "must contain at least one condition",
+			wantErr: "empty object",
 		},
 		{
 			name:    "invalid json",
@@ -37,19 +37,54 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			wantErr: "filter:",
 		},
 		{
-			name: "and filter with nested field oneof",
-			raw: `{"and":{"filters":[
-				{"field":{"field":{"metadata":"x"},"intCond":{"min":"1"}}},
-				{"field":{"field":{"metadata":"y"},"boolCond":{"hardcoded":true}}}
-			]}}`,
+			name: "and filter with nested conditions",
+			raw: `{"$and":[
+				{"$gte":{"metadata[x]":1}},
+				{"$match":{"metadata[y]":true}}
+			]}`,
 		},
 		{
 			name: "or filter",
-			raw:  `{"or":{"filters":[{"field":{"field":{"metadata":"x"},"existsCond":{}}}]}}`,
+			raw:  `{"$or":[{"$exists":{"metadata":"x"}}]}`,
 		},
 		{
-			name: "leaf field oneof",
-			raw:  `{"field":{"field":{"metadata":"x"},"existsCond":{}}}`,
+			name: "leaf metadata exists",
+			raw:  `{"$exists":{"metadata":"x"}}`,
+		},
+		{
+			name:    "unknown operator rejected",
+			raw:     `{"$bogus":{}}`,
+			wantErr: "unknown operator",
+		},
+		{
+			name:    "logId rejected on prepared query (log-only field)",
+			raw:     `{"$gt":{"logId":"5"}}`,
+			wantErr: "logId filter is only valid on log queries",
+		},
+		{
+			name:    "date rejected on prepared query (log-only field)",
+			raw:     `{"$gt":{"date":"5"}}`,
+			wantErr: "date filter is only valid on log queries",
+		},
+		{
+			name:    "ledger rejected on prepared query (log-only field)",
+			raw:     `{"$match":{"ledger":"main"}}`,
+			wantErr: "ledger filter is only valid on log queries",
+		},
+		{
+			name:    "logId nested in and rejected",
+			raw:     `{"$and":[{"$match":{"reference":"r"}},{"$gt":{"logId":"5"}}]}`,
+			wantErr: "logId filter is only valid on log queries",
+		},
+		{
+			name:    "null value rejected",
+			raw:     `{"$match":{"reference":null}}`,
+			wantErr: "must not be null",
+		},
+		{
+			name:    "multiple top-level operators rejected",
+			raw:     `{"$and":[],"$not":{"$match":{"reverted":true}}}`,
+			wantErr: "exactly one operator",
 		},
 	}
 

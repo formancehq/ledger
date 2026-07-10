@@ -3749,7 +3749,13 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-          description: Target entity type
+            - LOGS
+          description: >-
+            Target entity type. `LOGS` only appears on prepared queries created
+            through gRPC/CLI — the REST create/update paths accept only
+            `ACCOUNTS` and `TRANSACTIONS` (see CreatePreparedQueryRequest) — but
+            list/get responses echo a query's true target, so a client must
+            tolerate `LOGS` here.
         filter:
           $ref: '#/components/schemas/QueryFilter'
         allowedModes:
@@ -3760,50 +3766,114 @@ components:
     QueryFilter:
       type: object
       description: >-
-        Recursive filter tree (AND/OR/NOT of field conditions and address matches).
-        The `match` object holds one of the named condition types: field equality/range
-        (`FieldCondition`), address prefix/exact match (`AddressMatch`), transaction
-        reference match (`ReferenceCondition`), built-in uint range (`BuiltinUintCondition`),
-        or account-asset presence (`AccountHasAssetCondition`).
+        Recursive filter expression using the Formance query DSL (aligned with
+        the v2 API). Each node is an object with **exactly one** top-level
+        `$`-prefixed operator key.
+
+
+        Combinators:
+
+        - `{"$and": [QueryFilter, ...]}` — all sub-filters must match (non-empty).
+
+        - `{"$or":  [QueryFilter, ...]}` — at least one sub-filter matches (non-empty).
+
+        - `{"$not": QueryFilter}` — negates a single sub-filter.
+
+
+        Leaf conditions are a single-key operator whose value is a
+        `{ "<field>": <value> }` map with exactly one field:
+
+        - `{"$match": {"<field>": <value>}}` — equality; for `address`/`source`/`destination`
+          a trailing `:` means prefix match, otherwise exact.
+
+        - `{"$gt"|"$gte"|"$lt"|"$lte": {"<field>": <value>}}` — range bound. A closed
+          range is expressed as an `$and` of a lower and an upper bound on the same field.
+
+        - `{"$exists": {"metadata": "<key>"}}` — the metadata key is present.
+
+        - `{"$exists": {"asset": "<assetRef>"}}` — the account has ever held the asset
+          (`assetRef` is `BASE` or `BASE/PRECISION`, e.g. `USD/2`). Requires a READY
+          `account-asset` index.
+
+
+        Supported fields: `metadata[<key>]`, `address`, `source`, `destination`,
+        `reference`, `reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`,
+        `revertedAt`, `logId`, `date`. Not every field applies to every query target;
+        a field that does not apply is rejected. The numeric built-ins
+        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
+        **range-only** — use `$gt`/`$gte`/`$lt`/`$lte`; `$match` on them is rejected.
+        The log-only fields (`logId`, `date`, `ledger`) are rejected on prepared
+        queries, which can only target accounts or transactions.
+
+
+        A value is either a JSON literal or a parameter reference
+        `{"$param": "<name>"}`, resolved at prepared-query execution time. A JSON
+        `null` in value position is rejected. uint64 fields
+        (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are carried
+        as decimal strings to stay lossless above 2^53.
+      minProperties: 1
+      maxProperties: 1
+      additionalProperties: true
       properties:
-        and:
+        $and:
           type: array
+          minItems: 1
           items:
             $ref: '#/components/schemas/QueryFilter'
-        or:
+        $or:
           type: array
+          minItems: 1
           items:
             $ref: '#/components/schemas/QueryFilter'
-        not:
+        $not:
           $ref: '#/components/schemas/QueryFilter'
-        match:
+        $match:
+          type: object
+          description: '`{ "<field>": <value> }` — exact/prefix/bool match.'
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $gt:
+          type: object
+          description: '`{ "<field>": <value> }` — strictly greater than.'
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $gte:
+          type: object
+          description: '`{ "<field>": <value> }` — greater than or equal.'
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $lt:
+          type: object
+          description: '`{ "<field>": <value> }` — strictly less than.'
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $lte:
+          type: object
+          description: '`{ "<field>": <value> }` — less than or equal.'
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $exists:
           type: object
           description: >-
-            Field condition or address match. Use one of the named condition schemas
-            (e.g. `AccountHasAssetCondition`) as the value.
-
-    AccountHasAssetCondition:
-      type: object
-      description: >-
-        Matches accounts that have ever touched the specified asset (volume-cell
-        presence semantics — not a balance check). Requires a READY `account-asset`
-        index on the ledger; the query is rejected if the index is absent or still
-        BUILDING.
-      required:
-        - assetBase
-      properties:
-        assetBase:
-          type: string
-          description: Asset code without precision suffix (e.g. `USD`, `EUR`).
-          example: USD
-        precision:
-          type: integer
-          format: int32
-          minimum: 0
+            `{ "metadata": "<key>" }` (metadata key present) or
+            `{ "asset": "<assetRef>" }` (account has held the asset).
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+        $in:
+          type: object
           description: >-
-            Asset precision (number of decimal places). Defaults to `0` when
-            omitted, matching assets recorded with no decimal places.
-          example: 2
+            `{ "<field>": [<value>, ...] }` — value is one of a set. Reserved for
+            the list endpoints; not accepted on prepared queries yet.
+          minProperties: 1
+          maxProperties: 1
+          additionalProperties: true
+
 
     ExecutePreparedQueryResponse:
       type: object
