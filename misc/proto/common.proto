@@ -1161,11 +1161,22 @@ enum ErrorReason {
   ERROR_REASON_CHECKPOINT_ID_REQUIRED = 56;
   ERROR_REASON_NUMSCRIPT_RUNTIME = 57;
   ERROR_REASON_VOLUME_NOT_MATERIALIZED = 58;
-  ERROR_REASON_NON_DETERMINISTIC_SCRIPT = 59;
+  // 59 was ERROR_REASON_NON_DETERMINISTIC_SCRIPT, removed when Numscript
+  // dependency discovery switched from emulation to the upstream
+  // ResolveDependencies API (EN-1406): multi-balance / multi-send scripts
+  // are no longer rejected as non-deterministic.
+  reserved 59;
+  reserved "ERROR_REASON_NON_DETERMINISTIC_SCRIPT";
   ERROR_REASON_CLUSTER_UNHEALTHY = 60;
   ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
   ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;
   ERROR_REASON_CHECKPOINT_NOT_READY = 63;
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
+  // Numscript dependency resolution read at admission time changed before the
+  // FSM applied the transaction, so the preloaded key set may be wrong.
+  // Retryable (Kind=Unavailable) — a second admission re-resolves against the
+  // new values. See EN-1406.
+  ERROR_REASON_STALE_INPUTS_RESOLUTION = 64;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

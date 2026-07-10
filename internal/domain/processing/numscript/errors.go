@@ -10,34 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// ErrNonDeterministicScript is returned when a Numscript script calls
-// GetBalances more than once during discovery.
-// Deterministic scripts must declare all their reads in a single batch.
-type ErrNonDeterministicScript struct {
-	Method string // "GetBalances"
-}
-
-func (e *ErrNonDeterministicScript) Error() string {
-	return fmt.Sprintf("non-deterministic script: %s called more than once", e.Method)
-}
-func (*ErrNonDeterministicScript) Reason() string { return domain.ErrReasonNonDeterministicScript }
-func (e *ErrNonDeterministicScript) Metadata() map[string]string {
-	return map[string]string{"method": e.Method}
-}
-
-// ErrMetaNotSupported is returned when a Numscript script uses meta() to
-// resolve variables dynamically. meta() prevents the admission layer from
-// statically discovering all accounts needed for preloading.
-type errMetaNotSupported struct{}
-
-func (errMetaNotSupported) Error() string {
-	return "meta() is not supported: scripts must use static account references"
-}
-func (errMetaNotSupported) Reason() string              { return domain.ErrReasonValidation }
-func (errMetaNotSupported) Metadata() map[string]string { return nil }
-
-var ErrMetaNotSupported domain.Describable = errMetaNotSupported{}
-
 // convertNumscriptError translates known numscript library errors into domain
 // errors so that the gRPC error mapper can return proper status codes. Library
 // errors that have no specific mapping are wrapped as ErrNumscriptRuntime

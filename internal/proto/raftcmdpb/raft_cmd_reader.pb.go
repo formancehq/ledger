@@ -3233,6 +3233,7 @@ type CreateTransactionOrderReader interface {
 	GetForce() bool
 	GetExpandVolumes() bool
 	GetNumscriptReference() NumscriptReferenceReader
+	GetInputsResolutionHash() []byte
 	Mutate() *CreateTransactionOrder
 }
 
@@ -3284,6 +3285,10 @@ func (r *createTransactionOrderReadonly) GetNumscriptReference() NumscriptRefere
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *createTransactionOrderReadonly) GetInputsResolutionHash() []byte {
+	return bytes.Clone((*CreateTransactionOrder)(r).GetInputsResolutionHash())
 }
 
 func (r *createTransactionOrderReadonly) Mutate() *CreateTransactionOrder {

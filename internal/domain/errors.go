@@ -218,7 +218,7 @@ const (
 	ErrReasonCheckpointNotReady            = "CHECKPOINT_NOT_READY"
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
-	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
+	ErrReasonStaleInputsResolution         = "STALE_INPUTS_RESOLUTION"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -342,6 +342,21 @@ func (errStaleProposal) Reason() string              { return ErrReasonStaleProp
 func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
+
+// ErrStaleInputsResolution — the balance/metadata values that admission's
+// Numscript dependency resolution read to compute the preload set changed
+// before the FSM applied the transaction. The preloaded key set may therefore
+// be wrong, so the order is rejected. Retryable (Kind=Unavailable): a second
+// admission re-resolves against the new values and re-preloads. See EN-1406.
+type errStaleInputsResolution struct{}
+
+func (errStaleInputsResolution) Error() string {
+	return "numscript inputs resolution is stale: balances or metadata changed between admission and apply; retry"
+}
+func (errStaleInputsResolution) Reason() string              { return ErrReasonStaleInputsResolution }
+func (errStaleInputsResolution) Metadata() map[string]string { return nil }
+
+var ErrStaleInputsResolution Describable = errStaleInputsResolution{}
 
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.

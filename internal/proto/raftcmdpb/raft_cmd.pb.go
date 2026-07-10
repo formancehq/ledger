@@ -3041,8 +3041,16 @@ type CreateTransactionOrder struct {
 	Force              bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"`                                      // Skip balance checks when true
 	ExpandVolumes      bool                               `protobuf:"varint,8,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"` // Include post-commit volumes in response
 	NumscriptReference *NumscriptReference                `protobuf:"bytes,9,opt,name=numscript_reference,json=numscriptReference,proto3" json:"numscript_reference,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// inputs_resolution_hash binds the balance/metadata values that admission's
+	// Numscript dependency resolution (ResolveDependencies) read to compute the
+	// preload set. The FSM re-resolves against preloaded cache values and
+	// recomputes this hash; a mismatch means the inputs changed between
+	// admission and apply, so the preload set may be wrong and the order is
+	// rejected with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for
+	// postings-only orders and scripts whose resolution reads nothing. See EN-1406.
+	InputsResolutionHash []byte `protobuf:"bytes,10,opt,name=inputs_resolution_hash,json=inputsResolutionHash,proto3" json:"inputs_resolution_hash,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *CreateTransactionOrder) Reset() {
@@ -3134,6 +3142,13 @@ func (x *CreateTransactionOrder) GetExpandVolumes() bool {
 func (x *CreateTransactionOrder) GetNumscriptReference() *NumscriptReference {
 	if x != nil {
 		return x.NumscriptReference
+	}
+	return nil
+}
+
+func (x *CreateTransactionOrder) GetInputsResolutionHash() []byte {
+	if x != nil {
+		return x.InputsResolutionHash
 	}
 	return nil
 }
@@ -6272,7 +6287,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1cRemoveMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x97\x05\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xcd\x05\n" +
 	"\x16CreateTransactionOrder\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -6282,7 +6297,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
 	"\x05force\x18\a \x01(\bR\x05force\x12%\n" +
 	"\x0eexpand_volumes\x18\b \x01(\bR\rexpandVolumes\x12I\n" +
-	"\x13numscript_reference\x18\t \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x1aR\n" +
+	"\x13numscript_reference\x18\t \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x124\n" +
+	"\x16inputs_resolution_hash\x18\n" +
+	" \x01(\fR\x14inputsResolutionHash\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +

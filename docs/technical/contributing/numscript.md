@@ -445,37 +445,44 @@ If the Numscript syntax is invalid:
 }
 ```
 
-## Volume Preloading (Numscript Emulation)
+## Volume Preloading (Dependency Resolution)
 
-When a Numscript transaction is submitted, account balances must be preloaded at admission time. However, the accounts involved are determined dynamically by the script at runtime, creating a chicken-and-egg problem: we need balances before execution, but we don't know which accounts until after execution.
+When a Numscript transaction is submitted, the accounts and metadata it touches must be preloaded into the FSM cache at admission time. However, which accounts a script touches can depend on the script's inputs (a `meta()`-resolved account, a `balance()`-derived amount), creating a chicken-and-egg problem: we need to preload before apply, but the touched set can depend on current state.
+
+Since EN-1406 this is solved by the upstream library's static dependency-resolution API rather than by emulating a full execution.
 
 ### How It Works
 
-As a temporary workaround, the admission layer runs the Numscript once with a "discovery store" that returns infinite balances (`2^256`) for every account queried. This emulation run discovers which accounts and assets the script needs, without modifying any real state. The discovered volume keys are then preloaded normally from storage.
+Admission calls `ParseResult.ResolveDependencies(ctx, vars, store)`, which walks the script statically, evaluating var origins and posting selectors against a `Store` backed by admission-time reads (a Pebble snapshot — **not** FSM hot-path reads). It returns a richer dependency model than the old emulation:
 
-The emulation is implemented in `internal/domain/processing/numscript/emulate.go`:
+- **account reads** — balances the resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
+- **account writes** — accounts the script credits or debits (sources — including unbounded ones — and destinations);
+- **account metadata reads** — `meta()` lookups;
+- **account metadata writes** — `set_account_meta` targets;
+- **transaction metadata writes** — `set_tx_meta` keys.
 
-1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is used for parsing during discovery
-2. **Execute** with a discovery store that records queried account/asset pairs and returns infinite balances
-3. **Collect** volume keys from both balance queries (sources) and result postings (sources + destinations)
-4. **Preload** the discovered volumes from the store as usual
+The wrapper lives in `internal/domain/processing/numscript/discover.go` (`DiscoverNumscriptDependencies`), the `Store` adapter and value-recording layer in `internal/domain/processing/numscript/store.go`:
 
-### Determinism Constraint
+1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is shared with real execution.
+2. **Resolve** dependencies against a `RecordingStore` wrapping the admission-time value source.
+3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys (color and scope collapse to `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition by color/scope).
+4. **Preload** the union of read and write keys so every FSM read/mutate resolves from cache.
 
-Scripts must be deterministic: the discovery store enforces that `GetBalances` may be called **at most once** during discovery. A second call indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded. `GetAccountsMetadata` always returns `ErrMetaNotSupported` — `meta()` calls are fully rejected, not constrained.
+`meta()`, `oneof` (all branches), and multiple `send` blocks are all handled by the resolver — none is rejected. `ErrMetaNotSupported` and `ErrNonDeterministicScript` no longer exist.
 
-If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDependencies` returns `ErrNonDeterministicScript` with the offending method name. If a script uses `meta()`, it returns `ErrMetaNotSupported`. The admission layer rejects these dependency discovery failures as business validation errors before proposing the command, because proposing without complete preloads would produce a doomed Raft apply.
+### Stale-inputs Detection
 
-### Known Limitations
+When resolution's outcome depends on a current value (a `meta()`-resolved account, a `balance()`-derived amount), the preloaded key set is correct only for the *admission-time* state. If that value changes before the FSM applies the transaction, the preload set may be wrong.
 
-- **`oneof` selectors**: With infinite balances, `oneof` may only query the first source account, since the first source always has sufficient funds. Other sources in the `oneof` list may not be discovered.
-- **Discovery errors**: If dependency discovery fails, admission rejects the transaction before proposal instead of skipping volume discovery.
-- **Shared parsing cache**: Both discovery and real execution use `cache.GetOrParse(script)`, so the script is parsed only once and cached for both paths.
-- **Non-deterministic scripts**: Scripts with multiple `send` statements that trigger separate `GetBalances` calls are rejected during discovery. Such scripts cannot have their volumes reliably preloaded.
+To catch this, the `RecordingStore` records every balance/metadata value the resolution actually read and produces a deterministic BLAKE3 `Hash()` over the sorted records. Admission stores the hash on the order (`CreateTransactionOrder.inputs_resolution_hash`). At apply time the FSM re-runs `ResolveDependencies` against a `Store` backed **only** by preloaded cache values (via the coverage-gated `Scope` — no Pebble reads, respecting the hot-path invariant), recomputes the hash, and compares. A mismatch (or a resolution error on a script admission already resolved) returns `ErrStaleInputsResolution` (`Kind=Unavailable`, `codes.Unavailable`, retryable): the client retries, the second admission re-resolves against the new values and re-preloads.
 
-### Long-term Solution
+The hash covers only values that *determined* the resolution — not every preloaded balance. A plain bounded source is a read *dependency* (it must be preloaded so the apply-path balance check can run) but its value does not change which keys are discovered, so it is not part of the hash. Fully-static scripts read nothing at resolution time and carry no hash; the FSM then skips the check.
 
-The emulation approach is a temporary workaround. The long-term solution is static analysis of Numscript scripts to declare all required inputs at parse time. See the [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) for details.
+### Notes
+
+- **Shared parsing cache**: dependency resolution, the FSM-time stale re-resolution, and real execution all use `cache.GetOrParse(script)`, so a script is parsed once and cached for every path.
+- **`force` mode**: with the transaction's `force` flag, the resolver's `Store` returns unlimited balances, so bounded sources still resolve but no real balance is consulted.
+- **Resolution errors**: if resolution fails at admission (e.g. a `meta()` chain that cannot resolve), admission rejects the transaction as a business validation error before proposing — proposing without complete preloads would produce a doomed Raft apply.
 
 ## Performance Considerations
 

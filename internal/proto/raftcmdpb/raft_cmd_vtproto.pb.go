@@ -1309,6 +1309,11 @@ func (m *CreateTransactionOrder) CloneVT() *CreateTransactionOrder {
 		}
 		r.AccountMetadata = tmpContainer
 	}
+	if rhs := m.InputsResolutionHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.InputsResolutionHash = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4681,6 +4686,9 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 		return false
 	}
 	if !this.NumscriptReference.EqualVT(that.NumscriptReference) {
+		return false
+	}
+	if string(this.InputsResolutionHash) != string(that.InputsResolutionHash) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -9327,6 +9335,13 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.InputsResolutionHash) > 0 {
+		i -= len(m.InputsResolutionHash)
+		copy(dAtA[i:], m.InputsResolutionHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.InputsResolutionHash)))
+		i--
+		dAtA[i] = 0x52
+	}
 	if m.NumscriptReference != nil {
 		size, err := m.NumscriptReference.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -13676,6 +13691,10 @@ func (m *CreateTransactionOrder) SizeVT() (n int) {
 	}
 	if m.NumscriptReference != nil {
 		l = m.NumscriptReference.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.InputsResolutionHash)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -21630,6 +21649,40 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			if err := m.NumscriptReference.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InputsResolutionHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.InputsResolutionHash = append(m.InputsResolutionHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.InputsResolutionHash == nil {
+				m.InputsResolutionHash = []byte{}
 			}
 			iNdEx = postIndex
 		default:

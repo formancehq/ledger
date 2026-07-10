@@ -21,14 +21,6 @@ func TestErrNumscriptParse_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected token")
 }
 
-func TestErrNonDeterministicScript_Error(t *testing.T) {
-	t.Parallel()
-
-	err := &ErrNonDeterministicScript{Method: "GetBalances"}
-	require.Contains(t, err.Error(), "non-deterministic script")
-	require.Contains(t, err.Error(), "GetBalances")
-}
-
 func TestConvertNumscriptError_MissingFunds(t *testing.T) {
 	t.Parallel()
 

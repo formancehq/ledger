@@ -62,8 +62,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
 		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
-		commonpb.ErrorReason_ERROR_REASON_NON_DETERMINISTIC_SCRIPT:
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,
@@ -106,6 +105,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 	case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
 		commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,
 		commonpb.ErrorReason_ERROR_REASON_STALE_PROPOSAL,
+		commonpb.ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,

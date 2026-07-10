@@ -353,6 +353,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"errAuditDisabled":          errAuditDisabled{},
 		"errMaintenanceMode":        errMaintenanceMode{},
 		"errStaleProposal":          errStaleProposal{},
+		"errStaleInputsResolution":  errStaleInputsResolution{},
 		"errNoChapterOpen":          errNoChapterOpen{},
 		"errWritesBlockedDiskFull":  errWritesBlockedDiskFull{},
 		"errWritesBlockedClockSkew": errWritesBlockedClockSkew{},

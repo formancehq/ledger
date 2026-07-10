@@ -1273,32 +1273,58 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
+		valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName}
+
 		discovered, err := numscript.DiscoverNumscriptDependencies(
 			a.numscriptCache,
 			scriptText,
 			scriptVars,
 			ledgerName,
+			valueSource,
+			createTx.CreateTransaction.GetForce(),
 		)
 		if err != nil {
 			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
 		}
 
 		if discovered != nil {
-			for key := range discovered.SourceVolumes {
+			// Volume reads and writes both need preloading: the FSM apply path
+			// reads every touched source balance and mutates both source and
+			// destination volumes. The union is preloaded so every read/mutate
+			// resolves from cache.
+			for key := range discovered.ReadVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
 			}
 
-			for key := range discovered.DestinationVolumes {
+			for key := range discovered.WriteVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset)
 			}
 
-			for key := range discovered.WrittenMetadata {
+			// Metadata reads must be preloaded so the FSM's stale-inputs
+			// re-resolution (which reads meta() through the coverage gate) and
+			// the metadata read on the apply path resolve from cache. Metadata
+			// writes must be preloaded too: the apply path captures the
+			// previous value before writing (indexbuilder relies on it, #186)
+			// via a coverage-gated read.
+			for key := range discovered.ReadMetadata {
 				canonical := key.Bytes()
 				p.Add(dal.SubAttrMetadata, canonical)
 				orderNeeds.Add(dal.SubAttrMetadata, canonical)
 			}
+
+			for key := range discovered.WriteMetadata {
+				canonical := key.Bytes()
+				p.Add(dal.SubAttrMetadata, canonical)
+				orderNeeds.Add(dal.SubAttrMetadata, canonical)
+			}
+
+			// Bind the resolved inputs to the order. The FSM re-resolves against
+			// preloaded values and rejects with ErrStaleInputsResolution if the
+			// hash differs (inputs changed between admission and apply). Nil for
+			// fully-static scripts (nothing read) — the FSM then skips the check.
+			createTx.CreateTransaction.InputsResolutionHash = discovered.InputsHash
 		}
 
 		// For references: preload the resolved content keyed by (ledger, name, version).

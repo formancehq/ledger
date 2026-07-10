@@ -1136,6 +1136,13 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.InputsResolutionHash) > 0 {
+		i -= len(m.InputsResolutionHash)
+		copy(dAtA[i:], m.InputsResolutionHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.InputsResolutionHash)))
+		i--
+		dAtA[i] = 0x52
+	}
 	if m.NumscriptReference != nil {
 		size, _ := m.NumscriptReference.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size

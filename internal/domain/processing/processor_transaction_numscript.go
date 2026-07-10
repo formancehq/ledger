@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -38,15 +39,34 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	vars := make(numscriptlib.VariablesMap)
 	maps.Copy(vars, script.GetVars())
 
-	// Create the store adapter
-	// When Force is true, the adapter returns unlimited balances to bypass balance checks
-	storeAdapter := &numscriptStoreAdapter{
-		store:      s,
-		ledgerName: ledgerName,
-		force:      order.GetForce(),
+	// Stale-inputs check: admission bound the balance/metadata values its
+	// dependency resolution read into order.InputsResolutionHash. Re-resolve
+	// here against the coverage-gated Scope (preloaded cache values only — no
+	// Pebble reads, invariant #3) and compare. A mismatch means an input value
+	// changed between admission and apply, so the preloaded key set may be
+	// wrong; reject with the retryable ErrStaleInputsResolution so the client
+	// re-admits against the new values. An empty stored hash means admission's
+	// resolution read nothing to bind (fully static script) — nothing to check.
+	if expected := order.GetInputsResolutionHash(); len(expected) > 0 {
+		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
+		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()))
+
+		if _, resolveErr := parsed.ResolveDependencies(context.Background(), vars, recording); resolveErr != nil {
+			// A resolution error at apply time on a script admission already
+			// resolved is a genuine input-shift (a var origin now points at a
+			// missing/changed value), not a client script bug — surface it as
+			// stale so the client retries against fresh state.
+			return nil, domain.ErrStaleInputsResolution
+		}
+
+		if !bytes.Equal(expected, recording.Hash()) {
+			return nil, domain.ErrStaleInputsResolution
+		}
 	}
 
-	// Execute the script (experimental features are declared directly in scripts)
+	// Execute the script (experimental features are declared directly in scripts).
+	// When Force is true, the store returns unlimited balances to bypass balance checks.
+	storeAdapter := numscript.NewStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 	result, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
 	if err != nil {
 		// SafeRun already converted to Describable: ErrInsufficientFunds
@@ -169,20 +189,31 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
-		for account, meta := range result.AccountsMetadata {
-			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
-			for key, value := range meta {
-				if err := domain.ValidateMetadataKey(key); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-				if err := domain.ValidateMetadataString(value); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-
-				mdMap[key] = commonpb.NewStringValue(value)
+		for _, row := range result.AccountsMetadata {
+			if err := domain.ValidateMetadataKey(row.Key); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
 			}
 
-			accountsMeta[account] = mdMap
+			value, convErr := numscript.ValueToString(row.Value)
+			if convErr != nil {
+				// A Numscript value that fails to serialise is a library-level
+				// impossibility, not a client error — surface it loudly.
+				return nil, &domain.ErrNumscriptRuntime{
+					Detail: fmt.Sprintf("serialising account metadata %s/%s: %v", row.Account, row.Key, convErr),
+				}
+			}
+
+			if err := domain.ValidateMetadataString(value); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
+			}
+
+			mdMap := accountsMeta[row.Account]
+			if mdMap == nil {
+				mdMap = make(map[string]*commonpb.MetadataValue)
+				accountsMeta[row.Account] = mdMap
+			}
+
+			mdMap[row.Key] = commonpb.NewStringValue(value)
 		}
 	}
 
@@ -195,7 +226,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			stringValue := value.String()
+			stringValue, convErr := numscript.ValueToString(value)
+			if convErr != nil {
+				return nil, &domain.ErrNumscriptRuntime{
+					Detail: fmt.Sprintf("serialising transaction metadata %s: %v", key, convErr),
+				}
+			}
+
 			if err := domain.ValidateMetadataString(stringValue); err != nil {
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
@@ -211,90 +248,61 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	}, nil
 }
 
-// numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
-type numscriptStoreAdapter struct {
+// scopeValueSource reads balances and metadata through the FSM apply Scope.
+// Every read passes through the coverage gate (invariant #9) and touches only
+// preloaded cache values, never Pebble (invariant #3). It backs both the
+// force-free execution store and the FSM-time stale-inputs re-resolution.
+type scopeValueSource struct {
 	store      Scope
 	ledgerName string
-	force      bool // When true, return unlimited balances to bypass balance checks
 }
 
-func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
-	balances := make(numscriptlib.Balances)
+func (s *scopeValueSource) Balance(account, asset string) (*big.Int, error) {
+	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
 
-	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
-
-	for account, assets := range query {
-		accountBalance := make(numscriptlib.AccountBalance)
-		balances[account] = accountBalance
-
-		for _, asset := range assets {
-			// When force mode is enabled, return unlimited balance for all accounts
-			// This bypasses all balance checks in Numscript execution
-			if s.force {
-				accountBalance[asset] = new(big.Int).Set(numscript.MaxForceBalance)
-
-				continue
-			}
-
-			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
-
-			vol, err := readVolumeOrZero(s.store, volumeKey)
-			if err != nil {
-				return nil, err
-			}
-
-			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
-				return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
-			}
-
-			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-			vol.GetInput().IntoUint256(&inputVal)
-			vol.GetOutput().IntoUint256(&outputVal)
-
-			// balance escapes into the map, so it must be heap-allocated
-			// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
-			balance := new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig())
-			accountBalance[asset] = balance
-		}
+	vol, err := readVolumeOrZero(s.store, volumeKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return balances, nil
+	if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
+		return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
+	}
+
+	var inputVal, outputVal uint256.Int
+	vol.GetInput().IntoUint256(&inputVal)
+	vol.GetOutput().IntoUint256(&outputVal)
+
+	// Convert to *big.Int at the numscript boundary (numscript uses *big.Int).
+	return new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()), nil
 }
 
-func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
-	result := make(numscriptlib.AccountsMetadata)
-
-	for account, keys := range query {
-		accountMeta := make(numscriptlib.AccountMetadata)
-		result[account] = accountMeta
-
-		for _, key := range keys {
-			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{
-					LedgerName: s.ledgerName,
-					Account:    account,
-				},
-				Key: key,
-			}
-
-			valueReader, err := s.store.AccountMetadata().Get(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, err
-			}
-
-			if valueReader != nil {
-				// Numscript sees the verbatim client write — declared_type is
-				// an index hint only and MUST NOT influence script behaviour.
-				// A previous version coerced "030" under a UINT64 declaration
-				// to "30" here, which broke the lossless contract and let a
-				// retype silently change transaction outcomes.
-				str := commonpb.MetadataValueToString(valueReader.Mutate())
-				if str != "" {
-					accountMeta[key] = str
-				}
-			}
-		}
+func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{
+			LedgerName: s.ledgerName,
+			Account:    account,
+		},
+		Key: key,
 	}
 
-	return result, nil
+	valueReader, err := s.store.AccountMetadata().Get(metaKey)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return "", false, err
+	}
+
+	if valueReader == nil {
+		return "", false, nil
+	}
+
+	// Numscript sees the verbatim client write — declared_type is an index hint
+	// only and MUST NOT influence script behaviour. A previous version coerced
+	// "030" under a UINT64 declaration to "30" here, which broke the lossless
+	// contract and let a retype silently change transaction outcomes.
+	str := commonpb.MetadataValueToString(valueReader.Mutate())
+	if str == "" {
+		return "", false, nil
+	}
+
+	return str, true, nil
 }

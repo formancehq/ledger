@@ -319,6 +319,14 @@ message CreateTransactionOrder {
   bool force = 7;  // Skip balance checks when true
   bool expand_volumes = 8;  // Include post-commit volumes in response
   NumscriptReference numscript_reference = 9;
+  // inputs_resolution_hash binds the balance/metadata values that admission's
+  // Numscript dependency resolution (ResolveDependencies) read to compute the
+  // preload set. The FSM re-resolves against preloaded cache values and
+  // recomputes this hash; a mismatch means the inputs changed between
+  // admission and apply, so the preload set may be wrong and the order is
+  // rejected with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for
+  // postings-only orders and scripts whose resolution reads nothing. See EN-1406.
+  bytes inputs_resolution_hash = 10;
 }
 
 // NumscriptReference identifies a numscript from the library to use for a transaction.
