@@ -119,7 +119,7 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte, exactLen int) ([]uint64,
 // exact value (equality match).
 //
 // Matching is a prefix scan over [field][value\x00]. Because an indexed value
-// may itself contain a NUL byte (a caller.subject is an arbitrary auth-server
+// may itself contain a NUL byte (a caller_subject is an arbitrary auth-server
 // string), the prefix alone is ambiguous — "alice" would also match a value
 // stored as "alice\x00evil". The exact-length guard (prefix + 8-byte seq)
 // rejects any key longer than a single [prefix][seq] entry, so only the true

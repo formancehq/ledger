@@ -10196,7 +10196,7 @@ func (x *RevertedCondition) GetValue() bool {
 // CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
 //
 // Every exposed field is answerable from the readstore audit secondary index
-// (EN-1339) — outcome, ledger, caller.subject, order_type, timestamp,
+// (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
 // proposal_id, log_seq — except AUDIT_FIELD_SEQUENCE, which is the audit-zone
 // key itself and is served by bounding the entry scan. There is deliberately no
 // scan-time predicate fallback: a field the index cannot answer is not exposed.

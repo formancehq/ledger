@@ -37,7 +37,7 @@ func TestParseAudit_LedgerKeyword(t *testing.T) {
 func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse(`audit[caller.subject] == "svc:payments"`)
+	filter, err := Parse(`audit[caller_subject] == "svc:payments"`)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -170,7 +170,7 @@ func TestFormatAudit_RoundTrip(t *testing.T) {
 	for _, in := range []string{
 		"audit[outcome] == failure",
 		"audit[ledger] == main",
-		"audit[caller.subject] == svc:payments",
+		"audit[caller_subject] == svc:payments",
 		"audit[seq] == 42",
 		"audit[seq] between 1000 and 2000",
 		"audit[timestamp] >= 1700000000000000",

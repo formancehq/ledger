@@ -240,7 +240,7 @@ var auditFieldKeys = map[string]auditFieldSpec{
 	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindUint},
 	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
 	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
-	"caller.subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"caller_subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
 	"ledger":         {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
 	"order_type":     {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
 }

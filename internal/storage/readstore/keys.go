@@ -579,7 +579,7 @@ func AuditIndexPrefix() []byte {
 // The value is NUL-terminated and matched by prefix scan (AuditSeqsByString),
 // so the encoding is unambiguous only while indexed values are themselves
 // NUL-free — true today for order_type (fixed vocabulary), ledger (validated
-// names) and caller.subject (auth subject). EN-1305, which wires the
+// names) and caller_subject (auth subject). EN-1305, which wires the
 // equality/range filter path over arbitrary caller subjects, MUST disambiguate
 // before relying on it (an exact-length check len(key) == len(prefix)+8, or a
 // length-prefixed string encoding); otherwise an "alice" lookup would also
