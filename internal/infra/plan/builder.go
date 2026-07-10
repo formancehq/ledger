@@ -180,6 +180,16 @@ func (p *Builder) UnlockTracker() { p.tracker.Unlock() }
 //
 // On error, the caller must call build.ReleaseLoaders().
 func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*BuildResult, error) {
+	// A collision recorded while building the aggregate Coverage (two
+	// distinct canonical keys sharing an XXH3-128 id) means a preload key
+	// was dropped. Fail loud here rather than let the order reach apply
+	// with a silent cache miss. ~2^-128, but a real occurrence would
+	// desync the FSM (invariant #7). No loaders acquired yet — the empty
+	// BuildResult is safe for the caller's ReleaseLoaders (nil token).
+	if err := aggregate.Err(); err != nil {
+		return &BuildResult{operations: operations, aggregate: aggregate}, err
+	}
+
 	nextIndex := p.tracker.Next()
 	snap := p.cache.Snapshot()
 	nextIndexGen := cache.Gen(nextIndex, snap.GenerationThreshold)

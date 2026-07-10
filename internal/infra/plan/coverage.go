@@ -38,6 +38,13 @@ type CoverageEntry struct {
 type Coverage struct {
 	Attributes      map[byte]map[attributes.U128]CoverageEntry
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
+
+	// collision holds the first XXH3-128 collision detected by Add/Merge
+	// (two distinct canonical keys sharing a 128-bit id). It is surfaced
+	// as a hard error at the Build boundary via Err() so a dropped preload
+	// key can never silently reach apply. nil in the overwhelmingly common
+	// case (probability of a genuine collision is ~2^-128).
+	collision error
 }
 
 // Add records `canonical` under attrCode's key set. Idempotent — a
@@ -74,6 +81,13 @@ func (c *Coverage) Add(attrCode byte, canonical []byte) {
 			"existingTag": existing.Tag,
 			"newTag":      tag,
 		})
+		// assert.Unreachable is a no-op in production builds, so also record
+		// a clean, returnable error (first collision wins). Build checks it
+		// via Err() and fails the proposal instead of dropping the key —
+		// mirroring the loud attributes.KeyStore ErrCollisionDetected path.
+		if c.collision == nil {
+			c.collision = &attributes.ErrCollisionDetected{Bytes: canonical, OriginalTag: existing.Tag, NewTag: tag}
+		}
 	}
 }
 
@@ -167,8 +181,18 @@ func (c *Coverage) Merge(src *Coverage) {
 					"existingTag": existing.Tag,
 					"newTag":      entry.Tag,
 				})
+				if c.collision == nil {
+					c.collision = &attributes.ErrCollisionDetected{Bytes: entry.Canonical, OriginalTag: existing.Tag, NewTag: entry.Tag}
+				}
 			}
 		}
+	}
+
+	// Propagate a collision recorded on the source (e.g. from a per-order
+	// Add) into the destination, so the Build-boundary Err() check sees it
+	// once per-order Coverages are merged into the proposal aggregate.
+	if c.collision == nil {
+		c.collision = src.collision
 	}
 
 	if len(src.IdempotencyKeys) == 0 {
@@ -182,6 +206,14 @@ func (c *Coverage) Merge(src *Coverage) {
 	for k := range src.IdempotencyKeys {
 		c.IdempotencyKeys[k] = struct{}{}
 	}
+}
+
+// Err returns the first XXH3-128 collision recorded during Add/Merge, or
+// nil. A non-nil result means two distinct canonical keys collided on the
+// same 128-bit id (~2^-128); the Build boundary turns it into a hard
+// proposal failure rather than a silent preload gap. See Add.
+func (c *Coverage) Err() error {
+	return c.collision
 }
 
 // NewCoverage returns an empty Coverage. Maps are allocated lazily on the
