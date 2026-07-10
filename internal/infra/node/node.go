@@ -64,6 +64,20 @@ var (
 	// ErrNodeAlreadyInCluster is returned when trying to add a node that already exists.
 	ErrNodeAlreadyInCluster = errors.New("node already in cluster")
 
+	// ErrNodeStaleProgress (EN-1436) is returned by AddLearner when the
+	// leader already holds a Progress entry for the joining nodeID with a
+	// non-zero Match — the leader believes it has already replicated log
+	// entries to this node. A JoinAsLearner call only reaches AddLearner
+	// when the caller has no CLUSTER_JOINED marker (empty/reprovisioned
+	// WAL), so a non-zero Match means the leader's known match index points
+	// at state the caller cannot possibly have. Proceeding would trigger
+	// etcd-raft's "tocommit out of range" panic on the next MsgApp. This is
+	// distinct from ErrNodeAlreadyInCluster (Match == 0: a benign idempotent
+	// join or a not-yet-replicated learner refresh) and fires regardless of
+	// whether the stored instance_id matches the incoming one — covering
+	// both the identical-identity and the fresh-identity (WAL-wiped) rejoin.
+	ErrNodeStaleProgress = errors.New("node already has stale raft progress on the leader")
+
 	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
 	ErrLearnerNotEligible = errors.New("learner nodes are not eligible for leadership")
 
@@ -82,6 +96,13 @@ var (
 	// (restoring a snapshot or replaying spool). Callers should forward the read to the leader.
 	ErrNodeSyncing = errors.New("node is syncing")
 )
+
+// StaleRaftProgressReason is the machine-readable ErrorInfo reason attached to
+// the FailedPrecondition status a leader returns when a JoinAsLearner call hits
+// ErrNodeStaleProgress (EN-1436). The joining node matches on it to tell the
+// stale-progress rejection apart from the removed-member blacklist rejection,
+// which is also FailedPrecondition but calls for a different remediation.
+const StaleRaftProgressReason = "STALE_RAFT_PROGRESS"
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
 // because rawNode is not thread-safe. Implementations return an error via errCh.
@@ -2255,6 +2276,45 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 	}
 }
 
+// existingLearnerAction is the decision AddLearner takes when the leader
+// already tracks the joining nodeID in its raft Progress.
+type existingLearnerAction int
+
+const (
+	// existingLearnerStaleProgress: the leader has already replicated log
+	// entries to this node (Match > 0). A JoinAsLearner caller cannot own
+	// that state (it only calls with no CLUSTER_JOINED marker), so proceeding
+	// would trip etcd-raft's "tocommit out of range" panic — fail fast.
+	existingLearnerStaleProgress existingLearnerAction = iota
+	// existingLearnerAlreadyInCluster: Match == 0 and the stored identity
+	// matches (or none to refresh). Idempotent join — nothing to do.
+	existingLearnerAlreadyInCluster
+	// existingLearnerNeedsRefresh: Match == 0 but the stored instance_id
+	// differs from the joining pod's — refresh the peer row via
+	// ConfChangeUpdateNode (admin AddLearner + boot, or a learner
+	// reprovisioned before it received any entries).
+	existingLearnerNeedsRefresh
+)
+
+// classifyExistingLearner decides what AddLearner must do when the leader's
+// Progress already carries the joining nodeID (EN-1436). The Match > 0 check
+// precedes the identity comparison so the stale-progress fail-fast fires on
+// BOTH the identical-identity rejoin and the fresh-identity (WAL-wiped) rejoin
+// — the latter otherwise slips through as a benign ConfChangeUpdateNode refresh
+// and re-introduces the crash loop this guard exists to prevent.
+func classifyExistingLearner(match uint64, existingInstanceID []byte, hasRow bool, incomingInstanceID []byte) existingLearnerAction {
+	if match > 0 {
+		return existingLearnerStaleProgress
+	}
+
+	needsRefresh := hasRow && len(incomingInstanceID) == 16 && !bytes.Equal(existingInstanceID, incomingInstanceID)
+	if needsRefresh {
+		return existingLearnerNeedsRefresh
+	}
+
+	return existingLearnerAlreadyInCluster
+}
+
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
 // The call blocks until the ConfChange is committed through Raft consensus.
 // instanceID (16 bytes, empty only from the admin cluster.AddLearner RPC
@@ -2270,6 +2330,14 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 // this refreshes the peer row across all nodes and unblocks
 // checkAndPromoteLearners which otherwise defers promotion for rows
 // without an instance_id.
+//
+// EN-1436: if the peer already exists with a non-zero Progress.Match (the
+// leader has already replicated entries to it), this returns
+// ErrNodeStaleProgress instead — a JoinAsLearner caller with no
+// CLUSTER_JOINED marker cannot own that state, so both the AlreadyExists
+// and the UpdateNode-refresh outcomes would let a "tocommit out of range"
+// crash loop through. This check precedes the identity comparison so it
+// fires on the fresh-identity (WAL-wiped) rejoin too.
 //
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
@@ -2306,27 +2374,23 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 			}
 		}
 
-		if _, ok := status.Progress[nodeID]; ok {
-			// Peer already a Raft member. Refresh the peer row via
-			// UpdateNode whenever the stored instance_id differs
-			// from the joining pod's — the admin cluster.AddLearner
-			// + boot flow (stored is empty), and reprovisioning of
-			// a learner before promotion (stored is a stale
-			// previous instance_id). Otherwise return AlreadyExists
-			// (idempotent join with matching identity).
+		if prog, ok := status.Progress[nodeID]; ok {
 			existing, hasRow := node.membership.GetInstanceID(nodeID)
-			needsRefresh := hasRow && len(instanceID) == 16 && !bytes.Equal(existing, instanceID)
-			if !needsRefresh {
-				return ErrNodeAlreadyInCluster
-			}
 
-			return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
-				Changes: []*raftpb.ConfChangeSingle{{
-					Type:   new(raftpb.ConfChangeUpdateNode),
-					NodeId: new(nodeID),
-				}},
-				Context: ccCtx,
-			})
+			switch classifyExistingLearner(prog.Match, existing, hasRow, instanceID) {
+			case existingLearnerStaleProgress:
+				return ErrNodeStaleProgress
+			case existingLearnerAlreadyInCluster:
+				return ErrNodeAlreadyInCluster
+			case existingLearnerNeedsRefresh:
+				return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
+					Changes: []*raftpb.ConfChangeSingle{{
+						Type:   new(raftpb.ConfChangeUpdateNode),
+						NodeId: new(nodeID),
+					}},
+					Context: ccCtx,
+				})
+			}
 		}
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{

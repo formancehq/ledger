@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -1493,15 +1494,23 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
-			// EN-1436: the leader detected this nodeID in its raft Progress but
-			// we (the caller) have no CLUSTER_JOINED marker on our WAL. This
-			// means the leader's Match for us points at state we don't have,
-			// and the next MsgApp/heartbeat would trigger etcd-raft's
-			// "tocommit out of range" panic. Fail fast with the operator-
-			// actionable server message rather than retry, mark, or silently
-			// crash-loop. The server message already contains the exact
-			// remediation command; surface it verbatim as the fatal reason.
-			if ok && st.Code() == codes.FailedPrecondition {
+			// EN-1436: the leader detected this nodeID in its raft Progress
+			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED
+			// marker on our WAL. The leader's Match for us points at state we
+			// don't have, and the next MsgApp/heartbeat would trigger
+			// etcd-raft's "tocommit out of range" panic. Fail fast with the
+			// operator-actionable server message rather than retry, mark, or
+			// silently crash-loop. The server message already contains the
+			// exact remediation command; surface it verbatim as the fatal
+			// reason.
+			//
+			// Match on the STALE_RAFT_PROGRESS ErrorInfo reason, not on the
+			// bare FailedPrecondition code: the removed-member blacklist
+			// rejection (EN-1045) is also FailedPrecondition but needs
+			// `forget-removed`, not `remove-node --force`. Conflating the two
+			// would print misleading remediation. A blacklist rejection falls
+			// through to the generic fatal handler below with its own message.
+			if ok && st.Code() == codes.FailedPrecondition && isStaleRaftProgress(st) {
 				logger.WithFields(map[string]any{
 					"peer":   peer.ID,
 					"nodeID": cfg.RaftConfig.NodeID,
@@ -1571,6 +1580,22 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 
 		backoff = min(backoff*2, maxBackoff)
 	}
+}
+
+// isStaleRaftProgress reports whether a FailedPrecondition status carries the
+// EN-1436 STALE_RAFT_PROGRESS ErrorInfo reason, distinguishing a stale-raft-
+// progress join rejection (remediation: `remove-node --force`) from the
+// removed-member blacklist rejection (remediation: `forget-removed`), which is
+// also FailedPrecondition. Falls back to false when no matching detail is
+// present so unrelated FailedPrecondition responses keep their generic handling.
+func isStaleRaftProgress(st *status.Status) bool {
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.GetReason() == node.StaleRaftProgressReason {
+			return true
+		}
+	}
+
+	return false
 }
 
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble

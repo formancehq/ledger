@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -223,15 +225,39 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		// behalf — which would mask real operational events (why did the
 		// WAL disappear? did GitOps drift the PVC?) — surface it as a
 		// FailedPrecondition with the exact remediation command in the
-		// message. Client-side, tryAddLearner treats FailedPrecondition as
+		// message. Client-side, tryAddLearner treats this specific reason as
 		// fatal-with-clear-message so the pod fails fast with an operator-
 		// actionable log line instead of crash-looping on tocommit.
-		if errors.Is(err, node.ErrNodeAlreadyInCluster) {
-			return nil, status.Errorf(codes.FailedPrecondition,
+		//
+		// EN-1436: the guard keys on ErrNodeStaleProgress, which AddLearner
+		// returns whenever the leader's Progress.Match for this node is
+		// non-zero — covering BOTH the identical-identity rejoin and the
+		// fresh-identity (WAL-wiped) rejoin, where a new instance_id would
+		// otherwise route through a benign ConfChangeUpdateNode refresh and
+		// bypass the fail-fast entirely. A distinguishing ErrorInfo detail
+		// (reason STALE_RAFT_PROGRESS) is attached so the client can tell
+		// this apart from the removed-member blacklist rejection above,
+		// which is also FailedPrecondition but needs `forget-removed`, not
+		// `remove-node --force`.
+		if errors.Is(err, node.ErrNodeStaleProgress) {
+			st := status.New(codes.FailedPrecondition, fmt.Sprintf(
 				"node %d is already in the leader's raft Progress but the caller has no CLUSTER_JOINED marker — "+
 					"its local WAL cannot satisfy the leader's known match index. "+
 					"Reset membership first: `ledgerctl cluster remove-node %d --force` on the leader, then restart this pod.",
-				req.GetNodeId(), req.GetNodeId())
+				req.GetNodeId(), req.GetNodeId()))
+
+			detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+				Reason: node.StaleRaftProgressReason,
+				Domain: "ledger",
+			})
+			if detailErr != nil {
+				// Attaching the detail failed (marshal error): fall back to
+				// the bare status so the caller still fails fast, just
+				// without the machine-readable reason.
+				return nil, st.Err()
+			}
+
+			return nil, detailed.Err()
 		}
 
 		// Notably:
