@@ -157,6 +157,38 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	require.Equal(t, "active", value)
 }
 
+// TestGetAccountsMetadata_PresentEmptyString pins the fix for the empty-string
+// presence bug: a stored StringValue("") is a valid, PRESENT metadata value.
+// MetadataValueToString returns "" for both a present empty string and an
+// absent/nil value, so presence must be driven by nil-ness alone — never by
+// str=="". A present empty string must surface as a row (present) with value "",
+// otherwise a valid meta() read of an empty string resolves as absent and the
+// resolution hash embeds the wrong (absent) sentinel.
+func TestGetAccountsMetadata_PresentEmptyString(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	store := newScopeStore(mockStore, false)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
+		Key:        "note",
+	}
+
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue(""), nil)
+
+	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"note"}}}
+
+	result, err := store.GetAccountsMetadata(context.Background(), query)
+	require.NoError(t, err)
+	value, ok := metaValue(result, "users:001", "note")
+	require.True(t, ok, "a present empty-string metadata value must be reported as present")
+	require.Equal(t, "", value)
+}
+
 func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	t.Parallel()
 

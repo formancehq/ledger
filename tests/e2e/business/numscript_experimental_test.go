@@ -512,6 +512,148 @@ send [COIN 40] (
 		})
 	})
 
+	// Experimental var-origin functions that route through the new
+	// ResolveDependencies → preload → hash → FSM path: overdraft() (the
+	// function, distinct from `allowing overdraft`), get_asset (can decide the
+	// write asset/volume), get_amount, and mid-script function calls (balance
+	// reads outside the vars block). Each declares its feature in-script; the
+	// FSM merges #![feature] into the run flag set, and resolution enables every
+	// feature (nil flag set), so the discovered deps must be preloaded for apply
+	// to resolve deterministically.
+	Context("experimental var-origin functions (get_amount / get_asset / overdraft() / mid-script)", Ordered, func() {
+		const ledgerName = "nsx-fns"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("overdraft() function: reads the account's overdraft and sizes a send", func() {
+			// Drive an account negative so overdraft() returns a non-zero amount,
+			// then send exactly that amount out of world. overdraft(@fns:od, USD/2)
+			// reads @fns:od's balance — that read must be discovered/preloaded, and
+			// its value is a bound input.
+			//
+			// Put @fns:od at -200 first (unbounded overdraft), so
+			// overdraft(@fns:od, USD/2) == 200.
+			script := `
+#![feature("experimental-overdraft-function")]
+
+vars {
+  monetary $od = overdraft(@fns:od, USD/2)
+}
+
+send $od (
+  source = @world
+  destination = @fns:od_out
+)
+`
+			// Establish the negative balance.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, `
+send [USD/2 200] (
+  source = @fns:od allowing unbounded overdraft
+  destination = @fns:sink
+)
+`, nil, nil)))
+			Expect(err).To(Succeed())
+			expectBalance(ledgerName, "fns:od", "USD/2", "-200")
+
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			// overdraft was 200, so 200 is sent world -> od_out.
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("200"))
+			expectBalance(ledgerName, "fns:od_out", "USD/2", "200")
+		})
+
+		It("get_amount(): derives a send amount from a read balance", func() {
+			fund(ledgerName, "fns:ga_src", "USD/2 640")
+
+			script := `
+#![feature("experimental-get-amount-function")]
+
+vars {
+  monetary $m = balance(@fns:ga_src, USD/2)
+  number $n = get_amount($m)
+}
+
+send [USD/2 $n] (
+  source = @fns:ga_src
+  destination = @fns:ga_dst
+)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("640"))
+
+			expectBalance(ledgerName, "fns:ga_src", "USD/2", "0")
+			expectBalance(ledgerName, "fns:ga_dst", "USD/2", "640")
+		})
+
+		It("get_asset(): the asset of a read balance decides the write volume's asset", func() {
+			fund(ledgerName, "fns:as_src", "USD/2 300")
+
+			// $a is the asset extracted from a balance() monetary; the send uses it,
+			// so the destination volume is keyed by that asset. The backing
+			// balance() read (as_src/USD/2) must be discovered and preloaded.
+			script := `
+#![feature("experimental-get-asset-function")]
+
+vars {
+  monetary $m = balance(@fns:as_src, USD/2)
+  asset $a = get_asset($m)
+}
+
+send [$a 120] (
+  source = @fns:as_src
+  destination = @fns:as_dst
+)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
+
+			expectBalance(ledgerName, "fns:as_src", "USD/2", "180")
+			expectBalance(ledgerName, "fns:as_dst", "USD/2", "120")
+		})
+
+		It("mid-script function call: a balance() outside vars is discovered and stored", func() {
+			// balance() called inline in set_tx_meta (not in the vars block) reads
+			// @fns:ms_probe's balance. That read must be discovered/preloaded, and
+			// the stored metadata reflects the real balance.
+			fund(ledgerName, "fns:ms_probe", "USD/2 512")
+
+			script := `
+#![feature("experimental-mid-script-function-call")]
+
+send [USD/2 10] (
+  source = @world
+  destination = @fns:ms_dst
+)
+
+set_tx_meta("probe_balance", balance(@fns:ms_probe, USD/2))
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			// balance() of 512 stored as a monetary => "USD/2 512".
+			Expect(meta["probe_balance"]).To(Equal("USD/2 512"))
+
+			expectBalance(ledgerName, "fns:ms_dst", "USD/2", "10")
+		})
+	})
+
 	// Stale-inputs retry: the FSM re-resolves dependencies against the
 	// coverage-gated cache and returns retryable ErrStaleInputsResolution
 	// (gRPC Unavailable) if a read value changed between admission and apply.

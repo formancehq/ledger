@@ -57,15 +57,17 @@ func (s *admissionValueSource) Metadata(account, key string) (string, bool, erro
 	}
 
 	if value == nil {
+		// Absent key: Attribute.Get returns nil for a Pebble miss.
 		return "", false, nil
 	}
 
-	// Numscript sees the verbatim stored value — declared_type is an index hint
-	// only and MUST NOT influence resolution.
-	str := commonpb.MetadataValueToString(value)
-	if str == "" {
-		return "", false, nil
-	}
-
-	return str, true, nil
+	// Present key. Numscript sees the verbatim stored value — declared_type is an
+	// index hint only and MUST NOT influence resolution. Presence is driven ONLY
+	// by nil-ness: an empty string is a valid stored metadata value
+	// (ValidateMetadataString accepts ""), and MetadataValueToString returns ""
+	// for both a real StringValue("") and an untyped/nil value. Returning
+	// present=false on str=="" would make a valid meta() read of an empty string
+	// resolve as absent, diverging from the FSM-side scopeValueSource and
+	// poisoning the resolution hash with the absent sentinel.
+	return commonpb.MetadataValueToString(value), true, nil
 }

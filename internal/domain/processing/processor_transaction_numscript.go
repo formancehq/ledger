@@ -292,17 +292,20 @@ func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
 	}
 
 	if valueReader == nil {
+		// Absent key: Scope returns ErrNotFound → nil reader above.
 		return "", false, nil
 	}
 
-	// Numscript sees the verbatim client write — declared_type is an index hint
-	// only and MUST NOT influence script behaviour. A previous version coerced
-	// "030" under a UINT64 declaration to "30" here, which broke the lossless
-	// contract and let a retype silently change transaction outcomes.
-	str := commonpb.MetadataValueToString(valueReader.Mutate())
-	if str == "" {
-		return "", false, nil
-	}
-
-	return str, true, nil
+	// Present key. Numscript sees the verbatim client write — declared_type is an
+	// index hint only and MUST NOT influence script behaviour. A previous version
+	// coerced "030" under a UINT64 declaration to "30" here, which broke the
+	// lossless contract and let a retype silently change transaction outcomes.
+	//
+	// Presence is driven ONLY by nil-ness: an empty string is a valid stored
+	// metadata value, and MetadataValueToString returns "" for both a real
+	// StringValue("") and an untyped/nil value. Returning present=false on
+	// str=="" would make a valid meta() read of an empty string resolve as
+	// absent, diverging from the admission-side admissionValueSource and
+	// poisoning the resolution hash with the absent sentinel.
+	return commonpb.MetadataValueToString(valueReader.Mutate()), true, nil
 }

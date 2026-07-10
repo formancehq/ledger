@@ -266,3 +266,133 @@ func TestDiscover_ForceSkipsBalanceReads(t *testing.T) {
 	require.Contains(t, result.WriteVolumes, volKey("wallet", "USD/2"))
 	require.Contains(t, result.WriteVolumes, volKey("out", "USD/2"))
 }
+
+// TestDiscover_MetaEmptyStringIsPresent pins the empty-string presence fix at
+// the resolution layer: a metadata key whose stored value is an empty string is
+// PRESENT, so a meta() read of it resolves successfully and records the real
+// value ("") — not the absent sentinel. Two runs with the same empty-string
+// value must hash equal, and an empty string must hash differently from a
+// non-empty value (proving the recorded value is the real "" and not the absent
+// sentinel).
+func TestDiscover_MetaEmptyStringIsPresent(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  string $note = meta(@profile, "note")
+}
+set_tx_meta("note", $note)
+send [USD/2 1] (source = @world destination = @sink)
+`
+
+	empty1 := discover(t, script, nil, newFakeSource().withMetadata("profile", "note", ""), false)
+	empty2 := discover(t, script, nil, newFakeSource().withMetadata("profile", "note", ""), false)
+	nonEmpty := discover(t, script, nil, newFakeSource().withMetadata("profile", "note", "x"), false)
+
+	require.Contains(t, empty1.ReadMetadata, metaKey("profile", "note"),
+		"the meta() key must be discovered as a read")
+	require.NotNil(t, empty1.InputsHash)
+	require.Equal(t, empty1.InputsHash, empty2.InputsHash,
+		"identical present empty-string reads must hash equal")
+	require.NotEqual(t, empty1.InputsHash, nonEmpty.InputsHash,
+		"a present empty string must hash differently from a non-empty value (proving it recorded the real value, not the absent sentinel)")
+}
+
+// TestDiscover_OverdraftFunctionIsRead pins that the overdraft() var-origin
+// function (distinct from `allowing overdraft`) is discovered as a balance read
+// and hashed as a bound input. It routes through the same
+// ResolveDependencies → preload → hash path.
+func TestDiscover_OverdraftFunctionIsRead(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  monetary $o = overdraft(@carol, EUR/2)
+}
+send $o (source = @world destination = @bob)
+`
+	src := newFakeSource().withBalance("carol", "EUR/2", -50)
+	result := discover(t, script, nil, src, false)
+
+	require.Contains(t, result.ReadVolumes, volKey("carol", "EUR/2"),
+		"overdraft() reads the account balance")
+	require.Contains(t, result.WriteVolumes, volKey("bob", "EUR/2"))
+	require.NotNil(t, result.InputsHash, "the overdraft() balance is a bound input")
+
+	// A changed overdraft balance must change the hash (stale detection).
+	other := discover(t, script, nil, newFakeSource().withBalance("carol", "EUR/2", -999), false)
+	require.NotEqual(t, result.InputsHash, other.InputsHash)
+}
+
+// TestDiscover_GetAssetDecidesWriteAsset pins that get_asset() — which derives
+// an asset from a monetary read via balance() — resolves and the balance read
+// backing it is discovered (so the write asset/volume it decides is preloaded).
+func TestDiscover_GetAssetDecidesWriteAsset(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  monetary $m = balance(@treasury, USD/2)
+  asset $a = get_asset($m)
+}
+send [$a 10] (source = @treasury destination = @out)
+`
+	src := newFakeSource().withBalance("treasury", "USD/2", 1000)
+	result := discover(t, script, nil, src, false)
+
+	require.Contains(t, result.ReadVolumes, volKey("treasury", "USD/2"),
+		"get_asset()'s backing balance() read must be discovered")
+	// The send asset resolved to USD/2 via get_asset — the destination volume is
+	// keyed by that asset, proving get_asset drove the write volume.
+	require.Contains(t, result.WriteVolumes, volKey("out", "USD/2"))
+	require.NotNil(t, result.InputsHash)
+}
+
+// TestDiscover_GetAmountReadsBalance pins that get_amount() — deriving a number
+// from a monetary read via balance() — records the backing balance read.
+func TestDiscover_GetAmountReadsBalance(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  monetary $m = balance(@treasury, USD/2)
+  number $n = get_amount($m)
+}
+send [USD/2 $n] (source = @world destination = @out)
+`
+	src := newFakeSource().withBalance("treasury", "USD/2", 1000)
+	result := discover(t, script, nil, src, false)
+
+	require.Contains(t, result.ReadVolumes, volKey("treasury", "USD/2"),
+		"get_amount()'s backing balance() read must be discovered")
+	require.Contains(t, result.WriteVolumes, volKey("out", "USD/2"))
+	require.NotNil(t, result.InputsHash)
+
+	other := discover(t, script, nil, newFakeSource().withBalance("treasury", "USD/2", 1), false)
+	require.NotEqual(t, result.InputsHash, other.InputsHash,
+		"a changed source amount balance must change the hash")
+}
+
+// TestDiscover_MidScriptFunctionCallReadsBalance pins that a balance() called
+// mid-script (outside vars — here inside set_tx_meta) is discovered as a read
+// and hashed. Mid-script calls read balances outside the vars block, so they
+// must still flow through resolution.
+func TestDiscover_MidScriptFunctionCallReadsBalance(t *testing.T) {
+	t.Parallel()
+
+	script := `
+send [USD/2 10] (source = @world destination = @out)
+set_tx_meta("bal", balance(@treasury, USD/2))
+`
+	src := newFakeSource().withBalance("treasury", "USD/2", 1000)
+	result := discover(t, script, nil, src, false)
+
+	require.Contains(t, result.ReadVolumes, volKey("treasury", "USD/2"),
+		"a mid-script balance() read must be discovered")
+	require.Contains(t, result.WriteVolumes, volKey("out", "USD/2"))
+	require.NotNil(t, result.InputsHash)
+
+	other := discover(t, script, nil, newFakeSource().withBalance("treasury", "USD/2", 5), false)
+	require.NotEqual(t, result.InputsHash, other.InputsHash,
+		"a changed mid-script-read balance must change the hash")
+}
