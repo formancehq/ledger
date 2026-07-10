@@ -26,4 +26,7 @@ type Writer interface {
 	// a canonical attribute key.
 	SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error
 	RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error
+	// Account types also live on LedgerInfo and are keyed by ledger.
+	AddAccountType(ledger string, accountType *commonpb.AccountType) error
+	RemoveAccountType(ledger string, name string) error
 }

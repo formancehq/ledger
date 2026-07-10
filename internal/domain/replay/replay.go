@@ -36,6 +36,10 @@ func ReplayLedgerLog(
 
 			types[at.GetName()] = at
 			ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+
+			if err := w.AddAccountType(ledger, at); err != nil {
+				return fmt.Errorf("replaying added account type: %w", err)
+			}
 		}
 
 	case *commonpb.LedgerLogPayload_RemovedAccountType:
@@ -43,6 +47,10 @@ func ReplayLedgerLog(
 			if types := rawLedgerTypes[ledger]; types != nil {
 				delete(types, p.RemovedAccountType.GetName())
 				ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+			}
+
+			if err := w.RemoveAccountType(ledger, p.RemovedAccountType.GetName()); err != nil {
+				return fmt.Errorf("replaying removed account type: %w", err)
 			}
 		}
 

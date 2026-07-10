@@ -44,6 +44,7 @@ func RebuildDelta(
 		volume:         attrs.Volume,
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
+		ledger:         attrs.Ledger,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
 		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
@@ -167,13 +168,11 @@ func RebuildDelta(
 			// the stored projection. ToLedgerInfo copies every creation-time field.
 			info := p.CreateLedger.ToLedgerInfo()
 
-			if err := state.SaveLedger(batch, info); err != nil {
+			if err := writer.saveLedgerInfo(info); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("saving ledger info at log %d: %w", seq, err)
 			}
-
-			writer.ledgerInfos[info.GetName()] = info
 
 			// Seed the account-type maps from the creation log so replay of this
 			// ledger's later logs resolves enforcement / purge simulation against
@@ -493,11 +492,7 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 		info.MetadataSchema.LedgerFields[key] = field
 	}
 
-	if err := state.SaveLedger(w.batch, info); err != nil {
-		return fmt.Errorf("saving rebuilt ledger schema: %w", err)
-	}
-
-	return nil
+	return w.saveLedgerInfo(info)
 }
 
 // RemoveMetadataFieldType drops a field-type declaration from the ledger's
@@ -523,11 +518,60 @@ func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target co
 		delete(info.GetMetadataSchema().GetLedgerFields(), key)
 	}
 
-	if err := state.SaveLedger(w.batch, info); err != nil {
-		return fmt.Errorf("saving rebuilt ledger schema: %w", err)
+	return w.saveLedgerInfo(info)
+}
+
+// saveLedgerInfo persists a LedgerInfo to BOTH the SubAttrLedger attribute
+// projection (read by the FSM hot path, the index builder, and preload) and the
+// Global LedgerInfo zone (read by the query path and the checker), matching the
+// dual write the normal FSM apply performs. Writing only the Global zone would
+// leave the attribute projection stale after a restore, so the hot path would see
+// checkpoint-era ledger state and the next mutation would clone it over the
+// rebuilt fields.
+func (w *attributeReplayWriter) saveLedgerInfo(info *commonpb.LedgerInfo) error {
+	if _, err := w.ledger.Set(w.batch, domain.LedgerKey{Name: info.GetName()}.Bytes(), info); err != nil {
+		return fmt.Errorf("saving rebuilt ledger attribute: %w", err)
 	}
 
+	if err := state.SaveLedger(w.batch, info); err != nil {
+		return fmt.Errorf("saving rebuilt ledger info: %w", err)
+	}
+
+	w.ledgerInfos[info.GetName()] = info
+
 	return nil
+}
+
+// AddAccountType folds an account-type declaration replayed from the log onto the
+// ledger's in-memory LedgerInfo and re-persists it. Account types live on
+// LedgerInfo, so without this a restore loses every type declared beyond the
+// checkpoint.
+func (w *attributeReplayWriter) AddAccountType(ledger string, accountType *commonpb.AccountType) error {
+	info := w.ledgerInfos[ledger]
+	if info == nil {
+		return fmt.Errorf("invariant: AddAccountType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
+	}
+
+	if info.AccountTypes == nil {
+		info.AccountTypes = make(map[string]*commonpb.AccountType)
+	}
+
+	info.AccountTypes[accountType.GetName()] = accountType
+
+	return w.saveLedgerInfo(info)
+}
+
+// RemoveAccountType drops an account-type declaration from the ledger's in-memory
+// LedgerInfo and re-persists it.
+func (w *attributeReplayWriter) RemoveAccountType(ledger string, name string) error {
+	info := w.ledgerInfos[ledger]
+	if info == nil {
+		return fmt.Errorf("invariant: RemoveAccountType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
+	}
+
+	delete(info.GetAccountTypes(), name)
+
+	return w.saveLedgerInfo(info)
 }
 
 // attributeReplayWriter implements replay.Writer by writing directly to
@@ -543,13 +587,14 @@ type attributeReplayWriter struct {
 	volume         *attributes.Attribute[*raftcmdpb.VolumePair]
 	metadata       *attributes.Attribute[*commonpb.MetadataValue]
 	tx             *attributes.Attribute[*commonpb.TransactionState]
+	ledger         *attributes.Attribute[*commonpb.LedgerInfo]
 	pendingVolumes map[string]*raftcmdpb.VolumePair
 	pendingTx      map[string]*commonpb.TransactionState
 
-	// LedgerInfo per ledger, carrying the evolving metadata schema. Schema
-	// declarations live on LedgerInfo (not the attribute zones), so schema
-	// replays fold into these and re-save. Seeded from the checkpoint and
-	// extended as CreateLedger logs replay.
+	// LedgerInfo per ledger, carrying the evolving metadata schema and account
+	// types. Both live on LedgerInfo (not a per-key attribute), so schema and
+	// account-type replays fold into these and re-save. Seeded from the
+	// checkpoint and extended as CreateLedger logs replay.
 	ledgerInfos map[string]*commonpb.LedgerInfo
 }
 

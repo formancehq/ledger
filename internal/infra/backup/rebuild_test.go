@@ -262,6 +262,52 @@ func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
 	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
 	require.Contains(t, info.GetAccountTypes(), "orders")
 	require.Equal(t, "orders:{id}", info.GetAccountTypes()["orders"].GetPattern())
+
+	// The FSM hot path / index builder / preload read LedgerInfo from the
+	// SubAttrLedger attribute projection, not the Global zone — it must carry the
+	// reconstructed info too.
+	attrs := attributes.New()
+	attrInfo, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, attrInfo, "LedgerInfo must be written to the SubAttrLedger attribute, not only the Global zone")
+	require.Equal(t, uint32(42), attrInfo.GetId())
+	require.Contains(t, attrInfo.GetAccountTypes(), "orders")
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, attrInfo.GetDefaultEnforcementMode())
+}
+
+// TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo: an
+// AddAccountType replayed after the checkpoint must fold onto LedgerInfo and
+// persist to both the Global zone and the SubAttrLedger attribute, or the chart
+// change is lost on restore.
+func TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
+		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+	)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// Global zone.
+	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
+	require.NoError(t, err)
+	require.Contains(t, info.GetAccountTypes(), "orders", "post-checkpoint account type must persist to the Global LedgerInfo")
+
+	// SubAttrLedger attribute (what the FSM reads).
+	attrs := attributes.New()
+	attrInfo, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, attrInfo)
+	require.Contains(t, attrInfo.GetAccountTypes(), "orders", "post-checkpoint account type must persist to the SubAttrLedger attribute")
 }
 
 // TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge: account types
@@ -335,8 +381,10 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		volume:         attrs.Volume,
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
+		ledger:         attrs.Ledger,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
+		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 

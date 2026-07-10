@@ -330,6 +330,19 @@ func (s *replayStore) RemoveMetadataFieldType(string, commonpb.TargetType, strin
 	return nil
 }
 
+// AddAccountType / RemoveAccountType are no-ops here for the same reason as the
+// schema callbacks: account types live on LedgerInfo, not in this attribute merge
+// store. The checker maintains the account-type chart via ReplayLedgerLog's
+// rawLedgerTypes and verifies it against the stored LedgerInfo in
+// compareAccountTypes.
+func (s *replayStore) AddAccountType(string, *commonpb.AccountType) error {
+	return nil
+}
+
+func (s *replayStore) RemoveAccountType(string, string) error {
+	return nil
+}
+
 // newPrefixIter creates a Pebble iterator scoped to a single prefix byte.
 func (s *replayStore) newPrefixIter(prefix byte) (*pebble.Iterator, error) {
 	return s.db.NewIter(&pebble.IterOptions{
