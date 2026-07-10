@@ -16,9 +16,14 @@
 //
 // Both the compile layer (internal/query) and the REST decode layer
 // (internal/adapter/http) consume the generated table, so they cannot drift.
-// An arm with no annotation maps to "valid on no target" — the fail-safe
-// default: a forgotten annotation rejects the condition everywhere (loud)
-// rather than silently widening results.
+//
+// Every oneof arm MUST declare its validity at generation time, via exactly one
+// of two field-options: `common.allowed_query_targets` (the targets it is valid
+// on) OR `common.valid_on_no_query_target = true` (it is deliberately valid on
+// no target). An arm carrying neither — or both — fails generation with an
+// error naming the offending arm; there is no "missing annotation" fallback.
+// This makes the intent explicit at the proto: a forgotten annotation is a
+// build failure, not a silent "valid nowhere" (or, worse, "valid everywhere").
 //
 // Install:  go build -o protoc-gen-queryfilter-validity .
 // Usage:    protoc --queryfilter-validity_out=. --queryfilter-validity_opt=module=<module> ...
