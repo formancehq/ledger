@@ -17,6 +17,14 @@ type createIndexBody struct {
 	ID string `json:"id"`
 }
 
+// createIndexResult is the JSON payload returned in the 201 response body.
+// The id is the canonical form of the created IndexID (round-trip normalized
+// from the request), so REST-only clients can obtain the exact identifier to
+// use on the subsequent GET/DELETE routes without re-deriving it themselves.
+type createIndexResult struct {
+	ID string `json:"id"`
+}
+
 // handleCreateIndex handles POST /{ledgerName}/indexes to create a new
 // index on a ledger. The request body carries the canonical form of the
 // target IndexID; the FSM starts the backfill on the next apply.
@@ -59,5 +67,7 @@ func (s *Server) handleCreateIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
+	// Return the canonical id (round-trip normalized via indexes.Canonical) so
+	// REST clients get the exact identifier for the follow-up GET/DELETE routes.
+	writeCreated(w, createIndexResult{ID: indexes.Canonical(id)})
 }

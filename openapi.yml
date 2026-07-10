@@ -2425,7 +2425,14 @@ paths:
                   example: metadata:TARGET_TYPE_ACCOUNT:color
       responses:
         '201':
-          description: Index creation queued.
+          description: |
+            Index creation queued. The body carries the canonical id of the
+            created index (round-trip normalized), usable directly on the
+            follow-up GET/DELETE `/v3/{ledgerName}/indexes/{canonicalId}` routes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2769,6 +2776,24 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
+
+    CreateIndexResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: |
+                Canonical form of the created IndexID (round-trip normalized),
+                e.g. `metadata:TARGET_TYPE_ACCOUNT:color` or
+                `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`.
+              example: metadata:TARGET_TYPE_ACCOUNT:color
 
     GetLedgerResponse:
       type: object

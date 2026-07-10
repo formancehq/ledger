@@ -47,6 +47,35 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 	require.NotNil(t, meta)
 	require.Equal(t, "color", meta.GetKey())
 	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, meta.GetTarget())
+
+	// The 201 body must carry the canonical id under the standard data envelope
+	// so REST clients can drive the follow-up GET/DELETE routes.
+	resp := decodeResponse[BaseResponse[createIndexResult]](t, w)
+	require.Equal(t, "metadata:TARGET_TYPE_ACCOUNT:color", resp.Data.ID)
+}
+
+func TestHandleCreateIndex_ResponseIDIsCanonicalized(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return []*commonpb.Log{{}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`{"id":"tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"}`)
+	r := newRequest(t, http.MethodPost, "/ledger1/indexes", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+	r.ContentLength = int64(len(`{"id":"tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"}`))
+
+	srv.handleCreateIndex(w, r)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	resp := decodeResponse[BaseResponse[createIndexResult]](t, w)
+	require.Equal(t, "tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP", resp.Data.ID)
 }
 
 func TestHandleCreateIndex_MissingLedgerName(t *testing.T) {
