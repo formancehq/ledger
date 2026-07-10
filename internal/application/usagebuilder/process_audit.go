@@ -100,7 +100,7 @@ func (s *batchState) addTemplateUsage(ledger, template string, ts *commonpb.Time
 }
 
 // timestampGreater reports whether a > b in wall-clock ordering. Both
-// operands are non-nil. commonpb.Timestamp encodes nanoseconds-since-epoch
+// operands are non-nil. commonpb.Timestamp encodes microseconds-since-epoch
 // as a single uint64 field (data), so ordering is direct integer compare.
 func timestampGreater(a, b *commonpb.Timestamp) bool {
 	return a.GetData() > b.GetData()
@@ -619,12 +619,25 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 	// Counter deltas: read-modify-write against the usagestore. Not the
 	// FSM's Pebble — invariant #3 does not apply here.
 	for ledger, counters := range state.counters {
-		for counterID, delta := range counters {
-			current, err := b.usageStore.GetCounter(ledger, counterID)
-			if err != nil {
-				_ = batch.Cancel()
+		// If this batch also deleted the ledger, the DeleteRange enqueued
+		// above logically zeroes every counter for the recycled name. But
+		// GetCounter reads the committed DB, not the pending batch, so it
+		// would return the OLD incarnation's value and we'd write
+		// old+delta on top of the DeleteRange — resurrecting stale counts
+		// for a same-batch delete+recreate. Treat the baseline as 0 for a
+		// deleted ledger so only the post-recreate deltas survive.
+		_, deleted := state.deletedLedgers[ledger]
 
-				return fmt.Errorf("reading counter %#x for ledger %q: %w", counterID, ledger, err)
+		for counterID, delta := range counters {
+			var current uint64
+			if !deleted {
+				var err error
+				current, err = b.usageStore.GetCounter(ledger, counterID)
+				if err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("reading counter %#x for ledger %q: %w", counterID, ledger, err)
+				}
 			}
 
 			next := applyDelta(current, delta)
@@ -640,11 +653,19 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 	// Template deltas: same read-modify-write pattern on the TemplateUsage
 	// proto. count is additive; last_used is max(previous, batch max).
 	for k, delta := range state.templates {
-		current, err := b.usageStore.GetTemplateUsage(k.ledger, k.template)
-		if err != nil {
-			_ = batch.Cancel()
+		// Same same-batch delete+recreate hazard as counters above: for a
+		// ledger this batch deleted, the DeleteRange zeroes the recycled
+		// name, so ignore the persisted (old incarnation) value and start
+		// from a nil baseline.
+		var current *commonpb.TemplateUsage
+		if _, deleted := state.deletedLedgers[k.ledger]; !deleted {
+			var err error
+			current, err = b.usageStore.GetTemplateUsage(k.ledger, k.template)
+			if err != nil {
+				_ = batch.Cancel()
 
-			return fmt.Errorf("reading template usage %q/%q: %w", k.ledger, k.template, err)
+				return fmt.Errorf("reading template usage %q/%q: %w", k.ledger, k.template, err)
+			}
 		}
 
 		next := mergeTemplateUsage(current, delta)

@@ -125,6 +125,10 @@ The usagestore is not part of Pebble snapshots or backups: it is a projection th
 
 The audit chain remains the source of truth in both cases.
 
+## Integrity verification (checker scope)
+
+The usagestore is **deliberately excluded from `internal/application/check/checker.go`**. Invariant #8 ("every persisted projection must be verified by the checker") is scoped to projections that live in the **primary** Pebble store — the store that participates in Pebble snapshots, backups and cold-storage, and that an operator cannot rebuild without stopping the cluster. The usagestore, like the read store (`readstore`), is a physically separate secondary Pebble instance at `<data-dir>/usage/`: it is never snapshotted, never backed up, and is trivially rebuildable offline via `ledgerctl store rebuild-usage` (drop the directory + replay from audit sequence 0). A tampered or corrupted usagestore is therefore not a durable integrity vector — the next rebuild reconstructs it from the hash-chained audit, which the checker *does* verify. Extending the checker to walk a peer store would couple it to a subsystem it has no authority over and duplicate the rebuild logic that already re-derives every counter from the same source of truth.
+
 ## Summary
 
 | Concern | Mechanism | File |

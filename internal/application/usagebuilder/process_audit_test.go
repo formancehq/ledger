@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
@@ -117,4 +120,53 @@ func TestMergeTemplateUsage_WithCurrent(t *testing.T) {
 	got = mergeTemplateUsage(current, templateDelta{count: 1, lastUsed: nil})
 	assert.Equal(t, uint64(11), got.GetCount())
 	assert.Equal(t, uint64(500), got.GetLastUsed().GetData())
+}
+
+// TestCommitBatch_SameBatchDeleteRecreateDoesNotResurrect guards the
+// same-batch delete+recreate hazard: GetCounter / GetTemplateUsage read the
+// committed DB, not the pending batch's DeleteRange, so without a zero
+// baseline for deleted ledgers commitBatch would write old+delta on top of
+// the DeleteRange and resurrect the old incarnation's counts.
+func TestCommitBatch_SameBatchDeleteRecreateDoesNotResurrect(t *testing.T) {
+	t.Parallel()
+
+	us, err := usagestore.New(t.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = us.Close() })
+
+	b := &Builder{usageStore: us}
+
+	// Seed the OLD incarnation: 100 postings and a template with count 7.
+	seed := newBatchState()
+	seed.addCounter("foo", usagestore.CounterPosting, 100)
+	seed.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 111})
+	for range 6 {
+		seed.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 111})
+	}
+	require.NoError(t, b.commitBatch(seed, 1))
+
+	// Sanity: the old incarnation is persisted.
+	c, err := us.GetCounter("foo", usagestore.CounterPosting)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), c)
+
+	// A single batch deletes "foo" and then recreates it with 5 new
+	// postings + a single template invocation.
+	batch := newBatchState()
+	batch.markLedgerDeleted("foo")
+	batch.addCounter("foo", usagestore.CounterPosting, 5)
+	batch.addTemplateUsage("foo", "tpl", &commonpb.Timestamp{Data: 999})
+	require.NoError(t, b.commitBatch(batch, 2))
+
+	// The recycled ledger must reflect ONLY the post-recreate deltas, not
+	// old+delta.
+	c, err = us.GetCounter("foo", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(5), c, "counter must not resurrect the deleted incarnation's value")
+
+	tpl, err := us.GetTemplateUsage("foo", "tpl")
+	require.NoError(t, err)
+	require.NotNil(t, tpl)
+	assert.Equal(t, uint64(1), tpl.GetCount(), "template count must not resurrect the deleted incarnation")
+	assert.Equal(t, uint64(999), tpl.GetLastUsed().GetData())
 }

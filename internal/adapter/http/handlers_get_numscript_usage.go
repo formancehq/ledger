@@ -27,7 +27,9 @@ func toTemplateUsageJSON(usage *commonpb.TemplateUsage) *templateUsageJSON {
 	out := &templateUsageJSON{Count: usage.GetCount()}
 
 	if ts := usage.GetLastUsed(); ts != nil && ts.GetData() != 0 {
-		formatted := time.Unix(0, int64(ts.GetData())).UTC().Format(time.RFC3339Nano)
+		// Timestamp.Data is Unix microseconds — use the canonical AsTime()
+		// converter (time.UnixMicro) rather than treating Data as nanoseconds.
+		formatted := ts.AsTime().UTC().Format(time.RFC3339Nano)
 		out.LastUsed = &formatted
 	}
 
