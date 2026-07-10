@@ -71,7 +71,7 @@ func TestFoldBaselineReferences_SeedsSeqAndTxID(t *testing.T) {
 		{LedgerName: "L", Reference: "ref-b"}: 7,
 	})
 
-	checker := NewChecker(nil, attrs, "test-cluster", logging.Testing())
+	checker := NewChecker(nil, attrs, "test-cluster", nil, nil, logging.Testing())
 
 	references := make(map[string]map[string]uint64)
 	referenceTxIDs := make(map[string]map[string]uint64)
@@ -95,7 +95,7 @@ func TestFoldBaselineReferences_SeedsSeqAndTxID(t *testing.T) {
 func TestFoldBaselineReferences_NilBaselineShortCircuits(t *testing.T) {
 	t.Parallel()
 
-	checker := NewChecker(nil, attributes.New(), "test-cluster", logging.Testing())
+	checker := NewChecker(nil, attributes.New(), "test-cluster", nil, nil, logging.Testing())
 
 	references := make(map[string]map[string]uint64)
 	referenceTxIDs := make(map[string]map[string]uint64)
