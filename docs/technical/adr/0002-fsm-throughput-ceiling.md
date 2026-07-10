@@ -35,7 +35,7 @@ baseline. Result column reports steady-state TPS delta.
 | 3 | Parallelize the 11 independent `Derived.<Store>.Merge()` calls in `WriteSet.Merge` via `errgroup` (#1535) | Closed | ±0 |
 | 4 | Shard `Transactions.Merge` overlay drain across 8 workers via `WithParallelism` construction option (#1535) | Closed | ±0 |
 | 5 | Deepen the applier.main → committer channel from `buffered(1)` to `buffered(4)` (#1536) | Closed | ±0 |
-| 6 | pprof label on `handleBulk` + per-phase histograms in `Admit` (resolve_batch, orders_preparation, scripts) (#1537) | Draft | n/a (observability) |
+| 6 | pprof label on `handleBulk` + per-phase histograms in `Admit` (resolve_batch, orders_preparation, scripts, response_resolution) (#1537) | Draft | n/a (observability) |
 
 **Every code change that targeted throughput came back at 150-155k tx/s.**
 Only the observability changes (#1533 labels, #1537 histograms) landed
@@ -74,11 +74,15 @@ follows (averages over 10 min, native Prometheus histograms via Thanos):
 | `admission.preload` (build preload) | 56 µs | 0.1% |
 | `admission.propose` (Raft accept wait) | 748 µs | 1.5% |
 | **`admission.fsm_future_wait` (FSM apply wait)** | **47.5 ms** | **98.2%** |
+| `admission.response_resolution` (post-apply log reads; idempotent replays only) | ~0 µs | ~0% |
 | `admission.command_duration` (total) | 48.3 ms | — |
 
-Sanity check: sum of the six phase averages = 48.5 ms vs total 48.3 ms
+Sanity check: sum of the seven phase averages = 48.5 ms vs total 48.3 ms
 (within 0.4%). The decomposition is complete — there is no "hidden"
-time between phases.
+time between phases. `response_resolution` is ~0 here because this
+workload issues no idempotent replays; on a replay-heavy workload it
+captures the `ReadLogBySequence` reads that resolve `ReferenceSequence`
+results into concrete logs, which no other phase measures.
 
 ### Where the time actually goes
 

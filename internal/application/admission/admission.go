@@ -85,12 +85,27 @@ type Admission struct {
 
 	// Per-phase histograms — decompose command.duration into
 	// resolve_batch (signature verify) + orders_prep (orders + coverage
-	// extraction) + scripts (numscript resolution + coverage enrichment).
+	// extraction) + scripts (numscript resolution + coverage enrichment) +
+	// response_resolution (idempotent-replay log reads after FSM apply).
 	// The remaining phases (preload build, propose, fsm wait) already have
 	// their own histograms above.
-	resolveBatchDurationHistogram      metric.Int64Histogram
-	ordersPreparationDurationHistogram metric.Int64Histogram
-	scriptsDurationHistogram           metric.Int64Histogram
+	resolveBatchDurationHistogram       metric.Int64Histogram
+	ordersPreparationDurationHistogram  metric.Int64Histogram
+	scriptsDurationHistogram            metric.Int64Histogram
+	responseResolutionDurationHistogram metric.Int64Histogram
+}
+
+// phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
+// per-phase histograms (resolve_batch, orders_preparation, scripts,
+// response_resolution). The fast phases run in the single-digit-µs range
+// (resolve_batch ~2.4µs, scripts ~0.7µs — see ADR 0002), so the first positive
+// boundary must be ~1µs: a coarser first bucket (e.g. 100µs) would collapse
+// every sub-100µs observation into one bucket, and histogram_quantile would
+// then interpolate all percentiles linearly across [0,100µs) — a meaningless
+// panel. The upper boundaries keep the range wide enough to catch orders_prep
+// (~215µs) and pathological stalls.
+var phaseBucketBoundaries = []float64{
+	0, 1, 5, 10, 25, 50, 100, 500, 2000, 10000, 50000, 200000, 1000000,
 }
 
 // NewAdmission creates a new Admission handler.
@@ -166,7 +181,7 @@ func NewAdmission(
 
 	commandDurationHistogram, err := meter.Int64Histogram(
 		"admission.command.duration",
-		metric.WithDescription("Total time to resolve a command, from batch resolution through future resolution (excludes the write-gate and leader-readiness waits). Decomposes into the resolve_batch, orders_preparation, scripts, preload, propose, and fsm_future.wait phase histograms."),
+		metric.WithDescription("Total time to resolve a command, from batch resolution through future resolution (excludes the write-gate and leader-readiness waits). Decomposes into the resolve_batch, orders_preparation, scripts, preload, propose, fsm_future.wait, and response_resolution phase histograms. response_resolution covers the post-apply log reads (ReadLogBySequence) done for idempotent replays, so command.duration is fully accounted for even on the replay path."),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 1000, 5000, 20000, 100000, 500000, 2000000,
@@ -312,9 +327,7 @@ func NewAdmission(
 		"admission.resolve_batch.duration",
 		metric.WithDescription("Time spent verifying batch signature and unmarshaling the trusted ApplyBatch"),
 		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
-		),
+		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
@@ -324,9 +337,7 @@ func NewAdmission(
 		"admission.orders_preparation.duration",
 		metric.WithDescription("Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs)"),
 		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
-		),
+		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
@@ -336,9 +347,17 @@ func NewAdmission(
 		"admission.scripts.duration",
 		metric.WithDescription("Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata"),
 		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
-		),
+		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	responseResolutionDurationHistogram, err := meter.Int64Histogram(
+		"admission.response_resolution.duration",
+		metric.WithDescription("Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Zero for the common create path; non-zero only when the FSM returns replay references."),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(phaseBucketBoundaries...),
 	)
 	if err != nil {
 		panic(err)
@@ -361,6 +380,7 @@ func NewAdmission(
 	a.resolveBatchDurationHistogram = resolveBatchDurationHistogram
 	a.ordersPreparationDurationHistogram = ordersPreparationDurationHistogram
 	a.scriptsDurationHistogram = scriptsDurationHistogram
+	a.responseResolutionDurationHistogram = responseResolutionDurationHistogram
 
 	return a
 }
@@ -420,8 +440,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// commandDurationHistogram measures the full command lifecycle "from Apply
 	// call to future resolution". Start the timer here — the first timed phase —
 	// so the per-phase histograms (resolve_batch, orders_preparation, scripts,
-	// preload, propose, fsm_future.wait) decompose command.duration rather than
-	// summing to more than it. The defer records on every return path below.
+	// preload, propose, fsm_future.wait, response_resolution) decompose
+	// command.duration rather than summing to more than it. The defer records on
+	// every return path below.
 	start := time.Now()
 	defer func() {
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
@@ -627,6 +648,14 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)
 	// are fetched from PebbleDB here on the parallel path, outside the FSM hot path.
+	// This ReadLogBySequence work is deferred until after Wait returns and no other
+	// phase measures it, so time it here — response_resolution is the phase that
+	// keeps command.duration fully decomposed on the idempotent-replay path.
+	responseResolutionStart := time.Now()
+	defer func() {
+		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
+	}()
+
 	logs := make([]*commonpb.Log, len(result.Logs))
 	for i, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {

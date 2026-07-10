@@ -217,4 +217,15 @@ panels.row('Admission', 169, [
     ], unit='µs',
     description='Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.',
   ),
+
+  panels.timeseries(
+    'Response Resolution Duration (p50, p95, p99)',
+    { h: 8, w: 12, x: 0, y: 132 },
+    [
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p50 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p95 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p99 - Node {{service.node_id}}' },
+    ], unit='µs',
+    description='Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.',
+  ),
 ])

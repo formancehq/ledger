@@ -30,6 +30,7 @@
     resolve_batch_duration: 'admission.resolve_batch.duration',
     orders_preparation_duration: 'admission.orders_preparation.duration',
     scripts_duration: 'admission.scripts.duration',
+    response_resolution_duration: 'admission.response_resolution.duration',
   },
 
   // bloom — internal/infra/bloom/bloom.go

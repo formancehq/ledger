@@ -11145,6 +11145,127 @@
                ],
                "title": "Propose Duration (p50, p95, p99)",
                "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "µs"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 24,
+                  "x": 0,
+                  "y": 72
+               },
+               "id": 115,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+                     "legendFormat": "p50 - Node {{service.node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+                     "legendFormat": "p95 - Node {{service.node_id}}",
+                     "range": true,
+                     "refId": "B"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+                     "legendFormat": "p99 - Node {{service.node_id}}",
+                     "range": true,
+                     "refId": "C"
+                  }
+               ],
+               "title": "Response Resolution Duration (p50, p95, p99)",
+               "type": "timeseries"
             }
          ],
          "title": "Admission",
@@ -11158,7 +11279,7 @@
             "x": 0,
             "y": 170
          },
-         "id": 115,
+         "id": 116,
          "panels": [
             {
                "datasource": {
@@ -11229,7 +11350,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 116,
+               "id": 117,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11350,7 +11471,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 117,
+               "id": 118,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11414,7 +11535,7 @@
             "x": 0,
             "y": 171
          },
-         "id": 118,
+         "id": 119,
          "panels": [
             {
                "datasource": {
@@ -11485,7 +11606,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 119,
+               "id": 120,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11584,7 +11705,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 120,
+               "id": 121,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11683,7 +11804,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 121,
+               "id": 122,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11804,7 +11925,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 122,
+               "id": 123,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11947,7 +12068,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 123,
+               "id": 124,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12000,7 +12121,7 @@
             "x": 0,
             "y": 172
          },
-         "id": 124,
+         "id": 125,
          "panels": [
             {
                "datasource": {
@@ -12071,7 +12192,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 125,
+               "id": 126,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12181,7 +12302,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 126,
+               "id": 127,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12234,7 +12355,7 @@
             "x": 0,
             "y": 173
          },
-         "id": 127,
+         "id": 128,
          "panels": [
             {
                "datasource": {
@@ -12271,7 +12392,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 128,
+               "id": 129,
                "options": {
                   "minVizHeight": 75,
                   "minVizWidth": 75,
@@ -12372,7 +12493,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 129,
+               "id": 130,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12471,7 +12592,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 130,
+               "id": 131,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12524,7 +12645,7 @@
             "x": 0,
             "y": 174
          },
-         "id": 131,
+         "id": 132,
          "panels": [
             {
                "datasource": {
@@ -12538,7 +12659,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 132,
+               "id": 133,
                "options": { },
                "targets": [
                   {
@@ -12568,7 +12689,7 @@
                   "x": 0,
                   "y": 20
                },
-               "id": 133,
+               "id": 134,
                "options": { },
                "targets": [
                   {
@@ -12598,7 +12719,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 134,
+               "id": 135,
                "options": { },
                "targets": [
                   {
@@ -12628,7 +12749,7 @@
                   "x": 0,
                   "y": 60
                },
-               "id": 135,
+               "id": 136,
                "options": { },
                "targets": [
                   {
