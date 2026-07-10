@@ -96,19 +96,6 @@ func TestQueryFilterRoundTrip(t *testing.T) {
 			wantJSON: `{"$match":{"destination":{"$param":"dst"}}}`,
 		},
 		{
-			name:     "address param prefix (like)",
-			filter:   addressFilter(&AddressMatch_ParamPrefix{ParamPrefix: "acc"}, AddressRole_ADDRESS_ROLE_ANY),
-			wantJSON: `{"$like":{"address":{"$param":"acc"}}}`,
-		},
-		{
-			// A hardcoded prefix without a trailing ":" cannot use the $match
-			// trailing-colon convention (it would look like an exact match), so it
-			// is carried via $like to stay lossless.
-			name:     "address hardcoded prefix without colon (like)",
-			filter:   addressFilter(&AddressMatch_HardcodedPrefix{HardcodedPrefix: "users"}, AddressRole_ADDRESS_ROLE_ANY),
-			wantJSON: `{"$like":{"address":"users"}}`,
-		},
-		{
 			name:     "reference",
 			filter:   &QueryFilter{Filter: &QueryFilter_Reference{Reference: &ReferenceCondition{Cond: hardcoded("ref-1")}}},
 			wantJSON: `{"$match":{"reference":"ref-1"}}`,
@@ -215,6 +202,10 @@ func TestQueryFilterUnmarshalErrors(t *testing.T) {
 		{"empty object", `{}`, "empty object"},
 		{"two operators", `{"$and":[],"$or":[]}`, "exactly one operator"},
 		{"unknown operator", `{"$bogus":{}}`, "unknown operator"},
+		// $like was dropped from the DSL (EN-1465); it is now just an unknown
+		// operator, rejected like any other unrecognised $op.
+		{"like rejected as unknown operator", `{"$like":{"address":"users"}}`, "unknown operator"},
+		{"like param rejected as unknown operator", `{"$like":{"address":{"$param":"acc"}}}`, "unknown operator"},
 		{"empty and", `{"$and":[]}`, "must contain at least one filter"},
 		{"empty or", `{"$or":[]}`, "must contain at least one filter"},
 		{"and not array", `{"$and":{}}`, "expected an array"},
@@ -264,6 +255,50 @@ func TestQueryFilterMarshalExistsIncludeNull(t *testing.T) {
 	_, err := json.Marshal(f)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "include_null")
+}
+
+// TestQueryFilterMarshalUnrepresentablePrefix asserts marshalling fails loudly on
+// the two address-prefix arms that the DSL can no longer express since $like was
+// dropped (EN-1465): a parameterised prefix and a byte-level hardcoded prefix that
+// does not end in ":". These arms are not producible through the JSON/REST surface
+// (the $match decoder builds ParamExact for a param and HardcodedExact for a
+// non-trailing-":" literal), so this guards a proto object built by another layer
+// (gRPC/CLI/pkg.actions) — it must fail rather than silently emit an exact-looking
+// $match that would widen the query.
+func TestQueryFilterMarshalUnrepresentablePrefix(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		filter  *QueryFilter
+		wantErr string
+	}{
+		{
+			name:    "param prefix",
+			filter:  addressFilter(&AddressMatch_ParamPrefix{ParamPrefix: "acc"}, AddressRole_ADDRESS_ROLE_ANY),
+			wantErr: "parameterised prefix",
+		},
+		{
+			name:    "byte-level hardcoded prefix (no trailing colon)",
+			filter:  addressFilter(&AddressMatch_HardcodedPrefix{HardcodedPrefix: "users"}, AddressRole_ADDRESS_ROLE_ANY),
+			wantErr: "byte-level prefix",
+		},
+		{
+			name:    "empty hardcoded prefix",
+			filter:  addressFilter(&AddressMatch_HardcodedPrefix{HardcodedPrefix: ""}, AddressRole_ADDRESS_ROLE_ANY),
+			wantErr: "byte-level prefix",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := json.Marshal(tc.filter)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
 }
 
 // TestQueryFilterClosedRangeFolding asserts that an $and of two same-field bounds

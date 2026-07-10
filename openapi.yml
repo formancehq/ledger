@@ -3865,17 +3865,6 @@ components:
           minProperties: 1
           maxProperties: 1
           additionalProperties: true
-        $like:
-          type: object
-          description: >-
-            `{ "<field>": <value> }` — address prefix match. Emitted for a
-            parameterised address prefix (`{"$like": {"address": {"$param": "<name>"}}}`)
-            and for a hardcoded byte-level prefix that does not end in `:` (which
-            `$match` cannot express, since a trailing `:` is its prefix marker),
-            e.g. `{"$like": {"address": "users"}}`.
-          minProperties: 1
-          maxProperties: 1
-          additionalProperties: true
         $in:
           type: object
           description: >-

@@ -123,10 +123,12 @@ The canonical shape (each node has **exactly one** top-level `$`-operator key):
 Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
 `reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`,
 `date`. A value is a JSON literal or a parameter reference `{"$param": "<name>"}`
-(prepared-query parameters). A parameterised address prefix is carried as
-`{"$like": {"address": {"$param": "<name>"}}}` (a literal prefix keeps its trailing
-`:` under `$match`, which a param value cannot). uint64 fields are carried as decimal
-strings to stay lossless above 2^53.
+(prepared-query parameters). An address prefix is expressed with a trailing `:` under
+`$match` (e.g. `{"$match": {"address": "users:"}}`); a parameterised prefix has no
+DSL form (a param value cannot carry the trailing `:` marker), and the byte-level
+`AddressMatch_ParamPrefix`/`HardcodedPrefix` proto arms are not producible through
+the JSON/REST surface. uint64 fields are carried as decimal strings to stay lossless
+above 2^53.
 
 The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
 empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,

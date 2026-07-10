@@ -23,7 +23,6 @@ import (
 //	  {"$exists": {"metadata": "<key>"}}  metadata key presence
 //	  {"$exists": {"asset": "<assetRef>"}} account has-asset presence
 //	  {"$in":     {"<field>": [<value>, ...]}}  (reserved; not yet emitted)
-//	  {"$like":   {"<field>": <value>}}         (reserved; not yet emitted)
 //
 // Fields:
 //   - metadata: `metadata[<key>]`
@@ -53,7 +52,6 @@ const (
 	opLte    = "$lte"
 	opExists = "$exists"
 	opIn     = "$in"
-	opLike   = "$like"
 	opParam  = "$param"
 )
 
@@ -529,25 +527,25 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 
 	switch m := am.GetMatch().(type) {
 	case *AddressMatch_HardcodedPrefix:
-		// A prefix whose value already ends in ":" round-trips via $match (the
-		// trailing colon is the DSL prefix marker). A prefix WITHOUT a trailing
-		// colon (a byte-level prefix) would be indistinguishable from an exact
-		// match under $match, so it is emitted via $like with a literal value to
-		// preserve prefix intent losslessly.
-		if m.HardcodedPrefix != "" && m.HardcodedPrefix[len(m.HardcodedPrefix)-1] == ':' {
-			v, err := literalValue(m.HardcodedPrefix)
-			if err != nil {
-				return nil, err
-			}
-
-			return kv(opMatch, field, v), nil
+		// A prefix whose value ends in ":" round-trips via $match (the trailing
+		// colon is the DSL prefix marker). A prefix WITHOUT a trailing colon (a
+		// byte-level prefix) would be indistinguishable from an exact match under
+		// $match, and the DSL no longer exposes an operator that can carry it
+		// (the $like operator was dropped — EN-1465). It is not producible through
+		// the JSON/REST surface: the $match decoder only builds a HardcodedPrefix
+		// for a trailing-":" value (else a HardcodedExact), so a byte-level prefix
+		// can only arrive on a proto object built by another layer (gRPC, CLI,
+		// pkg/actions). Fail loudly rather than silently emit an exact-looking
+		// $match that would widen the query (invariant #7).
+		if m.HardcodedPrefix == "" || m.HardcodedPrefix[len(m.HardcodedPrefix)-1] != ':' {
+			return nil, fmt.Errorf("address: byte-level prefix %q is not representable in the query DSL (a prefix must end in ':')", m.HardcodedPrefix)
 		}
 		v, err := literalValue(m.HardcodedPrefix)
 		if err != nil {
 			return nil, err
 		}
 
-		return kv(opLike, field, v), nil
+		return kv(opMatch, field, v), nil
 	case *AddressMatch_HardcodedExact:
 		v, err := literalValue(m.HardcodedExact)
 		if err != nil {
@@ -556,10 +554,14 @@ func marshalAddressMatch(am *AddressMatch) (map[string]any, error) {
 
 		return kv(opMatch, field, v), nil
 	case *AddressMatch_ParamPrefix:
-		// A parameterised prefix cannot carry the trailing ":" marker on the
-		// literal, so it is encoded as a $like with a param (prefix semantics
-		// resolved at execution time from the param value).
-		return kv(opLike, field, paramValue(m.ParamPrefix)), nil
+		// A parameterised prefix cannot carry the trailing ":" marker on the param
+		// value, and the DSL no longer exposes an operator that can carry it (the
+		// $like operator was dropped — EN-1465). It is not producible through the
+		// JSON/REST surface: a $match with a param decodes to ParamExact, never
+		// ParamPrefix, so this arm can only arrive on a proto object built by
+		// another layer. Fail loudly rather than silently drop the prefix intent
+		// (invariant #7).
+		return nil, fmt.Errorf("address: parameterised prefix (param %q) is not representable in the query DSL", m.ParamPrefix)
 	case *AddressMatch_ParamExact:
 		return kv(opMatch, field, paramValue(m.ParamExact)), nil
 	default:
@@ -619,7 +621,7 @@ func decodeExpression(op string, raw json.RawMessage) (*QueryFilter, error) {
 		}
 
 		return &QueryFilter{Filter: &QueryFilter_Not{Not: &NotFilter{Filter: inner}}}, nil
-	case opMatch, opGt, opGte, opLt, opLte, opExists, opIn, opLike:
+	case opMatch, opGt, opGte, opLt, opLte, opExists, opIn:
 		return decodeLeaf(op, raw)
 	default:
 		return nil, fmt.Errorf("query filter: unknown operator %q", op)
@@ -747,8 +749,6 @@ func decodeLeaf(op string, raw json.RawMessage) (*QueryFilter, error) {
 		return decodeMatch(field, value)
 	case opGt, opGte, opLt, opLte:
 		return decodeSingleBound(op, field, value)
-	case opLike:
-		return decodeLike(field, value)
 	case opIn:
 		return nil, errors.New("$in: not supported for this filter surface")
 	default:
@@ -842,7 +842,8 @@ func decodeAddressMatch(field string, value jsonValue) (*QueryFilter, error) {
 	}
 
 	if value.isParam() {
-		// $match with a param is an exact param match ($like carries prefix).
+		// $match with a param is an exact param match: the DSL has no parameterised
+		// prefix form (a param value cannot carry the trailing-":" prefix marker).
 		am.Match = &AddressMatch_ParamExact{ParamExact: value.param}
 
 		return &QueryFilter{Filter: &QueryFilter_Address{Address: am}}, nil
@@ -856,35 +857,6 @@ func decodeAddressMatch(field string, value jsonValue) (*QueryFilter, error) {
 		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: s}
 	} else {
 		am.Match = &AddressMatch_HardcodedExact{HardcodedExact: s}
-	}
-
-	return &QueryFilter{Filter: &QueryFilter_Address{Address: am}}, nil
-}
-
-func decodeLike(field string, value jsonValue) (*QueryFilter, error) {
-	// $like carries an address prefix — either a literal (hardcoded byte-level
-	// prefix that cannot be expressed via the trailing-":" $match convention) or
-	// a parameterised prefix resolved at execution time.
-	if field != "address" && field != "source" && field != "destination" {
-		return nil, fmt.Errorf("$like: unsupported field %q", field)
-	}
-
-	am := &AddressMatch{}
-	if value.isParam() {
-		am.Match = &AddressMatch_ParamPrefix{ParamPrefix: value.param}
-	} else {
-		s, err := value.asString()
-		if err != nil {
-			return nil, fmt.Errorf("$like: %w", err)
-		}
-		am.Match = &AddressMatch_HardcodedPrefix{HardcodedPrefix: s}
-	}
-
-	switch field {
-	case "source":
-		am.Role = AddressRole_ADDRESS_ROLE_SOURCE
-	case "destination":
-		am.Role = AddressRole_ADDRESS_ROLE_DESTINATION
 	}
 
 	return &QueryFilter{Filter: &QueryFilter_Address{Address: am}}, nil
