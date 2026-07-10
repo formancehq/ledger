@@ -3678,7 +3678,11 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-          description: Target entity type
+            - LOGS
+          description: >-
+            Target entity type. `LOGS` queries return log entries; the log-only
+            filter fields (`logId`, `date`, `ledger`) are valid only when the
+            target is `LOGS`.
         filter:
           $ref: '#/components/schemas/QueryFilter'
 
@@ -3751,11 +3755,8 @@ components:
             - TRANSACTIONS
             - LOGS
           description: >-
-            Target entity type. `LOGS` only appears on prepared queries created
-            through gRPC/CLI — the REST create/update paths accept only
-            `ACCOUNTS` and `TRANSACTIONS` (see CreatePreparedQueryRequest) — but
-            list/get responses echo a query's true target, so a client must
-            tolerate `LOGS` here.
+            Target entity type. `LOGS`, `ACCOUNTS` and `TRANSACTIONS` are all
+            usable prepared-query targets (create, list/get and execute).
         filter:
           $ref: '#/components/schemas/QueryFilter'
         allowedModes:
@@ -3802,8 +3803,9 @@ components:
         a field that does not apply is rejected. The numeric built-ins
         (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
         **range-only** — use `$gt`/`$gte`/`$lt`/`$lte`; `$match` on them is rejected.
-        The log-only fields (`logId`, `date`, `ledger`) are rejected on prepared
-        queries, which can only target accounts or transactions.
+        The log-only fields (`logId`, `date`, `ledger`) are valid only when the
+        prepared query targets `LOGS`; they are rejected on `ACCOUNTS` and
+        `TRANSACTIONS` targets.
 
 
         A value is either a JSON literal or a parameter reference

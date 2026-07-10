@@ -163,18 +163,19 @@ func ValidatePreparedQueryName(name string) Describable {
 }
 
 // IsPreparedQueryExecutableTarget reports whether a QueryTarget can back a
-// prepared query today. Prepared-query execution (query.Execute) hydrates only
-// account and transaction results into PreparedQueryCursor; LOGS and AUDIT route
-// through paths the prepared-query executor does not implement (ListLogs /
-// CompileAuditFilter), and AUDIT is additionally not covered by the public
-// target JSON mapping — so a prepared query stored on those targets would fail
-// later at execute/marshal time. Enforced at write time (admission + FSM) across
-// gRPC and HTTP so a persisted prepared query is always executable. LOGS becomes
-// executable with EN-1503.
+// prepared query today. Prepared-query execution (query.Execute) hydrates the
+// account_data / transaction_data / log_data fields of PreparedQueryCursor for
+// ACCOUNTS / TRANSACTIONS / LOGS respectively (LOGS wired via query.EnrichLogs,
+// EN-1503). AUDIT routes through a path the prepared-query executor does not
+// implement (CompileAuditFilter) and is additionally not covered by the public
+// target JSON mapping — so a prepared query stored on AUDIT would fail later at
+// execute/marshal time. Enforced at write time (admission + FSM) across gRPC and
+// HTTP so a persisted prepared query is always executable.
 func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		return true
 	default:
 		return false

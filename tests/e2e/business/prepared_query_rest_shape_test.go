@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"time"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -106,6 +109,62 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 			}
 		}
 		Expect(found).To(BeTrue(), "created prepared query not found in list")
+	})
+
+	It("creates and executes a LOGS-target prepared query over REST (EN-1503)", func() {
+		// Produce a couple of logs on this ledger.
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "logs-rest-a", big.NewInt(10), "USD"),
+			}, nil),
+			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "logs-rest-b", big.NewInt(20), "USD"),
+			}, nil)))
+		Expect(err).To(Succeed())
+
+		// Create a LOGS-target prepared query with a log-only (ledger) filter
+		// over REST. Pre-EN-1503 this was rejected at decode ("use ACCOUNTS or
+		// TRANSACTIONS").
+		createBody := fmt.Sprintf(`{
+			"name": "rest-logs",
+			"target": "LOGS",
+			"filter": {"$match": {"ledger": %q}}
+		}`, ledgerName)
+
+		createReq, err := http.NewRequestWithContext(sharedCtx, http.MethodPost, restURL("/prepared-queries"), bytes.NewBufferString(createBody))
+		Expect(err).To(Succeed())
+		createReq.Header.Set("Content-Type", "application/json")
+
+		createResp, err := http.DefaultClient.Do(createReq)
+		Expect(err).To(Succeed())
+		defer func() { _ = createResp.Body.Close() }()
+
+		createRaw, _ := io.ReadAll(createResp.Body)
+		Expect(createResp.StatusCode).To(Equal(http.StatusNoContent), "unexpected create status; body=%s", string(createRaw))
+
+		// Execute it over REST and assert logData is populated (not empty).
+		Eventually(func(g Gomega) {
+			execReq, execErr := http.NewRequestWithContext(sharedCtx, http.MethodPost, restURL("/prepared-queries/rest-logs/execute"), bytes.NewBufferString(`{"mode":"LIST"}`))
+			g.Expect(execErr).To(Succeed())
+			execReq.Header.Set("Content-Type", "application/json")
+
+			execResp, execErr := http.DefaultClient.Do(execReq)
+			g.Expect(execErr).To(Succeed())
+			defer func() { _ = execResp.Body.Close() }()
+
+			execRaw, _ := io.ReadAll(execResp.Body)
+			g.Expect(execResp.StatusCode).To(Equal(http.StatusOK), "unexpected execute status; body=%s", string(execRaw))
+
+			var execBody struct {
+				Cursor struct {
+					LogData []json.RawMessage `json:"logData"`
+				} `json:"cursor"`
+			}
+			g.Expect(json.Unmarshal(execRaw, &execBody)).To(Succeed())
+			// The wire field is logData (camelCase); it must carry the ledger's
+			// logs rather than the pre-EN-1503 empty cursor.
+			g.Expect(len(execBody.Cursor.LogData)).To(BeNumerically(">=", 2), "logData empty; body=%s", string(execRaw))
+		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
 	It("rejects a legacy protojson-shaped filter (no silent acceptance)", func() {

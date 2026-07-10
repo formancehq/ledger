@@ -1580,6 +1580,7 @@ message PreparedQueryCursor {
   string next = 4;
   repeated Account account_data = 5;
   repeated Transaction transaction_data = 6;
+  repeated Log log_data = 7;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.

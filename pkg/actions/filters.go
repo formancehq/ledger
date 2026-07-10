@@ -105,6 +105,21 @@ func LedgerFilter(ledger string) *commonpb.QueryFilter {
 	}
 }
 
+// LogIdGreaterThanFilter creates a LOGS filter matching entries whose logId is
+// strictly greater than the given sequence.
+func LogIdGreaterThanFilter(sequence uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_LogId{
+			LogId: &commonpb.LogIdCondition{
+				Cond: &commonpb.UintCondition{
+					Min:          &sequence,
+					MinExclusive: true,
+				},
+			},
+		},
+	}
+}
+
 // ParamAddressPrefixFilter creates a filter matching accounts by a parameterized address prefix.
 // The actual prefix value is supplied at execution time via parameters map.
 func ParamAddressPrefixFilter(paramName string) *commonpb.QueryFilter {

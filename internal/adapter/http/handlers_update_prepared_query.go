@@ -33,6 +33,13 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The update request carries only the new filter, not the target: the target
+	// is immutable and lives on the stored prepared query, which this handler
+	// does not read. Per-target filter validity is therefore enforced against the
+	// stored target by the FSM (processUpdatePreparedQuery →
+	// domain.ValidateFilterForTarget), the only layer that sees it — so an update
+	// cannot smuggle in a condition invalid for the query's target (EN-1504).
+	// This handler stays purely structural.
 	filter, err := decodePreparedQueryFilter(body.Filter)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)

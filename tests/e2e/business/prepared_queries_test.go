@@ -705,6 +705,112 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 	})
 
 	// ========================================================================
+	// Execute LIST mode — LOGS target (EN-1503)
+	// ========================================================================
+	Context("Execute LIST mode — LOGS target", Ordered, func() {
+		const ledgerName = "pq-exec-logs"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+
+			// Three transactions produce three logs (sequences are global, but
+			// the per-ledger log index scopes them to this ledger).
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+				}, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should return all logs for a ledger filter (not an empty cursor)", func() {
+			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
+				Query: &commonpb.PreparedQuery{
+					Name:   "all-logs",
+					Target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+					Filter: actions.LedgerFilter(ledgerName),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "all-logs",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				// The wiring regression this test guards: before EN-1503 the LOGS
+				// branch was unwired and this returned an empty cursor.
+				g.Expect(result.GetCursor().LogData).To(HaveLen(3))
+				g.Expect(result.GetCursor().AccountData).To(BeEmpty())
+				g.Expect(result.GetCursor().TransactionData).To(BeEmpty())
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// Logs must come back in ascending sequence order.
+			seqs := make([]uint64, len(result.GetCursor().LogData))
+			for i, l := range result.GetCursor().LogData {
+				seqs[i] = l.GetSequence()
+			}
+			Expect(sort.SliceIsSorted(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })).To(BeTrue())
+		})
+
+		It("Should honor a logId range filter", func() {
+			// Find the ledger's log sequences to build a bounded logId range.
+			all, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    ledgerName,
+				QueryName: "all-logs",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+			})
+			Expect(err).To(Succeed())
+			Expect(all.GetCursor().LogData).To(HaveLen(3))
+			firstSeq := all.GetCursor().LogData[0].GetSequence()
+
+			// logId > firstSeq must drop the first log, leaving two.
+			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
+				Query: &commonpb.PreparedQuery{
+					Name:   "logs-after-first",
+					Target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+					Filter: actions.AndFilter(
+						actions.LedgerFilter(ledgerName),
+						actions.LogIdGreaterThanFilter(firstSeq),
+					),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "logs-after-first",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().LogData).To(HaveLen(2))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			for _, l := range result.GetCursor().LogData {
+				Expect(l.GetSequence()).To(BeNumerically(">", firstSeq))
+			}
+		})
+	})
+
+	// ========================================================================
 	// Execute AGGREGATE_VOLUMES mode
 	// ========================================================================
 	Context("Execute AGGREGATE_VOLUMES mode", Ordered, func() {
