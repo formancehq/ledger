@@ -12,107 +12,130 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
-// orderedStorage is a fully functional in-memory Storage (like
-// inMemoryBackupStorage) that additionally records the ordered sequence of
-// Put/Delete operations so a test can assert crash-safety ordering:
-// every referenced object is uploaded before the manifest, and no object is
-// deleted before the manifest is written.
+// crashSafetyState is the stateful backing behind the generated MockStorage used
+// by the crash-safety tests. The MockStorage (see storage_generated_test.go)
+// provides the interface-conformant surface and free call recording; this struct
+// holds the extra observations those tests assert on and cannot be expressed
+// with plain gomock expectations, because the number, keys and relative order of
+// the Put/Delete calls are driven by Pebble's checkpoint internals and are not
+// knowable at test-authoring time:
 //
-// putErrKeys lets a test inject a PutFile failure for keys matching any of the
-// given substrings, to exercise the segment-upload failure path.
-type orderedStorage struct {
-	mu    sync.Mutex
-	files map[string][]byte
-	// ops records "put <key>" / "del <key>" in call order.
-	ops []string
-	// putErrKeys: if a Put key contains one of these substrings, PutFile fails.
-	putErrKeys []string
-	// mutatingOverwrites records every PutFile that replaced an already-present
-	// object under data/ with DIFFERENT bytes — i.e. a content-mutating in-place
-	// overwrite of a (potentially manifest-referenced) checkpoint object. This
-	// is the precise immutability violation: a re-put of byte-identical content
-	// under the same content-addressed key is harmless and not recorded, but
-	// changing the bytes behind an existing key corrupts any manifest that
-	// references it. With content-addressing this must stay empty.
+//   - ops records the ordered sequence of "put <key>" / "del <key>" so a test can
+//     assert crash-safety ordering (every referenced object uploaded before the
+//     manifest, no object deleted before the manifest is written);
+//   - putErrKeys injects a PutFile failure for keys matching any substring, to
+//     exercise the segment-upload failure path;
+//   - mutatingOverwrites records every PutFile that replaced an already-present
+//     object under data/ with DIFFERENT bytes — the precise immutability
+//     violation: a re-put of byte-identical content under the same
+//     content-addressed key is harmless and not recorded, but changing the bytes
+//     behind an existing key corrupts any manifest that references it. With
+//     content-addressing this must stay empty;
+//   - failDeletes, once flipped, makes every DeleteFile fail, to prove the
+//     manifest commit does not depend on deletes.
+//
+// Real bytes are stored in an inMemoryBackupStorage so GetFile/ListFiles behave
+// like a real backend (round-tripping the manifest, hashing stored content).
+type crashSafetyState struct {
+	inner *inMemoryBackupStorage
+
+	mu                 sync.Mutex
+	ops                []string
+	putErrKeys         []string
 	mutatingOverwrites []string
+	failDeletes        bool
 }
 
-func newOrderedStorage() *orderedStorage {
-	return &orderedStorage{files: make(map[string][]byte)}
+// newCrashSafetyStorage wires a generated MockStorage whose behavior is backed
+// by a crashSafetyState. It returns both so a test can drive RunBackup through
+// the mock and later inspect the recorded observations.
+func newCrashSafetyStorage(t *testing.T) (*MockStorage, *crashSafetyState) {
+	t.Helper()
+
+	st := &crashSafetyState{inner: newInMemoryBackupStorage()}
+	storage := NewMockStorage(gomock.NewController(t))
+
+	storage.EXPECT().PutFile(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, key string, data io.Reader, size int64) error {
+			// Always drain the reader: the export path streams through an
+			// io.Pipe and the writer goroutine blocks until the body is fully
+			// consumed.
+			body, readErr := io.ReadAll(data)
+
+			st.mu.Lock()
+			for _, frag := range st.putErrKeys {
+				if strings.Contains(key, frag) {
+					st.mu.Unlock()
+
+					return errors.New("injected put failure for " + key)
+				}
+			}
+
+			if readErr != nil {
+				st.mu.Unlock()
+
+				return readErr
+			}
+
+			if prev, err := st.inner.GetFile(ctx, key); err == nil {
+				prevBody, _ := io.ReadAll(prev)
+				_ = prev.Close()
+				if strings.Contains(key, "/data/") && !bytes.Equal(prevBody, body) {
+					st.mutatingOverwrites = append(st.mutatingOverwrites, key)
+				}
+			}
+
+			st.ops = append(st.ops, "put "+key)
+			st.mu.Unlock()
+
+			return st.inner.PutFile(ctx, key, bytes.NewReader(body), size)
+		}).AnyTimes()
+
+	storage.EXPECT().GetFile(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, key string) (io.ReadCloser, error) {
+			return st.inner.GetFile(ctx, key)
+		}).AnyTimes()
+
+	storage.EXPECT().DeleteFile(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, key string) error {
+			st.mu.Lock()
+			if st.failDeletes {
+				st.mu.Unlock()
+
+				return errors.New("injected delete failure")
+			}
+			st.ops = append(st.ops, "del "+key)
+			st.mu.Unlock()
+
+			return st.inner.DeleteFile(ctx, key)
+		}).AnyTimes()
+
+	storage.EXPECT().ListFiles(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, prefix string) ([]string, error) {
+			return st.inner.ListFiles(ctx, prefix)
+		}).AnyTimes()
+
+	return storage, st
 }
 
-func (s *orderedStorage) PutFile(_ context.Context, key string, data io.Reader, _ int64) error {
-	// Always drain the reader: the export path streams through an io.Pipe and
-	// the writer goroutine blocks until the body is fully consumed.
-	body, readErr := io.ReadAll(data)
-
+// resetOps clears the recorded op log so a later assertion sees only the ops of
+// a subsequent backup run.
+func (s *crashSafetyState) resetOps() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, frag := range s.putErrKeys {
-		if strings.Contains(key, frag) {
-			return errors.New("injected put failure for " + key)
-		}
-	}
-
-	if readErr != nil {
-		return readErr
-	}
-
-	if prev, existed := s.files[key]; existed && strings.Contains(key, "/data/") && !bytes.Equal(prev, body) {
-		s.mutatingOverwrites = append(s.mutatingOverwrites, key)
-	}
-
-	s.files[key] = body
-	s.ops = append(s.ops, "put "+key)
-
-	return nil
-}
-
-func (s *orderedStorage) GetFile(_ context.Context, key string) (io.ReadCloser, error) {
-	s.mu.Lock()
-	body, ok := s.files[key]
-	s.mu.Unlock()
-
-	if !ok {
-		return nil, ErrFileNotFound
-	}
-
-	return io.NopCloser(strings.NewReader(string(body))), nil
-}
-
-func (s *orderedStorage) DeleteFile(_ context.Context, key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.files, key)
-	s.ops = append(s.ops, "del "+key)
-
-	return nil
-}
-
-func (s *orderedStorage) ListFiles(_ context.Context, prefix string) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var keys []string
-	for k := range s.files {
-		if strings.HasPrefix(k, prefix) {
-			keys = append(keys, k)
-		}
-	}
-
-	return keys, nil
+	s.ops = nil
 }
 
 // opsCopy returns a snapshot of the recorded ops under the lock.
-func (s *orderedStorage) opsCopy() []string {
+func (s *crashSafetyState) opsCopy() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -121,11 +144,19 @@ func (s *orderedStorage) opsCopy() []string {
 
 // overwritesCopy returns a snapshot of content-mutating in-place data/
 // overwrites under the lock.
-func (s *orderedStorage) overwritesCopy() []string {
+func (s *crashSafetyState) overwritesCopy() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return append([]string(nil), s.mutatingOverwrites...)
+}
+
+// setFailDeletes toggles the injected DeleteFile failure.
+func (s *crashSafetyState) setFailDeletes(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.failDeletes = v
 }
 
 // firstIndex returns the index of the first op satisfying pred, or -1.
@@ -159,7 +190,7 @@ func TestRunBackup_ManifestWrittenAfterUploadsAndBeforeAnyDelete(t *testing.T) {
 	require.NoError(t, seedBatch.Commit())
 	require.NoError(t, store.Flush())
 
-	storage := newOrderedStorage()
+	storage, state := newCrashSafetyStorage(t)
 
 	// First full backup — populates data/ and the manifest.
 	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
@@ -177,14 +208,12 @@ func TestRunBackup_ManifestWrittenAfterUploadsAndBeforeAnyDelete(t *testing.T) {
 	require.NoError(t, store.CompactAll())
 
 	// Reset the op log so we assert purely on the second backup's ordering.
-	storage.mu.Lock()
-	storage.ops = nil
-	storage.mu.Unlock()
+	state.resetOps()
 
 	_, err = RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-2")
 	require.NoError(t, err)
 
-	ops := storage.opsCopy()
+	ops := state.opsCopy()
 	manifestKey := ManifestKey(bucketID)
 
 	manifestIdx := firstIndex(ops, func(op string) bool { return op == "put "+manifestKey })
@@ -235,7 +264,7 @@ func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
 	require.NoError(t, seedBatch.Commit())
 	require.NoError(t, store.Flush())
 
-	storage := newOrderedStorage()
+	storage, state := newCrashSafetyStorage(t)
 
 	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
 	require.NoError(t, err)
@@ -265,7 +294,7 @@ func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
 
 	// The precise immutability invariant: no object under data/ was ever
 	// overwritten with different bytes.
-	require.Empty(t, storage.overwritesCopy(),
+	require.Empty(t, state.overwritesCopy(),
 		"no object referenced by a published manifest may be overwritten with different bytes")
 
 	// Sanity: the two checkpoints are genuinely different (the mutation+compaction
@@ -319,12 +348,13 @@ func TestRunBackup_SecondBackupSucceedsEvenWhenDeletesFail(t *testing.T) {
 	require.NoError(t, seedBatch.Commit())
 	require.NoError(t, store.Flush())
 
-	storage := &failingDeleteStorage{inner: newInMemoryBackupStorage()}
+	storage, state := newCrashSafetyStorage(t)
 
 	// First full backup.
 	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
 	require.NoError(t, err)
-	require.True(t, storage.inner.has(ManifestKey(bucketID)), "first manifest must be written")
+	_, err = storage.GetFile(context.Background(), ManifestKey(bucketID))
+	require.NoError(t, err, "first manifest must be written")
 
 	// Mutate + compact so the second checkpoint's SST set differs, producing
 	// stale files the old code would have tried to delete pre-manifest.
@@ -337,51 +367,15 @@ func TestRunBackup_SecondBackupSucceedsEvenWhenDeletesFail(t *testing.T) {
 
 	// Second full backup — DeleteFile fails for every key, but the new manifest
 	// must still be committed.
-	storage.failDeletes = true
+	state.setFailDeletes(true)
 
 	_, err = RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-2")
 	require.NoError(t, err, "a full backup must succeed even when every stale-file delete fails")
 
-	manifest, err := ReadManifest(context.Background(), storage.inner, ManifestKey(bucketID))
+	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
 	require.NoError(t, err)
 	require.NotNil(t, manifest.Checkpoint)
 	require.Empty(t, manifest.Exports)
-}
-
-// failingDeleteStorage wraps a working storage and can be flipped to fail every
-// DeleteFile, to prove the backup's manifest commit does not depend on deletes.
-type failingDeleteStorage struct {
-	inner       *inMemoryBackupStorage
-	failDeletes bool
-}
-
-func (s *failingDeleteStorage) PutFile(ctx context.Context, key string, data io.Reader, size int64) error {
-	return s.inner.PutFile(ctx, key, data, size)
-}
-
-func (s *failingDeleteStorage) GetFile(ctx context.Context, key string) (io.ReadCloser, error) {
-	return s.inner.GetFile(ctx, key)
-}
-
-func (s *failingDeleteStorage) DeleteFile(ctx context.Context, key string) error {
-	if s.failDeletes {
-		return errors.New("injected delete failure")
-	}
-
-	return s.inner.DeleteFile(ctx, key)
-}
-
-func (s *failingDeleteStorage) ListFiles(ctx context.Context, prefix string) ([]string, error) {
-	return s.inner.ListFiles(ctx, prefix)
-}
-
-// has reports whether a key exists (test helper on the in-memory storage).
-func (s *inMemoryBackupStorage) has(key string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.files[key]
-
-	return ok
 }
 
 // TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched proves a
@@ -403,10 +397,12 @@ func TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched(t *tes
 	}
 	require.NoError(t, batch.Commit())
 
-	storage := newOrderedStorage()
+	storage, state := newCrashSafetyStorage(t)
 	// Fail every log-segment upload. The export writes the log segment first,
 	// so RunIncrementalBackup must abort before touching the manifest.
-	storage.putErrKeys = []string{"/exports/logs-"}
+	state.mu.Lock()
+	state.putErrKeys = []string{"/exports/logs-"}
+	state.mu.Unlock()
 
 	// A prior full-backup manifest with a known body.
 	base := &Manifest{Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0}}
