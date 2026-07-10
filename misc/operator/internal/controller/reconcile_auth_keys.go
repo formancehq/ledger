@@ -51,14 +51,22 @@ type credentialsKeyInfo struct {
 }
 
 // unresolvedCredential identifies a selector-matching Credentials whose key is
-// transiently not distributed yet. It carries only the stable identity needed to
-// look the credential's prior key up in the existing ConfigMap for carry-forward
-// (EN-1491): the ConfigMap prefix + credential name, which together form the
-// pubkey filename produced by pubKeyFileName. No secret content is available
-// (that is precisely what is missing), so no KeyID/PublicKey/Scopes are carried.
+// transiently not distributed yet. It carries the stable identity needed to look
+// the credential's prior key up in the existing ConfigMap for carry-forward
+// (EN-1491) — the ConfigMap prefix + credential name, which together form the
+// pubkey filename produced by pubKeyFileName — plus the LIVE authorization
+// metadata (Scopes, God) read from the current Credentials spec. Only the key
+// material (KeyID/PublicKey) is unavailable (that is precisely what is missing)
+// and must be carried forward from the prior ConfigMap; authorization metadata
+// must always reflect the current spec, never the stale stored entry.
 type unresolvedCredential struct {
 	ConfigMapPrefix string
 	CredentialsName string
+	// Scopes and God come from the current Credentials spec so a narrowed spec
+	// (scopes removed, god cleared) takes effect even while the secret is
+	// transiently unresolved and the key material is carried forward.
+	Scopes []string
+	God    bool
 }
 
 // pubKeyFileName returns the ConfigMap key under which a credential's hex public
@@ -231,10 +239,15 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 			carried = append(carried, credentialsKeyInfo{
 				ConfigMapPrefix: u.ConfigMapPrefix,
 				CredentialsName: u.CredentialsName,
-				KeyID:           entry.KeyID,
-				PublicKey:       pubKey,
-				Scopes:          entry.Scopes,
-				God:             entry.God,
+				// Key material (KeyID/PublicKey) is carried forward from the prior
+				// ConfigMap — it is unrecoverable while the secret is unresolved. But
+				// authorization metadata comes from the LIVE spec so a narrowed
+				// Credentials (scopes removed / god cleared) takes effect immediately
+				// rather than preserving stale privileges indefinitely.
+				KeyID:     entry.KeyID,
+				PublicKey: pubKey,
+				Scopes:    u.Scopes,
+				God:       u.God,
 			})
 		}
 	}
@@ -439,7 +452,7 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 
 		if len(cred.Status.DistributedSecretRefs) == 0 {
 			logger.Info("credentials has no distributed secret yet, skipping", "credentials", cred.Name)
-			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name})
+			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, God: cred.Spec.God})
 
 			continue
 		}
@@ -452,7 +465,7 @@ func (r *ClusterReconciler) collectClusterCredentialsKeys(ctx context.Context, l
 			// Distributed but the secret is not yet readable (missing/empty
 			// fields): treat it as transiently unresolved so its prior key can be
 			// carried forward rather than dropped.
-			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name})
+			unresolved = append(unresolved, unresolvedCredential{ConfigMapPrefix: configMapPrefix, CredentialsName: cred.Name, Scopes: cred.Spec.Scopes, God: cred.Spec.God})
 
 			continue
 		}
