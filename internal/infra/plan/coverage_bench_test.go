@@ -36,7 +36,7 @@ func buildPerOrderCoverage(o benchOrder, orderIdx int) *Coverage {
 	c.Add(dal.SubAttrLedger, ledgerBytes)
 	c.Add(dal.SubAttrBoundary, ledgerBytes)
 
-	for i := 0; i < o.postings; i++ {
+	for i := range o.postings {
 		src := fmt.Sprintf("bench:src:%d:%d", orderIdx, i)
 		dst := fmt.Sprintf("bench:dst:%d:%d", orderIdx, i)
 
@@ -100,7 +100,7 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 		c.Ledgers.Put(ledgerID, attributes.Entry[*commonpb.LedgerInfo]{Data: &commonpb.LedgerInfo{}})
 		c.Boundaries.Put(ledgerID, attributes.Entry[*raftcmdpb.LedgerBoundaries]{Data: &raftcmdpb.LedgerBoundaries{}})
 
-		for i := 0; i < spec.postings; i++ {
+		for i := range spec.postings {
 			src := fmt.Sprintf("bench:src:%d:%d", orderIdx, i)
 			dst := fmt.Sprintf("bench:dst:%d:%d", orderIdx, i)
 
@@ -117,7 +117,7 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for range b.N {
 		// Step 1: extractPreloadNeeds-equivalent — per-order Coverage +
 		// aggregate.
 		aggregate := NewCoverage()
