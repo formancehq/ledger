@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"slices"
@@ -13,6 +14,69 @@ import (
 // ReadAuditProgress returns the last indexed audit sequence (0 if unset).
 func (s *Store) ReadAuditProgress() (uint64, error) {
 	return auditCursor.Read(s.db)
+}
+
+// LastIndexedAuditSequence returns the last indexed audit sequence (read-only).
+// It is the audit-index counterpart of LastIndexedSequence: the log index and
+// the audit index advance independently, so a filtered audit read must gate on
+// this cursor, not on the log-index cursor.
+func (s *Store) LastIndexedAuditSequence() (uint64, error) {
+	return s.ReadAuditProgress()
+}
+
+// WaitForAuditSequence blocks until LastIndexedAuditSequence >= minSeq or the
+// context is cancelled. It shares the progressMu/progressCond mechanism with
+// WaitForSequence / WaitForCheckpoint: the audit indexer calls NotifyProgress
+// after committing each audit-index batch, waking waiters to re-check the
+// cursor.
+//
+// The cancellation broadcast is issued while holding progressMu (mirroring
+// WaitForCheckpoint): the wait loop holds progressMu across both the ctx.Err()
+// check and cond.Wait(), and Wait atomically releases the lock only once parked,
+// so a cancellation broadcast can never slip between the check and the park.
+func (s *Store) WaitForAuditSequence(ctx context.Context, minSeq uint64) error {
+	// Fast path: already caught up.
+	cur, err := s.LastIndexedAuditSequence()
+	if err != nil {
+		return fmt.Errorf("reading audit index progress: %w", err)
+	}
+
+	if cur >= minSeq {
+		return nil
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressMu.Lock()
+			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		cur, err = s.LastIndexedAuditSequence()
+		if err != nil {
+			return fmt.Errorf("reading audit index progress: %w", err)
+		}
+
+		if cur >= minSeq {
+			return nil
+		}
+
+		s.progressCond.Wait()
+	}
 }
 
 // WriteAuditProgress persists the audit indexing cursor in the batch.

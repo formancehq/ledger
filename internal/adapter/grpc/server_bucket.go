@@ -569,6 +569,55 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 	return impl.readStore.WaitForSequence(ctx, minLogSequence)
 }
 
+// waitFilteredAuditConsistency gives a live, filtered ListAuditEntries read a
+// read-your-writes guarantee against the async audit secondary index.
+//
+// min_log_sequence is a LOG sequence, but a filtered audit read resolves through
+// the audit index whose cursor (ReadAuditProgress) is an AUDIT sequence. The two
+// spaces diverge — the audit sequence advances on every proposal, including
+// failures that emit no log — so waiting for audit_progress >= min_log_sequence
+// would be incorrect. Instead, conservatively:
+//
+//  1. wait for the log index to reach min_log_sequence (waitMinLogSequence);
+//  2. read the current live audit head from the main store;
+//  3. wait for the audit index cursor to reach that observed head.
+//
+// This can over-wait (the head observed in step 2 may include audit entries
+// produced after min_log_sequence), which is acceptable for v3.0 and avoids a
+// new min_audit_sequence API. A minLogSeq of 0 means "no consistency bound
+// requested", so this is a no-op.
+//
+// Only the LIVE filtered path calls this. Unfiltered reads scan the Cold/Audit
+// zone directly and are always current, so they keep the direct fast path.
+// Checkpoint reads are frozen snapshots and are handled (and documented) at the
+// checkpoint-creation boundary, out of scope here.
+func (impl *BucketServiceServerImpl) waitFilteredAuditConsistency(ctx context.Context, minLogSeq uint64) error {
+	if minLogSeq == 0 {
+		return nil
+	}
+
+	if err := impl.waitMinLogSequence(ctx, minLogSeq); err != nil {
+		return err
+	}
+
+	handle, err := impl.store.NewDirectReadHandle()
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "opening read handle for audit head: %v", err)
+	}
+
+	auditHead, err := query.ReadLastAuditSequence(handle)
+	// Close before waiting: the handle holds dbMu.RLock for its lifetime, and the
+	// wait below can block for a while. We only need the head value, not the
+	// handle, past this point.
+	_ = handle.Close()
+
+	if err != nil {
+		return status.Errorf(codes.Internal, "reading live audit head: %v", err)
+	}
+
+	return impl.readStore.WaitForAuditSequence(ctx, auditHead)
+}
+
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListTransactions",
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
@@ -1241,7 +1290,19 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		// log-index WaitForSequence); it is out of scope here.
 		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	} else {
-		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
+		minLogSeq := opts.GetRead().GetMinLogSequence()
+
+		// A filtered live read resolves through the async audit secondary index,
+		// which lags the audit zone independently of the log index. Gate it on the
+		// audit-index progress so the requested consistency bound actually covers
+		// the index this read consults. An unfiltered read scans the Cold/Audit
+		// zone directly and is always current, so it keeps the plain log-index wait
+		// (its fast path is unchanged).
+		if opts.GetFilter() != nil {
+			if waitErr := impl.waitFilteredAuditConsistency(ctx, minLogSeq); waitErr != nil {
+				return waitErr
+			}
+		} else if waitErr := impl.waitMinLogSequence(ctx, minLogSeq); waitErr != nil {
 			return waitErr
 		}
 
