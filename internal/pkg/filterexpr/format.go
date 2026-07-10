@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -74,7 +75,7 @@ func formatAuditCondition(ac *commonpb.AuditCondition) string {
 	case *commonpb.AuditCondition_StringCond:
 		return fmt.Sprintf("audit[%s] == %s", key, formatStringCondValue(cond.StringCond))
 	case *commonpb.AuditCondition_UintCond:
-		return formatAuditUintCondition(key, cond.UintCond)
+		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond)
 	default:
 		return fmt.Sprintf("audit[%s] <unknown>", key)
 	}
@@ -82,13 +83,22 @@ func formatAuditCondition(ac *commonpb.AuditCondition) string {
 
 // formatAuditUintCondition renders a UintCondition on an audit field. The audit
 // DSL only produces hardcoded bounds (no params), so only those are formatted.
-func formatAuditUintCondition(key string, uc *commonpb.UintCondition) string {
+// The timestamp field is a datetime: its bounds render as quoted RFC3339 so the
+// output round-trips through the datetime-aware parser.
+func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
+	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
+	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
+		render = func(v uint64) string {
+			return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
+		}
+	}
+
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("audit[%s] == %d", key, uc.GetMin())
+		return fmt.Sprintf("audit[%s] == %s", key, render(uc.GetMin()))
 	}
 
 	if uc.Min != nil && uc.Max != nil {
-		return fmt.Sprintf("audit[%s] between %d and %d", key, uc.GetMin(), uc.GetMax())
+		return fmt.Sprintf("audit[%s] between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
 	}
 
 	if uc.Min != nil {
@@ -97,7 +107,7 @@ func formatAuditUintCondition(key string, uc *commonpb.UintCondition) string {
 			op = ">"
 		}
 
-		return fmt.Sprintf("audit[%s] %s %d", key, op, uc.GetMin())
+		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMin()))
 	}
 
 	if uc.Max != nil {
@@ -106,7 +116,7 @@ func formatAuditUintCondition(key string, uc *commonpb.UintCondition) string {
 			op = "<"
 		}
 
-		return fmt.Sprintf("audit[%s] %s %d", key, op, uc.GetMax())
+		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMax()))
 	}
 
 	return fmt.Sprintf("audit[%s] <uint?>", key)

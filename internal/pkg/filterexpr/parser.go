@@ -224,6 +224,10 @@ type auditFieldKind int
 const (
 	auditKindUint auditFieldKind = iota
 	auditKindString
+	// auditKindDatetime is a uint field whose DSL value additionally accepts an
+	// RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z"), coerced to the
+	// same uint64 microseconds the index stores. Raw microseconds still parse.
+	auditKindDatetime
 )
 
 type auditFieldSpec struct {
@@ -237,7 +241,7 @@ type auditFieldSpec struct {
 var auditFieldKeys = map[string]auditFieldSpec{
 	"seq":            {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
 	"proposal_id":    {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
-	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindUint},
+	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
 	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
 	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
 	"caller_subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
@@ -258,6 +262,8 @@ func (a *AuditCond) toProto() (*commonpb.QueryFilter, error) {
 	switch spec.kind {
 	case auditKindUint:
 		return a.uintToProto(spec.field)
+	case auditKindDatetime:
+		return a.datetimeToProto(spec.field)
 	case auditKindString:
 		return a.stringToProto(spec.field)
 	default:
@@ -272,9 +278,6 @@ func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb
 }
 
 func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
-	op := a.Op
-	uc := &commonpb.UintCondition{}
-
 	parse := func(v *Value) (uint64, error) {
 		if v.Param != "" {
 			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
@@ -287,6 +290,47 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 
 		return n, nil
 	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// datetimeToProto builds a uint audit condition whose operands may be written as
+// an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or as raw unsigned
+// microseconds. Both forms coerce to the uint64 microseconds the audit index
+// stores, reusing the platform datetime parser (commonpb.ParseDatetimeMicros)
+// that backs METADATA_TYPE_DATETIME fields.
+func (a *AuditCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		s := v.resolve()
+		if micros, ok := commonpb.ParseDatetimeMicros(s); ok {
+			if micros < 0 {
+				return 0, fmt.Errorf("audit field %q does not support timestamps before the Unix epoch, got %q", a.Field, s)
+			}
+
+			return uint64(micros), nil
+		}
+
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("audit field %q requires an RFC3339 timestamp or unsigned microseconds, got %q", a.Field, s)
+		}
+
+		return n, nil
+	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// uintProtoWithParse assembles a uint audit condition from the operator, using
+// parse to turn each operand into a uint64. Shared by plain-uint fields and the
+// datetime timestamp field.
+func (a *AuditCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
+	op := a.Op
+	uc := &commonpb.UintCondition{}
 
 	switch {
 	case op.Eq != nil:

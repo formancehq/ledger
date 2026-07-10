@@ -46,6 +46,35 @@ func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 	assert.Equal(t, "svc:payments", ac.GetStringCond().GetHardcoded())
 }
 
+func TestParseAudit_TimestampRFC3339(t *testing.T) {
+	t.Parallel()
+
+	// 2023-11-14T22:13:20Z == 1_700_000_000 s == 1_700_000_000_000_000 µs.
+	const wantMicros = uint64(1_700_000_000_000_000)
+
+	// RFC3339 (quoted) and raw microseconds must both parse to the same bound.
+	for _, in := range []string{
+		`audit[timestamp] >= "2023-11-14T22:13:20Z"`,
+		"audit[timestamp] >= 1700000000000000",
+	} {
+		filter, err := Parse(in)
+		require.NoError(t, err, in)
+
+		ac := filter.GetAudit()
+		require.NotNil(t, ac, in)
+		assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, ac.GetField(), in)
+		assert.Equal(t, wantMicros, ac.GetUintCond().GetMin(), in)
+	}
+}
+
+func TestParseAudit_TimestampRejectsPreEpoch(t *testing.T) {
+	t.Parallel()
+
+	_, err := Parse(`audit[timestamp] >= "1969-12-31T00:00:00Z"`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Unix epoch")
+}
+
 func TestParseAudit_OrderTypeIn(t *testing.T) {
 	t.Parallel()
 
@@ -173,7 +202,7 @@ func TestFormatAudit_RoundTrip(t *testing.T) {
 		"audit[caller_subject] == svc:payments",
 		"audit[seq] == 42",
 		"audit[seq] between 1000 and 2000",
-		"audit[timestamp] >= 1700000000000000",
+		`audit[timestamp] >= "2023-11-14T22:13:20Z"`,
 		"audit[proposal_id] < 100",
 		"audit[outcome] == failure and audit[ledger] == main",
 	} {

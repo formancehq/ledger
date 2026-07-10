@@ -2256,7 +2256,7 @@ combined with `and` / `or`:
 |-------|------|-----------|-------|
 | `seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Audit sequence (served by an audit-zone key-range bound). |
 | `proposal_id` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | |
-| `timestamp` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Unix **microseconds**. |
+| `timestamp` | datetime | `==`, `>`, `>=`, `<`, `<=`, `between` | RFC3339 (quoted, e.g. `"2023-11-14T22:13:20Z"`) or raw unix **microseconds**. |
 | `log_seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Match-any over the entry's item log sequences. |
 | `outcome` | string | `==`, `in` | `success` or `failure`. |
 | `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
