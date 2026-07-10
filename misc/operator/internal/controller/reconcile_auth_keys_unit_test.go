@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,6 +74,41 @@ func existingAuthKeysConfigMap(clusterName, namespace string) *corev1.ConfigMap 
 		Data: map[string]string{
 			"auth-keys.json": `{"keys":[{"keyId":"stale","publicKeyFile":"/auth-keys/stale.hex","scopes":["read"]}]}`,
 		},
+	}
+}
+
+// authKeysConfigMapWithEntries builds an auth-keys ConfigMap whose auth-keys.json
+// and per-credential pubkey blobs are keyed by the stable pubKeyFileName identity,
+// mirroring what reconcileAuthKeys itself writes. entries maps a credential name
+// (with the default "credentials" prefix) to its (keyID, hex pubkey). This is the
+// carry-forward source for the partial-resolution cases.
+func authKeysConfigMapWithEntries(clusterName, namespace string, entries map[string]struct {
+	keyID  string
+	pubKey string
+}) *corev1.ConfigMap {
+	aks := authKeysJSON{}
+	data := map[string]string{}
+	for credName, e := range entries {
+		fileName := pubKeyFileName("credentials", credName)
+		aks.Keys = append(aks.Keys, authKeyEntry{
+			KeyID:         e.keyID,
+			PublicKeyFile: "/auth-keys/" + fileName,
+			Scopes:        []string{"read"},
+		})
+		data[fileName] = e.pubKey
+	}
+	raw, err := json.Marshal(aks)
+	if err != nil {
+		panic(err)
+	}
+	data["auth-keys.json"] = string(raw)
+
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      authKeysConfigMapName(clusterName),
+			Namespace: namespace,
+		},
+		Data: data,
 	}
 }
 
@@ -244,13 +280,28 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
 }
 
+// keyIDsInConfigMap parses the auth-keys.json in a ConfigMap and returns the set
+// of keyIDs it advertises, for asserting union membership.
+func keyIDsInConfigMap(t *testing.T, cm *corev1.ConfigMap) map[string]struct{} {
+	t.Helper()
+	var parsed authKeysJSON
+	require.NoError(t, json.Unmarshal([]byte(cm.Data["auth-keys.json"]), &parsed))
+	ids := map[string]struct{}{}
+	for _, e := range parsed.Keys {
+		ids[e.KeyID] = struct{}{}
+	}
+
+	return ids
+}
+
 // TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap covers the
-// partial-resolution fail-safe (EN-1487): two Credentials match the Cluster but
-// only one is distributed. Rewriting the ConfigMap from the resolved subset
-// would drop the pending key and roll the StatefulSet with an auth-keys hash
-// that omits it, losing a previously configured key from a healthy cluster.
-// reconcileAuthKeys must report pending and leave the existing ConfigMap
-// untouched, exactly as in the zero-resolved case.
+// PROPER partial-resolution behavior (EN-1491, superseding the naive freeze):
+// two Credentials match the Cluster, one is freshly resolved (new/rotated key)
+// and one is transiently unresolved but has a prior key in the existing
+// ConfigMap. reconcileAuthKeys must NOT freeze — it must build the ConfigMap from
+// the UNION of the newly-resolved key (propagated) and the pending credential's
+// carried-forward prior key (preserved), and must NOT report pending so the
+// StatefulSet pass proceeds normally.
 func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.T) {
 	t.Parallel()
 
@@ -262,15 +313,22 @@ func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.
 	selector := map[string]string{"tier": "gold"}
 
 	scheme := authKeysScheme(t)
-	existingCM := existingAuthKeysConfigMap(clusterName, namespace)
-	// One distributed credential, one still undistributed.
+	// Prior ConfigMap holds a key for the still-pending credential (cred-b) so it
+	// can be carried forward.
+	existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+		keyID  string
+		pubKey string
+	}{
+		"thierry-cred-b": {keyID: "kid-b-old", pubKey: "bbbb"},
+	})
+	// cred-a freshly resolved (new/rotated key), cred-b still undistributed.
 	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
 	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
 		Data: map[string][]byte{
-			"pubkey.hex": []byte("deadbeef"),
-			"key-id":     []byte("kid-a"),
+			"pubkey.hex": []byte("aaaa"),
+			"key-id":     []byte("kid-a-new"),
 		},
 	}
 
@@ -284,16 +342,147 @@ func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.True(t, pending, "partial non-distribution must report pending")
-	assert.Nil(t, credentials, "no key must be returned while any matching credential is undistributed")
+	assert.False(t, pending, "partial resolution must NOT freeze the cluster")
+	require.Len(t, credentials, 2, "the merged set must carry both the resolved and the carried-forward key")
 
-	// The existing ConfigMap must survive untouched — rewriting it from the
-	// resolved subset would drop the still-pending key.
 	cm := &corev1.ConfigMap{}
 	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
-	require.NoError(t, err, "existing auth-keys ConfigMap must be preserved during partial non-distribution")
-	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
-		"ConfigMap content must not be mutated during partial non-distribution")
+	require.NoError(t, err, "auth-keys ConfigMap must exist")
+
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-a-new", "the freshly-resolved key must be propagated")
+	assert.Contains(t, ids, "kid-b-old", "the pending credential's prior key must be preserved")
+	assert.Len(t, ids, 2, "the merged set must be exactly the union")
+
+	// The carried-forward pubkey blob must be preserved verbatim, and the new one
+	// propagated.
+	assert.Equal(t, "bbbb", cm.Data[pubKeyFileName("credentials", "thierry-cred-b")],
+		"pending credential's prior pubkey must be carried forward")
+	assert.Equal(t, "aaaa", cm.Data[pubKeyFileName("credentials", "thierry-cred-a")],
+		"freshly-resolved pubkey must be written")
+}
+
+// TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotation
+// proves a permanently-broken Credentials never blocks rotation/propagation of
+// the healthy ones. cred-b stays undistributed across two reconciles while cred-a
+// rotates twice; each reconcile must propagate cred-a's latest key while keeping
+// cred-b's carried-forward prior key.
+func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-a-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+		keyID  string
+		pubKey string
+	}{
+		"thierry-cred-b": {keyID: "kid-b-old", pubKey: "bbbb"},
+	})
+	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("a1"),
+			"key-id":     []byte("kid-a-v1"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, credA, credB, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	// First reconcile: cred-a v1 propagated, cred-b carried forward.
+	_, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending)
+
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-a-v1")
+	assert.Contains(t, ids, "kid-b-old")
+
+	// Rotate cred-a while cred-b stays broken.
+	sec := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: secretName}, sec))
+	sec.Data["pubkey.hex"] = []byte("a2")
+	sec.Data["key-id"] = []byte("kid-a-v2")
+	require.NoError(t, c.Update(context.Background(), sec))
+
+	// Second reconcile: cred-a's further rotation must still propagate.
+	_, pending, err = r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "a permanently-broken credential must not block further rotation of the healthy one")
+
+	cm = &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids = keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-a-v2", "the healthy credential's rotation must propagate despite the broken one")
+	assert.Contains(t, ids, "kid-b-old", "the broken credential still keeps its own last-known key")
+	assert.NotContains(t, ids, "kid-a-v1", "the superseded key must be gone")
+}
+
+// TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips covers a partial state
+// where the still-unresolved credential was NEVER distributed (no prior entry in
+// the existing ConfigMap). It simply contributes no key; the resolved credential
+// is propagated and the cluster is not frozen.
+func TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-a-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	// Existing ConfigMap holds only cred-a's prior key; cred-b was never distributed.
+	existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+		keyID  string
+		pubKey string
+	}{
+		"thierry-cred-a": {keyID: "kid-a-old", pubKey: "aaaa"},
+	})
+	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("aaaa2"),
+			"key-id":     []byte("kid-a-new"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, credA, credB, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "a never-distributed pending credential must not freeze the cluster")
+	require.Len(t, credentials, 1, "only the resolved credential contributes a key")
+
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-a-new", "the resolved credential's key must be propagated")
+	assert.Len(t, ids, 1, "the never-distributed credential contributes nothing")
 }
 
 // TestCredentialsToClusters_EnqueuesMatchingCluster verifies the watch mapping
