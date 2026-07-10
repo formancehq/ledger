@@ -35,7 +35,8 @@ func TestVolumeAggregator_NoRescaling(t *testing.T) {
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 5000)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 2)
 	require.Equal(t, "USD/2", result.GetVolumes()[0].GetAsset())
 	require.Equal(t, "USD/4", result.GetVolumes()[1].GetAsset())
@@ -51,7 +52,8 @@ func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 	// USD/4: 10000 in, 5000 out → stays as is
 	require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/4", 10000, 5000)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1)
 	require.Equal(t, "USD/4", result.GetVolumes()[0].GetAsset())
 
@@ -71,7 +73,8 @@ func TestVolumeAggregator_UseMaxPrecision_SamePrecision(t *testing.T) {
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "EUR/2", 200, 100)))
 	require.NoError(t, va.accumulate(makeEntry("test", "b", "EUR/2", 300, 150)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1)
 	require.Equal(t, "EUR/2", result.GetVolumes()[0].GetAsset())
 
@@ -89,7 +92,8 @@ func TestVolumeAggregator_UseMaxPrecision_MixedAssets(t *testing.T) {
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "USD/4", 10000, 0)))
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "EUR/2", 200, 0)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 2)
 	// Sorted: EUR/2, USD/4
 	require.Equal(t, "EUR/2", result.GetVolumes()[0].GetAsset())
@@ -104,7 +108,8 @@ func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 	require.NoError(t, va.accumulate(makeEntry("test", "a", "GOLD", 500, 100)))
 	require.NoError(t, va.accumulate(makeEntry("test", "b", "GOLD", 300, 200)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1)
 	require.Equal(t, "GOLD", result.GetVolumes()[0].GetAsset())
 
@@ -124,7 +129,8 @@ func TestGroupedAggregator_BasicPrefixes(t *testing.T) {
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/2", 200, 100)))
 	require.NoError(t, ga.accumulate(makeEntry("test", "merchants:shop1", "USD/2", 500, 250)))
 
-	result, _ := ga.result()
+	result, err := ga.result()
+	require.NoError(t, err)
 	require.Empty(t, result.GetVolumes(), "flat volumes should be empty for grouped result")
 	require.Len(t, result.GetGroups(), 2)
 
@@ -154,7 +160,8 @@ func TestGroupedAggregator_UnmatchedAccountSkipped(t *testing.T) {
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
 	require.NoError(t, ga.accumulate(makeEntry("test", "world", "USD/2", 9999, 9999))) // no match
 
-	result, _ := ga.result()
+	result, err := ga.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetGroups(), 1)
 
 	var input uint256.Int
@@ -173,7 +180,8 @@ func TestGroupedAggregator_WithMaxPrecision(t *testing.T) {
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD/2", 100, 50)))
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/4", 10000, 5000)))
 
-	result, _ := ga.result()
+	result, err := ga.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetGroups(), 1)
 	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
 	require.Equal(t, "USD/4", result.GetGroups()[0].GetVolumes()[0].GetAsset())
@@ -192,7 +200,8 @@ func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
 
 	require.NoError(t, ga.accumulate(makeEntry("test", "users:vip1", "USD/2", 100, 50)))
 
-	result, _ := ga.result()
+	result, err := ga.result()
+	require.NoError(t, err)
 	// "users:vip1" matches "users:" first.
 	var input uint256.Int
 	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
@@ -208,7 +217,8 @@ func TestNewAccumulator_FlatByDefault(t *testing.T) {
 	acc := newAccumulator(AggregateOptions{})
 	require.NoError(t, acc.accumulate(makeEntry("test", "a", "USD/2", 100, 50)))
 
-	result, _ := acc.result()
+	result, err := acc.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1)
 	require.Empty(t, result.GetGroups())
 }
@@ -219,7 +229,8 @@ func TestNewAccumulator_GroupedWhenPrefixes(t *testing.T) {
 	acc := newAccumulator(AggregateOptions{GroupByPrefixes: []string{"a:"}})
 	require.NoError(t, acc.accumulate(makeEntry("test", "a:1", "USD/2", 100, 50)))
 
-	result, _ := acc.result()
+	result, err := acc.result()
+	require.NoError(t, err)
 	require.Empty(t, result.GetVolumes())
 	require.Len(t, result.GetGroups(), 1)
 }
@@ -260,7 +271,8 @@ func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "GRANTS", 200, 80)))
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "OPS", 30, 10)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 3,
 		"each (asset, color) bucket must yield its own AggregatedVolume entry by default")
 
@@ -287,7 +299,8 @@ func TestVolumeAggregator_CollapseColors(t *testing.T) {
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "GRANTS", 200, 80)))
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/2", "OPS", 30, 10)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1, "collapse_colors must produce a single per-asset entry")
 
 	vol := result.GetVolumes()[0]
@@ -313,7 +326,8 @@ func TestVolumeAggregator_CollapseColors_WithMaxPrecision(t *testing.T) {
 	// USD/4 (uncolored): 2, 1
 	require.NoError(t, va.accumulate(makeColoredEntry("test", "a", "USD/4", "", 2, 1)))
 
-	result, _ := va.result()
+	result, err := va.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetVolumes(), 1, "collapse_colors + max_precision must collapse all to one")
 
 	vol := result.GetVolumes()[0]
@@ -337,7 +351,8 @@ func TestGroupedAggregator_RespectsColor(t *testing.T) {
 	require.NoError(t, ga.accumulate(makeColoredEntry("test", "users:alice", "USD/2", "RED", 100, 0)))
 	require.NoError(t, ga.accumulate(makeColoredEntry("test", "users:alice", "USD/2", "BLUE", 50, 0)))
 
-	result, _ := ga.result()
+	result, err := ga.result()
+	require.NoError(t, err)
 	require.Len(t, result.GetGroups(), 1)
 	require.Len(t, result.GetGroups()[0].GetVolumes(), 2,
 		"grouped aggregator must keep colors segregated within a prefix bucket")
