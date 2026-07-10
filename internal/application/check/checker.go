@@ -3135,6 +3135,17 @@ func verifySkippedOrder(
 			// ErrTransactionReferenceConflict omits it when the FSM could not
 			// resolve the owner (ExistingTransactionID==0), so an absent
 			// field is not tampering.
+			//
+			// Accepted limitation (invariant #8, non-integrity-affecting): a
+			// tamperer who DELETES existingTransactionId from a stored skip log
+			// is not caught, because absence is indistinguishable from the FSM
+			// legitimately omitting it. Requiring presence when ownerTxID!=0
+			// would false-positive on the legitimate-omission case (the
+			// checker's replayed owner can differ from the FSM's apply-time
+			// view). The field is client-facing but informational only — it
+			// misattributes which tx owns a conflicting reference, with no
+			// balance/chain-integrity impact — so we validate-if-present and
+			// document the absent case as accepted rather than reject it.
 			if got, present := ctx["existingTransactionId"]; present && got != want {
 				callback(errorEvent(
 					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
