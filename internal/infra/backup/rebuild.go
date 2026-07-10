@@ -162,13 +162,10 @@ func RebuildDelta(
 				continue
 			}
 
-			info := &commonpb.LedgerInfo{
-				Name:           p.CreateLedger.GetName(),
-				Id:             p.CreateLedger.GetId(),
-				CreatedAt:      p.CreateLedger.GetCreatedAt(),
-				Mode:           p.CreateLedger.GetMode(),
-				MetadataSchema: p.CreateLedger.GetMetadataSchema(),
-			}
+			// Reconstruct the full LedgerInfo from the creation log — including
+			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
+			// the stored projection. ToLedgerInfo copies every creation-time field.
+			info := p.CreateLedger.ToLedgerInfo()
 
 			if err := state.SaveLedger(batch, info); err != nil {
 				_ = batch.Cancel()
@@ -177,6 +174,16 @@ func RebuildDelta(
 			}
 
 			writer.ledgerInfos[info.GetName()] = info
+
+			// Seed the account-type maps from the creation log so replay of this
+			// ledger's later logs resolves enforcement / purge simulation against
+			// its creation-time chart (mirrors seedLedgerContext for checkpoint
+			// ledgers).
+			if types := p.CreateLedger.GetAccountTypes(); len(types) > 0 {
+				cloned := maps.Clone(types)
+				rawLedgerTypes[info.GetName()] = cloned
+				ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
+			}
 
 		case *commonpb.LogPayload_DeleteLedger:
 			// Deletion is handled by system state; nothing to rebuild here
@@ -450,12 +457,13 @@ func seedLedgerContext(
 // LedgerInfo, which the attribute zones do not cover, so without this a restore
 // loses every field type declared beyond the checkpoint.
 func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error {
-	// A schema op cannot arrive for a ledger that was never created; if the info
-	// is absent (e.g. a since-deleted ledger not seeded), there is nothing to
-	// attach the declaration to.
+	// Every live ledger is seeded into ledgerInfos from the checkpoint
+	// (seedLedgerContext) or from its CreateLedger log during replay, so a schema
+	// op with no LedgerInfo means the log stream references a ledger that was
+	// never created — a corrupt/impossible stream, not a runtime condition.
 	info := w.ledgerInfos[ledger]
 	if info == nil {
-		return nil
+		return fmt.Errorf("invariant: SetMetadataFieldType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
 	}
 
 	if info.GetMetadataSchema() == nil {
@@ -496,7 +504,13 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 // in-memory LedgerInfo and re-saves it.
 func (w *attributeReplayWriter) RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error {
 	info := w.ledgerInfos[ledger]
-	if info == nil || info.GetMetadataSchema() == nil {
+	if info == nil {
+		return fmt.Errorf("invariant: RemoveMetadataFieldType for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
+	}
+
+	// No schema at all means there is nothing to remove — a benign no-op (the
+	// field is already absent), unlike a missing ledger.
+	if info.GetMetadataSchema() == nil {
 		return nil
 	}
 

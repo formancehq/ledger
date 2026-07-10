@@ -222,6 +222,105 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.Equal(t, "5", pair.GetOutput().ToBigInt().String())
 }
 
+// TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog: a post-checkpoint
+// CreateLedger must restore the full LedgerInfo — Id, AccountTypes, and
+// DefaultEnforcementMode — not just Name/Mode/schema.
+func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	createLog := &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name: "ledger",
+					Id:   42,
+					AccountTypes: map[string]*commonpb.AccountType{
+						"orders": {Name: "orders", Pattern: "orders:{id}"},
+					},
+					DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+				},
+			},
+		},
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLog))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
+	require.NoError(t, err)
+	require.Equal(t, uint32(42), info.GetId())
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+	require.Contains(t, info.GetAccountTypes(), "orders")
+	require.Equal(t, "orders:{id}", info.GetAccountTypes()["orders"].GetPattern())
+}
+
+// TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge: account types
+// declared at ledger creation (on the CreateLedger log, not a later
+// AddAccountType) must seed the replay's compiled-type maps, so the
+// ephemeral-purge simulation classifies a matching account and purges it when it
+// nets to zero within a proposal.
+func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	createLog := &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name: "ledger",
+					Id:   1,
+					AccountTypes: map[string]*commonpb.AccountType{
+						"orders": {
+							Name:        "orders",
+							Pattern:     "orders:{id}",
+							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLog))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
+		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
+	)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
+		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
+	)))
+	// logs 2-3 form one proposal, so orders:1 nets to zero at the boundary.
+	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 3)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+	pair, err := attrs.Volume.Get(handle, domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Asset:      "USD",
+	}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, pair, "balanced ephemeral account should have been purged")
+}
+
 // newAttributeReplayWriter builds an isolated writer for regression tests of
 // EN-1425: an in-batch create followed by a mutate must produce the merged
 // state, not overwrite it with a fresh zero-value TransactionState.
@@ -371,4 +470,34 @@ func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
 	require.NotNil(t, got)
 	require.NotContains(t, got.GetMetadata(), "env", "same-batch delete must actually remove the key")
 	require.Equal(t, "eu-west", got.GetMetadata()["region"].GetStringValue())
+}
+
+// TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly: a schema op for
+// a ledger that was neither in the checkpoint nor created during replay is an
+// impossible/corrupt log stream, so it must surface loudly rather than silently
+// drop the declaration (invariant 7).
+func TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos = make(map[string]*commonpb.LedgerInfo)
+
+	setErr := writer.SetMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k",
+		commonpb.MetadataType_METADATA_TYPE_STRING)
+	require.ErrorContains(t, setErr, "invariant")
+
+	removeErr := writer.RemoveMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k")
+	require.ErrorContains(t, removeErr, "invariant")
+}
+
+// TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp: removing a field from
+// a known ledger that has no schema is a benign no-op (the field is already
+// absent), not the impossible missing-ledger case.
+func TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos = map[string]*commonpb.LedgerInfo{"ledger": {Name: "ledger"}}
+
+	require.NoError(t, writer.RemoveMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"))
 }

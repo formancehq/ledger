@@ -10,6 +10,7 @@ func (x *CreatedLedgerLog) ToLedgerInfo() *LedgerInfo {
 
 	return &LedgerInfo{
 		Name:                   x.GetName(),
+		Id:                     x.GetId(),
 		CreatedAt:              x.GetCreatedAt(),
 		MetadataSchema:         x.GetMetadataSchema(),
 		Mode:                   x.GetMode(),
