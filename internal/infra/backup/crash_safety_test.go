@@ -299,17 +299,6 @@ func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
 	}
 }
 
-// checkpointKeySet collects the set of content-addressed storage keys a
-// checkpoint manifest references.
-func checkpointKeySet(m *Manifest) map[string]struct{} {
-	out := make(map[string]struct{}, len(m.Checkpoint.Files))
-	for _, cf := range m.Checkpoint.Files {
-		out[cf.Key] = struct{}{}
-	}
-
-	return out
-}
-
 // TestRunBackup_SecondBackupSucceedsEvenWhenDeletesFail is the regression test
 // for the crash-safety fix: the pre-fix code deleted stale checkpoint files and
 // old export segments BEFORE writing the new manifest. This test drives a
