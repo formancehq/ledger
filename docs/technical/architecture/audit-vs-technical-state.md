@@ -90,10 +90,20 @@ cases:
   (`query.ReadMirrorCursor` defaults to `0`, and `processBatch` maps `0` to
   `expectedNextLogID == 1`); a ledger with no audited mirror-ingest logs must
   hold cursor `0`.
-- **Deleted / archived ledger:** workers stop but the cursor row is **not**
-  cleared, so it persists in Pebble; any equality check must treat a
-  deleted/archived ledger as out of scope rather than compare a stale cursor
-  against an empty audit set.
+- **Deleted ledger:** the cursor **is** cleared as part of cleanup, but only
+  after a deferred purge, so there is a transient window to account for.
+  `DeleteLedger` records a deferred cleanup (`savePendingLedgerCleanup` →
+  `State.PendingLedgerCleanups`). The cursor row survives until a covering
+  chapter purge reaches the delete sequence: `WriteSet.executePurge`
+  (`internal/infra/state/write_set.go`) then calls `deleteLedgerData`
+  (`internal/infra/state/batch.go`), which point-deletes `SubPLMirrorCursor`
+  together with `SubPLMirrorSourceHead`, `SubPLMirrorStatus`, and the
+  pending-cleanup marker. So the cursor is present only during the
+  pending-cleanup window and **absent** once cleanup completes; there is no
+  "archived" ledger state. A checker must therefore expect the cursor to be
+  gone after cleanup, and treat only a ledger *still awaiting* cleanup (delete
+  logged, purge not yet reached) as the transient case to exclude — not assume
+  a deleted ledger keeps a stale cursor forever.
 
 This equality is **not** currently enforced: there is no `compare*` pass for
 `MirrorCursor` in `internal/application/check`, so per invariant #8 this is a
@@ -127,9 +137,20 @@ This is a tracked gap (see the `compareIndexes` comments referencing the index
 content-verification effort, and `EN-1323` on the version/build-status split).
 Closing it requires the checker to re-derive the readstore inverted-index
 contents from the audited logs, or a rebuild-health mechanism that proves the
-projection matches the audit before a READY index is served — Raft replication
-does not help, since a bit-flip present before replication is copied to every
-replica identically.
+projection matches the audit before a READY index is served.
+
+Raft does not help here, but the reason differs from the main-store projections
+above. The readstore is a **separate, per-replica Pebble store** (opened
+independently in `internal/storage/readstore`), not the byte-replicated FSM
+store. It is populated **locally** by each node's index builder
+(`internal/application/indexbuilder`) from the replicated log/audit stream, and
+`IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. Raft
+replicates the *source* audit/log stream, not the readstore bytes — so unlike a
+main-store value (which is copied bit-for-bit to every node), a bit-flip in one
+replica's readstore is **not** propagated to the others. Consequently Raft
+neither detects nor repairs replica-local index corruption: each replica can
+serve a differently-corrupted (or healthy) index, and only per-replica checker
+or rebuild-health validation can catch it.
 
 ## Prepared Queries
 
