@@ -434,4 +434,24 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultError.ErrorCode).To(Equal("ALREADY_REVERT"))
 		})
 	})
+	When("targeting a non-existent transaction inside a bulk", func() {
+		// Regression: a bulk element targeting a missing transaction must report
+		// NOT_FOUND, like the standalone endpoints — not INTERNAL.
+		var err error
+		It("should report NOT_FOUND for that element", func(specContext SpecContext) {
+			bulkResponse, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+				Ledger: "default",
+				RequestBody: []components.V2BulkElement{
+					components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
+						Data: &components.V2BulkElementRevertTransactionData{
+							ID: big.NewInt(42),
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(bulkResponse.V2BulkResponse.Data[0].Type).To(Equal(components.V2BulkElementResultType("ERROR")))
+			Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultError.ErrorCode).To(Equal("NOT_FOUND"))
+		})
+	})
 })
