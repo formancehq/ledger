@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,19 +21,46 @@ import (
 // NewListCommand creates the audit list command.
 func NewListCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "list",
-		Aliases:           cmdutil.ListAliases,
-		Short:             "List audit entries",
-		Long:              "List audit log entries (successes and failures) via gRPC streaming",
+		Use:     "list",
+		Aliases: cmdutil.ListAliases,
+		Short:   "List audit entries",
+		Long: `List audit log entries (successes and failures) via gRPC streaming.
+
+Entries are shown oldest first by default (chronological); use --reverse for newest first.
+
+Filtering is done entirely through the generic --filter flag (same DSL as the
+other list commands); there are no audit-specific flags. It accepts audit[...]
+conditions combined with and/or:
+  audit[outcome] == failure
+  audit[ledger] == main
+  audit[ledger] == main and audit[order_type] == create_transaction
+  audit[order_type] in (create_transaction, revert_transaction)
+  audit[caller_subject] == "svc:payments"
+  audit[seq] between 1000 and 2000
+  audit[proposal_id] == 42
+  audit[timestamp] >= "2023-11-14T22:13:20Z"    # RFC3339 or raw unix microseconds
+  audit[log_seq] == 500
+
+Supported fields: seq, proposal_id, log_seq (numeric); timestamp
+(RFC3339 or unix microseconds); outcome (success|failure), ledger,
+caller_subject, order_type (string).
+Unsupported conditions (not, non-indexed fields) are rejected.
+
+Examples:
+  ledgerctl audit list
+  ledgerctl audit list --reverse
+  ledgerctl audit list --filter 'audit[outcome] == failure'
+  ledgerctl audit list --filter 'audit[ledger] == my-ledger'
+  ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,
 	}
 
-	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{})
-	cmdutil.AddMinLogSequenceFlag(cmd)
+	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{SupportsReverse: true})
+	cmdutil.AddFilterFlags(cmd, cmdutil.FilterOptions{})
+	cmdutil.AddConsistencyFlags(cmd)
 	cmdutil.AddOutputFlags(cmd)
-	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("expand", false, "Expand orders within each audit entry")
 
@@ -50,14 +78,28 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	failuresOnly, _ := cmd.Flags().GetBool("failures-only")
 	expand, _ := cmd.Flags().GetBool("expand")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	pgn := cmdutil.GetPaginationFlags(cmd)
+	flt := cmdutil.GetFilterFlags(cmd)
+	cns := cmdutil.GetConsistencyFlags(cmd)
+
+	// --expand fetches each entry's items via GetAuditEntry, which has no
+	// checkpoint parameter and always reads the live store. Combined with
+	// --checkpoint-id the list page would come from the checkpoint while the
+	// expansion came from the live store — inconsistent, and a not-found error
+	// if the entry was purged from live but still present in the checkpoint.
+	// Refuse the combination explicitly rather than silently mixing sources.
+	if expand && cns.CheckpointID != 0 {
+		return errors.New("--expand cannot be combined with --checkpoint-id: audit entry expansion always reads the live store")
+	}
+
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	if err != nil {
+		return err
+	}
 
 	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options:      cmdutil.BuildListOptions(pgn, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
-		FailuresOnly: failuresOnly,
+		Options: cmdutil.BuildListOptions(pgn, cns, filter),
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)

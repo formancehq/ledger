@@ -75,12 +75,12 @@ func IsDatetimeType(t MetadataType) bool {
 	return t == MetadataType_METADATA_TYPE_DATETIME
 }
 
-// parseDatetimeMicros parses an RFC3339/RFC3339Nano string into signed int64
+// ParseDatetimeMicros parses an RFC3339/RFC3339Nano string into signed int64
 // microseconds since the Unix epoch (UTC). RFC3339Nano is a superset that also
 // parses values without fractional seconds. Pre-1970 timestamps are valid and
 // produce a negative result. Returns ok=false only when the string is not a
 // valid datetime.
-func parseDatetimeMicros(s string) (int64, bool) {
+func ParseDatetimeMicros(s string) (int64, bool) {
 	ts, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return 0, false
@@ -274,7 +274,7 @@ func convertFromString(s string, target MetadataType) *MetadataValue {
 		}
 
 	case IsDatetimeType(target):
-		micros, ok := parseDatetimeMicros(s)
+		micros, ok := ParseDatetimeMicros(s)
 		if !ok {
 			return NewNullValue(s)
 		}
@@ -468,7 +468,7 @@ func convertFromNull(nv *NullValue, target MetadataType) *MetadataValue {
 		}
 
 	case IsDatetimeType(target):
-		micros, ok := parseDatetimeMicros(original)
+		micros, ok := ParseDatetimeMicros(original)
 		if !ok {
 			return NewNullValue(original)
 		}

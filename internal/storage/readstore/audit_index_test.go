@@ -132,6 +132,30 @@ func TestSeekAuditEqualityAndRangeAndDrop(t *testing.T) {
 	require.Empty(t, seqs)
 }
 
+// TestAuditSeqsByStringNulDisambiguation guards against a prefix-scan false
+// positive: a lookup for "alice" must not match a value indexed as
+// "alice\x00evil" (whose key shares the [field]["alice\x00"] prefix). The
+// exact-length guard in auditSeqsForPrefix rejects the longer key.
+func TestAuditSeqsByStringNulDisambiguation(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldCallerSubject, "alice", 1), nil))
+	require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldCallerSubject, "alice\x00evil", 2), nil))
+	require.NoError(t, batch.Commit())
+
+	seqs, err := s.AuditSeqsByString(AuditFieldCallerSubject, "alice")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1}, seqs, "must not match the longer alice\\x00evil value")
+
+	seqs, err = s.AuditSeqsByString(AuditFieldCallerSubject, "alice\x00evil")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2}, seqs, "the exact longer value still matches itself")
+}
+
 // TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:
 // DropAuditIndex must clear the index keys (0x05) without touching the progress
 // cursor (0x06), which it relies on the exclusive prefix upper bound to achieve.

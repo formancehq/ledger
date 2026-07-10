@@ -301,6 +301,32 @@ func TestQueryFilterMarshalUnrepresentablePrefix(t *testing.T) {
 	}
 }
 
+// TestQueryFilterAuditNotJSONExposed asserts the audit oneof arm is refused on
+// the REST-JSON surface. AuditCondition is a gRPC-only filter (ledgerctl audit
+// list --filter, carried as protobuf); it never legitimately reaches this codec
+// and cannot round-trip through the field-name-dispatched DSL without colliding
+// with the ledger/timestamp conditions. Marshaling one must fail loud rather
+// than emit a node that would decode back to the wrong condition type.
+func TestQueryFilterAuditNotJSONExposed(t *testing.T) {
+	t.Parallel()
+
+	auditFilter := &QueryFilter{Filter: &QueryFilter_Audit{Audit: &AuditCondition{
+		Field: AuditField_AUDIT_FIELD_OUTCOME,
+		Condition: &AuditCondition_StringCond{
+			StringCond: &StringCondition{Value: &StringCondition_Hardcoded{Hardcoded: "failure"}},
+		},
+	}}}
+
+	_, err := json.Marshal(auditFilter)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "audit conditions are not supported over REST JSON")
+
+	// An audit-only field name is likewise refused on decode (unknown field),
+	// via the existing $match/$gt "unsupported field" paths — no silent accept.
+	require.Error(t, json.Unmarshal([]byte(`{"$match":{"outcome":"failure"}}`), &QueryFilter{}))
+	require.Error(t, json.Unmarshal([]byte(`{"$match":{"orderType":"create_transaction"}}`), &QueryFilter{}))
+}
+
 // TestQueryFilterClosedRangeFolding asserts that an $and of two same-field bounds
 // folds into a single range condition (and non-range $and stays an AND).
 func TestQueryFilterClosedRangeFolding(t *testing.T) {

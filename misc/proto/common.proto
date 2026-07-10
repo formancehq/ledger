@@ -1262,6 +1262,7 @@ message QueryFilter {
     LogBuiltinUintCondition log_builtin_uint = 10;
     AccountHasAssetCondition account_has_asset = 11;
     RevertedCondition reverted = 12;
+    AuditCondition audit = 13;
   }
 }
 
@@ -1275,6 +1276,44 @@ message ReferenceCondition {
 // originals, value=false matches everything else.
 message RevertedCondition {
   bool value = 1;
+}
+
+// AuditCondition filters audit entries by a single audit field, mirroring
+// BuiltinUintCondition's (field-enum × condition) shape. It is only meaningful
+// for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
+// Audit/And/Or leaves and rejects every other QueryFilter variant with
+// InvalidArgument, while the index compiler used for accounts/transactions/logs
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too. There
+// is no QueryTarget dispatch for audit — ListAuditEntries calls
+// CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
+//
+// Every exposed field is answerable from the readstore audit secondary index
+// (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
+// proposal_id, log_seq — except AUDIT_FIELD_SEQUENCE, which is the audit-zone
+// key itself and is served by bounding the entry scan. There is deliberately no
+// scan-time predicate fallback: a field the index cannot answer is not exposed.
+message AuditCondition {
+  AuditField field = 1;
+  oneof condition {
+    StringCondition string_cond = 2;
+    UintCondition   uint_cond   = 3;
+  }
+}
+
+// AuditField enumerates the audit fields that can be filtered. The set is
+// intentionally limited to what the audit access path can resolve efficiently
+// (index lookup or key-range bound); NOT / non-indexed fields are rejected
+// rather than degrading to a full-chain scan.
+enum AuditField {
+  AUDIT_FIELD_UNSPECIFIED    = 0;
+  AUDIT_FIELD_SEQUENCE       = 1;  // uint   -> AuditEntry.sequence (audit-zone key range)
+  AUDIT_FIELD_PROPOSAL_ID    = 2;  // uint   -> AuditEntry.proposal_id (index range)
+  AUDIT_FIELD_TIMESTAMP      = 3;  // uint   -> AuditEntry.timestamp.data, unix micros (index range)
+  AUDIT_FIELD_LOG_SEQUENCE   = 4;  // uint   -> item log_sequence, match-any (index range)
+  AUDIT_FIELD_OUTCOME        = 5;  // string in {success, failure} (index)
+  AUDIT_FIELD_CALLER_SUBJECT = 6;  // string -> caller_snapshot.identity.subject (index)
+  AUDIT_FIELD_LEDGER         = 7;  // string -> AuditEntry.ledgers, match-any (index)
+  AUDIT_FIELD_ORDER_TYPE     = 8;  // string -> order payload variant, match-any (index)
 }
 
 // LedgerCondition filters logs by ledger name (exact match).

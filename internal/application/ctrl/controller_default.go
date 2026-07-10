@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -1117,46 +1116,58 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	return cursor.NewClosingCursor(c, handle), nil
 }
 
-// ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	handle, err := ctrl.store.NewReadHandle()
+// ListAuditEntries returns a cursor over audit entries against the live store,
+// honoring the shared list contract (filter, reverse, cursor, page size). It
+// delegates to ListAuditEntriesFrom bound to the controller's own stores.
+//
+// Audit has no dedicated top-level filters: ledger scope and outcome selection
+// are expressed entirely through filter (audit[ledger], audit[outcome], …).
+//
+// Ordering: the audit trail is chronological, so the default (reverse=false)
+// iterates ascending by sequence (oldest first) — this is the audit trail's
+// natural read order and is preserved from the pre-ListOptions behavior.
+// reverse=true iterates descending (newest first).
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
+}
+
+// ListAuditEntriesFrom returns a cursor over audit entries using the provided
+// stores (live or query checkpoint). The audit trail is queried exclusively
+// through the readstore audit secondary index (EN-1339) plus an audit-zone
+// sequence bound — there is no scan-time predicate fallback, so an expression
+// the index cannot answer is rejected upstream with InvalidArgument.
+func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	ctx, span := tracer.Start(ctx, "ctrl.list_audit_entries",
+		trace.WithAttributes(
+			attribute.Int("page_size", int(pageSize)),
+			attribute.Bool("reverse", reverse),
+		))
+	defer span.End()
+
+	// Defense in depth: server callers already clamp, but a missed call site
+	// must not be able to force an unbounded materialization.
+	pageSize = ClampFetchSize(pageSize)
+
+	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	handle, err := store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	c, err := query.ReadAuditEntries(ctx, handle, afterSequence)
+	// Audit default is chronological (ascending); ReadAuditEntriesPage takes
+	// reverse=false as ascending, so pass reverse through directly.
+	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, reverse, pageSize)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	var result = cursor.NewClosingCursor(c, handle)
-
-	if ledger != "" {
-		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
-			return auditEntryTargetsLedger(entry, ledger)
-		})
-	}
-
-	if failuresOnly {
-		result = cursor.NewFilteredCursor(result, func(entry *auditpb.AuditEntry) bool {
-			return entry.GetFailure() != nil
-		})
-	}
-
-	// Always cap audit-entry materialization. A caller that needs more than
-	// MaxPageSize entries paginates by passing the previous page's last
-	// AfterSequence — there is no "unlimited" option at the public boundary.
-	result = cursor.NewLimitedCursor(result, ClampFetchSize(pageSize))
-
-	return result, nil
-}
-
-// auditEntryTargetsLedger returns true if the audit entry targets the given ledger.
-// Uses the pre-computed ledgers field stored on the entry header.
-func auditEntryTargetsLedger(entry *auditpb.AuditEntry, ledger string) bool {
-	return slices.Contains(entry.GetLedgers(), ledger)
+	return cursor.NewClosingCursor(c, handle), nil
 }
 
 // GetLog returns a single system log by sequence number.
