@@ -38,11 +38,12 @@ conditions combined with and/or:
   audit[caller_subject] == "svc:payments"
   audit[seq] between 1000 and 2000
   audit[proposal_id] == 42
-  audit[timestamp] >= 1700000000000000    # unix microseconds
+  audit[timestamp] >= "2023-11-14T22:13:20Z"    # RFC3339 or raw unix microseconds
   audit[log_seq] == 500
 
-Supported fields: seq, proposal_id, timestamp, log_seq (numeric);
-outcome (success|failure), ledger, caller_subject, order_type (string).
+Supported fields: seq, proposal_id, log_seq (numeric); timestamp
+(RFC3339 or unix microseconds); outcome (success|failure), ledger,
+caller_subject, order_type (string).
 Unsupported conditions (not, non-indexed fields) are rejected.
 
 Examples:
