@@ -93,25 +93,35 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 
 	cmName := authKeysConfigMapName(ledger.Name)
 
+	// Fail-safe (EN-1487): if ANY selector-matching Credentials is not yet
+	// distributed (matched > len(credentials)), one or more configured keys are
+	// transiently unresolved. Rewriting the ConfigMap from the resolved subset
+	// (or deleting it when the subset is empty) would drop those keys and roll
+	// the StatefulSet with an auth-keys hash that omits them, dropping
+	// previously configured Ed25519 keys from a healthy cluster during
+	// Credentials churn. This covers both the zero-resolved case and the
+	// partially-resolved case — the latter is just as dangerous.
+	//
+	// The guard only matters when a missing key would crash-loop the cluster,
+	// i.e. when buildEnvVars would emit AUTH_ED25519_KEYS. For a cluster with
+	// auth explicitly disabled that env var is never set (see envvars.go), so
+	// preserving stale wiring buys no safety and halting the StatefulSet pass
+	// would needlessly stall bootstrap/updates during Credentials churn. Mirror
+	// buildEnvVars' authExplicitlyDisabled gate.
+	authExplicitlyDisabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && !*ledger.Spec.Auth.Enabled
+	if matched > len(credentials) && !authExplicitlyDisabled {
+		// Transient: some matching Credentials are not distributed yet. Fail
+		// safe — do not touch the ConfigMap or the StatefulSet auth wiring.
+		// The caller sets the AuthKeysPending condition and requeues.
+		logger.Info("some matching credentials are not distributed yet, preserving existing auth-key wiring",
+			"matched", matched, "resolved", len(credentials))
+
+		return nil, true, nil
+	}
+
 	if len(credentials) == 0 {
-		// The pending fail-safe only matters when a missing key would crash-loop
-		// the cluster, i.e. when buildEnvVars would emit AUTH_ED25519_KEYS. For a
-		// cluster with auth explicitly disabled that env var is never set (see
-		// envvars.go), so preserving stale wiring buys no safety and halting the
-		// StatefulSet pass would needlessly stall bootstrap/updates during
-		// Credentials churn. Mirror buildEnvVars' authExplicitlyDisabled gate.
-		authExplicitlyDisabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && !*ledger.Spec.Auth.Enabled
-		if matched > 0 && !authExplicitlyDisabled {
-			// Transient: Credentials match but none is distributed yet. Fail
-			// safe — do not touch the ConfigMap or the StatefulSet auth wiring.
-			// The caller sets the AuthKeysPending condition and requeues.
-			logger.Info("matching credentials are not distributed yet, preserving existing auth-key wiring",
-				"matched", matched)
-
-			return nil, true, nil
-		}
-
-		// No credentials match: delete the ConfigMap if it exists.
+		// No credentials match (matched == 0), or all matched are resolved but
+		// there are none — delete the ConfigMap if it exists.
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {

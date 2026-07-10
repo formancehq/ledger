@@ -242,6 +242,58 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 	assert.Equal(t, "deadbeef", cm.Data["credentials-thierry-cred-pubkey.hex"])
 }
 
+// TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap covers the
+// partial-resolution fail-safe (EN-1487): two Credentials match the Cluster but
+// only one is distributed. Rewriting the ConfigMap from the resolved subset
+// would drop the pending key and roll the StatefulSet with an auth-keys hash
+// that omits it, losing a previously configured key from a healthy cluster.
+// reconcileAuthKeys must report pending and leave the existing ConfigMap
+// untouched, exactly as in the zero-resolved case.
+func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		secretName  = "thierry-cred-a-secret"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	existingCM := existingAuthKeysConfigMap(clusterName, namespace)
+	// One distributed credential, one still undistributed.
+	credA := matchingCredentials("thierry-cred-a", selector, true, namespace, secretName)
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+		Data: map[string][]byte{
+			"pubkey.hex": []byte("deadbeef"),
+			"key-id":     []byte("kid-a"),
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM, credA, credB, secret).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.True(t, pending, "partial non-distribution must report pending")
+	assert.Nil(t, credentials, "no key must be returned while any matching credential is undistributed")
+
+	// The existing ConfigMap must survive untouched — rewriting it from the
+	// resolved subset would drop the still-pending key.
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	require.NoError(t, err, "existing auth-keys ConfigMap must be preserved during partial non-distribution")
+	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
+		"ConfigMap content must not be mutated during partial non-distribution")
+}
+
 // TestCredentialsToClusters_EnqueuesMatchingCluster verifies the watch mapping
 // that drives convergence: a Credentials change must enqueue every Cluster its
 // selector matches, so the transition non-distributed -> distributed triggers a
