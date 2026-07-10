@@ -363,11 +363,18 @@ func recoverConfStateFromWALRecords(walSnaps []*walpb.Snapshot) *walpb.Snapshot 
 }
 
 // InitialState returns the saved HardState and ConfState information.
+//
+// The ConfState is wrapped with raftpb.EnsureConfState so it (and all of its
+// pointer fields) is never nil. raft v3.7 requires this: newRaft feeds the
+// returned ConfState straight into confchange.Restore, which dereferences its
+// slice fields — a nil ConfState (as an empty WAL would otherwise yield, since
+// s.snapshot starts as &raftpb.Snapshot{} with a nil Metadata.ConfState) would
+// panic. This mirrors what raft's own MemoryStorage.InitialState does.
 func (s *DefaultWAL) InitialState() (*raftpb.HardState, *raftpb.ConfState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.hardState, s.snapshot.GetMetadata().GetConfState(), nil
+	return s.hardState, raftpb.EnsureConfState(s.snapshot.GetMetadata().GetConfState()), nil
 }
 
 // Entries returns a slice of log entries in the range [lo, hi).

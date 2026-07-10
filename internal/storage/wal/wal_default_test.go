@@ -122,7 +122,33 @@ func TestInitialState_EmptyWAL(t *testing.T) {
 	hs, cs, err := w.InitialState()
 	require.NoError(t, err)
 	require.True(t, raft.IsEmptyHardState(hs), "empty WAL should return empty hard state")
+	// raft v3.7 dereferences the returned ConfState in confchange.Restore, so an
+	// empty WAL must still return a non-nil (empty) ConfState, never nil.
+	require.NotNil(t, cs, "empty WAL must return a non-nil empty conf state")
 	require.Empty(t, cs.GetVoters(), "empty WAL should return empty conf state")
+}
+
+// TestNewRawNode_EmptyWAL is the end-to-end regression for the nil-ConfState
+// panic: raft v3.7's newRaft feeds InitialState's ConfState straight into
+// confchange.Restore, so a freshly created (never-snapshotted) DefaultWAL used
+// as raft.Storage must not panic. Without EnsureConfState in InitialState this
+// panics with a nil pointer dereference.
+func TestNewRawNode_EmptyWAL(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	require.NotPanics(t, func() {
+		_, err := raft.NewRawNode(&raft.Config{
+			ID:              1,
+			ElectionTick:    10,
+			HeartbeatTick:   1,
+			Storage:         w,
+			MaxSizePerMsg:   1024 * 1024,
+			MaxInflightMsgs: 256,
+		})
+		require.NoError(t, err)
+	}, "NewRawNode on a fresh empty WAL must not panic (raft v3.7 nil ConfState)")
 }
 
 func TestInitialState_AfterAppend(t *testing.T) {
