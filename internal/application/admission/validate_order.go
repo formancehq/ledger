@@ -51,7 +51,21 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	return domain.ValidateLedgerName(ls.GetLedger())
+	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
+		return err
+	}
+
+	// Reserve the ledger name "_" for the system / non-ledger HTTP routes, which
+	// all live under /v3/_/… so they never shadow a real ledger (see
+	// ErrLedgerNameReservedPrefix and internal/adapter/http/handler.go). Applied
+	// to every ledger-scoped order, not just CreateLedger: a "_" ledger can
+	// never legitimately exist, so rejecting it everywhere is safe and keeps the
+	// rule in one place.
+	if ls.GetLedger() == "_" {
+		return ErrLedgerNameReservedPrefix
+	}
+
+	return nil
 }
 
 // validateOrderMetadata validates that all metadata keys and values in the order

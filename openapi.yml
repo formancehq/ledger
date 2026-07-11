@@ -1986,7 +1986,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/logs/{sequence}:
+  /v3/_/logs/{sequence}:
     get:
       summary: Get a single system log by bucket-wide sequence
       description: |
@@ -2030,7 +2030,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/chapters:
+  /v3/_/chapters:
     get:
       summary: List bucket chapters
       description: |
@@ -2064,7 +2064,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/chapter-schedule:
+  /v3/_/chapter-schedule:
     get:
       summary: Get the chapter auto-rotation cron schedule
       description: |
@@ -2100,7 +2100,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/events-sinks:
+  /v3/_/events-sinks:
     get:
       summary: List configured event sinks
       description: |
@@ -2134,7 +2134,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/signing-keys:
+  /v3/_/signing-keys:
     get:
       summary: List registered Ed25519 signing keys
       description: |
@@ -2168,7 +2168,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/indexes:
+  /v3/_/indexes:
     get:
       summary: List bucket-wide indexes
       description: |
@@ -2216,7 +2216,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/indexes/{canonicalId}:
+  /v3/_/indexes/{canonicalId}:
     get:
       summary: Get a single bucket-scoped index registry entry
       description: |
@@ -2263,7 +2263,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/indexes/{canonicalId}/status:
+  /v3/_/indexes/{canonicalId}/status:
     get:
       summary: Get the per-replica status of a single bucket-scoped index
       description: |
@@ -2307,7 +2307,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/indexes/status:
+  /v3/_/indexes/status:
     get:
       summary: Get aggregated index registry status
       description: |

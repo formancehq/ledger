@@ -121,17 +121,15 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ops read scope — bucket-wide reads not tied to a single ledger.
 			//
-			// TODO(EN-1481 / #1562): these fixed first-segment words
-			// (`logs`, `chapters`, `chapter-schedule`, `events-sinks`,
-			// `signing-keys`, `indexes`) share the `/v3/{...}` namespace
-			// with `/v3/{ledgerName}` routes, so a ledger created with one
-			// of these names would be shadowed by the fixed route. #1562
-			// introduces a `reservedLedgerNames` set (with a sync comment)
-			// that must reject exactly these words at ledger-creation time.
-			// #1562 is not yet on this branch's base — once it lands, add
-			// every top-level route word above to that set instead of
-			// duplicating it here.
-			r.With(requireOpsRead).Group(func(r chi.Router) {
+			// These live under the reserved `_` path segment (`/v3/_/logs`,
+			// `/v3/_/chapters`, `/v3/_/indexes`, …) so they cannot collide with
+			// `/v3/{ledgerName}` routes: the ledger name `_` is reserved
+			// (admission.ErrLedgerNameReservedPrefix), so the system namespace
+			// `/v3/_/…` and the ledger namespace `/v3/{ledgerName}/…` are
+			// disjoint by construction. Adding a new bucket-wide route under
+			// `/_` therefore needs no extra reserved-name bookkeeping — the `_`
+			// segment is the single, permanent guard.
+			r.With(requireOpsRead).Route("/_", func(r chi.Router) {
 				r.Get("/logs/{sequence}", server.handleGetLog)
 				r.Get("/chapters", server.handleListChapters)
 				r.Get("/chapter-schedule", server.handleGetChapterSchedule)

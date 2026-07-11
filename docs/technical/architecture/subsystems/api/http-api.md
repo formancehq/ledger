@@ -411,10 +411,10 @@ Returns `204 No Content` once the FSM has committed the drop.
 Cluster-wide observability (registry entries whose owning ledger is empty, aggregated indexer progress):
 
 ```http
-GET /v3/indexes                        # ?scope=all (default) | bucket
-GET /v3/indexes/status?ledger=         # aggregate: LastIndexedSequence, Lag, IndexFileSize
-GET /v3/indexes/{canonicalId}          # single bucket-scoped Index entry
-GET /v3/indexes/{canonicalId}/status   # single bucket-scoped IndexEntry
+GET /v3/_/indexes                        # ?scope=all (default) | bucket
+GET /v3/_/indexes/status?ledger=         # aggregate: LastIndexedSequence, Lag, IndexFileSize
+GET /v3/_/indexes/{canonicalId}          # single bucket-scoped Index entry
+GET /v3/_/indexes/{canonicalId}/status   # single bucket-scoped IndexEntry
 ```
 
 The bucket-scoped single-index routes are a hook — no production write hits `SubAttrIndex` with an empty ledger today. The audit index (cross-ledger by nature) lives in a dedicated read-store keyspace and will be exposed on `GET /v3/audit-entries` per EN-1481, not through this hook.

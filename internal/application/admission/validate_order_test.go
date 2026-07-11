@@ -60,6 +60,36 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: domain.ErrLedgerNameRequired,
 		},
 		{
+			name: "reserved '_' ledger name rejected",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// Only the exact segment "_" is reserved (it backs the /v3/_/…
+			// system route namespace); names that merely start with '_' remain
+			// valid ledger names.
+			name: "underscore-prefixed name is allowed",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_internal",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "null byte in Apply ledger",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_LedgerScoped{
