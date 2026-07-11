@@ -1775,15 +1775,29 @@ func (ctrl *DefaultController) GetChapterSchedule(_ context.Context) (string, er
 	return query.ReadChapterSchedule(handle)
 }
 
-func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, error) {
+func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
+		return nil, nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllSinkConfigs(ctrl.attrs.SinkConfig, handle)
+	sinks, err := query.ReadAllSinkConfigs(ctrl.attrs.SinkConfig, handle)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading sink configs: %w", err)
+	}
+
+	// Enrich with per-sink status (error status + last-emitted cursor) from the
+	// same snapshot so every transport (gRPC and HTTP) returns identical,
+	// point-in-time-consistent status data — the enrichment used to live inline
+	// in the gRPC handler, which left the HTTP endpoint exposing configs only.
+	statuses, err := query.BuildSinkStatuses(handle, sinks)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading sink statuses: %w", err)
+	}
+
+	return sinks, statuses, nil
 }
 
 // Barrier proposes a no-op through Raft consensus. When it returns, all

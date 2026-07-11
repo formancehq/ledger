@@ -2123,10 +2123,23 @@ paths:
                   - data
                 properties:
                   data:
-                    type: array
-                    items:
-                      type: object
-                      description: SinkConfig (protobuf JSON representation)
+                    type: object
+                    description: >
+                      Configured sinks together with their per-sink status, at
+                      parity with the gRPC GetEventsSinks response.
+                    properties:
+                      sinks:
+                        type: array
+                        items:
+                          type: object
+                          description: SinkConfig (protobuf JSON representation)
+                      sinkStatuses:
+                        type: array
+                        items:
+                          type: object
+                          description: >
+                            SinkStatus (protobuf JSON representation): per-sink
+                            error status and last-emitted cursor.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

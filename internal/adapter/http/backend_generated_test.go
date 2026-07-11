@@ -435,12 +435,13 @@ func (c *MockBackendGetClusterStateCall) DoAndReturn(f func(context.Context) (*c
 }
 
 // GetEventsSinks mocks base method.
-func (m *MockBackend) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (m *MockBackend) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
 	ret0, _ := ret[0].([]*commonpb.SinkConfig)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]*commonpb.SinkStatus)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetEventsSinks indicates an expected call of GetEventsSinks.
@@ -456,19 +457,19 @@ type MockBackendGetEventsSinksCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendGetEventsSinksCall) Return(arg0 []*commonpb.SinkConfig, arg1 error) *MockBackendGetEventsSinksCall {
-	c.Call = c.Call.Return(arg0, arg1)
+func (c *MockBackendGetEventsSinksCall) Return(arg0 []*commonpb.SinkConfig, arg1 []*commonpb.SinkStatus, arg2 error) *MockBackendGetEventsSinksCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.SinkConfig, error)) *MockBackendGetEventsSinksCall {
+func (c *MockBackendGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockBackendGetEventsSinksCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, error)) *MockBackendGetEventsSinksCall {
+func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockBackendGetEventsSinksCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

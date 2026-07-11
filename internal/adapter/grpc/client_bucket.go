@@ -466,13 +466,13 @@ func (g *BucketGrpcClient) GetChapterSchedule(ctx context.Context) (string, erro
 	return resp.GetCron(), nil
 }
 
-func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
+		return nil, nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
 	}
 
-	return resp.GetSinks(), nil
+	return resp.GetSinks(), resp.GetSinkStatuses(), nil
 }
 
 func (g *BucketGrpcClient) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {

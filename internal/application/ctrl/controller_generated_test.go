@@ -179,12 +179,13 @@ func (mr *MockControllerMockRecorder) GetChapterSchedule(ctx any) *gomock.Call {
 }
 
 // GetEventsSinks mocks base method.
-func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
 	ret0, _ := ret[0].([]*commonpb.SinkConfig)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]*commonpb.SinkStatus)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetEventsSinks indicates an expected call of GetEventsSinks.

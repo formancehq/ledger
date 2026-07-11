@@ -370,10 +370,10 @@ func (b *RoutedController) GetChapterSchedule(ctx context.Context) (string, erro
 	return c.GetChapterSchedule(ctx)
 }
 
-func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return c.GetEventsSinks(ctx)

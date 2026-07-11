@@ -68,7 +68,7 @@ type Controller interface {
 
 	// Cluster-wide config operations (read-only)
 	GetChapterSchedule(ctx context.Context) (string, error)
-	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error)
+	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)
 
 	// Index inspection
 	InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)
