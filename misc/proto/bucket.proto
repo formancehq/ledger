@@ -565,11 +565,15 @@ message LedgerApplyRequest {
   // fail the proposal. The FSM records a common.OrderSkippedLog for each
   // matching skip; the proposal continues with Outcome=Success.
   //
-  // Validated at admission against a per-action business whitelist (see
-  // internal/application/admission/skippable.go) — today only
-  // TRANSACTION_REFERENCE_CONFLICT on CreateTransaction is accepted. An
-  // opt-in on an action that does not support skip is rejected up front.
-  // Empty (default) preserves the historical fail-fast behaviour.
+  // Validated at admission against the per-action whitelist declared inline on
+  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+  // single source of truth; the generated SkippableReasonsForLedgerAction is
+  // what admission consults). Today: CreateTransaction accepts
+  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+  // declares no annotation is rejected up front. Empty (default) preserves the
+  // historical fail-fast behaviour.
   repeated common.ErrorReason skippable_reasons = 3;
 }
 
