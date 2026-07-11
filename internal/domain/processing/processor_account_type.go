@@ -1,6 +1,9 @@
 package processing
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -38,8 +41,13 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
 	}
 
-	// Check for conflicts with existing account types.
-	for existingName, existing := range info.GetAccountTypes() {
+	// Check for conflicts with existing account types. Iterate names in sorted
+	// order so the selected conflict (surfaced in the chain-bound
+	// ErrAccountTypeConflict → AuditFailure) is identical on every replica —
+	// a raw map range could pick a different conflicting type per node
+	// (invariant #2). See EN-1521.
+	for _, existingName := range slices.Sorted(maps.Keys(info.GetAccountTypes())) {
+		existing := info.GetAccountTypes()[existingName]
 		existingSegments, parseErr := accounttype.ParsePattern(existing.GetPattern())
 		if parseErr != nil {
 			continue
