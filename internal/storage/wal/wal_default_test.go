@@ -113,6 +113,134 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond, "old WAL segments should be purged")
 }
 
+// --- EN-1525: fail-closed on a missing creation marker ---
+
+// walDirWithMarkerRemoved builds a WAL under a fresh dataDir, applies mutate
+// (may be nil for a pristine empty WAL), closes it, then deletes the creation
+// marker so a subsequent New() takes the marker-missing branch. Returns the
+// dataDir and its etcd WAL subdir.
+func walDirWithMarkerRemoved(t *testing.T, mutate func(t *testing.T, w *DefaultWAL)) (string, string) {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dir := t.TempDir()
+	w, err := New(dir, logger, meter)
+	require.NoError(t, err)
+	if mutate != nil {
+		mutate(t, w)
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, os.Remove(filepath.Join(dir, walCreationCompletedFile)),
+		"the creation marker must exist after a normal create")
+
+	return dir, filepath.Join(dir, etcdWalDir)
+}
+
+// reopenWAL runs New() against an existing dataDir (the marker-missing branch)
+// and returns the resulting error, closing the WAL on success.
+func reopenWAL(t *testing.T, dir string) error {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	w, err := New(dir, logger, meter)
+	if err == nil {
+		t.Cleanup(func() { _ = w.Close() })
+	}
+
+	return err
+}
+
+// TestNew_MarkerMissing_EmptyWAL_Recreates covers the disposable
+// empty-bootstrap remnant: a crash between wal.Create and the marker write
+// leaves a fresh, state-free WAL. New() must clean it up and recreate the
+// marker (existing bootstrap-recovery behaviour).
+func TestNew_MarkerMissing_EmptyWAL_Recreates(t *testing.T) {
+	t.Parallel()
+
+	dir, _ := walDirWithMarkerRemoved(t, nil)
+
+	require.NoError(t, reopenWAL(t, dir), "a verified-empty WAL must be recreated, not rejected")
+	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
+	require.NoError(t, statErr, "the creation marker must be rewritten after recreation")
+}
+
+// TestNew_MarkerMissing_PopulatedHardState_FailsClosed is the core EN-1525
+// guarantee: a WAL holding a HardState (votes/commit) must never be deleted
+// merely because the marker is absent. In the default test build assert is a
+// no-op, so the mandatory return — not the assert — must stop the fall-through
+// to os.RemoveAll: New() returns an error AND the WAL survives untouched.
+func TestNew_MarkerMissing_PopulatedHardState_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		require.NoError(t, w.Append(hs(2, 1, 5), []*raftpb.Entry{ent(1, 2, []byte("x"))}))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "populated WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_EntriesOnly_FailsClosed pins that "populated" covers a
+// WAL with log entries even when the HardState is still empty (term/vote/commit
+// all zero) — it is not the disposable remnant and must not be deleted.
+func TestNew_MarkerMissing_EntriesOnly_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		// Empty HardState + a log entry: Append keeps the empty HardState and
+		// persists the entry, yielding an entries-only WAL on reopen.
+		require.NoError(t, w.Append(hs(0, 0, 0), []*raftpb.Entry{ent(1, 1, []byte("payload"))}))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "entries-only WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_MalformedWAL_FailsClosed pins that an unreadable /
+// ambiguous WAL is never coerced to "empty" and deleted: it fails startup with
+// a contextual error and the files survive.
+func TestNew_MarkerMissing_MalformedWAL_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		require.NoError(t, w.Append(hs(3, 2, 9), []*raftpb.Entry{ent(1, 3, []byte("y"))}))
+	})
+
+	// Corrupt every WAL segment in place.
+	segments, err := filepath.Glob(filepath.Join(etcdDir, "*.wal"))
+	require.NoError(t, err)
+	require.NotEmpty(t, segments)
+	for _, seg := range segments {
+		info, statErr := os.Stat(seg)
+		require.NoError(t, statErr)
+		garbage := make([]byte, info.Size())
+		for i := range garbage {
+			garbage[i] = 0xFF
+		}
+		require.NoError(t, os.WriteFile(seg, garbage, 0o600))
+	}
+	before := countWALFiles(t, etcdDir)
+
+	err = reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "unverifiable WAL must be preserved")
+}
+
 // --- InitialState tests ---
 
 func TestInitialState_EmptyWAL(t *testing.T) {

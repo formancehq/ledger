@@ -73,6 +73,34 @@ type DefaultWAL struct {
 }
 
 // New creates a new DefaultWAL instance.
+// walDirPopulated reports whether the etcd WAL directory at walDir holds any
+// consensus state — a non-empty HardState or at least one log entry. It is used
+// only on the creation-marker-missing startup branch to distinguish the
+// disposable empty-bootstrap remnant (a crash between wal.Create and the marker
+// write, which leaves a fresh state-free segment) from populated or ambiguous
+// state that must never be deleted (EN-1525).
+//
+// It opens the WAL read-only so it does not conflict with a concurrent writer.
+// ANY read error (open failure, decode error, torn tail) is returned as an
+// error, never coerced to "empty": a WAL we cannot fully read might hold votes
+// or unsnapshotted entries, so the caller must fail closed. A genuinely fresh,
+// empty WAL decodes cleanly to an empty HardState with no entries and is
+// reported as not populated.
+func walDirPopulated(lg *zap.Logger, walDir string) (bool, error) {
+	w, err := wal.OpenForRead(lg, walDir, &walpb.Snapshot{})
+	if err != nil {
+		return false, fmt.Errorf("opening WAL for verification: %w", err)
+	}
+	defer func() { _ = w.Close() }()
+
+	_, hardState, entries, err := w.ReadAll()
+	if err != nil {
+		return false, fmt.Errorf("reading WAL for verification: %w", err)
+	}
+
+	return !raft.IsEmptyHardState(hardState) || len(entries) > 0, nil
+}
+
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -229,27 +257,50 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	} else {
 		s.logger.Infof("DefaultWAL creation not completed, creating new DefaultWAL")
 
-		// A WAL holding state on this branch means the creation marker was
-		// lost while the fsynced WAL survived (marker dirent lost to a torn
-		// first boot, marker deletion, disk repair). Removing it would
-		// destroy vote records (double-vote → split brain) and entries not
-		// yet in a snapshot (acknowledged-write loss). File presence alone is
-		// not the signal: a crash between wal.Create and the marker write
-		// legitimately leaves one fresh, state-free segment here — only a
-		// non-empty HardState (term/vote/commit) distinguishes a WAL that
-		// participated in consensus. A Verify error is treated as
-		// not-populated: an unreadable WAL on this branch is the incomplete
-		// creation this branch exists to clean up.
-		if existing, globErr := filepath.Glob(filepath.Join(s.etcdWalDir, "*.wal")); globErr == nil && len(existing) > 0 {
-			if hs, verifyErr := wal.Verify(zapLogger, s.etcdWalDir, &walpb.Snapshot{}); verifyErr == nil && hs != nil && (hs.GetTerm() > 0 || hs.GetVote() != 0 || hs.GetCommit() > 0) {
+		// A WAL holding state on this branch means the creation marker was lost
+		// while the fsynced WAL survived (marker dirent lost to a torn first
+		// boot, marker deletion, disk repair). Deleting it would destroy vote
+		// records (double-vote → split brain) and entries not yet in a snapshot
+		// (acknowledged-write loss), so we MUST NOT fall through to os.RemoveAll
+		// for any WAL we cannot PROVE is the disposable empty-bootstrap remnant.
+		//
+		// File presence alone is not the signal: a crash between wal.Create and
+		// the marker write legitimately leaves a fresh, state-free segment here.
+		// Only a WAL verified empty (no HardState AND no entries) is safe to
+		// remove. A populated WAL (HardState or entries) or one we cannot read
+		// (corrupt/ambiguous) fails startup with a contextual error. The
+		// assert.Unreachable records the invariant breach for Antithesis, but it
+		// is the mandatory return that follows — not the assert — that makes the
+		// branch terminal in a production (no-op assert) build. See EN-1525.
+		existing, globErr := filepath.Glob(filepath.Join(s.etcdWalDir, "*.wal"))
+		if globErr != nil {
+			return nil, fmt.Errorf("scanning for existing WAL segments in %q: %w", s.etcdWalDir, globErr)
+		}
+		if len(existing) > 0 {
+			populated, inspectErr := walDirPopulated(zapLogger, s.etcdWalDir)
+			switch {
+			case inspectErr != nil:
+				// Corrupt / unreadable / ambiguous: a WAL we cannot prove empty
+				// may hold votes or unsnapshotted entries. Fail closed.
+				assert.Unreachable("WAL present without creation marker could not be verified before cleanup", map[string]any{
+					"walFileCount": len(existing),
+					"walDir":       s.etcdWalDir,
+					"error":        inspectErr.Error(),
+				})
+
+				return nil, fmt.Errorf("WAL segments present in %q without a creation marker and could not be verified; refusing to delete possibly-populated consensus state (manual intervention required): %w", s.etcdWalDir, inspectErr)
+			case populated:
 				assert.Unreachable("WAL recreation would discard an existing populated WAL directory", map[string]any{
 					"walFileCount": len(existing),
 					"walDir":       s.etcdWalDir,
-					"term":         hs.GetTerm(),
-					"vote":         hs.GetVote(),
-					"commit":       hs.GetCommit(),
 				})
+
+				return nil, fmt.Errorf("WAL segments present in %q without a creation marker hold consensus state (HardState or log entries); refusing to delete to avoid double-vote or acknowledged-write loss (manual intervention required)", s.etcdWalDir)
 			}
+
+			// Verified empty: the disposable empty-bootstrap remnant (a crash
+			// between wal.Create and the marker write). Safe to remove below.
+			s.logger.Infof("existing WAL directory verified empty (bootstrap remnant), recreating")
 		}
 
 		if err := os.RemoveAll(s.etcdWalDir); err != nil {
