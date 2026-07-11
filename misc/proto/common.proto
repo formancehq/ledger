@@ -477,6 +477,10 @@ enum EventType {
   DELETED_METADATA = 4;
   CREATED_LEDGER = 5;
   DELETED_LEDGER = 6;
+  // SKIPPED_ORDER is emitted when a batch order tripped a whitelisted business
+  // failure (skippable_reasons) and was skipped instead of failing the whole
+  // proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
+  SKIPPED_ORDER = 7;
 }
 
 // ============================================================================

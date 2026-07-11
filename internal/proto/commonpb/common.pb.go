@@ -411,6 +411,10 @@ const (
 	EventType_DELETED_METADATA       EventType = 4
 	EventType_CREATED_LEDGER         EventType = 5
 	EventType_DELETED_LEDGER         EventType = 6
+	// SKIPPED_ORDER is emitted when a batch order tripped a whitelisted business
+	// failure (skippable_reasons) and was skipped instead of failing the whole
+	// proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
+	EventType_SKIPPED_ORDER EventType = 7
 )
 
 // Enum value maps for EventType.
@@ -423,6 +427,7 @@ var (
 		4: "DELETED_METADATA",
 		5: "CREATED_LEDGER",
 		6: "DELETED_LEDGER",
+		7: "SKIPPED_ORDER",
 	}
 	EventType_value = map[string]int32{
 		"EVENT_TYPE_UNSPECIFIED": 0,
@@ -432,6 +437,7 @@ var (
 		"DELETED_METADATA":       4,
 		"CREATED_LEDGER":         5,
 		"DELETED_LEDGER":         6,
+		"SKIPPED_ORDER":          7,
 	}
 )
 
@@ -13385,7 +13391,7 @@ const file_common_proto_rawDesc = "" +
 	"\x16LOG_BUILTIN_INDEX_DATE\x10\x01*\x18LOG_BUILTIN_INDEX_LEDGER*C\n" +
 	"\rHashAlgorithm\x12\x19\n" +
 	"\x15HASH_ALGORITHM_BLAKE3\x10\x00\x12\x17\n" +
-	"\x13HASH_ALGORITHM_XXH3\x10\x01*\xae\x01\n" +
+	"\x13HASH_ALGORITHM_XXH3\x10\x01*\xc1\x01\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15COMMITTED_TRANSACTION\x10\x01\x12\x18\n" +
@@ -13393,7 +13399,8 @@ const file_common_proto_rawDesc = "" +
 	"\x0eSAVED_METADATA\x10\x03\x12\x14\n" +
 	"\x10DELETED_METADATA\x10\x04\x12\x12\n" +
 	"\x0eCREATED_LEDGER\x10\x05\x12\x12\n" +
-	"\x0eDELETED_LEDGER\x10\x06*w\n" +
+	"\x0eDELETED_LEDGER\x10\x06\x12\x11\n" +
+	"\rSKIPPED_ORDER\x10\a*w\n" +
 	"\rChapterStatus\x12\x10\n" +
 	"\fCHAPTER_OPEN\x10\x00\x12\x13\n" +
 	"\x0fCHAPTER_CLOSING\x10\x01\x12\x12\n" +

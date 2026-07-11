@@ -53,6 +53,10 @@ type sinkEventData struct {
 
 	// Sink events
 	SinkName *string `json:"sinkName,omitempty"`
+
+	// SKIPPED_ORDER
+	SkippedReason  *string           `json:"skippedReason,omitempty"`
+	SkippedContext map[string]string `json:"skippedContext,omitempty"`
 }
 
 type sinkTransaction struct {
@@ -150,6 +154,11 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 		// Schema operations — no sink-specific data
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no sink-specific data
+
+	case *commonpb.LedgerLogPayload_OrderSkipped:
+		reason := lp.OrderSkipped.GetReason().String()
+		data.SkippedReason = &reason
+		data.SkippedContext = lp.OrderSkipped.GetContext()
 	}
 }
 
