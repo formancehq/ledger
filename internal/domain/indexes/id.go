@@ -42,6 +42,23 @@ func MetadataID(target commonpb.TargetType, key string) *commonpb.IndexID {
 	}}}
 }
 
+// SupportsMetadataTarget reports whether a metadata index can be built for the
+// given target. Only ACCOUNT and TRANSACTION metadata have backfill paths
+// (indexbuilder.addBackfillTaskForAcctMetadata / ...ForTxMetadata) and are
+// queryable; a LEDGER-target metadata index would be registered but never
+// backfilled, so it is not creatable. Callers validating a CreateIndex request
+// (admission) gate on this so a broken, never-built index can never be
+// persisted from any transport.
+func SupportsMetadataTarget(target commonpb.TargetType) bool {
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return true
+	default:
+		return false
+	}
+}
+
 // Equal returns true iff a and b designate the same logical index. Nil-safe.
 func Equal(a, b *commonpb.IndexID) bool {
 	if a == nil || b == nil {

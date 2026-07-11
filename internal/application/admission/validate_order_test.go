@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -136,6 +137,69 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			t.Parallel()
 
 			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOrder_CreateIndexTarget pins EN-1472: a CreateIndex order for a
+// metadata index must target ACCOUNT or TRANSACTION. ParseCanonical decodes
+// "metadata:TARGET_TYPE_LEDGER:<key>" into a well-formed IndexID, so admission
+// is the gate that stops a permanently-unbuilt LEDGER-target index from being
+// persisted (from gRPC or HTTP alike).
+func TestValidateOrder_CreateIndexTarget(t *testing.T) {
+	t.Parallel()
+
+	createIndexOrder := func(id *commonpb.IndexID) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{
+								CreateIndex: &raftcmdpb.CreateIndexOrder{Id: id},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		id      *commonpb.IndexID
+		wantErr error
+	}{
+		{
+			name: "metadata index on ACCOUNT is valid",
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+		},
+		{
+			name: "metadata index on TRANSACTION is valid",
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
+		},
+		{
+			name:    "metadata index on LEDGER is rejected",
+			id:      indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "color"),
+			wantErr: ErrIndexTargetUnsupported,
+		},
+		{
+			name: "builtin index carries no target and is valid",
+			id:   indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(createIndexOrder(tt.id))
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 			} else {

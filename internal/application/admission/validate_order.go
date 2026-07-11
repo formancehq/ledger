@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -33,6 +34,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 	}
 
 	if err := validateOrderPreparedQuery(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderCreateIndex(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -219,6 +224,35 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return domain.ErrPostingsAndScriptConflict
 	case !hasPostings && !hasInlineScript && !refValid:
 		return domain.ErrEmptyTransaction
+	}
+
+	return nil
+}
+
+// validateOrderCreateIndex rejects a CreateIndex order for a metadata index on
+// an unsupported target (only ACCOUNT/TRANSACTION have a backfill path; see
+// indexes.SupportsMetadataTarget). ParseCanonical happily decodes
+// "metadata:TARGET_TYPE_LEDGER:<key>" into a well-formed IndexID, so without
+// this gate an HTTP or gRPC caller could persist a metadata index that the
+// builder never backfills. Builtin index kinds carry no target and pass.
+func validateOrderCreateIndex(order *raftcmdpb.Order) domain.Describable {
+	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
+	if !ok {
+		return nil
+	}
+
+	ci, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateIndex)
+	if !ok {
+		return nil
+	}
+
+	meta, ok := ci.CreateIndex.GetId().GetKind().(*commonpb.IndexID_Metadata)
+	if !ok {
+		return nil
+	}
+
+	if !indexes.SupportsMetadataTarget(meta.Metadata.GetTarget()) {
+		return ErrIndexTargetUnsupported
 	}
 
 	return nil
