@@ -182,14 +182,21 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 		}
 
 		key := it.Key()
-		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8]
-		if len(key) < 2+1+8 {
-			continue
+		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// Require the exact shape, an in-range block index, and a full-length
+		// value. A malformed row was previously skipped, after which the filter
+		// was still published ready — a missing block is a false negative that
+		// suppresses a required Pebble preload. Fail closed instead so
+		// readiness stays false and recovery/follower-sync fails explicitly
+		// (EN-1527).
+		const bloomKeyLen = 2 + 1 + 8
+		if len(key) != bloomKeyLen {
+			return fmt.Errorf("persisted bloom row for attr 0x%02x has key length %d, expected %d — store corrupted", f.attrCode, len(key), bloomKeyLen)
 		}
 
 		blockIdx := binary.BigEndian.Uint64(key[3:])
 		if blockIdx >= f.filter.BlockCount() {
-			continue
+			return fmt.Errorf("persisted bloom block index %d for attr 0x%02x is out of range (block count %d) — store corrupted", blockIdx, f.attrCode, f.filter.BlockCount())
 		}
 
 		val, err := it.ValueAndErr()
@@ -197,8 +204,8 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 			return fmt.Errorf("reading bloom block %d: %w", blockIdx, err)
 		}
 
-		if len(val) < blockBytes {
-			continue
+		if len(val) != blockBytes {
+			return fmt.Errorf("persisted bloom block %d for attr 0x%02x has %d value bytes, expected %d — store corrupted", blockIdx, f.attrCode, len(val), blockBytes)
 		}
 
 		f.filter.OrBlock(blockIdx, unmarshalBlock(val))

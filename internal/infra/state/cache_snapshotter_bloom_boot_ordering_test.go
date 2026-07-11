@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -183,6 +184,82 @@ func TestCacheSnapshotter_BloomBootOrdering_PopulatePathStaysAsync(t *testing.T)
 
 // newRegistryAndSnapshotter constructs a fresh in-memory cache + registry
 // + snapshotter sharing the given attrs and bloomFilters.
+// TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock pins the
+// strict-decoding contract: a corrupt persisted bloom row must fail recovery
+// and must never leave the filter published ready. Before EN-1527 the row was
+// skipped and readiness was still set, producing a false-negative filter that
+// can suppress a required Pebble preload.
+func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	bloomCfg := &commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}
+	attrs := attributes.New()
+
+	// Incarnation #1: persist a valid bloom block so the restart path
+	// (hasPersistedBloomBlocks == true) is taken on the next boot.
+	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
+	require.NotNil(t, bloomFilters)
+	bloomFilters.SetReady(true)
+	_, snap := newRegistryAndSnapshotter(t, logger, attrs, bloomFilters, 1000)
+	defer snap.Stop()
+
+	volKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "t", Account: "a"},
+		Asset:      "USD/2", AssetBase: "USD", AssetPrecision: 2,
+	}
+	id := attributes.HashU128(volKey.Bytes())
+	{
+		batch := dataStore.OpenWriteSession()
+		bloomFilters.AddCanonicalKeys(&bloom.BloomUpdates{Volumes: []attributes.U128{id}})
+		require.NoError(t, bloomFilters.PersistDirtyBlocks(batch))
+		require.NoError(t, batch.Commit())
+	}
+
+	// Corrupt the persisted bloom row's value to a wrong length (keeping the
+	// valid key so only the value shape is malformed).
+	var corruptKey []byte
+	{
+		handle, err := dataStore.NewDirectReadHandle()
+		require.NoError(t, err)
+		iter, err := handle.NewIter(&pebble.IterOptions{
+			LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
+			UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+		})
+		require.NoError(t, err)
+		require.True(t, iter.First(), "a persisted bloom row must exist")
+		corruptKey = append([]byte(nil), iter.Key()...)
+		require.NoError(t, iter.Close())
+		require.NoError(t, handle.Close())
+	}
+	{
+		batch := dataStore.OpenWriteSession()
+		require.NoError(t, batch.Set(corruptKey, []byte{0xAA, 0xBB}, nil))
+		require.NoError(t, batch.Commit())
+	}
+
+	// Incarnation #2: restore must fail closed; readiness must stay false.
+	freshBloom := bloom.NewFilterSet(bloomCfg, meter)
+	require.NotNil(t, freshBloom)
+	_, freshSnap := newRegistryAndSnapshotter(t, logger, attrs, freshBloom, 1000)
+	defer freshSnap.Stop()
+	require.False(t, freshBloom.IsReady())
+
+	err = freshSnap.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a malformed persisted bloom block")
+	require.Contains(t, err.Error(), "value bytes")
+	require.False(t, freshBloom.IsReady(),
+		"bloom must not be published ready after a failed restore (EN-1527)")
+}
+
 func newRegistryAndSnapshotter(
 	t *testing.T,
 	logger logging.Logger,

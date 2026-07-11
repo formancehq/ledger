@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"iter"
 	"time"
@@ -29,10 +30,15 @@ import (
 // row is produced by writeCacheRaw, so any other shape means a corrupted store
 // or a forward-incompatible binary, and silently treating an unknown flag as
 // live would let either case resurrect deleted keys.
-func parseLeanValue(value []byte) (tag uint64, deleted bool, valueBytes []byte) {
+// parseLeanValue decodes a persisted 0xFF lean cache value. It returns a
+// contextual error — never panics or silently accepts — on any malformed row,
+// so recovery fails closed rather than restoring partial or attacker-forged
+// cache state (EN-1527). It is only reached from RestoreEntry on the recovery
+// path.
+func parseLeanValue(value []byte) (tag uint64, deleted bool, valueBytes []byte, err error) {
 	if len(value) < cacheValueHeaderLen {
-		panic(fmt.Sprintf("cache snapshotter: 0xFF value of %d bytes is shorter than the %d-byte lean header — store corrupted",
-			len(value), cacheValueHeaderLen))
+		return 0, false, nil, fmt.Errorf("cache 0xFF value of %d bytes is shorter than the %d-byte lean header — store corrupted",
+			len(value), cacheValueHeaderLen)
 	}
 
 	tag = binary.LittleEndian.Uint64(value[:8])
@@ -42,21 +48,21 @@ func parseLeanValue(value []byte) (tag uint64, deleted bool, valueBytes []byte) 
 		deleted = false
 	case cacheValueFlagTombstone:
 		deleted = true
-		// Tombstones are always 9 bytes on the wire: writeCacheRaw ignores
-		// valueBytes when deleted=true. Trailing payload after the flag
-		// means the row was written by a corrupt or forward-incompatible
-		// producer — silently dropping it would let an attacker mask a
-		// live row as a tombstone with a one-byte flip.
+		// Tombstones are always exactly the header length on the wire:
+		// writeCacheRaw ignores valueBytes when deleted=true. Trailing payload
+		// after the flag means the row was written by a corrupt or
+		// forward-incompatible producer — silently dropping it would let a
+		// one-byte flip mask a live row as a tombstone.
 		if len(value) != cacheValueHeaderLen {
-			panic(fmt.Sprintf("cache snapshotter: 0xFF tombstone row has %d trailing bytes after the %d-byte lean header — store corrupted or written by an incompatible binary",
-				len(value)-cacheValueHeaderLen, cacheValueHeaderLen))
+			return 0, false, nil, fmt.Errorf("cache 0xFF tombstone row has %d trailing bytes after the %d-byte lean header — store corrupted or written by an incompatible binary",
+				len(value)-cacheValueHeaderLen, cacheValueHeaderLen)
 		}
 	default:
-		panic(fmt.Sprintf("cache snapshotter: 0xFF value has unknown tombstone flag 0x%02x at offset 8 (expected 0x%02x or 0x%02x) — store corrupted or written by an incompatible binary",
-			value[8], cacheValueFlagLive, cacheValueFlagTombstone))
+		return 0, false, nil, fmt.Errorf("cache 0xFF value has unknown tombstone flag 0x%02x at offset 8 (expected 0x%02x or 0x%02x) — store corrupted or written by an incompatible binary",
+			value[8], cacheValueFlagLive, cacheValueFlagTombstone)
 	}
 
-	return tag, deleted, value[cacheValueHeaderLen:]
+	return tag, deleted, value[cacheValueHeaderLen:], nil
 }
 
 // putAttributeIfAbsent puts value at id only if store doesn't already have
@@ -231,7 +237,10 @@ func (s *protoSnapshotSlot[V]) RestoreEntry(genIndex int) func(u128 attributes.U
 	store := s.selectGen(genIndex)
 
 	return func(u128 attributes.U128, rawValue []byte) error {
-		tag, deleted, valueBytes := parseLeanValue(rawValue)
+		tag, deleted, valueBytes, err := parseLeanValue(rawValue)
+		if err != nil {
+			return err
+		}
 
 		// The flag byte at offset 8 distinguishes tombstones from live entries.
 		// Tombstones are kept in cache to shadow any live row in gen1 (see
@@ -429,17 +438,29 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	currentGen := uint64(0)
 
 	metaVal, closer, err := store.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
-	if err == nil {
+	switch {
+	case err == nil:
 		meta := &raftcmdpb.CacheSnapshotMeta{}
-		if unmarshalErr := meta.UnmarshalVT(metaVal); unmarshalErr != nil {
-			_ = closer.Close()
+		unmarshalErr := meta.UnmarshalVT(metaVal)
+		closeErr := closer.Close()
 
+		if unmarshalErr != nil {
 			return fmt.Errorf("unmarshaling cache snapshot meta: %w", unmarshalErr)
 		}
 
-		_ = closer.Close()
+		if closeErr != nil {
+			return fmt.Errorf("closing cache snapshot meta read: %w", closeErr)
+		}
 
 		currentGen = meta.GetCurrentGeneration()
+	case errors.Is(err, pebble.ErrNotFound):
+		// Pre-rotation: the meta key does not exist yet; currentGeneration
+		// stays 0. Only genuine absence (ErrNotFound) is treated as "no meta".
+	default:
+		// Any other Get/closer failure is a real read error, not absence:
+		// silently defaulting to gen0 would restore the wrong generation
+		// mapping. Fail closed (EN-1527).
+		return fmt.Errorf("reading cache snapshot meta: %w", err)
 	}
 
 	// Gen-byte mapping: gen0 at currentGeneration % 2, gen1 at the other byte.
@@ -492,17 +513,27 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 	genMetaKey := []byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta}
 
 	genMetaVal, closer, err := reader.Get(genMetaKey)
-	if err == nil {
+	switch {
+	case err == nil:
 		genMeta := &raftcmdpb.CacheGenerationMeta{}
-		if unmarshalErr := genMeta.UnmarshalVT(genMetaVal); unmarshalErr != nil {
-			_ = closer.Close()
+		unmarshalErr := genMeta.UnmarshalVT(genMetaVal)
+		closeErr := closer.Close()
 
+		if unmarshalErr != nil {
 			return fmt.Errorf("unmarshaling gen meta: %w", unmarshalErr)
 		}
 
-		_ = closer.Close()
+		if closeErr != nil {
+			return fmt.Errorf("closing gen meta read (byte %d): %w", genByte, closeErr)
+		}
 
 		baseIndex = genMeta.GetBaseIndex()
+	case errors.Is(err, pebble.ErrNotFound):
+		// Per-generation meta is only written on rotation; before the first
+		// rotation it is legitimately absent and BaseIndex stays 0. Only
+		// ErrNotFound is treated as absence.
+	default:
+		return fmt.Errorf("reading gen meta (byte %d): %w", genByte, err)
 	}
 
 	if genIndex == 0 {
@@ -529,9 +560,15 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 
 		for iter.First(); iter.Valid(); iter.Next() {
 			key := iter.Key()
-			// Key format: [0xFF][gen][type][16-byte U128]
-			if len(key) < 3+16 {
-				continue
+			// Key format: [0xFF][gen][type][16-byte U128]. Require the exact
+			// shape — a short key would previously be skipped (dropping a live
+			// cache entry) and a longer key silently truncated to 16 bytes.
+			// Either is a corrupt row; fail closed rather than restore partial
+			// cache state (EN-1527).
+			if len(key) != 3+16 {
+				_ = iter.Close()
+
+				return fmt.Errorf("cache row for type 0x%02x has key length %d, expected %d — store corrupted", slot.CacheType(), len(key), 3+16)
 			}
 
 			u128 := attributes.U128FromBytes(key[3:19])
@@ -575,7 +612,16 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 // separately at the cache-rotation site, which inhibits rotation while
 // the bloom is still populating (see machine.go).
 func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
-	if s.hasPersistedBloomBlocks(store) {
+	hasBlocks, err := s.hasPersistedBloomBlocks(store)
+	if err != nil {
+		// A probe failure is NOT first-boot: silently falling back to a full
+		// attribute scan would republish a "ready" filter from a database whose
+		// persisted blocks we could not even read, masking corruption. Fail
+		// recovery so readiness stays false (EN-1527).
+		return fmt.Errorf("probing persisted bloom blocks: %w", err)
+	}
+
+	if hasBlocks {
 		return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 	}
 
@@ -680,11 +726,15 @@ func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason str
 	return s.runBloomTaskBody(context.Background(), store, reason, epoch, loadFn)
 }
 
-// hasPersistedBloomBlocks checks if any bloom block keys exist in Pebble.
-func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) bool {
+// hasPersistedBloomBlocks reports whether any persisted bloom block keys exist
+// in Pebble. It returns an error on any read/iterator failure: a probe failure
+// must never be silently converted into "no blocks" (first-boot), which would
+// let recovery republish a ready bloom filter from an unreadable database and
+// mask corruption (EN-1527).
+func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) (bool, error) {
 	handle, err := store.NewDirectReadHandle()
 	if err != nil {
-		return false
+		return false, fmt.Errorf("creating read handle to probe persisted bloom blocks: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
@@ -697,12 +747,17 @@ func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) boo
 		UpperBound: upper,
 	})
 	if err != nil {
-		return false
+		return false, fmt.Errorf("creating iterator to probe persisted bloom blocks: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
-	return iter.First()
+	present := iter.First()
+	if err := iter.Error(); err != nil {
+		return false, fmt.Errorf("probing persisted bloom blocks: %w", err)
+	}
+
+	return present, nil
 }
 
 // replayBloomFromCache iterates all entries in cache gen0 and gen1 and adds

@@ -801,6 +801,38 @@ func TestCacheSnapshotter_EN1377_MirrorPreloadEmptyRawValue(t *testing.T) {
 // row is produced by writeCacheRaw which writes at least cacheValueHeaderLen
 // bytes; a shorter row implies external corruption and silent
 // interpretation would be unsafe.
+// TestCacheSnapshotter_EN1527_RestoreRejectsWrongLengthCacheKey pins the
+// exact-key-shape contract: a cache row whose key is not exactly
+// [0xFF][gen][type][16-byte U128] must fail recovery. Before EN-1527 a short
+// key was silently skipped (dropping a live cache entry) and a longer key was
+// truncated to 16 bytes (accepting trailing bytes) — both restore partial /
+// forged cache state.
+func TestCacheSnapshotter_EN1527_RestoreRejectsWrongLengthCacheKey(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:long-key"))
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	// Valid prefix + 16-byte U128 + one trailing byte → 20-byte key (want 19).
+	key := []byte{dal.ZoneCache, gen0Byte, dal.SubAttrBoundary}
+	key = append(key, u128[:]...)
+	key = append(key, 0xFF)
+
+	// A well-formed lean value, so only the key shape is wrong.
+	value := make([]byte, cacheValueHeaderLen)
+	value[8] = cacheValueFlagLive
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Commit())
+
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a cache row with a wrong-length key")
+	require.Contains(t, err.Error(), "key length")
+}
+
 func TestCacheSnapshotter_EN1377_RestoreRejectsShortValue(t *testing.T) {
 	t.Parallel()
 
@@ -817,13 +849,15 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsShortValue(t *testing.T) {
 	require.NoError(t, batch.Set(key, []byte{0x00, 0x00, 0x00}, nil))
 	require.NoError(t, batch.Commit())
 
-	require.Panics(t, func() {
-		_ = snapshotter.RestoreFromStore(dataStore)
-	}, "restore must panic on a 0xFF row shorter than the lean header")
+	// EN-1527: restore now fails closed with a contextual error rather than
+	// panicking on a malformed lean row.
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a 0xFF row shorter than the lean header")
+	require.Contains(t, err.Error(), "shorter than the")
 }
 
 // TestCacheSnapshotter_EN1377_RestoreRejectsTombstoneWithPayload asserts the
-// snapshotter panics on a 0xFF row tagged as tombstone (flag 0x01) that
+// snapshotter fails closed (returns an error) on a 0xFF row tagged as tombstone (flag 0x01) that
 // carries trailing bytes after the lean header. writeCacheRaw never emits
 // such a row — a single-byte flip on a live row could turn it into this
 // shape and silently mask the original value, so we reject it loudly.
@@ -845,13 +879,14 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsTombstoneWithPayload(t *testing.T
 	require.NoError(t, batch.Set(key, value, nil))
 	require.NoError(t, batch.Commit())
 
-	require.Panics(t, func() {
-		_ = snapshotter.RestoreFromStore(dataStore)
-	}, "restore must panic on a tombstone row that carries trailing payload bytes")
+	// EN-1527: fails closed with an error instead of panicking.
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a tombstone row that carries trailing payload bytes")
+	require.Contains(t, err.Error(), "trailing bytes")
 }
 
 // TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte asserts the
-// snapshotter panics on a 0xFF row whose flag byte at offset 8 is neither
+// snapshotter fails closed (returns an error) on a 0xFF row whose flag byte at offset 8 is neither
 // cacheValueFlagLive (0x00) nor cacheValueFlagTombstone (0x01). Silently
 // treating unknown flags as live would let a corrupted store or a
 // forward-incompatible binary resurrect deleted keys.
@@ -873,7 +908,8 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte(t *testing.T) {
 	require.NoError(t, batch.Set(key, value, nil))
 	require.NoError(t, batch.Commit())
 
-	require.Panics(t, func() {
-		_ = snapshotter.RestoreFromStore(dataStore)
-	}, "restore must panic on a 0xFF row with an unknown tombstone flag byte")
+	// EN-1527: fails closed with an error instead of panicking.
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a 0xFF row with an unknown tombstone flag byte")
+	require.Contains(t, err.Error(), "unknown tombstone flag")
 }
