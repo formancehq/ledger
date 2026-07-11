@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/formancehq/invariants"
 
@@ -159,6 +160,72 @@ func ValidatePreparedQueryName(name string) Describable {
 	}
 
 	return nil
+}
+
+// IsPreparedQueryExecutableTarget reports whether a QueryTarget can back a
+// prepared query today. Prepared-query execution (query.Execute) hydrates only
+// account and transaction results into PreparedQueryCursor; LOGS and AUDIT route
+// through paths the prepared-query executor does not implement (ListLogs /
+// CompileAuditFilter), and AUDIT is additionally not covered by the public
+// target JSON mapping — so a prepared query stored on those targets would fail
+// later at execute/marshal time. Enforced at write time (admission + FSM) across
+// gRPC and HTTP so a persisted prepared query is always executable. LOGS becomes
+// executable with EN-1503.
+func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
+	switch target {
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateFilterForTarget walks a QueryFilter tree and returns the first leaf
+// condition that is not valid on `target`, per the generated per-target
+// validity table (commonpb.ConditionValidForTarget) — the same gate
+// query.compile applies per-condition at execute time. Combinators
+// ($and/$or/$not) are structural and always valid; the walk recurses into their
+// children. Used at prepared-query write time so a stored filter is always
+// executable against its target: a condition invalid on the target can never be
+// satisfied and would otherwise silently widen/empty results at execute time
+// (invariant #7). A nil filter is treated as nothing to validate — callers
+// enforce filter presence separately.
+func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) Describable {
+	if f == nil {
+		return nil
+	}
+
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.GetFilters() {
+			if err := ValidateFilterForTarget(sub, target); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.GetFilters() {
+			if err := ValidateFilterForTarget(sub, target); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case *commonpb.QueryFilter_Not:
+		return ValidateFilterForTarget(v.Not.GetFilter(), target)
+	}
+
+	kind := commonpb.ConditionKindOf(f)
+	if commonpb.ConditionValidForTarget(target, kind) {
+		return nil
+	}
+
+	return &BusinessError{Err: &ErrFilterCompilation{
+		Detail: fmt.Sprintf("condition %q is not valid on %s queries",
+			kind.String(), commonpb.TargetHumanName(target)),
+	}}
 }
 
 // ValidateSigningKeyID checks a signing-key identifier against the same
