@@ -73,8 +73,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression |
-| Get audit entry by sequence | ✅ | ❌ | `GET /v3/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression |
+| Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |

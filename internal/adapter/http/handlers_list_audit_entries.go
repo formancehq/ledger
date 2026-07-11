@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// handleListAuditEntries handles GET /v3/audit-entries.
+// handleListAuditEntries handles GET /v3/_/audit-entries.
 //
 // Audit is a cluster/bucket-wide read (not ledger-scoped in the path): a single
 // proposal can touch several ledgers, so audit entries are addressed by their

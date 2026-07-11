@@ -37,7 +37,7 @@ func TestHandleGetAuditEntry_Success(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries/7", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/_/audit-entries/7", nil, map[string]string{
 		"sequence": "7",
 	})
 
@@ -64,7 +64,7 @@ func TestHandleGetAuditEntry_NotFound(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries/99", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/_/audit-entries/99", nil, map[string]string{
 		"sequence": "99",
 	})
 
@@ -79,7 +79,7 @@ func TestHandleGetAuditEntry_InvalidSequence(t *testing.T) {
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries/notanumber", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/_/audit-entries/notanumber", nil, map[string]string{
 		"sequence": "notanumber",
 	})
 
@@ -94,7 +94,7 @@ func TestHandleGetAuditEntry_MissingSequence(t *testing.T) {
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries/", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/_/audit-entries/", nil, map[string]string{
 		"sequence": "",
 	})
 
@@ -104,7 +104,7 @@ func TestHandleGetAuditEntry_MissingSequence(t *testing.T) {
 }
 
 // TestAuditRoutes_FullRouteIntegration verifies both audit routes are registered
-// in NewHandler and that the static /audit-entries segment is matched ahead of
+// in NewHandler and that the static /_/audit-entries segment is matched ahead of
 // the /{ledgerName} wildcard (so audit reads are not swallowed by the ledger
 // routes).
 func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
@@ -124,14 +124,14 @@ func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
 
 	t.Run("list", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, "/v3/audit-entries", nil)
+		r := httptest.NewRequest(http.MethodGet, "/v3/_/audit-entries", nil)
 		handler.ServeHTTP(w, r)
 		require.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("get", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, "/v3/audit-entries/1", nil)
+		r := httptest.NewRequest(http.MethodGet, "/v3/_/audit-entries/1", nil)
 		handler.ServeHTTP(w, r)
 		require.Equal(t, http.StatusOK, w.Code)
 	})

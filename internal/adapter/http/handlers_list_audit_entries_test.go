@@ -31,7 +31,7 @@ func TestHandleListAuditEntries_Success(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -54,7 +54,7 @@ func TestHandleListAuditEntries_Empty(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -78,7 +78,7 @@ func TestHandleListAuditEntries_Pagination(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?pageSize=10&after=42", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?pageSize=10&after=42", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -98,7 +98,7 @@ func TestHandleListAuditEntries_Reverse(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?reverse=true", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?reverse=true", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -111,7 +111,7 @@ func TestHandleListAuditEntries_InvalidAfter(t *testing.T) {
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?after=notanumber", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?after=notanumber", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -124,7 +124,7 @@ func TestHandleListAuditEntries_InvalidPageSize(t *testing.T) {
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?pageSize=abc", nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?pageSize=abc", nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -150,7 +150,7 @@ func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("audit[ledger] == main"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("audit[ledger] == main"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -173,7 +173,7 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("audit[outcome] == failure"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("audit[outcome] == failure"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -186,7 +186,7 @@ func TestHandleListAuditEntries_InvalidFilter(t *testing.T) {
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("this is not a filter"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("this is not a filter"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -209,7 +209,7 @@ func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	// `not audit[...]` parses fine but the compiler rejects it.
-	r := newRequest(t, http.MethodGet, "/audit-entries?filter="+url.QueryEscape("not audit[outcome] == failure"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("not audit[outcome] == failure"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 

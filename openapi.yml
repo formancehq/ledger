@@ -180,10 +180,10 @@ paths:
         Creates a new ledger with the specified name. Storage is configured at the server level.
         Each ledger has its own Raft group for data consistency. Requires `ledger:write` scope.
 
-        A small set of names is reserved because they collide with top-level API
-        routes served directly under `/v3` (e.g. `audit-entries`); creating a
-        ledger with such a name is rejected with a validation error, since it
-        would be unreachable over REST.
+        The ledger name `_` is reserved: all system / non-ledger routes live
+        under the `/v3/_/…` segment (e.g. `/v3/_/audit-entries`), so a ledger
+        named `_` would be unreachable over REST. Creating it is rejected with a
+        validation error.
       operationId: createLedger
       tags:
         - Ledgers
@@ -390,7 +390,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/audit-entries:
+  /v3/_/audit-entries:
     get:
       summary: List audit entries
       description: |
@@ -476,7 +476,7 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/audit-entries/{sequence}:
+  /v3/_/audit-entries/{sequence}:
     get:
       summary: Get an audit entry
       description: |

@@ -99,36 +99,6 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "CreateLedger with reserved route name (audit-entries)",
-			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_LedgerScoped{
-					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-						Ledger: "audit-entries",
-						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
-						},
-					},
-				},
-			},
-			wantErr: ErrLedgerNameReserved,
-		},
-		{
-			// The reservation is create-only: non-create orders naming a reserved
-			// ledger are not rejected here (such a ledger can never exist anyway,
-			// but the validator must not spuriously fire on the hot path).
-			name: "Apply on reserved name is not reserved-rejected",
-			order: &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_LedgerScoped{
-					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-						Ledger: "audit-entries",
-						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-							Apply: &raftcmdpb.LedgerApplyOrder{},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for _, tt := range tests {

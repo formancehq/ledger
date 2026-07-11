@@ -13,7 +13,7 @@ import (
 )
 
 // This file gives the audit protobuf types a hand-written JSON codec so the REST
-// surface (GET /v3/audit-entries[/{sequence}]) emits camelCase property names,
+// surface (GET /v3/_/audit-entries[/{sequence}]) emits camelCase property names,
 // matching the rest of the HTTP API (see commonpb.common.pb.json.go). The
 // default sonic struct-tag encoding would emit snake_case (proposal_id,
 // order_count, …) taken from the generated protobuf struct tags, which violates

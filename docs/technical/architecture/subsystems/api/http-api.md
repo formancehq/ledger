@@ -358,7 +358,7 @@ expressed as a filter condition. Both require the `ledger:AuditRead` scope.
 #### List Audit Entries
 
 ```http
-GET /v3/audit-entries?pageSize=100&after=42&reverse=false&filter=audit%5Boutcome%5D%20%3D%3D%20failure
+GET /v3/_/audit-entries?pageSize=100&after=42&reverse=false&filter=audit%5Boutcome%5D%20%3D%3D%20failure
 ```
 
 Query parameters:
@@ -379,7 +379,7 @@ Query parameters:
 #### Get Audit Entry
 
 ```http
-GET /v3/audit-entries/{sequence}
+GET /v3/_/audit-entries/{sequence}
 ```
 
 Returns a single `AuditEntry` by its global sequence, with per-order `items`

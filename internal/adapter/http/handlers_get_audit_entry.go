@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// handleGetAuditEntry handles GET /v3/audit-entries/{sequence}.
+// handleGetAuditEntry handles GET /v3/_/audit-entries/{sequence}.
 //
 // Returns a single audit entry by its global sequence, with per-order items
 // populated (mirroring gRPC BucketService.GetAuditEntry). A missing sequence
