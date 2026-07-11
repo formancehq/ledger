@@ -105,10 +105,16 @@ type authKeyEntry struct {
 //     e.g. during operator/Credentials churn). Deleting the ConfigMap and
 //     stripping the StatefulSet here would produce AUTH_ENABLED=true without any
 //     key and crash-loop an otherwise healthy cluster. This is a transient
-//     state, so we fail safe: preserve the existing ConfigMap and StatefulSet
-//     wiring, and report pending=true so the caller sets the AuthKeysPending
-//     condition and requeues. The Credentials watch reconverges once
-//     distribution completes.
+//     state, so we keep the StatefulSet fail-safe: report pending=true so the
+//     caller sets the AuthKeysPending condition, holds the StatefulSet pass, and
+//     requeues until distribution completes. But we still REBUILD the ConfigMap
+//     via the same carry-forward path as the partial case — each entry keeps its
+//     last-known key material while its authorization metadata (scopes / god) is
+//     refreshed from the live Credentials spec, so a narrowed or god-cleared
+//     Credentials does not preserve stale privileges indefinitely while its
+//     Secret stays undistributed. When nothing can be carried forward (no prior
+//     key material) the regression guard below falls back to leaving the wiring
+//     untouched, so an auth-enabled cluster is never rolled keyless.
 //   - matched >= 1, SOME resolved and SOME transiently non-distributed
 //     (partial): do NOT freeze the whole cluster (freezing means a single
 //     permanently-broken Credentials would block key rotation/propagation for
@@ -119,7 +125,8 @@ type authKeyEntry struct {
 //     pending key; a permanently-broken Credentials only ever keeps its own
 //     last-known key. Proceed with the StatefulSet pass normally (pending=false).
 //
-// The returned pending flag is true only in the second case.
+// The returned pending flag is true while every matched credential is still
+// unresolved (the second case) — the ConfigMap may still have been refreshed.
 func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -163,17 +170,16 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	authExplicitlyDisabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && !*ledger.Spec.Auth.Enabled
 
 	// Case 2 (EN-1487): matched >= 1 but ZERO resolved (full transient
-	// non-distribution). Rewriting the ConfigMap from the empty subset (or
-	// deleting it) would drop every key and roll the StatefulSet without any
-	// Ed25519 key, crash-looping a healthy auth-enabled cluster. Fail safe: leave
-	// the ConfigMap and StatefulSet wiring untouched; the caller sets
-	// AuthKeysPending and requeues. Skipped when auth is explicitly disabled.
-	if len(credentials) == 0 && !authExplicitlyDisabled {
-		logger.Info("no matching credentials are distributed yet, preserving existing auth-key wiring",
-			"matched", matched)
-
-		return nil, true, nil
-	}
+	// non-distribution). We must never roll the StatefulSet with an empty key
+	// set (crash-loop), so pending stays true below and the caller holds the
+	// StatefulSet pass. But rather than early-return with the ConfigMap
+	// untouched — which would preserve stale authorization metadata indefinitely
+	// while the Secret is undistributed — we fall through to the shared
+	// carry-forward path (case 3): each entry keeps its last-known key material
+	// and gets its scopes/god refreshed from the live spec. The regression guard
+	// further down still returns pending=true with the wiring untouched when
+	// there is nothing to carry forward (no prior key material), so an
+	// auth-enabled cluster is never rolled keyless.
 
 	// Read the existing ConfigMap ONLY when there is a still-unresolved matched
 	// credential to carry forward. The fully-resolved path (unresolved empty) must
@@ -369,7 +375,16 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		return nil, false, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
 	}
 
-	return merged, false, nil
+	// pending stays true while EVERY matched credential is still unresolved
+	// (case 2): we refreshed the ConfigMap's authorization metadata and carried
+	// the last-known key material forward, but no Secret is distributed yet, so
+	// keep holding the StatefulSet pass and requeue. The partial case (>=1
+	// resolved) proceeds normally. Auth-disabled clusters with an empty resolved
+	// set already returned via the delete path above, so len(credentials)==0
+	// here implies an auth-enabled, fully-unresolved cluster.
+	pending := len(credentials) == 0
+
+	return merged, pending, nil
 }
 
 // readExistingAuthKeys reads the current auth-keys ConfigMap and indexes it by

@@ -231,10 +231,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Fail-safe (EN-1487): matching Credentials exist but none is distributed
-	// yet. reconcileAuthKeys left the existing ConfigMap untouched; we must NOT
-	// reconcile the StatefulSet now, because buildStatefulSetSpec would emit
-	// AUTH_ENABLED=true without any Ed25519 key (credentials is nil), stripping
-	// the auth volume/env and rolling a healthy cluster into CrashLoopBackOff.
+	// yet. reconcileAuthKeys may have refreshed the ConfigMap's authorization
+	// metadata (carrying last-known key material forward), but we must NOT
+	// reconcile the StatefulSet now: rolling it while every Secret is
+	// undistributed risks emitting AUTH_ENABLED=true without an Ed25519 key and
+	// crash-looping a healthy cluster. Defer the StatefulSet pass, keep the
+	// current template, surface AuthKeysPending, and requeue.
 	// Skip the StatefulSet pass entirely to preserve its current template,
 	// surface an explicit AuthKeysPending condition + event, and requeue; the
 	// Credentials watch also reconverges the moment distribution completes.

@@ -153,6 +153,72 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 		"ConfigMap content must not be mutated during transient non-distribution")
 }
 
+// TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization covers
+// the EN-1491 follow-up: when EVERY matching credential is still unresolved but
+// a prior ConfigMap holds its key, reconcileAuthKeys must keep the pending
+// StatefulSet fail-safe (do not roll a possibly-keyless template) yet rebuild
+// the ConfigMap so the stored authorization metadata tracks the live spec —
+// carrying only the key material forward. A narrowed / god-cleared Credentials
+// must not preserve stale privileges indefinitely while its Secret stays
+// undistributed.
+func TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		credName    = "thierry-cred"
+	)
+	selector := map[string]string{"tier": "gold"}
+	scheme := authKeysScheme(t)
+
+	// Prior ConfigMap: the credential's key with STALE broad authorization
+	// (god + read/write), keyed by the same stable identity reconcileAuthKeys
+	// writes.
+	fileName := pubKeyFileName("credentials", credName)
+	prior := authKeysJSON{Keys: []authKeyEntry{{
+		KeyID:         "k1",
+		PublicKeyFile: "/auth-keys/" + fileName,
+		Scopes:        []string{"read", "write"},
+		God:           true,
+	}}}
+	priorRaw, err := json.Marshal(prior)
+	require.NoError(t, err)
+	existingCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
+		Data: map[string]string{
+			"auth-keys.json": string(priorRaw),
+			fileName:         "deadbeef",
+		},
+	}
+
+	// Live Credentials: still undistributed, but authorization has been narrowed
+	// to read-only with god cleared (matchingCredentials sets Scopes=["read"],
+	// God=false).
+	cred := matchingCredentials(credName, selector, false, "", "")
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingCM, cred).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.True(t, pending, "every credential still unresolved must keep the StatefulSet fail-safe (pending)")
+	require.Len(t, credentials, 1, "the carried key must be returned")
+
+	// ConfigMap rebuilt: key material carried, authorization refreshed from the
+	// live spec.
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	var got authKeysJSON
+	require.NoError(t, json.Unmarshal([]byte(cm.Data["auth-keys.json"]), &got))
+	require.Len(t, got.Keys, 1)
+	assert.Equal(t, "k1", got.Keys[0].KeyID, "key material must be carried forward")
+	assert.Equal(t, "deadbeef", cm.Data[fileName], "public key blob must be carried forward")
+	assert.Equal(t, []string{"read"}, got.Keys[0].Scopes, "scopes must be refreshed from the live spec")
+	assert.False(t, got.Keys[0].God, "god must be refreshed (cleared) from the live spec")
+}
+
 // TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending covers
 // the auth-disabled carve-out: a Cluster with spec.auth.enabled=false has
 // matching-but-undistributed Credentials. Because buildEnvVars never emits
