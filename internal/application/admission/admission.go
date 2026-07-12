@@ -43,6 +43,7 @@ import (
 
 var tracer = otel.Tracer("admission")
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
 	InitialIndex() uint64
@@ -628,6 +629,20 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	)
 	if err != nil {
 		proposeSpan.End()
+
+		// Record the propose/guard phase histograms when the propose was
+		// actually entered. On a proposer.Propose failure (queue full / shutdown)
+		// Run returns a non-nil, timing-only runResult: the guard was held and
+		// Propose was attempted, so those phases belong in their histograms to
+		// stay aligned with command.duration's population. Marshal / guard-acquire
+		// failures return a nil runResult (the propose never started), so this
+		// block is skipped and nothing is recorded — the "only record entered
+		// phases" discipline. The guard is already released by Run in this case,
+		// so we only read timing here.
+		if runResult != nil {
+			a.proposalGuardDurationHistogram.Record(ctx, runResult.LockHeldDuration.Microseconds())
+			a.proposeDurationHistogram.Record(ctx, runResult.ProposeDuration.Microseconds())
+		}
 
 		// Distinguish proposer error (queue full / shutdown) from
 		// marshal / guard errors via the runner's phase sentinels.

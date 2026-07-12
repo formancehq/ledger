@@ -92,10 +92,13 @@ population aligned with `command.duration` — which fires on every
 maintenance mode, validation/preload/script errors, or a `proposal.Wait`
 failure). A phase the command never entered records nothing (no spurious
 zero), so the decomposition stays truthful on the failure population as
-well as the success population. `proposal_guard`/`propose` are only
-recorded once the propose actually starts: a pre-propose failure
-(`builder.Run` marshal/guard error) leaves them unrecorded because the
-phase was genuinely never entered.
+well as the success population. `proposal_guard`/`propose` follow the same
+rule with a finer boundary drawn at the `proposer.Propose` call: when
+Propose is attempted but fails (queue full / shutdown), `plan.Builder.Run`
+returns a timing-only `RunResult` alongside the error and admission records
+both histograms — the propose phase was entered. A *pre-propose* failure
+(`builder.Run` marshal or guard-acquisition error, which returns a nil
+result) leaves them unrecorded because the propose never started.
 
 ### Where the time actually goes
 

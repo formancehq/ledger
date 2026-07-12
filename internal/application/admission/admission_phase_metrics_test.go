@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -28,7 +29,10 @@ import (
 // a real SDK meter provider fed by a ManualReader, so a test can assert exactly
 // which phase histograms recorded a data point for a given Admit call. The
 // default createTestAdmission wires a noop meter and cannot observe recordings.
-func createTestAdmissionWithReader(t *testing.T, store *dal.Store) (*Admission, *sdkmetric.ManualReader) {
+//
+// proposer may be nil for tests that fail before the propose phase; pass a
+// MockProposer to exercise the propose/FSM-wait phases.
+func createTestAdmissionWithReader(t *testing.T, store *dal.Store, proposer Proposer) (*Admission, *sdkmetric.ManualReader) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -54,7 +58,7 @@ func createTestAdmissionWithReader(t *testing.T, store *dal.Store) (*Admission, 
 	a := NewAdmission(
 		store,
 		logger,
-		nil, // no proposer: these tests fail before the propose phase
+		proposer,
 		testPreloader,
 		provider,
 		writeGate,
@@ -106,22 +110,24 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 	t.Parallel()
 
 	// The full set of phase histograms whose population must match
-	// command.duration. proposal_guard/propose are excluded: they are only
-	// reachable with a live proposer (nil here) and are covered by the
-	// propose-path reasoning in admission.go, not by this pre-propose test.
+	// command.duration. The pre-propose subtests use a nil proposer and never
+	// reach proposal_guard/propose; the failing-proposer subtest below wires a
+	// MockProposer to cover those.
 	const (
 		mResolveBatch       = "admission.resolve_batch.duration"
 		mOrdersPreparation  = "admission.orders_preparation.duration"
 		mScripts            = "admission.scripts.duration"
 		mResponseResolution = "admission.response_resolution.duration"
 		mFSMFutureWait      = "admission.fsm_future.wait.duration"
+		mProposalGuard      = "admission.proposal_guard.duration"
+		mPropose            = "admission.propose.duration"
 	)
 
 	t.Run("failure in orders_preparation records resolve_batch + orders_preparation only", func(t *testing.T) {
 		t.Parallel()
 
 		store := createTestStore(t)
-		a, reader := createTestAdmissionWithReader(t, store)
+		a, reader := createTestAdmissionWithReader(t, store, nil)
 
 		// A revert with transaction id 0 is rejected by resolveRevertTarget
 		// (ErrTransactionTargetMissing) inside requestsToOrders — i.e. during the
@@ -159,7 +165,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		t.Parallel()
 
 		store := createTestStore(t)
-		a, reader := createTestAdmissionWithReader(t, store)
+		a, reader := createTestAdmissionWithReader(t, store, nil)
 
 		// A CreateTransaction referencing a numscript that does not exist fails in
 		// resolveScriptsAndEnrichNeeds (resolveNumscriptReference) — i.e. during
@@ -198,7 +204,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		t.Parallel()
 
 		store := createTestStore(t)
-		a, reader := createTestAdmissionWithReader(t, store)
+		a, reader := createTestAdmissionWithReader(t, store, nil)
 
 		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
@@ -219,5 +225,50 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// superset the phase histograms above must stay aligned with.
 		require.Equal(t, uint64(1), counts["admission.command.duration"],
 			"command.duration must record on the failure path")
+	})
+
+	t.Run("proposer error records the entered propose + proposal_guard phases", func(t *testing.T) {
+		t.Parallel()
+
+		store := createTestStore(t)
+
+		ctrl := gomock.NewController(t)
+		proposer := NewMockProposer(ctrl)
+		// InitialIndex may be consulted during admission setup; keep it permissive.
+		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
+		// Propose fails (queue full / shutdown). plan.Builder.Run sets
+		// ProposeStartTime, records ProposeDuration, then returns its timing-only
+		// RunResult alongside the error — the propose (and guard) phase was
+		// entered, so admission must record both histograms.
+		proposer.EXPECT().
+			Propose(gomock.Any(), gomock.Any()).
+			Return(nil, commonpb.ErrNoLeader).
+			AnyTimes()
+
+		a, reader := createTestAdmissionWithReader(t, store, proposer)
+
+		// A CreateLedger request reaches builder.Run (nothing rejects it earlier),
+		// so Propose is actually attempted and fails.
+		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
+			},
+		}))
+		require.ErrorIs(t, err, commonpb.ErrNoLeader)
+
+		counts := recordedPhaseCounts(t, reader)
+
+		// The propose phase was entered and failed: both propose and proposal_guard
+		// must record exactly once, matching command.duration's population — this is
+		// the regression this fix targets (previously they recorded nothing on a
+		// proposer error).
+		require.Equal(t, uint64(1), counts[mPropose], "propose was entered (Propose called) and must record")
+		require.Equal(t, uint64(1), counts[mProposalGuard], "proposal_guard was held through the failed Propose and must record")
+		require.Equal(t, uint64(1), counts["admission.command.duration"], "command.duration must record")
+
+		// The FSM-wait and response-resolution phases are past the failed propose
+		// and were never entered — they must record nothing.
+		require.Zero(t, counts[mFSMFutureWait], "fsm_future.wait is past the failed propose")
+		require.Zero(t, counts[mResponseResolution], "response_resolution is past the failed propose")
 	})
 }
