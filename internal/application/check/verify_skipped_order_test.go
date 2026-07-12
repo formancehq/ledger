@@ -1261,11 +1261,10 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 	cases := []struct {
 		name   string
 		target string
-		isTx   bool
 		key    string
 	}{
-		{"account metadata key", "alice", false, "acckey"},
-		{"tx-scoped metadata key", "7", true, "txkey"},
+		{"account metadata key", "alice", "acckey"},
+		{"tx-scoped metadata key", "7", "txkey"},
 	}
 
 	for _, tc := range cases {
@@ -1279,11 +1278,10 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 			reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 			expected := map[uint64]*expectedSkippableOrder{
 				60: {
-					reasons:            []commonpb.ErrorReason{reason},
-					ledger:             "L",
-					metadataTarget:     tc.target,
-					metadataKey:        tc.key,
-					metadataTargetIsTx: tc.isTx,
+					reasons:        []commonpb.ErrorReason{reason},
+					ledger:         "L",
+					metadataTarget: tc.target,
+					metadataKey:    tc.key,
 				},
 			}
 

@@ -1946,13 +1946,6 @@ type expectedSkippableOrder struct {
 	// processor stamps on ErrMetadataNotFound.
 	metadataTarget string
 	metadataKey    string
-	// metadataTargetIsTx records the ORIGINAL target kind of the chain-bound
-	// DeleteMetadataOrder (transaction id vs account address). metadataTarget
-	// is a string and formatTargetForSkipContext collapses an account named
-	// "123" and transaction id 123 to the same value, so the string alone
-	// cannot tell them apart — the tx-id-only archive escape must gate on
-	// this preserved kind, never on a numeric-looking string.
-	metadataTargetIsTx bool
 	// ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND correlator:
 	// account type name from the AddAccountType / RemoveAccountType order.
 	accountTypeName string
@@ -2081,7 +2074,6 @@ func collectExpectedSkippable(
 		if dm := apply.GetDeleteMetadata(); dm != nil {
 			exp.metadataKey = dm.GetKey()
 			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
-			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*commonpb.Target_TransactionId)
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
@@ -2863,10 +2855,12 @@ func (c *Checker) foldBaselineTxMetadata(
 // creation-seen and seeds its account-type set from LedgerInfo.
 // account_types. Fixes two false-negatives on archived-history ledgers:
 //
-//   - The tx-id-scoped metadata permissive fallback (see
-//     expectedSkippableOrder.metadataTargetIsTx) no longer applies for ledgers whose
-//     CreateLedger sits in an archive but whose LedgerInfo IS in the
-//     baseline — the counter can be seeded via foldBaselineBoundaries.
+//   - The archive-inconclusive metadata permissive fallback (the
+//     METADATA_NOT_FOUND !witnessed escape) no longer applies for ledgers
+//     whose CreateLedger sits in an archive but whose LedgerInfo IS in the
+//     baseline: they become anchored (ledgerCreationSeen) so the escape's
+//     !anchored gate is false, and the counter is seeded via
+//     foldBaselineBoundaries.
 //
 //   - A later skippable AddAccountType of a type present at ledger
 //     creation (but archived away) is legitimately valid; the checker
@@ -3443,27 +3437,26 @@ func verifySkippedOrder(
 			return
 		}
 
-		// Tx-id-scoped metadata on a ledger whose CreateLedger sits in
-		// an archived chapter: the chain-bound nextTxID counter was
-		// defaulted (no CreateLedger observed → wrong tx-id
-		// attribution), so the IMPLICIT CreateTransaction/RevertTransaction
-		// metadata for this ledger was not recorded. The timeline is
-		// UNRELIABLE for tx-id targets on such ledgers — treat the
-		// verification as inconclusive. Account-address targets are not
-		// affected (recorded directly from the order without counter
-		// derivation).
+		// present==false at this point. The forgery guard is the `present`
+		// check above: a live SetMetadata/SaveMetadata, a mirror-ingested
+		// metadata, a CreateTransaction account_metadata, or a baseline fold
+		// all seed chainBound.metadata, so any witnessed/baseline presence
+		// makes `present` true and already failed a forged METADATA_NOT_FOUND.
+		// This applies uniformly to BOTH account-address and tx-id targets.
 		//
-		// Escape ONLY when the live range holds no presence witness for this
-		// (target, key): an explicit live SetMetadata/SaveMetadata order
-		// records a witness regardless of the counter, so a witnessed
-		// presence (already handled above by `present`) or an unrelated
-		// witnessed absence means the timeline IS reliable here and the
-		// escape must not fire — otherwise a forged METADATA_NOT_FOUND on a
-		// tx id whose key the live chain proves present would slip through
-		// (invariant #8). Gate on the ORIGINAL target kind, not the string
-		// looking numeric: formatTargetForSkipContext collapses an account
-		// named "123" and tx id 123 to the same string.
-		if expected.metadataTargetIsTx && !witnessed {
+		// What remains is the archive-inconclusive case: present==false with
+		// no live witness on an unanchored (CreateLedger neither live nor in
+		// baseline), archived ledger. The key's Set may live only in a purged
+		// chapter we could not fold, so absence is UNPROVABLE — stay permissive
+		// rather than validate the absence. Symmetric for account and tx
+		// targets (finding checker.go:3466): the tx timeline additionally
+		// suffers counter-attribution unreliability on unanchored ledgers, but
+		// the conservative outcome is identical, so the escape no longer needs
+		// to distinguish the target kind. When absence IS established (a live
+		// witness — handled above — or a baseline fold that also anchors the
+		// ledger), we do NOT escape. Reuses the existing ledger-anchoring
+		// signal (no new marker).
+		if !witnessed {
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; !anchored && hasArchivedChapters {
 				return
 			}

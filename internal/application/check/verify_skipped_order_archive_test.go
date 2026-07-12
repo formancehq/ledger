@@ -120,32 +120,29 @@ func TestVerifySkippedOrder_AlreadyRevertedArchiveEscapeRejectedForLiveLedger(t 
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_MetadataNotFoundNumericAccountNotEscapedAsTx pins
-// finding 48237506b7a54e57: an account whose ADDRESS is the numeric string
-// "123" must NOT be granted the tx-id-only archive escape (which only exists
-// for genuine transaction-id targets on unanchored ledgers). Keying the
-// escape off metadataTargetIsTx — the preserved target kind — instead of the
-// numeric-looking string closes the vector where a forged METADATA_NOT_FOUND
-// on a numeric account passes on an archived ledger.
-func TestVerifySkippedOrder_MetadataNotFoundNumericAccountNotEscapedAsTx(t *testing.T) {
+// TestVerifySkippedOrder_MetadataNotFoundNumericAccountWitnessedPresenceRejected
+// pins finding 48237506b7a54e57: an account whose ADDRESS is the numeric
+// string "123" must NOT be able to hide a forged METADATA_NOT_FOUND behind
+// the archive escape. The real guard is the `present` check: a live Set of
+// the key makes present=true regardless of target kind, so the forged skip is
+// caught even on an unanchored, archived ledger.
+func TestVerifySkippedOrder_MetadataNotFoundNumericAccountWitnessedPresenceRejected(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
-			ledger:             "L",
-			metadataTarget:     "123", // account address that LOOKS like a tx id
-			metadataKey:        "role",
-			metadataTargetIsTx: false, // it is an ACCOUNT, not a tx id
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "123", // account address that LOOKS like a tx id
+			metadataKey:    "role",
 		},
 	}
 
 	// The account "123" had metadata "role" SET live and never deleted, so a
 	// DeleteMetadata would have SUCCEEDED, not skipped NOT_FOUND. The ledger
 	// is unanchored (no live CreateLedger) and archived chapters exist — the
-	// old string-based isNumericTxIDTarget escape would have wrongly returned
-	// permissively here.
+	// witnessed live presence must still reject the forged skip.
 	chainBound := newChainBoundState()
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
 		"123": {"role": {{seq: 3, exists: true}}},
@@ -160,27 +157,88 @@ func TestVerifySkippedOrder_MetadataNotFoundNumericAccountNotEscapedAsTx(t *test
 	requireInvalidSkipEvent(t, events, 7)
 }
 
-// TestVerifySkippedOrder_MetadataNotFoundTxTargetStillEscapesOnUnanchored
-// confirms the tx-id-only escape STILL applies for a genuine transaction-id
-// target on an unanchored (archived-CreateLedger) ledger — the fix narrows
-// the escape to real tx targets, it does not remove it.
-func TestVerifySkippedOrder_MetadataNotFoundTxTargetStillEscapesOnUnanchored(t *testing.T) {
+// TestVerifySkippedOrder_MetadataNotFoundAccountArchiveInconclusiveStaysPermissive
+// pins the account-target half of finding checker.go:3466: on an unanchored,
+// archived ledger with NO live witness and no baseline, an account-metadata
+// key's Set may live only in a purged chapter — absence is unprovable, so the
+// skip stays permissive (symmetric with the tx-target case).
+func TestVerifySkippedOrder_MetadataNotFoundAccountArchiveInconclusiveStaysPermissive(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
-			ledger:             "L",
-			metadataTarget:     "123", // genuine transaction id
-			metadataKey:        "role",
-			metadataTargetIsTx: true,
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice", // account address, empty timeline
+			metadataKey:    "role",
 		},
 	}
 
-	// Unanchored ledger (no live CreateLedger), archived chapters exist: the
-	// tx-scoped metadata timeline is unreliable, so verification is
-	// inconclusive → permissive.
+	// Unanchored ledger (no live CreateLedger), archived chapters, empty live
+	// timeline for (alice, role): the Set could live only in a purged chapter.
+	chainBound := newChainBoundState()
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "role",
+	})
+
+	events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, true, false, false)
+	require.Empty(t, events, "account target with no witness on unanchored archived ledger stays permissive")
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundAccountWitnessedAbsenceStaysPermissive
+// pins the legitimate account skip: a live Set then a live Delete before seq
+// means the key was genuinely absent, so the NOT_FOUND skip is accepted (the
+// `present` guard sees present=false with a witness, and no escape is needed).
+func TestVerifySkippedOrder_MetadataNotFoundAccountWitnessedAbsenceStaysPermissive(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+
+	// Set at 3, Delete at 5 → absent at 7 on an anchored, non-archived ledger.
+	chainBound := newChainBoundState()
+	chainBound.ledgerCreationSeenLive["L"] = struct{}{}
+	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
+		"alice": {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "role",
+	})
+
+	events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, false, false, false)
+	require.Empty(t, events, "live delete witness proves absence → legitimate account skip accepted")
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundTxTargetInconclusiveStaysPermissive
+// confirms the tx-id target still stays permissive on an unanchored, archived
+// ledger with an empty timeline (the escape is now kind-agnostic).
+func TestVerifySkippedOrder_MetadataNotFoundTxTargetInconclusiveStaysPermissive(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "123", // genuine transaction id
+			metadataKey:    "role",
+		},
+	}
+
+	// Unanchored ledger (no live CreateLedger), archived chapters exist,
+	// empty timeline → inconclusive → permissive.
 	chainBound := newChainBoundState()
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -205,11 +263,10 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveWitnessBeatsArchiveEscap
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
-			ledger:             "L",
-			metadataTarget:     "123", // genuine transaction id
-			metadataKey:        "role",
-			metadataTargetIsTx: true,
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "123", // genuine transaction id
+			metadataKey:    "role",
 		},
 	}
 
@@ -242,11 +299,10 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveDeleteWitnessAccepted(t 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:            []commonpb.ErrorReason{reason},
-			ledger:             "L",
-			metadataTarget:     "123",
-			metadataKey:        "role",
-			metadataTargetIsTx: true,
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "123",
+			metadataKey:    "role",
 		},
 	}
 
