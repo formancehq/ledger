@@ -15,18 +15,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// MaxFilterDepth bounds the recursion depth of compile() over
-// QueryFilter protos. A hostile client can hand-craft a deeply-nested
-// filter (e.g. 100k repetitions of And/Or/Not) and submit it via gRPC;
-// without a depth cap the compiler stack-overflows and aborts the
-// process (Go stack overflow is not catchable by recover) — a fatal
-// DoS. 100 is well above any legitimate query (review-2 L-19 / #341).
-const MaxFilterDepth = 100
+// MaxFilterDepth bounds the recursion depth of compile() over QueryFilter
+// protos (#341). The bound lives in internal/domain as the single source of
+// truth (see domain.MaxFilterDepth) so the prepared-query write-time walk
+// (domain.ValidateFilterForTarget) caps at the exact same value the compiler
+// enforces here at execute time; re-exported as a package-local const so this
+// package's existing references read unchanged.
+const MaxFilterDepth = domain.MaxFilterDepth
 
 // ErrFilterTooDeep is returned by Compile when the QueryFilter recursion
-// exceeds MaxFilterDepth. Typed Describable (KindValidation) so the gRPC
-// adapter maps it to InvalidArgument with the depth in the message.
-var ErrFilterTooDeep = domain.NewFilterCompilationError("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+// exceeds MaxFilterDepth. Sourced from domain so the execute-time and
+// write-time paths return the same sentinel.
+var ErrFilterTooDeep = domain.ErrFilterTooDeep
 
 // compileCtx holds the immutable context threaded through the recursive
 // compilation pipeline. All fields are set once at the entry point and

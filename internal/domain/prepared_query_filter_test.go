@@ -106,3 +106,40 @@ func TestValidateFilterForTarget(t *testing.T) {
 		})
 	}
 }
+
+// nestFilter wraps a leaf condition in `depth` levels of $not so the resulting
+// tree has exactly `depth`+1 nodes on its single path. $not is a structural
+// combinator (always valid on ACCOUNTS), so depth — not condition validity — is
+// what these cases exercise.
+func nestFilter(leaf *commonpb.QueryFilter, depth int) *commonpb.QueryFilter {
+	f := leaf
+	for range depth {
+		f = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: f}},
+		}
+	}
+
+	return f
+}
+
+// TestValidateFilterForTarget_DepthCap pins the write-time recursion cap to the
+// same MaxFilterDepth query.Compile enforces at execute time: a tree at the
+// limit is accepted, one past it is rejected with ErrFilterTooDeep. Without this
+// cap a deeper-but-otherwise-valid filter would be persisted here yet fail every
+// execution (and the deep write itself reopens the #341 stack-exhaustion path).
+func TestValidateFilterForTarget_DepthCap(t *testing.T) {
+	t.Parallel()
+
+	leaf := mustFilter(t, `{"$exists":{"metadata":"x"}}`)
+
+	// The combinator-consumed budget is MaxFilterDepth: a chain of
+	// (MaxFilterDepth-1) $not wrappers plus the leaf sits exactly at the limit.
+	atLimit := nestFilter(leaf, domain.MaxFilterDepth-1)
+	require.Nil(t, domain.ValidateFilterForTarget(atLimit, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+
+	// One level deeper trips the cap before reaching the (valid) leaf.
+	overLimit := nestFilter(leaf, domain.MaxFilterDepth)
+	err := domain.ValidateFilterForTarget(overLimit, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, domain.ErrFilterTooDeep)
+}

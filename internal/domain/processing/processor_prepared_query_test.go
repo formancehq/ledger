@@ -111,3 +111,41 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 	require.ErrorAs(t, derr, &business)
 	require.Contains(t, derr.Error(), "accounts")
 }
+
+// TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a
+// legacy escape hatch: CLI/gRPC creation used to accept non-executable targets
+// (LOGS) before EN-1504, so such a query can already sit in storage. An update
+// must not write its filter back — ExecutePreparedQuery still cannot hydrate
+// LOGS — so the stored-target executability gate fires before condition
+// validity, even though a `logId` filter is perfectly valid *for* LOGS. Delete
+// stays allowed; only the rewrite is blocked.
+func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+
+	pq := setupPreparedQueriesStub(mockStore)
+	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+		return (&commonpb.PreparedQuery{
+			Name:   "legacy-logs",
+			Target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		}).AsReader(), nil
+	})
+	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+		t.Fatal("Put must not be called when the stored target is not executable")
+	})
+
+	// A logId condition is valid *for* LOGS, so this update passes condition
+	// validity — the executability gate is what must reject it.
+	newFilter := &commonpb.QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$gt":{"logId":"5"}}`), newFilter))
+
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-logs", Filter: newFilter}
+	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.NotNil(t, derr)
+	require.ErrorIs(t, derr, domain.ErrPreparedQueryTargetUnsupported)
+}
