@@ -2282,12 +2282,19 @@ type existingLearnerAction int
 
 const (
 	// existingLearnerStaleProgress: the leader has already replicated log
-	// entries to this node (Match > 0). A JoinAsLearner caller cannot own
-	// that state (it only calls with no CLUSTER_JOINED marker), so proceeding
-	// would trip etcd-raft's "tocommit out of range" panic — fail fast.
+	// entries to this node (Match > 0) AND the caller is a booting pod
+	// (JoinAsLearner) presenting a real 16-byte instance_id. Such a caller
+	// runs with a fresh, empty WAL and no CLUSTER_JOINED marker, so it cannot
+	// own the replicated state the leader believes it has — proceeding would
+	// trip etcd-raft's "tocommit out of range" panic. Fail fast.
 	existingLearnerStaleProgress existingLearnerAction = iota
-	// existingLearnerAlreadyInCluster: Match == 0 and the stored identity
-	// matches (or none to refresh). Idempotent join — nothing to do.
+	// existingLearnerAlreadyInCluster: an idempotent join — nothing to do.
+	// Covers Match == 0 with a matching (or absent) stored identity, AND the
+	// admin AddLearner API path (no 16-byte incoming instance_id) for a node
+	// that is already an active member (Match > 0). The admin path is an
+	// operator action against an already-known cluster, never a fresh-WAL
+	// boot, so it carries no "tocommit out of range" hazard and must keep the
+	// pre-EN-1436 AlreadyExists semantics.
 	existingLearnerAlreadyInCluster
 	// existingLearnerNeedsRefresh: Match == 0 but the stored instance_id
 	// differs from the joining pod's — refresh the peer row via
@@ -2297,17 +2304,31 @@ const (
 )
 
 // classifyExistingLearner decides what AddLearner must do when the leader's
-// Progress already carries the joining nodeID (EN-1436). The Match > 0 check
-// precedes the identity comparison so the stale-progress fail-fast fires on
-// BOTH the identical-identity rejoin and the fresh-identity (WAL-wiped) rejoin
-// — the latter otherwise slips through as a benign ConfChangeUpdateNode refresh
-// and re-introduces the crash loop this guard exists to prevent.
+// Progress already carries the joining nodeID (EN-1436).
+//
+// The stale-progress fail-fast is scoped strictly to the JoinAsLearner boot
+// path, which is the only caller that presents a real 16-byte instance_id
+// (see server_bootstrap.go). That path is a pod booting with a fresh, empty
+// WAL: if the leader has already replicated to this nodeID (Match > 0), the
+// next MsgApp would drive "tocommit out of range", so we reject and point the
+// operator at remove-node --force. The Match > 0 check precedes the identity
+// comparison so it fires on BOTH the identical-identity rejoin and the
+// fresh-identity (WAL-wiped) rejoin — the latter would otherwise slip through
+// as a benign ConfChangeUpdateNode refresh and re-introduce the crash loop.
+//
+// The admin AddLearner API path (server_cluster.go) passes no 16-byte
+// instance_id. It is an idempotent operator call against an already-known
+// cluster, not a fresh-WAL boot, so a Match > 0 there is a healthy already-
+// active member: return AlreadyExists as before, NOT stale-progress — firing
+// the fail-fast there would send the operator to the wrong remediation.
 func classifyExistingLearner(match uint64, existingInstanceID []byte, hasRow bool, incomingInstanceID []byte) existingLearnerAction {
-	if match > 0 {
+	isBootJoin := len(incomingInstanceID) == 16
+
+	if match > 0 && isBootJoin {
 		return existingLearnerStaleProgress
 	}
 
-	needsRefresh := hasRow && len(incomingInstanceID) == 16 && !bytes.Equal(existingInstanceID, incomingInstanceID)
+	needsRefresh := hasRow && isBootJoin && !bytes.Equal(existingInstanceID, incomingInstanceID)
 	if needsRefresh {
 		return existingLearnerNeedsRefresh
 	}
@@ -2332,12 +2353,15 @@ func classifyExistingLearner(match uint64, existingInstanceID []byte, hasRow boo
 // without an instance_id.
 //
 // EN-1436: if the peer already exists with a non-zero Progress.Match (the
-// leader has already replicated entries to it), this returns
-// ErrNodeStaleProgress instead — a JoinAsLearner caller with no
-// CLUSTER_JOINED marker cannot own that state, so both the AlreadyExists
-// and the UpdateNode-refresh outcomes would let a "tocommit out of range"
-// crash loop through. This check precedes the identity comparison so it
-// fires on the fresh-identity (WAL-wiped) rejoin too.
+// leader has already replicated entries to it) AND this is a JoinAsLearner
+// boot (a real 16-byte instanceID), this returns ErrNodeStaleProgress
+// instead — such a caller boots with a fresh, empty WAL and no
+// CLUSTER_JOINED marker, so both the AlreadyExists and the UpdateNode-refresh
+// outcomes would let a "tocommit out of range" crash loop through. This check
+// precedes the identity comparison so it fires on the fresh-identity
+// (WAL-wiped) rejoin too. The admin AddLearner API path (nil instanceID) is
+// exempt: a Match > 0 there is a healthy already-active member and keeps its
+// idempotent ErrNodeAlreadyInCluster result.
 //
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
