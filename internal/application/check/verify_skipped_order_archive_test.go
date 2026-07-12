@@ -430,3 +430,144 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsForgedOnLiveLedgerRejected(t
 	events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, true, false, false)
 	requireInvalidSkipEvent(t, events, 7)
 }
+
+// TestVerifySkippedOrder_WitnessBasedReasonMatrix is the consolidated matrix
+// for the witness-based skip reasons (METADATA_NOT_FOUND on account- and
+// tx-id targets, ACCOUNT_TYPE_ALREADY_EXISTS/NOT_FOUND). It exercises every
+// (reason × target × anchoring × presence-source) combination the shared
+// archiveInconclusive helper governs and pins the expected verdict:
+//
+//   - a live/baseline WITNESS of the disqualifying state → forged skip caught
+//     (INVALID_SKIP), regardless of anchoring/archive;
+//   - genuinely inconclusive (no witness, unanchored, archived, no baseline)
+//     → permissive;
+//   - live-created ledger OR baseline-folded → empty timeline is authoritative
+//     → the skip is verified normally (permissive when it agrees with the
+//     chain, caught when it contradicts).
+//
+// CONFLICT / ALREADY_REVERTED are intentionally excluded (claim/first-seen
+// structure, no per-key witness) — see their dedicated tests.
+func TestVerifySkippedOrder_WitnessBasedReasonMatrix(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mdNotFound = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+		atExists   = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+		atNotFound = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	)
+
+	// presence models the (ledger, target/name) timeline state fed to the
+	// verifier: none = empty timeline, present = a live/baseline Set/Add
+	// before seq, absent = a live/baseline Delete/Remove before seq.
+	type presence int
+	const (
+		none presence = iota
+		present
+		absent
+	)
+
+	// anchoring of the ledger.
+	type anchor int
+	const (
+		unanchored     anchor = iota // no CreateLedger live, no baseline
+		liveCreated                  // CreateLedger seen in the live range
+		baselineFolded               // baselineChainStateAvailable, ledger folded
+	)
+
+	cases := []struct {
+		name       string
+		reason     commonpb.ErrorReason
+		target     string // metadata target (account addr or tx id); "" for account-type
+		acctType   string // account-type name; "" for metadata
+		pres       presence
+		anchor     anchor
+		archived   bool
+		wantReject bool
+	}{
+		// METADATA_NOT_FOUND — account target.
+		{"md acct present witnessed → reject", mdNotFound, "alice", "", present, unanchored, true, true},
+		{"md acct absent witnessed → accept", mdNotFound, "alice", "", absent, unanchored, true, false},
+		{"md acct empty unanchored+archived → inconclusive permissive", mdNotFound, "alice", "", none, unanchored, true, false},
+		{"md acct empty no-archive → proven absent accept", mdNotFound, "alice", "", none, unanchored, false, false},
+		{"md acct empty live-created+archived → proven absent accept", mdNotFound, "alice", "", none, liveCreated, true, false},
+		// METADATA_NOT_FOUND — tx-id target (numeric).
+		{"md tx present witnessed → reject", mdNotFound, "123", "", present, unanchored, true, true},
+		{"md tx empty unanchored+archived → inconclusive permissive", mdNotFound, "123", "", none, unanchored, true, false},
+		{"md tx empty live-created+archived → proven absent accept", mdNotFound, "123", "", none, liveCreated, true, false},
+		{"md tx empty baseline-folded+archived → proven absent accept", mdNotFound, "123", "", none, baselineFolded, true, false},
+		// ACCOUNT_TYPE_NOT_FOUND — expects ABSENT.
+		{"at notfound present witnessed → reject", atNotFound, "", "customer", present, unanchored, true, true},
+		{"at notfound empty unanchored+archived → inconclusive permissive", atNotFound, "", "customer", none, unanchored, true, false},
+		{"at notfound empty live-created+archived → proven absent accept", atNotFound, "", "customer", none, liveCreated, true, false},
+		{"at notfound empty baseline-folded+archived → proven absent accept", atNotFound, "", "customer", none, baselineFolded, true, false},
+		// ACCOUNT_TYPE_ALREADY_EXISTS — expects PRESENT.
+		{"at exists present witnessed → accept", atExists, "", "customer", present, unanchored, true, false},
+		{"at exists empty unanchored+archived → inconclusive permissive", atExists, "", "customer", none, unanchored, true, false},
+		{"at exists empty live-created+archived → proven absent reject", atExists, "", "customer", none, liveCreated, true, true},
+		{"at exists empty baseline-folded+archived → proven absent reject", atExists, "", "customer", none, baselineFolded, true, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			isMetadata := tc.acctType == ""
+			chainBound := newChainBoundState()
+			if tc.anchor == liveCreated {
+				chainBound.ledgerCreationSeenLive["L"] = struct{}{}
+			}
+
+			// Seed the timeline for the presence source. Both live and
+			// baseline seeds are appended at seq < 7; baselineChainStateAvailable
+			// is toggled separately below to model whether the fold ran.
+			seedSeq := uint64(3)
+			mut := func(exists bool) []chainBoundMutation {
+				return []chainBoundMutation{{seq: seedSeq, exists: exists}}
+			}
+			switch tc.pres {
+			case present:
+				if isMetadata {
+					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{tc.target: {"role": mut(true)}}
+				} else {
+					chainBound.accountTypes["L"] = map[string][]chainBoundMutation{tc.acctType: mut(true)}
+				}
+			case absent:
+				if isMetadata {
+					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{tc.target: {"role": mut(false)}}
+				} else {
+					chainBound.accountTypes["L"] = map[string][]chainBoundMutation{tc.acctType: mut(false)}
+				}
+			case none:
+				// empty timeline
+			}
+
+			baselineChainState := tc.anchor == baselineFolded
+			// A baseline-folded ledger is also anchored via ledgerCreationSeen
+			// (foldBaselineLedgers), but archiveInconclusive keys on the
+			// baseline flag + ledgerCreationSeenLive, so no extra seeding needed.
+
+			var (
+				expected map[uint64]*expectedSkippableOrder
+				payload  *commonpb.LedgerLogPayload
+			)
+			if isMetadata {
+				expected = map[uint64]*expectedSkippableOrder{
+					7: {reasons: []commonpb.ErrorReason{tc.reason}, ledger: "L", metadataTarget: tc.target, metadataKey: "role"},
+				}
+				payload = skippedPayloadWithContext(tc.reason, map[string]string{"target": tc.target, "key": "role"})
+			} else {
+				expected = map[uint64]*expectedSkippableOrder{
+					7: {reasons: []commonpb.ErrorReason{tc.reason}, ledger: "L", accountTypeName: tc.acctType, isAccountTypeOrder: true},
+				}
+				payload = skippedPayloadWithContext(tc.reason, map[string]string{"name": tc.acctType})
+			}
+
+			events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, tc.archived, false, baselineChainState)
+			if tc.wantReject {
+				requireInvalidSkipEvent(t, events, 7)
+			} else {
+				require.Empty(t, events, "expected permissive/accepted verdict")
+			}
+		})
+	}
+}
