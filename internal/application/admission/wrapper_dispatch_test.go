@@ -215,7 +215,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				Ledger: wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-						Query: &commonpb.PreparedQuery{Name: "q1"},
+						Query: &commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 					},
 				},
 			},

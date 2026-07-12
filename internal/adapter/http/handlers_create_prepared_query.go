@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -43,6 +44,15 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	target, err := parsePreparedQueryTarget(body.Target)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+
+	// Reject conditions invalid on this query's specific target early (precise
+	// 400). Admission + FSM re-validate with the same domain helper, so gRPC
+	// callers and the update path are covered too (EN-1504).
+	if verr := domain.ValidateFilterForTarget(filter, target); verr != nil {
+		writeBadRequest(w, "INVALID_REQUEST", verr)
 
 		return
 	}
