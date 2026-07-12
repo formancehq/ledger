@@ -160,7 +160,10 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 
 	// Drop the existing usage store so the builder starts at cursor=0 and
 	// no stale counter survives the rebuild.
-	spinner, _ := pterm.DefaultSpinner.Start("Dropping existing usage store...")
+	spinner, err := startSpinner("Dropping existing usage store...")
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
 
 	if err := os.RemoveAll(usageDir); err != nil {
 		spinner.Fail("Failed to drop usage store directory")
@@ -173,7 +176,10 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 	// Open primary Pebble read-only — same as rebuild-indexes /
 	// rebuild-audit-index (the live SSTs are at <dataDir>/live, not
 	// dataDir itself).
-	spinner, _ = pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
+	spinner, err = startSpinner("Opening Pebble store (read-only)...")
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
 
 	pebbleStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
 	if err != nil {
@@ -187,7 +193,10 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 	spinner.Success("Pebble store opened")
 
 	// Create the fresh usage store.
-	spinner, _ = pterm.DefaultSpinner.Start("Creating usage store...")
+	spinner, err = startSpinner("Creating usage store...")
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
 
 	us, err := usagestore.New(usageDir, logger, usagestore.DefaultConfig())
 	if err != nil {
@@ -201,7 +210,10 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 	spinner.Success("Usage store created at " + us.Path())
 
 	// Rebuild — notifications is nil in offline mode (no FSM running).
-	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding usage projections from the audit chain...")
+	spinner, err = startSpinner("Rebuilding usage projections from the audit chain...")
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
 
 	builder := usagebuilder.NewBuilder(pebbleStore, us, nil, logger, noop.Meter{}, batchSize)
 
@@ -215,4 +227,16 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 	spinner.Success(fmt.Sprintf("Rebuild complete (last audit sequence: %d)", lastSeq))
 
 	return nil
+}
+
+// startSpinner starts a live-renderer spinner and propagates any
+// initialization error instead of discarding it — a failed Start returns a nil
+// *SpinnerPrinter, so dereferencing it (Fail/Success) would panic.
+func startSpinner(text string) (*pterm.SpinnerPrinter, error) {
+	spinner, err := pterm.DefaultSpinner.Start(text)
+	if err != nil {
+		return nil, fmt.Errorf("starting spinner: %w", err)
+	}
+
+	return spinner, nil
 }
