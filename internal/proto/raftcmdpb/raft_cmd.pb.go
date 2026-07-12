@@ -6358,10 +6358,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vcreated_log\x18\x01 \x01(\v2\v.common.LogH\x00R\n" +
 	"createdLog\x12/\n" +
 	"\x12reference_sequence\x18\x02 \x01(\x06H\x00R\x11referenceSequenceB\x06\n" +
-	"\x04type\"b\n" +
+	"\x04type\"\xa8\x02\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x06R\x11nextTransactionId\x12\x1e\n" +
-	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\"\\\n" +
+	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogIdJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"J\x04\b\n" +
+	"\x10\vR\fvolume_countR\x0emetadata_countR\x0freference_countR\rposting_countR\x17ephemeral_evicted_countR\x14transient_used_countR\frevert_countR\x19numscript_execution_count\"\\\n" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +
