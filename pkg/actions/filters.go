@@ -106,13 +106,20 @@ func LedgerFilter(ledger string) *commonpb.QueryFilter {
 }
 
 // LogIdGreaterThanFilter creates a LOGS filter matching entries whose logId is
-// strictly greater than the given sequence.
-func LogIdGreaterThanFilter(sequence uint64) *commonpb.QueryFilter {
+// strictly greater than ledgerLocalLogID.
+//
+// The bound is the per-ledger LedgerLog.Id (what LogIdCondition filters on), NOT
+// the global audit/log sequence (Log.GetSequence()). The two coincide only while
+// the global sequence has not yet diverged from ledger-local ids; once other
+// ledgers (or ledger creation) advance the global sequence, passing
+// Log.GetSequence() here skips too many rows. Always pass the ledger-local
+// LedgerLog.Id.
+func LogIdGreaterThanFilter(ledgerLocalLogID uint64) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_LogId{
 			LogId: &commonpb.LogIdCondition{
 				Cond: &commonpb.UintCondition{
-					Min:          &sequence,
+					Min:          &ledgerLocalLogID,
 					MinExclusive: true,
 				},
 			},
