@@ -142,10 +142,11 @@ func TestVerifySkippedOrder_MetadataNotFoundNumericAccountWitnessedPresenceRejec
 	// The account "123" had metadata "role" SET live and never deleted, so a
 	// DeleteMetadata would have SUCCEEDED, not skipped NOT_FOUND. The ledger
 	// is unanchored (no live CreateLedger) and archived chapters exist — the
-	// witnessed live presence must still reject the forged skip.
+	// witnessed live presence must still reject the forged skip. Seeded under
+	// the ACCOUNT-namespaced key so it is NOT aliased with tx id 123.
 	chainBound := newChainBoundState()
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
-		"123": {"role": {{seq: 3, exists: true}}},
+		metadataTimelineTarget(false, "123"): {"role": {{seq: 3, exists: true}}},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -209,7 +210,7 @@ func TestVerifySkippedOrder_MetadataNotFoundAccountWitnessedAbsenceStaysPermissi
 	chainBound := newChainBoundState()
 	chainBound.ledgerCreationSeenLive["L"] = struct{}{}
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
-		"alice": {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
+		metadataTimelineTarget(false, "alice"): {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -230,10 +231,11 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetInconclusiveStaysPermissive(
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
-			ledger:         "L",
-			metadataTarget: "123", // genuine transaction id
-			metadataKey:    "role",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "123", // genuine transaction id
+			metadataKey:        "role",
+			metadataTargetIsTx: true,
 		},
 	}
 
@@ -263,10 +265,11 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveWitnessBeatsArchiveEscap
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
-			ledger:         "L",
-			metadataTarget: "123", // genuine transaction id
-			metadataKey:    "role",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "123", // genuine transaction id
+			metadataKey:        "role",
+			metadataTargetIsTx: true,
 		},
 	}
 
@@ -276,7 +279,7 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveWitnessBeatsArchiveEscap
 	// skip pass; the fix consults the live timeline first.
 	chainBound := newChainBoundState()
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
-		"123": {"role": {{seq: 3, exists: true}}},
+		metadataTimelineTarget(true, "123"): {"role": {{seq: 3, exists: true}}},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -299,16 +302,17 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveDeleteWitnessAccepted(t 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
-			ledger:         "L",
-			metadataTarget: "123",
-			metadataKey:    "role",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "123",
+			metadataKey:        "role",
+			metadataTargetIsTx: true,
 		},
 	}
 
 	chainBound := newChainBoundState()
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
-		"123": {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
+		metadataTimelineTarget(true, "123"): {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -478,6 +482,7 @@ func TestVerifySkippedOrder_WitnessBasedReasonMatrix(t *testing.T) {
 		name       string
 		reason     commonpb.ErrorReason
 		target     string // metadata target (account addr or tx id); "" for account-type
+		targetIsTx bool   // metadata target kind (only meaningful for metadata cases)
 		acctType   string // account-type name; "" for metadata
 		pres       presence
 		anchor     anchor
@@ -485,26 +490,27 @@ func TestVerifySkippedOrder_WitnessBasedReasonMatrix(t *testing.T) {
 		wantReject bool
 	}{
 		// METADATA_NOT_FOUND — account target.
-		{"md acct present witnessed → reject", mdNotFound, "alice", "", present, unanchored, true, true},
-		{"md acct absent witnessed → accept", mdNotFound, "alice", "", absent, unanchored, true, false},
-		{"md acct empty unanchored+archived → inconclusive permissive", mdNotFound, "alice", "", none, unanchored, true, false},
-		{"md acct empty no-archive → proven absent accept", mdNotFound, "alice", "", none, unanchored, false, false},
-		{"md acct empty live-created+archived → proven absent accept", mdNotFound, "alice", "", none, liveCreated, true, false},
-		// METADATA_NOT_FOUND — tx-id target (numeric).
-		{"md tx present witnessed → reject", mdNotFound, "123", "", present, unanchored, true, true},
-		{"md tx empty unanchored+archived → inconclusive permissive", mdNotFound, "123", "", none, unanchored, true, false},
-		{"md tx empty live-created+archived → proven absent accept", mdNotFound, "123", "", none, liveCreated, true, false},
-		{"md tx empty baseline-folded+archived → proven absent accept", mdNotFound, "123", "", none, baselineFolded, true, false},
+		{"md acct present witnessed → reject", mdNotFound, "alice", false, "", present, unanchored, true, true},
+		{"md acct absent witnessed → accept", mdNotFound, "alice", false, "", absent, unanchored, true, false},
+		{"md acct empty unanchored+archived → inconclusive permissive", mdNotFound, "alice", false, "", none, unanchored, true, false},
+		{"md acct empty no-archive → proven absent accept", mdNotFound, "alice", false, "", none, unanchored, false, false},
+		{"md acct empty live-created+archived → proven absent accept", mdNotFound, "alice", false, "", none, liveCreated, true, false},
+		// METADATA_NOT_FOUND — tx-id target (numeric). Kept as "123" to also
+		// guard against aliasing with a numeric account address.
+		{"md tx present witnessed → reject", mdNotFound, "123", true, "", present, unanchored, true, true},
+		{"md tx empty unanchored+archived → inconclusive permissive", mdNotFound, "123", true, "", none, unanchored, true, false},
+		{"md tx empty live-created+archived → proven absent accept", mdNotFound, "123", true, "", none, liveCreated, true, false},
+		{"md tx empty baseline-folded+archived → proven absent accept", mdNotFound, "123", true, "", none, baselineFolded, true, false},
 		// ACCOUNT_TYPE_NOT_FOUND — expects ABSENT.
-		{"at notfound present witnessed → reject", atNotFound, "", "customer", present, unanchored, true, true},
-		{"at notfound empty unanchored+archived → inconclusive permissive", atNotFound, "", "customer", none, unanchored, true, false},
-		{"at notfound empty live-created+archived → proven absent accept", atNotFound, "", "customer", none, liveCreated, true, false},
-		{"at notfound empty baseline-folded+archived → proven absent accept", atNotFound, "", "customer", none, baselineFolded, true, false},
+		{"at notfound present witnessed → reject", atNotFound, "", false, "customer", present, unanchored, true, true},
+		{"at notfound empty unanchored+archived → inconclusive permissive", atNotFound, "", false, "customer", none, unanchored, true, false},
+		{"at notfound empty live-created+archived → proven absent accept", atNotFound, "", false, "customer", none, liveCreated, true, false},
+		{"at notfound empty baseline-folded+archived → proven absent accept", atNotFound, "", false, "customer", none, baselineFolded, true, false},
 		// ACCOUNT_TYPE_ALREADY_EXISTS — expects PRESENT.
-		{"at exists present witnessed → accept", atExists, "", "customer", present, unanchored, true, false},
-		{"at exists empty unanchored+archived → inconclusive permissive", atExists, "", "customer", none, unanchored, true, false},
-		{"at exists empty live-created+archived → proven absent reject", atExists, "", "customer", none, liveCreated, true, true},
-		{"at exists empty baseline-folded+archived → proven absent reject", atExists, "", "customer", none, baselineFolded, true, true},
+		{"at exists present witnessed → accept", atExists, "", false, "customer", present, unanchored, true, false},
+		{"at exists empty unanchored+archived → inconclusive permissive", atExists, "", false, "customer", none, unanchored, true, false},
+		{"at exists empty live-created+archived → proven absent reject", atExists, "", false, "customer", none, liveCreated, true, true},
+		{"at exists empty baseline-folded+archived → proven absent reject", atExists, "", false, "customer", none, baselineFolded, true, true},
 	}
 
 	for _, tc := range cases {
@@ -524,16 +530,17 @@ func TestVerifySkippedOrder_WitnessBasedReasonMatrix(t *testing.T) {
 			mut := func(exists bool) []chainBoundMutation {
 				return []chainBoundMutation{{seq: seedSeq, exists: exists}}
 			}
+			mdKey := metadataTimelineTarget(tc.targetIsTx, tc.target)
 			switch tc.pres {
 			case present:
 				if isMetadata {
-					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{tc.target: {"role": mut(true)}}
+					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{mdKey: {"role": mut(true)}}
 				} else {
 					chainBound.accountTypes["L"] = map[string][]chainBoundMutation{tc.acctType: mut(true)}
 				}
 			case absent:
 				if isMetadata {
-					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{tc.target: {"role": mut(false)}}
+					chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{mdKey: {"role": mut(false)}}
 				} else {
 					chainBound.accountTypes["L"] = map[string][]chainBoundMutation{tc.acctType: mut(false)}
 				}
@@ -552,7 +559,7 @@ func TestVerifySkippedOrder_WitnessBasedReasonMatrix(t *testing.T) {
 			)
 			if isMetadata {
 				expected = map[uint64]*expectedSkippableOrder{
-					7: {reasons: []commonpb.ErrorReason{tc.reason}, ledger: "L", metadataTarget: tc.target, metadataKey: "role"},
+					7: {reasons: []commonpb.ErrorReason{tc.reason}, ledger: "L", metadataTarget: tc.target, metadataKey: "role", metadataTargetIsTx: tc.targetIsTx},
 				}
 				payload = skippedPayloadWithContext(tc.reason, map[string]string{"target": tc.target, "key": "role"})
 			} else {

@@ -1996,9 +1996,16 @@ type expectedSkippableOrder struct {
 	// targeted (chain-bound Order.RevertTransaction.TransactionId).
 	transactionID uint64
 	// METADATA_NOT_FOUND correlator: same (target, key) tuple the sub-
-	// processor stamps on ErrMetadataNotFound.
-	metadataTarget string
-	metadataKey    string
+	// processor stamps on ErrMetadataNotFound. metadataTarget is the RAW
+	// client-facing string (compared against the projection's context);
+	// metadataTargetIsTx preserves whether it was an account address or a
+	// transaction id so the verifier can build the kind-namespaced
+	// chainBound.metadata key (metadataTimelineTarget) that matches how the
+	// seeding side keyed it — without it, account "123" and tx 123 alias
+	// (finding checker.go:2685).
+	metadataTarget     string
+	metadataKey        string
+	metadataTargetIsTx bool
 	// ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND correlator:
 	// account type name from the AddAccountType / RemoveAccountType order.
 	accountTypeName string
@@ -2156,6 +2163,7 @@ func collectExpectedSkippable(
 		if dm := apply.GetDeleteMetadata(); dm != nil {
 			exp.metadataKey = dm.GetKey()
 			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
+			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*commonpb.Target_TransactionId)
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
@@ -2261,7 +2269,7 @@ func recordChainBoundMutations(
 	}
 
 	if am := apply.GetAddMetadata(); am != nil {
-		target := formatTargetForSkipContext(am.GetTarget())
+		target := metadataTimelineTargetFromProto(am.GetTarget())
 		if target != "" {
 			for key := range am.GetMetadata() {
 				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
@@ -2270,7 +2278,7 @@ func recordChainBoundMutations(
 	}
 
 	if dm := apply.GetDeleteMetadata(); dm != nil {
-		target := formatTargetForSkipContext(dm.GetTarget())
+		target := metadataTimelineTargetFromProto(dm.GetTarget())
 		key := dm.GetKey()
 		if target != "" && key != "" {
 			appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, false)
@@ -2326,7 +2334,7 @@ func recordChainBoundMutations(
 				}
 
 				for key := range mm.GetValues() {
-					appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+					appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
 				}
 			}
 
@@ -2567,7 +2575,7 @@ func recordMirrorIngestMutations(
 			}
 
 			for key := range mm.GetValues() {
-				appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+				appendMetadataMutation(chainBound.metadata, ledger, metadataTimelineTarget(false, account), key, logSeq, true)
 			}
 		}
 
@@ -2576,7 +2584,7 @@ func recordMirrorIngestMutations(
 		// (not the chain-bound counter), so it is reliable regardless of
 		// ledger anchoring.
 		if txID := mct.GetTransactionId(); txID != 0 {
-			target := strconv.FormatUint(txID, 10)
+			target := metadataTimelineTarget(true, strconv.FormatUint(txID, 10))
 			for key := range mct.GetMetadata() {
 				if key == "" {
 					continue
@@ -2592,7 +2600,7 @@ func recordMirrorIngestMutations(
 	}
 
 	if msm := entry.GetSavedMetadata(); msm != nil {
-		target := formatTargetForSkipContext(msm.GetTarget())
+		target := metadataTimelineTargetFromProto(msm.GetTarget())
 		if target != "" {
 			for key := range msm.GetMetadata() {
 				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
@@ -2601,7 +2609,7 @@ func recordMirrorIngestMutations(
 	}
 
 	if mdm := entry.GetDeletedMetadata(); mdm != nil {
-		target := formatTargetForSkipContext(mdm.GetTarget())
+		target := metadataTimelineTargetFromProto(mdm.GetTarget())
 		key := mdm.GetKey()
 		if target != "" && key != "" {
 			appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, false)
@@ -2702,6 +2710,40 @@ func formatTargetForSkipContext(target *commonpb.Target) string {
 		return t.Account.GetAddr()
 	case *commonpb.Target_TransactionId:
 		return strconv.FormatUint(t.TransactionId, 10)
+	default:
+		return ""
+	}
+}
+
+// metadataTimelineTarget namespaces a metadata target by its KIND (account
+// address vs transaction id) before it is used as a key into
+// chainBound.metadata. formatTargetForSkipContext (and the FSM's own
+// stamping) collapse an account named "123" and transaction id 123 to the
+// same decimal string; keying the mutation timeline off that bare string
+// would alias the two, so a Set on tx 123 could reject a legitimate account
+// "123" METADATA_NOT_FOUND skip (and vice versa) — finding checker.go:2685.
+// The kind is always known structurally at each seeding site and is carried
+// on expectedSkippableOrder.metadataTargetIsTx for the verifier lookup, so the
+// same key is produced on both sides. The prefixes never collide with a raw
+// target because they are constant-namespaced ("tx:"/"acct:").
+func metadataTimelineTarget(isTx bool, target string) string {
+	if isTx {
+		return "tx:" + target
+	}
+
+	return "acct:" + target
+}
+
+// metadataTimelineTargetFromProto is metadataTimelineTarget for a
+// *commonpb.Target whose kind lives in the oneof (AddMetadata / DeleteMetadata
+// / mirror Saved/Deleted metadata). Returns "" when the target is unset so
+// callers keep their existing empty-target guard.
+func metadataTimelineTargetFromProto(target *commonpb.Target) string {
+	switch t := target.GetTarget().(type) {
+	case *commonpb.Target_Account:
+		return metadataTimelineTarget(false, t.Account.GetAddr())
+	case *commonpb.Target_TransactionId:
+		return metadataTimelineTarget(true, strconv.FormatUint(t.TransactionId, 10))
 	default:
 		return ""
 	}
@@ -2938,7 +2980,7 @@ func (c *Checker) foldBaselineTxMetadata(
 				continue
 			}
 
-			appendMetadataMutation(chainBound.metadata, tk.LedgerName, target, key, 0, true)
+			appendMetadataMutation(chainBound.metadata, tk.LedgerName, metadataTimelineTarget(true, target), key, 0, true)
 		}
 	}
 
@@ -3130,7 +3172,7 @@ func (c *Checker) foldBaselineMetadata(
 			continue
 		}
 
-		appendMetadataMutation(chainBound.metadata, mk.LedgerName, mk.Account, mk.Key, 0, true)
+		appendMetadataMutation(chainBound.metadata, mk.LedgerName, metadataTimelineTarget(false, mk.Account), mk.Key, 0, true)
 	}
 
 	if err := iter.Close(); err != nil {
@@ -3515,7 +3557,7 @@ func verifySkippedOrder(
 		// directly from formatTargetForSkipContext(order.Target) — it does
 		// NOT depend on the archived nextTxID counter — so it is trustworthy
 		// even for a tx-id target on an unanchored ledger.
-		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq)
+		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 
 		if present {
 			// Chain-bound state says the key was PRESENT just before
@@ -3826,7 +3868,7 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
-		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq)
+		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
 			// Live shows PRESENT → a Delete would have succeeded, not
 			// skipped. Any non-skip projection is a legitimate landing.

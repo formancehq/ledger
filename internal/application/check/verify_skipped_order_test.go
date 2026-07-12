@@ -1143,7 +1143,7 @@ func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
 
 	// The account metadata timeline for (alice, role) must be empty: the
 	// create's application could not be proven.
-	require.Empty(t, chainBound.metadata["L"]["alice"]["role"],
+	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
 		"unprovable archive-only-conflict create must not seed account metadata as present")
 
 	// A forged METADATA_NOT_FOUND skip at a later seq therefore stays
@@ -1190,7 +1190,7 @@ func TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata(t *testing
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
-	require.NotEmpty(t, chainBound.metadata["L"]["alice"]["role"],
+	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
 		"anchored create with an unclaimed reference provably applied → account metadata seeded")
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
@@ -1266,10 +1266,11 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 	cases := []struct {
 		name   string
 		target string
+		isTx   bool
 		key    string
 	}{
-		{"account metadata key", "alice", "acckey"},
-		{"tx-scoped metadata key", "7", "txkey"},
+		{"account metadata key", "alice", false, "acckey"},
+		{"tx-scoped metadata key", "7", true, "txkey"},
 	}
 
 	for _, tc := range cases {
@@ -1283,10 +1284,11 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 			reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 			expected := map[uint64]*expectedSkippableOrder{
 				60: {
-					reasons:        []commonpb.ErrorReason{reason},
-					ledger:         "L",
-					metadataTarget: tc.target,
-					metadataKey:    tc.key,
+					reasons:            []commonpb.ErrorReason{reason},
+					ledger:             "L",
+					metadataTarget:     tc.target,
+					metadataKey:        tc.key,
+					metadataTargetIsTx: tc.isTx,
 				},
 			}
 
@@ -1661,7 +1663,7 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent(t *testing.
 
 	chainBound := newChainBoundState()
 	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
-		"alice": {"role": {{seq: 3, exists: true}}}, // Set at 3, still present at 7
+		metadataTimelineTarget(false, "alice"): {"role": {{seq: 3, exists: true}}}, // Set at 3, still present at 7
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{
@@ -2133,10 +2135,11 @@ func TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger(t *te
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:        []commonpb.ErrorReason{reason},
-			ledger:         "L",
-			metadataTarget: "101", // tx-id-shaped target
-			metadataKey:    "foo",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "101", // tx-id-shaped target
+			metadataKey:        "foo",
+			metadataTargetIsTx: true,
 		},
 	}
 
@@ -2197,7 +2200,7 @@ func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) 
 
 	// The account metadata (alice, role) timeline has exactly ONE presence
 	// entry (from the fresh create), not a duplicate from the replay.
-	require.Len(t, chainBound.metadata["L"]["alice"]["role"], 1,
+	require.Len(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"], 1,
 		"the legacy replay reference must not re-seed the metadata timeline")
 
 	// A forged METADATA_NOT_FOUND on (alice, role) — the real key the create
@@ -2269,7 +2272,7 @@ func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionall
 	collectExpectedSkippable(items, 50, 50, expectedSkip, chainBound)
 
 	// account_metadata IS seeded (the create provably applied).
-	require.NotEmpty(t, chainBound.metadata["L"]["alice"]["role"],
+	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
 		"a non-conflict-skippable create present in a success item provably applied → seed its account metadata")
 
 	// A forged METADATA_NOT_FOUND on (alice, role) is therefore rejected.
