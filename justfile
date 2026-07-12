@@ -285,6 +285,7 @@ generate-proto:
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
+    @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
@@ -310,6 +311,9 @@ generate-proto:
         --plugin=protoc-gen-skippable=build/protoc-gen-skippable \
         --skippable_out=. \
         --skippable_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity \
+        --queryfilter-validity_out=. \
+        --queryfilter-validity_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \

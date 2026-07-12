@@ -187,7 +187,11 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler for PostCommitVolumes.
+// MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
+// is a flat `{address: {asset: Volumes}}` map — protojson would emit the raw
+// proto wrappers (`volumesByAccount.{addr}.volumes.{asset}`), leaking two
+// nesting levels that don't belong on the public API and don't match the
+// OpenAPI schema (see PostCommitVolumes in openapi.yml).
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 	byAccount := x.GetVolumesByAccount()
 	if len(byAccount) == 0 {

@@ -104,7 +104,7 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			&raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
-					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{Name: "q"}},
+					CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{Query: &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}},
 				},
 			},
 		},

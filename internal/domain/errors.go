@@ -401,10 +401,11 @@ var (
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
-	ErrPreparedQueryRequired        = NewValidationSentinel("prepared query payload is required")
-	ErrPreparedQueryNameRequired    = NewValidationSentinel("prepared query name is required")
-	ErrPreparedQueryNameInvalidChar = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
-	ErrPreparedQueryNameTooLong     = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
+	ErrPreparedQueryRequired          = NewValidationSentinel("prepared query payload is required")
+	ErrPreparedQueryNameRequired      = NewValidationSentinel("prepared query name is required")
+	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
+	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
+	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS or TRANSACTIONS)")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
