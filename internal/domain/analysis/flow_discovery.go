@@ -398,25 +398,26 @@ func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
 	return strings.Join(parts, ";")
 }
 
-// flowDisplayPart formats a single posting as a human-readable
-// "source -> destination [asset]" fragment, appending "/color" inside the
-// brackets when the posting is colored. The uncolored bucket (empty color)
-// renders as a bare "[asset]" so pre-color responses stay identical. This is
-// the public form; unlike flowSignaturePart it is NOT collision-safe and must
-// never be used as a grouping key.
+// flowDisplayPart formats a single posting as the human-readable
+// "source->destination[asset]" fragment. This is byte-for-byte the legacy
+// (pre-color) format — no spaces around the arrow or brackets — so uncolored
+// flows are unchanged from release/v3.0. Colored postings extend the form by
+// appending "/color" inside the brackets ("source->destination[asset/color]");
+// the uncolored bucket (empty color) keeps the bare "[asset]". Unlike
+// flowSignaturePart this is NOT collision-safe and must never be a grouping key.
 func flowDisplayPart(p *servicepb.NormalizedPosting) string {
 	asset := p.GetAsset()
 	if color := p.GetColor(); color != "" {
 		asset += "/" + color
 	}
 
-	return p.GetSourcePattern() + " -> " + p.GetDestinationPattern() + " [" + asset + "]"
+	return p.GetSourcePattern() + "->" + p.GetDestinationPattern() + "[" + asset + "]"
 }
 
 // computeFlowDisplaySignature builds the human-readable FlowPattern.signature
-// from normalized postings. Multi-posting flows join their fragments with "; "
-// in the same sorted order as the internal grouping key, so two flows with the
-// same shape produce the same display string.
+// from normalized postings. Multi-posting flows join their fragments with ";"
+// (the legacy separator) in the same sorted order as the internal grouping key,
+// so two flows with the same shape produce the same display string.
 func computeFlowDisplaySignature(postings []*servicepb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		return flowDisplayPart(postings[0])
@@ -429,7 +430,7 @@ func computeFlowDisplaySignature(postings []*servicepb.NormalizedPosting) string
 
 	sort.Strings(parts)
 
-	return strings.Join(parts, "; ")
+	return strings.Join(parts, ";")
 }
 
 // precomputeNormalization walks the trie once after Pass 1 and caches

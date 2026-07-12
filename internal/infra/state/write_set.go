@@ -1175,7 +1175,8 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 
 	// A storage/coverage fault means the check could not run correctly for at
 	// least one key, so surface it ahead of any business offender. Pick the
-	// (Account, Asset, LedgerName)-smallest so the choice is deterministic.
+	// (Account, Asset, Color, LedgerName)-smallest so the choice is
+	// deterministic (compareVolumeKeys — same order both call sites use).
 	if len(storageFaults) > 0 {
 		return slices.MinFunc(storageFaults, func(a, b storageFault) int {
 			return compareVolumeKeys(a.key, b.key)

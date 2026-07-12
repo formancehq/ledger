@@ -910,9 +910,10 @@ message AnalyzeTransactionsResponse {
 }
 
 message FlowPattern {
-  // Human-readable canonical signature, e.g. "users:{id}:main -> bank:fees [USD]".
-  // Colored postings append the color inside the brackets: "... [USD/RED]".
-  // The uncolored bucket keeps the bare "[USD]" form.
+  // Human-readable canonical signature, e.g. "users:{id}:main->bank:fees[USD]"
+  // (legacy form, no spaces; multi-posting flows join fragments with ";").
+  // Colored postings append the color inside the brackets: "...[USD/RED]".
+  // The uncolored bucket keeps the bare "[USD]" form, byte-identical to pre-color.
   string signature = 1;
   PostingStructure structure = 2;
   fixed64 transaction_count = 3;

@@ -6631,9 +6631,10 @@ func (x *AnalyzeTransactionsResponse) GetTotalReverted() uint64 {
 
 type FlowPattern struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Human-readable canonical signature, e.g. "users:{id}:main -> bank:fees [USD]".
-	// Colored postings append the color inside the brackets: "... [USD/RED]".
-	// The uncolored bucket keeps the bare "[USD]" form.
+	// Human-readable canonical signature, e.g. "users:{id}:main->bank:fees[USD]"
+	// (legacy form, no spaces; multi-posting flows join fragments with ";").
+	// Colored postings append the color inside the brackets: "...[USD/RED]".
+	// The uncolored bucket keeps the bare "[USD]" form, byte-identical to pre-color.
 	Signature        string               `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"`
 	Structure        PostingStructure     `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
 	TransactionCount uint64               `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`

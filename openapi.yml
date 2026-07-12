@@ -2665,9 +2665,9 @@ components:
       type: object
       description: |
         Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
-        Prepared-query `AGGREGATE_VOLUMES` responses use the same shape
-        conceptually but currently leak the raw protojson encoding (numeric
-        Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
+        Prepared-query `AGGREGATE_VOLUMES` responses (under the `aggregateResult`
+        envelope of `ExecutePreparedQueryResponse`) use this exact shape:
+        decimal-string amounts, a computed `balance`, and `color` always present.
       required:
         - asset
         - color
@@ -3990,14 +3990,37 @@ components:
     ExecutePreparedQueryResponse:
       type: object
       description: |
-        Response wraps either a paged cursor (list-style targets like
-        `LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) or an aggregate result
-        (`AGGREGATE_VOLUMES`). The current wire encoding leaks the raw
-        protobuf oneof shape (Go-cased `Result.Cursor` / `Result.Aggregate`
-        with nested proto field names). Reconciling the wire with a clean
-        top-level `cursor` / `aggregateResult` envelope is tracked in
-        EN-1465; this schema will be finalised together with that fix.
-      additionalProperties: true
+        Result of executing a prepared query. Exactly one field is set,
+        discriminated by the query target: `cursor` for list-style targets
+        (`LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) and `aggregateResult` for
+        `AGGREGATE_VOLUMES`. Both payloads use the same camelCase encoding as
+        the equivalent non-prepared endpoints (decimal-string amounts, `color`
+        always present on every volume row including the uncolored bucket).
+      properties:
+        cursor:
+          type: object
+          description: |
+            Paged cursor for list-style targets. Account/transaction rows use
+            the same camelCase shapes as the non-prepared list endpoints.
+          properties:
+            pageSize:
+              type: integer
+            hasMore:
+              type: boolean
+            previous:
+              type: string
+            next:
+              type: string
+            accountData:
+              type: array
+              items:
+                $ref: '#/components/schemas/Account'
+            transactionData:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionResponse'
+        aggregateResult:
+          $ref: '#/components/schemas/AggregateVolumesData'
 
     HealthResponse:
       type: object
