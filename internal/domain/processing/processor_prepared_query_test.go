@@ -117,10 +117,9 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 // (e.g. AUDIT) before EN-1504, so such a query can already sit in storage. An
 // update must not write its filter back — ExecutePreparedQuery cannot hydrate
 // AUDIT — so the stored-target executability gate fires before condition
-// validity, even though the filter is perfectly valid *for* AUDIT. Delete stays
-// allowed; only the rewrite is blocked. (LOGS is executable as of EN-1503, so it
-// no longer belongs in this class — AUDIT is the remaining non-executable
-// target.)
+// validity is ever evaluated. Delete stays allowed; only the rewrite is blocked.
+// (LOGS is executable as of EN-1503, so it no longer belongs in this class —
+// AUDIT is the remaining non-executable target.)
 func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.T) {
 	t.Parallel()
 
@@ -141,10 +140,12 @@ func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.
 		t.Fatal("Put must not be called when the stored target is not executable")
 	})
 
-	// An $and combinator is valid *for* AUDIT, so this update passes condition
-	// validity — the executability gate is what must reject it.
+	// The stored-target executability gate fires before condition validity is
+	// even evaluated, so the filter's own validity is irrelevant here — any
+	// structurally decodable filter must be rejected on the non-executable
+	// stored target.
 	newFilter := &commonpb.QueryFilter{}
-	require.NoError(t, json.Unmarshal([]byte(`{"$and":[]}`), newFilter))
+	require.NoError(t, json.Unmarshal([]byte(`{"$exists":{"metadata":"x"}}`), newFilter))
 
 	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-audit", Filter: newFilter}
 	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
