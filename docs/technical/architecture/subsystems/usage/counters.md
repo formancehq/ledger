@@ -81,7 +81,7 @@ The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len
 3. `makeNewKeptKeySet(partResult.kept)` (new) yields the subset of `kept` where `Old` was undefined / zero-placeholder — i.e. new persistent volumes.
 4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset) keeps the log payload byte-identical across nodes.
 
-The three lists are injected into each `LedgerLog` inside the same `createdLogs` build loop that also injects `purged_volumes`. The audit hash chain covers the whole `LedgerLog` so any drift is detected by the checker.
+The three lists are injected into each `LedgerLog` inside the same `createdLogs` build loop that also injects `purged_volumes`. Note the audit hash chain does **not** cover `LedgerLog` content — it binds the audit header plus each item's order index, log sequence, and serialized order (see [Checker consumer](#checker-consumer) for what this means for tamper detection of the derived counters).
 
 ### The preload contract this depends on
 
@@ -115,9 +115,18 @@ Full keyspace conventions in `internal/storage/usagestore/keys.go`. The `[ledger
 
 ### Checker consumer
 
-`compareExclusionProjections` (`internal/application/check/checker.go`) accumulates `PurgedVolumes` and `EphemeralVolumes` from every log into the stored projection set, then compares against the exclusion set derived by replaying the audit chain (`AppliedProposal.TransientVolumes` union). Both eviction lists have identical semantics for the checker — the split is a pure log-payload compaction, not an invariant change.
+`compareExclusionProjections` (`internal/application/check/checker.go`) accumulates `PurgedVolumes` and `EphemeralVolumes` from every log into the stored projection set, then compares against the exclusion set derived by replaying the audit chain (`AppliedProposal.TransientVolumes` union). Both eviction lists have identical semantics for the checker — the split is a pure log-payload compaction, not an invariant change. This pass verifies the exclusion projection *in the primary store* — the set the indexbuilder consumes.
 
-A dedicated checker pass for `CounterVolume` (replay `sum(new_kept − purged)` and compare against the usagestore value) is a follow-up — the template exists in `compareExclusionProjections`.
+### Why the usagestore counters are not a checker target (design decision, not a gap)
+
+The checker (invariant #8) verifies projections persisted **in the primary Pebble store** — the store it operates on: `Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, idempotency outcomes, the index registry, and the exclusion projection above. The usagestore is a **distinct, peer secondary Pebble instance** (`<data-dir>/usage/`) holding a *derived cache* of counters, fully rebuildable from the audit chain on demand (`ledgerctl store rebuild-usage`, or the automatic boot/tick rewind). Its authoritativeness is explicitly bounded by "eventually consistent with the FSM".
+
+Consequently, the three volume-annotation categories are deliberately **not** given a dedicated usagestore checker pass:
+
+- `NewKeptVolumes` has **no** primary-store consumer — it feeds only `CounterVolume` in the usagestore.
+- The primary-store-relevant signal, the exclusion set `PurgedVolumes ∪ EphemeralVolumes` consumed by the indexbuilder, **is** already verified by `compareExclusionProjections` above. The indexbuilder consumes the union and is indifferent to the Purged-vs-Ephemeral split, so the union is the correct verification granularity for the primary store.
+
+Corruption of a usagestore counter is therefore a *rebuild*, not an integrity incident: the recovery contract is "drop and replay from the audit chain", and the audit chain itself **is** cryptographically verified (`verifyAuditHashChain`). Serving a derived, rebuildable value through `GetLedgerStats` / `GetTemplateUsage` does not make it authoritative primary-store state. Extending audit-derived tamper coverage to the usagestore counters (which would require threading a new-volume collector through the shared `internal/domain/replay` package, also used by backup restore) is a separately-scoped effort tracked under EN-1422 — not a prerequisite for this subsystem.
 
 ## Metrics
 
