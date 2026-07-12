@@ -15,13 +15,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// MaxFilterDepth bounds the recursion depth of compile() over
-// QueryFilter protos. A hostile client can hand-craft a deeply-nested
-// filter (e.g. 100k repetitions of And/Or/Not) and submit it via gRPC;
-// without a depth cap the compiler stack-overflows and aborts the
-// process (Go stack overflow is not catchable by recover) — a fatal
-// DoS. 100 is well above any legitimate query (review-2 L-19 / #341).
-const MaxFilterDepth = 100
+// MaxFilterDepth bounds the recursion depth of compile() over QueryFilter
+// protos. It re-exports domain.MaxFilterDepth so the execute-time guard here
+// and the write-time guard in domain.ValidateFilterForTarget share a single
+// source of truth (they must agree — a filter accepted at write time must not
+// be rejected only at execute time, and vice versa). See domain.MaxFilterDepth
+// for the DoS rationale.
+const MaxFilterDepth = domain.MaxFilterDepth
 
 // ErrFilterTooDeep is returned by Compile when the QueryFilter recursion
 // exceeds MaxFilterDepth. Typed Describable (KindValidation) so the gRPC
@@ -186,9 +186,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_LogId:
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
 	case *commonpb.QueryFilter_Ledger:
-		// Ledger condition is a no-op in the Compile framework --- the ledger
-		// is already set in the context. Return the universe iterator.
-		return compileUniverse(ctx)
+		return compileLedgerCondition(ctx, f.Ledger)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
 	}
@@ -259,6 +257,33 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 		// which would silently mask a target that slipped past the guard.
 		return nil, domain.NewFilterCompilationError("unsupported query target %v", ctx.target)
 	}
+}
+
+// compileLedgerCondition compiles a LedgerCondition (exact match on the ledger
+// name). Compilation is always scoped to a single ledger — ctx.ledgerName, the
+// one this query executes against — so the condition can only ever match that
+// ledger or nothing. It is therefore evaluated here rather than treated as a
+// no-op: when the condition names the executing ledger the result is the full
+// log universe; when it names any other ledger the result is empty (an
+// unsatisfiable filter, not a silent "all logs" — see
+// prepared_query_filter.go / EN-1503). LedgerCondition is only valid on LOGS
+// per the validity table, so no cross-target concern arises.
+func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.EntityIterator, error) {
+	if lc.GetCond() == nil {
+		return nil, domain.NewFilterCompilationError("ledger condition has no value")
+	}
+
+	want, err := resolveString(lc.GetCond(), ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	if want != ctx.ledgerName {
+		// Names a different ledger than the one being queried: unsatisfiable.
+		return &SliceIterator{}, nil
+	}
+
+	return compileUniverse(ctx)
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.

@@ -139,7 +139,8 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 		Expect(err).To(Succeed())
 		defer func() { _ = createResp.Body.Close() }()
 
-		createRaw, _ := io.ReadAll(createResp.Body)
+		createRaw, err := io.ReadAll(createResp.Body)
+		Expect(err).To(Succeed())
 		Expect(createResp.StatusCode).To(Equal(http.StatusNoContent), "unexpected create status; body=%s", string(createRaw))
 
 		// Execute it over REST and assert logData is populated (not empty).
@@ -152,7 +153,8 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 			g.Expect(execErr).To(Succeed())
 			defer func() { _ = execResp.Body.Close() }()
 
-			execRaw, _ := io.ReadAll(execResp.Body)
+			execRaw, execErr := io.ReadAll(execResp.Body)
+			g.Expect(execErr).To(Succeed())
 			g.Expect(execResp.StatusCode).To(Equal(http.StatusOK), "unexpected execute status; body=%s", string(execRaw))
 
 			// The ExecutePreparedQueryResponse envelope still leaks the raw

@@ -25,6 +25,17 @@ const maxPreparedQueryNameLength = 256
 // the numscript-name bound above.
 const maxSigningKeyIDLength = 256
 
+// MaxFilterDepth bounds the recursion depth of any QueryFilter tree walk.
+// A hostile client can hand-craft a deeply-nested filter (e.g. 100k
+// repetitions of $and/$or/$not) and submit it via gRPC; without a depth cap
+// a recursive walk stack-overflows and aborts the process (a Go stack
+// overflow is not catchable by recover) — a fatal DoS. The bound is enforced
+// both here at write time (ValidateFilterForTarget, which runs in admission +
+// FSM before query.Compile) and in query.Compile itself, which references this
+// same constant so the two layers cannot drift. 100 is well above any
+// legitimate query (review-2 L-19 / #341).
+const MaxFilterDepth = 100
+
 // errValidation wraps a primitive validation error from
 // github.com/formancehq/invariants so it satisfies the local
 // Describable contract (Kind=KindValidation, Reason=ErrReasonValidation)
@@ -193,29 +204,52 @@ func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 // (invariant #7). A nil filter is treated as nothing to validate — callers
 // enforce filter presence separately.
 func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) Describable {
+	return validateFilterForTarget(f, target, 0)
+}
+
+// validateFilterForTarget is the depth-bounded recursive core of
+// ValidateFilterForTarget. depth is the number of $and/$or/$not combinators
+// entered so far; it caps the walk at MaxFilterDepth to match query.Compile's
+// own guard, so a hostile deeply-nested filter is rejected at write time
+// (admission + FSM) before it can overflow the stack here — the exact fatal
+// DoS Compile caps downstream (invariant #7: fail loudly, never recurse
+// unbounded on untrusted input).
+func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
 	if f == nil {
 		return nil
 	}
 
 	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_And:
+		if depth >= MaxFilterDepth {
+			return errFilterTooDeep()
+		}
+
 		for _, sub := range v.And.GetFilters() {
-			if err := ValidateFilterForTarget(sub, target); err != nil {
+			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
 			}
 		}
 
 		return nil
 	case *commonpb.QueryFilter_Or:
+		if depth >= MaxFilterDepth {
+			return errFilterTooDeep()
+		}
+
 		for _, sub := range v.Or.GetFilters() {
-			if err := ValidateFilterForTarget(sub, target); err != nil {
+			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
 			}
 		}
 
 		return nil
 	case *commonpb.QueryFilter_Not:
-		return ValidateFilterForTarget(v.Not.GetFilter(), target)
+		if depth >= MaxFilterDepth {
+			return errFilterTooDeep()
+		}
+
+		return validateFilterForTarget(v.Not.GetFilter(), target, depth+1)
 	}
 
 	kind := commonpb.ConditionKindOf(f)
@@ -226,6 +260,15 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 	return &BusinessError{Err: &ErrFilterCompilation{
 		Detail: fmt.Sprintf("condition %q is not valid on %s queries",
 			kind.String(), commonpb.TargetHumanName(target)),
+	}}
+}
+
+// errFilterTooDeep builds the Describable returned when a filter tree exceeds
+// MaxFilterDepth. The wording mirrors query.ErrFilterTooDeep so the write-time
+// rejection is indistinguishable from the execute-time one.
+func errFilterTooDeep() Describable {
+	return &BusinessError{Err: &ErrFilterCompilation{
+		Detail: fmt.Sprintf("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth),
 	}}
 }
 

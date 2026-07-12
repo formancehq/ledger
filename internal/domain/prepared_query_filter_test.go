@@ -123,3 +123,79 @@ func TestValidateFilterForTarget(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateFilterForTarget_RejectsDeeplyNestedFilter is the regression for
+// the EN-1503 review P1: ValidateFilterForTarget runs at write time (admission
+// + FSM) on an untrusted gRPC filter, before query.Compile's depth guard can
+// fire. Without its own bound, a hostile deeply-nested $and/$or/$not tree would
+// blow the Go stack here — an unrecoverable, fatal DoS. Build a chain deeper
+// than domain.MaxFilterDepth and assert it is rejected loudly rather than
+// recursing. Both CreatePreparedQuery and UpdatePreparedQuery route their
+// untrusted filter through this same function, so one guard covers both paths.
+func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
+	t.Parallel()
+
+	build := func(wrap func(child *commonpb.QueryFilter) *commonpb.QueryFilter) *commonpb.QueryFilter {
+		// Innermost leaf is a valid LOGS condition so, absent the depth guard,
+		// the walk would traverse the whole chain and succeed.
+		var f *commonpb.QueryFilter = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+			},
+		}
+
+		for range domain.MaxFilterDepth + 5 {
+			f = wrap(f)
+		}
+
+		return f
+	}
+
+	andWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{child}},
+		}}
+	}
+	orWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{child}},
+		}}
+	}
+	notWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
+			Not: &commonpb.NotFilter{Filter: child},
+		}}
+	}
+
+	for name, wrap := range map[string]func(*commonpb.QueryFilter) *commonpb.QueryFilter{
+		"and": andWrap,
+		"or":  orWrap,
+		"not": notWrap,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := domain.ValidateFilterForTarget(build(wrap), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+			require.NotNil(t, err, "deeply-nested %s filter must trip the depth guard", name)
+			require.Contains(t, err.Error(), "nesting depth")
+		})
+	}
+
+	// A tree exactly at the limit is accepted (guard is off-by-one safe).
+	atLimit := func() *commonpb.QueryFilter {
+		var f *commonpb.QueryFilter = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+			},
+		}
+		// MaxFilterDepth combinator levels wrapping a leaf: the deepest
+		// recursion enters the guard at depth == MaxFilterDepth-1, still under
+		// the cap.
+		for range domain.MaxFilterDepth {
+			f = andWrap(f)
+		}
+
+		return f
+	}()
+	require.Nil(t, domain.ValidateFilterForTarget(atLimit, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+}

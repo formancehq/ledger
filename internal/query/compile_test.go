@@ -48,6 +48,61 @@ func TestCompile_RejectsDeeplyNestedFilter(t *testing.T) {
 		"deeply-nested QueryFilter must trip the depth guard, got: %v", err)
 }
 
+// ledgerFilter builds a LOGS-target LedgerCondition (exact match on name).
+func ledgerFilter(name string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{
+			Ledger: &commonpb.LedgerCondition{
+				Cond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: name},
+				},
+			},
+		},
+	}
+}
+
+// TestCompile_LedgerConditionOtherLedgerIsEmpty is the regression for the
+// EN-1503 review: a LOGS-target LedgerCondition naming a ledger other than the
+// one the query executes against must compile to an empty (unsatisfiable)
+// result, not silently fall through to the universe of the executing ledger's
+// logs. The mismatch branch returns before touching any Pebble reader, so no
+// store setup is needed.
+func TestCompile_LedgerConditionOtherLedgerIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctx := &compileCtx{
+		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerName: "ledger-a",
+	}
+
+	iter, err := compile(ctx, ledgerFilter("ledger-b"))
+	require.NoError(t, err)
+	require.NotNil(t, iter)
+	defer iter.Close()
+
+	// Empty iterator: a filter naming a different ledger can match nothing.
+	require.False(t, iter.Next(), "LedgerCondition on a different ledger must yield no rows")
+	require.NoError(t, iter.Err())
+}
+
+// TestCompile_LedgerConditionMissingValue asserts a LedgerCondition carrying no
+// StringCondition value fails loudly rather than silently matching everything.
+func TestCompile_LedgerConditionMissingValue(t *testing.T) {
+	t.Parallel()
+
+	ctx := &compileCtx{
+		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerName: "ledger-a",
+	}
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{}},
+	}
+
+	_, err := compile(ctx, filter)
+	require.Error(t, err)
+}
+
 func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
 	fc := &commonpb.FieldCondition{
 		Field: &commonpb.FieldRef{Metadata: metaKey},
