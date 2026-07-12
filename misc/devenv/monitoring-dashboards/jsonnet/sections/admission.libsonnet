@@ -179,10 +179,14 @@ panels.row('Admission', 169, [
     'Proposal Guard Rebuild Rate & Ratio',
     { h: 8, w: 12, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.command.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.proposal_guard.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
       { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuilds/s - Node {{service.node_id}}' },
     ], unit='percentunit',
-    description='Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.',
+    description=|||
+      Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.
+
+      The denominator is admission.proposal_guard.duration_count — the number of times the proposal guard was actually acquired (one per proposal attempt that reached builder.Run). It is NOT admission.command.duration_count, which also counts commands rejected before proposal (bad signature, maintenance mode, validation/preload errors); using that would dilute the ratio with attempts the guard never saw.
+    |||,
   ),
 
   panels.timeseries(

@@ -10337,7 +10337,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.",
+               "description": "Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.\n\nThe denominator is admission.proposal_guard.duration_count — the number of times the proposal guard was actually acquired (one per proposal attempt that reached builder.Run). It is NOT admission.command.duration_count, which also counts commands rejected before proposal (bad signature, maintenance mode, validation/preload errors); using that would dilute the ratio with attempts the guard never saw.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -10422,7 +10422,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_admission_proposal_guard_rebuild_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_admission_command_duration_microseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "expr": "sum(rate(ledger_admission_proposal_guard_rebuild_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_admission_proposal_guard_duration_microseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Rebuild ratio - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -10532,7 +10532,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_resolve_batch_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p50 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -10543,7 +10543,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_resolve_batch_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p95 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "B"
@@ -10554,7 +10554,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_resolve_batch_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p99 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "C"
@@ -10873,7 +10873,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_orders_preparation_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p50 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -10884,7 +10884,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_orders_preparation_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p95 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "B"
@@ -10895,7 +10895,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_orders_preparation_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p99 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "C"
@@ -10994,7 +10994,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_scripts_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p50 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -11005,7 +11005,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_scripts_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p95 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "B"
@@ -11016,7 +11016,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_scripts_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p99 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "C"
@@ -11236,7 +11236,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_response_resolution_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p50 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -11247,7 +11247,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_response_resolution_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p95 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "B"
@@ -11258,7 +11258,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_response_resolution_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
                      "legendFormat": "p99 - Node {{service_node_id}}",
                      "range": true,
                      "refId": "C"
