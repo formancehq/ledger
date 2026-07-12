@@ -1095,6 +1095,11 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 				Ledger: ledger,
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
+						// Whitelist CONFLICT so the create is skip-tolerant: the
+						// archive-uncertain suppression only applies to conflict-
+						// skippable creates (a non-skippable create hard-fails on a
+						// prior claim, never reaching a success item).
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 								Reference: reference,
@@ -2204,4 +2209,75 @@ func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) 
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
 	events := captureEventsState(t, "L", 20, payload, expected, chainBound, false)
 	requireInvalidSkipEvent(t, events, 20)
+}
+
+// buildCreateTxNonSkippableWithAccountMeta builds a CreateTransactionOrder
+// that declares a reference and account_metadata but does NOT whitelist any
+// skippable reason — modeling a create that can only succeed or hard-fail,
+// never skip.
+func buildCreateTxNonSkippableWithAccountMeta(t *testing.T, ledger, reference, account, key string, logSeq uint64) *auditpb.AuditItem {
+	t.Helper()
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						// No SkippableReasons: this create cannot be converted
+						// to an OrderSkipped.
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Reference: reference,
+								AccountMetadata: map[string]*commonpb.MetadataMap{
+									account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("v")}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
+}
+
+// TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionally
+// pins finding checker.go:2295. A CreateTransaction that did NOT whitelist
+// TRANSACTION_REFERENCE_CONFLICT cannot be converted to an OrderSkipped — if
+// it hit a prior claim the FSM HARD-FAILS (no success item). So its presence
+// in a success item proves it applied; the archive-uncertain suppression
+// (which exists only to avoid asserting a skipped create's writes) must NOT
+// drop its account_metadata even on an unanchored, archived ledger. Otherwise
+// a later forged METADATA_NOT_FOUND on that account/key would pass as
+// archive-inconclusive.
+func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionally(t *testing.T) {
+	t.Parallel()
+
+	// Unanchored, archive-only conditions (same as the conflict-skippable
+	// suppression test) — but this create is NOT conflict-skippable.
+	items := []*auditpb.AuditItem{
+		buildCreateTxNonSkippableWithAccountMeta(t, "L", "ref-1", "alice", "role", 50),
+	}
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, 50, 50, expectedSkip, chainBound)
+
+	// account_metadata IS seeded (the create provably applied).
+	require.NotEmpty(t, chainBound.metadata["L"]["alice"]["role"],
+		"a non-conflict-skippable create present in a success item provably applied → seed its account metadata")
+
+	// A forged METADATA_NOT_FOUND on (alice, role) is therefore rejected.
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 60)
 }

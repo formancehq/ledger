@@ -2292,7 +2292,23 @@ func recordChainBoundMutations(
 		// prior presence and false-positive a later legitimate
 		// DeleteMetadata(METADATA_NOT_FOUND) skip on the same key. Both
 		// records are therefore gated on the same skip predicate.
-		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) && !chainBoundCreateTxApplicationUncertain(ledger, ct, logSeq, chainBound) {
+		//
+		// The skip / archive-uncertain gate ONLY applies when the order
+		// actually whitelisted TRANSACTION_REFERENCE_CONFLICT. A create that
+		// did NOT whitelist conflict can never be converted to an
+		// OrderSkipped — if it hit a prior claim the FSM HARD-FAILS
+		// (ErrTransactionReferenceConflict), producing a failure audit entry
+		// with no success item (LogSequence=0), which never reaches this
+		// seeding code. So a non-conflict-whitelisted create present in a
+		// success item PROVABLY applied; suppressing its account_metadata as
+		// archive-uncertain would drop a real presence and let a later forged
+		// METADATA_NOT_FOUND slip through (finding checker.go:2295). Gate the
+		// suppression on conflict-whitelist membership.
+		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+		createApplied := !conflictSkippable ||
+			(!chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) &&
+				!chainBoundCreateTxApplicationUncertain(ledger, ct, logSeq, chainBound))
+		if createApplied {
 			// account_metadata targets are known independently of the
 			// FSM-allocated tx id, so they don't need the anchored-ledger
 			// gate the tx-scoped block below applies — but they DO require
