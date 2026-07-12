@@ -169,8 +169,16 @@ type JoinAsLearnerRequest struct {
 	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address of the learner
 	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address of the learner
 	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// fsm_determinism_enabled is the joining node's local fsm-determinism-enabled
+	// flag. The leader refuses the join when it disagrees with its own flag: the
+	// cross-node FSM digest and the deterministic attribute encoding are only
+	// coherent when every peer runs the same setting, and a divergent peer would
+	// otherwise be admitted and then report perpetual (false) digest divergence.
+	// Local persisted-config validation only catches a flag flip across restarts
+	// of the SAME node; this catches a mismatched peer at join time.
+	FsmDeterminismEnabled bool `protobuf:"varint,5,opt,name=fsm_determinism_enabled,json=fsmDeterminismEnabled,proto3" json:"fsm_determinism_enabled,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *JoinAsLearnerRequest) Reset() {
@@ -231,6 +239,13 @@ func (x *JoinAsLearnerRequest) GetInstanceId() []byte {
 	return nil
 }
 
+func (x *JoinAsLearnerRequest) GetFsmDeterminismEnabled() bool {
+	if x != nil {
+		return x.FsmDeterminismEnabled
+	}
+	return false
+}
+
 type JoinAsLearnerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -278,13 +293,14 @@ const file_cluster_bootstrap_proto_rawDesc = "" +
 	"\bPeerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x9c\x01\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\xd4\x01\n" +
 	"\x14JoinAsLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
 	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
 	"\vinstance_id\x18\x04 \x01(\fR\n" +
-	"instanceId\"\x17\n" +
+	"instanceId\x126\n" +
+	"\x17fsm_determinism_enabled\x18\x05 \x01(\bR\x15fsmDeterminismEnabled\"\x17\n" +
 	"\x15JoinAsLearnerResponse2\xd2\x01\n" +
 	"\x17ClusterBootstrapService\x12S\n" +
 	"\bGetPeers\x12\".cluster_bootstrap.GetPeersRequest\x1a#.cluster_bootstrap.GetPeersResponse\x12b\n" +

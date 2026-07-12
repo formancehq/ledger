@@ -218,6 +218,7 @@ type JoinAsLearnerRequestReader interface {
 	GetRaftAddress() string
 	GetServiceAddress() string
 	GetInstanceId() []byte
+	GetFsmDeterminismEnabled() bool
 	Mutate() *JoinAsLearnerRequest
 }
 
@@ -237,6 +238,10 @@ func (r *joinAsLearnerRequestReadonly) GetServiceAddress() string {
 
 func (r *joinAsLearnerRequestReadonly) GetInstanceId() []byte {
 	return bytes.Clone((*JoinAsLearnerRequest)(r).GetInstanceId())
+}
+
+func (r *joinAsLearnerRequestReadonly) GetFsmDeterminismEnabled() bool {
+	return (*JoinAsLearnerRequest)(r).GetFsmDeterminismEnabled()
 }
 
 func (r *joinAsLearnerRequestReadonly) Mutate() *JoinAsLearnerRequest {

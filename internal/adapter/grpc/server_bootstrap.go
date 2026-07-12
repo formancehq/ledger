@@ -32,11 +32,12 @@ import (
 type ClusterBootstrapServiceServerImpl struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 
-	node          *node.Node
-	raftTransport *node.DefaultTransport
-	membership    *membership.Service
-	logger        logging.Logger
-	clusterID     string
+	node                  *node.Node
+	raftTransport         *node.DefaultTransport
+	membership            *membership.Service
+	logger                logging.Logger
+	clusterID             string
+	fsmDeterminismEnabled bool
 }
 
 func NewClusterBootstrapServiceServer(
@@ -45,13 +46,15 @@ func NewClusterBootstrapServiceServer(
 	membershipSvc *membership.Service,
 	logger logging.Logger,
 	clusterID string,
+	fsmDeterminismEnabled bool,
 ) clusterbootstrappb.ClusterBootstrapServiceServer {
 	return &ClusterBootstrapServiceServerImpl{
-		node:          n,
-		raftTransport: raftTransport,
-		membership:    membershipSvc,
-		logger:        logger.WithField("component", "cluster-bootstrap-server"),
-		clusterID:     clusterID,
+		node:                  n,
+		raftTransport:         raftTransport,
+		membership:            membershipSvc,
+		logger:                logger.WithField("component", "cluster-bootstrap-server"),
+		clusterID:             clusterID,
+		fsmDeterminismEnabled: fsmDeterminismEnabled,
 	}
 }
 
@@ -161,6 +164,29 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		}
 
 		return clusterbootstrappb.NewClusterBootstrapServiceClient(conn).JoinAsLearner(outCtx, req)
+	}
+
+	// Cross-peer fsm-determinism-enabled consistency. The persisted-config
+	// validation on each node only catches a flag flip across restarts of the
+	// SAME node; it cannot see a peer that boots with a different flag. Enforce
+	// the cluster-wide invariant here, at the one point every joining node must
+	// pass through: the deterministic attribute encoding and the cross-node FSM
+	// digest are only coherent when every peer runs the same setting, so a
+	// divergent peer must be refused rather than admitted and left reporting
+	// perpetual (false) digest divergence. A node built before this field
+	// existed sends the zero value (false); if the leader runs with the flag ON
+	// that mismatch is (correctly) surfaced here.
+	if req.GetFsmDeterminismEnabled() != impl.fsmDeterminismEnabled {
+		impl.logger.WithFields(map[string]any{
+			"nodeID":     req.GetNodeId(),
+			"joinerFlag": req.GetFsmDeterminismEnabled(),
+			"leaderFlag": impl.fsmDeterminismEnabled,
+		}).Errorf("JoinAsLearner: refusing peer with mismatched fsm-determinism-enabled")
+
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"fsm-determinism-enabled mismatch: joining node %d has %t but the cluster runs with %t; "+
+				"every peer must set --fsm-determinism-enabled identically",
+			req.GetNodeId(), req.GetFsmDeterminismEnabled(), impl.fsmDeterminismEnabled)
 	}
 
 	// EN-1045: every peer must present its 16-byte instance_id — clients

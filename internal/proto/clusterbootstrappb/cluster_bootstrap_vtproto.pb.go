@@ -85,6 +85,7 @@ func (m *JoinAsLearnerRequest) CloneVT() *JoinAsLearnerRequest {
 	r.NodeId = m.NodeId
 	r.RaftAddress = m.RaftAddress
 	r.ServiceAddress = m.ServiceAddress
+	r.FsmDeterminismEnabled = m.FsmDeterminismEnabled
 	if rhs := m.InstanceId; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -207,6 +208,9 @@ func (this *JoinAsLearnerRequest) EqualVT(that *JoinAsLearnerRequest) bool {
 		return false
 	}
 	if string(this.InstanceId) != string(that.InstanceId) {
+		return false
+	}
+	if this.FsmDeterminismEnabled != that.FsmDeterminismEnabled {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -395,6 +399,16 @@ func (m *JoinAsLearnerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.FsmDeterminismEnabled {
+		i--
+		if m.FsmDeterminismEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
+	}
 	if len(m.InstanceId) > 0 {
 		i -= len(m.InstanceId)
 		copy(dAtA[i:], m.InstanceId)
@@ -524,6 +538,9 @@ func (m *JoinAsLearnerRequest) SizeVT() (n int) {
 	l = len(m.InstanceId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.FsmDeterminismEnabled {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -955,6 +972,26 @@ func (m *JoinAsLearnerRequest) UnmarshalVT(dAtA []byte) error {
 				m.InstanceId = []byte{}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FsmDeterminismEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.FsmDeterminismEnabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

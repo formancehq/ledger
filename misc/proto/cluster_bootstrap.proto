@@ -44,6 +44,14 @@ message JoinAsLearnerRequest {
   string raft_address = 2;     // Raft transport address of the learner
   string service_address = 3;  // Service API address of the learner
   bytes instance_id = 4;       // 16-byte UUID identifying this peer's WAL/PVC incarnation (EN-1045); required
+  // fsm_determinism_enabled is the joining node's local fsm-determinism-enabled
+  // flag. The leader refuses the join when it disagrees with its own flag: the
+  // cross-node FSM digest and the deterministic attribute encoding are only
+  // coherent when every peer runs the same setting, and a divergent peer would
+  // otherwise be admitted and then report perpetual (false) digest divergence.
+  // Local persisted-config validation only catches a flag flip across restarts
+  // of the SAME node; this catches a mismatched peer at join time.
+  bool fsm_determinism_enabled = 5;
 }
 
 message JoinAsLearnerResponse {}

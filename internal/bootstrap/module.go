@@ -608,6 +608,7 @@ func Module() fx.Option {
 				return grpcadp.NewClusterBootstrapServiceServer(
 					n, raftTransport, ms, logger,
 					cfg.ClusterID,
+					cfg.FSMDeterminismEnabled,
 				)
 			},
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) *clusterhealth.HealthChecker {
@@ -1399,6 +1400,10 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 		RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
 		ServiceAddress: cfg.ServiceAdvertiseAddr(),
 		InstanceId:     instanceID,
+		// Cross-peer fsm-determinism-enabled consistency check: the leader
+		// refuses the join if this disagrees with its own flag (see
+		// ClusterBootstrapServiceServerImpl.JoinAsLearner).
+		FsmDeterminismEnabled: cfg.FSMDeterminismEnabled,
 	}
 
 	creds, _, err := ClientTransportCredentials(tlsCfg)
