@@ -42,37 +42,62 @@ func writeBloomRow(t *testing.T, store *dal.Store, attrCode byte, blockIdx uint6
 	require.NoError(t, batch.Commit())
 }
 
-// TestFilterSet_EN1527_RestoreRejectsOrphanAttrCode is the regression for the
-// EN-1527 blocker: a persisted bloom row for an attribute that is disabled (or
-// unknown) in the current config is visited by no enabled per-attribute
-// iterator. Before the whole-namespace validation, FilterSet.RestoreFromStore
+// TestFilterSet_EN1527_ClassifyRejectsUnknownAttrCode is the regression for the
+// EN-1527 blocker: a persisted bloom row whose attribute-type byte is not a
+// known bloom type at all is visited by no enabled per-attribute iterator.
+// Before the whole-namespace classification, FilterSet.RestoreFromStore
 // silently skipped it and still published a ready filter — reintroducing the
-// false negative the strict-recovery work is meant to close. Restore must now
-// fail closed.
-func TestFilterSet_EN1527_RestoreRejectsOrphanAttrCode(t *testing.T) {
+// false negative the strict-recovery work is meant to close. Classification
+// must now fail closed on genuine corruption.
+func TestFilterSet_EN1527_ClassifyRejectsUnknownAttrCode(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
 	fs := NewFilterSet(bloomCfg(), meter) // only Volumes enabled
 	store := newBloomTestStore(t)
 
-	// A block persisted for Metadata, which bloomCfg() leaves disabled: no
-	// enabled filter's sub-range covers it.
+	// 0x7F is not a registered SubAttr* bloom type: no filter, enabled or not,
+	// ever writes it — genuine corruption.
+	writeBloomRow(t, store, 0x7F, 0)
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	_, err = fs.ClassifyPersistedNamespace(context.Background(), handle)
+	require.Error(t, err, "classification must fail on a persisted bloom row with an unknown attribute-type byte")
+	require.Contains(t, err.Error(), "unknown attribute-type byte")
+}
+
+// TestFilterSet_EN1527_ClassifyReportsConfigDrift pins the config-drift path:
+// a persisted row for a KNOWN attribute type that is disabled in the current
+// config is not corruption. Classification must report configDrift=true (so the
+// caller takes the rebuild path) rather than aborting — otherwise a node
+// restarted with CLI settings that disable a previously-enabled attribute could
+// never boot far enough to propose the reconciling config update.
+func TestFilterSet_EN1527_ClassifyReportsConfigDrift(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	fs := NewFilterSet(bloomCfg(), meter) // only Volumes enabled
+	store := newBloomTestStore(t)
+
+	// Metadata is a known bloom type but bloomCfg() leaves it disabled.
 	writeBloomRow(t, store, dal.SubAttrMetadata, 0)
 
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	err = fs.RestoreFromStore(context.Background(), handle)
-	require.Error(t, err, "restore must fail on a persisted bloom row for a disabled/unknown attribute")
-	require.Contains(t, err.Error(), "no enabled filter")
+	configDrift, err := fs.ClassifyPersistedNamespace(context.Background(), handle)
+	require.NoError(t, err, "a known-but-disabled attribute is config drift, not corruption")
+	require.True(t, configDrift, "classification must flag config drift for a known-but-disabled attribute")
 }
 
-// TestFilterSet_EN1527_RestoreRejectsShortBloomRow pins that a row too short to
-// carry an attribute-type byte (offset 2) is rejected rather than silently
-// ignored.
-func TestFilterSet_EN1527_RestoreRejectsShortBloomRow(t *testing.T) {
+// TestFilterSet_EN1527_ClassifyRejectsShortBloomRow pins that a row too short to
+// carry an attribute-type byte (offset 2) is rejected as corruption rather than
+// silently ignored.
+func TestFilterSet_EN1527_ClassifyRejectsShortBloomRow(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
@@ -88,14 +113,15 @@ func TestFilterSet_EN1527_RestoreRejectsShortBloomRow(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	err = fs.RestoreFromStore(context.Background(), handle)
-	require.Error(t, err, "restore must fail on a persisted bloom row too short to carry an attribute-type byte")
+	_, err = fs.ClassifyPersistedNamespace(context.Background(), handle)
+	require.Error(t, err, "classification must fail on a persisted bloom row too short to carry an attribute-type byte")
 	require.Contains(t, err.Error(), "too short")
 }
 
-// TestFilterSet_EN1527_RestoreAcceptsEnabledAttrRows confirms the validation is
-// not over-eager: a well-formed row for an enabled attribute restores cleanly.
-func TestFilterSet_EN1527_RestoreAcceptsEnabledAttrRows(t *testing.T) {
+// TestFilterSet_EN1527_ClassifyAcceptsEnabledAttrRows confirms the
+// classification is not over-eager: a well-formed row for an enabled attribute
+// is neither corruption nor drift.
+func TestFilterSet_EN1527_ClassifyAcceptsEnabledAttrRows(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
@@ -107,6 +133,10 @@ func TestFilterSet_EN1527_RestoreAcceptsEnabledAttrRows(t *testing.T) {
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
+
+	configDrift, err := fs.ClassifyPersistedNamespace(context.Background(), handle)
+	require.NoError(t, err)
+	require.False(t, configDrift, "an enabled-attribute row is neither corruption nor drift")
 
 	require.NoError(t, fs.RestoreFromStore(context.Background(), handle))
 }

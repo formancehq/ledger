@@ -707,13 +707,44 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 		return fmt.Errorf("probing persisted bloom blocks: %w", err)
 	}
 
-	if hasBlocks {
-		return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
+	if !hasBlocks {
+		s.StartAsyncBloomPopulate(store, "first boot: no persisted bloom blocks")
+
+		return nil
 	}
 
-	s.StartAsyncBloomPopulate(store, "first boot: no persisted bloom blocks")
+	// Blocks exist: classify the whole namespace before choosing the restore
+	// path. RestoreFromStore only visits enabled per-attribute sub-ranges, so a
+	// row outside every enabled range would otherwise be silently skipped while
+	// we still publish a ready filter (EN-1527).
+	handle, err := store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("creating read handle to classify persisted bloom blocks: %w", err)
+	}
 
-	return nil
+	configDrift, classifyErr := s.bloomFilters.ClassifyPersistedNamespace(context.Background(), handle)
+	_ = handle.Close()
+
+	if classifyErr != nil {
+		// Genuine corruption (unknown attribute-type byte or unparseable row).
+		// Fail closed so readiness stays false rather than restoring a partial
+		// filter (EN-1527).
+		return fmt.Errorf("classifying persisted bloom blocks: %w", classifyErr)
+	}
+
+	if configDrift {
+		// The node booted with CLI bloom settings that disable an attribute the
+		// persisted config had enabled. Those old-but-valid blocks belong to no
+		// enabled filter, so the persisted set is stale for the current config.
+		// Take the full-rebuild path (async attribute scan) instead of trusting
+		// the persisted blocks; do NOT abort, or the node could never boot far
+		// enough to propose the config update that purges and rebuilds them.
+		s.StartAsyncBloomPopulate(store, "bloom config drift on boot: persisted blocks stale for current config")
+
+		return nil
+	}
+
+	return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
 }
 
 // StartAsyncBloomPopulate interrupts any running bloom task and launches a
