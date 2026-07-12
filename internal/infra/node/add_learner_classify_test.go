@@ -6,12 +6,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestClassifyExistingLearner locks in the EN-1436 fail-fast decision: when the
-// leader already tracks the joining nodeID, a non-zero Progress.Match must fail
-// fast with stale-progress REGARDLESS of whether the stored instance_id matches
-// the incoming one. The fresh-identity (WAL-wiped) rejoin is the case that
-// previously slipped through as a benign ConfChangeUpdateNode refresh and
+// TestClassifyExistingLearner locks in the EN-1436 fail-fast decision.
+//
+// The stale-progress fail-fast is scoped to the JoinAsLearner boot path — the
+// only caller presenting a real 16-byte instance_id. On that path a non-zero
+// Progress.Match must fail fast REGARDLESS of whether the stored instance_id
+// matches the incoming one: the fresh-identity (WAL-wiped) rejoin is the case
+// that previously slipped through as a benign ConfChangeUpdateNode refresh and
 // re-introduced the "tocommit out of range" crash loop.
+//
+// The admin AddLearner API path passes no 16-byte instance_id; a Match > 0
+// there is a healthy already-active member and must keep the pre-EN-1436
+// idempotent AlreadyExists result, NOT stale-progress.
 func TestClassifyExistingLearner(t *testing.T) {
 	t.Parallel()
 
@@ -23,7 +29,7 @@ func TestClassifyExistingLearner(t *testing.T) {
 
 		require.Equal(t, existingLearnerStaleProgress,
 			classifyExistingLearner(5, old, true, old),
-			"Match>0 must fail fast even when the identity is unchanged")
+			"Match>0 on the boot path must fail fast even when the identity is unchanged")
 	})
 
 	t.Run("stale progress, fresh identity after WAL wipe", func(t *testing.T) {
@@ -39,7 +45,23 @@ func TestClassifyExistingLearner(t *testing.T) {
 
 		require.Equal(t, existingLearnerStaleProgress,
 			classifyExistingLearner(5, nil, false, fresh),
-			"Match>0 outranks the missing-row refresh path")
+			"Match>0 on the boot path outranks the missing-row refresh path")
+	})
+
+	t.Run("admin retry, active member, nil incoming id is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, existingLearnerAlreadyInCluster,
+			classifyExistingLearner(5, old, true, nil),
+			"admin AddLearner (nil id) for a Match>0 member is a healthy retry, not stale-progress")
+	})
+
+	t.Run("admin retry, active member, non-16-byte incoming id is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, existingLearnerAlreadyInCluster,
+			classifyExistingLearner(5, old, true, []byte("short")),
+			"a non-boot caller (no 16-byte id) with Match>0 must not trip the stale-progress fail-fast")
 	})
 
 	t.Run("no replicated state, matching identity is idempotent", func(t *testing.T) {

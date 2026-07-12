@@ -179,9 +179,57 @@ panels.row('Admission', 169, [
     'Proposal Guard Rebuild Rate & Ratio',
     { h: 8, w: 12, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.command.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.proposal_guard.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
       { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuilds/s - Node {{service.node_id}}' },
     ], unit='percentunit',
-    description='Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.',
+    description=|||
+      Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.
+
+      The denominator is admission.proposal_guard.duration_count — the number of times the proposal guard was actually acquired (one per proposal attempt that reached builder.Run). It is NOT admission.command.duration_count, which also counts commands rejected before proposal (bad signature, maintenance mode, validation/preload errors); using that would dilute the ratio with attempts the guard never saw.
+    |||,
+  ),
+
+  panels.timeseries(
+    'Resolve Batch Duration (p50, p95, p99)',
+    { h: 8, w: 12, x: 12, y: 116 },
+    [
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.resolve_batch.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p50 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.resolve_batch.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p95 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.resolve_batch.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p99 - Node {{service.node_id}}' },
+    ], unit='µs',
+    description='Time spent verifying the batch signature and unmarshaling the trusted ApplyBatch. First phase of the command lifecycle decomposed by admission.command.duration.',
+  ),
+
+  panels.timeseries(
+    'Orders Preparation Duration (p50, p95, p99)',
+    { h: 8, w: 12, x: 0, y: 124 },
+    [
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.orders_preparation.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p50 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.orders_preparation.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p95 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.orders_preparation.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p99 - Node {{service.node_id}}' },
+    ], unit='µs',
+    description='Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs). Phase of admission.command.duration.',
+  ),
+
+  panels.timeseries(
+    'Scripts Duration (p50, p95, p99)',
+    { h: 8, w: 12, x: 12, y: 124 },
+    [
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.scripts.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p50 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.scripts.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p95 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.scripts.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p99 - Node {{service.node_id}}' },
+    ], unit='µs',
+    description='Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.',
+  ),
+
+  panels.timeseries(
+    'Response Resolution Duration (p50, p95, p99)',
+    { h: 8, w: 12, x: 0, y: 132 },
+    [
+      { expr: 'histogram_quantile(0.50, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p50 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.95, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p95 - Node {{service.node_id}}' },
+      { expr: 'histogram_quantile(0.99, sum(rate(admission.response_resolution.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le))', legendFormat: 'p99 - Node {{service.node_id}}' },
+    ], unit='µs',
+    description='Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.',
   ),
 ])

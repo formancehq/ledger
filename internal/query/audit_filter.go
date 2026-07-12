@@ -82,6 +82,19 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 			"audit filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
 	}
 
+	// Gate on the single source of truth (the generated per-target validity
+	// table): only condition kinds declared valid on QUERY_TARGET_AUDIT reach a
+	// compiler. This is the same table query.Compile consults for the other
+	// targets, so audit-condition validity is declared alongside them rather
+	// than as an undocumented exception. Concretely it admits audit[...] leaves
+	// and and/or, and rejects not and every non-audit condition — matching the
+	// dispatch below.
+	kind := commonpb.ConditionKindOf(filter)
+	if !commonpb.ConditionValidForTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
+		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
+			"unsupported filter for audit entries: only audit[...] conditions combined with and/or are allowed")
+	}
+
 	switch f := filter.GetFilter().(type) {
 	case *commonpb.QueryFilter_Audit:
 		return compileAuditLeaf(idx, f.Audit)
@@ -90,6 +103,9 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 	case *commonpb.QueryFilter_Or:
 		return compileAuditOr(idx, f.Or.GetFilters(), depth+1)
 	default:
+		// Unreachable: the table gate above admits only Audit/And/Or on the
+		// audit target. Kept as a defensive loud failure (invariant #7) in case
+		// the table and this dispatch ever diverge.
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"unsupported filter for audit entries: only audit[...] conditions combined with and/or are allowed")
 	}
