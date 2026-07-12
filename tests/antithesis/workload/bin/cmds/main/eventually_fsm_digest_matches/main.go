@@ -45,12 +45,18 @@
 //     here to test.
 //
 // Skip cases (do not assert):
-//   - The cluster was bootstrapped with fsm_determinism_enabled=false: every
-//     node returns FAILED_PRECONDITION; we log once and exit. The feature is
-//     off, the oracle is meaningless.
+//   - The cluster was bootstrapped with fsm_determinism_enabled=false on EVERY
+//     node: all peers return FAILED_PRECONDITION; we log once and exit. The
+//     feature is off cluster-wide, the oracle is meaningless.
 //   - Fewer than 2 nodes converge to the target index within
 //     digestConvergeTimeout: not enough peers to compare. assert.Sometimes
 //     records the case so the run lookat picks it up if it never converges.
+//
+// Fail case (assert.Always) beyond the digest comparison itself:
+//   - MIXED fsm_determinism_enabled: some peers report a digest (flag ON) and
+//     others return FAILED_PRECONDITION (flag OFF). The flag is a cluster-wide
+//     immutable setting, so a cluster that answers both ways is misconfigured
+//     — this fails loudly rather than letting the first OFF node mask it.
 package main
 
 import (
@@ -113,8 +119,9 @@ func main() {
 	}
 
 	var (
-		responses       []nodeDigest
-		featureDisabled bool
+		responses      []nodeDigest
+		featureEnabled []string // addrs that returned a digest (feature ON)
+		featureOff     []string // addrs that returned FAILED_PRECONDITION (feature OFF)
 	)
 
 	for _, c := range conns {
@@ -129,11 +136,12 @@ func main() {
 		d, err := c.Cluster.GetFSMDigest(internal.WithStaleConsistency(ctx), req)
 		if err != nil {
 			if status.Code(err) == codes.FailedPrecondition {
-				// fsm_determinism_enabled=false on this cluster — the oracle
-				// is meaningless. Record once and bail.
-				featureDisabled = true
+				// fsm_determinism_enabled=false on THIS node. Record which node
+				// so a mixed configuration (some nodes ON, some OFF) is caught
+				// below instead of the first OFF node masking the whole check.
+				featureOff = append(featureOff, c.Addr)
 
-				break
+				continue
 			}
 
 			if internal.IsTransient(err) {
@@ -153,11 +161,38 @@ func main() {
 			continue
 		}
 
+		featureEnabled = append(featureEnabled, c.Addr)
 		responses = append(responses, nodeDigest{conn: c, digest: d})
 	}
 
-	if featureDisabled {
-		log.Println("composer: fsm_determinism_enabled=false on cluster, oracle disabled")
+	// A mixed configuration — some peers report a digest (flag ON) while others
+	// return FAILED_PRECONDITION (flag OFF) — is exactly the divergent-flag
+	// misconfiguration the digest feature is meant to make impossible. It must
+	// FAIL loudly, not be masked by whichever OFF node the loop hit first.
+	// fsm_determinism_enabled is a cluster-wide immutable setting; a live
+	// cluster that answers both ways is broken.
+	assert.Always(len(featureEnabled) == 0 || len(featureOff) == 0,
+		"fsm_determinism_enabled is uniform across the cluster (no node reports a digest while another reports FAILED_PRECONDITION)",
+		internal.Details{
+			"index":                commitIndex,
+			"nodesWithDigest":      featureEnabled,
+			"nodesFeatureDisabled": featureOff,
+			"totalNodes":           len(conns),
+		})
+
+	if len(featureOff) > 0 && len(featureEnabled) == 0 {
+		// Uniformly disabled: every reachable node returned FAILED_PRECONDITION.
+		// The feature is off cluster-wide, the oracle is meaningless — skip.
+		log.Printf("composer: fsm_determinism_enabled=false on all %d reporting nodes, oracle disabled", len(featureOff))
+
+		return
+	}
+
+	if len(featureOff) > 0 {
+		// Mixed: the assertion above already recorded the failure. Do not
+		// proceed to compare the ON-node digests among themselves — that would
+		// report a spurious "match" and bury the real (mixed-config) fault.
+		log.Printf("composer: MIXED fsm_determinism_enabled: %d node(s) ON, %d node(s) OFF — see assertion", len(featureEnabled), len(featureOff))
 
 		return
 	}
