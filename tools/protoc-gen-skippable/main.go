@@ -502,4 +502,3 @@ func goImportPath(spec string) string {
 	path, _, _ := strings.Cut(spec, ";")
 	return path
 }
-
