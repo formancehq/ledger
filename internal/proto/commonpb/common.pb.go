@@ -11611,11 +11611,23 @@ type PersistedConfig struct {
 	StorageSchemaVersion  uint32                 `protobuf:"varint,4,opt,name=storage_schema_version,json=storageSchemaVersion,proto3" json:"storage_schema_version,omitempty"`
 	// fsm_determinism_enabled opts the cluster into deterministic FSM byte
 	// encoding and the cross-node digest health-check. Set once at first
-	// bootstrap, validated on every subsequent boot. A mismatch is fatal and
-	// CANNOT be bypassed with --unsafe-skip-config-validation: flipping the flag
-	// post-bootstrap would either re-encode existing entries non-deterministically
+	// bootstrap and validated on every subsequent boot: a mismatch against the
+	// persisted value is fatal and CANNOT be bypassed with
+	// --unsafe-skip-config-validation, because flipping the flag over existing
+	// data would either re-encode existing entries non-deterministically
 	// (ON→OFF) or compare new deterministic entries against pre-existing
 	// non-deterministic ones (OFF→ON), tripping the very digest it powers.
+	//
+	// This immutability holds only within a single cluster's data lifetime. It
+	// is NOT preserved across a PORTABLE backup/restore: attributes.PrepareForBackup
+	// deletes the whole PersistedConfig record (Global/SubGlobPersistedConfig) so
+	// the backup is portable to any cluster, and the restoring node re-persists
+	// its OWN config — including its own fsm_determinism_enabled — on first boot.
+	// The invariant that protects existing data is the attribute-encoding
+	// consistency: a portable restore re-baselines the whole store (lastAppliedIndex
+	// reset, bloom/peers dropped), so the restoring node's flag governs the fresh
+	// baseline rather than being pinned to the source cluster's value.
+	//
 	// When ON, every persisted byte uses MarshalDeterministicVT and a rolling
 	// XXH3-128 digest is maintained under SubGlobFSMDigest so peers can detect
 	// FSM divergence. The audit hash chain remains the only source of
