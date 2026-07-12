@@ -22,7 +22,7 @@ func TestHandleListTransactions_Success(t *testing.T) {
 	backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
 			return cursor.NewSliceCursor([]*commonpb.Transaction{
-				{Id: 1},
+				{Id: 1, RevertedByTransaction: 7},
 				{Id: 2},
 			}), nil
 		}).AnyTimes()
@@ -36,6 +36,14 @@ func TestHandleListTransactions_Success(t *testing.T) {
 	srv.handleListTransactions(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+
+	// Transactions must serialize in protobuf-JSON camelCase (revertedByTransaction)
+	// inside the {data:[...]} envelope — not the snake_case Go struct tags
+	// (reverted_by_transaction) a plain sonic marshal would emit. Parity with
+	// the sibling proto-returning handlers (see writeProtoListOK).
+	body := w.Body.String()
+	require.Contains(t, body, `"revertedByTransaction":"7"`)
+	require.NotContains(t, body, "reverted_by_transaction")
 }
 
 func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {
