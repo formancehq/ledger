@@ -673,10 +673,14 @@ message LedgerLogPayload {
 // OrderSkippedLog records an order that the FSM rejected with a business
 // error whose reason was listed in the order's `skippable_reasons` whitelist.
 // No state mutation occurred for the skipped order, but the rest of the
-// proposal applied normally. The `reason` is hash-chain-bound via the
-// AuditItem.serialized_order + LedgerLog projection; the checker re-derives
-// the projection at the applied index and confirms the matching error would
-// have been produced (defense against forged skip entries).
+// proposal applied normally. The `reason` here is a PROJECTION and is NOT
+// hash-chain-bound — only the AuditItem.serialized_order (the submitted
+// order, including its allowed skippable_reasons whitelist) is bound. Because
+// the projected reason can be tampered with, the checker does not trust it:
+// it replays the serialized order against the audit-derived state at the
+// applied index, re-derives the failure the FSM must have produced, and
+// confirms that reason both matches the projection and was whitelisted
+// (defense against forged skip entries).
 message OrderSkippedLog {
   ErrorReason reason = 1;
   // Free-form context populated by the producing branch. Conventional keys

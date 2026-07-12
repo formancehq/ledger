@@ -2495,16 +2495,22 @@ components:
         data:
           description: |
             Operation result data. Shape depends on the originating action:
-              - `CREATE_TRANSACTION` success: the created Transaction object.
+              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
+                created Transaction object.
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
-                `OrderSkippedResponse`-shaped object with `skipped: true`,
-                `reason`, and reason-specific `context`. Emitted for every
-                skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
+                `OrderSkippedResponse` with `skipped: true`, `reason`, and
+                reason-specific `context`. Emitted for every skippable
+                action — CREATE_TRANSACTION, REVERT_TRANSACTION,
                 DELETE_METADATA, ADD_ACCOUNT_TYPE, REMOVE_ACCOUNT_TYPE — not
                 just create.
               - Other successful non-create actions: `null`.
+            Branch on `OrderSkippedResponse.skipped` to distinguish a skip
+            from a successful transaction.
           nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:
       type: object
