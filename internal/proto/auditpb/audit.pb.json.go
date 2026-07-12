@@ -56,18 +56,26 @@ func protoFieldJSON(msg proto.Message) (json.RawValue, error) {
 }
 
 // MarshalJSON implements json.Marshaler for AuditEntry.
+//
+// Scalar identity/counter fields (sequence, proposalId, orderCount,
+// hashVersion) are serialized unconditionally: they are present on every
+// entry and their zero value is a real value (e.g. the first audit entry can
+// carry sequence 0), so omitempty would silently drop a documented field and
+// break generated clients. omitempty is kept only for fields that are
+// legitimately absent — the success/failure oneof, timestamp, the optional
+// submessages, and the empty-on-list slices.
 func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		Sequence       uint64              `json:"sequence,omitempty"`
+		Sequence       uint64              `json:"sequence"`
 		Timestamp      *commonpb.Timestamp `json:"timestamp,omitempty"`
-		ProposalId     uint64              `json:"proposalId,omitempty"`
+		ProposalId     uint64              `json:"proposalId"`
 		Success        *AuditSuccess       `json:"success,omitempty"`
 		Failure        *AuditFailure       `json:"failure,omitempty"`
-		OrderCount     uint32              `json:"orderCount,omitempty"`
+		OrderCount     uint32              `json:"orderCount"`
 		Items          []*AuditItem        `json:"items,omitempty"`
 		Ledgers        []string            `json:"ledgers,omitempty"`
 		Hash           string              `json:"hash,omitempty"`
-		HashVersion    uint32              `json:"hashVersion,omitempty"`
+		HashVersion    uint32              `json:"hashVersion"`
 		CallerSnapshot json.RawValue       `json:"callerSnapshot,omitempty"`
 		Idempotency    json.RawValue       `json:"idempotency,omitempty"`
 		Signature      json.RawValue       `json:"signature,omitempty"`
@@ -107,11 +115,17 @@ func (x *AuditEntry) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalJSON implements json.Marshaler for AuditItem.
+//
+// orderIndex and logSequence carry meaning at zero, so they are serialized
+// unconditionally: orderIndex is zero-based (the first item of every entry is
+// 0) and logSequence is documented as the 0 sentinel for an idempotent replay
+// or a failed proposal. omitempty would drop these, making it impossible for a
+// client to locate the first order or interpret the no-log sentinel.
 func (x *AuditItem) MarshalJSON() ([]byte, error) {
 	type Aux struct {
-		OrderIndex      uint32 `json:"orderIndex,omitempty"`
+		OrderIndex      uint32 `json:"orderIndex"`
 		SerializedOrder string `json:"serializedOrder,omitempty"`
-		LogSequence     uint64 `json:"logSequence,omitempty"`
+		LogSequence     uint64 `json:"logSequence"`
 	}
 
 	aux := Aux{
@@ -127,10 +141,15 @@ func (x *AuditItem) MarshalJSON() ([]byte, error) {
 }
 
 // MarshalJSON implements json.Marshaler for AuditSuccess.
+//
+// The [min, max] range is serialized unconditionally: the proto documents that
+// a success producing no logs (all orders idempotent) carries min == max == 0,
+// which is a real, distinguishable outcome. omitempty would erase it and make
+// an all-idempotent success indistinguishable from one whose range was dropped.
 func (x *AuditSuccess) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		MinLogSequence uint64 `json:"minLogSequence,omitempty"`
-		MaxLogSequence uint64 `json:"maxLogSequence,omitempty"`
+		MinLogSequence uint64 `json:"minLogSequence"`
+		MaxLogSequence uint64 `json:"maxLogSequence"`
 	}{
 		MinLogSequence: x.GetMinLogSequence(),
 		MaxLogSequence: x.GetMaxLogSequence(),

@@ -65,6 +65,30 @@ func writeCreated(w http.ResponseWriter, data any) {
 	})
 }
 
+// writeOKChecked writes a 200 OK response like writeOK, but marshals the body
+// to a buffer BEFORE writing any header, so a marshal failure is routed through
+// handleError (a clean 500 with no partial body) instead of being appended to
+// an already-committed 200 stream.
+//
+// This matters for the audit surface: audit DTOs render chain-bound submessages
+// (callerSnapshot, idempotency, signature) via protojson, whose MarshalJSON can
+// genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
+// a valid-looking truncated record (invariant #7). The other list/get handlers
+// keep the streaming writeOK: their struct marshaling cannot fail, so buffering
+// would only add an allocation.
+func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
+	body, err := json.Marshal(BaseResponse[any]{Data: data})
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
 // writeBadRequest writes a 400 Bad Request response.
 // If the underlying error is a MaxBytesError (body too large), it writes
 // 413 Request Entity Too Large instead.

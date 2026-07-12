@@ -61,6 +61,38 @@ func TestAuditEntry_MarshalJSON_CamelCase(t *testing.T) {
 	}
 }
 
+// TestAuditEntry_MarshalJSON_PreservesMeaningfulZeros guards against omitempty
+// dropping numeric fields whose zero value is a real, documented state: the
+// first audit entry (sequence 0), the first order of a proposal (orderIndex 0),
+// an idempotent-replay/failed order (logSequence 0), and an all-idempotent
+// success (minLogSequence == maxLogSequence == 0). A generated client iterating
+// the documented list schema must see these keys, not have them silently absent.
+func TestAuditEntry_MarshalJSON_PreservesMeaningfulZeros(t *testing.T) {
+	t.Parallel()
+
+	entry := &AuditEntry{
+		Sequence:    0,
+		ProposalId:  0,
+		OrderCount:  0,
+		HashVersion: 0,
+		Outcome:     &AuditEntry_Success{Success: &AuditSuccess{MinLogSequence: 0, MaxLogSequence: 0}},
+		Items:       []*AuditItem{{OrderIndex: 0, LogSequence: 0}},
+	}
+
+	data, err := entry.MarshalJSON()
+	require.NoError(t, err)
+
+	out := string(data)
+	require.Contains(t, out, `"sequence":0`)
+	require.Contains(t, out, `"proposalId":0`)
+	require.Contains(t, out, `"orderCount":0`)
+	require.Contains(t, out, `"hashVersion":0`)
+	require.Contains(t, out, `"minLogSequence":0`)
+	require.Contains(t, out, `"maxLogSequence":0`)
+	require.Contains(t, out, `"orderIndex":0`)
+	require.Contains(t, out, `"logSequence":0`)
+}
+
 // TestAuditEntry_MarshalJSON_PropagatesSubmessageError asserts that a protojson
 // failure on a chain-bound submessage (here callerSnapshot, via an invalid-UTF8
 // scope string) surfaces as an error rather than silently dropping the field —

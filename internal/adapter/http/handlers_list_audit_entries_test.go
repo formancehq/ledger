@@ -105,6 +105,37 @@ func TestHandleListAuditEntries_Reverse(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+// TestHandleListAuditEntries_MarshalFailureIsClean500 asserts that a failure
+// while marshaling an audit DTO (here a chain-bound callerSnapshot with an
+// invalid-UTF8 scope, which protojson rejects) produces a clean 500 with an
+// error body — NOT a 200 with a truncated body. writeOKChecked buffers before
+// writing any header, so the marshal error is routed through handleError.
+func TestHandleListAuditEntries_MarshalFailureIsClean500(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
+				{
+					Sequence:       1,
+					CallerSnapshot: &commonpb.CallerSnapshot{Scopes: []string{"\xff\xfe"}},
+				},
+			}), nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/_/audit-entries", nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	// The body is the error envelope, never a partial success payload.
+	require.Contains(t, w.Body.String(), `"errorCode":"INTERNAL_ERROR"`)
+	require.NotContains(t, w.Body.String(), `"data"`)
+}
+
 func TestHandleListAuditEntries_InvalidAfter(t *testing.T) {
 	t.Parallel()
 

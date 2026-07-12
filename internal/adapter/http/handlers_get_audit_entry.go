@@ -27,7 +27,10 @@ func (s *Server) handleGetAuditEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, entry)
+	// writeOKChecked (not writeOK): audit DTOs marshal chain-bound submessages
+	// via protojson, which can fail; buffering before the header keeps a marshal
+	// failure a clean 500 instead of a truncated 200 body.
+	writeOKChecked(w, r, entry)
 }
 
 // requireAuditSequence extracts and validates the {sequence} URL parameter.
