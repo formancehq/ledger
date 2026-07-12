@@ -29,5 +29,5 @@ func (s *Server) handleListLedgerIndexes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeOK(w, entries)
+	writeProtoListOK(w, entries)
 }

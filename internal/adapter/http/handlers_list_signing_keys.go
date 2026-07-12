@@ -19,5 +19,5 @@ func (s *Server) handleListSigningKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, keys)
+	writeProtoListOK(w, keys)
 }

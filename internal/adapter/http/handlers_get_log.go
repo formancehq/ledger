@@ -27,5 +27,5 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, log)
+	writeProtoOK(w, log)
 }

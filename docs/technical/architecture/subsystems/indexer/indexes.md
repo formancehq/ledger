@@ -129,7 +129,7 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 | Layer | Entry point |
 |-------|-------------|
 | gRPC | `BucketService.InspectIndex` (and `GetIndexStatus` / `GetIndexEntryStatus` / `GetIndex` / `ListIndexes` for the registry + version-state view). |
-| HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Cluster-wide reads live under `/v3/indexes/…`. |
+| HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling per-ledger routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Bucket-wide / cluster-wide reads live under the reserved system segment `/v3/_/indexes/…`: `GET /v3/_/indexes` (list, `?scope=all\|bucket`), `GET /v3/_/indexes/status` (aggregated status), `GET /v3/_/indexes/{canonicalId}` (single bucket-scoped entry), `GET /v3/_/indexes/{canonicalId}/status`. All responses serialize the protobuf message in protobuf-JSON camelCase, wrapped in the `{data:…}` envelope. |
 | CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
 The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.

@@ -18,5 +18,5 @@ func (s *Server) handleListChapters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, chapters)
+	writeProtoListOK(w, chapters)
 }

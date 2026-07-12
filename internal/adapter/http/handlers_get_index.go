@@ -37,5 +37,5 @@ func (s *Server) handleGetIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, idx)
+	writeProtoOK(w, idx)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,15 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "ledger1", capturedLedger)
+
+	// The body must serialize the protobuf message in protobuf-JSON camelCase
+	// (lastIndexedSequence), wrapped in the {data:...} envelope — NOT the
+	// snake_case Go struct tags (last_indexed_sequence) that a plain sonic
+	// marshal would leak. See writeProtoOK.
+	body := w.Body.String()
+	require.Contains(t, body, `"lastIndexedSequence":"42"`)
+	require.NotContains(t, body, "last_indexed_sequence")
+	require.True(t, strings.HasPrefix(strings.TrimSpace(body), `{"data":`), "response must be wrapped in the data envelope, got: %s", body)
 }
 
 func TestHandleGetIndexStatus_NoLedgerFilter(t *testing.T) {

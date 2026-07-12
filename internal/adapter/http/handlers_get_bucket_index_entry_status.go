@@ -31,5 +31,5 @@ func (s *Server) handleGetBucketIndexEntryStatus(w http.ResponseWriter, r *http.
 		return
 	}
 
-	writeOK(w, entry)
+	writeProtoOK(w, entry)
 }
