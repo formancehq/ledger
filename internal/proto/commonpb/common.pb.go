@@ -10029,8 +10029,14 @@ type isQueryFilter_Filter interface {
 
 type QueryFilter_Field struct {
 	// Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
-	// valid on every target; per-target index/schema availability is enforced
-	// separately by the compiler.
+	// valid on ACCOUNTS and TRANSACTIONS, which have a populated metadata index.
+	// LOGS is deliberately excluded: there is no log-metadata index — the index
+	// builder never populates the NamespaceLog metadata keyspace that
+	// compileFieldCondition scans — so a metadata filter on LOGS would return
+	// empty or error at execute time. Advertising the capability without an
+	// index behind it is a lying contract, so it is rejected up front at
+	// admission/validation instead. Building a real log-metadata index is a
+	// separate feature (out of scope for EN-1503, tracked separately).
 	Field *FieldCondition `protobuf:"bytes,1,opt,name=field,proto3,oneof"`
 }
 
@@ -13168,9 +13174,9 @@ const file_common_proto_rawDesc = "" +
 	"\x15RemovedAccountTypeLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"k\n" +
 	" UpdatedDefaultEnforcementModeLog\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xba\x06\n" +
-	"\vQueryFilter\x127\n" +
-	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\aڼ\x18\x03\x00\x01\x02H\x00R\x05field\x128\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xb9\x06\n" +
+	"\vQueryFilter\x126\n" +
+	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\x06ڼ\x18\x02\x00\x01H\x00R\x05field\x128\n" +
 	"\aaddress\x18\x02 \x01(\v2\x14.common.AddressMatchB\x06ڼ\x18\x02\x00\x01H\x00R\aaddress\x12/\n" +
 	"\x03and\x18\x03 \x01(\v2\x11.common.AndFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x03and\x12,\n" +
 	"\x02or\x18\x04 \x01(\v2\x10.common.OrFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x02or\x12.\n" +

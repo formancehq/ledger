@@ -90,6 +90,18 @@ func TestValidateFilterForTarget(t *testing.T) {
 			wantErr: "logs",
 		},
 		{
+			name:    "metadata rejected on logs (no log-metadata index)",
+			raw:     `{"$match":{"metadata[k]":"v"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "logs",
+		},
+		{
+			name:    "metadata $exists rejected on logs (no log-metadata index)",
+			raw:     `{"$exists":{"metadata":"k"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "logs",
+		},
+		{
 			name:    "invalid condition nested in $and is rejected",
 			raw:     `{"$and":[{"$exists":{"metadata":"x"}},{"$gt":{"logId":"5"}}]}`,
 			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,

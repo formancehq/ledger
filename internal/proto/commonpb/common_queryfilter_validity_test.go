@@ -137,7 +137,7 @@ func TestConditionValidityMatchesExpectedMatrix(t *testing.T) {
 
 	// accounts / transactions / logs / audit
 	want := []row{
-		{ConditionKindField, true, true, true, false},             // metadata: accounts/tx/logs (per-target index/schema checked separately)
+		{ConditionKindField, true, true, false, false},            // metadata: accounts/tx only — no log-metadata index exists, so NOT on LOGS
 		{ConditionKindAddress, true, true, false, false},          // no account→log translation → not on LOGS
 		{ConditionKindAnd, true, true, true, true},                // and: every compiler, incl. audit
 		{ConditionKindOr, true, true, true, true},                 // or:  every compiler, incl. audit
