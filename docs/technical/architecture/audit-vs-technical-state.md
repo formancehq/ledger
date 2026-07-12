@@ -20,7 +20,7 @@ record, or a read-side projection:
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
-| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (dropped on every backup/restore and rebuilt from a full attribute scan, see `internal/infra/attributes/prepare.go`), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
+| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt only on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative, or persisted bloom blocks reloaded on restart — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
 
 The boundary is about impact, not package location. A value under a technical
 keyspace can become business-impacting if future code starts using it to decide
@@ -28,17 +28,29 @@ whether a business command is accepted or which business data is returned.
 
 Invariant #8 ([AGENTS.md](../../../AGENTS.md)) is the floor: every non-audit
 dataset persisted in the main Pebble store is a projection that the checker must
-verify, unless it is genuinely discarded and rebuilt by a lifecycle path (bloom
-filters) or lives in a separate rebuildable side-store outside the checker's
-scope. Raft replication is **not** a substitute for checker coverage: it only
-guarantees that every replica applies the *same logical proposal* and reaches the
-*same logical state* (it does not even guarantee byte-identical serialization —
-see the note in "Readstore and Indexes" on non-deterministic map marshaling). So
-a value that is corrupted or tampered *before* it is proposed takes effect on
-every node identically, and no cross-node comparison — logical or byte-wise — can
-catch it. Where the sections below describe a persisted main-store projection that
-the checker does not yet verify, that is a tracked integrity gap, not an approved
-exemption.
+verify, unless it is genuinely discarded and rebuilt by a lifecycle path or lives
+in a separate rebuildable side-store outside the checker's scope. "Genuinely
+discarded and rebuilt" is narrow: bloom filters qualify **only** on the
+backup/restore path, where `internal/infra/attributes/prepare.go` deletes the
+persisted bloom blocks so a subsequent restore rebuilds them from a full
+attribute scan. On the normal restart / follower-sync path bloom blocks are
+**not** discarded — `CacheSnapshotter.RestoreFromStore`
+(`internal/infra/state/cache_snapshotter.go`) loads the persisted bloom blocks
+from Pebble via `restoreBloomFilters`, and the full attribute scan
+(`StartAsyncBloomPopulate`) runs only on first boot when no persisted blocks
+exist. So the persisted bloom blocks are a durably trusted projection between
+backups, and the discard-and-rebuild control does not cover a block corrupted or
+tampered while it sits on disk. Raft replication is **not** a substitute for
+checker coverage: it only guarantees that every replica applies the *same logical
+proposal* and reaches the *same logical state* (it does not even guarantee
+byte-identical serialization — see the note in "Readstore and Indexes" on
+non-deterministic map marshaling). So a value that is corrupted or tampered
+*before* it is proposed takes effect on every node identically, and no cross-node
+comparison — logical or byte-wise — can catch it. Where the sections below
+describe a persisted main-store projection that the checker does not yet verify
+(the mirror cursor, the readstore inverted-index contents, prepared queries, and
+persisted bloom blocks on the restart path), that is a tracked integrity gap, not
+an approved exemption.
 
 ## TechnicalUpdate Gate
 
@@ -119,9 +131,12 @@ enforce the equality before the stored cursor can be trusted.
 ## Readstore and Indexes
 
 The index **registry** is business-visible and is already verified by the
-checker: `compareIndexes` re-derives presence and identity from audited
-create/drop/delete logs. It deliberately verifies only registry presence and
-identity — **not** the contents of the readstore inverted index.
+checker: `compareIndexes` re-derives presence and identity from the audited
+`CreateIndex`, `DropIndex`, `RemovedMetadataFieldType` (metadata-field-type
+removal can cascade-drop an attached index), and `DeleteLedger` (purges every
+`SubAttrIndex` entry scoped to the ledger) logs. It deliberately verifies only
+registry presence and identity — **not** the contents of the readstore inverted
+index.
 
 The readstore inverted index is rebuildable in principle, but it is **already
 authoritative for business-visible query results today** — this is a current
@@ -181,13 +196,21 @@ other cache attributes, and they shape which business data an API caller gets
 back. They are created through an audited order (`CreatePreparedQuery`), so the
 audit source of truth exists.
 
-The stored projection is **not yet verified by the checker**: there is no
-`compare*` pass for prepared queries in `internal/application/check`. Until such
-a pass re-derives the expected prepared-query set from the audited create/update/
-delete logs and compares it to what is stored, treat prepared-query integrity as
-a known gap rather than a proven guarantee. When a prepared-query projection
-becomes authoritative for a business-visible response, add the missing checker
-pass before relying on it.
+The stored projection is **already authoritative for business-visible responses
+today** — this is a current integrity gap, not a future transition.
+`ExecutePreparedQuery` reads the stored definition via `ReadPreparedQuery`
+(`internal/query/prepared_query.go`) straight from Pebble
+(`internal/query/executor.go`) and compiles that stored filter to produce the
+rows an API caller gets back. A tampered `SubAttrPreparedQuery` value therefore
+changes query results right now.
+
+The stored projection is **not verified by the checker**: there is no `compare*`
+pass for prepared queries in `internal/application/check`. Because the projection
+is authoritative today, closing this gap requires a checker pass that re-derives
+the expected prepared-query set from the audited create/update/delete logs and
+compares it to what is stored — not a deferred "when it becomes authoritative"
+step. Until that pass exists, treat prepared-query integrity as a tracked gap
+rather than a proven guarantee.
 
 ## Idempotency Eviction
 

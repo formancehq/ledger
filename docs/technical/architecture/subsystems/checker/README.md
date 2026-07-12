@@ -19,15 +19,25 @@ For new persisted state, first classify whether it is business truth, governance
 truth, operational consensus state, or a rebuildable projection using
 [Audit-Bound vs Technical State](../../audit-vs-technical-state.md). Per invariant
 #8, every non-audit dataset persisted in the main Pebble store needs checker
-coverage unless it is genuinely discarded and rebuilt by a lifecycle path (e.g.
-bloom filters) or lives in a separate rebuildable side-store. Raft replication is
-not a substitute: it only guarantees every replica applies the same logical
-proposal (it does not even guarantee byte-identical serialization for map-bearing
-projections — see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)),
-so a value corrupted or tampered before it is proposed takes effect on every node
-and no cross-node comparison can detect it. Persisted projections that are not yet
-covered — the mirror cursor and the readstore inverted-index contents are the
-current examples — are tracked integrity gaps, not approved exemptions.
+coverage unless it is genuinely discarded and rebuilt by a lifecycle path or lives
+in a separate rebuildable side-store. "Genuinely discarded and rebuilt" is narrow:
+bloom filters qualify **only** on the backup/restore path
+(`internal/infra/attributes/prepare.go` deletes the persisted blocks so restore
+rebuilds them from a full attribute scan). On the normal restart / follower-sync
+path bloom blocks are instead *restored from the persisted Pebble blocks*
+(`CacheSnapshotter.RestoreFromStore` / `restoreBloomFilters`; the full scan runs
+only on first boot when no blocks exist), so those blocks are a durably trusted
+projection between backups and are **not** covered by the rebuild control. Raft
+replication is not a substitute either: it only guarantees every replica applies
+the same logical proposal (it does not even guarantee byte-identical serialization
+for map-bearing projections — see
+[Audit-Bound vs Technical State](../../audit-vs-technical-state.md)), so a value
+corrupted or tampered before it is proposed takes effect on every node and no
+cross-node comparison can detect it. Persisted projections that are not yet
+covered — the mirror cursor, the readstore inverted-index contents, prepared
+queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive
+user-visible results and with no `compare*` pass), and persisted bloom blocks on
+the restart path — are tracked integrity gaps, not approved exemptions.
 
 ## Related
 
