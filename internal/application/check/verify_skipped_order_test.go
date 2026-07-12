@@ -1030,6 +1030,125 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
 }
 
+// buildCreateTxWithRefAndAccountMetaItem wraps a CreateTransactionOrder that
+// declares a reference and carries account_metadata into a serialized audit
+// item at the given log sequence.
+func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, account, key string, logSeq uint64) *auditpb.AuditItem {
+	t.Helper()
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Reference: reference,
+								AccountMetadata: map[string]*commonpb.MetadataMap{
+									account: {Values: map[string]*commonpb.MetadataValue{key: commonpb.NewStringValue("v")}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
+}
+
+// TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
+// pins finding checker.go:2205: on an UNANCHORED ledger (no CreateLedger in
+// the live range, no baseline fold) a CreateTransaction whose reference
+// conflict is only provable from a purged chapter has an unprovable skip
+// status — chainBoundCreateTxSkipped returns false because the prior claim
+// is invisible. Its account_metadata must NOT be seeded as present, otherwise
+// a later legitimate METADATA_NOT_FOUND skip on that key is false-positived
+// as INVALID_SKIP. The create's application is unproven → the timeline stays
+// silent and the skip stays permissive.
+func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	// Unanchored ledger: no CreateLedger item, no baseline seeding.
+	items := []*auditpb.AuditItem{
+		buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 50),
+	}
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, expectedSkip, chainBound)
+
+	// The account metadata timeline for (alice, role) must be empty: the
+	// create's application could not be proven.
+	require.Empty(t, chainBound.metadata["L"]["alice"]["role"],
+		"unprovable archive-only-conflict create must not seed account metadata as present")
+
+	// A forged METADATA_NOT_FOUND skip at a later seq therefore stays
+	// permissive (the key is not asserted present).
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	require.Empty(t, events, "no false INVALID_SKIP when the create's application is unproven")
+}
+
+// TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata is the
+// positive control: on an ANCHORED ledger (CreateLedger seen live) a
+// CreateTransaction with an unclaimed reference provably applied, so its
+// account_metadata IS seeded and a forged METADATA_NOT_FOUND on that key is
+// correctly rejected.
+func TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata(t *testing.T) {
+	t.Parallel()
+
+	createLedgerOrder := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger:  "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+			},
+		},
+	}
+	clBody, err := createLedgerOrder.MarshalVT()
+	require.NoError(t, err)
+
+	items := []*auditpb.AuditItem{
+		{SerializedOrder: clBody, LogSequence: 10},
+		buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 50),
+	}
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, expectedSkip, chainBound)
+
+	require.NotEmpty(t, chainBound.metadata["L"]["alice"]["role"],
+		"anchored create with an unclaimed reference provably applied → account metadata seeded")
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "role",
+		},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 60)
+}
+
 // buildMirrorCreatedTxItem wraps a MirrorCreatedTransaction into a serialized
 // audit item at the given log sequence, mirroring the shape
 // collectExpectedSkippable decodes.

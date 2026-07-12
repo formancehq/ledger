@@ -2202,10 +2202,18 @@ func recordChainBoundMutations(
 		// prior presence and false-positive a later legitimate
 		// DeleteMetadata(METADATA_NOT_FOUND) skip on the same key. Both
 		// records are therefore gated on the same skip predicate.
-		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) {
+		if !chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) && !chainBoundCreateTxApplicationUncertain(ledger, ct, logSeq, chainBound) {
 			// account_metadata targets are known independently of the
 			// FSM-allocated tx id, so they don't need the anchored-ledger
-			// gate below — but they DO require the order to have applied.
+			// gate the tx-scoped block below applies — but they DO require
+			// the order to have PROVABLY applied. chainBoundCreateTxSkipped
+			// only proves the negative (skip visible in live/baseline);
+			// chainBoundCreateTxApplicationUncertain rejects the archive-only
+			// case where a prior claim could sit in a purged chapter we
+			// cannot see, so we neither assert nor deny presence there
+			// (finding checker.go:2205 — seeding an unconfirmed create's
+			// account_metadata as present would false-positive a later
+			// legitimate METADATA_NOT_FOUND skip on that key).
 			for account, mm := range ct.GetAccountMetadata() {
 				if account == "" {
 					continue
@@ -2315,6 +2323,61 @@ func chainBoundCreateTxSkipped(
 	}
 
 	return firstSeenSeq < logSeq
+}
+
+// chainBoundCreateTxApplicationUncertain reports whether we CANNOT prove a
+// CreateTransactionOrder actually applied (vs. having been skipped by an
+// earlier TRANSACTION_REFERENCE_CONFLICT). chainBoundCreateTxSkipped only
+// proves the SKIP when the prior claim is visible in the live range or the
+// baseline fold; it returns false both for "provably applied" and for
+// "prior claim lives in a purged chapter we cannot see". This helper
+// isolates that second, indeterminate case so callers do not assert the
+// create's metadata as present when its application is unproven.
+//
+// The case is indeterminate exactly when the order declares a reference, NO
+// claim is visible STRICTLY BEFORE this order's own log sequence (the
+// collectExpectedSkippable caller records the create's own claim at logSeq
+// before this runs, so we compare against logSeq exactly as
+// chainBoundCreateTxSkipped does), AND the ledger is unanchored — its
+// CreateLedger was seen neither live nor in the baseline (ledgerCreationSeen
+// is set by BOTH the live CreateLedger replay and foldBaselineLedgers, and a
+// non-nil baseline also runs foldBaselineReferences, so an anchored ledger's
+// absent earlier claim is authoritative "never claimed before"). For an
+// unanchored ledger a prior claim may sit in a purged chapter, so the create
+// might have been skipped — treat presence as unprovable rather than
+// fabricating it (finding checker.go:2205, mirrors the CONFLICT archive
+// escape in verifySkippedOrder).
+func chainBoundCreateTxApplicationUncertain(
+	ledger string,
+	ct *raftcmdpb.CreateTransactionOrder,
+	logSeq uint64,
+	chainBound *chainBoundState,
+) bool {
+	if ct == nil {
+		return false
+	}
+
+	ref := ct.GetReference()
+	if ref == "" {
+		// No reference → no TRANSACTION_REFERENCE_CONFLICT possible → the
+		// create always applied.
+		return false
+	}
+
+	if firstSeenSeq, claimed := chainBound.references[ledger][ref]; claimed && firstSeenSeq < logSeq {
+		// A strictly-earlier claim is visible (live or baseline):
+		// chainBoundCreateTxSkipped already decided skip vs. apply
+		// authoritatively. (A claim at >= logSeq is this create's own,
+		// recorded by the caller before this check.)
+		return false
+	}
+
+	// No earlier visible claim. Authoritative "never claimed before →
+	// applied" only when the ledger is anchored (full history available);
+	// otherwise a purged-chapter claim could have skipped this create.
+	_, anchored := chainBound.ledgerCreationSeen[ledger]
+
+	return !anchored
 }
 
 // chainBoundRevertSkipped predicts whether a RevertTransactionOrder
