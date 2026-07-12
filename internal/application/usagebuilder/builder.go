@@ -165,16 +165,28 @@ func (b *Builder) boot(ctx context.Context) error {
 	if sampleErr == nil {
 		// Cursor ahead of the audit head means the primary Pebble store
 		// was restored to an earlier checkpoint (or wiped) while the
-		// usagestore was kept. Silently resuming would leave stale
-		// counter / template rows for the rolled-back entries visible
-		// forever. Fail loud instead — the recovery path is
-		// `ledgerctl store rebuild-usage`, which drops the usagestore
-		// and replays from audit sequence 0.
+		// usagestore was kept. The retained counter / template rows now
+		// reflect audit entries that no longer exist, and — critically —
+		// merely failing the boot is not enough: once new activity grows
+		// the audit head back past the stale cursor, `cursor <= pebbleLast`
+		// holds again, the guard stops firing, and every entry in the
+		// rolled-back gap is silently skipped forever (the counters stay
+		// permanently ahead). Rewind in place instead: wipe the projection
+		// and reset the cursor to 0 so catch-up replays the current audit
+		// chain from the start. Same net effect as `ledgerctl store
+		// rebuild-usage`, but self-healing without operator intervention.
 		if cursor > pebbleLast {
-			return fmt.Errorf(
-				"usage cursor (%d) is ahead of the audit head (%d): the primary store appears to have been restored to an earlier checkpoint — run `ledgerctl store rebuild-usage` to rebuild the usage projections from the current audit chain",
-				cursor, pebbleLast,
-			)
+			b.logger.WithFields(map[string]any{
+				"cursor":     cursor,
+				"pebbleLast": pebbleLast,
+			}).Infof("usage cursor is ahead of the audit head — primary store was rolled back; resetting usage projection and rebuilding from audit sequence 0")
+
+			if err := b.usageStore.Reset(); err != nil {
+				return fmt.Errorf("resetting usage store after primary-store rollback: %w", err)
+			}
+
+			cursor = 0
+			b.lastProcessedAuditSeq.Store(0)
 		}
 
 		b.pebbleLastAuditSeq.Store(pebbleLast)

@@ -1,8 +1,6 @@
 package usagestore_test
 
 import (
-	"context"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +15,7 @@ import (
 func newTestStore(t *testing.T) *usagestore.Store {
 	t.Helper()
 
-	s, err := usagestore.New(t.TempDir(), discardLogger{}, usagestore.DefaultConfig())
+	s, err := usagestore.New(t.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = s.Close() })
@@ -134,22 +132,48 @@ func TestStore_DeleteLedgerCascade(t *testing.T) {
 	assert.Equal(t, uint64(5), tu.GetCount())
 }
 
-// discardLogger mirrors readstore's test helper (see index_version_test.go).
-// Not exported so each secondary store test package owns its own.
-type discardLogger struct{}
+// TestStore_Reset guards the primary-store-rollback recovery path: Reset must
+// wipe every counter + template row across all ledgers AND clear the progress
+// cursor so the builder replays from audit sequence 0.
+func TestStore_Reset(t *testing.T) {
+	t.Parallel()
 
-var _ logging.Logger = discardLogger{}
+	s := newTestStore(t)
 
-func (discardLogger) Tracef(string, ...any)                        {}
-func (discardLogger) Debugf(string, ...any)                        {}
-func (discardLogger) Infof(string, ...any)                         {}
-func (discardLogger) Errorf(string, ...any)                        {}
-func (discardLogger) Trace(...any)                                 {}
-func (discardLogger) Debug(...any)                                 {}
-func (discardLogger) Info(...any)                                  {}
-func (discardLogger) Error(...any)                                 {}
-func (l discardLogger) WithFields(map[string]any) logging.Logger   { return l }
-func (l discardLogger) WithField(string, any) logging.Logger       { return l }
-func (l discardLogger) WithContext(context.Context) logging.Logger { return l }
-func (discardLogger) Writer() io.Writer                            { return io.Discard }
-func (discardLogger) Enabled(logging.Level) bool                   { return false }
+	// Seed counters + templates for two ledgers, plus a progress cursor
+	// simulating a projection that had consumed 500 audit entries.
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterVolume, 3))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.PutCounter(batch, "l2", usagestore.CounterPosting, 20))
+	require.NoError(t, s.PutTemplateUsage(batch, "l2", "t2", &commonpb.TemplateUsage{Count: 5}))
+	require.NoError(t, s.WriteProgress(batch, 500))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, s.Reset())
+
+	// Every counter across both ledgers reads 0.
+	for _, ledger := range []string{"l1", "l2"} {
+		for _, counter := range []byte{usagestore.CounterPosting, usagestore.CounterVolume} {
+			v, err := s.GetCounter(ledger, counter)
+			require.NoError(t, err)
+			assert.Equal(t, uint64(0), v, "counter %#x for %q must be wiped by Reset", counter, ledger)
+		}
+	}
+
+	// Every template row is gone.
+	for _, tk := range []struct{ ledger, tpl string }{{"l1", "t1"}, {"l2", "t2"}} {
+		tu, err := s.GetTemplateUsage(tk.ledger, tk.tpl)
+		require.NoError(t, err)
+		assert.Nil(t, tu, "template %q/%q must be wiped by Reset", tk.ledger, tk.tpl)
+	}
+
+	// The cursor is back to 0 so the next boot replays from the start.
+	seq, err := s.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), seq, "Reset must clear the progress cursor")
+
+	// Reset on an already-empty store is a no-op, not an error.
+	require.NoError(t, s.Reset())
+}

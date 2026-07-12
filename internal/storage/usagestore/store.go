@@ -17,15 +17,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
-// Config is the Pebble configuration for the usage store.
-// Reuses the same tunables as the primary store (pebblecfg.Config).
-type Config = pebblecfg.Config
-
 // DefaultConfig returns the default Pebble configuration for the usage store.
+// Reuses the same tunables type as the primary store (pebblecfg.Config).
 // Sized smaller than the read index: the usage store holds O(ledgers × templates)
 // entries plus a handful of per-ledger counters, so it never grows large.
-func DefaultConfig() Config {
-	return Config{
+func DefaultConfig() pebblecfg.Config {
+	return pebblecfg.Config{
 		MemTableSize:                16 << 20, // 16MB
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       4,
@@ -50,7 +47,7 @@ type Store struct {
 }
 
 // New opens or creates a Pebble database at the given directory.
-func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
+func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating usage store directory: %w", err)
 	}
@@ -189,6 +186,43 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
 	return batch.SetBytes(ProgressKey(), buf[:])
+}
+
+// Reset wipes every projection row (all per-template usage records and all
+// per-ledger counters) and clears the persisted progress cursor, so the next
+// boot replays from audit sequence 0. Used when the builder detects that the
+// primary store was rolled back beneath the persisted cursor: the retained
+// rows reflect audit entries that no longer exist, so a clean in-place rebuild
+// is the only way to reconverge without an operator running rebuild-usage.
+//
+// The two ledger-scoped prefixes (PrefixTemplate 0x01, PrefixCounter 0x02) are
+// contiguous, so one DeleteRange over [0x01, 0x03) covers both; the internal
+// progress key ([0xFE][0x01]) is deleted point-wise. A crash mid-reset is
+// safe: the cursor is either still ahead (rollback re-detected next boot) or
+// already gone (replay from 0), so the rows can never survive with a stale
+// non-zero cursor.
+func (s *Store) Reset() error {
+	batch := s.NewBatch()
+
+	if err := batch.DeleteRangeNoSync([]byte{PrefixTemplate}, []byte{PrefixCounter + 1}); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting projection rows during reset: %w", err)
+	}
+
+	if err := batch.DeleteKey(ProgressKey()); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting progress cursor during reset: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("committing usage store reset: %w", err)
+	}
+
+	return nil
 }
 
 // GetTemplateUsage reads the current usage record for (ledger, template).
