@@ -358,9 +358,10 @@ func TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefiniti
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1030,6 +1031,58 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
 }
 
+// TestCollectExpectedSkippable_RemoveAccountTypeEmptyNameFlagsKind pins the
+// checker-side half of finding checker.go:3472: a RemoveAccountType order
+// with an empty name is still an AccountType order. collectExpectedSkippable
+// must set isAccountTypeOrder so verifySkippedOrder discriminates on the
+// action KIND, not on accountTypeName != "" — otherwise a legitimate
+// ACCOUNT_TYPE_NOT_FOUND skip on the (degenerate) empty name is misclassified
+// as "not an AccountType order" → INVALID_SKIP on a valid store.
+func TestCollectExpectedSkippable_RemoveAccountTypeEmptyNameFlagsKind(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						SkippableReasons: []commonpb.ErrorReason{reason},
+						Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+							RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: ""},
+						},
+					},
+				},
+			},
+		},
+	}
+	body, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	items := []*auditpb.AuditItem{{SerializedOrder: body, LogSequence: 7}}
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, expectedSkip, chainBound)
+
+	exp := expectedSkip[7]
+	require.NotNil(t, exp)
+	require.True(t, exp.isAccountTypeOrder,
+		"a RemoveAccountType order — even with an empty name — must be flagged as an AccountType order")
+	require.Empty(t, exp.accountTypeName)
+
+	// The forward verifier must NOT reject this as "not an AccountType order":
+	// the discriminant is the kind, not the non-empty name. (It may still emit
+	// a different verdict from the presence check, but never the
+	// misclassification error.)
+	payload := skippedPayloadWithContext(reason, map[string]string{"name": ""})
+	events := captureEventsState(t, "L", 7, payload, expectedSkip, chainBound, false)
+	for _, e := range events {
+		require.NotContains(t, e.GetError().GetMessage(), "is not an AccountType order",
+			"empty-name RemoveAccountType must not be misclassified as a non-AccountType order")
+	}
+}
+
 // buildCreateTxWithRefAndAccountMetaItem wraps a CreateTransactionOrder that
 // declares a reference and carries account_metadata into a serialized audit
 // item at the given log sequence.
@@ -1690,9 +1743,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *te
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1715,9 +1769,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent(t *testing
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1734,9 +1789,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testi
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1755,9 +1811,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1777,9 +1834,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent(t *testing.T) 
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -1990,9 +2048,10 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 			name:   "account_type_already_exists",
 			reason: commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
 			expected: &expectedSkippableOrder{
-				reasons:         []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
-				ledger:          "audit-L",
-				accountTypeName: "customer",
+				reasons:            []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
+				ledger:             "audit-L",
+				accountTypeName:    "customer",
+				isAccountTypeOrder: true,
 			},
 			context: map[string]string{"name": "customer"},
 			buildBound: func(cb *chainBoundState) {
@@ -2034,9 +2093,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *te
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 

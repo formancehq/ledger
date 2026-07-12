@@ -1953,6 +1953,13 @@ type expectedSkippableOrder struct {
 	// ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND correlator:
 	// account type name from the AddAccountType / RemoveAccountType order.
 	accountTypeName string
+	// isAccountTypeOrder records whether the chain-bound order was an
+	// AddAccountType / RemoveAccountType action, independent of whether the
+	// name is empty. The verifier discriminates on THIS, not on
+	// accountTypeName != "", so a legitimate skip on a degenerate empty name
+	// (e.g. RemoveAccountType with name=="") is not misclassified as "not an
+	// AccountType order" (finding checker.go:3472).
+	isAccountTypeOrder bool
 }
 
 // collectExpectedSkippable populates expectedSkippable and the four
@@ -2071,10 +2078,12 @@ func collectExpectedSkippable(
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
+			exp.isAccountTypeOrder = true
 			exp.accountTypeName = aa.GetAccountType().GetName()
 		}
 
 		if ra := apply.GetRemoveAccountType(); ra != nil {
+			exp.isAccountTypeOrder = true
 			exp.accountTypeName = ra.GetName()
 		}
 
@@ -3469,7 +3478,14 @@ func verifySkippedOrder(
 		//      skip. A tampered log that swaps success → skip fails
 		//      this check because the timeline reflects the true
 		//      chain-bound mutations.
-		if expected.accountTypeName == "" {
+		// Discriminate on the chain-bound action KIND, not on a non-empty
+		// name: an AddAccountType/RemoveAccountType with a degenerate empty
+		// name is still an AccountType order, so keying off accountTypeName
+		// != "" would misclassify its legitimate skip as "not an AccountType
+		// order" (finding checker.go:3472). Note processRemoveAccountType now
+		// rejects an empty name as INVALID_PATTERN (non-skippable), so this
+		// projection should not arise in practice — this is defense in depth.
+		if !expected.isAccountTypeOrder {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records %s skip but the audited order on ledger %q is not an AccountType order", seq, reason, ledger),
@@ -3753,7 +3769,7 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case (slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
-		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.accountTypeName != "":
+		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
 		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
 		mustBePresent := slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)

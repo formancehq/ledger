@@ -275,9 +275,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundInconclusiveWhenArchivedNoBaselin
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -301,9 +302,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundProvenAbsentForLiveLedger(t *test
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -326,9 +328,10 @@ func TestVerifySkippedOrder_AccountTypeNotFoundBaselineFoldedPresenceRejects(t *
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
@@ -356,9 +359,10 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsForgedOnLiveLedgerRejected(t
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 	expected := map[uint64]*expectedSkippableOrder{
 		7: {
-			reasons:         []commonpb.ErrorReason{reason},
-			ledger:          "L",
-			accountTypeName: "customer",
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			accountTypeName:    "customer",
+			isAccountTypeOrder: true,
 		},
 	}
 
