@@ -26,14 +26,24 @@ import (
 //     `audit[outcome] == failure`, `audit[ledger] == main`,
 //     `audit[order_type] in (create_transaction, revert_transaction)`.
 //
-// This mirrors the gRPC BucketService.ListAuditEntries contract (EN-1241): it
-// consumes the same controller path and the same filter representation. The
-// filter uses the shared filterexpr grammar — the same one ledgerctl feeds to
-// --filter — rather than the REST-JSON QueryFilter codec, which deliberately
-// rejects audit conditions (their field names collide with transaction/log
-// conditions in the JSON DSL; see commonpb/query_filter.go). Consistency
-// semantics are unchanged: filtered reads resolve through the async audit index
-// and are not promised to be stronger than the gRPC surface.
+// This exposes the same audit data and filter representation as the gRPC
+// BucketService.ListAuditEntries surface (EN-1241): it consumes the same
+// controller path and the same filter grammar. The filter uses the shared
+// filterexpr grammar — the same one ledgerctl feeds to --filter — rather than
+// the REST-JSON QueryFilter codec, which deliberately rejects audit conditions
+// (their field names collide with transaction/log conditions in the JSON DSL;
+// see commonpb/query_filter.go).
+//
+// It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
+// additionally honors the read-consistency options `checkpointId` (pinned
+// checkpoint read) and `minLogSequence` (audit-index catch-up wait for filtered
+// reads). This HTTP endpoint intentionally does not expose either — it always
+// performs a live, best-effort read. A filtered live read therefore resolves
+// through the async audit secondary index and may transiently omit very recent
+// entries that have not yet been indexed; a client needing a pinned or
+// consistency-bounded audit read must use the gRPC surface. If these options
+// are added to HTTP later, wire them through the same controller entry points
+// the gRPC path uses (impl.openCheckpointStores / minLogSequence gating).
 func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) {
 	pageSize, ok := parsePageSize(w, r)
 	if !ok {

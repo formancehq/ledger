@@ -400,9 +400,13 @@ paths:
         ledgers — so ledger scope, outcome and other dimensions are expressed
         through the `filter` query parameter.
 
-        Filtered reads are served by an asynchronous secondary index; the
-        consistency guarantee is the same as the gRPC `ListAuditEntries`
-        surface (no stronger promise is made over HTTP).
+        This endpoint always performs a live, best-effort read. Unlike the gRPC
+        `ListAuditEntries` surface, it does not expose the read-consistency
+        options (pinned checkpoint reads, or a consistency-bound wait on the
+        audit index): filtered reads are served by an asynchronous secondary
+        index and may transiently omit very recent entries that are not yet
+        indexed. A client that needs a pinned or consistency-bounded audit read
+        must use the gRPC surface.
 
         Requires `ledger:AuditRead` scope.
       operationId: listAuditEntries
