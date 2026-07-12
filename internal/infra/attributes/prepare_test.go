@@ -2,6 +2,7 @@ package attributes
 
 import (
 	"archive/tar"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -168,10 +169,17 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
+	digestRecord, err := dal.EncodeFSMDigest(200, bytes.Repeat([]byte{0xAB}, dal.FSMDigestSize))
+	require.NoError(t, err)
+
 	batch := s.OpenWriteSession()
 	require.NoError(t, setAppliedIndex(batch, 200))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, []byte("node+cluster")))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00}, []byte("stale-block")))
+	// A rolling FSM digest keyed to the source's applied index 200. It must be
+	// dropped so the restored store re-baselines from (0, ZeroFSMDigest) rather
+	// than continuing a chain hash keyed to an index the reset store no longer has.
+	require.NoError(t, batch.SetBytes(dal.FSMDigestKey(), digestRecord))
 	// EN-1413: a peer entry left over from the source cluster — the
 	// restore path must drop these so the booting node does not dial
 	// the wrong pods.
@@ -197,6 +205,18 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
+
+	// The rolling FSM digest must be dropped, and re-loading it must yield the
+	// fresh (appliedIndex=0, ZeroFSMDigest) baseline — otherwise the restored
+	// store would seed its cross-node digest chain from a hash keyed to the
+	// source's applied index 200 while sitting at index 0.
+	_, _, err = s.Get(dal.FSMDigestKey())
+	require.ErrorIs(t, err, pebble.ErrNotFound, "rolling FSM digest must be dropped")
+
+	digestIdx, digestHash, err := dal.LoadFSMDigest(s)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), digestIdx, "restored digest baseline applied index must be 0")
+	require.Equal(t, dal.ZeroFSMDigest, digestHash, "restored digest baseline hash must be ZeroFSMDigest")
 }
 
 // TestPrepareForBackupRestorableOnFreshCluster runs the full backup->restore
