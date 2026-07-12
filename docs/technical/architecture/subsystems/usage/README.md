@@ -17,3 +17,4 @@ The projections it maintains are exposed by the API — `GET /v3/{ledger}/stats`
 - [Indexer](../indexer/) — sibling subsystem with the same audit-tailing shape, but writes to a different secondary store (`readstore`).
 - [Checker](../checker/) — verifies the projections against the audit chain (`compareExclusionProjections` for ephemeral/transient tuples).
 - [Storage](../storage/) — the usage store is a peer Pebble instance to the readstore, WAL disabled, own comparer, own Pebble tuning.
+- [Restore-generation watermark](../storage/restore-generation-watermark.md) — how the builder detects a primary-store rollback (the catch-up race) and rebuilds the counters.

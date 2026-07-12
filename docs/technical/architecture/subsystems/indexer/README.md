@@ -13,4 +13,5 @@ The background worker (`internal/application/indexbuilder`) that turns committed
 
 - [Read path](../read-path/) — query consumer of the inverted index.
 - [Storage](../storage/) — the read store is a separate Pebble DB with WAL disabled.
+- [Restore-generation watermark](../storage/restore-generation-watermark.md) — how `indexbuilder` and `auditindexer` detect a primary-store rollback (the catch-up race) and rebuild.
 - [Attributes](../attributes/) — the same source attributes the indexer projects from.

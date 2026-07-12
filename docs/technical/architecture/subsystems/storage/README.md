@@ -9,6 +9,7 @@ The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal
 | [storage.md](storage.md) | WAL, snapshots, runtime stores, persistence, and recovery. |
 | [storage-drivers.md](storage-drivers.md) | Pebble storage driver characteristics and configuration. |
 | [spool.md](spool.md) | Committed entry buffer between Raft and FSM synchronization. |
+| [restore-generation-watermark.md](restore-generation-watermark.md) | How projection tail-workers detect a primary-store rollback (the catch-up race) and rebuild. |
 
 ## Related
 
