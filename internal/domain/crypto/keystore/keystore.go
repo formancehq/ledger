@@ -2,6 +2,7 @@ package keystore
 
 import (
 	"crypto/ed25519"
+	"slices"
 	"sync"
 )
 
@@ -63,6 +64,12 @@ func (ks *KeyStore) GetChildren(keyID string) []string {
 			children = append(children, childID)
 		}
 	}
+
+	// Sort for determinism: this feeds signing-key revocation cascades whose
+	// RevokedSigningKeyLog.cascadedKeyIds (and BFS traversal order) are
+	// chain-bound FSM output. A raw map range would let two replicas emit
+	// different orderings for identical state (invariant #2). See EN-1521.
+	slices.Sort(children)
 
 	return children
 }
