@@ -9,6 +9,33 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// TestValidateSegmentTypes_UnknownVariableSelectionDeterministic pins EN-1521:
+// when several segment_types reference unknown variables, the reported error
+// must always name the lexicographically-first one. ValidateSegmentTypes runs
+// on the FSM apply path and its error is chain-bound (ErrInvalidPattern →
+// AuditFailure), so a raw map range could pick a different offending name per
+// replica (invariant #2).
+func TestValidateSegmentTypes_UnknownVariableSelectionDeterministic(t *testing.T) {
+	t.Parallel()
+
+	segments, err := ParsePattern("foo:{x}")
+	require.NoError(t, err)
+
+	// Neither "aaa" nor "zzz" is a variable in the pattern ({x}), so both are
+	// "unknown"; "aaa" sorts first.
+	segTypes := map[string]*commonpb.SegmentType{
+		"zzz": {},
+		"aaa": {},
+	}
+
+	for range 64 {
+		verr := ValidateSegmentTypes(segments, segTypes)
+		require.Error(t, verr)
+		require.Contains(t, verr.Error(), `unknown variable "aaa"`,
+			"the first unknown-variable error must be the lexicographically-first, deterministically")
+	}
+}
+
 func TestValidateSegmentTypes(t *testing.T) {
 	t.Parallel()
 
