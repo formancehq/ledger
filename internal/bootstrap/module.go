@@ -656,9 +656,8 @@ func Module() fx.Option {
 			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *auditindexer.Indexer {
 				return auditindexer.New(
 					auditindexer.Config{
-						BatchSize:        cfg.AuditIndexConfig.BatchSize,
-						RebuildThreshold: cfg.AuditIndexConfig.RebuildThreshold,
-						Disabled:         cfg.AuditIndexConfig.Disabled,
+						BatchSize: cfg.AuditIndexConfig.BatchSize,
+						Disabled:  cfg.AuditIndexConfig.Disabled,
 					},
 					store, rs, logger, meterProvider.Meter("audit.index"),
 				)
