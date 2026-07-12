@@ -24,9 +24,14 @@ import (
 // inside the handler and — unlike a bare SetGoroutineLabels — is scoped to this
 // call, so it does not leak onto subsequent requests served by the same
 // goroutine on a reused (HTTP/1 keep-alive) connection.
+//
+// The labeled callback context is threaded into serveBulk via r.WithContext so
+// downstream work reached through r.Context() (runBulk → applyUnsigned → the
+// admission/apply path, and any goroutines it spawns) inherits the same pprof
+// label rather than only the synchronous handler goroutine carrying it.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
-	pprof.Do(r.Context(), pprof.Labels("component", "admission.http"), func(context.Context) {
-		s.serveBulk(w, r)
+	pprof.Do(r.Context(), pprof.Labels("component", "admission.http"), func(ctx context.Context) {
+		s.serveBulk(w, r.WithContext(ctx))
 	})
 }
 
