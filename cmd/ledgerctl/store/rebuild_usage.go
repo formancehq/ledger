@@ -215,7 +215,9 @@ func runRebuildUsage(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(err)
 	}
 
-	builder := usagebuilder.NewBuilder(pebbleStore, us, nil, logger, noop.Meter{}, batchSize)
+	// rebuildThreshold is irrelevant offline: RebuildAll replays from cursor 0
+	// on a freshly-dropped store, so the boot gap heuristic never applies.
+	builder := usagebuilder.NewBuilder(pebbleStore, us, nil, logger, noop.Meter{}, batchSize, 0)
 
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {

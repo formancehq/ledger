@@ -61,6 +61,14 @@ type Builder struct {
 
 	batchSize int
 
+	// rebuildThreshold triggers a boot-time reset+replay when the audit head
+	// leads the persisted cursor by more than this many entries (0 disables
+	// the gap heuristic). Mirrors auditindexer.Config.RebuildThreshold — it is
+	// the secondary net that catches a primary-store rollback whose restored
+	// gap re-grew past the cursor before boot sampled the head, so the momentary
+	// cursor>head signature was never observable. See rewindIfCursorAhead.
+	rebuildThreshold uint64
+
 	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
 	// updated on every successful commit — the atomic hint lets external
 	// readers (metrics, tests) avoid a Pebble Get.
@@ -83,18 +91,20 @@ func NewBuilder(
 	logger logging.Logger,
 	meter metric.Meter,
 	batchSize int,
+	rebuildThreshold uint64,
 ) *Builder {
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
 	}
 
 	return &Builder{
-		pebbleStore:   pebbleStore,
-		usageStore:    usageStore,
-		notifications: notifications,
-		logger:        logger.WithFields(map[string]any{"cmp": "usage-builder"}),
-		meter:         meter,
-		batchSize:     batchSize,
+		pebbleStore:      pebbleStore,
+		usageStore:       usageStore,
+		notifications:    notifications,
+		logger:           logger.WithFields(map[string]any{"cmp": "usage-builder"}),
+		meter:            meter,
+		batchSize:        batchSize,
+		rebuildThreshold: rebuildThreshold,
 	}
 }
 
@@ -163,7 +173,11 @@ func (b *Builder) boot(ctx context.Context) error {
 
 	pebbleLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
-		rewound, err := b.rewindIfCursorAhead(cursor, pebbleLast)
+		// Boot uses the full rewind test: cursor-ahead OR an over-threshold
+		// gap. The gap branch is the auditindexer-parity net for a rollback
+		// whose restored gap re-grew past the cursor before we sampled the
+		// head, so cursor>head was never observable.
+		rewound, err := b.rewindOnRollback(cursor, pebbleLast, true)
 		if err != nil {
 			return err
 		}
@@ -233,7 +247,11 @@ func (b *Builder) tick(ctx context.Context) error {
 	cursor := b.lastProcessedAuditSeq.Load()
 
 	if last, err := b.sampleAuditHead(); err == nil {
-		rewound, rewindErr := b.rewindIfCursorAhead(cursor, last)
+		// Steady-state uses the cursor-ahead test ONLY (boot=false): the
+		// over-threshold gap branch is a boot-only heuristic — applying it
+		// per tick would spuriously rebuild whenever a normal burst outpaces
+		// the drain between ticks. Same split as auditindexer.processTick.
+		rewound, rewindErr := b.rewindOnRollback(cursor, last, false)
 		if rewindErr != nil {
 			return rewindErr
 		}
@@ -256,23 +274,46 @@ func (b *Builder) tick(ctx context.Context) error {
 // follower sync via SynchronizeWithLeader/RestoreCheckpoint).
 func cursorAheadOfHead(cursor, head uint64) bool { return cursor > head }
 
-// rewindIfCursorAhead resets the usage projection and rewinds the cursor to 0
-// when the persisted cursor has overtaken the audit head. The retained counter
-// / template rows reflect audit entries that no longer exist, so a clean
-// in-place rebuild is the only way to reconverge. Merely failing loud is not
-// enough: once new activity grows the head back past the stale cursor the
-// signature disappears and the rolled-back gap would be skipped forever.
+// gapExceedsThreshold reports the auditindexer-parity secondary net: the audit
+// head leads the cursor by more than rebuildThreshold entries. This catches a
+// primary-store rollback whose restored gap re-grew past the cursor before the
+// head was sampled — so cursorAheadOfHead never fired — by observing the
+// resulting anomalous head−cursor gap instead. Mirrors the RebuildThreshold
+// branch of auditindexer.shouldRebuildOnBoot. Boot-only (see rewindOnRollback).
+func (b *Builder) gapExceedsThreshold(cursor, head uint64) bool {
+	return b.rebuildThreshold > 0 && head > cursor && head-cursor > b.rebuildThreshold
+}
+
+// rewindOnRollback resets the usage projection and rewinds the cursor to 0 when
+// a primary-store rollback is detected. The retained counter / template rows
+// reflect audit entries that no longer exist, so a clean in-place rebuild is the
+// only way to reconverge. Merely failing loud is not enough: once new activity
+// grows the head back past the stale cursor the cursor-ahead signature
+// disappears and the rolled-back gap would be skipped forever.
+//
+// Two signatures, mirroring auditindexer:
+//   - cursorAheadOfHead (both boot and tick): the direct rollback signature.
+//   - gapExceedsThreshold (boot only): the secondary net for a rollback whose
+//     restored gap re-grew past the cursor before the head was sampled. It is
+//     boot-only because per-tick it would spuriously rebuild whenever a normal
+//     ingest burst outpaces the drain between ticks (see auditindexer.processTick).
+//
 // Returns true when a rewind was performed (caller must treat the cursor as 0).
 // Shared by boot() and tick() so both entry points heal identically (DRY).
-func (b *Builder) rewindIfCursorAhead(cursor, head uint64) (bool, error) {
-	if !cursorAheadOfHead(cursor, head) {
+func (b *Builder) rewindOnRollback(cursor, head uint64, boot bool) (bool, error) {
+	ahead := cursorAheadOfHead(cursor, head)
+	gap := boot && b.gapExceedsThreshold(cursor, head)
+
+	if !ahead && !gap {
 		return false, nil
 	}
 
 	b.logger.WithFields(map[string]any{
-		"cursor": cursor,
-		"head":   head,
-	}).Infof("usage cursor is ahead of the audit head — primary store was rolled back; resetting usage projection and rebuilding from audit sequence 0")
+		"cursor":      cursor,
+		"head":        head,
+		"cursorAhead": ahead,
+		"gapExceeded": gap,
+	}).Infof("primary store appears rolled back — resetting usage projection and rebuilding from audit sequence 0")
 
 	if err := b.usageStore.Reset(); err != nil {
 		return false, fmt.Errorf("resetting usage store after primary-store rollback: %w", err)

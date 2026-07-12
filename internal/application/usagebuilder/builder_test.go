@@ -44,8 +44,9 @@ func TestRewindIfCursorAhead_RuntimeRestore(t *testing.T) {
 
 	b.lastProcessedAuditSeq.Store(500)
 
-	// Primary store was restored to head 120 (< cursor 500).
-	rewound, err := b.rewindIfCursorAhead(500, 120)
+	// Primary store was restored to head 120 (< cursor 500). The steady-state
+	// (boot=false) path detects the direct cursor-ahead signature.
+	rewound, err := b.rewindOnRollback(500, 120, false)
 	require.NoError(t, err)
 	require.True(t, rewound, "cursor 500 ahead of head 120 must trigger a rewind")
 
@@ -83,8 +84,9 @@ func TestRewindIfCursorAhead_SteadyStateNoOp(t *testing.T) {
 	require.NoError(t, batch.Commit())
 	b.lastProcessedAuditSeq.Store(100)
 
-	// Head 300 is ahead of cursor 100 — normal steady state, no rewind.
-	rewound, err := b.rewindIfCursorAhead(100, 300)
+	// Head 300 is ahead of cursor 100 — normal steady state, no rewind. No
+	// rebuildThreshold configured, so the gap heuristic is inert too.
+	rewound, err := b.rewindOnRollback(100, 300, false)
 	require.NoError(t, err)
 	require.False(t, rewound)
 
@@ -97,7 +99,53 @@ func TestRewindIfCursorAhead_SteadyStateNoOp(t *testing.T) {
 	assert.Equal(t, uint64(100), seq, "cursor must be untouched when not ahead")
 
 	// Cursor exactly at head is also steady state (not ahead).
-	rewound, err = b.rewindIfCursorAhead(300, 300)
+	rewound, err = b.rewindOnRollback(300, 300, false)
 	require.NoError(t, err)
 	assert.False(t, rewound, "cursor == head is not ahead")
+}
+
+// TestRewindOnRollback_BootGapThreshold is the auditindexer-parity regression:
+// after an in-place primary-store restore, the restored gap can re-grow past
+// the stale cursor before boot samples the head, so cursorAheadOfHead never
+// fires. The boot-only gap heuristic (head−cursor > rebuildThreshold) is the
+// secondary net that still triggers the reset/replay.
+func TestRewindOnRollback_BootGapThreshold(t *testing.T) {
+	t.Parallel()
+
+	b, us := newBuilderWithUsageStore(t)
+	b.rebuildThreshold = 1000
+
+	// Stale cursor at 500 with a leftover row; the restored-then-caught-up
+	// head is 5000 — head > cursor (so cursorAheadOfHead is FALSE), but the
+	// 4500-entry gap exceeds the threshold.
+	batch := us.NewBatch()
+	require.NoError(t, us.PutCounter(batch, "l1", usagestore.CounterVolume, 3))
+	require.NoError(t, us.WriteProgress(batch, 500))
+	require.NoError(t, batch.Commit())
+	b.lastProcessedAuditSeq.Store(500)
+
+	// Boot path (boot=true): the gap heuristic fires even though cursor<head.
+	rewound, err := b.rewindOnRollback(500, 5000, true)
+	require.NoError(t, err)
+	require.True(t, rewound, "boot gap over threshold must trigger a rewind even when cursor is behind head")
+
+	v, err := us.GetCounter("l1", usagestore.CounterVolume)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), v, "stale row must be wiped")
+
+	seq, err := us.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), seq, "cursor must rewind to 0")
+
+	// The SAME gap on the steady-state path (boot=false) must NOT rebuild —
+	// a large head−cursor gap between ticks is normal ingest, not a rollback.
+	b.lastProcessedAuditSeq.Store(500)
+	rewound, err = b.rewindOnRollback(500, 5000, false)
+	require.NoError(t, err)
+	assert.False(t, rewound, "gap heuristic is boot-only; steady-state must not rebuild on a normal ingest burst")
+
+	// A boot gap within the threshold is normal catch-up — no rewind.
+	rewound, err = b.rewindOnRollback(500, 900, true)
+	require.NoError(t, err)
+	assert.False(t, rewound, "gap within threshold must not trigger a rewind")
 }

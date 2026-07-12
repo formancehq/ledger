@@ -679,9 +679,12 @@ func Module() fx.Option {
 			// Usage builder — tails the FSM audit chain to populate the usage
 			// store (template usage + per-ledger event counters). Notifications
 			// arrive via the dedicated `name:"usage"` FanOut target.
-			fx.Annotate(func(store *dal.Store, us *usagestore.Store, notifications *signal.Notifications, logger logging.Logger, meterProvider metric.MeterProvider) *usagebuilder.Builder {
-				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
-			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``)),
+			fx.Annotate(func(store *dal.Store, us *usagestore.Store, notifications *signal.Notifications, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *usagebuilder.Builder {
+				// Share the audit indexer's rebuild threshold — both tail the same
+				// audit chain, so the gap heuristic that catches a rollback-then-
+				// catch-up race applies identically (auditindexer parity).
+				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0, cfg.AuditIndexConfig.RebuildThreshold)
+			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg, info)
