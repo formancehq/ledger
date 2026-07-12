@@ -29,9 +29,12 @@ type templateDelta struct {
 }
 
 // counterDelta is a signed delta for a per-ledger event counter. Deltas are
-// always non-negative today (all counters are monotonically increasing) but
-// int64 leaves room for future decrement paths (e.g. a rollback log type).
-type counterDelta = int64
+// almost always non-negative (event counters are monotonically increasing) but
+// the volume counter can decrement (a draining eviction subtracts 1), so the
+// underlying type is signed. Defined as a distinct type — not a type alias,
+// which the repository conventions forbid — because the signed-delta semantics
+// are load-bearing (see applyDelta's underflow clamp).
+type counterDelta int64
 
 // batchState holds the in-flight aggregation for one batch: per-ledger
 // counter deltas, per-template usage deltas, and the set of ledger names
