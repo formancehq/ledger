@@ -163,30 +163,12 @@ func (b *Builder) boot(ctx context.Context) error {
 
 	pebbleLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
-		// Cursor ahead of the audit head means the primary Pebble store
-		// was restored to an earlier checkpoint (or wiped) while the
-		// usagestore was kept. The retained counter / template rows now
-		// reflect audit entries that no longer exist, and — critically —
-		// merely failing the boot is not enough: once new activity grows
-		// the audit head back past the stale cursor, `cursor <= pebbleLast`
-		// holds again, the guard stops firing, and every entry in the
-		// rolled-back gap is silently skipped forever (the counters stay
-		// permanently ahead). Rewind in place instead: wipe the projection
-		// and reset the cursor to 0 so catch-up replays the current audit
-		// chain from the start. Same net effect as `ledgerctl store
-		// rebuild-usage`, but self-healing without operator intervention.
-		if cursor > pebbleLast {
-			b.logger.WithFields(map[string]any{
-				"cursor":     cursor,
-				"pebbleLast": pebbleLast,
-			}).Infof("usage cursor is ahead of the audit head — primary store was rolled back; resetting usage projection and rebuilding from audit sequence 0")
-
-			if err := b.usageStore.Reset(); err != nil {
-				return fmt.Errorf("resetting usage store after primary-store rollback: %w", err)
-			}
-
+		rewound, err := b.rewindIfCursorAhead(cursor, pebbleLast)
+		if err != nil {
+			return err
+		}
+		if rewound {
 			cursor = 0
-			b.lastProcessedAuditSeq.Store(0)
 		}
 
 		b.pebbleLastAuditSeq.Store(pebbleLast)
@@ -239,15 +221,66 @@ func (b *Builder) boot(ctx context.Context) error {
 
 // tick runs one steady-state iteration: refresh the audit-head gauge, then
 // drain any pending audit entries from the persisted cursor forward.
+//
+// The cursor-ahead re-check is what catches a runtime primary-store restore
+// (follower sync via SynchronizeWithLeader/RestoreCheckpoint) that drops the
+// audit head below the persisted cursor WHILE this loop is already running.
+// The boot() guard runs only once before the ticker, so without re-evaluating
+// here processAuditEntries would resume from the stale in-memory cursor and
+// silently skip every entry in the rolled-back gap forever. Same self-healing
+// rewind as boot(). Mirrors auditindexer.processTick.
 func (b *Builder) tick(ctx context.Context) error {
+	cursor := b.lastProcessedAuditSeq.Load()
+
 	if last, err := b.sampleAuditHead(); err == nil {
+		rewound, rewindErr := b.rewindIfCursorAhead(cursor, last)
+		if rewindErr != nil {
+			return rewindErr
+		}
+		if rewound {
+			cursor = 0
+		}
+
 		b.pebbleLastAuditSeq.Store(last)
 	}
 
-	cursor := b.lastProcessedAuditSeq.Load()
 	_, err := b.processAuditEntries(ctx, cursor, time.Time{})
 
 	return err
+}
+
+// cursorAheadOfHead reports the post-restore rollback signature: the persisted
+// usage cursor sits beyond the current audit head. Only possible after the
+// primary Pebble store was restored/truncated to an earlier head while the
+// usagestore directory was retained (boot after a backup restore, or a runtime
+// follower sync via SynchronizeWithLeader/RestoreCheckpoint).
+func cursorAheadOfHead(cursor, head uint64) bool { return cursor > head }
+
+// rewindIfCursorAhead resets the usage projection and rewinds the cursor to 0
+// when the persisted cursor has overtaken the audit head. The retained counter
+// / template rows reflect audit entries that no longer exist, so a clean
+// in-place rebuild is the only way to reconverge. Merely failing loud is not
+// enough: once new activity grows the head back past the stale cursor the
+// signature disappears and the rolled-back gap would be skipped forever.
+// Returns true when a rewind was performed (caller must treat the cursor as 0).
+// Shared by boot() and tick() so both entry points heal identically (DRY).
+func (b *Builder) rewindIfCursorAhead(cursor, head uint64) (bool, error) {
+	if !cursorAheadOfHead(cursor, head) {
+		return false, nil
+	}
+
+	b.logger.WithFields(map[string]any{
+		"cursor": cursor,
+		"head":   head,
+	}).Infof("usage cursor is ahead of the audit head — primary store was rolled back; resetting usage projection and rebuilding from audit sequence 0")
+
+	if err := b.usageStore.Reset(); err != nil {
+		return false, fmt.Errorf("resetting usage store after primary-store rollback: %w", err)
+	}
+
+	b.lastProcessedAuditSeq.Store(0)
+
+	return true, nil
 }
 
 // sampleAuditHead opens a short-lived read handle to read the current audit
