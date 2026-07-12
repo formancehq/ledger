@@ -21,9 +21,12 @@ truth, operational consensus state, or a rebuildable projection using
 #8, every non-audit dataset persisted in the main Pebble store needs checker
 coverage unless it is genuinely discarded and rebuilt by a lifecycle path or lives
 in a separate rebuildable side-store. "Genuinely discarded and rebuilt" is narrow:
-bloom filters qualify **only** on the backup/restore path
+bloom filters qualify on the backup/restore path
 (`internal/infra/attributes/prepare.go` deletes the persisted blocks so restore
-rebuilds them from a full attribute scan). On the normal restart / follower-sync
+rebuilds them from a full attribute scan) and on a bloom-config change applied
+through cluster config (`applyClusterConfigUpdate` in
+`internal/infra/state/machine_technical_updates.go` purges the `SubGlobBloom`
+blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`). On the normal restart / follower-sync
 path bloom blocks are instead *restored from the persisted Pebble blocks*
 (`CacheSnapshotter.RestoreFromStore` / `restoreBloomFilters`; the full scan runs
 only on first boot when no blocks exist), so those blocks are a durably trusted

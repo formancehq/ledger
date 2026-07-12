@@ -20,7 +20,7 @@ record, or a read-side projection:
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
-| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt only on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative, or persisted bloom blocks reloaded on restart — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
+| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative, or persisted bloom blocks reloaded on restart — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
 
 The boundary is about impact, not package location. A value under a technical
 keyspace can become business-impacting if future code starts using it to decide
@@ -30,10 +30,14 @@ Invariant #8 ([AGENTS.md](../../../AGENTS.md)) is the floor: every non-audit
 dataset persisted in the main Pebble store is a projection that the checker must
 verify, unless it is genuinely discarded and rebuilt by a lifecycle path or lives
 in a separate rebuildable side-store outside the checker's scope. "Genuinely
-discarded and rebuilt" is narrow: bloom filters qualify **only** on the
+discarded and rebuilt" is narrow: bloom filters qualify on the
 backup/restore path, where `internal/infra/attributes/prepare.go` deletes the
 persisted bloom blocks so a subsequent restore rebuilds them from a full
-attribute scan. On the normal restart / follower-sync path bloom blocks are
+attribute scan, and on a bloom-config change applied through cluster config,
+where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`)
+purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals
+`StartAsyncBloomPopulate` to repopulate from a full attribute scan. On the
+normal restart / follower-sync path bloom blocks are
 **not** discarded — `CacheSnapshotter.RestoreFromStore`
 (`internal/infra/state/cache_snapshotter.go`) loads the persisted bloom blocks
 from Pebble via `restoreBloomFilters`, and the full attribute scan
@@ -237,9 +241,24 @@ is more sensitive: it changes how future audit entries are hashed and therefore
 changes the trust model for business evidence.
 
 Changing the hash algorithm does not rewrite historical business truth, but it is
-governance-significant. Keep that distinction explicit in docs and operations:
-either expose a clear operator trail for cluster-config changes or model the
-change as an audited governance order.
+governance-significant. The persisted cluster-config row is not merely advisory:
+`LoadFSMStateFromStore` (`internal/infra/state/fsmstate.go`) reads
+`SubGlobClusterConfig` back on recovery and rebuilds `FSMState.HashGenerator` from
+the stored `hash_algorithm` (`processing.NewHashGenerator(...)`), and that same
+`HashGenerator` is what `Machine` uses to compute the audit-chain hash for every
+future entry (`internal/infra/state/machine.go`). A persisted row tampered while
+it sits on disk therefore silently changes how future audit entries are hashed —
+i.e. it shifts the trust model for the only cryptographically-bound dataset.
+
+No `compare*` pass in `internal/application/check` re-derives `SubGlobClusterConfig`
+against an audit-bound source, and there is no audit-bound read-back of the stored
+`hash_algorithm`, so this is a **tracked integrity gap**, not an approved
+exemption — the same status as the other uncovered projections above. An operator
+trail alone is weaker than the controls this page mandates for state that shapes
+business evidence: closing the gap requires either modeling the hash-algorithm
+change as an audited governance order (so the stored value can be read back from
+an audit-bound source) or a checker pass that verifies the persisted row against
+that source.
 
 ## Backup Destination Identity
 
