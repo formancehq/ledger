@@ -524,6 +524,18 @@ func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReade
 		return nil
 	}
 
+	// Reject any persisted row that no enabled filter will visit BEFORE
+	// restoring. The per-filter RestoreFromStore below iterates only its own
+	// [SubGlobBloom][attrCode] sub-range, so a block persisted for an attribute
+	// that is disabled/unknown in the current config — or a malformed row too
+	// short to carry an attrCode — is otherwise silently skipped, after which
+	// the filter is still published ready. That is a false negative that
+	// suppresses a required Pebble preload. Classify the whole namespace once
+	// and fail closed on any orphan/malformed row (EN-1527).
+	if err := fs.validatePersistedNamespace(ctx, store, snap); err != nil {
+		return err
+	}
+
 	for _, f := range snap.allFilters() {
 		if f == nil {
 			continue
@@ -532,6 +544,56 @@ func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReade
 		if err := f.RestoreFromStore(ctx, store); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validatePersistedNamespace scans every row under [ZoneGlobal][SubGlobBloom]
+// and fails closed on any row whose attribute-type byte is not one of the
+// currently enabled filters, or that is too short to carry an attribute-type
+// byte. The per-filter restore validates shape WITHIN an enabled range; this
+// pass is what closes the gap for rows OUTSIDE every enabled range, which the
+// hasPersistedBloomBlocks probe still counts as "blocks present" and so would
+// drive the restore path with an incomplete filter (EN-1527).
+func (fs *FilterSet) validatePersistedNamespace(ctx context.Context, store dal.PebbleReader, snap *filterSnapshot) error {
+	enabled := make(map[byte]struct{})
+	for _, f := range snap.allFilters() {
+		if f != nil {
+			enabled[f.attrCode] = struct{}{}
+		}
+	}
+
+	it, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
+		UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating bloom namespace iterator: %w", err)
+	}
+
+	defer func() { _ = it.Close() }()
+
+	for it.First(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		key := it.Key()
+		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// The attrCode lives at offset 2; a shorter row cannot belong to any
+		// filter's sub-range.
+		if len(key) < 3 {
+			return fmt.Errorf("persisted bloom row %x is too short to carry an attribute-type byte — store corrupted", key)
+		}
+
+		if _, ok := enabled[key[2]]; !ok {
+			return fmt.Errorf("persisted bloom row %x has attribute-type byte 0x%02x that maps to no enabled filter — store corrupted or written by an incompatible config", key, key[2])
+		}
+	}
+
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("iterating bloom namespace: %w", err)
 	}
 
 	return nil

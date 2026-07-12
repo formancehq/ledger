@@ -913,3 +913,64 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte(t *testing.T) {
 	require.Error(t, err, "restore must fail on a 0xFF row with an unknown tombstone flag byte")
 	require.Contains(t, err.Error(), "unknown tombstone flag")
 }
+
+// TestCacheSnapshotter_EN1527_RestoreRejectsUnknownAttributeType pins the
+// whole-namespace validation: a row whose attribute-type byte is outside the
+// registered slot codes is never visited by any per-slot restore iterator, so
+// before EN-1527 it was silently ignored — dropping a cache entry written
+// since the last bloom flush and reintroducing a false negative. Recovery must
+// now fail closed on it.
+func TestCacheSnapshotter_EN1527_RestoreRejectsUnknownAttributeType(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:unknown-attr-type"))
+	gen0Byte := byte(registry.Cache.CurrentGeneration() % 2)
+
+	// 0x7F is not a registered SubAttr* slot code; the key is otherwise a
+	// well-formed [zone][gen][type][U128] shape.
+	key := []byte{dal.ZoneCache, gen0Byte, 0x7F}
+	key = append(key, u128[:]...)
+
+	value := make([]byte, cacheValueHeaderLen)
+	value[8] = cacheValueFlagLive
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Commit())
+
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a cache row with an unknown attribute-type byte")
+	require.Contains(t, err.Error(), "unknown attribute-type byte")
+}
+
+// TestCacheSnapshotter_EN1527_RestoreRejectsUnknownGenerationByte pins that a
+// row whose generation byte is neither of the two live generations (a flipped
+// or forward-incompatible gen byte) is rejected. restoreGeneration only reads
+// the two live [gen] sub-ranges, so such a row would otherwise be silently
+// dropped.
+func TestCacheSnapshotter_EN1527_RestoreRejectsUnknownGenerationByte(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	u128 := attributes.HashU128([]byte("corrupt:unknown-gen"))
+
+	// Live gens are 0 and 1 (currentGeneration == 0); 0x05 is neither.
+	require.Equal(t, uint64(0), registry.Cache.CurrentGeneration())
+
+	key := []byte{dal.ZoneCache, 0x05, dal.SubAttrBoundary}
+	key = append(key, u128[:]...)
+
+	value := make([]byte, cacheValueHeaderLen)
+	value[8] = cacheValueFlagLive
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Commit())
+
+	err := snapshotter.RestoreFromStore(dataStore)
+	require.Error(t, err, "restore must fail on a cache row with an out-of-range generation byte")
+	require.Contains(t, err.Error(), "generation byte")
+}
