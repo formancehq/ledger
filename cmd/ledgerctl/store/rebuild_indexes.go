@@ -87,7 +87,9 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Rebuild.
 	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
 
-	builder := indexbuilder.NewBuilder(pebbleStore, rs, attributes.New(), logger, noop.Meter{}, batchSize)
+	// rebuildThreshold is irrelevant offline: RebuildAll replays from cursor 0
+	// against a fresh/target read index, so the boot rollback guard never runs.
+	builder := indexbuilder.NewBuilder(pebbleStore, rs, attributes.New(), logger, noop.Meter{}, batchSize, 0)
 
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {

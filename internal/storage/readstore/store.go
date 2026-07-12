@@ -205,6 +205,64 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 	return s.ReadProgress()
 }
 
+// ResetIndexes wipes every keyspace owned by the index builder so a rebuild can
+// repopulate from log sequence 0. It deletes the two contiguous regions the
+// builder writes:
+//
+//   - the ledger-scoped forward/reverse index prefixes 0x01..0x0D (one
+//     DeleteRange over [0x01, 0x0E) covers them all), and
+//   - the builder's internal progress cursors: log progress ([0xFE][0x01]),
+//     AppliedProposal progress ([0xFE][0x02]), backfill cursors ([0xFE][0x03]),
+//     and per-index version state ([0xFE][0x04]).
+//
+// It deliberately leaves the audit-index keyspace ([0xFE][0x05]) and the audit
+// cursor ([0xFE][0x06]) untouched: those are owned by the auditindexer worker,
+// which has its own rollback detector (auditindexer.Rebuild) and must reset
+// independently.
+//
+// A crash mid-reset is safe: the log progress cursor is either still ahead of
+// the rolled-back head (rollback re-detected next boot via cursorAheadOfHead)
+// or already gone (replay from 0), so index rows can never survive with a stale
+// non-zero cursor. Mirrors usagestore.Store.Reset for the read index.
+func (s *Store) ResetIndexes() error {
+	batch := s.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+
+	// Ledger-scoped index prefixes 0x01..0x0D are contiguous; PrefixInternal is
+	// 0xFE, so [0x01, PrefixMetadataIndex+0x0D+1) == [0x01, 0x0E) never reaches
+	// the internal keys, which are deleted point-wise / by sub-prefix below.
+	if err := batch.DeleteRangeNoSync(
+		[]byte{PrefixMetadataIndex},
+		[]byte{PrefixTransactionRevertedAt + 1},
+	); err != nil {
+		return fmt.Errorf("deleting ledger-scoped index rows during reset: %w", err)
+	}
+
+	if err := batch.DeleteKey(ProgressKey()); err != nil {
+		return fmt.Errorf("deleting log progress cursor during reset: %w", err)
+	}
+
+	if err := batch.DeleteKey(AppliedProposalProgressKey()); err != nil {
+		return fmt.Errorf("deleting applied-proposal cursor during reset: %w", err)
+	}
+
+	backfillPrefix := BackfillKeyPrefix()
+	if err := batch.DeleteRangeNoSync(backfillPrefix, prefixUpperBound(backfillPrefix)); err != nil {
+		return fmt.Errorf("deleting backfill cursors during reset: %w", err)
+	}
+
+	versionPrefix := IndexVersionStatePrefix()
+	if err := batch.DeleteRangeNoSync(versionPrefix, prefixUpperBound(versionPrefix)); err != nil {
+		return fmt.Errorf("deleting index version state during reset: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("committing read index reset: %w", err)
+	}
+
+	return nil
+}
+
 // NotifyProgress wakes all goroutines waiting in WaitForSequence /
 // WaitForCheckpoint. Must be called after WriteProgress commits successfully.
 //

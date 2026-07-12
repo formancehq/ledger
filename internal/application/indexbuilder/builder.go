@@ -46,6 +46,25 @@ type Builder struct {
 	metricsRegistration     metric.Registration // tailworker gauge triplet
 	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
 
+	// rebuildThreshold forces a boot-time reset+rebuild when the log head leads
+	// the persisted cursor by more than this many entries (0 disables the
+	// gap-based net). Boot-only, mirroring auditindexer.shouldRebuildOnBoot and
+	// usagebuilder.gapExceedsThreshold: it is the secondary catch of a rollback
+	// whose restored gap re-grew past the cursor before pebbleLast was sampled,
+	// so the direct cursorAheadOfHead signature was never observable.
+	rebuildThreshold uint64
+
+	// restoreGen is the primary-store restore generation this builder last
+	// processed under (see dal.Store.RestoreGeneration). Seeded on boot, re-read
+	// every steady-state tick: a change means the primary store was rolled back
+	// beneath the cursor at runtime, so a full reset+rebuild is forced regardless
+	// of where the log head landed relative to the cursor — the position-based
+	// cursorAheadOfHead / rebuildThreshold signals can be erased by a catch-up
+	// race (rollback below cursor, head re-grows past the old cursor before the
+	// next tick re-samples). Mirrors auditindexer.Indexer.restoreGen and
+	// usagebuilder.Builder.restoreGen.
+	restoreGen atomic.Uint64
+
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
 
@@ -324,6 +343,10 @@ func (b *Builder) coerceForLedger(ledger string, target commonpb.TargetType, key
 // NewBuilder creates a new index builder.
 // batchSize controls how many log entries are buffered per Pebble batch commit.
 // Use 0 for the default (DefaultBatchSize).
+// rebuildThreshold forces a boot-time reset+rebuild when the log head leads the
+// persisted cursor by more than this many entries (0 disables the gap net); it
+// is the boot-only secondary net for a primary-store rollback (see the
+// rebuildThreshold field comment).
 func NewBuilder(
 	pebbleStore *dal.Store,
 	readStore *readstore.Store,
@@ -331,23 +354,25 @@ func NewBuilder(
 	logger logging.Logger,
 	meter metric.Meter,
 	batchSize int,
+	rebuildThreshold uint64,
 ) *Builder {
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
 	}
 
 	return &Builder{
-		pebbleStore:    pebbleStore,
-		readStore:      readStore,
-		attrs:          attrs,
-		logger:         logger.WithFields(map[string]any{"cmp": "index-builder"}),
-		meter:          meter,
-		batchSize:      batchSize,
-		backfillBudget: 50 * time.Millisecond,
-		indexConfig:    make(map[string]*ledgerIndexConfig),
-		kb:             dal.NewKeyBuilder(),
-		wb:             readstore.NewWriteBatch(),
-		accounts:       make(map[string]struct{}, 64),
+		pebbleStore:      pebbleStore,
+		readStore:        readStore,
+		attrs:            attrs,
+		logger:           logger.WithFields(map[string]any{"cmp": "index-builder"}),
+		meter:            meter,
+		batchSize:        batchSize,
+		rebuildThreshold: rebuildThreshold,
+		backfillBudget:   50 * time.Millisecond,
+		indexConfig:      make(map[string]*ledgerIndexConfig),
+		kb:               dal.NewKeyBuilder(),
+		wb:               readstore.NewWriteBatch(),
+		accounts:         make(map[string]struct{}, 64),
 	}
 }
 
@@ -541,6 +566,12 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-ticker.C:
 		}
 
+		if newCursor, reset, err := b.maybeResetOnRestore(ctx, cursor); err != nil {
+			b.logger.Errorf("Error resetting read index after restore: %v", err)
+		} else if reset {
+			cursor = newCursor
+		}
+
 		// Fast path: skip Pebble iterator + batch commit when the FSM
 		// hasn't advanced past our cursor.
 		logsProcessed := false
@@ -588,6 +619,10 @@ func (b *Builder) loop(ctx context.Context) {
 // and query.ReadLastSequence stay best-effort (they tolerate failure today);
 // only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
 func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
+	// Snapshot the restore generation before any processing so the steady-state
+	// loop can detect a primary-store rollback that lands after boot.
+	b.restoreGen.Store(b.pebbleStore.RestoreGeneration())
+
 	if err := b.initIndexConfig(ctx); err != nil {
 		return 0, 0, fmt.Errorf("initializing index config: %w", err)
 	}
@@ -620,5 +655,105 @@ func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint6
 
 	_ = handle.Close()
 
+	// Primary-store rollback guard (parity with auditindexer.shouldRebuildOnBoot
+	// and usagebuilder.rewindOnRollback boot path). When the persisted cursor
+	// overtakes the log head — the direct signature of a restore/rollback to an
+	// earlier head while the read index was retained — or the head leads the
+	// cursor by more than rebuildThreshold, the retained index rows reflect logs
+	// that no longer exist. An incremental catch-up from the stale cursor would
+	// scan past every surviving (lower-seq) log forever, so wipe the read index
+	// and rebuild from sequence 0.
+	if b.shouldRebuildOnBoot(cursor, pebbleLast) {
+		b.logger.WithFields(map[string]any{
+			"cursor":     cursor,
+			"pebbleLast": pebbleLast,
+		}).Infof("Index builder rebuild on boot: primary store rollback detected")
+
+		if newCursor, err := b.resetAndReinit(ctx); err != nil {
+			return 0, 0, fmt.Errorf("resetting read index on boot rollback: %w", err)
+		} else {
+			cursor = newCursor
+		}
+	}
+
 	return cursor, pebbleLast, nil
+}
+
+// shouldRebuildOnBoot reports whether boot should wipe+rebuild the read index
+// instead of an incremental catch-up: the persisted cursor sits beyond the log
+// head (cursorAheadOfHead — the direct rollback signature), or the head leads
+// the cursor by more than rebuildThreshold (the boot-only gap net). Mirrors
+// auditindexer.shouldRebuildOnBoot. A missing cursor (0) is NOT a rebuild
+// trigger here: a fresh read index legitimately starts at 0 and catches up
+// incrementally.
+func (b *Builder) shouldRebuildOnBoot(cursor, pebbleLast uint64) bool {
+	if cursorAheadOfHead(cursor, pebbleLast) {
+		return true
+	}
+
+	return b.rebuildThreshold > 0 && pebbleLast > cursor && pebbleLast-cursor > b.rebuildThreshold
+}
+
+// cursorAheadOfHead reports the post-rollback signature: the persisted read
+// index cursor sits beyond the current log head. Only possible after the
+// primary Pebble store was restored/truncated to an earlier head while the read
+// index directory was retained (boot after a backup restore, or a runtime
+// follower sync via SynchronizeWithLeader/RestoreCheckpoint). Mirrors the
+// identically named helper in auditindexer / usagebuilder.
+func cursorAheadOfHead(cursor, pebbleLast uint64) bool { return cursor > pebbleLast }
+
+// resetAndReinit wipes every index-builder-owned keyspace in the read store and
+// re-derives all in-memory init state (index config, per-replica version cache,
+// backfill/rewrite tasks) from the now-empty store, so a rebuild replays from
+// log sequence 0. It re-syncs restoreGen up-front so a RestoreCheckpoint that
+// lands during the subsequent replay bumps past this value and is re-detected
+// on the next tick (rather than being silently swallowed). Returns the reset
+// cursor (always 0). Mirrors usagebuilder.resetProjection, adapted for the
+// heavier read-index reset: a bare cursor=0 is not enough — the index rows,
+// backfill cursors, and version state must be wiped and re-seeded too.
+func (b *Builder) resetAndReinit(ctx context.Context) (uint64, error) {
+	b.restoreGen.Store(b.pebbleStore.RestoreGeneration())
+
+	if err := b.readStore.ResetIndexes(); err != nil {
+		return 0, fmt.Errorf("resetting read index after primary-store rollback: %w", err)
+	}
+
+	// Re-derive init state against the now-empty read store. initIndexConfig
+	// resets its own in-memory maps/tasks first (idempotent), and with the
+	// version state wiped every BUILDING index re-enters loadIndexRegistry with
+	// current_version == 0, so backfills are re-scheduled from scratch.
+	if err := b.initIndexConfig(ctx); err != nil {
+		return 0, fmt.Errorf("re-initializing index config after reset: %w", err)
+	}
+
+	b.lastAppliedProposalSeq = 0
+	b.lastIndexedSeq.Store(0)
+
+	return 0, nil
+}
+
+// maybeResetOnRestore is the steady-state rollback gate, run once per loop tick
+// before processLogs. The restore-generation change is the authoritative
+// rollback signal: it fires on any RestoreCheckpoint regardless of where the
+// log head landed, so it catches the catch-up race that erases the boot
+// cursorAheadOfHead position signal (restore below cursor, then the head
+// re-grows past the old cursor before this tick re-samples). resetAndReinit
+// re-syncs restoreGen, so this fires exactly once per restore. Returns the new
+// cursor (0) and reset=true when a reset was performed. Mirrors
+// auditindexer.processTick / usagebuilder.tick.
+func (b *Builder) maybeResetOnRestore(ctx context.Context, cursor uint64) (uint64, bool, error) {
+	gen := b.pebbleStore.RestoreGeneration()
+	if gen == b.restoreGen.Load() {
+		return cursor, false, nil
+	}
+
+	b.logger.WithFields(map[string]any{"from": b.restoreGen.Load(), "to": gen}).
+		Infof("Index builder rebuild: primary store restore detected (generation changed)")
+
+	newCursor, err := b.resetAndReinit(ctx)
+	if err != nil {
+		return cursor, false, err
+	}
+
+	return newCursor, true, nil
 }
