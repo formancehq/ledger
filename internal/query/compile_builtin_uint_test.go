@@ -29,6 +29,8 @@ func TestCompileBuiltinUintCondition_RejectsNonTransactionTarget(t *testing.T) {
 			},
 		})
 		require.Error(t, err, "target=%v", target)
-		require.Contains(t, err.Error(), "only valid on transactions", "target=%v", target)
+		require.Contains(t, err.Error(),
+			`condition "builtin field (id/timestamp/insertedAt/revertedAt)" is not valid on target`,
+			"target=%v", target)
 	}
 }
