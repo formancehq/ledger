@@ -42,6 +42,18 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 		return nil, err
 	}
 
+	// Mirror the admission gates on the FSM side (per the dual-layer rule
+	// above): a non-executable target or a condition invalid on the target must
+	// never be persisted, so a stored prepared query is always executable and
+	// the audit trail stays deterministic on wire-replay.
+	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+		return nil, domain.ErrPreparedQueryTargetUnsupported
+	}
+
+	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+		return nil, err
+	}
+
 	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
@@ -93,6 +105,27 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 	}
 
 	updated := existing.Mutate()
+
+	// An update carries only the new filter; the target is fixed at creation and
+	// read here from the stored query (the cache, per invariant #3).
+	//
+	// Guard the stored target's executability before condition validity. CLI/gRPC
+	// creation used to allow non-executable targets (e.g. LOGS) before this PR, so
+	// a pre-existing LOGS/AUDIT query can already sit in storage; rewriting its
+	// filter here would persist a query ExecutePreparedQuery still cannot hydrate.
+	// Reject the update loudly (delete stays allowed) so a stored prepared query
+	// is always executable — mirroring the create-path gate.
+	if !domain.IsPreparedQueryExecutableTarget(updated.GetTarget()) {
+		return nil, domain.ErrPreparedQueryTargetUnsupported
+	}
+
+	// Validate the new filter against that stored target so an update cannot
+	// smuggle in a condition invalid for the query's target — the case admission
+	// cannot catch because the update request has no target field.
+	if err := domain.ValidateFilterForTarget(order.GetFilter(), updated.GetTarget()); err != nil {
+		return nil, err
+	}
+
 	previousFilter := updated.GetFilter().CloneVT()
 	updated.Filter = order.GetFilter()
 	s.PreparedQueries().Put(domain.PreparedQueryKey{LedgerName: ledger, Name: updated.GetName()}, updated)

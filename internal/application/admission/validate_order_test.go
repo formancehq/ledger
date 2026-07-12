@@ -204,6 +204,26 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 			wantErr: domain.ErrPreparedQueryNameRequired,
 		},
 		{
+			// EN-1504 blocker: QUERY_TARGET_AUDIT is a valid enum value a gRPC
+			// caller can set, but the prepared-query executor cannot run it.
+			// Admission must reject it before it is persisted.
+			name: "create rejects non-executable AUDIT target",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
+						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+							Query: &commonpb.PreparedQuery{
+								Name:   "q",
+								Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+							},
+						},
+					},
+				}},
+			},
+			wantErr: domain.ErrPreparedQueryTargetUnsupported,
+		},
+		{
 			name: "update rejects empty name",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -248,7 +268,7 @@ func TestValidateOrder_PreparedQueryPayload(t *testing.T) {
 					Ledger: "l",
 					Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{
 						CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-							Query: &commonpb.PreparedQuery{Name: "ok"},
+							Query: &commonpb.PreparedQuery{Name: "ok", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 						},
 					},
 				}},
