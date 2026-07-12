@@ -208,23 +208,26 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 }
 
 // validateFilterForTarget is the depth-bounded recursive core of
-// ValidateFilterForTarget. depth is the number of $and/$or/$not combinators
-// entered so far; it caps the walk at MaxFilterDepth to match query.Compile's
-// own guard, so a hostile deeply-nested filter is rejected at write time
-// (admission + FSM) before it can overflow the stack here — the exact fatal
-// DoS Compile caps downstream (invariant #7: fail loudly, never recurse
-// unbounded on untrusted input).
+// ValidateFilterForTarget. depth counts every node entered so far (combinators
+// AND leaves), and the cap is checked at the top of every node — the exact
+// counting query.compile uses (which checks `depth >= MaxFilterDepth` on entry
+// of every node before dispatching). Matching it node-for-node keeps the two
+// guards in lockstep: a filter accepted at write time is guaranteed to compile
+// at execute time, and vice versa (a shallower write-time bound would let an
+// unexecutable prepared query be persisted; a deeper one would overflow the
+// stack here before Compile's guard is ever reached — the exact fatal DoS,
+// invariant #7).
 func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
 	if f == nil {
 		return nil
 	}
 
+	if depth >= MaxFilterDepth {
+		return errFilterTooDeep()
+	}
+
 	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_And:
-		if depth >= MaxFilterDepth {
-			return errFilterTooDeep()
-		}
-
 		for _, sub := range v.And.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -233,10 +236,6 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 
 		return nil
 	case *commonpb.QueryFilter_Or:
-		if depth >= MaxFilterDepth {
-			return errFilterTooDeep()
-		}
-
 		for _, sub := range v.Or.GetFilters() {
 			if err := validateFilterForTarget(sub, target, depth+1); err != nil {
 				return err
@@ -245,10 +244,6 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 
 		return nil
 	case *commonpb.QueryFilter_Not:
-		if depth >= MaxFilterDepth {
-			return errFilterTooDeep()
-		}
-
 		return validateFilterForTarget(v.Not.GetFilter(), target, depth+1)
 	}
 

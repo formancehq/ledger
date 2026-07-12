@@ -193,21 +193,34 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 		})
 	}
 
-	// A tree exactly at the limit is accepted (guard is off-by-one safe).
-	atLimit := func() *commonpb.QueryFilter {
+	// Boundary must match query.Compile node-for-node: Compile checks
+	// `depth >= MaxFilterDepth` on entry of every node (combinators AND the
+	// leaf), so with N combinators wrapping a leaf the leaf is entered at
+	// depth==N. The deepest tree both accept has N == MaxFilterDepth-1
+	// combinators (leaf entered at depth MaxFilterDepth-1, still under the cap);
+	// N == MaxFilterDepth is rejected (leaf entered at depth MaxFilterDepth).
+	// A shallower write-time bound would persist prepared queries that fail to
+	// compile at execute time — the off-by-one this pins against.
+	nestedLogId := func(combinators int) *commonpb.QueryFilter {
 		var f *commonpb.QueryFilter = &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_LogId{
 				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 			},
 		}
-		// MaxFilterDepth combinator levels wrapping a leaf: the deepest
-		// recursion enters the guard at depth == MaxFilterDepth-1, still under
-		// the cap.
-		for range domain.MaxFilterDepth {
+		for range combinators {
 			f = andWrap(f)
 		}
 
 		return f
-	}()
-	require.Nil(t, domain.ValidateFilterForTarget(atLimit, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	}
+
+	require.Nil(t, domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth-1),
+		commonpb.QueryTarget_QUERY_TARGET_LOGS),
+		"MaxFilterDepth-1 combinators must be accepted (matches query.Compile)")
+
+	atCap := domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth),
+		commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NotNil(t, atCap,
+		"MaxFilterDepth combinators must be rejected (matches query.Compile)")
+	require.Contains(t, atCap.Error(), "nesting depth")
 }

@@ -103,6 +103,56 @@ func TestCompile_LedgerConditionMissingValue(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCompile_DepthBoundMatchesValidator pins that the execute-time guard in
+// compile() and the write-time guard in domain.ValidateFilterForTarget agree at
+// the exact boundary — a filter accepted at write time must compile, and one
+// rejected at write time must fail to compile. A drift here would let a prepared
+// query be persisted that then fails only at execute time (or vice versa). Both
+// count every node (combinators AND the leaf), so N combinators wrapping a leaf
+// enters the leaf at depth N: N == MaxFilterDepth-1 is the deepest both accept,
+// N == MaxFilterDepth is rejected by both.
+func TestCompile_DepthBoundMatchesValidator(t *testing.T) {
+	t.Parallel()
+
+	// Leaf is a metadata field condition (valid on ACCOUNTS, needs no reader —
+	// the depth guard fires or the leaf validity check passes before any store
+	// access on the accepted path). Wrap in single-child Or combinators.
+	nested := func(combinators int) *commonpb.QueryFilter {
+		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+			Field: fieldCondition("k", &commonpb.ExistsCondition{}),
+		}}
+		for range combinators {
+			f = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
+				Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{f}},
+			}}
+		}
+
+		return f
+	}
+
+	target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+
+	// N == MaxFilterDepth-1: both accept (compile reaches the leaf; validator
+	// returns nil).
+	deepestOK := nested(MaxFilterDepth - 1)
+	require.Nil(t, domain.ValidateFilterForTarget(deepestOK, target),
+		"validator must accept MaxFilterDepth-1 combinators")
+	ctx := &compileCtx{target: target}
+	_, err := compile(ctx, deepestOK)
+	require.False(t, errors.Is(err, ErrFilterTooDeep),
+		"compile must not trip the depth guard at MaxFilterDepth-1 combinators (got: %v)", err)
+
+	// N == MaxFilterDepth: both reject with the depth error.
+	tooDeep := nested(MaxFilterDepth)
+	valErr := domain.ValidateFilterForTarget(tooDeep, target)
+	require.NotNil(t, valErr, "validator must reject MaxFilterDepth combinators")
+	require.Contains(t, valErr.Error(), "nesting depth")
+	ctx = &compileCtx{target: target}
+	_, err = compile(ctx, tooDeep)
+	require.True(t, errors.Is(err, ErrFilterTooDeep),
+		"compile must trip the depth guard at MaxFilterDepth combinators (got: %v)", err)
+}
+
 func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
 	fc := &commonpb.FieldCondition{
 		Field: &commonpb.FieldRef{Metadata: metaKey},
