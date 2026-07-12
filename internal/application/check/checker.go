@@ -221,7 +221,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Sibling folds for the non-CONFLICT skip reasons: seed reverted /
 	// metadata / accountTypes / ledgerCreationSeen / nextTxID from the
 	// baseline. Every entry lands at sentinel seq=0 so the backward
-	// walk in mutationStateAtSeq picks up baseline claims below any
+	// walk in mutationStateWithWitness picks up baseline claims below any
 	// live log seq.
 	baselineChainStateAvailable, err := c.foldBaselineChainState(baselineDB, chainBound)
 	if err != nil {
@@ -1901,18 +1901,6 @@ func newChainBoundState() *chainBoundState {
 	}
 }
 
-// mutationStateAtSeq walks a mutation list backwards and returns the
-// exists flag of the latest entry strictly before seq. Returns false
-// when the list is empty or every entry is at/after seq (the key was
-// never mutated before seq → default absent). Linear scan is fine
-// because per-key mutation lists are bounded by the number of user
-// operations on that key.
-func mutationStateAtSeq(muts []chainBoundMutation, seq uint64) bool {
-	state, _ := mutationStateWithWitness(muts, seq)
-
-	return state
-}
-
 // mutationStateWithWitness returns both the state at seq AND whether
 // the live audit range witnessed any mutation before seq. The witness
 // flag lets callers distinguish "positive evidence of absence" (a
@@ -2676,7 +2664,7 @@ func (c *Checker) foldBaselineReferences(
 //
 // baselineDB=nil short-circuits every fold and returns (false, nil).
 //
-// Every seeded entry uses sentinel seq=0 so mutationStateAtSeq's
+// Every seeded entry uses sentinel seq=0 so mutationStateWithWitness's
 // backward walk finds it below any live log seq — baseline claims
 // win on empty live but never override a live mutation.
 func (c *Checker) foldBaselineChainState(
@@ -3277,8 +3265,8 @@ func verifySkippedOrder(
 		//   1. context["target"] + context["key"] match chain-bound
 		//      values (correlator-tampering vector).
 		//
-		//   2. mutationStateAtSeq(chainBound.metadata[l][t][k], seq) ==
-		//      false — the key was actually absent just before seq.
+		//   2. mutationStateWithWitness(chainBound.metadata[l][t][k], seq)
+		//      shows the key was actually absent just before seq.
 		//      Closes the log-only tampering vector where the projection
 		//      was swapped from a genuine successful delete to a
 		//      fabricated skip. The metadata timeline is built from
@@ -3315,29 +3303,16 @@ func verifySkippedOrder(
 			return
 		}
 
-		// Tx-id-scoped metadata on a ledger whose CreateLedger sits in
-		// an archived chapter: the chain-bound nextTxID counter was
-		// defaulted (no CreateLedger observed → wrong tx-id
-		// attribution), so we did NOT record any CreateTransaction/
-		// RevertTransaction metadata for this ledger. The timeline is
-		// UNRELIABLE for tx-id targets on such ledgers — treat the
-		// verification as inconclusive rather than false-negative or
-		// false-positive. Account-address targets are not affected
-		// (recorded directly from the order without counter derivation).
-		//
-		// Gate on the ORIGINAL target kind, not on the string looking
-		// numeric: formatTargetForSkipContext collapses an account named
-		// "123" and tx id 123 to the same string, so keying off the
-		// string (isNumericTxIDTarget) would grant this tx-id escape to a
-		// numeric ACCOUNT address and let a forged METADATA_NOT_FOUND skip
-		// on that account pass on an archived ledger.
-		if expected.metadataTargetIsTx {
-			if _, anchored := chainBound.ledgerCreationSeen[ledger]; !anchored && hasArchivedChapters {
-				return
-			}
-		}
+		// Consult the live metadata timeline FIRST. mutationStateWithWitness
+		// tells us both the state just before seq AND whether the live audit
+		// range positively witnessed any mutation for this (target, key). A
+		// live SetMetadata / SaveMetadata order records a presence witness
+		// directly from formatTargetForSkipContext(order.Target) — it does
+		// NOT depend on the archived nextTxID counter — so it is trustworthy
+		// even for a tx-id target on an unanchored ledger.
+		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq)
 
-		if mutationStateAtSeq(chainBound.metadata[ledger][expected.metadataTarget][expected.metadataKey], seq) {
+		if present {
 			// Chain-bound state says the key was PRESENT just before
 			// seq — a DeleteMetadata that ran on that state would have
 			// succeeded, not skipped. Live-audit evidence of presence
@@ -3353,6 +3328,32 @@ func verifySkippedOrder(
 			))
 
 			return
+		}
+
+		// Tx-id-scoped metadata on a ledger whose CreateLedger sits in
+		// an archived chapter: the chain-bound nextTxID counter was
+		// defaulted (no CreateLedger observed → wrong tx-id
+		// attribution), so the IMPLICIT CreateTransaction/RevertTransaction
+		// metadata for this ledger was not recorded. The timeline is
+		// UNRELIABLE for tx-id targets on such ledgers — treat the
+		// verification as inconclusive. Account-address targets are not
+		// affected (recorded directly from the order without counter
+		// derivation).
+		//
+		// Escape ONLY when the live range holds no presence witness for this
+		// (target, key): an explicit live SetMetadata/SaveMetadata order
+		// records a witness regardless of the counter, so a witnessed
+		// presence (already handled above by `present`) or an unrelated
+		// witnessed absence means the timeline IS reliable here and the
+		// escape must not fire — otherwise a forged METADATA_NOT_FOUND on a
+		// tx id whose key the live chain proves present would slip through
+		// (invariant #8). Gate on the ORIGINAL target kind, not the string
+		// looking numeric: formatTargetForSkipContext collapses an account
+		// named "123" and tx id 123 to the same string.
+		if expected.metadataTargetIsTx && !witnessed {
+			if _, anchored := chainBound.ledgerCreationSeen[ledger]; !anchored && hasArchivedChapters {
+				return
+			}
 		}
 
 	case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,

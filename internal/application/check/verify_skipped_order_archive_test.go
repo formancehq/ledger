@@ -192,6 +192,78 @@ func TestVerifySkippedOrder_MetadataNotFoundTxTargetStillEscapesOnUnanchored(t *
 	require.Empty(t, events, "tx-id target on unanchored archived ledger stays permissive")
 }
 
+// TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveWitnessBeatsArchiveEscape
+// pins finding checker.go:3335: a live SetMetadata/SaveMetadata for a tx-id
+// target is recorded directly from the order (independent of the archived
+// nextTxID counter), so it is a trustworthy presence witness even on an
+// unanchored ledger. The tx-id archive escape must NOT fire when such a live
+// witness exists — a forged METADATA_NOT_FOUND on a (txID, key) the live
+// chain proves present must be caught (invariant #8).
+func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveWitnessBeatsArchiveEscape(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "123", // genuine transaction id
+			metadataKey:        "role",
+			metadataTargetIsTx: true,
+		},
+	}
+
+	// Unanchored ledger (no live CreateLedger) + archived chapters, BUT a live
+	// SetMetadata for (tx 123, "role") at seq 3 recorded a presence witness.
+	// The old early-return escape discarded this witness and let the forged
+	// skip pass; the fix consults the live timeline first.
+	chainBound := newChainBoundState()
+	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
+		"123": {"role": {{seq: 3, exists: true}}},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "123",
+		"key":    "role",
+	})
+
+	events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, true, false, false)
+	requireInvalidSkipEvent(t, events, 7)
+}
+
+// TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveDeleteWitnessAccepted is
+// the legitimate companion: a live SetMetadata followed by a live
+// DeleteMetadata for the same (txID, key) before seq means the key was
+// absent at seq, so a METADATA_NOT_FOUND skip is genuine and accepted — the
+// witness proves absence, the archive escape is not needed and not fired.
+func TestVerifySkippedOrder_MetadataNotFoundTxTargetLiveDeleteWitnessAccepted(t *testing.T) {
+	t.Parallel()
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		7: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "123",
+			metadataKey:        "role",
+			metadataTargetIsTx: true,
+		},
+	}
+
+	chainBound := newChainBoundState()
+	chainBound.metadata["L"] = map[string]map[string][]chainBoundMutation{
+		"123": {"role": {{seq: 3, exists: true}, {seq: 5, exists: false}}},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "123",
+		"key":    "role",
+	})
+
+	events := captureEventsArchive(t, "L", 7, payload, expected, chainBound, true, false, false)
+	require.Empty(t, events, "live delete witness proves absence → legitimate skip accepted")
+}
+
 // TestVerifySkippedOrder_AccountTypeNotFoundInconclusiveWhenArchivedNoBaseline
 // pins finding checker.go:3364: an empty accountTypes timeline is NOT sound
 // proof-of-absence when the ledger's whole history may be archived and the
