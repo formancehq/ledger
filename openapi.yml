@@ -3994,8 +3994,11 @@ components:
         discriminated by the request execution `mode` (see
         `ExecutePreparedQueryRequest.mode`): `mode=LIST` returns `cursor`,
         `mode=AGGREGATE_VOLUMES` returns `aggregateResult`. (The query `target`
-        — ACCOUNTS / TRANSACTIONS / LOGS — selects the row type inside the
-        cursor, not which envelope field is set.) Both payloads use the same
+        — ACCOUNTS or TRANSACTIONS — selects the row type inside the
+        cursor, not which envelope field is set. LOGS is not a prepared-query
+        cursor row type: `query.Execute` hydrates only account/transaction data,
+        so a LOGS-target query executes to an empty cursor and the REST create
+        handler rejects it.) Both payloads use the same
         camelCase encoding as the equivalent non-prepared endpoints
         (decimal-string amounts, `color` always present on every volume row
         including the uncolored bucket).
