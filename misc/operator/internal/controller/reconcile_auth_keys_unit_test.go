@@ -44,6 +44,24 @@ func authEnabledCluster(name, namespace string, labels map[string]string) *ledge
 	}
 }
 
+// issuerBackedCluster returns an auth-enabled Cluster that authenticates via an
+// OIDC issuer (no Ed25519 keys required). Such a cluster boots and authenticates
+// fine with an empty/absent Ed25519 key set, so the auth-keys fail-safe must
+// never freeze it.
+func issuerBackedCluster(name, namespace string, labels map[string]string) *ledgerv1alpha1.Cluster {
+	enabled := true
+
+	return &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Auth: &ledgerv1alpha1.AuthorizationConfig{
+				Enabled: &enabled,
+				Issuer:  "https://issuer.example.com",
+			},
+		},
+	}
+}
+
 // matchingCredentials returns a cluster-scoped Credentials selecting the given
 // labels. If distributed is true its status carries a DistributedSecretRefs
 // entry pointing at secretNS/secretName.
@@ -265,6 +283,94 @@ func TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending(t *t
 	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
 	assert.True(t, apierrors.IsNotFound(err),
 		"auth-keys ConfigMap must be deleted for an auth-disabled cluster")
+}
+
+// TestReconcileAuthKeys_IssuerBacked_AllUnresolved_NotPending is the regression
+// for the EN-1487 P1 finding: an OIDC-issuer-backed Cluster (auth enabled, issuer
+// set, no Ed25519 keys required) whose matching Credentials are ALL unresolved must
+// NOT be frozen. The server's validateAuthConfig accepts AUTH_ENABLED=true backed
+// by an issuer alone, and the operator emits no AUTH_ED25519_KEYS when no key
+// resolves, so there is no keyless crash-loop to guard against. Freezing here would
+// block image/replica/TLS updates indefinitely. reconcileAuthKeys must report
+// pending=false so the StatefulSet pass proceeds; with no prior key and nothing to
+// carry forward the (empty) ConfigMap is removed like any no-effective-keys case.
+func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_NotPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	scheme := authKeysScheme(t)
+	// A never-distributed matching Credentials, exactly the case the finding
+	// describes ("adding a never-distributed Credentials to an OIDC cluster").
+	cred := matchingCredentials("thierry-cred", selector, false, "", "")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cred).
+		Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := issuerBackedCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending,
+		"an issuer-backed cluster must never be frozen by an unresolved Credentials — it authenticates on the issuer")
+	assert.Nil(t, credentials, "no key resolves, so no key info is returned")
+
+	// No prior ConfigMap existed; none must be created (no effective keys).
+	cm := &corev1.ConfigMap{}
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm)
+	assert.True(t, apierrors.IsNotFound(err),
+		"no auth-keys ConfigMap should be created for an issuer-backed cluster with no resolvable keys")
+}
+
+// TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPending
+// covers the issuer-backed variant where a prior ConfigMap already holds the now-
+// unresolved credential's key. The cluster still must NOT freeze (issuer keeps auth
+// valid), yet the carried-forward key material is preserved and the ConfigMap is
+// rebuilt so a later StatefulSet pass keeps mounting it. This proves the P1 fix
+// lifts only the freeze, without stripping any existing key.
+func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+		credName    = "thierry-cred"
+	)
+	selector := map[string]string{"tier": "gold"}
+	scheme := authKeysScheme(t)
+
+	existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+		keyID  string
+		pubKey string
+	}{
+		credName: {keyID: "kid-old", pubKey: "deadbeef"},
+	})
+	cred := matchingCredentials(credName, selector, false, "", "")
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingCM, cred).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	cluster := issuerBackedCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.False(t, pending, "issuer-backed cluster must not freeze even with a carried-forward key")
+	require.Len(t, credentials, 1, "the prior key must be carried forward, not dropped")
+
+	// The ConfigMap must still carry the prior key material so the StatefulSet keeps
+	// mounting a valid key set.
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	ids := keyIDsInConfigMap(t, cm)
+	assert.Contains(t, ids, "kid-old", "the carried-forward key must be preserved")
+	assert.Equal(t, "deadbeef", cm.Data[pubKeyFileName("credentials", credName)],
+		"the carried-forward pubkey blob must be preserved")
 }
 
 // TestReconcileAuthKeys_NoMatch_DeletesConfigMap covers the legitimate removal
