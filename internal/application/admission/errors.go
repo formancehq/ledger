@@ -39,11 +39,13 @@ var (
 	// applies uniformly across transports (see internal/adapter/http/handler.go).
 	ErrLedgerNameReservedPrefix = domain.NewValidationSentinel("ledger name \"_\" is reserved for system API routes")
 
-	// ErrIndexTargetUnsupported rejects a CreateIndex order for a metadata index
-	// whose target is not ACCOUNT or TRANSACTION (e.g. LEDGER). Only those two
-	// targets have a backfill path in the index builder; a metadata index on any
-	// other target would be persisted in the registry but never built, so it is
-	// rejected at admission (covering gRPC and HTTP) rather than silently
-	// creating a permanently-unbuilt index. See indexes.SupportsMetadataTarget.
-	ErrIndexTargetUnsupported = domain.NewValidationSentinel("metadata index target not supported (must be ACCOUNT or TRANSACTION)")
+	// ErrIndexTargetUnsupported rejects a CreateIndex order for an IndexID the
+	// builder has no backfill path for: a metadata target other than
+	// ACCOUNT/TRANSACTION (e.g. LEDGER), an account builtin other than ASSET
+	// (e.g. the UNSPECIFIED sentinel), a log builtin other than DATE, or an
+	// out-of-range builtin enum. Such an index would be persisted in the
+	// registry but never built, so it is rejected at admission (covering gRPC
+	// and HTTP) rather than silently creating a permanently-unbuilt index.
+	// See indexes.Supported.
+	ErrIndexTargetUnsupported = domain.NewValidationSentinel("index target not supported (metadata: ACCOUNT/TRANSACTION; account builtin: ASSET; log builtin: DATE)")
 )

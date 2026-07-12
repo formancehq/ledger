@@ -11,6 +11,36 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestSupported(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		id   *commonpb.IndexID
+		want bool
+	}{
+		{"metadata ACCOUNT", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"), true},
+		{"metadata TRANSACTION", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "k"), true},
+		{"metadata LEDGER", indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "k"), false},
+		{"tx builtin REFERENCE (enum 0)", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE), true},
+		{"tx builtin REVERTED_AT", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT), true},
+		{"tx builtin out-of-range enum", indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex(999)), false},
+		{"account builtin ASSET", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET), true},
+		{"account builtin UNSPECIFIED", indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED), false},
+		{"log builtin DATE", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE), true},
+		{"log builtin UNSPECIFIED", indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED), false},
+		{"nil id", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, indexes.Supported(tt.id))
+		})
+	}
+}
+
 func TestEqual(t *testing.T) {
 	t.Parallel()
 

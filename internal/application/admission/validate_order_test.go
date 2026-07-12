@@ -146,11 +146,12 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 	}
 }
 
-// TestValidateOrder_CreateIndexTarget pins EN-1472: a CreateIndex order for a
-// metadata index must target ACCOUNT or TRANSACTION. ParseCanonical decodes
-// "metadata:TARGET_TYPE_LEDGER:<key>" into a well-formed IndexID, so admission
-// is the gate that stops a permanently-unbuilt LEDGER-target index from being
-// persisted (from gRPC or HTTP alike).
+// TestValidateOrder_CreateIndexTarget pins EN-1472: a CreateIndex order must
+// target an IndexID the builder can backfill. ParseCanonical decodes any
+// well-formed IndexID (e.g. "metadata:TARGET_TYPE_LEDGER:<key>",
+// "account_builtin:ACCT_BUILTIN_INDEX_UNSPECIFIED"), so admission is the gate
+// that stops a permanently-unbuilt index from being persisted (from gRPC or
+// HTTP alike). Covers metadata targets and builtin enum values.
 func TestValidateOrder_CreateIndexTarget(t *testing.T) {
 	t.Parallel()
 
@@ -190,8 +191,26 @@ func TestValidateOrder_CreateIndexTarget(t *testing.T) {
 			wantErr: ErrIndexTargetUnsupported,
 		},
 		{
-			name: "builtin index carries no target and is valid",
+			name: "tx builtin index is valid",
 			id:   indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		},
+		{
+			name: "account builtin ASSET is valid",
+			id:   indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		},
+		{
+			name:    "account builtin UNSPECIFIED is rejected",
+			id:      indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
+			wantErr: ErrIndexTargetUnsupported,
+		},
+		{
+			name: "log builtin DATE is valid",
+			id:   indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		},
+		{
+			name:    "log builtin UNSPECIFIED is rejected",
+			id:      indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED),
+			wantErr: ErrIndexTargetUnsupported,
 		},
 	}
 

@@ -2106,7 +2106,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      schedule:
+                      cron:
                         type: string
                         description: Cron expression, or empty when disabled.
         '401':

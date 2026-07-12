@@ -59,6 +59,41 @@ func SupportsMetadataTarget(target commonpb.TargetType) bool {
 	}
 }
 
+// Supported reports whether the index builder has a backfill path for the
+// given IndexID, i.e. whether a CreateIndex for it can ever complete rather
+// than being persisted as permanently BUILDING. It is the single admission
+// gate covering every IndexID kind:
+//
+//   - tx builtin: all named TransactionBuiltinIndex values have a backfill
+//     path (reference/timestamp/id/address/source/destination/inserted_at/
+//     reverted_at); an out-of-range enum is rejected.
+//   - account builtin: only ACCT_BUILTIN_INDEX_ASSET is backfilled
+//     (indexbuilder.backfill_postings); UNSPECIFIED and any other value are
+//     rejected.
+//   - log builtin: only LOG_BUILTIN_INDEX_DATE is backfilled; UNSPECIFIED and
+//     any other value are rejected.
+//   - metadata: gated by SupportsMetadataTarget (ACCOUNT/TRANSACTION only).
+//
+// ParseCanonical decodes any well-formed IndexID (including unsupported enum
+// values reachable from an HTTP/gRPC create body), so admission must gate on
+// this to keep a never-built index from being persisted from any transport.
+func Supported(id *commonpb.IndexID) bool {
+	switch k := id.GetKind().(type) {
+	case *commonpb.IndexID_TxBuiltin:
+		_, named := commonpb.TransactionBuiltinIndex_name[int32(k.TxBuiltin)]
+
+		return named
+	case *commonpb.IndexID_AccountBuiltin:
+		return k.AccountBuiltin == commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET
+	case *commonpb.IndexID_LogBuiltin:
+		return k.LogBuiltin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
+	case *commonpb.IndexID_Metadata:
+		return SupportsMetadataTarget(k.Metadata.GetTarget())
+	default:
+		return false
+	}
+}
+
 // Equal returns true iff a and b designate the same logical index. Nil-safe.
 func Equal(a, b *commonpb.IndexID) bool {
 	if a == nil || b == nil {

@@ -264,7 +264,10 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			req: &servicepb.Request{Type: &servicepb.Request_CreateIndex{
 				CreateIndex: &servicepb.CreateIndexRequest{
 					Ledger: ledger,
-					Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED}},
+					// Must be a builder-supported IndexID: validateOrderCreateIndex
+					// (run by requestToOrder→validateOrder) rejects unsupported
+					// kinds like the ACCT_BUILTIN UNSPECIFIED sentinel.
+					Id: &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{AccountBuiltin: commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET}},
 				},
 			}},
 			expect: expect{

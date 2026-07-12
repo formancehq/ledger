@@ -27,7 +27,7 @@ func TestHandleGetChapterSchedule_Success(t *testing.T) {
 	srv.handleGetChapterSchedule(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Contains(t, w.Body.String(), `"schedule":"0 0 * * *"`)
+	require.Contains(t, w.Body.String(), `"cron":"0 0 * * *"`)
 }
 
 func TestHandleGetChapterSchedule_BackendError(t *testing.T) {
