@@ -1743,9 +1743,12 @@ func (c *Checker) verifyAuditHashChain(
 
 		// Per-order skippable_reasons whitelist + chain-bound references
 		// re-derived from each chain-verified order. Each item carries its
-		// own LogSequence (set by buildAuditItems from the fresh
-		// CreatedLog or the idempotency replay's ReferenceSequence).
-		// Failure-side entries get LogSequence=0 and contribute nothing.
+		// own LogSequence, set by buildAuditItems from the order's fresh
+		// CreatedLog. Idempotency replays never reach here: a replay returns
+		// the frozen outcome verbatim and writes NO audit entry (see
+		// state.machine's `if replayed { return }`), so every persisted
+		// AuditItem comes from a fresh apply. Failure-side entries get
+		// LogSequence=0 and contribute nothing.
 		if entry.GetSuccess() != nil {
 			collectExpectedSkippable(items, expectedSkippable, chainBound)
 		}
@@ -1970,10 +1973,14 @@ type expectedSkippableOrder struct {
 //
 //   - expectedSkippable: per-log skippable_reasons whitelist + correlator
 //     for orders that opted into skip. Each item maps to the log at
-//     item.LogSequence (which buildAuditItems sets from either the fresh
-//     CreatedLog or the idempotency-replay ReferenceSequence — seq + i
-//     is the wrong formula because ReferenceSequence items break the
-//     sequential adjacency).
+//     item.LogSequence, which buildAuditItems copies from the order's
+//     fresh CreatedLog sequence. Always read this per-item field rather
+//     than computing seq + i: buildAuditItems can leave gaps (e.g. an
+//     order that produced no log carries LogSequence=0), so orders are
+//     not guaranteed sequentially adjacent. Idempotency replays never
+//     appear here — they return the frozen outcome without writing an
+//     audit entry (see state.machine's `if replayed { return }`), so
+//     every persisted item is a fresh apply.
 //
 //   - chainBound.references: per-ledger first-seen sequence of every
 //     CreateTransactionOrder reference. Feeds the CONFLICT replay.
