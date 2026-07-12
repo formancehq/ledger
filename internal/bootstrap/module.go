@@ -683,7 +683,7 @@ func Module() fx.Option {
 				// Share the audit indexer's rebuild threshold — both tail the same
 				// audit chain, so the gap heuristic that catches a rollback-then-
 				// catch-up race applies identically (auditindexer parity).
-				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0, cfg.AuditIndexConfig.RebuildThreshold)
+				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig, info version.Info) http.Handler {
