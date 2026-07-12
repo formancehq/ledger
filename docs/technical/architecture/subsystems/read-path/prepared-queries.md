@@ -138,8 +138,13 @@ arm cannot silently drop a filter. The full DSL is documented under `QueryFilter
 `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
 `tests/e2e/business/prepared_query_rest_shape_test.go`.
 
-This shape is shared by every filtered endpoint (and by the audit conditions in
-EN-1548): new conditions extend it as new `$match`/`$gt`/… over new field names.
+This DSL is the JSON codec for the `QueryFilter` proto — it applies to every
+REST surface that accepts a `QueryFilter` as a JSON `filter` body: today the
+prepared-query endpoints, and the audit-list conditions added in EN-1548. It is
+*not* the query language of the account/transaction/log list endpoints, which
+build their `QueryFilter` server-side from narrow query-string params
+(`address=`, `metadata[...]=`, …) rather than from this JSON DSL. New conditions
+extend the DSL as new `$match`/`$gt`/… over new field names.
 
 **REST prepared-query targets are `ACCOUNTS` / `TRANSACTIONS` only.** `LOGS` is a
 valid direct `ListLogs` target but not (yet) a usable *prepared-query* target:
