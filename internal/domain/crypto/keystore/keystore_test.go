@@ -88,6 +88,37 @@ func TestGetChildren_WithParent(t *testing.T) {
 	require.Empty(t, ks.GetChildren("nonexistent"))
 }
 
+// TestGetChildren_SortedDeterministic pins EN-1521: GetChildren feeds signing
+// cascade revocation (RevokedSigningKeyLog.cascadedKeyIds + BFS order), which is
+// chain-bound FSM output, so it must return children in a canonical order
+// independent of the underlying map's iteration order (invariant #2). The keys
+// are registered in a non-sorted order to prove the returned slice is sorted,
+// not merely insertion-ordered.
+func TestGetChildren_SortedDeterministic(t *testing.T) {
+	t.Parallel()
+
+	pub := func() ed25519.PublicKey {
+		p, _, err := ed25519.GenerateKey(rand.Reader)
+		require.NoError(t, err)
+
+		return p
+	}
+
+	ks := NewKeyStore()
+	ks.AddPublicKey("root", pub(), "")
+	for _, child := range []string{"child-m", "child-a", "child-z", "child-b"} {
+		ks.AddPublicKey(child, pub(), "root")
+	}
+
+	want := []string{"child-a", "child-b", "child-m", "child-z"}
+	// Repeat: Go randomizes map iteration order per range, so a raw map range
+	// would eventually return an unsorted slice.
+	for range 32 {
+		require.Equal(t, want, ks.GetChildren("root"),
+			"GetChildren must return a canonically-sorted, deterministic slice")
+	}
+}
+
 func TestRemovePublicKey_ClearsParent(t *testing.T) {
 	t.Parallel()
 
