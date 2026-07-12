@@ -17,6 +17,8 @@ import (
 // balance checks in Numscript execution.
 var MaxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 
+//go:generate mockgen -write_source_comment=false -write_package_comment=false -destination=valuesource_generated_test.go -typed -package=numscript . ValueSource
+
 // ValueSource is the minimal read surface the Numscript dependency resolver and
 // the force-free execution path need: a per-(account, asset) balance and a
 // per-(account, key) metadata value. It abstracts over where the values come

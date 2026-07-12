@@ -5,52 +5,73 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// fakeSource is a ValueSource backed by in-memory maps for discovery tests.
-type fakeSource struct {
+// sourceSpec is a value-driven builder for the ValueSource seam. Numscript
+// resolution calls Balance / Metadata an interpreter-decided number of times in
+// an interpreter-decided order, so behaviour-verifying expectations are the
+// wrong tool; build() wires the (generated) MockValueSource with AnyTimes
+// stubs that answer from the declared maps. Using the generated mock keeps the
+// repo's "no hand-rolled fakes" convention while retaining the stub ergonomics
+// the value-driven tests need.
+type sourceSpec struct {
 	balances map[string]*big.Int // "account\x00asset" -> balance
 	metadata map[string]string   // "account\x00key" -> value
 	present  map[string]struct{} // keys treated as present (for absent vs empty)
 }
 
-func newFakeSource() *fakeSource {
-	return &fakeSource{
+func newFakeSource() *sourceSpec {
+	return &sourceSpec{
 		balances: map[string]*big.Int{},
 		metadata: map[string]string{},
 		present:  map[string]struct{}{},
 	}
 }
 
-func (f *fakeSource) withBalance(account, asset string, amount int64) *fakeSource {
+func (f *sourceSpec) withBalance(account, asset string, amount int64) *sourceSpec {
 	f.balances[account+"\x00"+asset] = big.NewInt(amount)
 
 	return f
 }
 
-func (f *fakeSource) withMetadata(account, key, value string) *fakeSource {
+func (f *sourceSpec) withMetadata(account, key, value string) *sourceSpec {
 	f.metadata[account+"\x00"+key] = value
 	f.present[account+"\x00"+key] = struct{}{}
 
 	return f
 }
 
-func (f *fakeSource) Balance(account, asset string) (*big.Int, error) {
-	if b, ok := f.balances[account+"\x00"+asset]; ok {
-		return new(big.Int).Set(b), nil
-	}
+// build materialises a MockValueSource answering from the declared maps. Absent
+// balances resolve to zero (a fresh account); absent metadata resolves to
+// not-present — matching the real admission/FSM value sources.
+func (f *sourceSpec) build(t *testing.T) *MockValueSource {
+	t.Helper()
 
-	return new(big.Int), nil
-}
+	ctrl := gomock.NewController(t)
+	mock := NewMockValueSource(ctrl)
 
-func (f *fakeSource) Metadata(account, key string) (string, bool, error) {
-	if _, ok := f.present[account+"\x00"+key]; ok {
-		return f.metadata[account+"\x00"+key], true, nil
-	}
+	mock.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(account, asset string) (*big.Int, error) {
+			if b, ok := f.balances[account+"\x00"+asset]; ok {
+				return new(big.Int).Set(b), nil
+			}
 
-	return "", false, nil
+			return new(big.Int), nil
+		})
+
+	mock.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(account, key string) (string, bool, error) {
+			if _, ok := f.present[account+"\x00"+key]; ok {
+				return f.metadata[account+"\x00"+key], true, nil
+			}
+
+			return "", false, nil
+		})
+
+	return mock
 }
 
 func volKey(account, asset string) domain.VolumeKey {
@@ -64,10 +85,10 @@ func metaKey(account, key string) domain.MetadataKey {
 	}
 }
 
-func discover(t *testing.T, script string, vars map[string]string, source ValueSource, force bool) *DiscoveryResult {
+func discover(t *testing.T, script string, vars map[string]string, source *sourceSpec, force bool) *DiscoveryResult {
 	t.Helper()
 	cache := NewNumscriptCache(16)
-	result, err := DiscoverNumscriptDependencies(cache, script, vars, "ledger", source, force)
+	result, err := DiscoverNumscriptDependencies(cache, script, vars, "ledger", source.build(t), force)
 	require.NoError(t, err)
 
 	return result

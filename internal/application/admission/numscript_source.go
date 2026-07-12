@@ -1,34 +1,74 @@
 package admission
 
 import (
-	"maps"
 	"math/big"
 
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// foldCallerAccountMetadata folds a CreateTransaction's caller-supplied account
+// metadata into the batch overlay. The FSM merges this metadata with precedence
+// over any script-produced set_account_meta for the same key
+// (processCreateTransaction), so callers must invoke this AFTER folding the
+// script's own metadata writes.
+func foldCallerAccountMetadata(effects *batchEffects, ledgerName string, ct *raftcmdpb.CreateTransactionOrder) {
+	for account, mm := range ct.GetAccountMetadata() {
+		for k, v := range mm.GetValues() {
+			effects.setMetadata(domain.MetadataKey{
+				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+				Key:        k,
+			}, commonpb.MetadataValueToString(v))
+		}
+	}
+}
 
 // batchEffects accumulates the state changes of the orders already resolved in
 // the current atomic batch, so a later order's Numscript resolution reads the
 // same state the FSM will see (EN-1406 P1-1). The FSM applies batch orders
 // sequentially against a single mutated WriteSet; admission mirrors that by
-// layering these effects over the pre-batch Pebble snapshot.
+// layering these effects over the pre-batch Pebble snapshot. Every preceding
+// *mutating* order contributes: CreateTransaction (script + postings + caller
+// AccountMetadata), RevertTransaction (reversed-posting balance deltas), and
+// account-targeted AddMetadata / DeleteMetadata.
 //
 // balanceDeltas holds (input−output) deltas per (ledger, account, asset) — the
-// quantity balance() returns. metadataWrites holds the latest raw value written
-// per account-metadata key (a later order sees an earlier order's write).
+// quantity balance() returns. metadataWrites holds the latest write per
+// account-metadata key (a later order sees an earlier order's write), where a
+// write is either a set (value, present) or a delete tombstone (deleted) so a
+// following meta() resolves absent exactly as the FSM would after the delete.
 type batchEffects struct {
 	balanceDeltas  map[domain.VolumeKey]*big.Int
-	metadataWrites map[domain.MetadataKey]string
+	metadataWrites map[domain.MetadataKey]metadataWrite
+}
+
+// metadataWrite records the outcome of a preceding order's account-metadata
+// mutation within the batch: either a set to value, or a deletion (deleted).
+type metadataWrite struct {
+	value   string
+	deleted bool
 }
 
 func newBatchEffects() *batchEffects {
 	return &batchEffects{
 		balanceDeltas:  make(map[domain.VolumeKey]*big.Int),
-		metadataWrites: make(map[domain.MetadataKey]string),
+		metadataWrites: make(map[domain.MetadataKey]metadataWrite),
 	}
+}
+
+// setMetadata records that a preceding order wrote value to an account-metadata
+// key (last write within the batch wins).
+func (b *batchEffects) setMetadata(key domain.MetadataKey, value string) {
+	b.metadataWrites[key] = metadataWrite{value: value}
+}
+
+// deleteMetadata records that a preceding order deleted an account-metadata key,
+// so a later meta() resolves absent even if the pre-batch snapshot holds a value.
+func (b *batchEffects) deleteMetadata(key domain.MetadataKey) {
+	b.metadataWrites[key] = metadataWrite{deleted: true}
 }
 
 // addBalanceDelta accumulates a (input−output) delta for a volume key.
@@ -53,7 +93,9 @@ func (b *batchEffects) mergeDiscovery(deltas map[domain.VolumeKey]*big.Int, meta
 	}
 
 	// A later write for the same key wins (last-writer within the batch).
-	maps.Copy(b.metadataWrites, metaWrites)
+	for key, value := range metaWrites {
+		b.setMetadata(key, value)
+	}
 }
 
 // admissionValueSource reads balances and account metadata at admission time
@@ -108,11 +150,16 @@ func (s *admissionValueSource) Metadata(account, key string) (string, bool, erro
 		Key:        key,
 	}
 
-	// An earlier same-batch order's set_account_meta wins over the pre-batch
-	// snapshot (EN-1406 P1-1).
+	// An earlier same-batch order's metadata mutation wins over the pre-batch
+	// snapshot (EN-1406 P1-1): a set returns its value as present, a delete
+	// resolves the key as absent even if the snapshot still holds a value.
 	if s.effects != nil {
-		if value, ok := s.effects.metadataWrites[metaKey]; ok {
-			return value, true, nil
+		if write, ok := s.effects.metadataWrites[metaKey]; ok {
+			if write.deleted {
+				return "", false, nil
+			}
+
+			return write.value, true, nil
 		}
 	}
 

@@ -478,12 +478,16 @@ The rejection triggers only when a color/scope-qualified read is actually *perfo
 
 #### Intra-batch effect accumulation
 
-When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of the preceding orders layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely:
+When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of every preceding order layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely, the balance/metadata effect of every preceding **mutating** order is folded — not just `CreateTransaction`:
 
-- after an order resolves, its net `(input − output)` **balance deltas** per `(ledger, account, asset)` and its **account-metadata writes** are folded into a `batchEffects` accumulator (`mergeDiscovery`);
-- the next order's `admissionValueSource` reads a balance as `snapshot value + accumulated delta`, and a metadata key as the batch's last-written value if any (last-writer-wins), so it resolves against exactly the state the FSM will present it.
+- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset)`, plus `set_account_meta` writes; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
+- **`RevertTransaction`** — the reversed-posting balance deltas (original destination → source, original source → destination), the inverse of the original postings, matching `processRevertTransaction`;
+- **`AddMetadata`** (account target) — the metadata value it writes;
+- **`DeleteMetadata`** (account target) — a **tombstone** for the key, so a later `meta()` resolves *absent* even if the pre-batch snapshot still holds a value.
 
-Without this, a batch where order N spends funds that order N−1 credits would resolve N against a stale (pre-batch) balance and mis-predict its outcome. Layering the effects keeps admission's resolution — and therefore the preload key set and the `inputs_resolution_hash` — consistent with sequential FSM apply.
+The next order's `admissionValueSource` then reads a balance as `snapshot value + accumulated delta`, and a metadata key as the batch's last write if any — a set returns its value as present, a tombstone returns absent (last-writer-wins) — so it resolves against exactly the state the FSM will present it.
+
+Without this, a batch where order N spends funds order N−1 credits (or reads metadata order N−1 wrote or deleted) would resolve N against a stale (pre-batch) state and mis-predict its outcome — a permanent `STALE_INPUTS_RESOLUTION` on every retry. Layering the effects keeps admission's resolution — and therefore the preload key set and the `inputs_resolution_hash` — consistent with sequential FSM apply.
 
 ### Stale-inputs Detection
 

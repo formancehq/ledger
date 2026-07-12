@@ -19,7 +19,7 @@ import (
 func TestStore_RejectsColoredBalanceQuery(t *testing.T) {
 	t.Parallel()
 
-	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100), false)
+	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100).build(t), false)
 
 	_, err := store.GetBalances(context.Background(), numscriptlib.BalanceQuery{
 		{Account: "acc", Asset: "COIN", Color: "RED"},
@@ -31,7 +31,7 @@ func TestStore_RejectsColoredBalanceQuery(t *testing.T) {
 func TestStore_RejectsScopedBalanceQuery(t *testing.T) {
 	t.Parallel()
 
-	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100), false)
+	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100).build(t), false)
 
 	_, err := store.GetBalances(context.Background(), numscriptlib.BalanceQuery{
 		{Account: "acc", Asset: "COIN", Scope: "reserve"},
@@ -45,7 +45,7 @@ func TestStore_RejectsScopedBalanceQuery(t *testing.T) {
 func TestStore_RejectsColoredBalanceEvenInForceMode(t *testing.T) {
 	t.Parallel()
 
-	store := NewStore(newFakeSource(), true)
+	store := NewStore(newFakeSource().build(t), true)
 
 	_, err := store.GetBalances(context.Background(), numscriptlib.BalanceQuery{
 		{Account: "acc", Asset: "COIN", Color: "RED"},
@@ -58,7 +58,7 @@ func TestStore_RejectsColoredBalanceEvenInForceMode(t *testing.T) {
 func TestStore_RejectsScopedMetadataQuery(t *testing.T) {
 	t.Parallel()
 
-	store := NewStore(newFakeSource().withMetadata("acc", "k", "v"), false)
+	store := NewStore(newFakeSource().withMetadata("acc", "k", "v").build(t), false)
 
 	_, err := store.GetAccountsMetadata(context.Background(), numscriptlib.MetadataQuery{
 		{Account: "acc", Scope: "s", Keys: []string{"k"}},
@@ -71,7 +71,7 @@ func TestStore_RejectsScopedMetadataQuery(t *testing.T) {
 func TestStore_AllowsUncoloredQueries(t *testing.T) {
 	t.Parallel()
 
-	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100).withMetadata("acc", "k", "v"), false)
+	store := NewStore(newFakeSource().withBalance("acc", "COIN", 100).withMetadata("acc", "k", "v").build(t), false)
 
 	balances, err := store.GetBalances(context.Background(), numscriptlib.BalanceQuery{
 		{Account: "acc", Asset: "COIN"},

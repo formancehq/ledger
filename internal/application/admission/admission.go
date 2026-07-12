@@ -1234,17 +1234,72 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		createTx, ok := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
-		if !ok {
+		ledgerName := ls.GetLedger()
+
+		// Every preceding mutating order's effect must be folded into the batch
+		// overlay so a later balance()/meta() resolves against the state the FSM
+		// will see when it reaches that order (EN-1406 P1). Non-CreateTransaction
+		// mutating orders (revert, metadata add/delete) carry no script to
+		// resolve — fold their effects and move on.
+		switch applyData := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			// Handled below (script resolution + effect folding).
+		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+			// A revert applies each original posting reversed (original
+			// destination becomes source, original source becomes
+			// destination — see processRevertTransaction), so the net balance
+			// delta is the inverse of the original: source +amount, dest
+			// −amount relative to the original posting.
+			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
+				amount := posting.GetAmount().ToBigInt()
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset()),
+					amount,
+				)
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset()),
+					new(big.Int).Neg(amount),
+				)
+			}
+
+			continue
+		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+			// Only account-targeted metadata is observable by a later meta();
+			// transaction-targeted metadata is not.
+			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+				for k, v := range applyData.AddMetadata.GetMetadata() {
+					effects.setMetadata(domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
+						Key:        k,
+					}, commonpb.MetadataValueToString(v))
+				}
+			}
+
+			continue
+		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+			// A preceding account-metadata delete tombstones the key so a
+			// later meta() resolves absent, matching the FSM's post-delete state.
+			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+				effects.deleteMetadata(domain.MetadataKey{
+					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
+					Key:        applyData.DeleteMetadata.GetKey(),
+				})
+			}
+
+			continue
+		default:
+			// Non-mutating or non-account-state orders (index, account-type,
+			// enforcement mode) leave no balance/metadata trace a later script
+			// could read.
 			continue
 		}
+
+		createTx := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
 
 		// Script-discovered keys belong to this order's coverage. perOrder
 		// is initialized by extractPreloadNeeds with one entry per input
 		// order, so the index lookup is safe.
 		orderNeeds := perOrder[orderIdx]
-
-		ledgerName := ls.GetLedger()
 
 		var scriptText string
 		var scriptVars map[string]string
@@ -1297,14 +1352,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			// Caller-supplied account metadata on a postings-only order is also a
 			// write a later meta() could read.
-			for account, mm := range createTx.CreateTransaction.GetAccountMetadata() {
-				for k, v := range mm.GetValues() {
-					effects.metadataWrites[domain.MetadataKey{
-						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-						Key:        k,
-					}] = commonpb.MetadataValueToString(v)
-				}
-			}
+			foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
 			continue
 		}
@@ -1366,6 +1414,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
 			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
 		}
+
+		// Caller-supplied account metadata is folded AFTER the script's writes
+		// because the FSM merges it with precedence over set_account_meta
+		// (processCreateTransaction: "order metadata takes precedence over
+		// script metadata"). A later meta() must therefore see the caller value,
+		// not the script value, for the same key.
+		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
 		// For references: preload the resolved content keyed by (ledger, name, version).
 		// The FSM resolves via NumscriptReference from the dual-gen cache.
