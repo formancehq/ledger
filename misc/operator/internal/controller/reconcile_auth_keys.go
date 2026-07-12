@@ -118,9 +118,14 @@ type authKeyEntry struct {
 //     material while its authorization metadata (scopes / god) is refreshed from
 //     the live Credentials spec, so a narrowed or god-cleared Credentials does not
 //     preserve stale privileges indefinitely while its Secret stays undistributed.
-//     When nothing can be carried forward (no prior key material) the regression
-//     guard below falls back to leaving the wiring untouched, so an
-//     Ed25519-dependent cluster is never rolled keyless.
+//     The freeze is further narrowed to an INCOMPLETE carried set: if every
+//     previously-distributed still-matched credential's key is carried forward
+//     (a COMPLETE set), rolling is crash-loop-safe (the mounted key set is
+//     non-empty and complete) and is in fact required so the refreshed
+//     authorization reaches the running pods (which load AUTH_ED25519_KEYS once at
+//     boot) — so pending=false there. Only an empty or key-dropping merge (no
+//     prior key material to carry) keeps the wiring untouched and pending=true, so
+//     an Ed25519-dependent cluster is never rolled keyless.
 //   - matched >= 1, SOME resolved and SOME transiently non-distributed
 //     (partial): do NOT freeze the whole cluster (freezing means a single
 //     permanently-broken Credentials would block key rotation/propagation for
@@ -131,9 +136,11 @@ type authKeyEntry struct {
 //     pending key; a permanently-broken Credentials only ever keeps its own
 //     last-known key. Proceed with the StatefulSet pass normally (pending=false).
 //
-// The returned pending flag is true only while every matched credential is still
-// unresolved AND the cluster depends on Ed25519 keys (the second case) — the
-// ConfigMap may still have been refreshed.
+// The returned pending flag is true only when the cluster depends on Ed25519 keys
+// and the merged key set is empty or would drop a still-matched previously-present
+// key (a keyless/incomplete roll) — the ConfigMap may still have been refreshed. A
+// complete carried set, an issuer-backed cluster, and any partial resolution all
+// return pending=false.
 func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -307,8 +314,23 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// for a credential that no longer matches the selector is a legitimate removal
 	// (case 1 for that individual key), and its lingering entry must NOT freeze the
 	// cluster forever.
+	//
+	// This block decides, for an Ed25519-dependent cluster, whether the carried set
+	// is COMPLETE — every previously-distributed still-matched credential is
+	// represented in merged. An incomplete set (empty, or missing a still-matched
+	// prior key) returns pending=true here; a complete set falls through and rolls.
+	// A complete carried set is safe to roll even while every live Secret is
+	// unresolved: the ConfigMap references only key material that is present, so
+	// envvars resolves a non-empty key file and no keyless crash-loop can occur (the
+	// server verifies tokens with public keys alone). Freezing a complete set would
+	// strand a legitimate authorization change — narrowed scopes / cleared god on
+	// the carried entries — because pods load AUTH_ED25519_KEYS once at boot and
+	// would never restart (EN-1487, QHX5a rollout half).
 	if requiresEd25519Keys {
 		if len(merged) == 0 {
+			// Nothing to carry forward and nothing resolved: rolling would boot the
+			// cluster keyless (crash-loop). Preserve the existing wiring and stay
+			// pending. This is the genuine transient-undistribution hazard.
 			logger.Info("merged auth-key set is empty for an Ed25519-dependent cluster, preserving existing wiring",
 				"matched", matched, "resolved", len(credentials))
 
@@ -325,6 +347,13 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		for _, u := range unresolved {
 			matchedFiles[pubKeyFileName(u.ConfigMapPrefix, u.CredentialsName)] = struct{}{}
 		}
+		// existingEntries is the set of previously-DISTRIBUTED credentials (an entry
+		// is written only once a credential resolves). Treating it as the expected
+		// carry-forward set, the carried set is complete iff every still-matched
+		// prior entry made it into merged. A prior entry that is still matched but
+		// absent from merged (e.g. its pubkey blob was missing so carry-forward
+		// skipped it) means we would drop a still-authorized key: that is incomplete,
+		// so freeze rather than roll a key-losing template.
 		for fileName := range existingEntries {
 			if _, stillMatched := matchedFiles[fileName]; !stillMatched {
 				continue // legitimate removal — no longer matched
@@ -402,20 +431,25 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		return nil, false, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
 	}
 
-	// pending stays true while EVERY matched credential is still unresolved
-	// (case 2) AND this cluster actually depends on Ed25519 keys: we refreshed the
-	// ConfigMap's authorization metadata and carried the last-known key material
-	// forward, but no Secret is distributed yet, so keep holding the StatefulSet
-	// pass and requeue rather than roll a possibly-keyless template that would
-	// crash-loop. The partial case (>=1 resolved) proceeds normally. An
-	// issuer-backed cluster (requiresEd25519Keys == false) never crash-loops on a
-	// missing key set, so it reconciles normally even while fully unresolved — the
-	// ConfigMap was still refreshed/carried-forward above, it just does not freeze
-	// the StatefulSet (EN-1487, P1). Auth-disabled clusters with an empty resolved
-	// set already returned via the delete path above.
-	pending := requiresEd25519Keys && len(credentials) == 0
-
-	return merged, pending, nil
+	// Reaching this point means the merged set is non-empty and, for an
+	// Ed25519-dependent cluster, COMPLETE — the regression guard above already
+	// returned pending=true for the empty and incomplete cases. So every remaining
+	// path can safely roll the StatefulSet:
+	//
+	//   - Partial resolution (>=1 resolved) — always rolled, as before.
+	//   - All-unresolved but with a complete carried key set (EN-1487, QHX5a
+	//     rollout half): the ConfigMap was rebuilt with the live spec's
+	//     authorization metadata over the carried key material, and rolling is
+	//     crash-loop-safe because the referenced key set is non-empty and complete.
+	//     Rolling is in fact REQUIRED here: pods load AUTH_ED25519_KEYS once at
+	//     boot, so a narrowed-scopes / cleared-god change only takes effect on
+	//     restart. Freezing would strand that authorization change indefinitely.
+	//   - Issuer-backed / auth-disabled clusters (requiresEd25519Keys == false) —
+	//     never crash-loop on a missing key set, so they reconcile normally too.
+	//
+	// pending is therefore false: the only cases that must hold the StatefulSet
+	// pass (empty or incomplete Ed25519 key set) have already returned above.
+	return merged, false, nil
 }
 
 // readExistingAuthKeys reads the current auth-keys ConfigMap and indexes it by

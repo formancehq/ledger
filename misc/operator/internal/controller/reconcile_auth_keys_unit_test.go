@@ -132,10 +132,15 @@ func authKeysConfigMapWithEntries(clusterName, namespace string, entries map[str
 }
 
 // TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap covers the
-// core EN-1487 fix: matching Credentials exist but none is distributed yet, and
-// a ConfigMap already exists. reconcileAuthKeys must NOT delete the ConfigMap,
-// must return no credentials, and must signal pending so the caller preserves
-// the StatefulSet wiring, sets AuthKeysPending, and requeues.
+// core EN-1487 fix AND the "incomplete carried set stays pending" half of the
+// QHX5a rollout refinement: matching Credentials exist but none is distributed
+// yet, and the existing ConfigMap holds NO carry-forward key for the matched
+// credential (its prior entry is under a different, no-longer-matched identity —
+// existingAuthKeysConfigMap stores a "stale" entry). Carry-forward therefore
+// yields an empty merged set, so reconcileAuthKeys must NOT delete the ConfigMap,
+// must return no credentials, and must signal pending — rolling would boot the
+// cluster keyless (crash-loop). This is exactly the case that must still freeze,
+// in contrast to the complete-carried-set case which now rolls.
 func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testing.T) {
 	t.Parallel()
 
@@ -171,15 +176,17 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 		"ConfigMap content must not be mutated during transient non-distribution")
 }
 
-// TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization covers
-// the EN-1491 follow-up: when EVERY matching credential is still unresolved but
-// a prior ConfigMap holds its key, reconcileAuthKeys must keep the pending
-// StatefulSet fail-safe (do not roll a possibly-keyless template) yet rebuild
-// the ConfigMap so the stored authorization metadata tracks the live spec —
-// carrying only the key material forward. A narrowed / god-cleared Credentials
-// must not preserve stale privileges indefinitely while its Secret stays
-// undistributed.
-func TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization(t *testing.T) {
+// TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWithRefreshedAuthz
+// covers the EN-1487 QHX5a rollout half: when EVERY matching credential is still
+// unresolved but a prior ConfigMap holds a COMPLETE carried key set (every
+// previously-distributed still-matched credential's key is carried forward), an
+// Ed25519-dependent cluster must NOT freeze. reconcileAuthKeys rebuilds the
+// ConfigMap so the stored authorization metadata tracks the live spec — carrying
+// only the key material forward — AND reports pending=false so the StatefulSet
+// rolls and the narrowed / god-cleared authorization actually reaches the running
+// pods (which load AUTH_ED25519_KEYS once at boot). Rolling is crash-loop-safe
+// here because the referenced key set is non-empty and complete.
+func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWithRefreshedAuthz(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -221,7 +228,8 @@ func TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization(t *te
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.True(t, pending, "every credential still unresolved must keep the StatefulSet fail-safe (pending)")
+	assert.False(t, pending,
+		"a complete carried key set is crash-loop-safe to roll — it must NOT freeze, so the refreshed authorization reaches running pods")
 	require.Len(t, credentials, 1, "the carried key must be returned")
 
 	// ConfigMap rebuilt: key material carried, authorization refreshed from the
@@ -235,6 +243,66 @@ func TestReconcileAuthKeys_TransientNonDistribution_RefreshesAuthorization(t *te
 	assert.Equal(t, "deadbeef", cm.Data[fileName], "public key blob must be carried forward")
 	assert.Equal(t, []string{"read"}, got.Keys[0].Scopes, "scopes must be refreshed from the live spec")
 	assert.False(t, got.Keys[0].God, "god must be refreshed (cleared) from the live spec")
+}
+
+// TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPending
+// is the negative half of the QHX5a rollout refinement: an Ed25519-dependent
+// cluster is all-unresolved and TWO credentials match, but only ONE has a
+// carry-forwardable prior key. The other's prior entry is present in
+// auth-keys.json yet its pubkey blob is MISSING, so carry-forward drops it and the
+// merged set would lose a still-matched previously-present key. That is an
+// INCOMPLETE carried set — rolling would ship a reduced key set — so
+// reconcileAuthKeys must stay pending and leave the existing wiring untouched.
+// This guards against the roll-on-complete-carried-set relaxation regressing the
+// P1/partial-resolution fail-safe.
+func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+	scheme := authKeysScheme(t)
+
+	// Prior ConfigMap: cred-a has a complete entry (json + pubkey blob); cred-b has
+	// a json entry but its pubkey blob is MISSING, so its key cannot be carried
+	// forward. Both credentials still match and are now unresolved.
+	fileA := pubKeyFileName("credentials", "thierry-cred-a")
+	fileB := pubKeyFileName("credentials", "thierry-cred-b")
+	prior := authKeysJSON{Keys: []authKeyEntry{
+		{KeyID: "kid-a", PublicKeyFile: "/auth-keys/" + fileA, Scopes: []string{"read"}},
+		{KeyID: "kid-b", PublicKeyFile: "/auth-keys/" + fileB, Scopes: []string{"read"}},
+	}}
+	priorRaw, err := json.Marshal(prior)
+	require.NoError(t, err)
+	existingCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: authKeysConfigMapName(clusterName), Namespace: namespace},
+		Data: map[string]string{
+			"auth-keys.json": string(priorRaw),
+			fileA:            "aaaa",
+			// fileB blob intentionally omitted -> cred-b cannot be carried forward.
+		},
+	}
+	credA := matchingCredentials("thierry-cred-a", selector, false, "", "")
+	credB := matchingCredentials("thierry-cred-b", selector, false, "", "")
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingCM, credA, credB).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+	cluster := authEnabledCluster(clusterName, namespace, selector)
+
+	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+	require.NoError(t, err)
+	assert.True(t, pending,
+		"an incomplete carried set (a still-matched prior key cannot be carried) must stay pending — rolling would drop a key")
+	assert.Nil(t, credentials, "no key set is returned while frozen")
+
+	// The existing ConfigMap must be preserved untouched (frozen before rebuild).
+	cm := &corev1.ConfigMap{}
+	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
+	assert.Equal(t, existingCM.Data["auth-keys.json"], cm.Data["auth-keys.json"],
+		"the ConfigMap must not be mutated while the carried set is incomplete")
+	assert.Equal(t, "aaaa", cm.Data[fileA], "cred-a's prior blob must be preserved")
 }
 
 // TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending covers
