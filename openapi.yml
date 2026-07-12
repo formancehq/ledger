@@ -1135,10 +1135,15 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/InspectSummaryResponse'
-                  - $ref: '#/components/schemas/InspectDistinctValuesResponse'
-                  - $ref: '#/components/schemas/InspectFacetsResponse'
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    oneOf:
+                      - $ref: '#/components/schemas/InspectSummaryResponse'
+                      - $ref: '#/components/schemas/InspectDistinctValuesResponse'
+                      - $ref: '#/components/schemas/InspectFacetsResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
