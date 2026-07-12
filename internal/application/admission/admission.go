@@ -413,6 +413,39 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 	}
 }
 
+// recordPhaseOnExit starts timing a phase and returns an idempotent stop
+// function that records the elapsed duration into hist exactly once.
+//
+// A phase's duration histogram must cover the SAME request population as
+// admission.command.duration (which is deferred and fires on every return,
+// including failed commands). If we only Record() after the phase's work
+// succeeds, a command that fails mid-phase is counted by command.duration but
+// not by the phase histogram, so the advertised decomposition is misleading on
+// the error population. To keep the populations aligned:
+//
+//   - the caller `defer stop()` immediately after entering the phase, so an
+//     early error return still records the phase it actually entered;
+//   - the caller also calls stop() explicitly at the phase's normal end, so
+//     the success-path measurement stops at the true phase boundary rather than
+//     at function return.
+//
+// stop() is idempotent (guarded by a bool), so the explicit success-path call
+// and the deferred call never double-count. Phases that were never entered (we
+// returned before calling recordPhaseOnExit) record nothing — no spurious
+// zero-duration observation.
+func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Histogram) func() {
+	start := time.Now()
+	recorded := false
+
+	return func() {
+		if recorded {
+			return
+		}
+		recorded = true
+		hist.Record(ctx, time.Since(start).Microseconds())
+	}
+}
+
 // Admit implements the ctrl.Admission interface.
 // Preload Strategy for Volumes:
 // 1. Volumes transition from store to cache after rotation at index R
@@ -466,7 +499,14 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 
 	// Convert requests to orders. Idempotency and signature are batch-level now
 	// (carried on the Proposal), so orders no longer hold either.
-	ordersPrepStart := time.Now()
+	//
+	// stopOrdersPrep records on every exit from this phase (see
+	// recordPhaseOnExit) so a command that fails in requestsToOrders or
+	// extractPreloadNeeds is still counted by the orders_preparation histogram,
+	// keeping it aligned with command.duration's population.
+	stopOrdersPrep := a.recordPhaseOnExit(ctx, a.ordersPreparationDurationHistogram)
+	defer stopOrdersPrep()
+
 	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
@@ -487,15 +527,24 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		perOrder[0].IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
 	}
 
-	a.ordersPreparationDurationHistogram.Record(ctx, time.Since(ordersPrepStart).Microseconds())
+	// Orders-preparation phase ends here on the success path; record now so the
+	// measurement stops at the true boundary. The deferred stop above becomes a
+	// no-op (idempotent).
+	stopOrdersPrep()
 
 	// Step 2: Resolve script references and discover script dependencies.
 	// This enriches needs with volumes/metadata discovered from scripts.
-	scriptsStart := time.Now()
+	//
+	// stopScripts, like stopOrdersPrep, records on every exit so a command that
+	// fails in resolveScriptsAndEnrichNeeds is still counted by the scripts
+	// histogram.
+	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
+	defer stopScripts()
+
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
 		return nil, err
 	}
-	a.scriptsDurationHistogram.Record(ctx, time.Since(scriptsStart).Microseconds())
+	stopScripts()
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
@@ -605,7 +654,25 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	fsmFuture := runResult.FSMFuture
 	proposal := runResult.Proposal
 
+	// Old semantic preserved: "admission.propose.duration" measures
+	// Propose + Wait combined (queue insertion through Raft commit
+	// acceptance). The runner exposes ProposeStartTime so we can compute this
+	// without holding our own timer.
+	//
+	// recordProposeDuration is called on BOTH the proposal.Wait error path and
+	// the success path, so a proposal that is accepted-then-fails-in-Wait is
+	// still counted by the propose histogram (the propose+wait time elapsed
+	// regardless of outcome). It is NOT recorded on the earlier builder.Run
+	// error path above: if Run fails, ProposeStartTime is unset (the propose
+	// never started — marshal/guard failure), and that phase was genuinely
+	// never entered, so it must record nothing rather than a bogus
+	// time.Since(zero).
+	recordProposeDuration := func() {
+		a.proposeDurationHistogram.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds())
+	}
+
 	if _, err := proposal.Wait(ctx); err != nil {
+		recordProposeDuration()
 		proposeSpan.End()
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
@@ -613,11 +680,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		return nil, err
 	}
 
-	// Old semantic preserved: "admission.propose.duration" measures
-	// Propose + Wait combined (queue insertion through Raft commit
-	// acceptance). The runner exposes ProposeStartTime so we can
-	// compute this without holding our own timer.
-	a.proposeDurationHistogram.Record(ctx, time.Since(runResult.ProposeStartTime).Microseconds())
+	recordProposeDuration()
 	proposeSpan.End()
 
 	// Ensure cleanup runs on all paths after proposal acceptance (success and error).
@@ -628,7 +691,13 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
 	defer fsmSpan.End()
 
-	fsmWaitStart := time.Now()
+	// stopFSMWait records on every exit from the FSM-wait phase, so a command
+	// whose fsmFuture.Wait returns an error (context cancellation, apply
+	// rejection) is still counted by the fsm_future.wait histogram — the wait
+	// happened and consumed time regardless of the outcome.
+	stopFSMWait := a.recordPhaseOnExit(ctx, a.fsmFutureWaitHistogram)
+	defer stopFSMWait()
+
 	result, err := fsmFuture.Wait(ctx)
 
 	// Observe caller attribution only when the FSM actually wrote an audit
@@ -643,7 +712,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		return nil, err
 	}
 
-	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
+	stopFSMWait()
 
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)

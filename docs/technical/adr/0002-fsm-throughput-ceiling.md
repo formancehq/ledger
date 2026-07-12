@@ -84,6 +84,19 @@ workload issues no idempotent replays; on a replay-heavy workload it
 captures the `ReadLogBySequence` reads that resolve `ReferenceSequence`
 results into concrete logs, which no other phase measures.
 
+**Error-population alignment.** Each phase histogram is recorded on
+every exit from the phase it entered, not only on success (via
+`recordPhaseOnExit`, a scoped defer). This keeps the phase histograms'
+population aligned with `command.duration` — which fires on every
+`Admit` return, including commands rejected mid-pipeline (bad signature,
+maintenance mode, validation/preload/script errors, or a `proposal.Wait`
+failure). A phase the command never entered records nothing (no spurious
+zero), so the decomposition stays truthful on the failure population as
+well as the success population. `proposal_guard`/`propose` are only
+recorded once the propose actually starts: a pre-propose failure
+(`builder.Run` marshal/guard error) leaves them unrecorded because the
+phase was genuinely never entered.
+
 ### Where the time actually goes
 
 `fsm_future_wait` is measured from when Raft accepts a proposal to when
