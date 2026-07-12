@@ -350,7 +350,7 @@ func (m *Membership) PeerStore() *PeerStore {
 // (or carried in from a restored backup) cannot resurrect into the
 // transport and shadow a future re-Add with a different address —
 // DefaultTransport.AddPeer is no-op on existing entries.
-func (m *Membership) ReconcileAgainstConfState(cs raftpb.ConfState) error {
+func (m *Membership) ReconcileAgainstConfState(cs *raftpb.ConfState) error {
 	m.mu.RLock()
 	stale := make([]uint64, 0)
 
@@ -378,8 +378,12 @@ func (m *Membership) ReconcileAgainstConfState(cs raftpb.ConfState) error {
 
 // confStateContains reports whether nodeID appears in the ConfState's
 // Voters or Learners list.
-func confStateContains(cs raftpb.ConfState, nodeID uint64) bool {
-	return slices.Contains(cs.Voters, nodeID) || slices.Contains(cs.Learners, nodeID)
+func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
+	if cs == nil {
+		return false
+	}
+
+	return slices.Contains(cs.GetVoters(), nodeID) || slices.Contains(cs.GetLearners(), nodeID)
 }
 
 // Rehydrate re-reads the peer rows from Pebble, computes the diff
@@ -509,7 +513,7 @@ func (m *Membership) OnSnapshotInstalled() {
 //
 // PromoteLearner (ConfChangeAddNode with empty context) carries no
 // address payload — it's a role change — so we skip it.
-func (m *Membership) WriteConfChange(entry raftpb.Entry, session *dal.WriteSession) error {
+func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
 	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
 		return fmt.Errorf("decoding ConfChange entry: %w", err)

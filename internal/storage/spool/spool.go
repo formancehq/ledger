@@ -34,13 +34,13 @@ type PruneStats struct {
 
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -typed -package spool . Spool
 type Spool interface {
-	AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error
+	AppendCommittedEntries(ctx context.Context, entries ...*raftpb.Entry) error
 	End() (*Position, error)
 	ReplayUntil(
 		ctx context.Context,
 		end Position,
 		lastApplied uint64,
-		applyFn func(raftpb.Entry) error) error
+		applyFn func(*raftpb.Entry) error) error
 	Prune(lastApplied uint64) (PruneStats, error)
 	Reset() error
 	Close() error

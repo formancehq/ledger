@@ -8,6 +8,7 @@ import (
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -43,23 +44,23 @@ func TestRaftApplied_ControlsCommittedEntriesDelivery(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
 
-	confState := raftpb.ConfState{Voters: []uint64{1}}
-	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
+	confState := &raftpb.ConfState{Voters: []uint64{1}}
+	require.NoError(t, w.CreateSnapshot(0, confState, nil))
 
 	// Append 5 raft entries with HardState.Commit = 5. This simulates the
 	// state after the cluster has committed and (memtable-only) applied 5
 	// entries.
-	entries := make([]raftpb.Entry, 5)
+	entries := make([]*raftpb.Entry, 5)
 	for i := range entries {
-		entries[i] = raftpb.Entry{
-			Term:  1,
-			Index: uint64(i + 1),
-			Type:  raftpb.EntryNormal,
+		entries[i] = &raftpb.Entry{
+			Term:  proto.Uint64(1),
+			Index: new(uint64(i + 1)),
+			Type:  new(raftpb.EntryNormal),
 			Data:  []byte{byte(i)},
 		}
 	}
 
-	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, entries))
+	require.NoError(t, w.Append(&raftpb.HardState{Term: proto.Uint64(1), Vote: proto.Uint64(1), Commit: proto.Uint64(5)}, entries))
 
 	makeRaftNode := func(t *testing.T, applied uint64) *raft.RawNode {
 		t.Helper()
@@ -85,7 +86,7 @@ func TestRaftApplied_ControlsCommittedEntriesDelivery(t *testing.T) {
 
 		rn := makeRaftNode(t, 5)
 
-		var delivered []raftpb.Entry
+		var delivered []*raftpb.Entry
 
 		if rn.HasReady() {
 			rd := rn.Ready()
@@ -110,7 +111,7 @@ func TestRaftApplied_ControlsCommittedEntriesDelivery(t *testing.T) {
 		require.Len(t, rd.CommittedEntries, 2,
 			"Raft must deliver entries [Applied+1, Commit] = [4, 5]")
 
-		assert.Equal(t, uint64(4), rd.CommittedEntries[0].Index)
-		assert.Equal(t, uint64(5), rd.CommittedEntries[1].Index)
+		assert.Equal(t, uint64(4), rd.CommittedEntries[0].GetIndex())
+		assert.Equal(t, uint64(5), rd.CommittedEntries[1].GetIndex())
 	})
 }

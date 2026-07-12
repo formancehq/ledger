@@ -9,6 +9,7 @@ import (
 
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -36,13 +37,13 @@ func NewSnapshotter(dir string, logger logging.Logger) (*Snapshotter, error) {
 // Old snap files are NOT removed here — call CleanupOlderThan after
 // the WAL snapshot record is persisted to avoid losing the only valid
 // snap file on a crash between Save and WAL write.
-func (s *Snapshotter) Save(snap raftpb.Snapshot) error {
-	data, err := snap.Marshal()
+func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
+	data, err := proto.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
-	name := snapFileName(snap.Metadata.Term, snap.Metadata.Index)
+	name := snapFileName(snap.GetMetadata().GetTerm(), snap.GetMetadata().GetIndex())
 	path := filepath.Join(s.dir, name)
 	tmpPath := path + ".tmp"
 
@@ -143,7 +144,7 @@ func (s *Snapshotter) Load() (*raftpb.Snapshot, error) {
 	}
 
 	var snap raftpb.Snapshot
-	if err := snap.Unmarshal(data); err != nil {
+	if err := proto.Unmarshal(data, &snap); err != nil {
 		return nil, fmt.Errorf("unmarshaling snap file %s: %w", bestName, err)
 	}
 
@@ -154,7 +155,7 @@ func (s *Snapshotter) Load() (*raftpb.Snapshot, error) {
 // given WAL snapshot records. This filters out orphaned snap files that
 // were written before a crash but have no corresponding WAL record.
 // Returns nil if no matching snap file is found.
-func (s *Snapshotter) LoadNewestAvailable(walSnaps []walpb.Snapshot) (*raftpb.Snapshot, error) {
+func (s *Snapshotter) LoadNewestAvailable(walSnaps []*walpb.Snapshot) (*raftpb.Snapshot, error) {
 	names, err := s.snapNames()
 	if err != nil {
 		s.logger.WithFields(map[string]any{
@@ -176,7 +177,7 @@ func (s *Snapshotter) LoadNewestAvailable(walSnaps []walpb.Snapshot) (*raftpb.Sn
 		}
 
 		var snap raftpb.Snapshot
-		if unmarshalErr := snap.Unmarshal(data); unmarshalErr != nil {
+		if unmarshalErr := proto.Unmarshal(data, &snap); unmarshalErr != nil {
 			s.logger.WithFields(map[string]any{
 				"file":  name,
 				"size":  len(data),
@@ -188,15 +189,15 @@ func (s *Snapshotter) LoadNewestAvailable(walSnaps []walpb.Snapshot) (*raftpb.Sn
 
 		// Check if this snap file matches any WAL snapshot record.
 		for _, v := range slices.Backward(walSnaps) {
-			if snap.Metadata.Term == v.Term && snap.Metadata.Index == v.Index {
+			if snap.GetMetadata().GetTerm() == v.GetTerm() && snap.GetMetadata().GetIndex() == v.GetIndex() {
 				return &snap, nil
 			}
 		}
 
 		s.logger.WithFields(map[string]any{
 			"file":  name,
-			"term":  snap.Metadata.Term,
-			"index": snap.Metadata.Index,
+			"term":  snap.GetMetadata().GetTerm(),
+			"index": snap.GetMetadata().GetIndex(),
 		}).Infof("Snap file does not match any WAL snapshot record, skipping")
 	}
 
@@ -242,7 +243,7 @@ func (s *Snapshotter) LoadForIndex(term, index uint64) (*raftpb.Snapshot, error)
 	}
 
 	var snap raftpb.Snapshot
-	if err := snap.Unmarshal(data); err != nil {
+	if err := proto.Unmarshal(data, &snap); err != nil {
 		return nil, fmt.Errorf("unmarshaling snap file %s: %w", name, err)
 	}
 

@@ -38,9 +38,9 @@ func newRaceTestPeerConn(t *testing.T) *peerConnection {
 	close(loopDone) // loop is already gone — stop() will return immediately
 
 	return &peerConnection{
-		highPriorityCh:         make(chan []raftpb.Message, 4),
-		mediumPriorityCh:       make(chan []raftpb.Message, 4),
-		lowPriorityCh:          make(chan []raftpb.Message, 4),
+		highPriorityCh:         make(chan []*raftpb.Message, 4),
+		mediumPriorityCh:       make(chan []*raftpb.Message, 4),
+		lowPriorityCh:          make(chan []*raftpb.Message, 4),
 		stopCtx:                stopCtx,
 		stopCancel:             stopCancel,
 		loopDone:               loopDone,
@@ -72,15 +72,15 @@ func TestPeerConnection_PushMessagesAfterStopDoesNotPanic(t *testing.T) {
 
 	// All three priority paths must survive the late send.
 	require.NotPanics(t, func() {
-		_ = conn.pushMessages(0, []raftpb.Message{{}})
+		_ = conn.pushMessages(0, []*raftpb.Message{{}})
 	}, "high-priority pushMessages after stop must not panic (#315)")
 
 	require.NotPanics(t, func() {
-		_ = conn.pushMessages(1, []raftpb.Message{{}})
+		_ = conn.pushMessages(1, []*raftpb.Message{{}})
 	}, "medium-priority pushMessages after stop must not panic (#315)")
 
 	require.NotPanics(t, func() {
-		_ = conn.pushMessages(2, []raftpb.Message{{}})
+		_ = conn.pushMessages(2, []*raftpb.Message{{}})
 	}, "low-priority pushMessages after stop must not panic (#315)")
 }
 
@@ -104,9 +104,9 @@ func TestPeerConnection_PushMessagesRacedAgainstStopDoesNotPanic(t *testing.T) {
 				case <-stopProducers:
 					return
 				default:
-					_ = conn.pushMessages(0, []raftpb.Message{{}})
-					_ = conn.pushMessages(1, []raftpb.Message{{}})
-					_ = conn.pushMessages(2, []raftpb.Message{{}})
+					_ = conn.pushMessages(0, []*raftpb.Message{{}})
+					_ = conn.pushMessages(1, []*raftpb.Message{{}})
+					_ = conn.pushMessages(2, []*raftpb.Message{{}})
 				}
 			}
 		})
@@ -117,7 +117,7 @@ func TestPeerConnection_PushMessagesRacedAgainstStopDoesNotPanic(t *testing.T) {
 	// Let the producers run a bit more after stop returned — this is the
 	// window the bug used to crash in.
 	for i := range 1000 {
-		_ = conn.pushMessages(i%3, []raftpb.Message{{}})
+		_ = conn.pushMessages(i%3, []*raftpb.Message{{}})
 	}
 
 	close(stopProducers)

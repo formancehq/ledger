@@ -24,7 +24,7 @@ import (
 // PrepareDecodedEntries call — the returned *PreparedBatch deliberately
 // does not retain any Proposal pointer.
 type DecodedEntry struct {
-	Entry    raftpb.Entry
+	Entry    *raftpb.Entry
 	Proposal *raftcmdpb.Proposal
 }
 
@@ -36,7 +36,7 @@ type DecodedEntry struct {
 // On error, any proposals already decoded are returned to the pool and a
 // nil slice is returned so callers need not call ReleaseDecodedEntries
 // themselves.
-func DecodeEntries(entries []raftpb.Entry) ([]DecodedEntry, error) {
+func DecodeEntries(entries []*raftpb.Entry) ([]DecodedEntry, error) {
 	if len(entries) == 0 {
 		return nil, nil
 	}
@@ -46,16 +46,16 @@ func DecodeEntries(entries []raftpb.Entry) ([]DecodedEntry, error) {
 	for i := range entries {
 		decoded[i].Entry = entries[i]
 
-		if entries[i].Type != raftpb.EntryNormal || len(entries[i].Data) == 0 {
+		if entries[i].GetType() != raftpb.EntryNormal || len(entries[i].GetData()) == 0 {
 			continue
 		}
 
 		cmd := raftcmdpb.ProposalFromVTPool()
-		if err := cmd.UnmarshalVT(entries[i].Data); err != nil {
+		if err := cmd.UnmarshalVT(entries[i].GetData()); err != nil {
 			cmd.ReturnToVTPool()
 			ReleaseDecodedEntries(decoded[:i])
 
-			return nil, fmt.Errorf("unmarshaling proposal at raft index %d: %w", entries[i].Index, err)
+			return nil, fmt.Errorf("unmarshaling proposal at raft index %d: %w", entries[i].GetIndex(), err)
 		}
 
 		decoded[i].Proposal = cmd

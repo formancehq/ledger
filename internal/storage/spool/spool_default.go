@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -152,7 +153,7 @@ func (s *Default) Close() error {
 // Append
 // --------------------
 
-func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.Entry) error {
+func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...*raftpb.Entry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -167,7 +168,7 @@ func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.
 		default:
 		}
 
-		approx := s.size + recHdrLen + int64(e.Size()) + trailerLen
+		approx := s.size + recHdrLen + int64(proto.Size(e)) + trailerLen
 		if approx > s.cfg.SegmentMaxBytes {
 			err := s.rotateLocked()
 			if err != nil {
@@ -182,12 +183,13 @@ func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.
 
 		s.size += int64(n)
 
-		if s.segMinIndex == 0 || e.Index < s.segMinIndex {
-			s.segMinIndex = e.Index
+		idx := e.GetIndex()
+		if s.segMinIndex == 0 || idx < s.segMinIndex {
+			s.segMinIndex = idx
 		}
 
-		if e.Index > s.segMaxIndex {
-			s.segMaxIndex = e.Index
+		if idx > s.segMaxIndex {
+			s.segMaxIndex = idx
 		}
 
 		if s.pendingN == 0 {
@@ -244,7 +246,7 @@ func (s *Default) ReplayUntil(
 	ctx context.Context,
 	end Position,
 	lastApplied uint64,
-	applyFn func(raftpb.Entry) error,
+	applyFn func(*raftpb.Entry) error,
 ) error {
 	ids, err := listSegments(s.cfg.Dir)
 	if err != nil {
@@ -387,7 +389,7 @@ func (s *Default) ReplayUntil(
 			}
 
 			// Apply (if necessary)
-			if e.Index > lastApplied {
+			if e.GetIndex() > lastApplied {
 				err := applyFn(e)
 				if err != nil {
 					_ = f.Close()
@@ -689,8 +691,8 @@ func (s *Default) writeTrailerLocked() error {
 // Encoding
 // --------------------
 
-func writeRecord(w io.Writer, e raftpb.Entry) (int, error) {
-	payload, err := e.Marshal()
+func writeRecord(w io.Writer, e *raftpb.Entry) (int, error) {
+	payload, err := proto.Marshal(e)
 	if err != nil {
 		return 0, err
 	}
@@ -712,8 +714,8 @@ func writeRecord(w io.Writer, e raftpb.Entry) (int, error) {
 	return n1 + n2, err
 }
 
-func readRecord(r *bufio.Reader) (raftpb.Entry, int, error) {
-	var e raftpb.Entry
+func readRecord(r *bufio.Reader) (*raftpb.Entry, int, error) {
+	e := &raftpb.Entry{}
 
 	h := make([]byte, recHdrLen)
 	if _, err := io.ReadFull(r, h); err != nil {
@@ -742,7 +744,7 @@ func readRecord(r *bufio.Reader) (raftpb.Entry, int, error) {
 		return e, 0, ErrCorrupt
 	}
 
-	err := e.Unmarshal(payload)
+	err := proto.Unmarshal(payload, e)
 	if err != nil {
 		return e, 0, err
 	}

@@ -17,7 +17,9 @@ import (
 	"go.uber.org/fx"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
@@ -721,6 +723,18 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 			return peers, nil
 		}
 
+		// A cluster-secret mismatch is a hard configuration error, never
+		// transient: retrying with the same (mis)configuration would spin
+		// until the deadline and then surface an opaque "context deadline
+		// exceeded". Fail fast with an actionable message instead. EN-1080.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+			return nil, &bootstrap.JoinAuthError{
+				PeerAddress: raftAddr,
+				HasSecret:   clusterSecret != "",
+				Detail:      st.Message(),
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("discovering peers from %s: %w: %w", raftAddr, ctx.Err(), err)
@@ -769,6 +783,18 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 
 	resp, err := client.GetPeers(ctx, &clusterbootstrappb.GetPeersRequest{})
 	if err != nil {
+		// Propagate an Unauthenticated status unwrapped so the retry loop's
+		// status.FromError sees a clean st.Message() ("missing authorization
+		// metadata on Raft RPC", etc.) rather than the whole wrapped chain.
+		// Wrapping here would leak "getting peers from <addr>: rpc error:
+		// code = Unauthenticated desc = …" into JoinAuthError.Detail —
+		// duplicating the address and re-exposing the raw gRPC noise this
+		// fail-fast exists to hide. This keeps the discovery path consistent
+		// with the learner-registration path. EN-1080.
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("getting peers from %s: %w", raftAddr, err)
 	}
 
