@@ -231,15 +231,16 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
-	// AuthKeysPending gate. This side-effect only creates/updates/deletes the
-	// Secret to match the running StatefulSet's TLS state — it never mutates the
-	// pod template or triggers a rollout — so it is safe (and necessary) even while
-	// the auth-keys fail-safe holds the StatefulSet pass. Otherwise, if the
-	// cluster-secret were deleted or expired during a long Credentials-non-
-	// distribution window, restarted pods referencing CLUSTER_SECRET via
-	// SecretKeyRef would fail to start and never recover until the freeze lifted
+	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
+	// Creating/keeping the Secret while any StatefulSet references it never mutates
+	// the pod template or triggers a rollout, so it is safe (and necessary) even
+	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
+	// that went missing during a long Credentials-non-distribution window would
+	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
+	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
+	// so we never delete a Secret still referenced by a StatefulSet we cannot update
 	// (EN-1487; only the pod-template mutation may be frozen, not this).
-	if err := r.reconcileClusterSecretForTLSState(ctx, ledger); err != nil {
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
 		logger.Error(err, "failed to reconcile cluster secret")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
@@ -297,6 +298,16 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
+	}
+
+	// Now that reconcileStatefulSet has run (not pending), the pod template has
+	// dropped the CLUSTER_SECRET SecretKeyRef if TLS is disabled — so it is finally
+	// safe to delete a now-unreferenced cluster-secret. mayDelete=true performs the
+	// deferred TLS-off cleanup the pre-gate pass intentionally skipped.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, true); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret after StatefulSet")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
 
 	return result, nil

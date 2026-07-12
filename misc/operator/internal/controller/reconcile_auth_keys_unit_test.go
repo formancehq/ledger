@@ -1182,8 +1182,9 @@ func TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys(t *testin
 	}
 
 	// No StatefulSet exists yet (bootstrap / frozen-pending window): the secret must
-	// still be created so restarted pods can resolve CLUSTER_SECRET.
-	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster))
+	// still be created so restarted pods can resolve CLUSTER_SECRET. mayDelete=false
+	// (the pre-gate pass): create/update is always safe.
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster, false))
 
 	secret := &corev1.Secret{}
 	require.NoError(t, c.Get(context.Background(),
@@ -1199,10 +1200,11 @@ func TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys(t *testin
 		"reconcileClusterSecretForTLSState must not create or mutate the StatefulSet")
 }
 
-// TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabled verifies the
-// symmetric removal: a TLS-disabled cluster must have any lingering cluster-secret
-// deleted, and this too runs independent of the auth-keys fail-safe.
-func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabled(t *testing.T) {
+// TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete
+// verifies the symmetric removal on the post-StatefulSet (mayDelete=true) pass: a
+// TLS-disabled cluster whose StatefulSet has already dropped the SecretKeyRef must
+// have any lingering cluster-secret deleted.
+func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -1225,11 +1227,84 @@ func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabled(t *testing.T) 
 		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
 	}
 
-	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster))
+	// mayDelete=true: the post-StatefulSet pass, where the ref has been dropped.
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster, true))
 
 	secret := &corev1.Secret{}
 	err := c.Get(context.Background(),
 		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret)
 	require.True(t, apierrors.IsNotFound(err),
-		"cluster-secret must be deleted for a TLS-disabled cluster")
+		"cluster-secret must be deleted for a TLS-disabled cluster once mayDelete is set")
+}
+
+// TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced is the
+// regression for the TLS-disable-while-frozen hazard: spec.tls.enabled=false but a
+// converged StatefulSet still runs at TLS_MODE=optional (so its pod template still
+// references CLUSTER_SECRET via SecretKeyRef). On the pre-gate / frozen pass
+// (mayDelete=false) the cluster-secret must NOT be deleted — deleting a Secret a
+// still-referencing StatefulSet we cannot update would crash restarted pods. Once
+// the StatefulSet has rolled to TLS-off and dropped the ref, the post-StatefulSet
+// pass (mayDelete=true) finally removes it.
+func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+
+	scheme := authKeysScheme(t)
+	require.NoError(t, appsv1.AddToScheme(scheme))
+
+	// Converged StatefulSet still at TLS_MODE=optional -> it references CLUSTER_SECRET.
+	replicas := int32(1)
+	existingSTS := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: resourceName(clusterName), Namespace: namespace, Generation: 1,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name: "ledger",
+						Env:  []corev1.EnvVar{{Name: "TLS_MODE", Value: "optional"}},
+					}},
+				},
+			},
+		},
+		Status: appsv1.StatefulSetStatus{
+			ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1,
+		},
+	}
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
+		Data:       map[string][]byte{clusterSecretKey: []byte("still-referenced")},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSTS, existingSecret).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	// spec.tls.enabled=false -> desired disabled; actual optional, converged ->
+	// computeTargetTLSMode returns disabled, so shouldInjectClusterSecret is false.
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+	}
+
+	// Pre-gate / frozen pass: deletion must be skipped, the Secret preserved.
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster, false))
+
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret),
+		"the cluster-secret must NOT be deleted while a StatefulSet still references it and cannot be updated")
+	require.Equal(t, []byte("still-referenced"), secret.Data[clusterSecretKey],
+		"the referenced cluster-secret must be preserved verbatim")
+
+	// Post-StatefulSet pass (ref dropped): now the deferred deletion runs.
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster, true))
+
+	err := c.Get(context.Background(),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret)
+	require.True(t, apierrors.IsNotFound(err),
+		"the cluster-secret must be deleted once the StatefulSet has dropped the reference (mayDelete)")
 }

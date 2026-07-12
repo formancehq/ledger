@@ -80,18 +80,29 @@ func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *led
 	return nil
 }
 
-// reconcileClusterSecretForTLSState creates or deletes the cluster-secret to
-// match the TLS mode the running StatefulSet is (or is converging) toward. It
-// reads the EXISTING StatefulSet for TLS state and never mutates the pod template
-// or triggers a rollout, so it is safe to run even while the auth-keys fail-safe
-// (EN-1487) is holding the StatefulSet pass: a restarted pod referencing
-// CLUSTER_SECRET via SecretKeyRef must still find the Secret present, and a
-// TLS-off toggle must still remove it, regardless of whether Credentials are
-// distributed yet. It is therefore invoked BEFORE the AuthKeysPending gate as well
-// as on the normal path, so a long Credentials-non-distribution window can never
-// strand the cluster-secret (which the deferred reconcileStatefulSet would
-// otherwise be the only thing to reconcile).
-func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+// reconcileClusterSecretForTLSState converges the cluster-secret with the TLS
+// mode the running StatefulSet is (or is converging) toward. It reads the EXISTING
+// StatefulSet for TLS state and never mutates the pod template or triggers a
+// rollout, so the CREATE/UPDATE side is safe to run even while the auth-keys
+// fail-safe (EN-1487) holds the StatefulSet pass — a pod restarted during a long
+// Credentials-non-distribution window must still find the Secret its (frozen)
+// pod-template references via CLUSTER_SECRET SecretKeyRef.
+//
+// The two sides are deliberately ASYMMETRIC around the freeze (EN-1487):
+//
+//   - CREATE/UPDATE (TLS at least partially active) is always safe — keep the
+//     Secret present while any StatefulSet references it — so it runs before the
+//     AuthKeysPending gate.
+//   - DELETE (TLS disabled) is NOT safe until the StatefulSet has dropped its
+//     CLUSTER_SECRET SecretKeyRef. Deleting a Secret still referenced by a
+//     StatefulSet we cannot update (frozen, or not yet rolled) would crash pods
+//     restarted before the ref is gone. So deletion is gated behind mayDelete,
+//     which the caller sets true only AFTER reconcileStatefulSet has run on the
+//     non-pending path (targetTLS=disabled drops the ref there, see
+//     reconcile_statefulset.go). While pending — or on the pre-gate pass — the
+//     residual Secret is harmless (still validly referenced) and is cleaned up on
+//     the next non-pending reconcile once the ref is gone.
+func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Context, ledger *ledgerv1alpha1.Cluster, mayDelete bool) error {
 	existingSTS, err := r.fetchExistingStatefulSet(ctx, ledger)
 	if err != nil {
 		return fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
@@ -111,6 +122,13 @@ func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Contex
 			return fmt.Errorf("reconciling ClusterSecret: %w", err)
 		}
 
+		return nil
+	}
+
+	// TLS disabled: only delete once the StatefulSet has dropped the SecretKeyRef
+	// (mayDelete). Skipping deletion otherwise leaves a harmless, still-referenced
+	// Secret that the next non-pending reconcile removes.
+	if !mayDelete {
 		return nil
 	}
 
