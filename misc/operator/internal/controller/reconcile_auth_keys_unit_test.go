@@ -1151,3 +1151,85 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 	require.Equal(t, existingSTS.Spec.Template.Spec.Volumes, gotSTS.Spec.Template.Spec.Volumes,
 		"the auth-keys volume wiring must be preserved untouched")
 }
+
+// TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys is the
+// regression for the EN-1487 cluster-secret finding: the cluster-secret (the TLS
+// static bearer token referenced by pods via CLUSTER_SECRET SecretKeyRef) must be
+// reconciled INDEPENDENTLY of the auth-keys fail-safe. cluster_controller.go now
+// runs reconcileClusterSecretForTLSState BEFORE the AuthKeysPending gate, so a
+// prolonged Credentials-non-distribution window (StatefulSet pass frozen) can never
+// strand the secret: a restarted pod must still find it present. This exercises the
+// exact method that seam calls. It must create the secret for a TLS-enabled cluster
+// with no StatefulSet yet (the pending window, where the STS pass is deferred) and
+// must never create a StatefulSet as a side-effect.
+func TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+
+	scheme := authKeysScheme(t)
+	require.NoError(t, appsv1.AddToScheme(scheme))
+
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+		Spec:       ledgerv1alpha1.ClusterSpec{TLS: &ledgerv1alpha1.TLSConfig{Enabled: true}},
+	}
+
+	// No StatefulSet exists yet (bootstrap / frozen-pending window): the secret must
+	// still be created so restarted pods can resolve CLUSTER_SECRET.
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster))
+
+	secret := &corev1.Secret{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret),
+		"cluster-secret must be reconciled even while the StatefulSet pass is deferred")
+	require.NotEmpty(t, secret.Data[clusterSecretKey], "the cluster secret token must be populated")
+
+	// The pass must not create a StatefulSet — only the (frozen) reconcileStatefulSet does.
+	sts := &appsv1.StatefulSet{}
+	err := c.Get(context.Background(),
+		types.NamespacedName{Namespace: namespace, Name: resourceName(clusterName)}, sts)
+	require.True(t, apierrors.IsNotFound(err),
+		"reconcileClusterSecretForTLSState must not create or mutate the StatefulSet")
+}
+
+// TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabled verifies the
+// symmetric removal: a TLS-disabled cluster must have any lingering cluster-secret
+// deleted, and this too runs independent of the auth-keys fail-safe.
+func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabled(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+
+	scheme := authKeysScheme(t)
+	require.NoError(t, appsv1.AddToScheme(scheme))
+
+	existingSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterSecretName(clusterName), Namespace: namespace},
+		Data:       map[string][]byte{clusterSecretKey: []byte("stale-token")},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingSecret).Build()
+	r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+	// TLS disabled (nil TLS spec) and no StatefulSet -> target mode disabled.
+	cluster := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+	}
+
+	require.NoError(t, r.reconcileClusterSecretForTLSState(context.Background(), cluster))
+
+	secret := &corev1.Secret{}
+	err := c.Get(context.Background(),
+		types.NamespacedName{Namespace: namespace, Name: clusterSecretName(clusterName)}, secret)
+	require.True(t, apierrors.IsNotFound(err),
+		"cluster-secret must be deleted for a TLS-disabled cluster")
+}

@@ -80,6 +80,47 @@ func (r *ClusterReconciler) deleteClusterSecret(ctx context.Context, ledger *led
 	return nil
 }
 
+// reconcileClusterSecretForTLSState creates or deletes the cluster-secret to
+// match the TLS mode the running StatefulSet is (or is converging) toward. It
+// reads the EXISTING StatefulSet for TLS state and never mutates the pod template
+// or triggers a rollout, so it is safe to run even while the auth-keys fail-safe
+// (EN-1487) is holding the StatefulSet pass: a restarted pod referencing
+// CLUSTER_SECRET via SecretKeyRef must still find the Secret present, and a
+// TLS-off toggle must still remove it, regardless of whether Credentials are
+// distributed yet. It is therefore invoked BEFORE the AuthKeysPending gate as well
+// as on the normal path, so a long Credentials-non-distribution window can never
+// strand the cluster-secret (which the deferred reconcileStatefulSet would
+// otherwise be the only thing to reconcile).
+func (r *ClusterReconciler) reconcileClusterSecretForTLSState(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
+	existingSTS, err := r.fetchExistingStatefulSet(ctx, ledger)
+	if err != nil {
+		return fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	}
+	targetTLS := computeTargetTLSMode(
+		desiredTLSMode(ledger),
+		currentTLSModeFromStatefulSet(existingSTS),
+		rolloutConverged(existingSTS),
+	)
+
+	// The secret is a static bearer token; it must never travel in plaintext, so it
+	// exists only while TLS is at least partially active. During a TLS toggle the
+	// operator orders things so the secret appears as the StatefulSet moves to
+	// "optional" and is removed symmetrically when TLS is turned off.
+	if shouldInjectClusterSecret(targetTLS) {
+		if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
+			return fmt.Errorf("reconciling ClusterSecret: %w", err)
+		}
+
+		return nil
+	}
+
+	if err := r.deleteClusterSecret(ctx, ledger); err != nil {
+		return fmt.Errorf("deleting ClusterSecret: %w", err)
+	}
+
+	return nil
+}
+
 // generateRandomToken returns a hex-encoded random token of the given byte length.
 func generateRandomToken(n int) (string, error) {
 	b := make([]byte, n)
