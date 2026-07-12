@@ -2360,10 +2360,15 @@ func chainBoundRevertSkipped(
 //
 //   - MirrorDeletedMetadata → chainBound.metadata (exists=false).
 //
-//   - MirrorCreatedTransaction: reference already handled by the caller
-//     via rememberReferenceClaim; no metadata correlator to track here
-//     (transaction-scoped metadata is the same tx-id gap documented in
-//     recordChainBoundMutations).
+//   - MirrorCreatedTransaction → chainBound.metadata (exists=true) for
+//     both the account_metadata keys and the tx-scoped metadata keys the
+//     mirrored transaction carries. processMirrorCreatedTransaction applies
+//     BOTH (TransactionState.Metadata + AccountMetadata().Put), so a later
+//     skippable DeleteMetadata on any of those keys must see them present.
+//     Unlike a live CreateTransaction, the tx id is carried on the entry
+//     (MirrorCreatedTransaction.transaction_id) rather than allocated from
+//     the chain-bound counter, so the tx-scoped target is reliable even on
+//     an unanchored (archived-CreateLedger) ledger — no anchoring gate.
 func recordMirrorIngestMutations(
 	entry *raftcmdpb.MirrorLogEntry,
 	ledger string,
@@ -2381,6 +2386,35 @@ func recordMirrorIngestMutations(
 			// owning tx id for a mirror-claimed reference is carried on the
 			// entry — record it for existingTransactionId verification.
 			rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, mct.GetTransactionId())
+		}
+
+		// account_metadata: applied by processMirrorCreatedTransaction via
+		// AccountMetadata().Put — seed each (account, key) as present so a
+		// later forged METADATA_NOT_FOUND skip on a mirror-applied key is
+		// caught by the live presence witness (invariant #8).
+		for account, mm := range mct.GetAccountMetadata() {
+			if account == "" {
+				continue
+			}
+
+			for key := range mm.GetValues() {
+				appendMetadataMutation(chainBound.metadata, ledger, account, key, logSeq, true)
+			}
+		}
+
+		// tx-scoped metadata: applied by processMirrorCreatedTransaction via
+		// TransactionState.Metadata. The target is the entry-carried tx id
+		// (not the chain-bound counter), so it is reliable regardless of
+		// ledger anchoring.
+		if txID := mct.GetTransactionId(); txID != 0 {
+			target := strconv.FormatUint(txID, 10)
+			for key := range mct.GetMetadata() {
+				if key == "" {
+					continue
+				}
+
+				appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
+			}
 		}
 	}
 

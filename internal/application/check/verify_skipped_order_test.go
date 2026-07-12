@@ -1030,6 +1030,143 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
 }
 
+// buildMirrorCreatedTxItem wraps a MirrorCreatedTransaction into a serialized
+// audit item at the given log sequence, mirroring the shape
+// collectExpectedSkippable decodes.
+func buildMirrorCreatedTxItem(t *testing.T, ledger string, mct *raftcmdpb.MirrorCreatedTransaction, logSeq uint64) *auditpb.AuditItem {
+	t.Helper()
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{
+							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+								CreatedTransaction: mct,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
+}
+
+// TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline pins finding
+// checker.go:2377: a mirror-ingested transaction that carries tx-scoped and
+// account metadata has those keys APPLIED by processMirrorCreatedTransaction
+// (TransactionState.Metadata + AccountMetadata().Put). recordMirrorIngestMutations
+// must seed chainBound.metadata for them so a later forged
+// METADATA_NOT_FOUND skip on such a key is caught (invariant #8). Previously
+// only the reference was seeded, so the forged skip passed on an empty
+// metadata timeline.
+func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
+	t.Parallel()
+
+	mct := &raftcmdpb.MirrorCreatedTransaction{
+		TransactionId: 7,
+		Reference:     "mirror-ref",
+		Metadata: map[string]*commonpb.MetadataValue{
+			"txkey": commonpb.NewStringValue("v"),
+		},
+		AccountMetadata: map[string]*commonpb.MetadataMap{
+			"alice": {Values: map[string]*commonpb.MetadataValue{"acckey": commonpb.NewStringValue("v")}},
+		},
+	}
+
+	items := []*auditpb.AuditItem{buildMirrorCreatedTxItem(t, "L", mct, 50)}
+
+	// Two forged METADATA_NOT_FOUND skips at seq 60 (> 50): one on the
+	// account key, one on the tx-scoped key. Both were really applied by the
+	// mirror ingest, so both must be rejected.
+	cases := []struct {
+		name   string
+		target string
+		isTx   bool
+		key    string
+	}{
+		{"account metadata key", "alice", false, "acckey"},
+		{"tx-scoped metadata key", "7", true, "txkey"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			chainBound := newChainBoundState()
+			expectedSkip := make(map[uint64]*expectedSkippableOrder)
+			collectExpectedSkippable(items, expectedSkip, chainBound)
+
+			reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+			expected := map[uint64]*expectedSkippableOrder{
+				60: {
+					reasons:            []commonpb.ErrorReason{reason},
+					ledger:             "L",
+					metadataTarget:     tc.target,
+					metadataKey:        tc.key,
+					metadataTargetIsTx: tc.isTx,
+				},
+			}
+
+			payload := skippedPayloadWithContext(reason, map[string]string{
+				"target": tc.target,
+				"key":    tc.key,
+			})
+
+			events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+			requireInvalidSkipEvent(t, events, 60)
+		})
+	}
+}
+
+// TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable is the
+// legitimate companion: a METADATA_NOT_FOUND skip on a key the mirror
+// transaction did NOT carry is genuinely absent and stays accepted.
+func TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable(t *testing.T) {
+	t.Parallel()
+
+	mct := &raftcmdpb.MirrorCreatedTransaction{
+		TransactionId: 7,
+		Reference:     "mirror-ref",
+		AccountMetadata: map[string]*commonpb.MetadataMap{
+			"alice": {Values: map[string]*commonpb.MetadataValue{"acckey": commonpb.NewStringValue("v")}},
+		},
+	}
+
+	items := []*auditpb.AuditItem{buildMirrorCreatedTxItem(t, "L", mct, 50)}
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, expectedSkip, chainBound)
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	// Different key ("other") on the same account — never applied by the
+	// mirror ingest, so the delete legitimately skips NOT_FOUND.
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {
+			reasons:        []commonpb.ErrorReason{reason},
+			ledger:         "L",
+			metadataTarget: "alice",
+			metadataKey:    "other",
+		},
+	}
+
+	payload := skippedPayloadWithContext(reason, map[string]string{
+		"target": "alice",
+		"key":    "other",
+	})
+
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	require.Empty(t, events, "a key the mirror tx never carried is genuinely absent → legitimate skip")
+}
+
 // TestCollectExpectedSkippable_HonoursItemLogSequence pins the fix to the
 // MinLogSequence+i indexing bug: when audit items contain interleaved
 // idempotency-replay ReferenceSequence entries, the verifier must read
