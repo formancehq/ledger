@@ -146,6 +146,13 @@ func NewDefaultController(
 	}
 }
 
+// ColdReader returns the cold-storage reader, or nil when cold storage is not
+// configured. The gRPC layer passes it to the store checker so the idempotency
+// pass can re-derive frozen outcomes from archived audit entries.
+func (ctrl *DefaultController) ColdReader() *coldstorage.ColdReader {
+	return ctrl.coldReader
+}
+
 // ListLedgers returns a cursor over all active (non-deleted) ledgers.
 func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	handle, err := ctrl.store.NewReadHandle()

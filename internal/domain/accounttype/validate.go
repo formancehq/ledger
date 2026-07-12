@@ -2,7 +2,9 @@ package accounttype
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -26,7 +28,14 @@ func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*common
 		}
 	}
 
-	for name, st := range segTypes {
+	// Iterate names in sorted order so the first validation error reported is
+	// identical on every replica: this runs on the FSM apply path (via
+	// processAddAccountType / processCreateLedger) and its error is chain-bound
+	// through ErrInvalidPattern → AuditFailure, so a raw map range could select
+	// a different offending segment per node (invariant #2). See EN-1521. The
+	// matcher assignments below are per-index and order-independent.
+	for _, name := range slices.Sorted(maps.Keys(segTypes)) {
+		st := segTypes[name]
 		idx, ok := vars[name]
 		if !ok {
 			return fmt.Errorf("segment_types references unknown variable %q", name)

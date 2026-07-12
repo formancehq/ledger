@@ -2,6 +2,8 @@ package processing
 
 import (
 	"errors"
+	"maps"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -24,8 +26,13 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		return nil, &domain.ErrLedgerAlreadyExists{Name: ledger}
 	}
 
-	// Validate initial account types if provided
-	for name, at := range order.GetAccountTypes() {
+	// Validate initial account types if provided. Iterate names in sorted order
+	// so the first invalid pattern reported (chain-bound ErrInvalidPattern →
+	// AuditFailure) is identical on every replica — a raw map range could
+	// surface a different offending pattern per node (invariant #2). See
+	// EN-1521.
+	for _, name := range slices.Sorted(maps.Keys(order.GetAccountTypes())) {
+		at := order.GetAccountTypes()[name]
 		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
 			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
