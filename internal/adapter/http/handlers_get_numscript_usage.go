@@ -26,7 +26,11 @@ type templateUsageJSON struct {
 func toTemplateUsageJSON(usage *commonpb.TemplateUsage) *templateUsageJSON {
 	out := &templateUsageJSON{Count: usage.GetCount()}
 
-	if ts := usage.GetLastUsed(); ts != nil && ts.GetData() != 0 {
+	// Gate on nil only: a non-nil Timestamp is a real value even when Data==0
+	// (the Unix epoch, 1970-01-01T00:00:00Z). nil already encodes "never
+	// used" via the omitempty pointer — folding Data==0 into that branch
+	// would silently drop a legitimate epoch lastUsed from the response.
+	if ts := usage.GetLastUsed(); ts != nil {
 		// Timestamp.Data is Unix microseconds — use the canonical AsTime()
 		// converter (time.UnixMicro) rather than treating Data as nanoseconds.
 		formatted := ts.AsTime().UTC().Format(time.RFC3339Nano)
