@@ -97,6 +97,32 @@ The Numscript syntax `source = @alice \ "GRANTS"` produces a posting with
 `USD_GRANTS` asset-suffix encoding is gone — color is never folded into the
 asset string anywhere in the contract.
 
+### Insufficient-funds color is unresolved on the Numscript path
+
+When a colored Numscript spend runs short, the interpreter raises
+`numscriptlib.MissingFundsErr`, which carries only `{Asset, Needed, Available,
+parser.Range}` — it does **not** expose the failing account or the color of the
+bucket that ran short. A single asset can be sourced from several
+`(account, color)` buckets in one script, and `Range` points into the source
+text, not a resolved bucket, so the color cannot be recovered from the error
+alone. `convertNumscriptError` therefore builds `ErrInsufficientFunds` with an
+empty, *unresolved* color.
+
+Because `Color == ""` is a first-class bucket everywhere else, the error carries
+a `ColorKnown` flag to keep the two meanings apart on the wire:
+
+- **Direct-posting failures** resolve the exact source bucket (`ColorKnown =
+  true`). An empty color there is the genuine uncolored bucket, and the `color`
+  key is always present in the error metadata (as `""`).
+- **Numscript failures** cannot resolve the color (`ColorKnown = false`). The
+  `color` key is **omitted** from the error metadata entirely, so a client reads
+  its absence as "unknown" rather than mistaking `color: ""` for a definite hit
+  on the uncolored bucket.
+
+When a future numscript bump attaches the resolved `(account, color)` to
+`MissingFundsErr`, the conversion path sets the real color with `ColorKnown =
+true` and this asymmetry disappears.
+
 ## Collapse modes
 
 For consumers that want a per-asset summary (totals ignoring color), the

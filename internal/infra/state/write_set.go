@@ -1088,11 +1088,12 @@ type storageFault struct {
 	err domain.Describable
 }
 
-// compareVolumeKeys orders volume keys by (Account, Asset, LedgerName). Account
-// and Asset are what the returned error carries; LedgerName is a final
-// tiebreaker giving a total order (map keys are unique on all three, so ties
-// never occur) so the winner is fully defined when two ledgers share an
-// (account, asset).
+// compareVolumeKeys orders volume keys by (Account, Asset, Color, LedgerName).
+// Account and Asset are what the returned error carries; Color segregates the
+// per-bucket balances that share an (account, asset) under color-of-money;
+// LedgerName is the final tiebreaker giving a total order (map keys are unique
+// on all four, so ties never occur) so the winner is fully defined when two
+// ledgers share an (account, asset, color).
 func compareVolumeKeys(a, b domain.VolumeKey) int {
 	return cmp.Or(
 		cmp.Compare(a.Account, b.Account),

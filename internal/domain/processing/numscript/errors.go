@@ -79,13 +79,17 @@ func convertNumscriptError(err error) domain.Describable {
 		// cannot be recovered reliably from the error alone. We therefore leave
 		// Color (and Account) empty rather than inventing a value that is not
 		// reliably known — an empty Color here means "unknown", NOT the
-		// uncolored bucket. Surfacing the true color would require the
-		// interpreter to attach the resolved (account, color) to
-		// MissingFundsErr upstream.
+		// uncolored bucket. ColorKnown is left false so ErrInsufficientFunds
+		// omits the color key from its wire metadata, keeping this "unknown"
+		// distinct from a definite hit on the uncolored bucket (color: "").
+		// Surfacing the true color would require the interpreter to attach the
+		// resolved (account, color) to MissingFundsErr upstream, at which point
+		// this path sets the real Color with ColorKnown: true.
 		return &domain.ErrInsufficientFunds{
 			Asset:   missingFunds.Asset,
 			Amount:  missingFunds.Needed.String(),
 			Balance: missingFunds.Available.String(),
+			// ColorKnown intentionally false: color is unresolved on this path.
 		}
 	}
 

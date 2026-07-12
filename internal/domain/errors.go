@@ -534,15 +534,35 @@ func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
 // balance in the requested (asset, color) bucket. The empty color is the
 // uncolored bucket and is segregated from any colored bucket of the same
 // (account, asset).
+//
+// ColorKnown disambiguates the two meanings of an empty Color on the wire. The
+// direct-posting path resolves the exact source bucket, so an empty Color there
+// is the genuine uncolored bucket (ColorKnown=true). The Numscript path cannot:
+// numscriptlib.MissingFundsErr carries only {Asset, Needed, Available, Range}
+// and never the resolved (account, color), so a colored spend surfaces here
+// with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
+// Metadata() therefore omits the color key entirely when the color is unknown,
+// so a client never mistakes an unresolved Numscript failure for a definite
+// hit on the uncolored bucket. When a future numscript bump attaches the
+// resolved bucket to MissingFundsErr, the conversion path can set the real
+// Color with ColorKnown=true and this ambiguity disappears.
 type ErrInsufficientFunds struct {
-	Account string
-	Asset   string
-	Color   string
-	Amount  string // requested amount (decimal string)
-	Balance string // available balance (decimal string)
+	Account    string
+	Asset      string
+	Color      string
+	ColorKnown bool   // false only on the Numscript path where Color is unresolved
+	Amount     string // requested amount (decimal string)
+	Balance    string // available balance (decimal string)
 }
 
 func (e *ErrInsufficientFunds) Error() string {
+	if !e.ColorKnown {
+		return fmt.Sprintf(
+			"insufficient funds on account %q for asset %s (color unresolved): needed %s, available %s",
+			e.Account, e.Asset, e.Amount, e.Balance,
+		)
+	}
+
 	if e.Color == "" {
 		return fmt.Sprintf(
 			"insufficient funds on account %q for asset %s: needed %s, available %s",
@@ -557,13 +577,21 @@ func (e *ErrInsufficientFunds) Error() string {
 }
 func (*ErrInsufficientFunds) Reason() string { return ErrReasonInsufficientFunds }
 func (e *ErrInsufficientFunds) Metadata() map[string]string {
-	return map[string]string{
+	m := map[string]string{
 		"account": e.Account,
 		"asset":   e.Asset,
-		"color":   e.Color,
 		"amount":  e.Amount,
 		"balance": e.Balance,
 	}
+	// Only publish color when the failing bucket is actually resolved. On the
+	// Numscript path Color is unknown (see the type doc) — emitting an empty
+	// string there would be read as a definite hit on the uncolored bucket, so
+	// we omit the key entirely and let clients treat its absence as "unknown".
+	if e.ColorKnown {
+		m["color"] = e.Color
+	}
+
+	return m
 }
 
 // ErrVolumeOverflow — a posting would push an account's volume past 2^256.

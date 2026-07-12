@@ -122,8 +122,13 @@ func TestErrorTypes(t *testing.T) {
 		},
 		{
 			name:     "ErrInsufficientFunds",
-			err:      &ErrInsufficientFunds{Account: "bank", Asset: "USD", Amount: "1000", Balance: "500"},
+			err:      &ErrInsufficientFunds{Account: "bank", Asset: "USD", ColorKnown: true, Amount: "1000", Balance: "500"},
 			expected: `insufficient funds on account "bank" for asset USD: needed 1000, available 500`,
+		},
+		{
+			name:     "ErrInsufficientFundsColorUnresolved",
+			err:      &ErrInsufficientFunds{Account: "bank", Asset: "USD", Amount: "1000", Balance: "500"},
+			expected: `insufficient funds on account "bank" for asset USD (color unresolved): needed 1000, available 500`,
 		},
 		{
 			name:     "ErrSinkAlreadyExists",
@@ -213,6 +218,32 @@ func TestErrTransientAccountNonZeroMetadata(t *testing.T) {
 		{Account: "staging:a", Asset: "USD", Color: "RED"},
 	}}
 	require.Equal(t, map[string]string{"accounts": "staging:a/USD, staging:a/USD/RED"}, colored.Metadata())
+}
+
+// TestErrInsufficientFundsColorMetadata pins the wire disambiguation of the
+// color bucket: the direct-posting path resolves the exact bucket (ColorKnown)
+// so the color key is always published — an empty string there is the genuine
+// uncolored bucket. The Numscript path cannot resolve the color, so the key is
+// omitted entirely rather than emitting "" and being misread as the uncolored
+// bucket.
+func TestErrInsufficientFundsColorMetadata(t *testing.T) {
+	t.Parallel()
+
+	// Resolved uncolored bucket: color published as "".
+	uncolored := &ErrInsufficientFunds{Account: "a", Asset: "USD", ColorKnown: true, Amount: "100", Balance: "40"}
+	require.Equal(t, "", uncolored.Metadata()["color"])
+	_, present := uncolored.Metadata()["color"]
+	require.True(t, present, "resolved bucket must always publish the color key")
+
+	// Resolved colored bucket: color published verbatim.
+	red := &ErrInsufficientFunds{Account: "a", Asset: "USD", Color: "RED", ColorKnown: true, Amount: "100", Balance: "40"}
+	require.Equal(t, "RED", red.Metadata()["color"])
+
+	// Numscript path: color unresolved, key omitted so "" is not mistaken for
+	// the uncolored bucket.
+	unknown := &ErrInsufficientFunds{Asset: "COIN", Amount: "100", Balance: "40"}
+	_, present = unknown.Metadata()["color"]
+	require.False(t, present, "unresolved color must be absent from metadata, not empty")
 }
 
 func TestWrapCompileError(t *testing.T) {

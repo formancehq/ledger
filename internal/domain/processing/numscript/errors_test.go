@@ -134,6 +134,12 @@ send [COIN 100] (
 	require.Equal(t, "40", insufficientFunds.Balance)
 	// Interpreter limitation: color is not recoverable from MissingFundsErr.
 	require.Empty(t, insufficientFunds.Color)
+	// ColorKnown must be false so the empty color is surfaced as "unknown", not
+	// as a definite hit on the uncolored bucket. The wire metadata therefore
+	// omits the color key entirely.
+	require.False(t, insufficientFunds.ColorKnown)
+	_, colorPresent := insufficientFunds.Metadata()["color"]
+	require.False(t, colorPresent, "colored Numscript failure must not publish an empty color as the uncolored bucket")
 }
 
 func TestConvertNumscriptError_OtherError(t *testing.T) {

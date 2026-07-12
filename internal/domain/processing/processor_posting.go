@@ -130,11 +130,12 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 			balanceBig := new(big.Int).Sub(inputValue.ToBig(), outputValue.ToBig())
 
 			return &domain.ErrInsufficientFunds{
-				Account: posting.GetSource(),
-				Asset:   posting.GetAsset(),
-				Color:   color,
-				Amount:  amount.Dec(),
-				Balance: balanceBig.String(),
+				Account:    posting.GetSource(),
+				Asset:      posting.GetAsset(),
+				Color:      color,
+				ColorKnown: true, // direct posting resolves the exact bucket; "" is the uncolored bucket
+				Amount:     amount.Dec(),
+				Balance:    balanceBig.String(),
 			}
 		}
 	}
