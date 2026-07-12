@@ -130,6 +130,31 @@ func TestHandleListTransactions_InvalidDate(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleListTransactions_PreEpochDateRejected(t *testing.T) {
+	t.Parallel()
+
+	// A pre-1970 date has a negative UnixMicro; the storage bound is unsigned,
+	// so accepting it would wrap to a huge value and silently corrupt the
+	// filter. It must be rejected with 400 (both startDate and endDate).
+	for _, param := range []string{"startDate", "endDate"} {
+		t.Run(param, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodGet, "/ledger1/transactions?"+param+"=1960-01-01T00:00:00Z", nil, map[string]string{
+				"ledgerName": "ledger1",
+			})
+
+			srv.handleListTransactions(w, r)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "before 1970-01-01")
+		})
+	}
+}
+
 func TestHandleListTransactions_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 

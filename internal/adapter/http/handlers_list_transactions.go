@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,32 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
+
+// parseFilterDateMicros parses an RFC3339 date query parameter and returns it
+// as Unix microseconds for a UintCondition bound. Transaction timestamps are
+// stored as unsigned microseconds, so a pre-epoch (negative UnixMicro) date
+// has no representable bound: casting it to uint64 would wrap to a huge value
+// and silently corrupt the filter (a start bound would exclude everything, an
+// end bound would include everything). Such dates are rejected with 400 rather
+// than accepted with garbage semantics. On error it writes the response and
+// returns ok=false; the caller must return immediately.
+func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bool) {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, expected RFC3339 format", param))
+
+		return 0, false
+	}
+
+	micros := t.UnixMicro()
+	if micros < 0 {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, dates before 1970-01-01 are not supported", param))
+
+		return 0, false
+	}
+
+	return uint64(micros), true
+}
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
 // ledger's transactions. Query params:
@@ -68,27 +95,21 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	hasDateFilter := false
 
 	if sd := r.URL.Query().Get("startDate"); sd != "" {
-		t, err := time.Parse(time.RFC3339, sd)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid startDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "startDate", sd)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Min = &v
 		hasDateFilter = true
 	}
 
 	if ed := r.URL.Query().Get("endDate"); ed != "" {
-		t, err := time.Parse(time.RFC3339, ed)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid endDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "endDate", ed)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Max = &v
 		dateCond.MaxExclusive = true
 		hasDateFilter = true
