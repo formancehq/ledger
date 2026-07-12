@@ -317,7 +317,7 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 // every AttributeCoverage in the proposal, matching what the admission
 // runner does for production proposals — tests built inline would
 // otherwise hit *ErrCoverageMiss on the first cache read.
-func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.Entry {
+func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) *raftpb.Entry {
 	t.Helper()
 
 	sealProposal(proposal)
@@ -325,10 +325,10 @@ func makeEntry(t *testing.T, index uint64, proposal *raftcmdpb.Proposal) raftpb.
 	entryData, err := proto.Marshal(proposal)
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Index: index,
-		Term:  1,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Index: new(index),
+		Term:  proto.Uint64(1),
+		Type:  new(raftpb.EntryNormal),
 		Data:  entryData,
 	}
 }
@@ -862,10 +862,10 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 		// applyProposal is skipped, no Pebble writes happen, but the
 		// log fields are evaluated.
 		require.NotPanics(t, func() {
-			pb, err := machine.PrepareEntries(context.Background(), dataStore, raftpb.Entry{
-				Index: 6,
-				Term:  1,
-				Type:  raftpb.EntryNormal,
+			pb, err := machine.PrepareEntries(context.Background(), dataStore, &raftpb.Entry{
+				Index: proto.Uint64(6),
+				Term:  proto.Uint64(1),
+				Type:  new(raftpb.EntryNormal),
 			})
 			require.NoError(t, err)
 			if pb != nil {

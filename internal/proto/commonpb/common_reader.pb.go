@@ -10173,6 +10173,78 @@ func NewRevertedConditionListReader(s []*RevertedCondition) RevertedConditionLis
 	return revertedConditionListReadonly(s)
 }
 
+// AuditConditionReader provides read-only access to AuditCondition.
+// Call Mutate() to obtain a mutable clone.
+type AuditConditionReader interface {
+	GetField() AuditField
+	GetCondition() isAuditCondition_Condition
+	Mutate() *AuditCondition
+}
+
+type auditConditionReadonly AuditCondition
+
+func (r *auditConditionReadonly) GetField() AuditField {
+	return (*AuditCondition)(r).GetField()
+}
+
+func (r *auditConditionReadonly) GetCondition() isAuditCondition_Condition {
+	return (*AuditCondition)(r).GetCondition()
+}
+
+func (r *auditConditionReadonly) Mutate() *AuditCondition {
+	return (*AuditCondition)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AuditCondition.
+func (m *AuditCondition) AsReader() AuditConditionReader {
+	if m == nil {
+		return nil
+	}
+	return (*auditConditionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AuditCondition.
+func (m *AuditCondition) Mutate() *AuditCondition {
+	return m.CloneVT()
+}
+
+// AuditConditionListReader provides read-only iteration over []*AuditCondition.
+type AuditConditionListReader interface {
+	Len() int
+	Get(i int) AuditConditionReader
+	Range(yield func(int, AuditConditionReader) bool)
+}
+
+type auditConditionListReadonly []*AuditCondition
+
+func (l auditConditionListReadonly) Len() int { return len(l) }
+
+func (l auditConditionListReadonly) Get(i int) AuditConditionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l auditConditionListReadonly) Range(yield func(int, AuditConditionReader) bool) {
+	for i, v := range l {
+		var r AuditConditionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuditConditionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuditConditionListReader(s []*AuditCondition) AuditConditionListReader {
+	return auditConditionListReadonly(s)
+}
+
 // LedgerConditionReader provides read-only access to LedgerCondition.
 // Call Mutate() to obtain a mutable clone.
 type LedgerConditionReader interface {

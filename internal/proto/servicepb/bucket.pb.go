@@ -5568,12 +5568,12 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 }
 
 type ListAuditEntriesRequest struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Options *commonpb.ListOptions  `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
-	// failures_only filters audit entries to only those carrying a failure status.
-	FailuresOnly bool `protobuf:"varint,2,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
-	// ledger filters audit entries to only those containing orders targeting this ledger.
-	Ledger        string `protobuf:"bytes,3,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// options carries the whole read contract. Audit has NO dedicated top-level
+	// filters: ledger scope and outcome selection are expressed through
+	// options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
+	// failure`), exactly like every other filtered list endpoint.
+	Options       *commonpb.ListOptions `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5613,20 +5613,6 @@ func (x *ListAuditEntriesRequest) GetOptions() *commonpb.ListOptions {
 		return x.Options
 	}
 	return nil
-}
-
-func (x *ListAuditEntriesRequest) GetFailuresOnly() bool {
-	if x != nil {
-		return x.FailuresOnly
-	}
-	return false
-}
-
-func (x *ListAuditEntriesRequest) GetLedger() string {
-	if x != nil {
-		return x.Ledger
-	}
-	return ""
 }
 
 type GetAuditEntryRequest struct {
@@ -9063,11 +9049,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"\x85\x01\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"H\n" +
 	"\x17ListAuditEntriesRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\x12#\n" +
-	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x16\n" +
-	"\x06ledger\x18\x03 \x01(\tR\x06ledger\"2\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xa2\x01\n" +
 	"\x0fListLogsRequest\x12\x16\n" +

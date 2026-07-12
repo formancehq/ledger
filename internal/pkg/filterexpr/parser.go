@@ -49,7 +49,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -182,6 +182,7 @@ func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
 type Condition struct {
 	Asset    *AssetCond    `parser:"  @@"`
 	Metadata *MetadataCond `parser:"| @@"`
+	Audit    *AuditCond    `parser:"| @@"`
 	Address  *AddressCond  `parser:"| @@"`
 	Ledger   *LedgerCond   `parser:"| @@"`
 }
@@ -195,11 +196,223 @@ func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 		return c.Metadata.toProto()
 	}
 
+	if c.Audit != nil {
+		return c.Audit.toProto()
+	}
+
 	if c.Ledger != nil {
 		return c.Ledger.toProto()
 	}
 
 	return c.Address.toProto()
+}
+
+// --- Audit conditions ---
+
+// AuditCond is the `audit[field] OP value` filter over the audit trail. It maps
+// to a commonpb.AuditCondition resolved by the readstore audit index. Only the
+// index-answerable fields are accepted; NOT-style operators (`!=`) are not
+// exposed because the audit access path has no complement, so they would have
+// to fall back to a full scan.
+type AuditCond struct {
+	Field string      `parser:"'audit' '[' @(Ident | Keyword) ']'"`
+	Op    *MetadataOp `parser:"@@"`
+}
+
+type auditFieldKind int
+
+const (
+	auditKindUint auditFieldKind = iota
+	auditKindString
+	// auditKindDatetime is a uint field whose DSL value additionally accepts an
+	// RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z"), coerced to the
+	// same uint64 microseconds the index stores. Raw microseconds still parse.
+	auditKindDatetime
+)
+
+type auditFieldSpec struct {
+	field commonpb.AuditField
+	kind  auditFieldKind
+}
+
+// auditFieldKeys maps the DSL field key to its enum + value kind. The set is
+// exactly the fields the audit access path can resolve efficiently (index
+// lookup or key-range bound) — see AuditField in common.proto.
+var auditFieldKeys = map[string]auditFieldSpec{
+	"seq":            {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
+	"proposal_id":    {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
+	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
+	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
+	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
+	"caller_subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"ledger":         {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
+	"order_type":     {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+}
+
+func (a *AuditCond) toProto() (*commonpb.QueryFilter, error) {
+	spec, ok := auditFieldKeys[a.Field]
+	if !ok {
+		return nil, fmt.Errorf("unknown audit field %q", a.Field)
+	}
+
+	if a.Op == nil {
+		return nil, fmt.Errorf("audit field %q requires an operator", a.Field)
+	}
+
+	switch spec.kind {
+	case auditKindUint:
+		return a.uintToProto(spec.field)
+	case auditKindDatetime:
+		return a.datetimeToProto(spec.field)
+	case auditKindString:
+		return a.stringToProto(spec.field)
+	default:
+		return nil, fmt.Errorf("unhandled audit field kind for %q", a.Field)
+	}
+}
+
+func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb.QueryFilter {
+	cond.Field = field
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: cond}}
+}
+
+func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		n, err := strconv.ParseUint(v.resolve(), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("audit field %q requires an unsigned integer, got %q", a.Field, v.resolve())
+		}
+
+		return n, nil
+	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// datetimeToProto builds a uint audit condition whose operands may be written as
+// an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or as raw unsigned
+// microseconds. Both forms coerce to the uint64 microseconds the audit index
+// stores, reusing the platform datetime parser (commonpb.ParseDatetimeMicros)
+// that backs METADATA_TYPE_DATETIME fields.
+func (a *AuditCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		s := v.resolve()
+		if micros, ok := commonpb.ParseDatetimeMicros(s); ok {
+			if micros < 0 {
+				return 0, fmt.Errorf("audit field %q does not support timestamps before the Unix epoch, got %q", a.Field, s)
+			}
+
+			return uint64(micros), nil
+		}
+
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("audit field %q requires an RFC3339 timestamp or unsigned microseconds, got %q", a.Field, s)
+		}
+
+		return n, nil
+	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// uintProtoWithParse assembles a uint audit condition from the operator, using
+// parse to turn each operand into a uint64. Shared by plain-uint fields and the
+// datetime timestamp field.
+func (a *AuditCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
+	op := a.Op
+	uc := &commonpb.UintCondition{}
+
+	switch {
+	case op.Eq != nil:
+		n, err := parse(op.Eq)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &n, &n
+	case op.Gt != nil:
+		n, err := parse(op.Gt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.MinExclusive = &n, true
+	case op.Gte != nil:
+		n, err := parse(op.Gte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min = &n
+	case op.Lt != nil:
+		n, err := parse(op.Lt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max, uc.MaxExclusive = &n, true
+	case op.Lte != nil:
+		n, err := parse(op.Lte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max = &n
+	case op.Between != nil:
+		lo, err := parse(op.Between.Low)
+		if err != nil {
+			return nil, err
+		}
+		hi, err := parse(op.Between.High)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &lo, &hi
+	default:
+		return nil, fmt.Errorf("audit field %q supports ==, >, >=, <, <= and between only", a.Field)
+	}
+
+	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+}
+
+func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	op := a.Op
+
+	// Audit filters are evaluated without a parameter-resolution context, so a
+	// $param value cannot be honored — reject it rather than degrading to a
+	// match against the empty string.
+	mk := func(v *Value) (*commonpb.QueryFilter, error) {
+		if v.Param != "" {
+			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringCond{
+			StringCond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
+		}}), nil
+	}
+
+	switch {
+	case op.Eq != nil:
+		return mk(op.Eq)
+	case len(op.In) > 0:
+		filters := make([]*commonpb.QueryFilter, len(op.In))
+		for i, v := range op.In {
+			f, err := mk(v)
+			if err != nil {
+				return nil, err
+			}
+			filters[i] = f
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
+	default:
+		return nil, fmt.Errorf("audit field %q supports == and in only", a.Field)
+	}
 }
 
 // --- Asset conditions ---
@@ -401,7 +614,14 @@ type Value struct {
 	Str   string `parser:"| @String"`
 	Num   string `parser:"| @Number"`
 	Bool  string `parser:"| @('true' | 'false')"`
-	Bare  string `parser:"| @Ident"`
+	// Kw accepts the "noun" keywords as bare right-hand-side values so that a
+	// reserved word can still be used as an unquoted value (e.g.
+	// `metadata[type] == audit` / `== ledger` / `== source`). Only field/prefix
+	// keywords are listed — the structural operators (and/or/not/in/between)
+	// are deliberately excluded so they keep terminating expressions rather
+	// than being swallowed as values. true/false are handled by Bool above.
+	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'exists')"`
+	Bare string `parser:"| @Ident"`
 }
 
 func (v *Value) resolve() string {
@@ -415,6 +635,10 @@ func (v *Value) resolve() string {
 
 	if v.Bool != "" {
 		return v.Bool
+	}
+
+	if v.Kw != "" {
+		return v.Kw
 	}
 
 	return v.Bare

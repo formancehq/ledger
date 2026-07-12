@@ -39,10 +39,10 @@ func (m *MockTransport) EXPECT() *MockTransportMockRecorder {
 }
 
 // RecvHighPriority mocks base method.
-func (m *MockTransport) RecvHighPriority() <-chan []raftpb.Message {
+func (m *MockTransport) RecvHighPriority() <-chan []*raftpb.Message {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RecvHighPriority")
-	ret0, _ := ret[0].(<-chan []raftpb.Message)
+	ret0, _ := ret[0].(<-chan []*raftpb.Message)
 	return ret0
 }
 
@@ -59,28 +59,28 @@ type MockTransportRecvHighPriorityCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockTransportRecvHighPriorityCall) Return(arg0 <-chan []raftpb.Message) *MockTransportRecvHighPriorityCall {
+func (c *MockTransportRecvHighPriorityCall) Return(arg0 <-chan []*raftpb.Message) *MockTransportRecvHighPriorityCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockTransportRecvHighPriorityCall) Do(f func() <-chan []raftpb.Message) *MockTransportRecvHighPriorityCall {
+func (c *MockTransportRecvHighPriorityCall) Do(f func() <-chan []*raftpb.Message) *MockTransportRecvHighPriorityCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportRecvHighPriorityCall) DoAndReturn(f func() <-chan []raftpb.Message) *MockTransportRecvHighPriorityCall {
+func (c *MockTransportRecvHighPriorityCall) DoAndReturn(f func() <-chan []*raftpb.Message) *MockTransportRecvHighPriorityCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // RecvLowPriority mocks base method.
-func (m *MockTransport) RecvLowPriority() <-chan []raftpb.Message {
+func (m *MockTransport) RecvLowPriority() <-chan []*raftpb.Message {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RecvLowPriority")
-	ret0, _ := ret[0].(<-chan []raftpb.Message)
+	ret0, _ := ret[0].(<-chan []*raftpb.Message)
 	return ret0
 }
 
@@ -97,28 +97,28 @@ type MockTransportRecvLowPriorityCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockTransportRecvLowPriorityCall) Return(arg0 <-chan []raftpb.Message) *MockTransportRecvLowPriorityCall {
+func (c *MockTransportRecvLowPriorityCall) Return(arg0 <-chan []*raftpb.Message) *MockTransportRecvLowPriorityCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockTransportRecvLowPriorityCall) Do(f func() <-chan []raftpb.Message) *MockTransportRecvLowPriorityCall {
+func (c *MockTransportRecvLowPriorityCall) Do(f func() <-chan []*raftpb.Message) *MockTransportRecvLowPriorityCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportRecvLowPriorityCall) DoAndReturn(f func() <-chan []raftpb.Message) *MockTransportRecvLowPriorityCall {
+func (c *MockTransportRecvLowPriorityCall) DoAndReturn(f func() <-chan []*raftpb.Message) *MockTransportRecvLowPriorityCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // RecvMediumPriority mocks base method.
-func (m *MockTransport) RecvMediumPriority() <-chan []raftpb.Message {
+func (m *MockTransport) RecvMediumPriority() <-chan []*raftpb.Message {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RecvMediumPriority")
-	ret0, _ := ret[0].(<-chan []raftpb.Message)
+	ret0, _ := ret[0].(<-chan []*raftpb.Message)
 	return ret0
 }
 
@@ -135,25 +135,25 @@ type MockTransportRecvMediumPriorityCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockTransportRecvMediumPriorityCall) Return(arg0 <-chan []raftpb.Message) *MockTransportRecvMediumPriorityCall {
+func (c *MockTransportRecvMediumPriorityCall) Return(arg0 <-chan []*raftpb.Message) *MockTransportRecvMediumPriorityCall {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockTransportRecvMediumPriorityCall) Do(f func() <-chan []raftpb.Message) *MockTransportRecvMediumPriorityCall {
+func (c *MockTransportRecvMediumPriorityCall) Do(f func() <-chan []*raftpb.Message) *MockTransportRecvMediumPriorityCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportRecvMediumPriorityCall) DoAndReturn(f func() <-chan []raftpb.Message) *MockTransportRecvMediumPriorityCall {
+func (c *MockTransportRecvMediumPriorityCall) DoAndReturn(f func() <-chan []*raftpb.Message) *MockTransportRecvMediumPriorityCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Send mocks base method.
-func (m *MockTransport) Send(msg []raftpb.Message) {
+func (m *MockTransport) Send(msg []*raftpb.Message) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Send", msg)
 }
@@ -177,13 +177,13 @@ func (c *MockTransportSendCall) Return() *MockTransportSendCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockTransportSendCall) Do(f func([]raftpb.Message)) *MockTransportSendCall {
+func (c *MockTransportSendCall) Do(f func([]*raftpb.Message)) *MockTransportSendCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockTransportSendCall) DoAndReturn(f func([]raftpb.Message)) *MockTransportSendCall {
+func (c *MockTransportSendCall) DoAndReturn(f func([]*raftpb.Message)) *MockTransportSendCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

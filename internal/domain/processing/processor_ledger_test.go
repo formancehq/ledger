@@ -56,6 +56,39 @@ func TestProcessCreateLedger(t *testing.T) {
 	require.Equal(t, uint32(1), createLedgerLog.GetId(), "CreatedLedgerLog should have Id == 1")
 }
 
+// TestProcessCreateLedger_InvalidPatternSelectionDeterministic pins EN-1521:
+// when several initial account types have invalid patterns, the first-reported
+// invalid pattern (chain-bound ErrInvalidPattern → AuditFailure) must be the
+// same on every replica. The processor iterates the account-types map in sorted
+// key order, so the lexicographically-first name's pattern is always chosen.
+func TestProcessCreateLedger_InvalidPatternSelectionDeterministic(t *testing.T) {
+	t.Parallel()
+
+	const runs = 64
+	for range runs {
+		ctrl := gomock.NewController(t)
+		mockStore := NewMockScope(ctrl)
+		expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+
+		order := &raftcmdpb.CreateLedgerOrder{
+			AccountTypes: map[string]*commonpb.AccountType{
+				"zzz": {Pattern: "z b"},  // invalid: space in a fixed segment
+				"aaa": {Pattern: "a::x"}, // invalid: empty segment
+			},
+		}
+
+		_, derr := processCreateLedger("l", order, &Context{Scope: mockStore})
+		require.NotNil(t, derr)
+
+		var invalid *domain.ErrInvalidPattern
+		require.ErrorAs(t, derr, &invalid)
+		require.Equal(t, "a::x", invalid.Pattern,
+			"the first invalid pattern reported must be the lexicographically-first name's, deterministically")
+
+		ctrl.Finish()
+	}
+}
+
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	t.Parallel()
 

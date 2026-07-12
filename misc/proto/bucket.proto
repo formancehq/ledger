@@ -757,11 +757,11 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
+  // options carries the whole read contract. Audit has NO dedicated top-level
+  // filters: ledger scope and outcome selection are expressed through
+  // options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
+  // failure`), exactly like every other filtered list endpoint.
   common.ListOptions options = 1;
-  // failures_only filters audit entries to only those carrying a failure status.
-  bool failures_only = 2;
-  // ledger filters audit entries to only those containing orders targeting this ledger.
-  string ledger = 3;
 }
 
 message GetAuditEntryRequest {

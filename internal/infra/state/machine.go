@@ -180,7 +180,7 @@ type Machine struct {
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
-	confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error
+	confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
@@ -193,7 +193,7 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -433,7 +433,7 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 // that do not already hold decoded proposals. Hot-path callers should
 // decode once at the applier boundary and call PrepareDecodedEntries
 // directly so the apply pipeline never re-unmarshals the same payload.
-func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*PreparedBatch, error) {
+func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...*raftpb.Entry) (*PreparedBatch, error) {
 	decoded, err := DecodeEntries(entries)
 	if err != nil {
 		return nil, err
@@ -490,7 +490,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			"lastAppliedIndex":   fsm.State.LastAppliedIndex,
 			"snapshotIndex":      fsm.State.SnapshotIndex,
 			"entryCount":         len(decoded),
-			"firstEntryIndex":    decoded[0].Entry.Index,
+			"firstEntryIndex":    decoded[0].Entry.GetIndex(),
 			"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
 			"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
 			"currentGeneration":  fsm.Registry.Cache.CurrentGeneration(),
@@ -523,22 +523,24 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		entry := decoded[i].Entry
 		cmd := decoded[i].Proposal
 
-		if entry.Index <= fsm.State.LastAppliedIndex {
+		entryIndex := entry.GetIndex()
+
+		if entryIndex <= fsm.State.LastAppliedIndex {
 			ret.Results = append(ret.Results, ApplyResult{})
 
 			continue
 		}
 
-		if entry.Index > fsm.State.LastAppliedIndex+1 {
+		if entryIndex > fsm.State.LastAppliedIndex+1 {
 			assert.Unreachable("entry index gap detected", map[string]any{
-				"receivedIndex": entry.Index,
+				"receivedIndex": entryIndex,
 				"expectedIndex": fsm.State.LastAppliedIndex + 1,
 			})
 
 			_ = batch.Cancel()
 
 			return nil, &ErrInvalidEntryIndex{
-				ReceivedIndex: entry.Index,
+				ReceivedIndex: entryIndex,
 				ExpectedIndex: fsm.State.LastAppliedIndex + 1,
 			}
 		}
@@ -546,14 +548,14 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		preRotationPQGen0 := fsm.Registry.Cache.PreparedQueries.Gen0().Size()
 		preRotationPQGen1 := fsm.Registry.Cache.PreparedQueries.Gen1().Size()
 
-		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
+		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entryIndex); rotated {
 			if fsm.sentinelMode {
 				fsm.sentinelTracer.SetCacheRotated()
 			}
 			lifecycle.SendEvent("cache_rotation", map[string]any{
 				"preRotationPQGen0": preRotationPQGen0,
 				"preRotationPQGen1": preRotationPQGen1,
-				"entryIndex":        entry.Index,
+				"entryIndex":        entryIndex,
 				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
 				"gen0Base":          fsm.Registry.Cache.BaseIndex.Gen0,
 				"gen1Base":          fsm.Registry.Cache.BaseIndex.Gen1,
@@ -568,7 +570,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			})
 			if fsm.logger.Enabled(logging.DebugLevel) {
 				fsm.logger.WithFields(map[string]any{
-					"entryIndex":        entry.Index,
+					"entryIndex":        entryIndex,
 					"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
 					"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
 					"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
@@ -600,9 +602,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 		fsm.State.LastAppliedIndex++
 
-		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+		if entry.GetType() != raftpb.EntryNormal || len(entry.GetData()) == 0 {
 			if fsm.sentinelMode {
-				fsm.sentinelTracer.SkipEntry(entry.Index, entry.Type.String(), len(entry.Data))
+				fsm.sentinelTracer.SkipEntry(entryIndex, entry.GetType().String(), len(entry.GetData()))
 			}
 
 			// EN-1413: ConfChange entries do not carry business state,
@@ -620,11 +622,11 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			// feed the cross-node FSM digest — the ConfChange entry still
 			// folds as an empty-ops digest step below, identically on
 			// every node.
-			if entry.Type == raftpb.EntryConfChange || entry.Type == raftpb.EntryConfChangeV2 {
+			if entry.GetType() == raftpb.EntryConfChange || entry.GetType() == raftpb.EntryConfChangeV2 {
 				if err := fsm.confChangeHandler(entry, batch); err != nil {
 					_ = batch.Cancel()
 
-					return nil, fmt.Errorf("applying ConfChange at index %d: %w", entry.Index, err)
+					return nil, fmt.Errorf("applying ConfChange at index %d: %w", entryIndex, err)
 				}
 			}
 
@@ -649,23 +651,23 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		// the *Proposal lifetime (VT pool); the FSM only reads from it.
 		if cmd == nil {
 			assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
-				"raftIndex": entry.Index,
+				"raftIndex": entryIndex,
 			})
 
 			_ = batch.Cancel()
 
-			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entry.Index)
+			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {
 			if fsm.sentinelMode && fsm.logger.Enabled(logging.TraceLevel) {
 				fsm.logger.WithFields(map[string]any{
-					"raftIndex":  entry.Index,
+					"raftIndex":  entryIndex,
 					"proposalID": cmd.GetId(),
 				}).Tracef("SENTINEL: skipping no-op proposal")
 			}
 
-			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entry.Index})
+			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.GetId(), AppliedIndex: entryIndex})
 
 			// See the matching comment on the EntryConfChange / empty-data
 			// branch above: a no-op proposal also bumps LastAppliedIndex on
@@ -676,10 +678,10 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		}
 
 		if fsm.sentinelMode {
-			fsm.sentinelTracer.StartEntry(entry.Index, cmd.GetId(), len(cmd.GetOrders()))
+			fsm.sentinelTracer.StartEntry(entryIndex, cmd.GetId(), len(cmd.GetOrders()))
 		}
 
-		result, err := fsm.applyProposal(ctx, entry.Index, batch, cmd)
+		result, err := fsm.applyProposal(ctx, entryIndex, batch, cmd)
 		if err != nil {
 			_ = batch.Cancel()
 
@@ -693,7 +695,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		// WriteSession has no chain attached).
 		batch.AdvanceDigest()
 
-		result.AppliedIndex = entry.Index
+		result.AppliedIndex = entryIndex
 
 		if fsm.sentinelMode {
 			if result.Error != nil {
@@ -743,7 +745,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 		if (sealReqBase != nil || queryCheckpointCreated) && i != len(decoded)-1 {
 			assert.Unreachable("checkpoint trigger entry not last in PrepareDecodedEntries batch", map[string]any{
-				"raftIndex":  entry.Index,
+				"raftIndex":  entryIndex,
 				"proposalID": cmd.GetId(),
 				"position":   i,
 				"entryCount": len(decoded),
@@ -753,7 +755,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 			return nil, fmt.Errorf(
 				"checkpoint trigger entry at position %d/%d in PrepareDecodedEntries batch (raft index %d) — applier must pre-split",
-				i, len(decoded), entry.Index,
+				i, len(decoded), entryIndex,
 			)
 		}
 
@@ -968,7 +970,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 // Callers must pre-split entries so that any checkpoint-triggering entry is
 // the last in the slice (see state.ClassifyCheckpointOrderPosition); the FSM
 // enforces this with a defensive check inside PrepareEntries.
-func (fsm *Machine) ApplyEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
+func (fsm *Machine) ApplyEntries(ctx context.Context, sessions dal.WriteSessionFactory, entries ...*raftpb.Entry) (*ApplyEntriesResult, error) {
 	pb, err := fsm.PrepareEntries(ctx, sessions, entries...)
 	if err != nil {
 		return nil, err

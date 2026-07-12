@@ -103,17 +103,26 @@ func TestOperationsLifecycle(t *testing.T) {
 		require.GreaterOrEqual(t, len(allEntries), 4, "should have at least 4 audit entries (3 success + 1 failure)")
 		t.Logf("Audit entries (all): %d", len(allEntries))
 
-		// ListAuditEntries (failures only): should have at least 1
-		failures, err := actions.ListAuditEntries(ctx, client, true)
-		require.NoError(t, err, "ListAuditEntries(failures) failed")
-		require.GreaterOrEqual(t, len(failures), 1, "should have at least 1 failure entry")
-		t.Logf("Audit entries (failures): %d", len(failures))
+		// ListAuditEntries (failures only): should have at least 1.
+		// The outcome filter is served by the async audit index (EN-1339), so
+		// this is eventually consistent — poll rather than assume the just-applied
+		// failure is already indexed.
+		require.Eventually(t, func() bool {
+			failures, err := actions.ListAuditEntries(ctx, client, true)
+			if err != nil || len(failures) < 1 {
+				return false
+			}
 
-		// Verify the failure entry has a failure outcome
-		for _, entry := range failures {
-			require.NotNil(t, entry.GetFailure(), "failure entry should have failure outcome")
-		}
+			for _, entry := range failures {
+				if entry.GetFailure() == nil {
+					return false
+				}
+			}
 
+			t.Logf("Audit entries (failures): %d", len(failures))
+
+			return true
+		}, 10*time.Second, 100*time.Millisecond, "should have at least 1 failure entry (via async audit index)")
 	})
 
 	// --- Phase 3b: GetAuditEntry ---

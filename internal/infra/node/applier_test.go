@@ -13,6 +13,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -118,7 +119,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 	require.NoError(t, err)
 
 	// Create initial snapshot at index 0 so the WAL is initialized.
-	confState := raftpb.ConfState{Voters: []uint64{1}}
+	confState := &raftpb.ConfState{Voters: []uint64{1}}
 
 	nodeCache, err := cache.New(1000, nil)
 	require.NoError(t, err)
@@ -130,7 +131,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
-		func(raftpb.Entry, *dal.WriteSession) error { return nil },
+		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)
 
@@ -139,7 +140,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 	synchronizer := state.NewSynchronizer(fsm, recovery, dal.NewIncomingRestoreFactory(pebbleStore))
 
 	// Create initial snapshot (no FSM data) in the WAL.
-	require.NoError(t, w.CreateSnapshot(0, &confState, nil))
+	require.NoError(t, w.CreateSnapshot(0, confState, nil))
 
 	applier, err := NewApplier(
 		fsm, recovery, synchronizer, defaultSpool, pebbleStore, w, logger, meter,
@@ -162,14 +163,14 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 		spool:        defaultSpool,
 		fsm:          fsm,
 		stop:         stop,
-		confState:    &confState,
+		confState:    confState,
 		responseSink: sink,
 	}
 }
 
 // makeCreateLedgerEntry creates a valid raftpb.Entry containing a CreateLedgerOrder.
 // Returns the entry and the proposal ID for future registration.
-func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entry, uint64) {
+func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (*raftpb.Entry, uint64) {
 	t.Helper()
 
 	order := &raftcmdpb.Order{
@@ -199,10 +200,10 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entr
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Term:  1,
-		Index: index,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Term:  proto.Uint64(1),
+		Index: new(index),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -223,7 +224,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -297,7 +298,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	// Submit 3 CreateLedger entries.
 	for i := uint64(1); i <= 3; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
 	}
 
 	// Drain to ensure all entries are processed.
@@ -355,7 +356,7 @@ func TestApplierSubmitAbortsOnStop(t *testing.T) {
 
 	// Fill the channel buffer manually.
 	entry, _ := makeCreateLedgerEntry(t, 1, "filler")
-	setup.applier.ch <- applyWork{entries: []raftpb.Entry{entry}}
+	setup.applier.ch <- applyWork{entries: []*raftpb.Entry{entry}}
 
 	// Close stop.
 	close(setup.stop)
@@ -365,7 +366,7 @@ func TestApplierSubmitAbortsOnStop(t *testing.T) {
 
 	go func() {
 		entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
-		setup.applier.Submit([]raftpb.Entry{entry2}, nil, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry2}, nil, nil, setup.stop)
 		close(submitDone)
 	}()
 
@@ -441,7 +442,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	// the entry's term so the post-apply sweep leaves it untouched.
 	entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
 	future := futures.New[state.ApplyResult]()
-	setup.applier.StoreFuture(proposalID, entry.Term, future)
+	setup.applier.StoreFuture(proposalID, entry.GetTerm(), future)
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
@@ -451,7 +452,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	}()
 
 	// Submit the entry.
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
 
 	// Wait for the future to resolve.
 	resultCh := make(chan state.ApplyResult, 1)
@@ -491,7 +492,7 @@ func TestApplierFutureResolution(t *testing.T) {
 // makeCreateLedgerEntryWithTerm is a variant of makeCreateLedgerEntry that
 // lets the caller pick the term, so tests can simulate term advances on the
 // apply path.
-func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string) (raftpb.Entry, uint64) {
+func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string) (*raftpb.Entry, uint64) {
 	t.Helper()
 
 	order := &raftcmdpb.Order{
@@ -517,10 +518,10 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Term:  term,
-		Index: index,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Term:  new(term),
+		Index: new(index),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -597,7 +598,7 @@ func TestApplierTermOlderThanBatchFails(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{entry}, nil, nil, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{entry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	gotErr, resolved := waitFutureBounded(orphanFuture, 2*time.Second)
@@ -628,7 +629,7 @@ func TestApplierMixedTermBatchV1RaceFixed(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	setup.applier.Submit([]raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{committedEntry, advanceEntry}, nil, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	// committed future resolves with success (commandID match, leader-completeness).
@@ -814,7 +815,7 @@ func TestApplierConcurrentResolveAndSweep(t *testing.T) {
 }
 
 // makeCreateQueryCheckpointEntry creates a valid raftpb.Entry containing a CreateQueryCheckpointOrder.
-func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, uint64) {
+func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (*raftpb.Entry, uint64) {
 	t.Helper()
 
 	cmd := commands.NewCommand(&raftcmdpb.Order{
@@ -830,10 +831,10 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Term:  1,
-		Index: index,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Term:  proto.Uint64(1),
+		Index: new(index),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -842,7 +843,7 @@ func makeCreateQueryCheckpointEntry(t *testing.T, index uint64) (raftpb.Entry, u
 // whose PredictedIndex deliberately differs from the raft index, so
 // checkStaleProposal rejects it before any order runs. Used to exercise the
 // "structural trigger that does not actually fire" branch of applyDecodedEntriesToFSM.
-func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uint64) (raftpb.Entry, uint64) {
+func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uint64) (*raftpb.Entry, uint64) {
 	t.Helper()
 
 	cmd := commands.NewCommand(&raftcmdpb.Order{
@@ -859,10 +860,10 @@ func makeStaleCreateQueryCheckpointEntry(t *testing.T, index, predictedIndex uin
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
 
-	return raftpb.Entry{
-		Term:  1,
-		Index: index,
-		Type:  raftpb.EntryNormal,
+	return &raftpb.Entry{
+		Term:  proto.Uint64(1),
+		Index: new(index),
+		Type:  new(raftpb.EntryNormal),
 		Data:  data,
 	}, cmd.GetId()
 }
@@ -952,7 +953,7 @@ func TestApplierRejectedTriggerDoesNotDropTail(t *testing.T) {
 	// the entry being dropped by the bug.
 	tail, _ := makeCreateLedgerEntry(t, 2, "tail-ledger")
 
-	setup.applier.Submit([]raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
+	setup.applier.Submit([]*raftpb.Entry{stale, tail}, setup.confState, nil, setup.stop)
 	setup.applier.Drain(setup.stop)
 
 	require.True(t, listLedgerContains(setup.store, "tail-ledger"),
@@ -987,7 +988,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 	// Entries 6-8 are spooled during gating, then replayed after unspool.
 	for i := uint64(1); i <= 8; i++ {
 		entry, _ := makeCreateLedgerEntry(t, i, fmt.Sprintf("gating-ledger-%d", i))
-		setup.applier.Submit([]raftpb.Entry{entry}, setup.confState, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, nil, setup.stop)
 	}
 
 	// Eventually all 8 ledgers should exist (after unspool replays the spooled entries).

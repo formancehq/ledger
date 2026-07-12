@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -43,9 +44,82 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatNot(v.Not)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
+	case *commonpb.QueryFilter_Audit:
+		return formatAuditCondition(v.Audit), precLeaf
 	default:
 		return "<unknown filter>", precLeaf
 	}
+}
+
+// auditFieldNames is the reverse of the parser's auditFieldKeys: enum -> DSL key.
+var auditFieldNames = map[commonpb.AuditField]string{
+	commonpb.AuditField_AUDIT_FIELD_SEQUENCE:       "seq",
+	commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:    "proposal_id",
+	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:      "timestamp",
+	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:   "log_seq",
+	commonpb.AuditField_AUDIT_FIELD_OUTCOME:        "outcome",
+	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT: "caller_subject",
+	commonpb.AuditField_AUDIT_FIELD_LEDGER:         "ledger",
+	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:     "order_type",
+}
+
+// formatAuditCondition renders an AuditCondition back into `audit[field] OP
+// value`, inverse of the parser's AuditCond production.
+func formatAuditCondition(ac *commonpb.AuditCondition) string {
+	key, ok := auditFieldNames[ac.GetField()]
+	if !ok {
+		return "audit[<unknown>]"
+	}
+
+	switch cond := ac.GetCondition().(type) {
+	case *commonpb.AuditCondition_StringCond:
+		return fmt.Sprintf("audit[%s] == %s", key, formatStringCondValue(cond.StringCond))
+	case *commonpb.AuditCondition_UintCond:
+		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond)
+	default:
+		return fmt.Sprintf("audit[%s] <unknown>", key)
+	}
+}
+
+// formatAuditUintCondition renders a UintCondition on an audit field. The audit
+// DSL only produces hardcoded bounds (no params), so only those are formatted.
+// The timestamp field is a datetime: its bounds render as quoted RFC3339 so the
+// output round-trips through the datetime-aware parser.
+func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
+	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
+	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
+		render = func(v uint64) string {
+			return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
+		}
+	}
+
+	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+		return fmt.Sprintf("audit[%s] == %s", key, render(uc.GetMin()))
+	}
+
+	if uc.Min != nil && uc.Max != nil {
+		return fmt.Sprintf("audit[%s] between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
+	}
+
+	if uc.Min != nil {
+		op := ">="
+		if uc.GetMinExclusive() {
+			op = ">"
+		}
+
+		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMin()))
+	}
+
+	if uc.Max != nil {
+		op := "<="
+		if uc.GetMaxExclusive() {
+			op = "<"
+		}
+
+		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMax()))
+	}
+
+	return fmt.Sprintf("audit[%s] <uint?>", key)
 }
 
 // formatAccountHasAsset renders an AccountHasAssetCondition as `has asset BASE`

@@ -235,6 +235,18 @@ func WithRestore() testservice.InstrumentationFunc {
 	}
 }
 
+// WithClusterSecret sets --cluster-secret, the shared bearer token that the
+// inter-node RaftServer (including the ClusterBootstrapService used by
+// --join) requires on every RPC. --cluster-secret requires TLS, so this is
+// normally combined with WithTLSMode + cert/key instruments.
+func WithClusterSecret(secret string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cluster-secret", secret)
+
+		return nil
+	}
+}
+
 func WithResponseSigningKey(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--response-signing-key", path)

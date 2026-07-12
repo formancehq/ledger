@@ -329,11 +329,46 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 	})
 }
 
-// ListAuditEntries collects all audit entries from the streaming RPC.
+// ListAuditEntries collects all audit entries from the streaming RPC. When
+// failuresOnly is true it applies the shared filter `audit[outcome] == failure`
+// (failures_only is no longer a top-level request field — EN-1241).
+//
+// Consistency: with failuresOnly=false the read streams the audit zone directly
+// and reflects every applied entry. With failuresOnly=true the outcome filter
+// is served by the asynchronous audit secondary index (EN-1339), so it is
+// eventually consistent — a just-applied failure may take a short moment to
+// appear. Callers that assert on a freshly-applied entry must poll (e.g.
+// require.Eventually / Gomega Eventually) rather than assume immediate
+// visibility; do not add time.Sleep.
 func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
-	return ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{
-		FailuresOnly: failuresOnly,
-	})
+	req := &servicepb.ListAuditEntriesRequest{}
+	if failuresOnly {
+		req.Options = &commonpb.ListOptions{Filter: AuditOutcomeFilter(false)}
+	}
+
+	return ListAuditEntriesWithRequest(ctx, client, req)
+}
+
+// AuditOutcomeFilter builds the QueryFilter matching audit entries by outcome:
+// success=true -> `audit[outcome] == success`, success=false -> failure.
+func AuditOutcomeFilter(success bool) *commonpb.QueryFilter {
+	val := "failure"
+	if success {
+		val = "success"
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_OUTCOME,
+				Condition: &commonpb.AuditCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: val},
+					},
+				},
+			},
+		},
+	}
 }
 
 // ListAuditEntriesWithRequest collects all audit entries matching the given
@@ -355,9 +390,9 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 			Read:     req.GetOptions().GetRead(),
 			PageSize: listAllPageSize,
 			Cursor:   req.GetOptions().GetCursor(),
+			Reverse:  req.GetOptions().GetReverse(),
+			Filter:   req.GetOptions().GetFilter(),
 		},
-		FailuresOnly: req.GetFailuresOnly(),
-		Ledger:       req.GetLedger(),
 	}
 
 	var entries []*auditpb.AuditEntry

@@ -159,10 +159,21 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
 	case *commonpb.QueryFilter_LogBuiltinUint:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("log-field filter (date) is only valid on log queries")
+		}
+
 		return compileLogBuiltinUintCondition(ctx, f.LogBuiltinUint)
 	case *commonpb.QueryFilter_LogId:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("logId filter is only valid on log queries")
+		}
+
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
 	case *commonpb.QueryFilter_Ledger:
+		if ctx.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+			return nil, domain.NewFilterCompilationError("ledger filter is only valid on log queries")
+		}
 		// Ledger condition is a no-op in the Compile framework --- the ledger
 		// is already set in the context. Return the universe iterator.
 		return compileUniverse(ctx)
@@ -1109,6 +1120,17 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
 	if cond.GetCond() == nil {
 		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
+	}
+
+	// Transaction builtins (id/timestamp/insertedAt/revertedAt) are only
+	// meaningful on the transactions target: their compilers read transaction
+	// indexes and yield transaction-keyed entities. On any other target this
+	// would silently feed tx-keyed entities into a mismatched result pipeline,
+	// so reject it here — mirroring the reverted (transactions-only) and
+	// accountHasAsset (accounts-only) guards.
+	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		return nil, domain.NewFilterCompilationError(
+			"builtin field (id/timestamp/insertedAt/revertedAt) is only valid on transactions")
 	}
 
 	switch cond.GetField() {

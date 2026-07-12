@@ -204,6 +204,52 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	require.Equal(t, []uint64{1, 2}, seqs)
 }
 
+// TestProcessOnceWakesAuditWaiters verifies the indexer wakes readers blocked in
+// WaitForAuditSequence as soon as it commits the audit cursor, rather than
+// leaving them parked until an unrelated log-index notification or the next tick.
+// This is the wakeup the filtered-audit read-your-writes gate depends on.
+func TestProcessOnceWakesAuditWaiters(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+
+	// A waiter for an audit entry that does not exist yet must block.
+	waitErr := make(chan error, 1)
+	go func() {
+		wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		waitErr <- rs.WaitForAuditSequence(wctx, 1)
+	}()
+
+	select {
+	case err := <-waitErr:
+		t.Fatalf("WaitForAuditSequence returned before the entry was indexed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Write the audit entry and index it. processBatch commits the cursor then
+	// calls NotifyProgress, which must wake the waiter.
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence:   1,
+		ProposalId: 7,
+		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers:    []string{"main"},
+	})
+
+	processed, err := idx.ProcessOnce(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), processed)
+
+	select {
+	case err := <-waitErr:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitForAuditSequence did not wake after ProcessOnce committed the cursor")
+	}
+}
+
 func TestStartStopIndexes(t *testing.T) {
 	t.Parallel()
 	idx, mainStore, rs := newIndexerForTest(t)

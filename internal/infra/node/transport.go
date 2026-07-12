@@ -29,10 +29,10 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source transport.go -destination transport_generated_test.go -typed -package node . Transport
 type Transport interface {
 	Unreachable() <-chan uint64
-	RecvHighPriority() <-chan []raftpb.Message
-	RecvMediumPriority() <-chan []raftpb.Message
-	RecvLowPriority() <-chan []raftpb.Message
-	Send(msg []raftpb.Message)
+	RecvHighPriority() <-chan []*raftpb.Message
+	RecvMediumPriority() <-chan []*raftpb.Message
+	RecvLowPriority() <-chan []*raftpb.Message
+	Send(msg []*raftpb.Message)
 }
 
 // DefaultTransport handles network communication between Raft nodes using gRPC
@@ -43,9 +43,9 @@ type DefaultTransport struct {
 	connectionPool *transport.ConnectionPool
 
 	// 3 priority queues for incoming message batches (high to low priority)
-	highPriorityRecvCh   chan []raftpb.Message // Heartbeats
-	mediumPriorityRecvCh chan []raftpb.Message // Votes, responses
-	lowPriorityRecvCh    chan []raftpb.Message // Data messages
+	highPriorityRecvCh   chan []*raftpb.Message // Heartbeats
+	mediumPriorityRecvCh chan []*raftpb.Message // Votes, responses
+	lowPriorityRecvCh    chan []*raftpb.Message // Data messages
 
 	// Channels for outgoing messages per peer
 	peersMu sync.RWMutex
@@ -66,7 +66,7 @@ type DefaultTransport struct {
 	fsmDeterminismEnabled bool
 
 	bufferSize           int
-	pendingSendQueue     chan []raftpb.Message
+	pendingSendQueue     chan []*raftpb.Message
 	stopCh               chan chan struct{}
 	advertiseAddr        string
 	serviceAdvertiseAddr string
@@ -90,15 +90,15 @@ type DefaultTransport struct {
 	stopped atomic.Bool
 }
 
-func (t *DefaultTransport) RecvHighPriority() <-chan []raftpb.Message {
+func (t *DefaultTransport) RecvHighPriority() <-chan []*raftpb.Message {
 	return t.highPriorityRecvCh
 }
 
-func (t *DefaultTransport) RecvMediumPriority() <-chan []raftpb.Message {
+func (t *DefaultTransport) RecvMediumPriority() <-chan []*raftpb.Message {
 	return t.mediumPriorityRecvCh
 }
 
-func (t *DefaultTransport) RecvLowPriority() <-chan []raftpb.Message {
+func (t *DefaultTransport) RecvLowPriority() <-chan []*raftpb.Message {
 	return t.lowPriorityRecvCh
 }
 
@@ -156,9 +156,9 @@ func NewTransport(
 
 	t := &DefaultTransport{
 		connectionPool:        connectionPool,
-		highPriorityRecvCh:    make(chan []raftpb.Message, config.Reception[0]),
-		mediumPriorityRecvCh:  make(chan []raftpb.Message, config.Reception[1]),
-		lowPriorityRecvCh:     make(chan []raftpb.Message, config.Reception[2]),
+		highPriorityRecvCh:    make(chan []*raftpb.Message, config.Reception[0]),
+		mediumPriorityRecvCh:  make(chan []*raftpb.Message, config.Reception[1]),
+		lowPriorityRecvCh:     make(chan []*raftpb.Message, config.Reception[2]),
 		peers:                 make(map[uint64]*peerConnection),
 		unreachableCh:         make(chan uint64, unreachableCapacity),
 		globalMeter:           meter,
@@ -170,7 +170,7 @@ func NewTransport(
 		fsmDeterminismEnabled: fsmDeterminismEnabled,
 		bufferSize:            bufferSize,
 		stopCh:                make(chan chan struct{}),
-		pendingSendQueue:      make(chan []raftpb.Message, pendingSendCapacity),
+		pendingSendQueue:      make(chan []*raftpb.Message, pendingSendCapacity),
 		advertiseAddr:         advertiseAddr,
 		serviceAdvertiseAddr:  serviceAdvertiseAddr,
 	}
@@ -236,7 +236,7 @@ func NewTransport(
 }
 
 // pushToRecvQueue pushes a batch of messages to the appropriate priority recv queue.
-func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) bool {
+func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []*raftpb.Message) bool {
 	if len(msgs) == 0 {
 		return true
 	}
@@ -245,7 +245,7 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) 
 		return false
 	}
 
-	var queue chan []raftpb.Message
+	var queue chan []*raftpb.Message
 
 	switch priority {
 	case 0: // high
@@ -365,9 +365,9 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	stopCtx, stopCancel := context.WithCancel(context.Background())
 
 	conn := &peerConnection{
-		highPriorityCh:         make(chan []raftpb.Message, t.config.Send[0]),
-		mediumPriorityCh:       make(chan []raftpb.Message, t.config.Send[1]),
-		lowPriorityCh:          make(chan []raftpb.Message, t.config.Send[2]),
+		highPriorityCh:         make(chan []*raftpb.Message, t.config.Send[0]),
+		mediumPriorityCh:       make(chan []*raftpb.Message, t.config.Send[1]),
+		lowPriorityCh:          make(chan []*raftpb.Message, t.config.Send[2]),
 		closeCh:                make(chan chan struct{}),
 		stopCtx:                stopCtx,
 		stopCancel:             stopCancel,
@@ -444,7 +444,7 @@ func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
 }
 
 // Send sends a message to a peer.
-func (t *DefaultTransport) Send(msgs []raftpb.Message) {
+func (t *DefaultTransport) Send(msgs []*raftpb.Message) {
 	if len(msgs) == 0 {
 		return
 	}
@@ -470,11 +470,12 @@ func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 		// queue.
 		reported := make(map[uint64]struct{}, len(msgs))
 		for _, m := range msgs {
-			if _, ok := reported[m.To]; ok {
+			to := m.GetTo()
+			if _, ok := reported[to]; ok {
 				continue
 			}
-			reported[m.To] = struct{}{}
-			t.pushUnreachable(m.To)
+			reported[to] = struct{}{}
+			t.pushUnreachable(to)
 		}
 	}
 }
@@ -503,15 +504,16 @@ func (t *DefaultTransport) Start(_ context.Context) {
 
 			// Group messages by peer and priority
 			// Key: peerID, Value: map of priority -> messages
-			msgsByPeerAndPriority := make(map[uint64]map[int][]raftpb.Message)
+			msgsByPeerAndPriority := make(map[uint64]map[int][]*raftpb.Message)
 
 			for _, msg := range msgs {
-				if _, exists := msgsByPeerAndPriority[msg.To]; !exists {
-					msgsByPeerAndPriority[msg.To] = make(map[int][]raftpb.Message)
+				to := msg.GetTo()
+				if _, exists := msgsByPeerAndPriority[to]; !exists {
+					msgsByPeerAndPriority[to] = make(map[int][]*raftpb.Message)
 				}
 
-				priority := messagePriority(msg.Type)
-				msgsByPeerAndPriority[msg.To][priority] = append(msgsByPeerAndPriority[msg.To][priority], msg)
+				priority := messagePriority(msg.GetType())
+				msgsByPeerAndPriority[to][priority] = append(msgsByPeerAndPriority[to][priority], msg)
 			}
 
 			// Push batches to each peer's priority queues
@@ -673,7 +675,7 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 		case *rafttransportpb.SendMessageRequest_Raft:
 			// Group messages by priority, tracking request IDs per group.
 			type msgGroup struct {
-				msgs       []raftpb.Message
+				msgs       []*raftpb.Message
 				requestIDs []uint64
 			}
 
@@ -681,9 +683,9 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 			responses := make([]*rafttransportpb.RaftResponseMessage, 0, len(m.Raft.GetMessages()))
 
 			for _, raftMsg := range m.Raft.GetMessages() {
-				var msg raftpb.Message
+				msg := &raftpb.Message{}
 
-				err := msg.Unmarshal(raftMsg.GetMessage())
+				err := proto.Unmarshal(raftMsg.GetMessage(), msg)
 				if err != nil {
 					responses = append(responses, &rafttransportpb.RaftResponseMessage{
 						Error:     fmt.Sprintf("failed to unmarshal message: %v", err),
@@ -695,7 +697,7 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 
 				var pri int
 
-				switch msg.Type {
+				switch msg.GetType() {
 				case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
 					pri = 0
 				case raftpb.MsgAppResp, raftpb.MsgVote, raftpb.MsgVoteResp, raftpb.MsgPreVote, raftpb.MsgPreVoteResp:
@@ -747,9 +749,9 @@ func (t *DefaultTransport) RegisterRaftService(registrar grpc.ServiceRegistrar) 
 
 type peerConnection struct {
 	// 3 priority queues for sending batches of messages (high to low priority)
-	highPriorityCh   chan []raftpb.Message // Heartbeats
-	mediumPriorityCh chan []raftpb.Message // Votes, responses
-	lowPriorityCh    chan []raftpb.Message // Data messages (MsgApp with entries)
+	highPriorityCh   chan []*raftpb.Message // Heartbeats
+	mediumPriorityCh chan []*raftpb.Message // Votes, responses
+	lowPriorityCh    chan []*raftpb.Message // Data messages (MsgApp with entries)
 
 	closeCh                chan chan struct{}
 	stopCtx                context.Context    // cancelled by stop() to interrupt stream creation and Recv() calls
@@ -801,7 +803,7 @@ type peerConnection struct {
 // duration of the send. stop() acquires pubMu.Lock before flipping stopped
 // and closing the queues, which guarantees no in-flight send overlaps the
 // close.
-func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bool {
+func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) bool {
 	if len(msgs) == 0 {
 		return true
 	}
@@ -813,7 +815,7 @@ func (conn *peerConnection) pushMessages(priority int, msgs []raftpb.Message) bo
 		return false
 	}
 
-	var queue chan []raftpb.Message
+	var queue chan []*raftpb.Message
 
 	switch priority {
 	case 0:
@@ -1122,7 +1124,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	opts := proto.MarshalOptions{}
 
 	// sendMessages handles sending a batch of raft messages on the specified stream
-	sendMessages := func(stream grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], msgs []raftpb.Message) error {
+	sendMessages := func(stream grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], msgs []*raftpb.Message) error {
 		if len(msgs) == 0 {
 			return nil
 		}
@@ -1132,7 +1134,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 		mu.Lock()
 		for _, msg := range msgs {
-			data, err := opts.MarshalAppend(conn.buf[:0], protoadapt.MessageV2Of(&msg))
+			data, err := opts.MarshalAppend(conn.buf[:0], protoadapt.MessageV2Of(msg))
 			if err != nil {
 				conn.logger.
 					WithFields(map[string]any{
@@ -1149,7 +1151,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			currentMessageID := conn.messageID
 			conn.messageID++
-			pending[currentMessageID] = msg.To
+			pending[currentMessageID] = msg.GetTo()
 			messageIDs = append(messageIDs, currentMessageID)
 
 			raftMessages = append(raftMessages, &rafttransportpb.RaftRequestMessage{

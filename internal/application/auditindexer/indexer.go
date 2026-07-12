@@ -247,6 +247,11 @@ func (i *Indexer) processBatch(ctx context.Context, after uint64) (uint64, bool,
 
 	i.lastIndexed.Store(cursor)
 
+	// Wake any live filtered-audit reader blocked in WaitForAuditSequence so it
+	// picks up the just-committed cursor immediately, instead of waiting for an
+	// unrelated log-index NotifyProgress or the next tick.
+	i.readStore.NotifyProgress()
+
 	return cursor, true, nil
 }
 

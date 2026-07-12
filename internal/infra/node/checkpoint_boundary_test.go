@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -17,7 +18,7 @@ import (
 func TestFindCheckpointBoundary(t *testing.T) {
 	t.Parallel()
 
-	apply := func(t *testing.T, index uint64) raftpb.Entry {
+	apply := func(t *testing.T, index uint64) *raftpb.Entry {
 		t.Helper()
 		cmd := commands.NewCommand(&raftcmdpb.Order{
 			Type: &raftcmdpb.Order_LedgerScoped{
@@ -32,10 +33,10 @@ func TestFindCheckpointBoundary(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return raftpb.Entry{Index: index, Term: 1, Type: raftpb.EntryNormal, Data: data}
+		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 
-	checkpoint := func(t *testing.T, index uint64) raftpb.Entry {
+	checkpoint := func(t *testing.T, index uint64) *raftpb.Entry {
 		t.Helper()
 		cmd := commands.NewCommand(&raftcmdpb.Order{
 			Type: &raftcmdpb.Order_SystemScoped{
@@ -49,10 +50,10 @@ func TestFindCheckpointBoundary(t *testing.T) {
 		data, err := cmd.MarshalVT()
 		require.NoError(t, err)
 
-		return raftpb.Entry{Index: index, Term: 1, Type: raftpb.EntryNormal, Data: data}
+		return &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data}
 	}
 
-	emptyEntry := raftpb.Entry{Index: 42, Term: 1, Type: raftpb.EntryNormal}
+	emptyEntry := &raftpb.Entry{Index: proto.Uint64(42), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal)}
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()
@@ -63,7 +64,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 
 	t.Run("no trigger", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{apply(t, 1), apply(t, 2), apply(t, 3)}
+		entries := []*raftpb.Entry{apply(t, 1), apply(t, 2), apply(t, 3)}
 		boundary, err := findCheckpointBoundary(entries)
 		require.NoError(t, err)
 		require.Equal(t, len(entries), boundary)
@@ -71,7 +72,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 
 	t.Run("trigger first", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{checkpoint(t, 1), apply(t, 2)}
+		entries := []*raftpb.Entry{checkpoint(t, 1), apply(t, 2)}
 		boundary, err := findCheckpointBoundary(entries)
 		require.NoError(t, err)
 		require.Equal(t, 1, boundary, "boundary includes the trigger; tail goes to the spool")
@@ -79,7 +80,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 
 	t.Run("trigger middle", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{apply(t, 1), apply(t, 2), checkpoint(t, 3), apply(t, 4), apply(t, 5)}
+		entries := []*raftpb.Entry{apply(t, 1), apply(t, 2), checkpoint(t, 3), apply(t, 4), apply(t, 5)}
 		boundary, err := findCheckpointBoundary(entries)
 		require.NoError(t, err)
 		require.Equal(t, 3, boundary)
@@ -87,7 +88,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 
 	t.Run("trigger last", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{apply(t, 1), apply(t, 2), checkpoint(t, 3)}
+		entries := []*raftpb.Entry{apply(t, 1), apply(t, 2), checkpoint(t, 3)}
 		boundary, err := findCheckpointBoundary(entries)
 		require.NoError(t, err)
 		require.Equal(t, len(entries), boundary)
@@ -95,7 +96,7 @@ func TestFindCheckpointBoundary(t *testing.T) {
 
 	t.Run("empty data entry is skipped", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{emptyEntry, apply(t, 43), checkpoint(t, 44)}
+		entries := []*raftpb.Entry{emptyEntry, apply(t, 43), checkpoint(t, 44)}
 		boundary, err := findCheckpointBoundary(entries)
 		require.NoError(t, err)
 		require.Equal(t, len(entries), boundary)
