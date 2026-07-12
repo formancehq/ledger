@@ -1,84 +1,25 @@
 package usagebuilder
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
 func newBuilderWithUsageStore(t *testing.T) (*Builder, *usagestore.Store) {
 	t.Helper()
 
-	// Back the builder with a real (empty) primary store so the shared reset
-	// path (resetProjection → RestoreGeneration) is exercised without a nil
-	// dereference. The position-based rewind tests pass (cursor, head) directly,
-	// so the empty store's audit head is never sampled.
-	b, _, us := newBuilderWithStores(t)
-
-	return b, us
-}
-
-// newBuilderWithStores wires a Builder over a real primary dal.Store and a real
-// usagestore, so tests can exercise the restore-generation path (which reads
-// pebbleStore.RestoreGeneration and samples the audit head).
-func newBuilderWithStores(t *testing.T) (*Builder, *dal.Store, *usagestore.Store) {
-	t.Helper()
-
-	logger := logging.NopZap()
-	meter := noop.NewMeterProvider().Meter("test")
-
-	main, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = main.Close() })
-
-	us, err := usagestore.New(t.TempDir(), logger, usagestore.DefaultConfig())
+	us, err := usagestore.New(t.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = us.Close() })
 
-	return &Builder{
-		pebbleStore: main,
-		usageStore:  us,
-		logger:      logger,
-		batchSize:   DefaultBatchSize,
-	}, main, us
-}
-
-// writeAuditEntry appends a minimal failed audit entry so the audit head
-// advances without an AppliedProposal / items projection: the usagebuilder
-// skips failed proposals (no state delta), which is all this test needs to
-// drive the cursor forward past the generation-triggered reset.
-func writeAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
-	t.Helper()
-
-	entry := &auditpb.AuditEntry{
-		Sequence:   seq,
-		ProposalId: seq,
-		Timestamp:  &commonpb.Timestamp{Data: seq * 1_000_000},
-		Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
-		Ledgers:    []string{"l1"},
-	}
-
-	val, err := proto.Marshal(entry)
-	require.NoError(t, err)
-
-	batch := store.OpenWriteSession()
-	kb := dal.NewKeyBuilder()
-	require.NoError(t, batch.SetBytes(
-		kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build(),
-		val,
-	))
-	require.NoError(t, batch.Commit())
+	return &Builder{usageStore: us, logger: logging.NopZap()}, us
 }
 
 // TestRewindIfCursorAhead_RuntimeRestore is the regression guard for the
@@ -207,66 +148,4 @@ func TestRewindOnRollback_BootGapThreshold(t *testing.T) {
 	rewound, err = b.rewindOnRollback(500, 900, true)
 	require.NoError(t, err)
 	assert.False(t, rewound, "gap within threshold must not trigger a rewind")
-}
-
-// TestTickResetsOnRestoreGenerationChange is the regression for the catch-up
-// race the cursor>head signal cannot catch: the primary store is restored
-// beneath the usage cursor, then the audit head re-grows PAST the old cursor
-// before tick() re-samples — so cursorAheadOfHead is false. The restore-
-// generation change is the only remaining rollback signal, and tick() must
-// reset the projection and rebuild from 0.
-func TestTickResetsOnRestoreGenerationChange(t *testing.T) {
-	t.Parallel()
-
-	b, main, us := newBuilderWithStores(t)
-	ctx := context.Background()
-
-	// Seed the surviving audit chain (1..3) into the primary store and take a
-	// checkpoint — this is the state a runtime restore will roll back to.
-	for s := uint64(1); s <= 3; s++ {
-		writeAuditEntry(t, main, s)
-	}
-	checkpointID, err := main.CreateSnapshot()
-	require.NoError(t, err)
-
-	// A projection that had already consumed up to audit seq 3, with stale rows.
-	batch := us.NewBatch()
-	require.NoError(t, us.PutCounter(batch, "l1", usagestore.CounterPosting, 42))
-	require.NoError(t, us.WriteProgress(batch, 3))
-	require.NoError(t, batch.Commit())
-
-	// boot seeds the generation baseline; head (3) == cursor (3), so no rewind.
-	require.NoError(t, b.boot(ctx))
-	require.Equal(t, uint64(3), b.lastProcessedAuditSeq.Load())
-
-	// Runtime rollback: a real RestoreCheckpoint bumps the store generation, and
-	// the post-restore head re-grows to 5 — strictly ABOVE the stale cursor (3),
-	// so cursorAheadOfHead is inert and only the generation change can fire.
-	require.NoError(t, main.RestoreCheckpoint(checkpointID))
-	for s := uint64(4); s <= 5; s++ {
-		writeAuditEntry(t, main, s)
-	}
-
-	head, err := b.sampleAuditHead()
-	require.NoError(t, err)
-	require.Equal(t, uint64(5), head)
-	require.False(t, cursorAheadOfHead(3, head), "head re-grew past cursor: position signal is inert")
-
-	// tick() must reset on the generation change and re-drain the surviving
-	// chain from 0, landing the cursor back at the head.
-	require.NoError(t, b.tick(ctx))
-
-	seq, err := us.ReadProgress()
-	require.NoError(t, err)
-	require.Equal(t, uint64(5), seq, "reset+rebuild must re-consume the full surviving chain")
-
-	c, err := us.GetCounter("l1", usagestore.CounterPosting)
-	require.NoError(t, err)
-	assert.Equal(t, uint64(0), c, "stale counter must be wiped by the reset")
-
-	// A second tick with no further restore must NOT reset (generation resync).
-	require.NoError(t, b.tick(ctx))
-	seq, err = us.ReadProgress()
-	require.NoError(t, err)
-	assert.Equal(t, uint64(5), seq, "no reset without a new restore")
 }

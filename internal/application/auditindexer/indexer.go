@@ -62,14 +62,6 @@ type Indexer struct {
 	// Updated on each tick by lastAuditSequence(); used only for metric gauges.
 	auditLast atomic.Uint64
 
-	// restoreGen is the store restore generation this indexer last processed
-	// under (see dal.Store.RestoreGeneration). Seeded on boot, re-read every
-	// tick: a change means the primary store was rolled back beneath the cursor
-	// at runtime, so a full rebuild is forced regardless of where the audit head
-	// landed relative to the cursor — the position-based cursorAheadOfHead /
-	// RebuildThreshold signals can be erased by a catch-up race.
-	restoreGen atomic.Uint64
-
 	// tw drives the steady-state tail loop (boot + ticker).
 	tw *tailworker.TailWorker
 
@@ -141,11 +133,6 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 // Rebuild drops the audit index and the cursor, then replays from the earliest
 // surviving audit entry. Used by ledgerctl and by boot auto-rebuild.
 func (i *Indexer) Rebuild(ctx context.Context) error {
-	// Snapshot the restore generation up-front: a RestoreCheckpoint that lands
-	// while this rebuild is replaying bumps past this value, so the next
-	// processTick re-detects it instead of the rebuild silently swallowing it.
-	i.restoreGen.Store(i.store.RestoreGeneration())
-
 	// Drop the index and reset the cursor in a single batch so the operation is
 	// crash-atomic: a torn write leaves either (old index, old cursor) or (empty
 	// index, cursor 0). The latter deterministically re-triggers boot rebuild
@@ -317,10 +304,6 @@ func (i *Indexer) Stop() {
 // (returned to tailworker, which logs and stops); a rebuild error is logged
 // and swallowed so steady-state indexing still starts.
 func (i *Indexer) boot(ctx context.Context) error {
-	// Snapshot the restore generation before any processing so processTick can
-	// detect a runtime rollback that lands after boot.
-	i.restoreGen.Store(i.store.RestoreGeneration())
-
 	cursor, err := i.readStore.ReadAuditProgress()
 	if err != nil {
 		return fmt.Errorf("read audit cursor: %w", err)
@@ -350,18 +333,6 @@ func (i *Indexer) boot(ctx context.Context) error {
 // would spuriously trigger a full rebuild whenever a normal burst exceeds the
 // threshold between ticks.
 func (i *Indexer) processTick(ctx context.Context) error {
-	// Restore-generation change is the authoritative rollback signal: it fires
-	// on any RestoreCheckpoint regardless of where the audit head landed, so it
-	// catches the catch-up race that erases the cursor>head position signal
-	// (restore below cursor, head re-grows past the old cursor before this tick
-	// re-samples). Rebuild re-syncs restoreGen, so this fires once per restore.
-	if gen := i.store.RestoreGeneration(); gen != i.restoreGen.Load() {
-		i.logger.WithFields(map[string]any{"from": i.restoreGen.Load(), "to": gen}).
-			Infof("Audit index rebuild: primary store restore detected (generation changed)")
-
-		return i.Rebuild(ctx)
-	}
-
 	if last, err := i.lastAuditSequence(); err == nil {
 		i.auditLast.Store(last)
 

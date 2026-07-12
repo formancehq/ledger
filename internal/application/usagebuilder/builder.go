@@ -77,15 +77,6 @@ type Builder struct {
 	// resampled on each tick for the lag gauge.
 	pebbleLastAuditSeq atomic.Uint64
 
-	// restoreGen is the store restore generation this builder last processed
-	// under (see dal.Store.RestoreGeneration). Seeded on boot, re-read every
-	// tick: a change means the primary store was rolled back beneath the cursor
-	// at runtime, so a reset+rebuild is forced regardless of where the audit
-	// head landed relative to the cursor — the position-based cursorAheadOfHead
-	// / gapExceedsThreshold signals can be erased by a catch-up race. Mirrors
-	// auditindexer.Indexer.restoreGen.
-	restoreGen atomic.Uint64
-
 	tw  *tailworker.TailWorker
 	reg metric.Registration
 }
@@ -173,10 +164,6 @@ func (b *Builder) PebbleLastAuditSequence() uint64 {
 // loop (returned to tailworker, which logs and stops); a catch-up error is
 // logged and swallowed so steady-state indexing still starts.
 func (b *Builder) boot(ctx context.Context) error {
-	// Snapshot the restore generation before any processing so tick() can detect
-	// a runtime rollback that lands after boot.
-	b.restoreGen.Store(b.pebbleStore.RestoreGeneration())
-
 	cursor, err := b.usageStore.ReadProgress()
 	if err != nil {
 		return fmt.Errorf("reading usage progress: %w", err)
@@ -259,23 +246,6 @@ func (b *Builder) boot(ctx context.Context) error {
 func (b *Builder) tick(ctx context.Context) error {
 	cursor := b.lastProcessedAuditSeq.Load()
 
-	// Restore-generation change is the authoritative rollback signal: it fires
-	// on any RestoreCheckpoint regardless of where the audit head landed, so it
-	// catches the catch-up race that erases the cursor>head position signal
-	// (restore below cursor, head re-grows past the old cursor before this tick
-	// re-samples). Checked before the position heuristic and independent of the
-	// head sample. Mirrors auditindexer.processTick.
-	if gen := b.pebbleStore.RestoreGeneration(); gen != b.restoreGen.Load() {
-		b.logger.WithFields(map[string]any{"from": b.restoreGen.Load(), "to": gen}).
-			Infof("primary store restore detected (generation changed) — resetting usage projection and rebuilding from audit sequence 0")
-
-		if err := b.resetProjection(); err != nil {
-			return err
-		}
-
-		cursor = 0
-	}
-
 	if last, err := b.sampleAuditHead(); err == nil {
 		// Steady-state uses the cursor-ahead test ONLY (boot=false): the
 		// over-threshold gap branch is a boot-only heuristic — applying it
@@ -345,29 +315,13 @@ func (b *Builder) rewindOnRollback(cursor, head uint64, boot bool) (bool, error)
 		"gapExceeded": gap,
 	}).Infof("primary store appears rolled back — resetting usage projection and rebuilding from audit sequence 0")
 
-	if err := b.resetProjection(); err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-// resetProjection wipes the usagestore and rewinds the cursor to 0, re-syncing
-// the restore generation up-front so a RestoreCheckpoint that lands during the
-// subsequent replay bumps past this value and is re-detected on the next tick
-// (rather than being silently swallowed). Shared by the generation-change and
-// position-based rewind paths (DRY). Mirrors auditindexer.Rebuild's generation
-// re-sync.
-func (b *Builder) resetProjection() error {
-	b.restoreGen.Store(b.pebbleStore.RestoreGeneration())
-
 	if err := b.usageStore.Reset(); err != nil {
-		return fmt.Errorf("resetting usage store after primary-store rollback: %w", err)
+		return false, fmt.Errorf("resetting usage store after primary-store rollback: %w", err)
 	}
 
 	b.lastProcessedAuditSeq.Store(0)
 
-	return nil
+	return true, nil
 }
 
 // sampleAuditHead opens a short-lived read handle to read the current audit
