@@ -16,17 +16,17 @@ import (
 )
 
 // MaxFilterDepth bounds the recursion depth of compile() over QueryFilter
-// protos. It re-exports domain.MaxFilterDepth so the execute-time guard here
-// and the write-time guard in domain.ValidateFilterForTarget share a single
-// source of truth (they must agree — a filter accepted at write time must not
-// be rejected only at execute time, and vice versa). See domain.MaxFilterDepth
-// for the DoS rationale.
+// protos (#341). The bound lives in internal/domain as the single source of
+// truth (see domain.MaxFilterDepth) so the prepared-query write-time walk
+// (domain.ValidateFilterForTarget) caps at the exact same value the compiler
+// enforces here at execute time; re-exported as a package-local const so this
+// package's existing references read unchanged.
 const MaxFilterDepth = domain.MaxFilterDepth
 
 // ErrFilterTooDeep is returned by Compile when the QueryFilter recursion
-// exceeds MaxFilterDepth. Typed Describable (KindValidation) so the gRPC
-// adapter maps it to InvalidArgument with the depth in the message.
-var ErrFilterTooDeep = domain.NewFilterCompilationError("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+// exceeds MaxFilterDepth. Sourced from domain so the execute-time and
+// write-time paths return the same sentinel.
+var ErrFilterTooDeep = domain.ErrFilterTooDeep
 
 // compileCtx holds the immutable context threaded through the recursive
 // compilation pipeline. All fields are set once at the entry point and

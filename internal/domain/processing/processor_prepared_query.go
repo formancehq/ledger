@@ -107,10 +107,23 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 	updated := existing.Mutate()
 
 	// An update carries only the new filter; the target is fixed at creation and
-	// read here from the stored query (the cache, per invariant #3). Validate the
-	// new filter against that stored target so an update cannot smuggle in a
-	// condition invalid for the query's target — the case admission cannot catch
-	// because the update request has no target field.
+	// read here from the stored query (the cache, per invariant #3).
+	//
+	// Guard the stored target's executability before condition validity. CLI/gRPC
+	// creation used to allow non-executable targets (e.g. AUDIT) before this PR, so
+	// a pre-existing non-executable query can already sit in storage; rewriting its
+	// filter here would persist a query ExecutePreparedQuery still cannot hydrate.
+	// Reject the update loudly (delete stays allowed) so a stored prepared query
+	// is always executable — mirroring the create-path gate. LOGS is executable as
+	// of EN-1503, so a stored LOGS query passes this gate and reaches the filter
+	// validation below.
+	if !domain.IsPreparedQueryExecutableTarget(updated.GetTarget()) {
+		return nil, domain.ErrPreparedQueryTargetUnsupported
+	}
+
+	// Validate the new filter against that stored target so an update cannot
+	// smuggle in a condition invalid for the query's target — the case admission
+	// cannot catch because the update request has no target field.
 	if err := domain.ValidateFilterForTarget(order.GetFilter(), updated.GetTarget()); err != nil {
 		return nil, err
 	}

@@ -223,4 +223,5 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	require.NotNil(t, atCap,
 		"MaxFilterDepth combinators must be rejected (matches query.Compile)")
 	require.Contains(t, atCap.Error(), "nesting depth")
+	require.ErrorIs(t, atCap, domain.ErrFilterTooDeep)
 }

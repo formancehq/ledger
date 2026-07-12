@@ -1382,9 +1382,13 @@ message RevertedCondition {
 // for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
 // Audit/And/Or leaves and rejects every other QueryFilter variant with
 // InvalidArgument, while the index compiler used for accounts/transactions/logs
-// (query.Compile) never lists QueryFilter_Audit and rejects it there too. There
-// is no QueryTarget dispatch for audit — ListAuditEntries calls
-// CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too.
+// Audit is a first-class QueryFilter target (QUERY_TARGET_AUDIT): the audit
+// arm above is annotated valid only for that target, so its condition validity
+// lives in the same generated source of truth as the other targets. Dispatch is
+// still internal — ListAuditEntries routes QUERY_TARGET_AUDIT to
+// CompileAuditFilter rather than query.Compile — but the target itself is
+// modeled here rather than treated as an undocumented exception.
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,

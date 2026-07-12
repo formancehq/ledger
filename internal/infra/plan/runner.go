@@ -35,6 +35,15 @@ type Proposer interface {
 // rebuild signaling. Callers use the timings to drive their own
 // metrics (admission and mirror each emit different histograms /
 // counters for the same underlying phases).
+//
+// On a proposer.Propose failure Run returns a NON-nil RunResult *together
+// with* the error: the propose phase was entered, so the result carries
+// LockHeldDuration/ProposeStartTime/ProposeDuration for the caller's
+// phase-histogram accounting. In that case the result is timing-only —
+// Proposal/FSMFuture are nil and the guard is already fully released, so the
+// caller must NOT read Proposal/FSMFuture or release the guard. Errors that
+// occur BEFORE the propose starts (marshal, guard acquisition) still return
+// (nil, err): that phase was never entered and must not be recorded.
 type RunResult struct {
 	// Proposal is the *node.Proposal that was submitted. Its embedded
 	// future resolves when Raft accepts the proposal; call
@@ -207,9 +216,17 @@ func (p *Builder) Run(
 	result.ProposeDuration = time.Since(result.ProposeStartTime)
 
 	if err != nil {
+		// The propose phase was entered (ProposeStartTime is set) and the guard
+		// was held right up to this failure, so record both durations on the
+		// result before releasing. Returning the result — not nil — lets the
+		// caller observe the propose/guard phase histograms it entered, keeping
+		// them aligned with the total command.duration population even when
+		// Propose fails (queue full / shutdown). The guard is fully released
+		// here, so the returned result is timing-only for the caller.
+		result.LockHeldDuration = time.Since(guardStart)
 		guard.ReleaseAll()
 
-		return nil, err
+		return result, err
 	}
 
 	guard.Release()
@@ -320,19 +337,28 @@ func (p *Builder) runWithoutPreload(
 	fsmFuture, err := proposer.Propose(ctx, proposal)
 	proposeDuration := time.Since(proposeStart)
 
+	lockHeld := time.Since(lockStart)
+
 	p.UnlockTracker()
 
 	if err != nil {
 		guard.ReleaseLoaders()
 
-		return nil, err
+		// Mirror the slow path: the propose phase was entered, so return a
+		// timing-only result (guard already released) alongside the error so the
+		// caller can record the propose/guard phase it entered.
+		return &RunResult{
+			LockHeldDuration: lockHeld,
+			ProposeStartTime: proposeStart,
+			ProposeDuration:  proposeDuration,
+		}, err
 	}
 
 	return &RunResult{
 		Proposal:         proposal,
 		FSMFuture:        fsmFuture,
 		Guard:            guard,
-		LockHeldDuration: time.Since(lockStart),
+		LockHeldDuration: lockHeld,
 		ProposeStartTime: proposeStart,
 		ProposeDuration:  proposeDuration,
 	}, nil
