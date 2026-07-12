@@ -2329,7 +2329,11 @@ components:
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
-          description: The type of operation to perform
+          description: |
+            The type of operation to perform. The REST bulk endpoint accepts
+            these four actions only; account-type actions
+            (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
+            are rejected here.
         ik:
           type: string
           maxLength: 256
@@ -2349,8 +2353,6 @@ components:
               - TRANSACTION_REFERENCE_CONFLICT
               - TRANSACTION_ALREADY_REVERTED
               - METADATA_NOT_FOUND
-              - ACCOUNT_TYPE_ALREADY_EXISTS
-              - ACCOUNT_TYPE_NOT_FOUND
           description: |
             Opt-in continue-on-failure list for this entry. When the FSM
             would otherwise reject the underlying order with a business
@@ -2359,12 +2361,15 @@ components:
             and the bulk result's `data` surfaces the skip context.
             Reasons outside the per-action business whitelist (structural
             / internal reasons) are rejected at admission. Accepted
-            reasons per action:
+            reasons per action on this REST endpoint:
               - `CREATE_TRANSACTION` → `TRANSACTION_REFERENCE_CONFLICT`
               - `REVERT_TRANSACTION` → `TRANSACTION_ALREADY_REVERTED`
               - `DELETE_METADATA`    → `METADATA_NOT_FOUND`
-              - `ADD_ACCOUNT_TYPE`    → `ACCOUNT_TYPE_ALREADY_EXISTS`
-              - `REMOVE_ACCOUNT_TYPE` → `ACCOUNT_TYPE_NOT_FOUND`
+            The FSM also supports skipping `ADD_ACCOUNT_TYPE`
+            (`ACCOUNT_TYPE_ALREADY_EXISTS`) and `REMOVE_ACCOUNT_TYPE`
+            (`ACCOUNT_TYPE_NOT_FOUND`), but those actions are **gRPC-only**:
+            the REST bulk endpoint does not accept account-type actions (see
+            the `action` enum above), so their reasons are not offered here.
             Empty (default) preserves the historical fail-on-error
             behaviour.
 
@@ -2500,10 +2505,9 @@ components:
               - Any skippable action skip (when the item opted into
                 `skippableReasons` and the FSM matched one): an
                 `OrderSkippedResponse` with `skipped: true`, `reason`, and
-                reason-specific `context`. Emitted for every skippable
-                action — CREATE_TRANSACTION, REVERT_TRANSACTION,
-                DELETE_METADATA, ADD_ACCOUNT_TYPE, REMOVE_ACCOUNT_TYPE — not
-                just create.
+                reason-specific `context`. Emitted for every REST-supported
+                skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
+                DELETE_METADATA — not just create.
               - Other successful non-create actions: `null`.
             Branch on `OrderSkippedResponse.skipped` to distinguish a skip
             from a successful transaction.
