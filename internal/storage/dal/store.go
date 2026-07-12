@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -108,6 +109,20 @@ type Store struct {
 	maxCheckpoints    int
 	stallState        *WriteStallState
 	iopsCounters      *IOPSCounters
+
+	// restoreGeneration is a process-local monotonic counter bumped on every
+	// successful RestoreCheckpoint. It lets audit-chain pollers (auditindexer,
+	// usagebuilder) detect that the primary store was rolled back beneath their
+	// cursor WITHOUT relying on the cursor>head position signal, which a
+	// catch-up race can erase (restore below cursor, then the head re-grows past
+	// the old cursor before the poller re-samples). A poller records the value
+	// it observed and forces a reset+rebuild the moment it changes. It is
+	// in-memory by design: RestoreCheckpoint only runs at runtime (follower sync
+	// via SynchronizeWithLeader), where the pollers keep running across the
+	// restore (StopBackgroundTasks does not stop them); a process restart resets
+	// both the store and the poller to 0, falling back to the boot-time
+	// cursor-ahead / gap heuristic that covers offline backup restores.
+	restoreGeneration atomic.Uint64
 }
 
 // getDB returns the current pebble.DB.
@@ -1399,11 +1414,27 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.currentCheckPoint = checkpointID
 	s.oldestCheckpoint = checkpointID
 
+	// Bump the restore generation so audit-chain pollers detect this rollback
+	// regardless of where the audit head lands relative to their cursor. Done
+	// under dbMu.Lock (still held via the deferred unlock) so it is ordered
+	// after the publish; the atomic lets lock-free pollers read it.
+	s.restoreGeneration.Add(1)
+
 	s.logger.WithFields(map[string]any{
 		"checkpointId": checkpointID,
 	}).Infof("Database restored from checkpoint")
 
 	return nil
+}
+
+// RestoreGeneration returns the process-local count of successful
+// RestoreCheckpoint calls. Audit-chain pollers (auditindexer, usagebuilder)
+// snapshot this at boot and compare on every tick: a change means the primary
+// store was rolled back beneath their cursor, so they must reset+rebuild even
+// when the cursor>head position signal was erased by a catch-up race. See the
+// restoreGeneration field comment.
+func (s *Store) RestoreGeneration() uint64 {
+	return s.restoreGeneration.Load()
 }
 
 // IterateColdKVPairs iterates every cold-storable KV pair belonging to a

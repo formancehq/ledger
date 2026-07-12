@@ -245,3 +245,36 @@ func TestReconcileLiveAfterRestore_CleansUpWhenBothExist(t *testing.T) {
 	_, err = os.Stat(discardDirectory)
 	require.True(t, os.IsNotExist(err), "reconciliation must drop the stale live.discard")
 }
+
+// TestRestoreGenerationIncrementsOnSuccessfulRestore is the store-side contract
+// the audit-chain pollers (auditindexer, usagebuilder) depend on to detect a
+// runtime primary-store rollback that the cursor>head position signal can miss:
+// a successful RestoreCheckpoint must bump RestoreGeneration, and a failed one
+// must not.
+func TestRestoreGenerationIncrementsOnSuccessfulRestore(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	require.Equal(t, uint64(0), s.RestoreGeneration(), "generation starts at 0")
+
+	// Seed data and take a checkpoint.
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("k"), []byte("v")))
+	require.NoError(t, batch.Commit())
+
+	checkpointID, err := s.CreateSnapshot()
+	require.NoError(t, err)
+
+	// A successful restore bumps the generation.
+	require.NoError(t, s.RestoreCheckpoint(checkpointID))
+	require.Equal(t, uint64(1), s.RestoreGeneration(), "successful restore must bump generation")
+
+	// A failed restore (unknown checkpoint) must NOT bump the generation.
+	require.Error(t, s.RestoreCheckpoint(999_999))
+	require.Equal(t, uint64(1), s.RestoreGeneration(), "failed restore must not bump generation")
+
+	// A second successful restore bumps again (monotonic).
+	require.NoError(t, s.RestoreCheckpoint(checkpointID))
+	require.Equal(t, uint64(2), s.RestoreGeneration(), "each successful restore bumps monotonically")
+}
