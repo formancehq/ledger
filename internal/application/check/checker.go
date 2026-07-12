@@ -2,12 +2,15 @@ package check
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
+	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -21,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -40,18 +44,35 @@ type Checker struct {
 	attrs     *attributes.Attributes
 	logger    logging.Logger
 	clusterID string
+	// coldReader gives the idempotency pass read access to archived audit
+	// entries so a still-live frozen outcome whose freezing entry has been
+	// archived can be re-derived rather than skipped. nil when cold storage
+	// is not configured (e.g. the CLI / restore call sites) — the pass then
+	// keeps the post-archive boundary as its verification floor.
+	coldReader *coldstorage.ColdReader
+	// idempotencyTTL is the boot-validated runtime idempotency TTL, used to
+	// size the cold re-derivation window. It is preferred over the persisted
+	// projection because it lives in process memory (not on the audited disk),
+	// so a disk-tampered PersistedConfig cannot shrink the window. nil where no
+	// trusted runtime config exists (CLI / restore backup validation) — the
+	// pass then falls back to the persisted TTL.
+	idempotencyTTL *time.Duration
 }
 
 // NewChecker creates a new Checker. clusterID is used to derive the
 // per-cluster key for verifying audit-hash chain entries — it must match
 // the value the FSM used when writing those entries (enforced via
-// PersistedConfig immutability).
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, logger logging.Logger) *Checker {
+// PersistedConfig immutability). coldReader may be nil when cold storage is
+// not configured. idempotencyTTL may be nil when no trusted runtime config is
+// available (the pass then falls back to the persisted TTL).
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, idempotencyTTL *time.Duration, logger logging.Logger) *Checker {
 	return &Checker{
-		store:     store,
-		attrs:     attrs,
-		logger:    logger,
-		clusterID: clusterID,
+		store:          store,
+		attrs:          attrs,
+		logger:         logger,
+		clusterID:      clusterID,
+		coldReader:     coldReader,
+		idempotencyTTL: idempotencyTTL,
 	}
 }
 
@@ -139,10 +160,28 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = replay.Close() }()
 
+	// Idempotency TTL, in microseconds, used by the hash-chain pass to bound the
+	// cold re-derivation window. Prefer the boot-validated runtime config (in
+	// process memory, off the audited disk) over the persisted projection, so a
+	// disk-tampered PersistedConfig cannot shrink the window; fall back to the
+	// persisted value where no runtime config exists (CLI / restore). nil (no
+	// runtime config and no persisted config) means the window is unknown, so
+	// the cold pass is skipped rather than guessed.
+	//
+	// "now" for the window is NOT a projection either — it is the highest
+	// timestamp the hash chain verifies in this same run (see
+	// verifyAuditHashChain), so a tampered lastAppliedTimestamp cannot shift it.
+	persisted, err := query.ReadPersistedConfig(snap)
+	if err != nil {
+		return fmt.Errorf("reading persisted config: %w", err)
+	}
+
+	idempotencyTTLMicros := resolveIdempotencyTTLMicros(c.idempotencyTTL, persisted)
+
 	// Verify the audit hash chain before log replay.
 	// This iterates all non-archived audit entries and recomputes each hash
 	// from the stored orders, chaining from archiveLastAuditHash.
-	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, callback); err != nil {
+	if err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, idempotencyTTLMicros, callback); err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
@@ -1458,6 +1497,7 @@ func (c *Checker) verifyAuditHashChain(
 	reader dal.PebbleReader,
 	chapters []*commonpb.Chapter,
 	archiveLastAuditHash []byte,
+	idempotencyTTLMicros *uint64,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	// Find the last archived audit sequence to start iteration after it.
@@ -1494,12 +1534,16 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
-		// Timestamp of the first (lowest-sequence) verified entry — the archive
-		// boundary. HLC timestamps are monotonic with sequence, so every freeze
-		// in the verified range is at/after it; a stored idempotency entry that
-		// claims a created_at >= this but matches no expected freeze is tampered
-		// or fabricated (see compareIdempotencyOutcomes). 0 = no verified entry.
+		// hasVerifiedRange records whether any entry was verified; a dedicated
+		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
+		// value (mirrors the *uint64 idemReportFloor tri-state below).
+		hasVerifiedRange bool
+		// Timestamps of the first (lowest-sequence) and last (highest-sequence)
+		// verified entries. HLC timestamps are monotonic with sequence, so the
+		// first is the archive boundary (default idempotency report floor) and
+		// the last is the hash-chain-verified "now" used to size the TTL window.
 		verifiedRangeStartTs uint64
+		verifiedRangeEndTs   uint64
 	)
 
 	for {
@@ -1516,9 +1560,14 @@ func (c *Checker) verifyAuditHashChain(
 			return fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
-		if verifiedRangeStartTs == 0 {
+		if !hasVerifiedRange {
+			hasVerifiedRange = true
 			verifiedRangeStartTs = entry.GetTimestamp().GetData()
 		}
+
+		// Entries arrive in ascending sequence (hence ascending HLC), so the
+		// last one seen carries the highest verified timestamp.
+		verifiedRangeEndTs = entry.GetTimestamp().GetData()
 
 		// `items` on the stored AuditEntry value is reserved for
 		// GetAuditEntry response shaping — the apply path forces it
@@ -1615,11 +1664,79 @@ func (c *Checker) verifyAuditHashChain(
 		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
 	}
 
-	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, verifiedRangeStartTs, callback); err != nil {
+	// idemReportFloor is the lowest created_at at/above which `expectedIdem` is
+	// complete, so an unmatched stored entry there is tampering rather than an
+	// un-re-derivable archived freeze. It is a pointer so a floor of 0 ("the TTL
+	// window is unbounded — report every entry") is distinct from "no verified
+	// range at all" (nil — report nothing).
+	//
+	// The post-archive (verified) range always covers [verifiedRangeStartTs, ∞).
+	// When the TTL window reaches before that boundary, the still-live archived
+	// freezes in [cutoff, boundary) are re-derived from cold storage; if that
+	// succeeds the floor drops to cutoff. If cold storage is unavailable the
+	// floor stays at the boundary — the residual gap, not a false positive.
+	//
+	// "now" is verifiedRangeEndTs — the highest hash-chain-verified timestamp —
+	// not a Pebble projection, so a tampered lastAppliedTimestamp cannot shrink
+	// the window. The TTL itself is still a projection (see idempotencyTTLMicros).
+	var idemReportFloor *uint64
+
+	if hasVerifiedRange {
+		idemReportFloor = &verifiedRangeStartTs
+
+		if idempotencyTTLMicros == nil {
+			// PersistedConfig absent: the window is unknown. Skip the cold pass
+			// rather than treat it as never-expire — distinct from a genuine
+			// cold-storage read failure below.
+			c.logger.Debug("persisted idempotency TTL unavailable; verifying only the post-archive idempotency range")
+		} else if cutoff := idempotencyWindowCutoff(verifiedRangeEndTs, *idempotencyTTLMicros); cutoff < verifiedRangeStartTs {
+			if c.reDeriveArchivedIdempotency(ctx, chapters, cutoff, expectedIdem) {
+				idemReportFloor = &cutoff
+			} else {
+				c.logger.Info("idempotency TTL window extends before the archive boundary but archived audit entries are not readable; verifying only the post-archive range")
+			}
+		}
+	}
+
+	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, idemReportFloor, callback); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// resolveIdempotencyTTLMicros picks the TTL (in microseconds) that bounds the
+// cold re-derivation window. The boot-validated runtime config is preferred
+// because it is not read from the audited store; the persisted projection is
+// the fallback for paths with no runtime config (CLI / restore backup
+// validation). Returns nil when neither is available — the window is then
+// unknown and the cold pass is skipped.
+func resolveIdempotencyTTLMicros(runtime *time.Duration, persisted *commonpb.PersistedConfig) *uint64 {
+	if runtime != nil {
+		micros := uint64(runtime.Microseconds())
+
+		return &micros
+	}
+
+	if persisted != nil {
+		micros := persisted.GetIdempotencyTtlSeconds() * 1_000_000
+
+		return &micros
+	}
+
+	return nil
+}
+
+// idempotencyWindowCutoff returns the lower bound of the idempotency TTL window
+// given the hash-chain-verified "now" and the configured TTL. A ttlMicros of 0
+// (idempotency-ttl=0, never expire) or a ledger younger than its TTL yields 0 —
+// an unbounded window that re-derives the whole archived history.
+func idempotencyWindowCutoff(now, ttlMicros uint64) uint64 {
+	if ttlMicros != 0 && now > ttlMicros {
+		return now - ttlMicros
+	}
+
+	return 0
 }
 
 // idemExpectedKey identifies the frozen idempotency entry an audit outcome
@@ -1701,33 +1818,208 @@ func recomputeProposalHash(items []*auditpb.AuditItem) []byte {
 	return processing.HashOrders(orders)
 }
 
+// reDeriveArchivedIdempotency extends `expected` with the frozen idempotency
+// outcomes re-derived from ARCHIVED audit entries whose timestamp is within the
+// TTL window [ttlCutoff, ∞) — the only archived freezes that can still be live.
+// It returns true when every archived chapter that could hold such a freeze was
+// read, so the caller may lower its report floor to ttlCutoff; false when cold
+// storage is unavailable or a read failed, in which case the caller keeps the
+// post-archive boundary and leaves the residual gap rather than risk a false
+// positive.
+//
+// Unlike the post-archive range, these cold entries are NOT re-verified against
+// the hash chain here. Cold storage sits outside the follower-disk threat model
+// this pass targets (see compareIdempotencyOutcomes), so the archived entry is
+// taken as the trusted source and only the live SubIdempKeys projection is
+// checked against it. Widening the threat model to cover cold-storage tampering
+// would require re-walking the chain over this same bounded window.
+//
+// The read is bounded by the TTL window, not by history: chapters are visited
+// newest-first and the scan stops at the first one whose newest entry predates
+// ttlCutoff.
+func (c *Checker) reDeriveArchivedIdempotency(
+	ctx context.Context,
+	chapters []*commonpb.Chapter,
+	ttlCutoff uint64,
+	expected map[idemExpectedKey]expectedIdempotency,
+) bool {
+	archived := make([]*commonpb.Chapter, 0, len(chapters))
+
+	for _, ch := range chapters {
+		if ch.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
+			archived = append(archived, ch)
+		}
+	}
+
+	// No archived data: the verified (hot) range already spans the whole audit
+	// history, so coverage extends down to ttlCutoff without any cold read.
+	if len(archived) == 0 {
+		return true
+	}
+
+	if c.coldReader == nil {
+		return false
+	}
+
+	// ttlCutoff == 0 means an unbounded window (idempotency-ttl=0 never-expire,
+	// or a ledger younger than its TTL): the whole archived history is read.
+	// Flag it — the O(history) read is by configuration, not a bug.
+	if ttlCutoff == 0 {
+		c.logger.Infof("idempotency TTL window is unbounded; scanning all %d archived chapters to verify frozen outcomes", len(archived))
+	}
+
+	// Newest first, so the scan can stop at the first chapter whose newest entry
+	// predates the cutoff.
+	slices.SortFunc(archived, func(a, b *commonpb.Chapter) int {
+		return cmp.Compare(b.GetCloseAuditSequence(), a.GetCloseAuditSequence())
+	})
+
+	for _, ch := range archived {
+		coldPebble, err := c.coldReader.GetReader(ctx, ch.GetId())
+		if err != nil {
+			c.logger.Infof("reading archived chapter %d for idempotency window failed: %v", ch.GetId(), err)
+
+			return false
+		}
+
+		last, err := query.ReadLastAuditEntry(coldPebble)
+		if err != nil {
+			c.logger.Infof("reading last audit entry of archived chapter %d failed: %v", ch.GetId(), err)
+
+			return false
+		}
+
+		// This chapter (and, by audit-sequence order, every older one) is
+		// entirely below the TTL window — nothing here can still be live.
+		if last == nil || last.GetTimestamp().GetData() < ttlCutoff {
+			break
+		}
+
+		windowStartsHere, err := c.collectChapterIdempotency(ctx, coldPebble, ttlCutoff, expected)
+		if err != nil {
+			c.logger.Infof("re-deriving idempotency from archived chapter %d failed: %v", ch.GetId(), err)
+
+			return false
+		}
+
+		if windowStartsHere {
+			break
+		}
+	}
+
+	return true
+}
+
+// collectChapterIdempotency scans one archived chapter's audit entries (read
+// from cold storage), re-derives the frozen idempotency outcome for every keyed
+// entry at/after ttlCutoff, and merges it into expected. It returns true when
+// the chapter's oldest entry predates ttlCutoff — the window starts inside this
+// chapter, so older chapters need not be read.
+//
+// Scan order does not matter here: every in-window keyed entry is added
+// regardless of direction, and windowStartsHere only needs to observe whether
+// any entry predates the cutoff — so this is correct even if ReadAuditEntries'
+// ordering ever changes.
+func (c *Checker) collectChapterIdempotency(
+	ctx context.Context,
+	coldPebble dal.PebbleReader,
+	ttlCutoff uint64,
+	expected map[idemExpectedKey]expectedIdempotency,
+) (bool, error) {
+	cur, err := query.ReadAuditEntries(ctx, coldPebble, nil)
+	if err != nil {
+		return false, fmt.Errorf("reading archived audit entries: %w", err)
+	}
+
+	defer func() { _ = cur.Close() }()
+
+	windowStartsHere := false
+
+	for {
+		entry, err := cur.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return false, fmt.Errorf("reading archived audit entry: %w", err)
+		}
+
+		ts := entry.GetTimestamp().GetData()
+		if ts < ttlCutoff {
+			windowStartsHere = true
+
+			continue
+		}
+
+		key := entry.GetIdempotency().GetKey()
+		if key == "" {
+			continue
+		}
+
+		items, err := query.ReadAuditItems(ctx, coldPebble, entry.GetSequence())
+		if err != nil {
+			return false, fmt.Errorf("reading archived audit items for sequence %d: %w", entry.GetSequence(), err)
+		}
+
+		if exp, ok := expectedIdempotencyOutcome(entry, items); ok {
+			expected[idemExpectedKey{
+				keyHash:   state.HashIdempotencyKey(key),
+				createdAt: ts,
+			}] = exp
+		}
+	}
+
+	return windowStartsHere, nil
+}
+
 // compareIdempotencyOutcomes scans the frozen idempotency entries
 // (SubIdempKeys) and verifies each against the outcome re-derived from the
 // hash-chained audit entry that wrote it. A divergence is a tampered replay
 // cache — left unchecked, a duplicate caller would replay an arbitrary error or
 // wrong log range while Check() passed.
 //
-// Entries are matched by (key hash, created_at). A miss is classified by
-// verifiedRangeStartTs (the archive boundary): an entry whose created_at is
-// at/after the boundary must have its freeze in the verified range, so a miss
-// there is tampered created_at or a fabricated entry and is reported; an entry
-// before the boundary was frozen by an already-archived entry that is no longer
-// re-derivable here, so it is skipped — the same scoping the hash-chain
-// verification uses. This closes the gap where tampering the created_at of a
-// live, post-boundary entry would otherwise dodge the lookup and skip
-// verification entirely. (When verifiedRangeStartTs is 0 — no verified entries —
-// nothing is re-derivable, so all entries are skipped.)
+// Entries are matched by (key hash, created_at). `expected` is built to be
+// complete at/above idemReportFloor: the post-archive range is always
+// re-derived, and the still-live slice frozen by archived entries within the
+// idempotency TTL window ([ttlCutoff, boundary)) is re-derived from cold storage
+// when available (see reDeriveArchivedIdempotency). A stored entry whose
+// created_at is at/above the floor but matches no freeze is therefore a tampered
+// created_at or a fabricated entry and is reported. Below the floor the freezing
+// audit entry is older than the TTL window — no longer live, and not
+// re-derived — so the entry is skipped. A nil floor means nothing was
+// re-derivable (no verified range), so all entries are skipped; a non-nil floor
+// of 0 means the window is unbounded (never-expire), so every entry is checked.
 //
-// Residual limitation: a stored entry created before the boundary is skipped
-// even when it is still live — reachable only when the idempotency TTL outlives
-// the age at which chapters are archived. In that window a tampered outcome on
-// such an entry goes undetected here; fully closing it requires re-deriving the
-// archived freezes from cold storage (the same boundary that already scopes the
-// hash-chain verification).
+// This pass verifies the INTEGRITY of the entries that are stored — it does not
+// detect a DELETED entry. A frozen outcome that is simply absent cannot be
+// distinguished from one legitimately evicted at its TTL: eviction is applied by
+// IdempotencyEviction, which writes no audit record (see applyIdempotencyEviction),
+// so the audit log cannot prove an entry "should still be there". Detecting a
+// deleted entry (which would let a retry re-execute instead of replay) is a
+// separate concern out of scope here.
+//
+// Threat model: the check targets an actor with direct disk/Pebble write access
+// to a follower's store, which is where SubIdempKeys lives. The post-archive
+// audit entries that anchor the live range are hash-chain-verified above; the
+// archived entries used for the TTL window are trusted as-is because cold
+// storage is outside that follower-disk reach (see reDeriveArchivedIdempotency).
+//
+// Coverage frontier — the report floor depends on two inputs beyond the audit
+// chain:
+//   - "now" (verifiedRangeEndTs) is the highest hash-chain-verified timestamp,
+//     NOT a projection — a tampered lastAppliedTimestamp cannot move the floor.
+//   - the idempotency TTL is taken from the boot-validated runtime config when
+//     available (in process memory, off the audited disk), falling back to the
+//     PersistedConfig projection only where no runtime config exists (CLI /
+//     restore backup validation). On those fallback paths a disk-tampered TTL
+//     could move the floor up until the next boot revalidates config; the TTL
+//     is boot config, not an audit projection, so the checker cannot re-derive
+//     it from the chain.
 func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,
-	verifiedRangeStartTs uint64,
+	idemReportFloor *uint64,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -1756,14 +2048,15 @@ func (c *Checker) compareIdempotencyOutcomes(
 			createdAt: stored.GetCreatedAt(),
 		}]
 		if !ok {
-			// No matching freeze. If the entry claims a created_at at/after the
-			// archive boundary, its freeze must be in the verified range — its
-			// absence is tampering or fabrication. Older entries are archived
-			// (not re-derivable here) and are skipped.
-			if verifiedRangeStartTs != 0 && stored.GetCreatedAt() >= verifiedRangeStartTs {
+			// No matching freeze. `expected` is complete at/above the report
+			// floor, so a miss there is a tampered created_at or a fabricated
+			// entry. Below the floor the freezing entry is older than the TTL
+			// window (or pre-archive when cold storage was unavailable) and is
+			// not re-derived, so the entry is skipped rather than flagged.
+			if idemReportFloor != nil && stored.GetCreatedAt() >= *idemReportFloor {
 				callback(errorEvent(
 					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
-					fmt.Sprintf("frozen idempotency outcome (created_at=%d) has no matching audit entry in the verified range — tampered created_at or fabricated entry",
+					fmt.Sprintf("frozen idempotency outcome (created_at=%d) has no matching audit entry — tampered created_at or fabricated entry",
 						stored.GetCreatedAt()),
 					0, "", "", "",
 				))
