@@ -386,7 +386,7 @@ meta_value = string_literal | bool_literal | number_literal | variable
 
 ### 5.1 No Impact on Volume Discovery
 
-Typed literals in metadata operations do not affect balance queries or volume preloading. The emulation store (`discoveryStore`) is unaffected.
+Typed literals in metadata operations do not affect balance queries or volume preloading. Dependency resolution (`discover.go`, over a `ValueSource` reading real state via the upstream `ResolveDependencies` API — which replaced the old emulation store) is unaffected.
 
 ### 5.2 No Impact on Static Analysis
 

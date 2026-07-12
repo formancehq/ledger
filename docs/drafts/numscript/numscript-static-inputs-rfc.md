@@ -11,7 +11,7 @@
 
 ## 0. Current Interim Solution
 
-> **Note:** Until this RFC is implemented, the ledger uses a **Numscript emulation** approach for volume discovery. The admission layer runs the script once with a "discovery store" that returns infinite balances (`2^256`) to discover which accounts/assets are queried. See `internal/domain/processing/numscript/emulate.go` and the [Numscript documentation](../../technical/contributing/numscript.md#volume-preloading-numscript-emulation) for details. This approach has known limitations (e.g., `oneof` may not discover all sources) and will be replaced by the static analysis described in this RFC.
+> **Note (superseded):** The earlier interim **emulation** approach (running the script against a discovery store returning infinite balances, with its `oneof` and `meta()` limitations) has been **replaced** by dependency resolution built on the upstream Numscript `ResolveDependencies` API. Admission now resolves var origins and posting selectors against the real admission-time state (`internal/domain/processing/numscript/discover.go`, `ValueSource`), fully explores `oneof`, supports `meta()`, and binds the resolved values into a stale-inputs hash the FSM re-checks at apply. See the [Numscript documentation](../../technical/contributing/numscript.md). This RFC's static-declaration contract remains the longer-term direction; the sections below are retained as design context.
 
 ## 1. Motivation
 

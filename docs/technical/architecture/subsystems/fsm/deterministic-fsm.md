@@ -210,31 +210,37 @@ Admission runs outside FSM apply:
 
 To decide Preload correctly, Admission needs **ahead-of-time** information about which accounts require base values and metadata.
 
-The dependency discovery uses an **emulation-based approach** via `DiscoverNumscriptDependencies` (in `internal/domain/processing/numscript/emulate.go`). Rather than static analysis, the script is executed against a `discoveryStore` that returns infinite balances, allowing the full script to run and recording which accounts/assets are queried.
+The dependency discovery uses the upstream **`ResolveDependencies`** API via `DiscoverNumscriptDependencies` (in `internal/domain/processing/numscript/discover.go`). It replaces the previous emulation-based approach (the old `emulate.go` / `discoveryStore` that returned infinite balances and rejected `meta()`): var origins and posting selectors are resolved against a real `ValueSource` reading the admission-time Pebble snapshot, so `meta()` is honoured, every `oneof` branch is explored, and multiple `send` blocks are supported.
 
 #### 7.2.1 Discovery Approach
 
-The `discoveryStore` implements the Numscript `Store` interface:
-- `GetBalances` returns `MaxForceBalance` (2^256) for every account/asset, and records each queried `VolumeKey`
-- `GetAccountsMetadata` is rejected with `ErrMetaNotSupported` (scripts using `meta()` cannot be preloaded)
-- A determinism check ensures `GetBalances` is called at most once; a second call indicates a non-deterministic script
+`DiscoverNumscriptDependencies` wraps the resolved values in a `RecordingStore` over a `numscript.Store`-backed `ValueSource`:
+
+- `Balance(account, asset)` returns the `(input − output)` balance from the snapshot (a fresh account resolves to zero). Under `force`, the store short-circuits to `MaxForceBalance` (`2^256`) so bounded sources still resolve without reading real balances.
+- `Metadata(account, key)` returns the verbatim stored value and a presence flag; `meta()` reads are recorded, not rejected.
+- Color/scope-qualified balance/metadata queries are **rejected** (`domain.ErrColoredBalanceUnsupported`) — Ledger volumes have no color/scope dimension, so serving a per-color view would double-count one underlying volume.
+- Every value read is recorded and folded into a `blake3` **inputs-resolution hash**; the FSM re-resolves at apply time and rejects with `domain.ErrStaleInputsResolution` if any bound input changed (see §7.2.2).
 
 ```go
 func DiscoverNumscriptDependencies(
     cache *NumscriptCache,
     script string,
     vars map[string]string,
-    ledger string,
+    ledgerName string,
+    source ValueSource,
+    force bool,
 ) (*DiscoveryResult, error)
 ```
 
 The `DiscoveryResult` contains:
-- `SourceVolumes`: accounts queried via `GetBalances` (posting sources)
-- `DestinationVolumes`: accounts that only appear as posting destinations
-- `Metadata`: account metadata keys read during execution (**note:** this field exists in the struct but is currently never populated by `DiscoverNumscriptDependencies` -- scripts using `meta()` are rejected with `ErrMetaNotSupported` before any metadata keys can be recorded)
-- `WrittenMetadata`: account metadata keys written via `set_account_meta`
+- `ReadVolumes`: `(account, asset)` balances resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
+- `WriteVolumes`: `(account, asset)` pairs the script credits or debits (sources — including unbounded ones — and destinations); a key can be in both;
+- `ReadMetadata`: `(account, key)` entries `meta()` consulted;
+- `WriteMetadata`: `(account, key)` entries `set_account_meta` writes;
+- `InputsHash`: the stale-inputs hash, `nil` for a fully static script that read no balance or metadata;
+- `NetBalanceDeltas` / `MetadataWrites`: the script's would-be effects, used to layer an earlier order's writes into a later same-batch order's resolution (EN-1406 P1-1, intra-batch effect accumulation — see the Numscript contributing doc).
 
-**Known limitation:** With infinite balances, `oneof` may only query the first source, since the first source always has sufficient funds.
+Admission preloads the union of `ReadVolumes` and `WriteVolumes` (and `ReadMetadata`/`WriteMetadata`) so the FSM apply path reads and mutates every touched key from cache.
 
 ### 7.3 Deterministic Preload decision rule
 
