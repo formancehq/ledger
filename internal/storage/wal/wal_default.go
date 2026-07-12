@@ -72,35 +72,104 @@ type DefaultWAL struct {
 	appendBatchSizeHistogram metric.Int64Histogram
 }
 
-// New creates a new DefaultWAL instance.
 // walDirPopulated reports whether the etcd WAL directory at walDir holds any
-// consensus state — a non-empty HardState or at least one log entry. It is used
-// only on the creation-marker-missing startup branch to distinguish the
-// disposable empty-bootstrap remnant (a crash between wal.Create and the marker
-// write, which leaves a fresh state-free segment) from populated or ambiguous
-// state that must never be deleted (EN-1525).
+// consensus state that must never be deleted. It is used only on the
+// creation-marker-missing startup branch to distinguish the disposable
+// empty-bootstrap remnant (a crash between wal.Create and the marker write,
+// which leaves a fresh state-free segment) from populated or ambiguous state
+// (EN-1525).
 //
-// It opens the WAL read-only so it does not conflict with a concurrent writer.
-// ANY read error (open failure, decode error, torn tail) is returned as an
-// error, never coerced to "empty": a WAL we cannot fully read might hold votes
-// or unsnapshotted entries, so the caller must fail closed. A genuinely fresh,
-// empty WAL decodes cleanly to an empty HardState with no entries and is
-// reported as not populated.
-func walDirPopulated(lg *zap.Logger, walDir string) (bool, error) {
-	w, err := wal.OpenForRead(lg, walDir, &walpb.Snapshot{})
+// "Populated" is any of three signals, checked in a single raw-decoder pass so
+// none is lost:
+//   - a non-empty HardState (a StateType record carrying a term/vote/commit) —
+//     losing it risks a double-vote → split brain;
+//   - at least one log entry (an EntryType record) — losing an unsnapshotted
+//     entry is acknowledged-write loss;
+//   - a snapshot record carrying a ConfState with voters (a SnapshotType
+//     record) — this is the persisted cluster membership. wal.ReadAll returns
+//     only metadata/HardState/entries and drops the snapshot record entirely,
+//     so a WAL that recorded CreateSnapshot(0, initialConfState) but crashed
+//     before any HardState/entry would wrongly read as empty; scanning
+//     SnapshotType directly closes that gap.
+//
+// The decoder is fed the raw *.wal segments opened read-only (no lock), so it
+// does not conflict with a concurrent writer. Crucially we do NOT rely on
+// wal.ReadAll / wal.OpenForRead here: their read-mode contract silently accepts
+// a torn tail (io.ErrUnexpectedEOF) and returns the records decoded so far,
+// which would let a segment truncated mid-write past its first record read as
+// empty and be deleted. We instead inspect the terminal decode error: only a
+// clean io.EOF is treated as fully read; a torn tail (io.ErrUnexpectedEOF) or
+// any other error (CRC mismatch, unknown record type, open failure) is returned
+// so the caller fails closed. A genuinely fresh, empty WAL decodes cleanly (its
+// metadata + CRC + empty-snapshot records terminate on io.EOF) with no state and
+// is reported as not populated.
+func walDirPopulated(walDir string) (bool, error) {
+	// etcd names segments %016x-%016x.wal, so a lexical sort is chronological.
+	// A single concatenated decoder over all segments mirrors how etcd's own
+	// ReadAll / ValidSnapshotEntries stream the directory.
+	names, err := filepath.Glob(filepath.Join(walDir, "*.wal"))
 	if err != nil {
-		return false, fmt.Errorf("opening WAL for verification: %w", err)
+		return false, fmt.Errorf("listing WAL segments for verification: %w", err)
 	}
-	defer func() { _ = w.Close() }()
+	slices.Sort(names)
 
-	_, hardState, entries, err := w.ReadAll()
-	if err != nil {
-		return false, fmt.Errorf("reading WAL for verification: %w", err)
+	readers := make([]fileutil.FileReader, 0, len(names))
+	var files []*os.File
+	defer func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	}()
+	for _, name := range names {
+		f, err := os.OpenFile(name, os.O_RDONLY, 0)
+		if err != nil {
+			return false, fmt.Errorf("opening WAL segment %q for verification: %w", name, err)
+		}
+		files = append(files, f)
+		readers = append(readers, fileutil.NewFileReader(f))
 	}
 
-	return !raft.IsEmptyHardState(hardState) || len(entries) > 0, nil
+	decoder := wal.NewDecoder(readers...)
+
+	var populated bool
+	rec := &walpb.Record{}
+	for err = decoder.Decode(rec); err == nil; err = decoder.Decode(rec) {
+		switch rec.GetType() {
+		case wal.StateType:
+			var hs raftpb.HardState
+			if uErr := proto.Unmarshal(rec.GetData(), &hs); uErr != nil {
+				return false, fmt.Errorf("decoding WAL HardState record for verification: %w", uErr)
+			}
+			if !raft.IsEmptyHardState(&hs) {
+				populated = true
+			}
+		case wal.EntryType:
+			// Any log entry means real consensus activity: not the remnant.
+			populated = true
+		case wal.SnapshotType:
+			var snap walpb.Snapshot
+			if uErr := proto.Unmarshal(rec.GetData(), &snap); uErr != nil {
+				return false, fmt.Errorf("decoding WAL snapshot record for verification: %w", uErr)
+			}
+			// A snapshot record persisting cluster membership (voters) is state
+			// we cannot rebuild; treat it as populated even at index 0.
+			if len(snap.GetConfState().GetVoters()) > 0 {
+				populated = true
+			}
+		}
+	}
+
+	// Only a clean end-of-stream means we read the whole WAL. A torn tail
+	// (io.ErrUnexpectedEOF) or any other decode error is ambiguous — the caller
+	// must fail closed rather than risk deleting unread consensus state.
+	if !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("reading WAL for verification (possibly torn or corrupt): %w", err)
+	}
+
+	return populated, nil
 }
 
+// New creates a new DefaultWAL instance.
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
@@ -277,7 +346,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			return nil, fmt.Errorf("scanning for existing WAL segments in %q: %w", s.etcdWalDir, globErr)
 		}
 		if len(existing) > 0 {
-			populated, inspectErr := walDirPopulated(zapLogger, s.etcdWalDir)
+			populated, inspectErr := walDirPopulated(s.etcdWalDir)
 			switch {
 			case inspectErr != nil:
 				// Corrupt / unreadable / ambiguous: a WAL we cannot prove empty

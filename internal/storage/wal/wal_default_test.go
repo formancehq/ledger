@@ -1,9 +1,11 @@
 package wal
 
 import (
+	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -239,6 +241,101 @@ func TestNew_MarkerMissing_MalformedWAL_FailsClosed(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "refusing to delete")
 	require.Equal(t, before, countWALFiles(t, etcdDir), "unverifiable WAL must be preserved")
+}
+
+// tearWALTail simulates a torn write on the final segment: it locates the end of
+// the valid records (etcd preallocates and zero-fills the segment, so the first
+// zero-length frame header marks the tail), writes a frame header claiming a
+// payload larger than the bytes that follow, and truncates so the claimed
+// payload is missing. On the next read the decoder reads the length, cannot
+// io.ReadFull the payload, and returns io.ErrUnexpectedEOF — exactly the
+// crash-mid-Save signature that wal.ReadAll silently tolerates in read mode.
+func tearWALTail(t *testing.T, etcdDir string) {
+	t.Helper()
+
+	segments, err := filepath.Glob(filepath.Join(etcdDir, "*.wal"))
+	require.NoError(t, err)
+	require.NotEmpty(t, segments)
+	slices.Sort(segments)
+	last := segments[len(segments)-1]
+
+	data, err := os.ReadFile(last)
+	require.NoError(t, err)
+
+	// Walk framed records until the zeroed preallocated tail (length field 0).
+	off := int64(0)
+	for off+8 <= int64(len(data)) {
+		l := int64(binary.LittleEndian.Uint64(data[off : off+8]))
+		if l == 0 {
+			break
+		}
+		recBytes := int64(uint64(l) & ^(uint64(0xff) << 56))
+		var padBytes int64
+		if l < 0 {
+			padBytes = int64((uint64(l) >> 56) & 0x7)
+		}
+		off += 8 + recBytes + padBytes
+	}
+	require.Positive(t, off, "must have decoded at least one valid record before the tail")
+
+	const claimedPayload = int64(256)
+	hdr := make([]byte, 8)
+	binary.LittleEndian.PutUint64(hdr, uint64(claimedPayload))
+	f, err := os.OpenFile(last, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteAt(hdr, off)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Keep only half the claimed payload on disk: a torn write.
+	require.NoError(t, os.Truncate(last, off+8+claimedPayload/2))
+}
+
+// TestNew_MarkerMissing_TornTail_FailsClosed pins the torn-tail gap: a WAL whose
+// consensus record was only partially written (crash/power-loss mid-Save) must
+// fail closed even when every fully-decodable record before it is state-free.
+// This is the case wal.ReadAll's read-mode path hides: it silently accepts
+// io.ErrUnexpectedEOF and returns the (empty) records decoded so far, so the WAL
+// reads as not-populated and would be deleted — discarding the torn but
+// acknowledged consensus write. Starting from a fresh bootstrap WAL (no Append)
+// isolates the torn record as the only thing distinguishing this from the
+// disposable empty remnant, so the fail-closed decision rests entirely on the
+// EN-1525 raw-decoder terminal-error check, not on any surviving state record.
+func TestNew_MarkerMissing_TornTail_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, nil)
+
+	tearWALTail(t, etcdDir)
+	before := countWALFiles(t, etcdDir)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "torn-tail WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_SnapshotConfStateOnly_FailsClosed pins the snapshot-record
+// gap: CreateSnapshot persists a walpb.Snapshot carrying the cluster ConfState
+// but writes no HardState or log entry. wal.ReadAll drops snapshot records, so
+// such a WAL — the initial CreateSnapshot(0, initialConfState) crashing before
+// any consensus write — would read as empty and be deleted, discarding the
+// persisted cluster membership. The raw-decoder scan classifies a snapshot record
+// with voters as populated even at index 0.
+func TestNew_MarkerMissing_SnapshotConfStateOnly_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		// Index 0 initial snapshot carrying only the cluster membership.
+		require.NoError(t, w.CreateSnapshot(0, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}, nil))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "snapshot-ConfState WAL must be preserved")
 }
 
 // --- InitialState tests ---
