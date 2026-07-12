@@ -60,6 +60,10 @@ type DefaultTransport struct {
 	config        TransportConfig
 	nodeID        uint64
 	clusterID     string
+	// fsmDeterminismEnabled is this node's fsm-determinism-enabled flag,
+	// advertised on every outgoing Raft stream and validated against the
+	// peer's on every incoming one (StreamMessages). See MetadataKeyFSMDeterminism.
+	fsmDeterminismEnabled bool
 
 	bufferSize           int
 	pendingSendQueue     chan []raftpb.Message
@@ -141,6 +145,7 @@ func NewTransport(
 	bufferSize int,
 	advertiseAddr string,
 	serviceAdvertiseAddr string,
+	fsmDeterminismEnabled bool,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -150,23 +155,24 @@ func NewTransport(
 	)
 
 	t := &DefaultTransport{
-		connectionPool:       connectionPool,
-		highPriorityRecvCh:   make(chan []raftpb.Message, config.Reception[0]),
-		mediumPriorityRecvCh: make(chan []raftpb.Message, config.Reception[1]),
-		lowPriorityRecvCh:    make(chan []raftpb.Message, config.Reception[2]),
-		peers:                make(map[uint64]*peerConnection),
-		unreachableCh:        make(chan uint64, unreachableCapacity),
-		globalMeter:          meter,
-		meterProvider:        meterProvider,
-		logger:               logger,
-		config:               config,
-		nodeID:               nodeID,
-		clusterID:            clusterID,
-		bufferSize:           bufferSize,
-		stopCh:               make(chan chan struct{}),
-		pendingSendQueue:     make(chan []raftpb.Message, pendingSendCapacity),
-		advertiseAddr:        advertiseAddr,
-		serviceAdvertiseAddr: serviceAdvertiseAddr,
+		connectionPool:        connectionPool,
+		highPriorityRecvCh:    make(chan []raftpb.Message, config.Reception[0]),
+		mediumPriorityRecvCh:  make(chan []raftpb.Message, config.Reception[1]),
+		lowPriorityRecvCh:     make(chan []raftpb.Message, config.Reception[2]),
+		peers:                 make(map[uint64]*peerConnection),
+		unreachableCh:         make(chan uint64, unreachableCapacity),
+		globalMeter:           meter,
+		meterProvider:         meterProvider,
+		logger:                logger,
+		config:                config,
+		nodeID:                nodeID,
+		clusterID:             clusterID,
+		fsmDeterminismEnabled: fsmDeterminismEnabled,
+		bufferSize:            bufferSize,
+		stopCh:                make(chan chan struct{}),
+		pendingSendQueue:      make(chan []raftpb.Message, pendingSendCapacity),
+		advertiseAddr:         advertiseAddr,
+		serviceAdvertiseAddr:  serviceAdvertiseAddr,
 	}
 
 	// Initialize recv queue metrics for each priority level
@@ -372,6 +378,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		peerID:                 id,
 		nodeID:                 t.nodeID,
 		clusterID:              t.clusterID,
+		fsmDeterminismEnabled:  t.fsmDeterminismEnabled,
 		bufferSize:             t.bufferSize,
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
@@ -598,6 +605,32 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 		}
 	}
 
+	// Cross-peer fsm-determinism-enabled consistency. Every peer establishes a
+	// Raft stream to every other peer, so this gate covers the STATIC BOOTSTRAP
+	// path that the JoinAsLearner check cannot (seed nodes never call
+	// JoinAsLearner). Rejecting the stream here fails the cluster fast rather
+	// than letting a divergent seed encode/hash the FSM differently and surface
+	// as perpetual (false) digest divergence at runtime. An absent value means
+	// a peer built before this flag existed — treated as false, so a uniformly
+	// old (all-OFF) cluster still connects while a mixed one is refused.
+	peerFSMDeterminism := false
+	if v := metadata.ValueFromIncomingContext(stream.Context(), MetadataKeyFSMDeterminism); len(v) > 0 {
+		peerFSMDeterminism = v[0] == "true"
+	}
+
+	if peerFSMDeterminism != t.fsmDeterminismEnabled {
+		t.logger.WithFields(map[string]any{
+			"peerID":    peerID,
+			"peerFlag":  peerFSMDeterminism,
+			"localFlag": t.fsmDeterminismEnabled,
+		}).Errorf("Refusing Raft stream from peer with mismatched fsm-determinism-enabled")
+
+		return status.Errorf(codes.FailedPrecondition,
+			"fsm-determinism-enabled mismatch: peer %x has %t but this node runs with %t; "+
+				"every peer must set --fsm-determinism-enabled identically",
+			peerID, peerFSMDeterminism, t.fsmDeterminismEnabled)
+	}
+
 	priorityStr := metadata.ValueFromIncomingContext(stream.Context(), MetadataKeyPriority)
 	if len(priorityStr) == 0 {
 		return errors.New("priority metadata not found in context")
@@ -728,6 +761,7 @@ type peerConnection struct {
 	peerID                 uint64
 	nodeID                 uint64
 	clusterID              string
+	fsmDeterminismEnabled  bool
 	bufferSize             int
 	pendingResponseCounter metric.Float64UpDownCounter
 	pingLatency            metric.Int64Histogram
@@ -932,11 +966,12 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
 			metadata.NewOutgoingContext(streamCtx, metadata.New(map[string]string{
-				MetadataKeyNodeID:    strconv.FormatUint(conn.nodeID, 16),
-				MetadataKeyPriority:  priorityName,
-				MetadataKeyClusterID: conn.clusterID,
-				"advertiseAddr":      conn.advertiseAddr,
-				"serviceAddr":        conn.serviceAdvertiseAddr,
+				MetadataKeyNodeID:         strconv.FormatUint(conn.nodeID, 16),
+				MetadataKeyPriority:       priorityName,
+				MetadataKeyClusterID:      conn.clusterID,
+				MetadataKeyFSMDeterminism: strconv.FormatBool(conn.fsmDeterminismEnabled),
+				"advertiseAddr":           conn.advertiseAddr,
+				"serviceAddr":             conn.serviceAdvertiseAddr,
 			})),
 		)
 	}

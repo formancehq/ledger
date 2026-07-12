@@ -234,6 +234,7 @@ func Module() fx.Option {
 					cfg.RaftConfig.TransportBufferSize,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
+					cfg.FSMDeterminismEnabled,
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {

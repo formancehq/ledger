@@ -9,4 +9,13 @@ const (
 	MetadataKeyNodeID    = "nodeID"
 	MetadataKeyClusterID = "clusterID"
 	MetadataKeyPriority  = "priority"
+	// MetadataKeyFSMDeterminism carries the connecting node's
+	// fsm-determinism-enabled flag ("true"/"false") on every Raft transport
+	// stream. The server rejects a stream whose peer disagrees with the local
+	// flag: the deterministic attribute encoding and the cross-node FSM digest
+	// are only coherent when every peer runs the same setting. This is the
+	// enforcement point that covers the STATIC BOOTSTRAP path (seed nodes never
+	// call JoinAsLearner, but they all establish Raft streams to each other),
+	// complementing the join-time check in ClusterBootstrapService.
+	MetadataKeyFSMDeterminism = "fsmDeterminism"
 )
