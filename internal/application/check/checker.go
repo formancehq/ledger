@@ -1742,15 +1742,17 @@ func (c *Checker) verifyAuditHashChain(
 		}
 
 		// Per-order skippable_reasons whitelist + chain-bound references
-		// re-derived from each chain-verified order. Each item carries its
-		// own LogSequence, set by buildAuditItems from the order's fresh
-		// CreatedLog. Idempotency replays never reach here: a replay returns
-		// the frozen outcome verbatim and writes NO audit entry (see
-		// state.machine's `if replayed { return }`), so every persisted
-		// AuditItem comes from a fresh apply. Failure-side entries get
-		// LogSequence=0 and contribute nothing.
-		if entry.GetSuccess() != nil {
-			collectExpectedSkippable(items, expectedSkippable, chainBound)
+		// re-derived from each chain-verified order. Each fresh item carries
+		// its own LogSequence, set by buildAuditItems from the order's fresh
+		// CreatedLog. On CURRENT stores a replay writes NO audit entry (see
+		// state.machine's `if replayed { return }`), so every item is a fresh
+		// apply. On UPGRADED stores, legacy pre-f9ee1e829 entries can carry
+		// per-order replay REFERENCE items whose LogSequence points at an
+		// earlier entry's log; collectExpectedSkippable filters those out via
+		// the success [Min,Max] range so each referenced log is folded once.
+		// Failure-side entries get LogSequence=0 and contribute nothing.
+		if success := entry.GetSuccess(); success != nil {
+			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 		}
 	}
 
@@ -2044,6 +2046,7 @@ type expectedSkippableOrder struct {
 //     transition it records is redundant but correct.
 func collectExpectedSkippable(
 	items []*auditpb.AuditItem,
+	minLogSeq, maxLogSeq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 ) {
@@ -2060,6 +2063,34 @@ func collectExpectedSkippable(
 		if logSeq == 0 {
 			// Failure-side audit items get LogSequence=0 (no log was
 			// produced); they do not feed either output map.
+			continue
+		}
+
+		// Upgrade-compat guard for LEGACY idempotency-replay items. Before
+		// idempotency moved to per-batch keying (state commit f9ee1e829),
+		// ProcessOrders emitted a per-order ReferenceSequence for an
+		// idempotent replay, buildAuditItems persisted that referenced
+		// sequence into AuditItem.LogSequence, and the success path STILL
+		// wrote an audit entry. So an upgraded store can hold chain-verified
+		// AuditItems whose LogSequence is a back-reference to a log created by
+		// an EARLIER entry — NOT a fresh log of this entry. The original entry
+		// already folded that order into nextTxID + the metadata timeline;
+		// re-folding the replay reference here would double-count the counter
+		// and re-seed the timeline, letting a forged METADATA_NOT_FOUND on the
+		// real tx id slip through (post-f9ee1e829 stores never persist such
+		// items, so this is dead for them — see the AuditItem.log_sequence
+		// proto contract "Zero if the order was an idempotent replay").
+		//
+		// Discriminant: AuditSuccess.{Min,Max}LogSequence are computed ONLY
+		// over freshly-created logs (IncrementNextSequenceID), never over
+		// reference sequences — true in both the old and current processors.
+		// So a fresh log of THIS entry always satisfies min <= logSeq <= max
+		// (min is the first fresh seq, always > 0 when any fresh log exists),
+		// while a legacy replay reference (to an earlier log) falls below min.
+		// A pure-replay entry has min==max==0, so every nonzero logSeq is
+		// > max and skipped. Fold each referenced log exactly once — at its
+		// own originating entry — by skipping out-of-range items here.
+		if logSeq < minLogSeq || logSeq > maxLogSeq {
 			continue
 		}
 

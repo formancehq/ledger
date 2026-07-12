@@ -971,7 +971,7 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Equal(t, uint64(100), refs["L"]["ref-A"], "first claim must win for re-claimed reference")
 	require.Equal(t, uint64(101), refs["L"]["ref-B"])
@@ -1025,7 +1025,7 @@ func TestCollectExpectedSkippable_TracksMirrorIngestedReferences(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Equal(t, uint64(50), refs["L"]["mirror-ref"],
 		"mirror-ingested reference must be recorded at its log sequence so later skip verifiers see the prior claim")
@@ -1063,7 +1063,7 @@ func TestCollectExpectedSkippable_RemoveAccountTypeEmptyNameFlagsKind(t *testing
 	items := []*auditpb.AuditItem{{SerializedOrder: body, LogSequence: 7}}
 	chainBound := newChainBoundState()
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
-	collectExpectedSkippable(items, expectedSkip, chainBound)
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
 	exp := expectedSkip[7]
 	require.NotNil(t, exp)
@@ -1134,7 +1134,7 @@ func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
 
 	chainBound := newChainBoundState()
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
-	collectExpectedSkippable(items, expectedSkip, chainBound)
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
 	// The account metadata timeline for (alice, role) must be empty: the
 	// create's application could not be proven.
@@ -1183,7 +1183,7 @@ func TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata(t *testing
 
 	chainBound := newChainBoundState()
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
-	collectExpectedSkippable(items, expectedSkip, chainBound)
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
 	require.NotEmpty(t, chainBound.metadata["L"]["alice"]["role"],
 		"anchored create with an unclaimed reference provably applied → account metadata seeded")
@@ -1273,7 +1273,7 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 
 			chainBound := newChainBoundState()
 			expectedSkip := make(map[uint64]*expectedSkippableOrder)
-			collectExpectedSkippable(items, expectedSkip, chainBound)
+			collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
 			reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 			expected := map[uint64]*expectedSkippableOrder{
@@ -1314,7 +1314,7 @@ func TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable(t *testing
 
 	chainBound := newChainBoundState()
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
-	collectExpectedSkippable(items, expectedSkip, chainBound)
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
 	// Different key ("other") on the same account — never applied by the
@@ -1377,7 +1377,7 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
 	refs := make(map[string]map[string]uint64)
 
-	collectExpectedSkippable(items, expectedSkip, chainBoundStateFromRefs(refs))
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBoundStateFromRefs(refs))
 
 	require.Contains(t, expectedSkip, uint64(80))
 	require.Contains(t, expectedSkip, uint64(200))
@@ -1956,7 +1956,7 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 	}
 
 	cb := newChainBoundState()
-	collectExpectedSkippable(items, map[uint64]*expectedSkippableOrder{}, cb)
+	collectExpectedSkippable(items, 1, ^uint64(0), map[uint64]*expectedSkippableOrder{}, cb)
 
 	// Tx-scoped metadata from CreateTransaction @ seq=11 → target="1".
 	fooMuts := cb.metadata["L"]["1"]["foo"]
@@ -2152,4 +2152,56 @@ func TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger(t *te
 	// error. Non-archives behavior is unchanged from the pre-fix
 	// baseline for empty timelines.
 	require.Empty(t, events)
+}
+
+// TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce pins the
+// upgrade-compat fix for finding checker.go:2100. Before the per-batch
+// idempotency commit (f9ee1e829), an idempotent replay emitted a per-order
+// ReferenceSequence that buildAuditItems persisted into AuditItem.LogSequence,
+// and the success path STILL wrote an audit entry — so an upgraded store can
+// hold chain-verified AuditItems that back-reference an earlier entry's log.
+// collectExpectedSkippable must fold each referenced log ONCE: the legacy
+// replay item (LogSequence outside this entry's [min,max]) is skipped, so it
+// does not double-bump nextTxID or re-seed the metadata timeline.
+func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) {
+	t.Parallel()
+
+	// A single legacy audit entry: the fresh CreateTransaction (log seq 10,
+	// inside [min,max]=[10,10]) plus a legacy per-order replay item carrying
+	// the SAME serialized order but referencing an EARLIER log (seq 5, outside
+	// [10,10]). Pre-f9ee1e829 these coexisted in one entry.
+	fresh := buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 10)
+	legacyReplay := buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 5)
+	items := []*auditpb.AuditItem{fresh, legacyReplay}
+
+	// Anchored ledger so account_metadata seeds and nextTxID bumps
+	// deterministically. Seed nextTxID=1 as CreateLedger would.
+	chainBound := newChainBoundState()
+	chainBound.ledgerCreationSeen["L"] = struct{}{}
+	chainBound.ledgerCreationSeenLive["L"] = struct{}{}
+	chainBound.nextTxID["L"] = 1
+
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	// [min,max] = [10,10]: only the fresh item is in range; the replay
+	// reference at seq 5 is below min and must be filtered.
+	collectExpectedSkippable(items, 10, 10, expectedSkip, chainBound)
+
+	// nextTxID advanced by exactly ONE (the fresh create), not two.
+	require.Equal(t, uint64(2), chainBound.nextTxID["L"],
+		"the legacy replay reference must not double-bump nextTxID")
+
+	// The account metadata (alice, role) timeline has exactly ONE presence
+	// entry (from the fresh create), not a duplicate from the replay.
+	require.Len(t, chainBound.metadata["L"]["alice"]["role"], 1,
+		"the legacy replay reference must not re-seed the metadata timeline")
+
+	// A forged METADATA_NOT_FOUND on (alice, role) — the real key the create
+	// set — is rejected: the single seeded presence witness fires INVALID_SKIP.
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		20: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
+	events := captureEventsState(t, "L", 20, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 20)
 }
