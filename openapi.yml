@@ -492,6 +492,12 @@ paths:
         get oldest-first (ascending). Supports cursor pagination via the
         `after` query parameter and optional date-range and reference
         filters. Requires `ledger:TransactionRead` scope.
+
+        This is a live, best-effort read of the current committed state.
+        Unlike the gRPC API, it does not accept read-consistency options
+        (`checkpointId` / `minLogSequence`) to pin the read to a specific
+        applied index — use gRPC for consistency-bounded / checkpoint-pinned
+        reads. (Tracked follow-up, same carve-out as the audit reads.)
       operationId: listLedgerTransactions
       tags:
         - Transactions
@@ -2041,6 +2047,11 @@ paths:
       description: |
         Streams every chapter registered on the bucket, ordered by chapter id
         ascending. Requires `ledger:OpsRead` scope.
+
+        Live, best-effort read: this route drains the full cursor and does not
+        expose the gRPC read-consistency / pagination options
+        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
+        for consistency-bounded reads. (Tracked follow-up.)
       operationId: listChapters
       tags:
         - Ops
@@ -2158,6 +2169,11 @@ paths:
       description: |
         Streams every Ed25519 signing key registered on the cluster. Requires
         `ledger:OpsRead` scope.
+
+        Live, best-effort read: this route drains the full cursor and does not
+        expose the gRPC read-consistency / pagination options
+        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
+        for consistency-bounded reads. (Tracked follow-up.)
       operationId: listSigningKeys
       tags:
         - Ops

@@ -51,6 +51,15 @@ func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bo
 // Ordering convention (mirrors `ctrl.Controller.ListTransactions`): the
 // default (reverse=false) returns newest-first (descending transaction id);
 // reverse=true returns oldest-first (ascending).
+//
+// Read-consistency options gap (tracked follow-up): the gRPC ListTransactions
+// honours ReadOptions.checkpointId / minLogSequence to pin a read to a
+// specific applied index; this HTTP route deliberately does NOT expose them
+// and serves a live, best-effort read of the current committed state. Clients
+// that need a consistency-bounded / checkpoint-pinned read must use gRPC. This
+// mirrors the same carve-out already made for the audit reads (EN-1481) and
+// keeps EN-1472 scoped to "expose the reads over HTTP", not "full read-options
+// parity". Same applies to the bucket reads (chapters, signing keys) below.
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
