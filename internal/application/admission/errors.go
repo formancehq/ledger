@@ -28,11 +28,18 @@ var (
 	// admission so a malformed rule fails fast before the config is persisted,
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
-)
 
-// Ledger-name shadowing of system HTTP routes is prevented globally by reserving
-// the single ledger name "_": every system / non-ledger route lives under the
-// `/v3/_/…` segment (e.g. /v3/_/audit-entries), which is disjoint from
-// `/v3/{ledgerName}/…`. That reservation (admission.ErrLedgerNameReservedPrefix,
-// EN-1472) replaces the previous per-word reservedLedgerNames list — adding a
-// new bucket-wide route under /_ needs no reserved-name bookkeeping.
+	// ErrLedgerNameReservedPrefix rejects the ledger name "_". That single
+	// segment is reserved for system / non-ledger HTTP routes, which all live
+	// under /v3/_/… (e.g. GET /v3/_/audit-entries) and share the
+	// /v3/{ledgerName} path namespace. A ledger named "_" would be shadowed by
+	// that fixed segment. Reserving the one segment "_" — rather than an
+	// ever-growing list of individual reserved words — keeps the guard in
+	// lock-step with the route table for free and applies uniformly across
+	// transports (see internal/adapter/http/handler.go). Enforced on every
+	// ledger-scoped order (validateOrderLedgerName), not just CreateLedger, so a
+	// "_" ledger can never be created or written to. EN-1472 (#1531) carries the
+	// same guard for its bucket-wide routes; whichever lands first owns the code
+	// and the other resolves the trivial conflict.
+	ErrLedgerNameReservedPrefix = domain.NewValidationSentinel("ledger name \"_\" is reserved for system API routes")
+)

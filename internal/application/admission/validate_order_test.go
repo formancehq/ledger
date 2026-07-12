@@ -60,6 +60,54 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: domain.ErrLedgerNameRequired,
 		},
 		{
+			name: "reserved '_' ledger name rejected",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// The guard covers every ledger-scoped order, not just CreateLedger:
+			// a "_" ledger persisted before this reservation (e.g. on upgrade)
+			// can never be written to either, so its /v3/_/… routes stay
+			// unreachable-via-ledger for good.
+			name: "reserved '_' rejected on Apply too",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// Only the exact segment "_" is reserved (it backs the /v3/_/…
+			// system route namespace); names that merely start with '_' remain
+			// valid ledger names.
+			name: "underscore-prefixed name is allowed",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_internal",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "null byte in Apply ledger",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_LedgerScoped{
