@@ -254,6 +254,130 @@ func TestFSMDigest_SelfExcluded(t *testing.T) {
 			"divergence would indicate the SubGlobFSMDigest write is leaking into the chain")
 }
 
+// TestFSMDigest_OpOrderCanonicalised is the finding-#2 regression: two nodes
+// reach byte-identical final Pebble state via a DIFFERENT op application order
+// (the FSM drains its overlay by ranging Go maps, whose iteration order is
+// randomised per process). AdvanceDigest must sort the per-entry op records so
+// the folded bytes — and hence the rolling digest — are identical regardless
+// of the order the writes arrived in. Divergence here would be a FALSE digest
+// mismatch across otherwise-consistent peers.
+func TestFSMDigest_OpOrderCanonicalised(t *testing.T) {
+	t.Parallel()
+
+	// Same three hashed-zone writes, presented in two different orders within
+	// a single entry. Keys are distinct so final state is identical; only the
+	// insertion order differs.
+	writes := [][2][]byte{
+		{{ZoneAttributes, SubAttrVolume, 0x03}, []byte("vol-3")},
+		{{ZoneAttributes, SubAttrMetadata, 0x01}, []byte("meta-1")},
+		{{ZoneIdempotency, SubIdempKeys, 0x02}, []byte("idemp-2")},
+	}
+
+	apply := func(order []int) []byte {
+		s := newDigestStore(t)
+		sess := s.OpenFSMWriteSession(newTestChain())
+		for _, i := range order {
+			require.NoError(t, sess.SetBytes(writes[i][0], writes[i][1]))
+		}
+		sess.AdvanceDigest()
+		_, err := sess.CommitWithRollingDigest(1)
+		require.NoError(t, err)
+
+		_, hash := s.RollingDigest()
+
+		return hash
+	}
+
+	hashForward := apply([]int{0, 1, 2})
+	hashReverse := apply([]int{2, 1, 0})
+	hashShuffled := apply([]int{1, 2, 0})
+
+	require.NotEqual(t, ZeroFSMDigest, hashForward, "digest must advance away from zero seed")
+	require.Equal(t, hashForward, hashReverse,
+		"same final state via reversed op order must produce the same digest")
+	require.Equal(t, hashForward, hashShuffled,
+		"same final state via shuffled op order must produce the same digest")
+}
+
+// TestFSMDigest_PendingSeedCarriesAcrossPipeline is the finding-#1 regression:
+// under pipelining PrepareDecodedEntries opens the NEXT batch's WriteSession
+// before the previous batch has committed. If the next session seeded from the
+// committed rolling digest it would chain from the pre-previous hash and drop
+// the previous batch from the digest. RecordPendingDigest publishes the
+// prepared batch's hash so the next session seeds from it. This test drives the
+// pipeline ordering directly: open batch 2 (reading the pending seed) BEFORE
+// batch 1 commits, and require the final digest to incorporate BOTH batches.
+func TestFSMDigest_PendingSeedCarriesAcrossPipeline(t *testing.T) {
+	t.Parallel()
+
+	key := []byte{ZoneAttributes, SubAttrVolume, 0xAA}
+
+	// Reference: strictly sequential (open→advance→record→commit, then next).
+	sequential := func() []byte {
+		s := newDigestStore(t)
+		for i, v := range []string{"b1", "b2"} {
+			sess := s.OpenFSMWriteSession(newTestChain())
+			require.NoError(t, sess.SetBytes(key, []byte(v)))
+			sess.AdvanceDigest()
+			sess.RecordPendingDigest(uint64(i + 1))
+			_, err := sess.CommitWithRollingDigest(uint64(i + 1))
+			require.NoError(t, err)
+		}
+		_, hash := s.RollingDigest()
+
+		return hash
+	}
+
+	// Pipelined: prepare batch 2 (which reads the pending seed at open time)
+	// BEFORE batch 1 commits. The only way batch 2 chains from batch 1 is if
+	// batch 1's RecordPendingDigest published its hash to the pending slot.
+	pipelined := func() []byte {
+		s := newDigestStore(t)
+
+		// Prepare batch 1.
+		sess1 := s.OpenFSMWriteSession(newTestChain())
+		require.NoError(t, sess1.SetBytes(key, []byte("b1")))
+		sess1.AdvanceDigest()
+		sess1.RecordPendingDigest(1)
+
+		// Prepare batch 2 BEFORE batch 1 commits — seeds from pending (batch 1).
+		sess2 := s.OpenFSMWriteSession(newTestChain())
+		require.NoError(t, sess2.SetBytes(key, []byte("b2")))
+		sess2.AdvanceDigest()
+		sess2.RecordPendingDigest(2)
+
+		// Commit in order.
+		_, err := sess1.CommitWithRollingDigest(1)
+		require.NoError(t, err)
+		_, err = sess2.CommitWithRollingDigest(2)
+		require.NoError(t, err)
+
+		_, hash := s.RollingDigest()
+
+		return hash
+	}
+
+	// Dropped-batch control: if batch 2 seeded from the COMMITTED digest while
+	// batch 1's commit was still in flight, it would chain from zero (batch 1
+	// dropped). Emulate that by seeding batch 2 from a single write only.
+	batch2Only := func() []byte {
+		s := newDigestStore(t)
+		sess := s.OpenFSMWriteSession(newTestChain())
+		require.NoError(t, sess.SetBytes(key, []byte("b2")))
+		sess.AdvanceDigest()
+		_, err := sess.CommitWithRollingDigest(1)
+		require.NoError(t, err)
+		_, hash := s.RollingDigest()
+
+		return hash
+	}
+
+	require.Equal(t, sequential(), pipelined(),
+		"pipelined prepare (batch 2 opened before batch 1 commits) must yield the same digest as strict sequential — batch 1 must not be dropped")
+	require.NotEqual(t, batch2Only(), pipelined(),
+		"the pipelined digest must incorporate batch 1 — it must differ from a chain that saw only batch 2")
+}
+
 // TestFSMDigest_PlainCommitRefused enforces the FSM-side invariant: a
 // session opened via OpenFSMWriteSession MUST call CommitWithRollingDigest.
 // Calling plain Commit on such a session would advance the in-memory chain

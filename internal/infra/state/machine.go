@@ -786,6 +786,16 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		return nil, fmt.Errorf("setting last applied timestamp: %w", err)
 	}
 
+	// Publish this batch's fully-advanced rolling digest to the store's
+	// pending slot so a pipelined PrepareDecodedEntries for the NEXT batch
+	// chains from it instead of from the still-uncommitted previous digest.
+	// The per-entry AdvanceDigest calls above have folded every applied
+	// entry into batch.digestHash; SetAppliedIndex / setLastAppliedTimestamp
+	// write ZoneGlobal keys that are excluded from the hashed zones, so
+	// entryOps is empty here and no final AdvanceDigest is owed. No-op when
+	// deterministic encoding is off (the session carries no chain).
+	batch.RecordPendingDigest(fsm.State.LastAppliedIndex)
+
 	// Capture all post-commit data now, so CommitPreparedBatch does not
 	// need to read mutable fsm fields.
 	pb := &PreparedBatch{

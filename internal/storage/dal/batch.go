@@ -1,9 +1,11 @@
 package dal
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/batchrepr"
@@ -123,11 +125,29 @@ type WriteSession struct {
 	// open time (FSM hot path) and finalised into the batch by
 	// CommitWithRollingDigest.
 	digestHash []byte
-	// entryOps accumulates the canonical op stream produced by the
-	// current Raft entry's writes against the hashed zones. AdvanceDigest
-	// folds it into digestHash and resets it. Reused across entries to
-	// avoid per-entry alloc.
+	// entryOps accumulates the op records produced by the current Raft
+	// entry's writes against the hashed zones, one self-describing record
+	// per op (see mixOp / mixDeleteRange for the layout). AdvanceDigest
+	// canonicalises (sorts) the records, folds them into digestHash and
+	// resets it. Reused across entries to avoid per-entry alloc.
 	entryOps []byte
+	// entryOpBounds holds the [start, end) byte range of each op record in
+	// entryOps, in append (insertion) order. AdvanceDigest sorts these
+	// bounds by record bytes to produce a canonical op stream — the same
+	// final Pebble state reached via a different op application order (Go
+	// map-iteration order in DerivedKeyStore.Merge differs per node/run)
+	// must hash identically or the FSM digest would report false
+	// divergence (FSM determinism, CLAUDE.md #2). Reset alongside entryOps.
+	entryOpBounds []digestOpBound
+	// entryOpsCanonical is the scratch buffer AdvanceDigest assembles the
+	// sorted op stream into before hashing. Reused across entries.
+	entryOpsCanonical []byte
+}
+
+// digestOpBound marks one op record's byte range within WriteSession.entryOps.
+type digestOpBound struct {
+	start int
+	end   int
 }
 
 // DeterministicEncoding reports whether this session marshals proto messages
@@ -268,11 +288,15 @@ func (s *Store) OpenWriteSession() *WriteSession {
 //
 //   - chain is the per-entry hash advance (typically a thin wrapper around
 //     processing.HashGenerator that owns its own scratch buffer).
-//   - The session captures the store's current rolling digest at open
-//     time and uses it as the chain seed for the first entry.
+//   - The session captures the store's PENDING rolling digest at open
+//     time and uses it as the chain seed for the first entry. The pending
+//     digest advances at prepare time (RecordPendingDigest), so under
+//     pipelining a batch opened while a previous batch is still committing
+//     chains from that previous batch's hash rather than dropping it.
 //   - The FSM is contractually required to call AdvanceDigest at the end
-//     of every entry it applies, and CommitWithRollingDigest at end of
-//     batch (instead of plain Commit).
+//     of every entry it applies, RecordPendingDigest once the batch's
+//     chain is fully advanced (before returning the prepared batch), and
+//     CommitWithRollingDigest at end of batch (instead of plain Commit).
 //
 // Open-time read is from the in-memory cache on Store; the apply path
 // itself never touches Pebble, preserving invariant #3 (no Pebble reads
@@ -289,7 +313,7 @@ func (s *Store) OpenFSMWriteSession(chain FSMDigestChain) *WriteSession {
 		return sess
 	}
 
-	_, hash := s.RollingDigest()
+	_, hash := s.RollingDigestPending()
 	sess.digestChain = chain
 	sess.digestHash = hash
 	sess.entryOps = make([]byte, 0, 1024)
@@ -348,18 +372,66 @@ func (b *WriteSession) Commit() error {
 	return nil
 }
 
-// AdvanceDigest folds the per-entry op buffer into the rolling hash and
-// resets the buffer. Must be called by the FSM after each applied entry
-// so the chain advances by one link per Raft entry — independent of how
-// many entries Raft groups into the surrounding MsgApp batch. No-op on
-// sessions that don't participate in the digest chain.
+// AdvanceDigest canonicalises the per-entry op records, folds them into the
+// rolling hash and resets the buffers. Must be called by the FSM after each
+// applied entry so the chain advances by one link per Raft entry —
+// independent of how many entries Raft groups into the surrounding MsgApp
+// batch. No-op on sessions that don't participate in the digest chain.
+//
+// Canonicalisation: op records are sorted by their raw bytes before hashing.
+// The order in which an entry's writes hit the batch is NOT deterministic
+// across nodes — DerivedKeyStore.Merge drains its overlay by ranging Go maps,
+// whose iteration order is randomised per process. Two nodes applying the
+// same entry reach byte-identical Pebble state (Set/Delete on distinct keys
+// is order-independent) but would emit their op records in different orders;
+// hashing the raw insertion order would then report false FSM divergence
+// (CLAUDE.md #2). Sorting the records yields a total order keyed on
+// (kind, key, value) — unique per op since keys within an entry are distinct
+// — so the folded bytes match across nodes.
 func (b *WriteSession) AdvanceDigest() {
 	if b.digestChain == nil {
 		return
 	}
 
-	b.digestHash = append(b.digestHash[:0:0], b.digestChain.Advance(b.digestHash, b.entryOps)...)
+	canonical := b.entryOps
+	if len(b.entryOpBounds) > 1 {
+		slices.SortFunc(b.entryOpBounds, func(x, y digestOpBound) int {
+			return bytes.Compare(b.entryOps[x.start:x.end], b.entryOps[y.start:y.end])
+		})
+
+		b.entryOpsCanonical = b.entryOpsCanonical[:0]
+		for _, bnd := range b.entryOpBounds {
+			b.entryOpsCanonical = append(b.entryOpsCanonical, b.entryOps[bnd.start:bnd.end]...)
+		}
+		canonical = b.entryOpsCanonical
+	}
+
+	b.digestHash = append(b.digestHash[:0:0], b.digestChain.Advance(b.digestHash, canonical)...)
 	b.entryOps = b.entryOps[:0]
+	b.entryOpBounds = b.entryOpBounds[:0]
+}
+
+// RecordPendingDigest publishes the batch's fully-advanced rolling hash to
+// the store's pending-digest slot so the NEXT FSM WriteSession chains from
+// it — even if this batch has not committed yet. Called by the FSM at the
+// end of the prepare phase, after every entry's AdvanceDigest and before the
+// prepared batch is handed to the pipelined committer.
+//
+// Without this the next OpenFSMWriteSession would seed from the committed
+// rolling digest (updated only by CommitWithRollingDigest), which under
+// pipelining still reflects the batch BEFORE this one — silently dropping
+// this batch from the chain at the batch boundary. No-op on sessions that
+// don't participate in the digest chain.
+//
+// appliedIndex is the highest Raft index folded into this batch; it is
+// stored alongside the hash purely for observability (the seed the next
+// session reads is the hash, the index is diagnostic).
+func (b *WriteSession) RecordPendingDigest(appliedIndex uint64) {
+	if b.digestChain == nil || b.store == nil {
+		return
+	}
+
+	b.store.SetPendingRollingDigest(appliedIndex, b.digestHash)
 }
 
 // CommitWithRollingDigest finalises the FSM-side hot-path commit: writes
@@ -439,11 +511,13 @@ func (b *WriteSession) mixOp(kind byte, key, value []byte) {
 		return
 	}
 
+	start := len(b.entryOps)
 	b.entryOps = append(b.entryOps, kind)
 	b.entryOps = binary.AppendUvarint(b.entryOps, uint64(len(key)))
 	b.entryOps = append(b.entryOps, key...)
 	b.entryOps = binary.AppendUvarint(b.entryOps, uint64(len(value)))
 	b.entryOps = append(b.entryOps, value...)
+	b.entryOpBounds = append(b.entryOpBounds, digestOpBound{start: start, end: len(b.entryOps)})
 }
 
 // mixDeleteRange folds a DeleteRange op into the per-entry digest buffer
@@ -460,11 +534,13 @@ func (b *WriteSession) mixDeleteRange(start, end []byte) {
 		return
 	}
 
+	recStart := len(b.entryOps)
 	b.entryOps = append(b.entryOps, digestOpKindDeleteRange)
 	b.entryOps = binary.AppendUvarint(b.entryOps, uint64(len(start)))
 	b.entryOps = append(b.entryOps, start...)
 	b.entryOps = binary.AppendUvarint(b.entryOps, uint64(len(end)))
 	b.entryOps = append(b.entryOps, end...)
+	b.entryOpBounds = append(b.entryOpBounds, digestOpBound{start: recStart, end: len(b.entryOps)})
 }
 
 // Set writes a key-value pair.

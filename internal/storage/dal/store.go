@@ -110,14 +110,26 @@ type Store struct {
 	iopsCounters          *IOPSCounters
 	deterministicEncoding bool // captured from Config.DeterministicEncoding at NewStore time
 
-	// rollingDigestMu guards rollingDigest. The rolling FSM digest is read
-	// at WriteSession open time (FSM hot path) and updated after each batch
-	// commit; both happen sequentially through the FSM, but Get/Set from
-	// non-FSM code (server_cluster.GetFSMDigest, tests) make a mutex the
-	// safer choice over atomic.Pointer with copy semantics.
+	// rollingDigestMu guards rollingDigest and the pending-digest fields.
+	// The rolling FSM digest is read at WriteSession open time (FSM hot
+	// path) and updated after each batch commit; both happen sequentially
+	// through the FSM, but Get/Set from non-FSM code
+	// (server_cluster.GetFSMDigest, tests) make a mutex the safer choice
+	// over atomic.Pointer with copy semantics.
 	rollingDigestMu      sync.Mutex
 	rollingDigest        []byte // FSMDigestSize bytes; loaded at boot + after RestoreCheckpoint
 	rollingDigestApplied uint64 // appliedIndex of the loaded/cached digest
+
+	// rollingDigestPending mirrors rollingDigest but advances at PREPARE
+	// time (RecordPendingDigest) rather than commit time. With pipelining,
+	// PrepareDecodedEntries(N+1) can open its WriteSession before
+	// CommitPreparedBatch(N) has run — if the next session seeded from the
+	// committed rollingDigest it would chain from the pre-N hash and drop
+	// batch N from the digest. OpenFSMWriteSession seeds from the pending
+	// value instead so the chain never skips an in-flight batch. Boot and
+	// restore reset pending to the committed value (see reloadRollingDigest).
+	rollingDigestPending        []byte
+	rollingDigestPendingApplied uint64
 }
 
 // DeterministicEncoding reports whether this store routes WriteSession proto
@@ -579,6 +591,11 @@ func (s *Store) reloadRollingDigest() error {
 	s.rollingDigestMu.Lock()
 	s.rollingDigest = hash
 	s.rollingDigestApplied = appliedIndex
+	// Boot / restore establishes a fresh committed baseline; the pending
+	// chain must restart from that same point so the first prepared batch
+	// after a restore does not chain from a stale in-memory pending value.
+	s.rollingDigestPending = append([]byte(nil), hash...)
+	s.rollingDigestPendingApplied = appliedIndex
 	s.rollingDigestMu.Unlock()
 
 	return nil
@@ -604,6 +621,44 @@ func (s *Store) SetRollingDigest(appliedIndex uint64, hash []byte) {
 	s.rollingDigestMu.Lock()
 	s.rollingDigest = cp
 	s.rollingDigestApplied = appliedIndex
+	// Keep pending at least at the committed point. The prepare path advances
+	// pending ahead of commit via SetPendingRollingDigest (pipelining), so it
+	// normally already leads; but callers that commit WITHOUT the prepare-time
+	// RecordPendingDigest (single-shot lifecycle commits, tests) never bump
+	// pending, and the next session must still seed from this fresh commit
+	// rather than a stale earlier pending value. Only advance — never rewind
+	// pending behind an in-flight prepared batch.
+	if appliedIndex >= s.rollingDigestPendingApplied {
+		s.rollingDigestPending = append([]byte(nil), hash...)
+		s.rollingDigestPendingApplied = appliedIndex
+	}
+	s.rollingDigestMu.Unlock()
+}
+
+// RollingDigestPending returns a copy of the pending rolling FSM digest —
+// the chain hash as of the last PREPARED batch, which may lead the committed
+// rollingDigest by one in-flight batch under pipelining. This is the seed a
+// freshly opened FSM WriteSession must chain from so no in-flight batch is
+// dropped from the digest at a batch boundary. Diagnostics that report the
+// durable digest use RollingDigest, not this.
+func (s *Store) RollingDigestPending() (appliedIndex uint64, hash []byte) {
+	s.rollingDigestMu.Lock()
+	defer s.rollingDigestMu.Unlock()
+
+	return s.rollingDigestPendingApplied, append([]byte(nil), s.rollingDigestPending...)
+}
+
+// SetPendingRollingDigest advances the pending rolling digest to the value a
+// just-prepared batch finalised in memory. Called from the FSM prepare path
+// (WriteSession.RecordPendingDigest) BEFORE the batch commits, so the next
+// prepared batch chains from it. The durable rollingDigest still only moves
+// forward on a successful commit via SetRollingDigest.
+func (s *Store) SetPendingRollingDigest(appliedIndex uint64, hash []byte) {
+	cp := append([]byte(nil), hash...)
+
+	s.rollingDigestMu.Lock()
+	s.rollingDigestPending = cp
+	s.rollingDigestPendingApplied = appliedIndex
 	s.rollingDigestMu.Unlock()
 }
 
@@ -1492,14 +1547,18 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Re-seed the in-memory rolling FSM digest from the freshly published
 	// live database — the checkpoint we just restored carries the leader's
 	// digest at the checkpoint's applied index, which is now ours too.
-	// Failure here is non-fatal: the FSM hot path will read a stale cached
-	// value once and surface it as a digest mismatch on the next compare,
-	// which is the right signal to investigate. We log loudly so the
-	// failure is not silent.
+	//
+	// This MUST fail loudly (CLAUDE.md invariant #7): the live/ directory was
+	// just published and reopened successfully one step above, so reading its
+	// SubGlobFSMDigest key cannot fail under any expected runtime condition —
+	// a failure here means the store is in an inconsistent state. Continuing
+	// would leave rollingDigest (and rollingDigestPending) pinned to the
+	// PRE-restore value, so the very next FSM batch would chain from a bogus
+	// seed and every cross-node compare would report a false divergence with
+	// no way to tell it apart from a real one. Abort the restore instead of
+	// silently baselining the digest wrong.
 	if err := s.reloadRollingDigest(); err != nil {
-		s.logger.WithFields(map[string]any{
-			"error": err,
-		}).Errorf("Failed to reload rolling FSM digest after checkpoint restore")
+		return fmt.Errorf("reloading rolling FSM digest after checkpoint restore: %w", err)
 	}
 
 	s.logger.WithFields(map[string]any{
