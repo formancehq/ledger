@@ -56,25 +56,15 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			raw:     `{"$bogus":{}}`,
 			wantErr: "unknown operator",
 		},
+		// Per-target validity (rejecting a condition invalid on the query's
+		// specific target, e.g. logId/date/ledger on an ACCOUNTS query) is now
+		// enforced by domain.ValidateFilterForTarget at the admission/FSM layers
+		// and by the create handler — see TestValidateFilterForTarget
+		// (internal/domain) and the admission validate_order tests. This decoder
+		// is purely structural, so a log-only condition decodes fine here.
 		{
-			name:    "logId rejected on prepared query (log-only field)",
-			raw:     `{"$gt":{"logId":"5"}}`,
-			wantErr: "logId filter is only valid on log queries",
-		},
-		{
-			name:    "date rejected on prepared query (log-only field)",
-			raw:     `{"$gt":{"date":"5"}}`,
-			wantErr: "date filter is only valid on log queries",
-		},
-		{
-			name:    "ledger rejected on prepared query (log-only field)",
-			raw:     `{"$match":{"ledger":"main"}}`,
-			wantErr: "ledger filter is only valid on log queries",
-		},
-		{
-			name:    "logId nested in and rejected",
-			raw:     `{"$and":[{"$match":{"reference":"r"}},{"$gt":{"logId":"5"}}]}`,
-			wantErr: "logId filter is only valid on log queries",
+			name: "log-only condition decodes (target validity checked later)",
+			raw:  `{"$gt":{"logId":"5"}}`,
 		},
 		{
 			name:    "null value rejected",
