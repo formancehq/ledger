@@ -1859,7 +1859,21 @@ type chainBoundState struct {
 	// positive or false-negative the skip check). The verifier consults
 	// this set to stay permissive on tx-id-scoped METADATA_NOT_FOUND
 	// skips for archived-history ledgers.
+	//
+	// NOTE: this set is populated from BOTH the live CreateLedger order
+	// and foldBaselineLedgers (a ledger whose LedgerInfo is in the
+	// baseline snapshot). Do NOT use it to decide whether an archive
+	// escape may fire — use ledgerCreationSeenLive for that.
 	ledgerCreationSeen map[string]struct{}
+	// ledgerCreationSeenLive names ledgers whose CreateLedger order was
+	// witnessed specifically in the LIVE audit range (never seeded by a
+	// baseline fold). A live-created ledger has its ENTIRE history in the
+	// live range — nothing precedes its CreateLedger in an archived
+	// chapter — so the archive escapes (which stay permissive when a
+	// precondition's evidence might live in a purged chapter) MUST NOT
+	// fire for it: a missing claim/mutation on a live-created ledger is a
+	// forged skip, not an archive limitation (finding 2adbf685cc).
+	ledgerCreationSeenLive map[string]struct{}
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -1876,13 +1890,14 @@ type chainBoundMutation struct {
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		references:         make(map[string]map[string]uint64),
-		referenceTxIDs:     make(map[string]map[string]uint64),
-		reverted:           make(map[string]map[uint64]uint64),
-		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes:       make(map[string]map[string][]chainBoundMutation),
-		nextTxID:           make(map[string]uint64),
-		ledgerCreationSeen: make(map[string]struct{}),
+		references:             make(map[string]map[string]uint64),
+		referenceTxIDs:         make(map[string]map[string]uint64),
+		reverted:               make(map[string]map[uint64]uint64),
+		metadata:               make(map[string]map[string]map[string][]chainBoundMutation),
+		accountTypes:           make(map[string]map[string][]chainBoundMutation),
+		nextTxID:               make(map[string]uint64),
+		ledgerCreationSeen:     make(map[string]struct{}),
+		ledgerCreationSeenLive: make(map[string]struct{}),
 	}
 }
 
@@ -1940,6 +1955,13 @@ type expectedSkippableOrder struct {
 	// processor stamps on ErrMetadataNotFound.
 	metadataTarget string
 	metadataKey    string
+	// metadataTargetIsTx records the ORIGINAL target kind of the chain-bound
+	// DeleteMetadataOrder (transaction id vs account address). metadataTarget
+	// is a string and formatTargetForSkipContext collapses an account named
+	// "123" and transaction id 123 to the same value, so the string alone
+	// cannot tell them apart — the tx-id-only archive escape must gate on
+	// this preserved kind, never on a numeric-looking string.
+	metadataTargetIsTx bool
 	// ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND correlator:
 	// account type name from the AddAccountType / RemoveAccountType order.
 	accountTypeName string
@@ -2057,6 +2079,7 @@ func collectExpectedSkippable(
 		if dm := apply.GetDeleteMetadata(); dm != nil {
 			exp.metadataKey = dm.GetKey()
 			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
+			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*commonpb.Target_TransactionId)
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
@@ -2141,6 +2164,11 @@ func recordChainBoundMutations(
 		}
 
 		chainBound.ledgerCreationSeen[ledger] = struct{}{}
+		// Live-only marker: recorded here (live audit replay) but never in
+		// foldBaselineLedgers, so the archive escapes can tell a
+		// live-created ledger (no possible archived prior state) apart from
+		// one whose CreateLedger predates the archive boundary.
+		chainBound.ledgerCreationSeenLive[ledger] = struct{}{}
 
 		for name := range cl.GetAccountTypes() {
 			if name != "" {
@@ -2472,21 +2500,6 @@ func appendAccountTypeMutation(
 	perLedger[name] = append(perLedger[name], chainBoundMutation{seq: logSeq, exists: exists})
 }
 
-// isNumericTxIDTarget reports whether a formatTargetForSkipContext
-// output looks like a Target_TransactionId (a decimal uint64), i.e. NOT
-// an account address. Used to gate tx-id-scoped metadata verification
-// on the ledgerCreationSeen anchor — account-address targets are
-// unaffected because their recording bypasses the nextTxID counter.
-func isNumericTxIDTarget(target string) bool {
-	if target == "" {
-		return false
-	}
-
-	_, err := strconv.ParseUint(target, 10, 64)
-
-	return err == nil
-}
-
 // formatTargetForSkipContext mirrors the string ErrMetadataNotFound stamps
 // into its Metadata()["target"] — account targets carry the raw address,
 // transaction targets carry the id as a decimal string. Kept in lockstep
@@ -2750,7 +2763,7 @@ func (c *Checker) foldBaselineTxMetadata(
 // account_types. Fixes two false-negatives on archived-history ledgers:
 //
 //   - The tx-id-scoped metadata permissive fallback (see
-//     isNumericTxIDTarget) no longer applies for ledgers whose
+//     expectedSkippableOrder.metadataTargetIsTx) no longer applies for ledgers whose
 //     CreateLedger sits in an archive but whose LedgerInfo IS in the
 //     baseline — the counter can be seeded via foldBaselineBoundaries.
 //
@@ -3172,7 +3185,14 @@ func verifySkippedOrder(
 			// baseline IS available (foldBaselineReferences folded
 			// archived refs into chainBound.references with sentinel
 			// seq=0), the missing claim proves fabrication.
-			if hasArchivedChapters && !baselineReferencesAvailable {
+			//
+			// The escape only applies when the ledger's CreateLedger was
+			// NOT observed in the live audit range: a live-created ledger
+			// has its ENTIRE history in live (nothing precedes CreateLedger
+			// in an archived chapter), so a missing claim there proves
+			// fabrication regardless of archived chapters existing for
+			// OTHER ledgers (see finding 2adbf685cc).
+			if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; hasArchivedChapters && !baselineReferencesAvailable && !createdLive {
 				return
 			}
 
@@ -3233,7 +3253,11 @@ func verifySkippedOrder(
 			// baseline IS available, foldBaselineReverted already
 			// folded any archived reverts as sentinel seq=0 entries, so
 			// a missing claim proves fabrication.
-			if hasArchivedChapters && !baselineChainStateAvailable {
+			//
+			// Never escape for a live-created ledger: its whole history is
+			// live, so a missing prior revert is a forged skip, not an
+			// archive limitation (finding 2adbf685cc).
+			if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; hasArchivedChapters && !baselineChainStateAvailable && !createdLive {
 				return
 			}
 
@@ -3300,7 +3324,14 @@ func verifySkippedOrder(
 		// verification as inconclusive rather than false-negative or
 		// false-positive. Account-address targets are not affected
 		// (recorded directly from the order without counter derivation).
-		if isNumericTxIDTarget(expected.metadataTarget) {
+		//
+		// Gate on the ORIGINAL target kind, not on the string looking
+		// numeric: formatTargetForSkipContext collapses an account named
+		// "123" and tx id 123 to the same string, so keying off the
+		// string (isNumericTxIDTarget) would grant this tx-id escape to a
+		// numeric ACCOUNT address and let a forged METADATA_NOT_FOUND skip
+		// on that account pass on an archived ledger.
+		if expected.metadataTargetIsTx {
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; !anchored && hasArchivedChapters {
 				return
 			}
@@ -3363,25 +3394,40 @@ func verifySkippedOrder(
 
 		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
+		_, createdLive := chainBound.ledgerCreationSeenLive[ledger]
+
+		// An unwitnessed empty live timeline is only INCONCLUSIVE (the
+		// name's presence/absence may live in an archived chapter we did
+		// not fold) when ALL of these hold: archived chapters exist, the
+		// baseline chain-state fold did not seed account types
+		// (foldBaselineLedgers), and the ledger was NOT created live. A
+		// live-created ledger has its ENTIRE history in the live range —
+		// an empty timeline there is POSITIVE proof the name was never
+		// added (finding 2adbf685cc) — so its verdict is authoritative and
+		// this flag is false.
+		archiveInconclusive := !witnessed && hasArchivedChapters && !baselineChainStateAvailable && !createdLive
+
 		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
-			// Archive escape is direction-aware AND witness-aware:
+			// live evidence contradicts the skipped reason. Escape only
+			// when the contradiction rests on an inconclusive empty
+			// timeline:
 			//
-			//   - ALREADY_EXISTS + live shows ABSENT + no witness:
-			//     archives may contain an AddAccountType that was
-			//     never Removed in live — permissive.
+			//   - ALREADY_EXISTS + live shows ABSENT + inconclusive:
+			//     archives may contain an AddAccountType never Removed in
+			//     live — permissive. But if the ledger was created live,
+			//     an absent timeline is proof the name never existed, so a
+			//     legitimate Add would have SUCCEEDED — the skip is forged
+			//     and must be caught (archiveInconclusive is false).
 			//
 			//   - ALREADY_EXISTS + live shows ABSENT + witnessed
-			//     (a live RemoveAccountType before seq): live has
-			//     positive proof the name is absent regardless of
-			//     archives — a legitimate Add would have succeeded,
-			//     not conflicted. Archive escape SHOULD NOT apply.
+			//     (a live RemoveAccountType before seq): positive proof of
+			//     absence regardless of archives — no escape.
 			//
-			//   - NOT_FOUND + live shows PRESENT: archives lie BEFORE
-			//     the current live range and cannot undo a live
-			//     AddAccountType. Live-presence is authoritative — no
-			//     archive escape.
-			if mustBePresent && hasArchivedChapters && !baselineChainStateAvailable && !witnessed {
+			//   - NOT_FOUND + live shows PRESENT: archives lie BEFORE the
+			//     current live range and cannot undo a live AddAccountType.
+			//     Live-presence is authoritative — no escape.
+			if mustBePresent && archiveInconclusive {
 				return
 			}
 
@@ -3396,6 +3442,22 @@ func verifySkippedOrder(
 				seq, ledger, "", "",
 			))
 
+			return
+		}
+
+		// present == mustBePresent: the live timeline AGREES with the
+		// skipped reason. For NOT_FOUND this means present==false. An empty
+		// unwitnessed timeline is only sound proof-of-absence when absence
+		// is genuinely established (witnessed live delete, live-created
+		// ledger, no archive, or baseline folded the account types). When
+		// it is archive-inconclusive, an absent live timeline does NOT
+		// prove the name was absent — the name could exist only in an
+		// archived chapter we could not fold, where a RemoveAccountType
+		// would have SUCCEEDED rather than skipping NOT_FOUND (finding
+		// checker.go:3364). Treat that specifically as inconclusive: we
+		// cannot prove the skip forged without the baseline, so stay
+		// permissive rather than validating the absence as positive proof.
+		if !mustBePresent && !present && archiveInconclusive {
 			return
 		}
 
@@ -3571,15 +3633,16 @@ func verifyExpectedSkipNotElided(
 			return
 		}
 
-		if !witnessed && hasArchivedChapters && !baselineChainStateAvailable {
+		if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; !witnessed && hasArchivedChapters && !baselineChainStateAvailable && !createdLive {
 			// Empty live timeline under archives is ambiguous — an
 			// archived Set could make the delete succeed, so the
 			// projection may legitimately be a non-skip. Be permissive.
 			//
 			// But when the baseline fold succeeded it already covers the
-			// archived range: an empty live timeline THEN is definitive
-			// proof the key was absent, so we must NOT downgrade to a
-			// silent pass — matching the stricter logic the forward
+			// archived range, OR the ledger was created live (its whole
+			// history is in the live range), an empty live timeline is
+			// definitive proof the key was absent, so we must NOT downgrade
+			// to a silent pass — matching the stricter logic the forward
 			// verifier applies (see the METADATA_NOT_FOUND branch of
 			// verifySkippedOrder). Falling through fires the elision error.
 			return
@@ -3602,13 +3665,14 @@ func verifyExpectedSkipNotElided(
 			return
 		}
 
-		if !witnessed && hasArchivedChapters && !baselineChainStateAvailable {
+		if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; !witnessed && hasArchivedChapters && !baselineChainStateAvailable && !createdLive {
 			// Empty live timeline under archives is ambiguous. The
 			// archived history could make either outcome legitimate.
 			//
 			// When the baseline fold succeeded it already covers the
 			// archived range (foldBaselineLedgers seeds accountTypes from
-			// the baseline LedgerInfo), so an empty live timeline is
+			// the baseline LedgerInfo), OR the ledger was created live (its
+			// whole history is in the live range), an empty live timeline is
 			// definitive — fall through and fire the elision error rather
 			// than passing silently.
 			return
