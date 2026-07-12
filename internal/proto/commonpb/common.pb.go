@@ -10,6 +10,7 @@ import (
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -1079,6 +1080,14 @@ const (
 	QueryTarget_QUERY_TARGET_ACCOUNTS     QueryTarget = 0
 	QueryTarget_QUERY_TARGET_TRANSACTIONS QueryTarget = 1
 	QueryTarget_QUERY_TARGET_LOGS         QueryTarget = 2
+	// Audit entries. Dispatched internally to query.CompileAuditFilter (not
+	// query.Compile), but modeled here as a first-class QueryFilter target so
+	// audit condition validity lives in the same source of truth as the other
+	// targets (EN-1241 / EN-1305 / EN-1339 / EN-1481 move ListAuditEntries onto
+	// the shared ListOptions.filter contract). CompileAuditFilter accepts only
+	// audit[...] leaves combined with and/or — not, and every non-audit
+	// condition, are rejected — which the per-arm annotations below reflect.
+	QueryTarget_QUERY_TARGET_AUDIT QueryTarget = 3
 )
 
 // Enum value maps for QueryTarget.
@@ -1087,11 +1096,13 @@ var (
 		0: "QUERY_TARGET_ACCOUNTS",
 		1: "QUERY_TARGET_TRANSACTIONS",
 		2: "QUERY_TARGET_LOGS",
+		3: "QUERY_TARGET_AUDIT",
 	}
 	QueryTarget_value = map[string]int32{
 		"QUERY_TARGET_ACCOUNTS":     0,
 		"QUERY_TARGET_TRANSACTIONS": 1,
 		"QUERY_TARGET_LOGS":         2,
+		"QUERY_TARGET_AUDIT":        3,
 	}
 )
 
@@ -10174,14 +10185,26 @@ type isQueryFilter_Filter interface {
 }
 
 type QueryFilter_Field struct {
+	// Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
+	// valid on every target; per-target index/schema availability is enforced
+	// separately by the compiler.
 	Field *FieldCondition `protobuf:"bytes,1,opt,name=field,proto3,oneof"`
 }
 
 type QueryFilter_Address struct {
+	// Address matches resolve to account addresses (ACCOUNTS) or to the
+	// account→transaction index (TRANSACTIONS). There is no account→log
+	// translation, so address is NOT valid on LOGS (it would silently feed
+	// transaction-keyed entities into a log result pipeline).
 	Address *AddressMatch `protobuf:"bytes,2,opt,name=address,proto3,oneof"`
 }
 
 type QueryFilter_And struct {
+	// Combinators are structural — they recurse into children, each of which is
+	// validated on its own arm. And/Or are accepted by every compiler,
+	// including the audit compiler. Not is accepted by query.Compile
+	// (accounts/transactions/logs) but NOT by CompileAuditFilter, so it is not
+	// valid on the audit target.
 	And *AndFilter `protobuf:"bytes,3,opt,name=and,proto3,oneof"`
 }
 
@@ -10194,14 +10217,20 @@ type QueryFilter_Not struct {
 }
 
 type QueryFilter_Reference struct {
+	// Reference matches read the transaction reference index and yield
+	// transaction-keyed entities: meaningful only on the transactions target.
+	// (No account or log translation exists.)
 	Reference *ReferenceCondition `protobuf:"bytes,6,opt,name=reference,proto3,oneof"`
 }
 
 type QueryFilter_BuiltinUint struct {
+	// Builtin uint fields (id/timestamp/insertedAt/revertedAt) read transaction
+	// indexes and yield transaction-keyed entities: transactions only.
 	BuiltinUint *BuiltinUintCondition `protobuf:"bytes,7,opt,name=builtin_uint,json=builtinUint,proto3,oneof"`
 }
 
 type QueryFilter_Ledger struct {
+	// Log-only fields.
 	Ledger *LedgerCondition `protobuf:"bytes,8,opt,name=ledger,proto3,oneof"`
 }
 
@@ -10214,14 +10243,23 @@ type QueryFilter_LogBuiltinUint struct {
 }
 
 type QueryFilter_AccountHasAsset struct {
+	// Account has-asset filter: accounts only.
 	AccountHasAsset *AccountHasAssetCondition `protobuf:"bytes,11,opt,name=account_has_asset,json=accountHasAsset,proto3,oneof"`
 }
 
 type QueryFilter_Reverted struct {
+	// Reverted (revert-status) filter: transactions only.
 	Reverted *RevertedCondition `protobuf:"bytes,12,opt,name=reverted,proto3,oneof"`
 }
 
 type QueryFilter_Audit struct {
+	// Audit conditions are valid only on the audit target: query.Compile
+	// (accounts/transactions/logs) rejects them, and CompileAuditFilter accepts
+	// them. Modeling audit as a first-class target keeps its condition validity
+	// in this single source of truth rather than as an undocumented exception.
+	// (An arm deliberately valid on no target must say so explicitly with
+	// [(common.valid_on_no_query_target) = true] — a missing annotation is a
+	// generation error, not a silent all-false row.)
 	Audit *AuditCondition `protobuf:"bytes,13,opt,name=audit,proto3,oneof"`
 }
 
@@ -10348,9 +10386,13 @@ func (x *RevertedCondition) GetValue() bool {
 // for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
 // Audit/And/Or leaves and rejects every other QueryFilter variant with
 // InvalidArgument, while the index compiler used for accounts/transactions/logs
-// (query.Compile) never lists QueryFilter_Audit and rejects it there too. There
-// is no QueryTarget dispatch for audit — ListAuditEntries calls
-// CompileAuditFilter directly, so no QUERY_TARGET_AUDIT enum value is needed.
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too.
+// Audit is a first-class QueryFilter target (QUERY_TARGET_AUDIT): the audit
+// arm above is annotated valid only for that target, so its condition validity
+// lives in the same generated source of truth as the other targets. Dispatch is
+// still internal — ListAuditEntries routes QUERY_TARGET_AUDIT to
+// CompileAuditFilter rather than query.Compile — but the target itself is
+// modeled here rather than treated as an undocumented exception.
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
@@ -12608,11 +12650,42 @@ func (x *ListOptions) GetFilter() *QueryFilter {
 	return nil
 }
 
+var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: ([]QueryTarget)(nil),
+		Field:         50123,
+		Name:          "common.allowed_query_targets",
+		Tag:           "varint,50123,rep,packed,name=allowed_query_targets,enum=common.QueryTarget",
+		Filename:      "common.proto",
+	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50124,
+		Name:          "common.valid_on_no_query_target",
+		Tag:           "varint,50124,opt,name=valid_on_no_query_target",
+		Filename:      "common.proto",
+	},
+}
+
+// Extension fields to descriptorpb.FieldOptions.
+var (
+	// repeated common.QueryTarget allowed_query_targets = 50123;
+	E_AllowedQueryTargets = &file_common_proto_extTypes[0]
+	// valid_on_no_query_target declares that an arm is intentionally valid on no
+	// QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
+	// requires instead of inferring "valid nowhere" from a missing annotation.
+	//
+	// optional bool valid_on_no_query_target = 50124;
+	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[1]
+)
+
 var File_common_proto protoreflect.FileDescriptor
 
 const file_common_proto_rawDesc = "" +
 	"\n" +
-	"\fcommon.proto\x12\x06common\x1a\x0fsignature.proto\"\x1f\n" +
+	"\fcommon.proto\x12\x06common\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\x1f\n" +
 	"\tTimestamp\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\x06R\x04data\"'\n" +
 	"\tNullValue\x12\x1a\n" +
@@ -13263,22 +13336,22 @@ const file_common_proto_rawDesc = "" +
 	"\x15RemovedAccountTypeLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"k\n" +
 	" UpdatedDefaultEnforcementModeLog\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xd4\x05\n" +
-	"\vQueryFilter\x12.\n" +
-	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionH\x00R\x05field\x120\n" +
-	"\aaddress\x18\x02 \x01(\v2\x14.common.AddressMatchH\x00R\aaddress\x12%\n" +
-	"\x03and\x18\x03 \x01(\v2\x11.common.AndFilterH\x00R\x03and\x12\"\n" +
-	"\x02or\x18\x04 \x01(\v2\x10.common.OrFilterH\x00R\x02or\x12%\n" +
-	"\x03not\x18\x05 \x01(\v2\x11.common.NotFilterH\x00R\x03not\x12:\n" +
-	"\treference\x18\x06 \x01(\v2\x1a.common.ReferenceConditionH\x00R\treference\x12A\n" +
-	"\fbuiltin_uint\x18\a \x01(\v2\x1c.common.BuiltinUintConditionH\x00R\vbuiltinUint\x121\n" +
-	"\x06ledger\x18\b \x01(\v2\x17.common.LedgerConditionH\x00R\x06ledger\x12/\n" +
-	"\x06log_id\x18\t \x01(\v2\x16.common.LogIdConditionH\x00R\x05logId\x12K\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xba\x06\n" +
+	"\vQueryFilter\x127\n" +
+	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\aڼ\x18\x03\x00\x01\x02H\x00R\x05field\x128\n" +
+	"\aaddress\x18\x02 \x01(\v2\x14.common.AddressMatchB\x06ڼ\x18\x02\x00\x01H\x00R\aaddress\x12/\n" +
+	"\x03and\x18\x03 \x01(\v2\x11.common.AndFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x03and\x12,\n" +
+	"\x02or\x18\x04 \x01(\v2\x10.common.OrFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x02or\x12.\n" +
+	"\x03not\x18\x05 \x01(\v2\x11.common.NotFilterB\aڼ\x18\x03\x00\x01\x02H\x00R\x03not\x12A\n" +
+	"\treference\x18\x06 \x01(\v2\x1a.common.ReferenceConditionB\x05ڼ\x18\x01\x01H\x00R\treference\x12H\n" +
+	"\fbuiltin_uint\x18\a \x01(\v2\x1c.common.BuiltinUintConditionB\x05ڼ\x18\x01\x01H\x00R\vbuiltinUint\x128\n" +
+	"\x06ledger\x18\b \x01(\v2\x17.common.LedgerConditionB\x05ڼ\x18\x01\x02H\x00R\x06ledger\x126\n" +
+	"\x06log_id\x18\t \x01(\v2\x16.common.LogIdConditionB\x05ڼ\x18\x01\x02H\x00R\x05logId\x12R\n" +
 	"\x10log_builtin_uint\x18\n" +
-	" \x01(\v2\x1f.common.LogBuiltinUintConditionH\x00R\x0elogBuiltinUint\x12N\n" +
-	"\x11account_has_asset\x18\v \x01(\v2 .common.AccountHasAssetConditionH\x00R\x0faccountHasAsset\x127\n" +
-	"\breverted\x18\f \x01(\v2\x19.common.RevertedConditionH\x00R\breverted\x12.\n" +
-	"\x05audit\x18\r \x01(\v2\x16.common.AuditConditionH\x00R\x05auditB\b\n" +
+	" \x01(\v2\x1f.common.LogBuiltinUintConditionB\x05ڼ\x18\x01\x02H\x00R\x0elogBuiltinUint\x12U\n" +
+	"\x11account_has_asset\x18\v \x01(\v2 .common.AccountHasAssetConditionB\x05ڼ\x18\x01\x00H\x00R\x0faccountHasAsset\x12>\n" +
+	"\breverted\x18\f \x01(\v2\x19.common.RevertedConditionB\x05ڼ\x18\x01\x01H\x00R\breverted\x125\n" +
+	"\x05audit\x18\r \x01(\v2\x16.common.AuditConditionB\x05ڼ\x18\x01\x03H\x00R\x05auditB\b\n" +
 	"\x06filter\"A\n" +
 	"\x12ReferenceCondition\x12+\n" +
 	"\x04cond\x18\x01 \x01(\v2\x17.common.StringConditionR\x04cond\")\n" +
@@ -13584,14 +13657,17 @@ const file_common_proto_rawDesc = "" +
 	"\vAddressRole\x12\x14\n" +
 	"\x10ADDRESS_ROLE_ANY\x10\x00\x12\x17\n" +
 	"\x13ADDRESS_ROLE_SOURCE\x10\x01\x12\x1c\n" +
-	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*^\n" +
+	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*v\n" +
 	"\vQueryTarget\x12\x19\n" +
 	"\x15QUERY_TARGET_ACCOUNTS\x10\x00\x12\x1d\n" +
 	"\x19QUERY_TARGET_TRANSACTIONS\x10\x01\x12\x15\n" +
-	"\x11QUERY_TARGET_LOGS\x10\x02*B\n" +
+	"\x11QUERY_TARGET_LOGS\x10\x02\x12\x16\n" +
+	"\x12QUERY_TARGET_AUDIT\x10\x03*B\n" +
 	"\tQueryMode\x12\x13\n" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
-	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01B9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01:h\n" +
+	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
+	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTargetB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -13803,6 +13879,7 @@ var file_common_proto_goTypes = []any{
 	nil,                                              // 192: common.IdempotencyFailure.MetadataEntry
 	nil,                                              // 193: common.AccountType.SegmentTypesEntry
 	(*signaturepb.SignedLog)(nil),                    // 194: signature.SignedLog
+	(*descriptorpb.FieldOptions)(nil),                // 195: google.protobuf.FieldOptions
 }
 var file_common_proto_depIdxs = []int32{
 	19,  // 0: common.MetadataValue.null_value:type_name -> common.NullValue
@@ -14071,10 +14148,13 @@ var file_common_proto_depIdxs = []int32{
 	20,  // 263: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
 	20,  // 264: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
 	134, // 265: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	266, // [266:266] is the sub-list for method output_type
-	266, // [266:266] is the sub-list for method input_type
-	266, // [266:266] is the sub-list for extension type_name
-	266, // [266:266] is the sub-list for extension extendee
+	195, // 266: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	195, // 267: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	16,  // 268: common.allowed_query_targets:type_name -> common.QueryTarget
+	269, // [269:269] is the sub-list for method output_type
+	269, // [269:269] is the sub-list for method input_type
+	268, // [268:269] is the sub-list for extension type_name
+	266, // [266:268] is the sub-list for extension extendee
 	0,   // [0:266] is the sub-list for field type_name
 }
 
@@ -14273,13 +14353,14 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   176,
-			NumExtensions: 0,
+			NumExtensions: 2,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,
 		DependencyIndexes: file_common_proto_depIdxs,
 		EnumInfos:         file_common_proto_enumTypes,
 		MessageInfos:      file_common_proto_msgTypes,
+		ExtensionInfos:    file_common_proto_extTypes,
 	}.Build()
 	File_common_proto = out.File
 	file_common_proto_goTypes = nil

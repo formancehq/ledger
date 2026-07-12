@@ -21,5 +21,5 @@ func TestCompileRevertedCondition_RejectsNonTransactionTarget(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "only valid on transactions")
+	require.Contains(t, err.Error(), `condition "reverted" is not valid on target accounts`)
 }

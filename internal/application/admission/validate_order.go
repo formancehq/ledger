@@ -266,7 +266,21 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrPreparedQueryRequired
 		}
 
-		return domain.ValidatePreparedQueryName(q.GetName())
+		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+			return err
+		}
+
+		// Reject a target the prepared-query executor cannot run (AUDIT, and any
+		// non-executable value a gRPC caller could set directly) before it is
+		// persisted, and validate each filter condition against that specific
+		// target — not the union of REST targets — so an ACCOUNTS query cannot
+		// store transaction-only conditions. Both gates share the commonpb
+		// validity table with the compile layer (EN-1504).
+		if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+			return domain.ErrPreparedQueryTargetUnsupported
+		}
+
+		return domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:

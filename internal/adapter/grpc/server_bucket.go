@@ -65,12 +65,13 @@ type BucketServiceServerImpl struct {
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	clusterID             string
+	idempotencyTTL        time.Duration
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, idempotencyTTL time.Duration, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -93,6 +94,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		clusterID:             clusterID,
+		idempotencyTTL:        idempotencyTTL,
 		info:                  info,
 		applyDuration:         applyDuration,
 		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
@@ -1228,7 +1230,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 		return err
 	}
 
-	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.localCtrl.ColdReader(), &impl.idempotencyTTL, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
