@@ -223,34 +223,34 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Reconcile auth keys from Credentials (before StatefulSet).
-	credentials, authKeysPending, err := r.reconcileAuthKeys(ctx, ledger)
+	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
-	// Fail-safe (EN-1487): matching Credentials exist but none is distributed
-	// yet. reconcileAuthKeys may have refreshed the ConfigMap's authorization
-	// metadata (carrying last-known key material forward), but we must NOT
-	// reconcile the StatefulSet now: rolling it while every Secret is
-	// undistributed risks emitting AUTH_ENABLED=true without an Ed25519 key and
-	// crash-looping a healthy cluster. Defer the StatefulSet pass, keep the
-	// current template, surface AuthKeysPending, and requeue.
-	// Skip the StatefulSet pass entirely to preserve its current template,
-	// surface an explicit AuthKeysPending condition + event, and requeue; the
-	// Credentials watch also reconverges the moment distribution completes.
-	if authKeysPending {
+	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
+	// reconcileAuthKeys may have refreshed the ConfigMap's authorization metadata
+	// (carrying last-known key material forward), but we must NOT reconcile the
+	// StatefulSet now: rolling it while the key set is empty or would drop a
+	// still-authorized key risks emitting AUTH_ENABLED=true without a complete
+	// Ed25519 key set and crash-looping a healthy cluster. Defer the StatefulSet
+	// pass, keep the current template, surface AuthKeysPending, and requeue; the
+	// Credentials watch also reconverges the moment distribution completes. The
+	// structured reason distinguishes the empty (none distributed) path from the
+	// incomplete-carried-set path so the condition/event is accurate for both.
+	if pendingReason.pending() {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               "AuthKeysPending",
 			Status:             metav1.ConditionTrue,
-			Reason:             "CredentialsNotDistributed",
-			Message:            "matching Credentials exist but none is distributed yet; preserving existing auth-key wiring and waiting for distribution",
+			Reason:             string(pendingReason),
+			Message:            pendingReason.conditionMessage(),
 			ObservedGeneration: ledger.Generation,
 		})
 		if r.Recorder != nil {
 			r.Recorder.Event(ledger, corev1.EventTypeWarning, "AuthKeysPending",
-				"matching Credentials are not distributed yet; StatefulSet auth wiring preserved, waiting for distribution")
+				pendingReason.conditionMessage())
 		}
 
 		// Option A (EN-1487): the StatefulSet template/rollout pass stays deferred

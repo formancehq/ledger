@@ -29,6 +29,43 @@ import (
 // watch event is missed, not the primary trigger.
 const authKeysPendingRequeueInterval = 10 * time.Second
 
+// authKeysPendingReason is the structured reason reconcileAuthKeys returns when it
+// holds the StatefulSet pass (pending). It lets the caller set an accurate status
+// condition / event for each distinct fail-safe path instead of a single
+// one-size-fits-all "none distributed" message. The empty value means NOT pending.
+type authKeysPendingReason string
+
+const (
+	// authKeysNotPending signals the StatefulSet pass may proceed.
+	authKeysNotPending authKeysPendingReason = ""
+	// authKeysPendingNoneDistributed: an Ed25519-dependent cluster matches one or
+	// more Credentials but NONE is distributed and nothing can be carried forward,
+	// so the merged key set is empty. Rolling would boot the cluster keyless.
+	authKeysPendingNoneDistributed authKeysPendingReason = "CredentialsNotDistributed"
+	// authKeysPendingIncompleteKeySet: some key material exists (resolved and/or
+	// carried forward) but a still-matched, previously-present key could not be
+	// carried (e.g. its stored pubkey blob is missing), so rolling would drop a
+	// still-authorized key. Distinct from NoneDistributed: here the set is
+	// non-empty but incomplete.
+	authKeysPendingIncompleteKeySet authKeysPendingReason = "AuthKeysIncomplete"
+)
+
+// pending reports whether the reason holds the StatefulSet pass.
+func (r authKeysPendingReason) pending() bool { return r != authKeysNotPending }
+
+// conditionMessage returns the human-readable status-condition / event message for
+// a pending reason.
+func (r authKeysPendingReason) conditionMessage() string {
+	switch r {
+	case authKeysPendingNoneDistributed:
+		return "matching Credentials exist but none is distributed yet; preserving existing auth-key wiring and waiting for distribution"
+	case authKeysPendingIncompleteKeySet:
+		return "auth keys cannot be safely reconciled yet: a previously-configured key for a still-matching Credentials cannot be carried forward; preserving existing auth-key wiring and waiting for distribution"
+	default:
+		return ""
+	}
+}
+
 // errMalformedAuthKeys marks a failure that comes from the CONTENT of an
 // existing auth-keys ConfigMap being corrupt (unparseable auth-keys.json), as
 // opposed to the ConfigMap read (the API Get) itself failing. The caller treats
@@ -103,15 +140,16 @@ type authKeyEntry struct {
 //   - matched >= 1 and ZERO resolved: one or more Credentials match but none is
 //     distributed yet (their status.DistributedSecretRefs is transiently empty,
 //     e.g. during operator/Credentials churn). For a cluster that DEPENDS on
-//     Ed25519 keys (auth enabled and NO OIDC issuer configured — see
+//     Ed25519 keys (auth EFFECTIVELY enabled and NO OIDC issuer configured — see
 //     requiresEd25519Keys), deleting the ConfigMap and stripping the StatefulSet
 //     here would produce AUTH_ENABLED=true without any key and crash-loop an
 //     otherwise healthy cluster. This is a transient state, so we keep the
-//     StatefulSet fail-safe: report pending=true so the caller sets the
-//     AuthKeysPending condition, holds the StatefulSet pass, and requeues until
-//     distribution completes. An OIDC-issuer-backed cluster, by contrast, boots
-//     and authenticates fine with no Ed25519 key set at all, so it is NEVER
-//     frozen (pending=false) even when every matching Credentials is unresolved —
+//     StatefulSet fail-safe: return a non-empty pending reason so the caller sets
+//     the AuthKeysPending condition, holds the StatefulSet pass, and requeues until
+//     distribution completes. A cluster that does NOT depend on Ed25519 keys —
+//     auth effectively disabled (nil auth / nil-or-false enabled), or backed by an
+//     OIDC issuer — boots and authenticates fine with no Ed25519 key set at all, so
+//     it is NEVER frozen even when every matching Credentials is unresolved;
 //     freezing it would needlessly block image/replica/TLS updates (EN-1487, P1).
 //     In every non-disabled case we still REBUILD the ConfigMap via the same
 //     carry-forward path as the partial case — each entry keeps its last-known key
@@ -136,12 +174,12 @@ type authKeyEntry struct {
 //     pending key; a permanently-broken Credentials only ever keeps its own
 //     last-known key. Proceed with the StatefulSet pass normally (pending=false).
 //
-// The returned pending flag is true only when the cluster depends on Ed25519 keys
-// and the merged key set is empty or would drop a still-matched previously-present
-// key (a keyless/incomplete roll) — the ConfigMap may still have been refreshed. A
-// complete carried set, an issuer-backed cluster, and any partial resolution all
-// return pending=false.
-func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, bool, error) {
+// The returned pending reason is non-empty only when the cluster depends on Ed25519
+// keys AND the merged key set is empty (authKeysPendingNoneDistributed) or would
+// drop a still-matched previously-present key (authKeysPendingIncompleteKeySet) —
+// the ConfigMap may still have been refreshed. A complete carried set, an
+// issuer-backed cluster, and any partial resolution all return authKeysNotPending.
+func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.Cluster) ([]credentialsKeyInfo, authKeysPendingReason, error) {
 	logger := log.FromContext(ctx)
 
 	// Collect keys from cluster-scoped Credentials. matched counts Credentials
@@ -150,7 +188,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	// identifies the matched-but-not-distributed ones for carry-forward.
 	credentials, matched, unresolved, err := r.collectClusterCredentialsKeys(ctx, ledger)
 	if err != nil {
-		return nil, false, err
+		return nil, authKeysNotPending, err
 	}
 
 	logger.V(1).Info("resolved credentials keys", "matched", matched, "resolved", len(credentials), "unresolved", len(unresolved))
@@ -163,16 +201,16 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, false, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
+				return nil, authKeysNotPending, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
 			}
 		} else {
 			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-				return nil, false, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
+				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no matching credentials)")
 		}
 
-		return nil, false, nil
+		return nil, authKeysNotPending, nil
 	}
 
 	// authExplicitlyDisabled mirrors buildEnvVars' gate: for an auth-disabled
@@ -184,32 +222,44 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 
 	// requiresEd25519Keys reports whether an empty/missing Ed25519 key set would
 	// actually break this cluster — and therefore whether the pending fail-safe
-	// must hold the StatefulSet pass. The server's validateAuthConfig accepts
-	// AUTH_ENABLED=true backed by an OIDC issuer ALONE (no Ed25519 keys); such a
-	// cluster authenticates fine on the issuer and boots even when the operator
-	// emits no AUTH_ED25519_KEYS (envvars.go only sets it when len(credentials)>0).
-	// So freezing an issuer-backed cluster whose matching Credentials are all
-	// unresolved buys no crash-loop safety and needlessly blocks image/replica/TLS
-	// updates (EN-1487, P1). The fail-safe is scoped to clusters that depend on
-	// Ed25519 keys: auth enabled AND no OIDC issuer configured. Issuer-backed
-	// clusters reconcile normally (pending=false) — their existing key wiring, if
-	// any, is still carried forward and preserved by the paths below; only the
-	// StatefulSet freeze is lifted.
+	// must hold the StatefulSet pass. It is gated on the EFFECTIVE enabled value,
+	// mirroring buildEnvVars + the server default: auth is on only when
+	// spec.auth.enabled is explicitly true. A nil spec.auth or a nil
+	// spec.auth.enabled emits no AUTH_ENABLED (appendIfBool skips nil), and the
+	// server defaults --auth-enabled to false (cmd/server/server.go), so such a
+	// cluster runs with auth disabled and needs no Ed25519 keys — it must NOT be
+	// frozen (EN-1487, flemzord follow-up). This is a stricter condition than
+	// !authExplicitlyDisabled (which is also true for the nil cases); the freeze
+	// must use the effective value while the ConfigMap-write gates below keep
+	// mirroring envvars.go's own !authExplicitlyDisabled emission condition.
+	//
+	// The server's validateAuthConfig further accepts AUTH_ENABLED=true backed by
+	// an OIDC issuer ALONE (no Ed25519 keys); such a cluster authenticates on the
+	// issuer and boots with no AUTH_ED25519_KEYS. So freezing an issuer-backed
+	// cluster whose matching Credentials are all unresolved buys no crash-loop
+	// safety and needlessly blocks image/replica/TLS updates (EN-1487, P1). The
+	// fail-safe is therefore scoped to clusters that depend on Ed25519 keys: auth
+	// EFFECTIVELY enabled AND no OIDC issuer configured. Issuer-backed and
+	// effectively-disabled clusters reconcile normally (not pending) — their
+	// existing key wiring, if any, is still carried forward and preserved by the
+	// paths below; only the StatefulSet freeze is lifted.
+	authEffectivelyEnabled := ledger.Spec.Auth != nil && ledger.Spec.Auth.Enabled != nil && *ledger.Spec.Auth.Enabled
 	hasIssuer := ledger.Spec.Auth != nil && (ledger.Spec.Auth.Issuer != "" || len(ledger.Spec.Auth.Issuers) > 0)
-	requiresEd25519Keys := !authExplicitlyDisabled && !hasIssuer
+	requiresEd25519Keys := authEffectivelyEnabled && !hasIssuer
 
 	// Case 2 (EN-1487): matched >= 1 but ZERO resolved (full transient
 	// non-distribution). For an Ed25519-dependent cluster we must never roll the
-	// StatefulSet with an empty key set (crash-loop), so pending stays true below
-	// (gated on requiresEd25519Keys) and the caller holds the StatefulSet pass;
-	// an issuer-backed cluster reconciles normally. Either way, rather than
-	// early-return with the ConfigMap untouched — which would preserve stale
-	// authorization metadata indefinitely while the Secret is undistributed — we
-	// fall through to the shared carry-forward path (case 3): each entry keeps its
-	// last-known key material and gets its scopes/god refreshed from the live spec.
-	// The regression guard further down still returns pending=true with the wiring
-	// untouched when there is nothing to carry forward (no prior key material), so
-	// an Ed25519-dependent cluster is never rolled keyless.
+	// StatefulSet with an empty key set (crash-loop), so a pending reason is
+	// returned below (gated on requiresEd25519Keys) and the caller holds the
+	// StatefulSet pass; an effectively-disabled or issuer-backed cluster reconciles
+	// normally. Either way, rather than early-return with the ConfigMap untouched —
+	// which would preserve stale authorization metadata indefinitely while the
+	// Secret is undistributed — we fall through to the shared carry-forward path
+	// (case 3): each entry keeps its last-known key material and gets its scopes/god
+	// refreshed from the live spec. The regression guard further down still returns
+	// a pending reason with the wiring untouched when there is nothing to carry
+	// forward (no prior key material), so an Ed25519-dependent cluster is never
+	// rolled keyless.
 
 	// Read the existing ConfigMap ONLY when there is a still-unresolved matched
 	// credential to carry forward. The fully-resolved path (unresolved empty) must
@@ -245,7 +295,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 			// set is non-empty because another credential resolved, so the crash-loop
 			// guard would not catch it). Fail safe: propagate so the reconcile
 			// requeues and retries once the API recovers.
-			return nil, false, fmt.Errorf("reading existing auth-keys for carry-forward: %w", err)
+			return nil, authKeysNotPending, fmt.Errorf("reading existing auth-keys for carry-forward: %w", err)
 		default:
 			existingEntries = entries
 			existingPubKeys = pubKeys
@@ -317,8 +367,10 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	//
 	// This block decides, for an Ed25519-dependent cluster, whether the carried set
 	// is COMPLETE — every previously-distributed still-matched credential is
-	// represented in merged. An incomplete set (empty, or missing a still-matched
-	// prior key) returns pending=true here; a complete set falls through and rolls.
+	// represented in merged. An incomplete set returns a pending reason here — an
+	// empty merge is authKeysPendingNoneDistributed, a merge that would drop a
+	// still-matched prior key is authKeysPendingIncompleteKeySet; a complete set
+	// falls through and rolls.
 	// A complete carried set is safe to roll even while every live Secret is
 	// unresolved: the ConfigMap references only key material that is present, so
 	// envvars resolves a non-empty key file and no keyless crash-loop can occur (the
@@ -334,7 +386,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 			logger.Info("merged auth-key set is empty for an Ed25519-dependent cluster, preserving existing wiring",
 				"matched", matched, "resolved", len(credentials))
 
-			return nil, true, nil
+			return nil, authKeysPendingNoneDistributed, nil
 		}
 		mergedFiles := make(map[string]struct{}, len(merged))
 		for _, m := range merged {
@@ -362,7 +414,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 				logger.Info("merged auth-key set would drop a still-matched previously-present key, preserving existing wiring",
 					"missing", fileName, "matched", matched, "resolved", len(credentials))
 
-				return nil, true, nil
+				return nil, authKeysPendingIncompleteKeySet, nil
 			}
 		}
 	}
@@ -376,16 +428,16 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		cm := &corev1.ConfigMap{}
 		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: cmName}, cm); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, false, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
+				return nil, authKeysNotPending, fmt.Errorf("checking auth-keys ConfigMap: %w", err)
 			}
 		} else {
 			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-				return nil, false, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
+				return nil, authKeysNotPending, fmt.Errorf("deleting auth-keys ConfigMap: %w", err)
 			}
 			logger.Info("deleted auth-keys ConfigMap (no effective auth keys)")
 		}
 
-		return nil, false, nil
+		return nil, authKeysNotPending, nil
 	}
 
 	// Build the auth-keys.json content from the merged set.
@@ -407,7 +459,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 
 	authKeysBytes, err := json.MarshalIndent(authKeys, "", "  ")
 	if err != nil {
-		return nil, false, fmt.Errorf("marshaling auth-keys.json: %w", err)
+		return nil, authKeysNotPending, fmt.Errorf("marshaling auth-keys.json: %w", err)
 	}
 
 	// Create or update the ConfigMap.
@@ -428,7 +480,7 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 		return controllerutil.SetControllerReference(ledger, cm, r.Scheme)
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
+		return nil, authKeysNotPending, fmt.Errorf("reconciling auth-keys ConfigMap: %w", err)
 	}
 
 	// Reaching this point means the merged set is non-empty and, for an
@@ -447,9 +499,10 @@ func (r *ClusterReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledge
 	//   - Issuer-backed / auth-disabled clusters (requiresEd25519Keys == false) —
 	//     never crash-loop on a missing key set, so they reconcile normally too.
 	//
-	// pending is therefore false: the only cases that must hold the StatefulSet
-	// pass (empty or incomplete Ed25519 key set) have already returned above.
-	return merged, false, nil
+	// pending is therefore not raised: the only cases that must hold the
+	// StatefulSet pass (empty or incomplete Ed25519 key set) have already returned
+	// above.
+	return merged, authKeysNotPending, nil
 }
 
 // readExistingAuthKeys reads the current auth-keys ConfigMap and indexes it by

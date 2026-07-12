@@ -164,7 +164,9 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.True(t, pending, "transient non-distribution must report pending")
+	assert.True(t, pending.pending(), "transient non-distribution must report pending")
+	assert.Equal(t, authKeysPendingNoneDistributed, pending,
+		"an empty merged set must report the none-distributed reason")
 	assert.Nil(t, credentials, "no key must be returned while credentials are undistributed")
 
 	// The existing ConfigMap must survive untouched — deleting it is exactly the
@@ -228,7 +230,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending,
+	assert.False(t, pending.pending(),
 		"a complete carried key set is crash-loop-safe to roll — it must NOT freeze, so the refreshed authorization reaches running pods")
 	require.Len(t, credentials, 1, "the carried key must be returned")
 
@@ -293,8 +295,10 @@ func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPe
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.True(t, pending,
+	assert.True(t, pending.pending(),
 		"an incomplete carried set (a still-matched prior key cannot be carried) must stay pending — rolling would drop a key")
+	assert.Equal(t, authKeysPendingIncompleteKeySet, pending,
+		"an incomplete carried set must report the incomplete-key-set reason, not none-distributed")
 	assert.Nil(t, credentials, "no key set is returned while frozen")
 
 	// The existing ConfigMap must be preserved untouched (frozen before rebuild).
@@ -342,7 +346,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending(t *t
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "auth-disabled cluster must not report pending on transient non-distribution")
+	assert.False(t, pending.pending(), "auth-disabled cluster must not report pending on transient non-distribution")
 	assert.Nil(t, credentials)
 
 	// With auth disabled there is no wiring to preserve; the ConfigMap is removed
@@ -386,7 +390,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_NotPending(t *testing.T) {
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending,
+	assert.False(t, pending.pending(),
 		"an issuer-backed cluster must never be frozen by an unresolved Credentials — it authenticates on the issuer")
 	assert.Nil(t, credentials, "no key resolves, so no key info is returned")
 
@@ -428,7 +432,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPendin
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "issuer-backed cluster must not freeze even with a carried-forward key")
+	assert.False(t, pending.pending(), "issuer-backed cluster must not freeze even with a carried-forward key")
 	require.Len(t, credentials, 1, "the prior key must be carried forward, not dropped")
 
 	// The ConfigMap must still carry the prior key material so the StatefulSet keeps
@@ -439,6 +443,66 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPendin
 	assert.Contains(t, ids, "kid-old", "the carried-forward key must be preserved")
 	assert.Equal(t, "deadbeef", cm.Data[pubKeyFileName("credentials", credName)],
 		"the carried-forward pubkey blob must be preserved")
+}
+
+// TestReconcileAuthKeys_EffectiveAuthDisabled_AllUnresolved_NotPending is the
+// regression for the effective-enabled finding (flemzord follow-up on the P1 fix):
+// the pending fail-safe must be gated on the EFFECTIVE auth-enabled value, not on
+// authExplicitlyDisabled. A Cluster with spec.auth == nil, or spec.auth.enabled ==
+// nil, emits no AUTH_ENABLED (buildEnvVars' appendIfBool skips nil) and the server
+// defaults --auth-enabled to false, so it runs with auth disabled and needs no
+// Ed25519 keys. Such a cluster, even with an all-unresolved matching Credentials,
+// must NOT be frozen — freezing would block image/replica/TLS updates for a cluster
+// that never authenticates with Ed25519 keys.
+func TestReconcileAuthKeys_EffectiveAuthDisabled_AllUnresolved_NotPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterName = "thierry"
+		namespace   = "ledger-v3"
+	)
+	selector := map[string]string{"tier": "gold"}
+
+	enabledFalse := false
+	cases := []struct {
+		name string
+		auth *ledgerv1alpha1.AuthorizationConfig
+	}{
+		{name: "nil auth block", auth: nil},
+		{name: "nil enabled (unset)", auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: nil}},
+		{name: "explicitly disabled", auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabledFalse}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			scheme := authKeysScheme(t)
+			// A prior ConfigMap with a complete carried key for the matched credential
+			// exists — proving the freeze is lifted by the effective-disabled gate, not
+			// merely by an empty merge.
+			existingCM := authKeysConfigMapWithEntries(clusterName, namespace, map[string]struct {
+				keyID  string
+				pubKey string
+			}{
+				"thierry-cred": {keyID: "kid-old", pubKey: "deadbeef"},
+			})
+			cred := matchingCredentials("thierry-cred", selector, false, "", "")
+
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingCM, cred).Build()
+			r := &ClusterReconciler{Client: c, Scheme: scheme}
+
+			cluster := &ledgerv1alpha1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace, Labels: selector},
+				Spec:       ledgerv1alpha1.ClusterSpec{Auth: tc.auth},
+			}
+
+			_, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
+			require.NoError(t, err)
+			assert.False(t, pending.pending(),
+				"an effectively-auth-disabled cluster must never be frozen by an unresolved Credentials")
+		})
+	}
 }
 
 // TestReconcileAuthKeys_NoMatch_DeletesConfigMap covers the legitimate removal
@@ -468,7 +532,7 @@ func TestReconcileAuthKeys_NoMatch_DeletesConfigMap(t *testing.T) {
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "no matching credentials is a legitimate removal, not pending")
+	assert.False(t, pending.pending(), "no matching credentials is a legitimate removal, not pending")
 	assert.Nil(t, credentials)
 
 	cm := &corev1.ConfigMap{}
@@ -510,7 +574,7 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "a distributed credentials must not be pending")
+	assert.False(t, pending.pending(), "a distributed credentials must not be pending")
 	require.Len(t, credentials, 1, "the distributed credentials must be resolved into a key")
 	assert.Equal(t, "kid-123", credentials[0].KeyID)
 
@@ -569,7 +633,7 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err, "a malformed existing ConfigMap must not wedge the fully-resolved path")
-	assert.False(t, pending, "everything resolved must not be pending")
+	assert.False(t, pending.pending(), "everything resolved must not be pending")
 	require.Len(t, credentials, 1, "the resolved credential must be returned")
 
 	// The ConfigMap must be rebuilt (self-healed) from the resolved set, dropping
@@ -631,7 +695,7 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err, "malformed prior content must self-heal, not wedge the partial path")
-	assert.False(t, pending, "the resolved credential is non-empty, so not pending")
+	assert.False(t, pending.pending(), "the resolved credential is non-empty, so not pending")
 	require.Len(t, credentials, 1, "only the resolved credential contributes; the corrupt prior key is unrecoverable")
 
 	cm := &corev1.ConfigMap{}
@@ -714,7 +778,7 @@ func TestReconcileAuthKeys_Partial_TransientReadError_DoesNotDropKey(t *testing.
 	require.Error(t, err, "a transient carry-forward read failure must not be swallowed")
 	assert.False(t, apierrors.IsNotFound(err), "the error must be the transient API error, not a NotFound")
 	assert.Nil(t, credentials, "no key set must be returned when the reconcile errors out")
-	assert.False(t, pending)
+	assert.False(t, pending.pending())
 	assert.Equal(t, 1, cmGets, "the reconcile must bail on the first failed carry-forward read, before any later Get")
 
 	// Read the ConfigMap back through the SAME store (subsequent Gets succeed): the
@@ -790,7 +854,7 @@ func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "partial resolution must NOT freeze the cluster")
+	assert.False(t, pending.pending(), "partial resolution must NOT freeze the cluster")
 	require.Len(t, credentials, 2, "the merged set must carry both the resolved and the carried-forward key")
 
 	cm := &corev1.ConfigMap{}
@@ -853,7 +917,7 @@ func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotatio
 	// First reconcile: cred-a v1 propagated, cred-b carried forward.
 	_, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending)
+	assert.False(t, pending.pending())
 
 	cm := &corev1.ConfigMap{}
 	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
@@ -871,7 +935,7 @@ func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotatio
 	// Second reconcile: cred-a's further rotation must still propagate.
 	_, pending, err = r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "a permanently-broken credential must not block further rotation of the healthy one")
+	assert.False(t, pending.pending(), "a permanently-broken credential must not block further rotation of the healthy one")
 
 	cm = &corev1.ConfigMap{}
 	require.NoError(t, c.Get(context.Background(), types.NamespacedName{Namespace: namespace, Name: authKeysConfigMapName(clusterName)}, cm))
@@ -923,7 +987,7 @@ func TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips(t *testing.T) {
 
 	credentials, pending, err := r.reconcileAuthKeys(context.Background(), cluster)
 	require.NoError(t, err)
-	assert.False(t, pending, "a never-distributed pending credential must not freeze the cluster")
+	assert.False(t, pending.pending(), "a never-distributed pending credential must not freeze the cluster")
 	require.Len(t, credentials, 1, "only the resolved credential contributes a key")
 
 	cm := &corev1.ConfigMap{}
