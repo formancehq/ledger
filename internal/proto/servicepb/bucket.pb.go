@@ -6630,14 +6630,17 @@ func (x *AnalyzeTransactionsResponse) GetTotalReverted() uint64 {
 }
 
 type FlowPattern struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Signature        string                 `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"` // e.g. "users:{id}:main -> bank:fees [USD]"
-	Structure        PostingStructure       `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
-	TransactionCount uint64                 `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
-	Postings         []*NormalizedPosting   `protobuf:"bytes,4,rep,name=postings,proto3" json:"postings,omitempty"`
-	Temporal         *TemporalStats         `protobuf:"bytes,5,opt,name=temporal,proto3" json:"temporal,omitempty"`
-	VolumeStats      []*AssetVolumeStats    `protobuf:"bytes,6,rep,name=volume_stats,json=volumeStats,proto3" json:"volume_stats,omitempty"`
-	MetadataKeys     []string               `protobuf:"bytes,7,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"` // Distinct metadata keys observed
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Human-readable canonical signature, e.g. "users:{id}:main -> bank:fees [USD]".
+	// Colored postings append the color inside the brackets: "... [USD/RED]".
+	// The uncolored bucket keeps the bare "[USD]" form.
+	Signature        string               `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"`
+	Structure        PostingStructure     `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
+	TransactionCount uint64               `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	Postings         []*NormalizedPosting `protobuf:"bytes,4,rep,name=postings,proto3" json:"postings,omitempty"`
+	Temporal         *TemporalStats       `protobuf:"bytes,5,opt,name=temporal,proto3" json:"temporal,omitempty"`
+	VolumeStats      []*AssetVolumeStats  `protobuf:"bytes,6,rep,name=volume_stats,json=volumeStats,proto3" json:"volume_stats,omitempty"`
+	MetadataKeys     []string             `protobuf:"bytes,7,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"` // Distinct metadata keys observed
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }

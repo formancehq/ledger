@@ -17,10 +17,16 @@ import (
 // the same flow signature. It uses online accumulators instead of storing
 // the full transaction list, keeping memory at O(unique signatures).
 type txGroupAccum struct {
+	// signature is the collision-safe internal grouping key (NUL-delimited).
+	// It is never surfaced on the wire — see displaySignature.
 	signature string
-	postings  []*servicepb.NormalizedPosting
-	structure servicepb.PostingStructure
-	count     uint64
+	// displaySignature is the human-readable form published on
+	// FlowPattern.signature (e.g. "world -> bank:main [USD]" or, colored,
+	// "world -> bank:main [USD/RED]").
+	displaySignature string
+	postings         []*servicepb.NormalizedPosting
+	structure        servicepb.PostingStructure
+	count            uint64
 	// Temporal accumulators
 	firstSeen, lastSeen uint64
 	hasSeen             bool
@@ -94,7 +100,7 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 // toFlowPattern materializes the accumulated statistics into a FlowPattern.
 func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 	pattern := &servicepb.FlowPattern{
-		Signature:        g.signature,
+		Signature:        g.displaySignature,
 		Structure:        g.structure,
 		TransactionCount: g.count,
 		Postings:         g.postings,
@@ -247,10 +253,11 @@ func AnalyzeTransactionsFromIterators(
 		g, ok := groups[sig]
 		if !ok {
 			g = &txGroupAccum{
-				signature: sig,
-				postings:  normalized,
-				structure: classifyPostingStructure(normalized),
-				volumes:   make(map[string]*assetAccum),
+				signature:        sig,
+				displaySignature: computeFlowDisplaySignature(normalized),
+				postings:         normalized,
+				structure:        classifyPostingStructure(normalized),
+				volumes:          make(map[string]*assetAccum),
 			}
 			groups[sig] = g
 		}
@@ -371,7 +378,10 @@ func flowSignaturePart(p *servicepb.NormalizedPosting) string {
 	return p.GetSourcePattern() + "\x00" + p.GetDestinationPattern() + "\x00" + p.GetAsset() + "\x00" + p.GetColor()
 }
 
-// computeFlowSignature returns a canonical, sorted signature string from normalized postings.
+// computeFlowSignature returns the canonical, sorted internal grouping key from
+// normalized postings. It is NUL-delimited and NOT human-readable — it is used
+// only as the groups map key and the deterministic sort tiebreaker, never as a
+// wire value. The public, human-readable signature is computeFlowDisplaySignature.
 func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		// Fast path: single posting, no sorting needed.
@@ -386,6 +396,40 @@ func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
 	sort.Strings(parts)
 
 	return strings.Join(parts, ";")
+}
+
+// flowDisplayPart formats a single posting as a human-readable
+// "source -> destination [asset]" fragment, appending "/color" inside the
+// brackets when the posting is colored. The uncolored bucket (empty color)
+// renders as a bare "[asset]" so pre-color responses stay identical. This is
+// the public form; unlike flowSignaturePart it is NOT collision-safe and must
+// never be used as a grouping key.
+func flowDisplayPart(p *servicepb.NormalizedPosting) string {
+	asset := p.GetAsset()
+	if color := p.GetColor(); color != "" {
+		asset += "/" + color
+	}
+
+	return p.GetSourcePattern() + " -> " + p.GetDestinationPattern() + " [" + asset + "]"
+}
+
+// computeFlowDisplaySignature builds the human-readable FlowPattern.signature
+// from normalized postings. Multi-posting flows join their fragments with "; "
+// in the same sorted order as the internal grouping key, so two flows with the
+// same shape produce the same display string.
+func computeFlowDisplaySignature(postings []*servicepb.NormalizedPosting) string {
+	if len(postings) == 1 {
+		return flowDisplayPart(postings[0])
+	}
+
+	parts := make([]string, len(postings))
+	for i, p := range postings {
+		parts[i] = flowDisplayPart(p)
+	}
+
+	sort.Strings(parts)
+
+	return strings.Join(parts, "; ")
 }
 
 // precomputeNormalization walks the trie once after Pass 1 and caches

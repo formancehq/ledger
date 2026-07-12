@@ -102,6 +102,19 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		writeProfileHeader(w, profile)
 	}
 
+	// The aggregate variant must be serialized through the same camelCase DTO
+	// the dedicated /aggregate handler uses (toAggregateVolumesJSON), which
+	// always emits `color` — even for the uncolored bucket. Writing the raw
+	// proto AggregateResult here would fall back to the generated
+	// `json:"color,omitempty"` tag and silently drop `color` on uncolored
+	// rows, so prepared-query clients could not tell an uncolored row apart
+	// from a pre-color response shape.
+	if agg := resp.GetAggregate(); agg != nil {
+		writeJSONResponse(w, http.StatusOK, toAggregateVolumesJSON(agg))
+
+		return
+	}
+
 	writeJSONResponse(w, http.StatusOK, resp)
 }
 

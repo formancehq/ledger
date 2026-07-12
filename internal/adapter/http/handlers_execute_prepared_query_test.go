@@ -11,6 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -216,6 +217,65 @@ func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Contains(t, w.Body.String(), "BOGUS")
+}
+
+// TestHandleExecutePreparedQuery_AggregateEmitsColor pins that the aggregate
+// variant is serialized through the same camelCase DTO as the dedicated
+// /aggregate handler: `color` is always present (including the uncolored
+// bucket, as ""), amounts are decimal strings, and a balance is computed. The
+// previous raw-proto serialization dropped `color` on uncolored rows
+// (json:"color,omitempty") and leaked PascalCase oneof wrapper keys.
+func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			return &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+					Aggregate: &commonpb.AggregateResult{
+						Volumes: []*commonpb.AggregatedVolume{
+							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"mode":"AGGREGATE_VOLUMES"}`),
+		map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	resp := decodeResponse[aggregateVolumesResponseJSON](t, w)
+	require.Len(t, resp.Volumes, 2)
+
+	// Uncolored bucket: color present as "" (not omitted), amounts as strings.
+	require.Equal(t, "", resp.Volumes[0].Color)
+	require.Equal(t, "USD", resp.Volumes[0].Asset)
+	require.Equal(t, "100", resp.Volumes[0].Input)
+	require.Equal(t, "30", resp.Volumes[0].Output)
+	require.Equal(t, "70", resp.Volumes[0].Balance)
+
+	// Colored bucket carries its color verbatim.
+	require.Equal(t, "RED", resp.Volumes[1].Color)
+	require.Equal(t, "50", resp.Volumes[1].Balance)
+
+	// The raw body must carry the camelCase `color` key for the uncolored row
+	// and must NOT leak the PascalCase oneof wrapper.
+	body := w.Body.String()
+	require.Contains(t, body, `"color":""`)
+	require.NotContains(t, body, `"Result"`)
+	require.NotContains(t, body, `"Aggregate"`)
 }
 
 func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {

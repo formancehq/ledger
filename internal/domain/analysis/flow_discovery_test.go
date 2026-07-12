@@ -335,3 +335,65 @@ func TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents(t *testing.T) {
 		})
 	}
 }
+
+// TestComputeFlowDisplaySignature pins the human-readable public signature: the
+// internal NUL-delimited grouping key must never leak onto FlowPattern.signature.
+// Colored postings render "[asset/color]"; the uncolored bucket keeps the bare
+// "[asset]" form so pre-color responses are unchanged.
+func TestComputeFlowDisplaySignature(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		postings []*servicepb.NormalizedPosting
+		want     string
+	}{
+		{
+			name:     "single uncolored",
+			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"}},
+			want:     "world -> bank:main [USD]",
+		},
+		{
+			name:     "single colored",
+			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD", Color: "RED"}},
+			want:     "world -> bank:main [USD/RED]",
+		},
+		{
+			name: "multi posting sorted and semicolon-joined",
+			postings: []*servicepb.NormalizedPosting{
+				{SourcePattern: "world", DestinationPattern: "bank:fees", Asset: "EUR"},
+				{SourcePattern: "alice", DestinationPattern: "bob", Asset: "USD", Color: "GRANTS"},
+			},
+			want: "alice -> bob [USD/GRANTS]; world -> bank:fees [EUR]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := computeFlowDisplaySignature(tc.postings)
+			require.Equal(t, tc.want, got)
+			require.NotContains(t, got, "\x00", "public signature must not contain the internal NUL separator")
+		})
+	}
+}
+
+// TestAnalyzeTransactions_PublicSignatureIsHumanReadable end-to-ends the wire
+// contract: FlowPattern.signature must be the human-readable form, never the
+// NUL-delimited internal grouping key.
+func TestAnalyzeTransactions_PublicSignatureIsHumanReadable(t *testing.T) {
+	t.Parallel()
+
+	txns := []CompactTransaction{
+		makeCompactTransaction(1000000, []CompactPosting{
+			makeCompactPosting("world", "bank:main", "USD", 100),
+		}),
+	}
+
+	resp := analyzeTransactions(txns, 0)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+	sig := resp.GetFlowPatterns()[0].GetSignature()
+	require.Equal(t, "world -> bank:main [USD]", sig)
+	require.NotContains(t, sig, "\x00")
+}
