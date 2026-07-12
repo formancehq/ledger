@@ -36,8 +36,12 @@ corrupted or tampered before it is proposed takes effect on every node and no
 cross-node comparison can detect it. Persisted projections that are not yet
 covered — the mirror cursor, the readstore inverted-index contents, prepared
 queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive
-user-visible results and with no `compare*` pass), and persisted bloom blocks on
-the restart path — are tracked integrity gaps, not approved exemptions.
+user-visible results and with no `compare*` pass), persisted bloom blocks on
+the restart path, and the persisted governance projections (signing keys
+`SubGlobSigningKey`, signing config `SubGlobSigningConfig`, and maintenance mode
+`SubGlobMaintenanceMode` — all read into the live key store / shared state on
+recovery by `recovery.go` and consulted by admission to accept or reject writes,
+with no `compare*` pass) — are tracked integrity gaps, not approved exemptions.
 
 ## Related
 

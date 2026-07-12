@@ -48,9 +48,15 @@ non-deterministic map marshaling). So a value that is corrupted or tampered
 *before* it is proposed takes effect on every node identically, and no cross-node
 comparison — logical or byte-wise — can catch it. Where the sections below
 describe a persisted main-store projection that the checker does not yet verify
-(the mirror cursor, the readstore inverted-index contents, prepared queries, and
-persisted bloom blocks on the restart path), that is a tracked integrity gap, not
-an approved exemption.
+(the mirror cursor, the readstore inverted-index contents, prepared queries,
+persisted bloom blocks on the restart path, and the persisted governance
+projections — signing keys `SubGlobSigningKey`, signing config
+`SubGlobSigningConfig`, and maintenance mode `SubGlobMaintenanceMode`, each read
+into the live key store / shared state on recovery and consulted by admission to
+accept or reject writes), that is a tracked integrity gap, not an approved
+exemption. Those governance projections must either be checker-verified against
+the audited orders that recorded the intent, or read back from an audit-bound
+source before they are trusted (see the Governance-truth row above).
 
 ## TechnicalUpdate Gate
 
