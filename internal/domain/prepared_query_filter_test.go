@@ -150,7 +150,7 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	build := func(wrap func(child *commonpb.QueryFilter) *commonpb.QueryFilter) *commonpb.QueryFilter {
 		// Innermost leaf is a valid LOGS condition so, absent the depth guard,
 		// the walk would traverse the whole chain and succeed.
-		var f *commonpb.QueryFilter = &commonpb.QueryFilter{
+		var f = &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_LogId{
 				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 			},
@@ -202,7 +202,7 @@ func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	// A shallower write-time bound would persist prepared queries that fail to
 	// compile at execute time — the off-by-one this pins against.
 	nestedLogId := func(combinators int) *commonpb.QueryFilter {
-		var f *commonpb.QueryFilter = &commonpb.QueryFilter{
+		var f = &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_LogId{
 				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
 			},
