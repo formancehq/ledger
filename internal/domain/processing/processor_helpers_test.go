@@ -155,6 +155,7 @@ func (s *kindStub[K, V, R]) expectGet(k K, v R, err error) {
 
 func (s *kindStub[K, V, R]) onGet(hook func(K) (R, error)) { s.getHook = hook }
 func (s *kindStub[K, V, R]) onPut(hook func(K, V))         { s.putHook = hook }
+func (s *kindStub[K, V, R]) onDelete(hook func(K))         { s.deleteHook = hook }
 
 // Per-kind setup wrappers — register one mockStore.EXPECT().<Kind>().AnyTimes()
 // and return the typed stub the test will configure.

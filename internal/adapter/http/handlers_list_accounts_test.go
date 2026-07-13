@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -70,6 +71,50 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, uint32(10), capturedPageSize)
 	require.Equal(t, "users:005", capturedAfter)
+}
+
+// TestHandleListAccounts_PrefixFilterCanonicalReplacement proves the canonical
+// replacement for the removed `prefix=` alias: an address-prefix selection
+// passed through the generic `filter` as the textual `address ^= "<prefix>"`
+// reaches the backend as the same AddressMatch_HardcodedPrefix the old alias
+// produced, and the removed alias is no longer interpreted.
+func TestHandleListAccounts_PrefixFilterCanonicalReplacement(t *testing.T) {
+	t.Parallel()
+
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+		t.Helper()
+
+		var captured *commonpb.QueryFilter
+
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
+				captured = filter
+
+				return cursor.NewSliceCursor[*commonpb.Account](nil), nil
+			}).AnyTimes()
+		srv := newTestServer(t, backend)
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, target, nil, map[string]string{"ledgerName": "ledger1"})
+		srv.handleListAccounts(w, r)
+
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+		return captured
+	}
+
+	// Canonical textual replacement → a bare AddressMatch_HardcodedPrefix (the
+	// sole filter is not wrapped in a redundant 1-element $and).
+	fromFilter := capture(t, "/ledger1/accounts?filter="+url.QueryEscape(`address ^= "users:"`))
+	require.NotNil(t, fromFilter)
+	require.Equal(t, "users:", fromFilter.GetAddress().GetHardcodedPrefix(),
+		"textual address-prefix filter must reach the backend as HardcodedPrefix")
+
+	// The removed `prefix=` alias must no longer be interpreted: passed alone
+	// (no `filter=`), it yields an unfiltered read (nil filter).
+	aliasOnly := capture(t, "/ledger1/accounts?prefix=users:")
+	require.Nil(t, aliasOnly, "the removed prefix= alias must not build a filter")
 }
 
 func TestHandleListAccounts_InvalidPageSize(t *testing.T) {

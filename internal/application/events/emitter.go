@@ -488,12 +488,12 @@ func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.E
 	// (tracker mutex held just long enough to inject PredictedIndex +
 	// proposer.Propose).
 	operations := []plan.WriteOperation{{
-		SetCoverage: func(bits []byte) {
-			e.proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target: &e.proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
-	build, err := e.builder.Build(operations)
+	// applyEventsSinkUpdate reads no cache state — an empty aggregate is
+	// enough for Build to skip the slow path entirely.
+	build, err := e.builder.Build(plan.NewCoverage(), operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()

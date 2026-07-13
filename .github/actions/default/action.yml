@@ -9,13 +9,13 @@ runs:
   using: composite
   steps:
     - name: Install Nix
-      uses: cachix/install-nix-action@v31
+      uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
     - name: go env
       id: go-env
       shell: bash
       run: |
         nix develop --command bash -c "go env | sed -E \"s/^([^=]+)='(.*)'\$/\1=\2/\"" >> "$GITHUB_OUTPUT"
-    - uses: namespacelabs/nscloud-cache-action@v1
+    - uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
       with:
         path: |
           ${{ steps.go-env.outputs.GOCACHE }}

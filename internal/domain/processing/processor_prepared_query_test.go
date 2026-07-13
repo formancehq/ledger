@@ -114,11 +114,12 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 
 // TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a
 // legacy escape hatch: CLI/gRPC creation used to accept non-executable targets
-// (LOGS) before EN-1504, so such a query can already sit in storage. An update
-// must not write its filter back — ExecutePreparedQuery still cannot hydrate
-// LOGS — so the stored-target executability gate fires before condition
-// validity, even though a `logId` filter is perfectly valid *for* LOGS. Delete
-// stays allowed; only the rewrite is blocked.
+// (e.g. AUDIT) before EN-1504, so such a query can already sit in storage. An
+// update must not write its filter back — ExecutePreparedQuery cannot hydrate
+// AUDIT — so the stored-target executability gate fires before condition
+// validity is ever evaluated. Delete stays allowed; only the rewrite is blocked.
+// (LOGS is executable as of EN-1503, so it no longer belongs in this class —
+// AUDIT is the remaining non-executable target.)
 func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.T) {
 	t.Parallel()
 
@@ -131,20 +132,22 @@ func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.
 	pq := setupPreparedQueriesStub(mockStore)
 	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
 		return (&commonpb.PreparedQuery{
-			Name:   "legacy-logs",
-			Target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			Name:   "legacy-audit",
+			Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
 		}).AsReader(), nil
 	})
 	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
 		t.Fatal("Put must not be called when the stored target is not executable")
 	})
 
-	// A logId condition is valid *for* LOGS, so this update passes condition
-	// validity — the executability gate is what must reject it.
+	// The stored-target executability gate fires before condition validity is
+	// even evaluated, so the filter's own validity is irrelevant here — any
+	// structurally decodable filter must be rejected on the non-executable
+	// stored target.
 	newFilter := &commonpb.QueryFilter{}
-	require.NoError(t, json.Unmarshal([]byte(`{"$gt":{"logId":"5"}}`), newFilter))
+	require.NoError(t, json.Unmarshal([]byte(`{"$exists":{"metadata":"x"}}`), newFilter))
 
-	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-logs", Filter: newFilter}
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-audit", Filter: newFilter}
 	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
 	require.NotNil(t, derr)
 	require.ErrorIs(t, derr, domain.ErrPreparedQueryTargetUnsupported)

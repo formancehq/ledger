@@ -28,6 +28,7 @@ func TestCompleteEventTypes(t *testing.T) {
 				"DELETED_METADATA",
 				"REVERTED_TRANSACTION",
 				"SAVED_METADATA",
+				"SKIPPED_ORDER",
 			},
 		},
 		{
@@ -49,6 +50,7 @@ func TestCompleteEventTypes(t *testing.T) {
 				"COMMITTED_TRANSACTION,DELETED_METADATA",
 				"COMMITTED_TRANSACTION,REVERTED_TRANSACTION",
 				"COMMITTED_TRANSACTION,SAVED_METADATA",
+				"COMMITTED_TRANSACTION,SKIPPED_ORDER",
 			},
 		},
 		{

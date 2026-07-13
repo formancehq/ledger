@@ -1515,6 +1515,18 @@ func (m *LedgerApplyRequest) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.SkippableReasons) > 0 {
+		var pkBuf [10]byte
+		start := i
+		for iNdEx := len(m.SkippableReasons) - 1; iNdEx >= 0; iNdEx-- {
+			n := protohelpers.EncodeVarint(pkBuf[:], 10, uint64(m.SkippableReasons[iNdEx]))
+			i -= 10 - n
+			copy(dAtA[i:], pkBuf[n:])
+		}
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(start-i))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.Action != nil {
 		size, _ := m.Action.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
@@ -2425,6 +2437,28 @@ func (m *GetIndexStatusRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *GetIndexStatusResponse) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *GetIndexRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *GetIndexEntryStatusRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

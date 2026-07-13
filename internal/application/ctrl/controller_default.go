@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -21,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -92,17 +94,22 @@ type Admission interface {
 // The FSM is responsible for interpreting requests, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency in the Raft log.
 type DefaultController struct {
-	logger     logging.Logger
-	admission  Admission
-	store      *dal.Store
-	attrs      *attributes.Attributes
-	readStore  *readstore.Store
-	coldReader *coldstorage.ColdReader
+	logger        logging.Logger
+	admission     Admission
+	store         *dal.Store
+	attrs         *attributes.Attributes
+	readStore     *readstore.Store
+	receiptSigner *receipt.Signer
+	coldReader    *coldstorage.ColdReader
 
 	applyDuration metric.Int64Histogram
 }
 
 // NewDefaultController creates a new default controller.
+//
+// receiptSigner is nil when the node has no receipt signing key configured; in
+// that case locally-served GetTransaction reads return a nil receipt, matching
+// the historical behaviour of an unconfigured node.
 func NewDefaultController(
 	admission Admission,
 	store *dal.Store,
@@ -110,6 +117,7 @@ func NewDefaultController(
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
 	coldReader *coldstorage.ColdReader,
+	receiptSigner *receipt.Signer,
 	meter metric.Meter,
 ) *DefaultController {
 	applyDuration, err := meter.Int64Histogram(
@@ -131,6 +139,7 @@ func NewDefaultController(
 		attrs:         attrs,
 		readStore:     readStore,
 		coldReader:    coldReader,
+		receiptSigner: receiptSigner,
 		applyDuration: applyDuration,
 	}
 }
@@ -171,11 +180,74 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
-	// No receipt signer at this layer: a locally-served read returns a nil receipt
-	// so the gRPC layer signs it from the same snapshot.
 	tx, err := ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return tx, nil, err
+	// No signing key on this node: no receipt to produce. Return a nil receipt so
+	// the (unchanged) contract — nil means "this layer produced none" — holds, and
+	// callers render an empty string.
+	if ctrl.receiptSigner == nil {
+		return tx, nil, nil
+	}
+
+	// Freshness barrier: open the receipt snapshot NOW, after GetTransactionFrom
+	// closed its own read handle, so the receipt's ledger + creation-log reads
+	// share a committed state at least as fresh as the transaction read. Signing
+	// from a snapshot that could predate the transaction read would let the
+	// receipt reference a ledger/creation-log state older than the returned tx.
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating receipt read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	receiptToken, err := ctrl.ComputeTransactionReceipt(ctx, handle, ledgerName, transactionID, tx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("computing transaction receipt: %w", err)
+	}
+
+	return tx, &receiptToken, nil
+}
+
+// ComputeTransactionReceipt computes a JWT receipt for an existing transaction
+// by looking up its creation log to extract the chapter ID. Ledger info and the
+// creation log are read from the supplied reader — the same store the
+// transaction was read from — so checkpoint reads stay self-consistent. It
+// returns an empty token (not an error) when the transaction legitimately has
+// no receipt: no creation log in this store (archived/purged), or a
+// non-created creation log (e.g. a reversal). The caller must have verified the
+// signer is non-nil.
+func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
+	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
+	if err != nil {
+		return "", err
+	}
+
+	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
+	if errors.Is(err, domain.ErrNotFound) {
+		// No creation log for this transaction in this store (e.g. its log was
+		// archived/purged). The transaction is still readable; it just has no
+		// receipt. Not an error.
+		return "", nil
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	// Receipts are only issued for created transactions, matching the Apply path
+	// (signReceiptIfNeeded skips non-created logs). A reversal transaction's
+	// creation log is a RevertedTransaction log, so it legitimately has no
+	// receipt — return empty rather than erroring.
+	created := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
+	if created == nil {
+		return "", nil
+	}
+
+	return ctrl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetChapterId())
 }
 
 // WithStores returns a shallow copy of the controller whose reads are served
@@ -1040,6 +1112,436 @@ func encodeCursor(b []byte) string {
 	return base64Encoding.EncodeToString(b)
 }
 
+// GetIndexStatus returns the aggregated index registry status (per-index
+// backfill cursor + per-replica IndexVersionState) exposed on the wire.
+//
+// The response is pinned to two point-in-time views: `handle` is a direct
+// read handle on the primary store used for the registry iteration and the
+// live-ledger set; `readSnap` is a Pebble snapshot on the read index used
+// for LastIndexedSequence, backfill cursors, and per-replica version
+// state. Without the read-index snapshot the backfill map, LastIndexed,
+// and IndexVersionState could each read a different revision as the
+// indexer commits underneath — the response would look coherent on the
+// wire but the numbers would drift within a single call.
+func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	ledgerFilter := req.GetLedger()
+
+	readSnap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = readSnap.Close() }()
+
+	lastIndexed, err := ctrl.readStore.LastIndexedSequenceFrom(readSnap)
+	if err != nil {
+		return nil, fmt.Errorf("reading last indexed sequence: %w", err)
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	lastLog, err := query.ReadLastSequence(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading last log sequence: %w", err)
+	}
+
+	var lag uint64
+	if lastLog > lastIndexed {
+		lag = lastLog - lastIndexed
+	}
+
+	var fileSize uint64
+	if info, err := os.Stat(ctrl.readStore.Path()); err == nil {
+		fileSize = uint64(info.Size())
+	}
+
+	backfillEntries, err := ctrl.readStore.ListBackfillProgressFrom(readSnap)
+	if err != nil {
+		return nil, fmt.Errorf("reading backfill progress: %w", err)
+	}
+
+	type cursorKey struct {
+		ledger    string
+		canonical string
+	}
+
+	cursors := make(map[cursorKey]uint64, len(backfillEntries))
+
+	for _, e := range backfillEntries {
+		id := indexIDFromBackfillEntry(e)
+		if id == nil {
+			continue
+		}
+
+		cursors[cursorKey{ledger: e.LedgerName, canonical: indexes.Canonical(id)}] = e.Cursor
+	}
+
+	ledgerCursor, err := query.ReadLedgers(ctx, handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading ledgers: %w", err)
+	}
+	defer func() { _ = ledgerCursor.Close() }()
+
+	ledgerNameToID := make(map[string]uint32)
+
+	for {
+		info, lErr := ledgerCursor.Next()
+		if lErr != nil {
+			if errors.Is(lErr, io.EOF) {
+				break
+			}
+
+			return nil, fmt.Errorf("iterating ledgers: %w", lErr)
+		}
+
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		ledgerNameToID[info.GetName()] = info.GetId()
+	}
+
+	idxIter, err := ctrl.attrs.Index.NewStreamingIter(handle, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening index registry iterator: %w", err)
+	}
+	defer func() { _ = idxIter.Close() }()
+
+	var entries []*servicepb.IndexEntry
+
+	for idxIter.Next() {
+		idx := idxIter.Entry().Value
+		if idx == nil || idx.GetId() == nil {
+			continue
+		}
+
+		name := idx.GetLedger()
+
+		if name != "" {
+			if _, ok := ledgerNameToID[name]; !ok {
+				continue // orphan or tombstoned ledger — skip
+			}
+		}
+
+		if ledgerFilter != "" && name != ledgerFilter {
+			continue
+		}
+
+		canonical := indexes.Canonical(idx.GetId())
+		entry := &servicepb.IndexEntry{
+			Ledger: name,
+			Index:  idx,
+			Cursor: cursors[cursorKey{ledger: name, canonical: canonical}],
+		}
+
+		state, ok, stateErr := readstore.ReadIndexVersionStateFrom(readSnap, name, canonical)
+		if stateErr != nil {
+			ctrl.logger.WithFields(map[string]any{
+				"ledger":    name,
+				"canonical": canonical,
+				"error":     stateErr,
+			}).Errorf("Reading IndexVersionState for GetIndexStatus")
+		} else if ok {
+			entry.CurrentVersion = state.CurrentVersion
+			entry.PendingVersion = state.PendingVersion
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if err := idxIter.Err(); err != nil {
+		return nil, fmt.Errorf("iterating index registry: %w", err)
+	}
+
+	return &servicepb.GetIndexStatusResponse{
+		LastIndexedSequence: lastIndexed,
+		LastLogSequence:     lastLog,
+		Lag:                 lag,
+		IndexFileSize:       fileSize,
+		Indexes:             entries,
+	}, nil
+}
+
+// GetIndex returns the Index registry entry for the (ledger, id) tuple.
+// Ledger existence is checked upfront for ledger-scoped queries so
+// callers can distinguish "no such ledger" from "index not registered
+// on this ledger". Bucket-scoped queries (empty ledger) skip that check.
+func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	if req.GetId() == nil {
+		return nil, domain.NewValidationSentinel("id is required")
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	if ledger := req.GetLedger(); ledger != "" {
+		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			}
+
+			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
+		}
+	}
+
+	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+
+	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
+	if err != nil {
+		return nil, fmt.Errorf("looking up index: %w", err)
+	}
+
+	if idx == nil {
+		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+	}
+
+	return idx.Mutate(), nil
+}
+
+// GetIndexEntryStatus returns the per-replica status view (registry
+// entry + backfill cursor + IndexVersionState) for a single index. Both
+// the primary handle and the read-store snapshot pin a coherent view so
+// the returned IndexEntry does not drift under the reader's feet.
+func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	if req.GetId() == nil {
+		return nil, domain.NewValidationSentinel("id is required")
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+
+	if ledger := req.GetLedger(); ledger != "" {
+		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			}
+
+			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
+		}
+	}
+
+	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+
+	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
+	if err != nil {
+		return nil, fmt.Errorf("looking up index: %w", err)
+	}
+
+	if idx == nil {
+		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+	}
+
+	canonical := indexes.Canonical(req.GetId())
+	entry := &servicepb.IndexEntry{
+		Ledger: req.GetLedger(),
+		Index:  idx.Mutate(),
+	}
+
+	readSnap := ctrl.readStore.NewSnapshot()
+	defer func() { _ = readSnap.Close() }()
+
+	backfillEntries, err := ctrl.readStore.ListBackfillProgressFrom(readSnap)
+	if err != nil {
+		return nil, fmt.Errorf("reading backfill progress: %w", err)
+	}
+
+	for _, e := range backfillEntries {
+		if e.LedgerName != req.GetLedger() {
+			continue
+		}
+
+		id := indexIDFromBackfillEntry(e)
+		if id == nil {
+			continue
+		}
+
+		if indexes.Canonical(id) == canonical {
+			entry.Cursor = e.Cursor
+
+			break
+		}
+	}
+
+	state, ok, stateErr := readstore.ReadIndexVersionStateFrom(readSnap, req.GetLedger(), canonical)
+	if stateErr != nil {
+		ctrl.logger.WithFields(map[string]any{
+			"ledger":    req.GetLedger(),
+			"canonical": canonical,
+			"error":     stateErr,
+		}).Errorf("Reading IndexVersionState for GetIndexEntryStatus")
+	} else if ok {
+		entry.CurrentVersion = state.CurrentVersion
+		entry.PendingVersion = state.PendingVersion
+	}
+
+	return entry, nil
+}
+
+// ListIndexes returns a cursor over the bucket-scoped index registry,
+// filtered by req.Scope: SCOPE_ALL streams every entry (dropping orphans
+// whose owning ledger no longer exists), SCOPE_BUCKET keeps only entries
+// with empty Ledger (audit-style bucket indexes), SCOPE_LEDGER keeps only
+// entries owned by req.Ledger. SCOPE_LEDGER on an unknown ledger returns
+// a NotFound error (the caller has to distinguish "empty" from "bad name").
+func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER && req.GetLedger() == "" {
+		return nil, domain.ErrLedgerNameRequired
+	}
+
+	handle, err := ctrl.store.NewDirectReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+		if _, err := query.GetLedgerByName(ctx, handle, req.GetLedger()); err != nil {
+			_ = handle.Close()
+
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", req.GetLedger())
+			}
+
+			return nil, fmt.Errorf("checking ledger %q: %w", req.GetLedger(), err)
+		}
+	}
+
+	var canonicalPrefix []byte
+	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+		canonicalPrefix = domain.IndexKey{LedgerName: req.GetLedger()}.Bytes()
+	}
+
+	idxIter, err := ctrl.attrs.Index.NewStreamingIter(handle, canonicalPrefix)
+	if err != nil {
+		_ = handle.Close()
+
+		return nil, fmt.Errorf("opening index registry iterator: %w", err)
+	}
+
+	return &listIndexesCursor{
+		ctx:          ctx,
+		req:          req,
+		iter:         idxIter,
+		handle:       handle,
+		activeLedger: make(map[string]bool),
+	}, nil
+}
+
+// listIndexesCursor adapts the streaming index-registry iterator to the
+// cursor.Cursor contract expected by the ListIndexes API. It applies the
+// same per-scope filtering the gRPC handler used to do inline.
+type listIndexesCursor struct {
+	ctx          context.Context
+	req          *servicepb.ListIndexesRequest
+	iter         *attributes.StreamingIter[*commonpb.Index]
+	handle       *dal.ReadHandle
+	activeLedger map[string]bool
+}
+
+func (c *listIndexesCursor) Next() (*commonpb.Index, error) {
+	for c.iter.Next() {
+		idx := c.iter.Entry().Value
+		if idx == nil || idx.GetId() == nil {
+			continue
+		}
+
+		switch c.req.GetScope() {
+		case servicepb.ListIndexesRequest_SCOPE_BUCKET:
+			if idx.GetLedger() != "" {
+				continue
+			}
+		case servicepb.ListIndexesRequest_SCOPE_LEDGER:
+			if idx.GetLedger() != c.req.GetLedger() {
+				continue
+			}
+		case servicepb.ListIndexesRequest_SCOPE_ALL:
+			name := idx.GetLedger()
+			if name != "" {
+				alive, cached := c.activeLedger[name]
+				if !cached {
+					_, err := query.GetLedgerByName(c.ctx, c.handle, name)
+					switch {
+					case err == nil:
+						alive = true
+					case errors.Is(err, domain.ErrNotFound):
+						alive = false
+					default:
+						return nil, fmt.Errorf("checking ledger %q: %w", name, err)
+					}
+
+					c.activeLedger[name] = alive
+				}
+
+				if !alive {
+					continue
+				}
+			}
+		}
+
+		return idx, nil
+	}
+
+	if err := c.iter.Err(); err != nil {
+		return nil, err
+	}
+
+	return nil, io.EOF
+}
+
+func (c *listIndexesCursor) Close() error {
+	_ = c.iter.Close()
+
+	return c.handle.Close()
+}
+
+// indexIDFromBackfillEntry rebuilds the IndexID associated with a persisted
+// backfill cursor, given the BB-key encoding used by the indexbuilder.
+func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
+	switch e.Kind {
+	case readstore.BackfillKindTxBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{
+			TxBuiltin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+		}}
+	case readstore.BackfillKindTxMetadata:
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			Key:    string(e.Details),
+		}}}
+	case readstore.BackfillKindAcctBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{
+			AccountBuiltin: commonpb.AccountBuiltinIndex(e.Details[0]),
+		}}
+	case readstore.BackfillKindAcctMetadata:
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
+			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:    string(e.Details),
+		}}}
+	case readstore.BackfillKindLogBuiltin:
+		if len(e.Details) < 1 {
+			return nil
+		}
+
+		return &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{
+			LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
+		}}
+	}
+
+	return nil
+}
+
 // ListLogs returns a cursor over logs for a specific ledger, ordered by
 // ledger-local log ID. The per-ledger log index is unconditionally maintained
 // by the indexbuilder, so every read uses the Compile framework — boolean
@@ -1351,15 +1853,29 @@ func (ctrl *DefaultController) GetChapterSchedule(_ context.Context) (string, er
 	return query.ReadChapterSchedule(handle)
 }
 
-func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, error) {
+func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
+		return nil, nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllSinkConfigs(ctrl.attrs.SinkConfig, handle)
+	sinks, err := query.ReadAllSinkConfigs(ctrl.attrs.SinkConfig, handle)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading sink configs: %w", err)
+	}
+
+	// Enrich with per-sink status (error status + last-emitted cursor) from the
+	// same snapshot so every transport (gRPC and HTTP) returns identical,
+	// point-in-time-consistent status data — the enrichment used to live inline
+	// in the gRPC handler, which left the HTTP endpoint exposing configs only.
+	statuses, err := query.BuildSinkStatuses(handle, sinks)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading sink statuses: %w", err)
+	}
+
+	return sinks, statuses, nil
 }
 
 // Barrier proposes a no-op through Raft consensus. When it returns, all

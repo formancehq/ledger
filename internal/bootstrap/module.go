@@ -656,9 +656,8 @@ func Module() fx.Option {
 			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *auditindexer.Indexer {
 				return auditindexer.New(
 					auditindexer.Config{
-						BatchSize:        cfg.AuditIndexConfig.BatchSize,
-						RebuildThreshold: cfg.AuditIndexConfig.RebuildThreshold,
-						Disabled:         cfg.AuditIndexConfig.Disabled,
+						BatchSize: cfg.AuditIndexConfig.BatchSize,
+						Disabled:  cfg.AuditIndexConfig.Disabled,
 					},
 					store, rs, logger, meterProvider.Meter("audit.index"),
 				)
@@ -791,16 +790,17 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				coldReader *coldstorage.ColdReader,
+				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -1283,9 +1283,7 @@ func Module() fx.Option {
 							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
-								SetCoverage: func(bits []byte) {
-									proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-								},
+								Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 							}}
 
 							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
@@ -1677,9 +1675,7 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
 	operations := []plan.WriteOperation{{
-		SetCoverage: func(bits []byte) {
-			proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {

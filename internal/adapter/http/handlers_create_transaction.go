@@ -31,7 +31,9 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Call ledger service via Apply
+	// The unitary endpoint intentionally does NOT expose skippableReasons: a
+	// single-transaction caller can catch the 4xx directly. The opt-in lives
+	// on the bulk endpoint (per-entry) and on the gRPC LedgerApplyRequest.
 	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -57,11 +59,10 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
-	ct, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
-	if !ok {
+	switch payload := ledgerLog.GetData().GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		writeCreated(w, payload.CreatedTransaction)
+	default:
 		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-
-		return
 	}
-	writeCreated(w, ct.CreatedTransaction)
 }

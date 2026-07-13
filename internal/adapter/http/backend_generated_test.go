@@ -435,12 +435,13 @@ func (c *MockBackendGetClusterStateCall) DoAndReturn(f func(context.Context) (*c
 }
 
 // GetEventsSinks mocks base method.
-func (m *MockBackend) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (m *MockBackend) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
 	ret0, _ := ret[0].([]*commonpb.SinkConfig)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]*commonpb.SinkStatus)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // GetEventsSinks indicates an expected call of GetEventsSinks.
@@ -456,19 +457,136 @@ type MockBackendGetEventsSinksCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendGetEventsSinksCall) Return(arg0 []*commonpb.SinkConfig, arg1 error) *MockBackendGetEventsSinksCall {
-	c.Call = c.Call.Return(arg0, arg1)
+func (c *MockBackendGetEventsSinksCall) Return(arg0 []*commonpb.SinkConfig, arg1 []*commonpb.SinkStatus, arg2 error) *MockBackendGetEventsSinksCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.SinkConfig, error)) *MockBackendGetEventsSinksCall {
+func (c *MockBackendGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockBackendGetEventsSinksCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, error)) *MockBackendGetEventsSinksCall {
+func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockBackendGetEventsSinksCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetIndex mocks base method.
+func (m *MockBackend) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndex", ctx, req)
+	ret0, _ := ret[0].(*commonpb.Index)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndex indicates an expected call of GetIndex.
+func (mr *MockBackendMockRecorder) GetIndex(ctx, req any) *MockBackendGetIndexCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockBackend)(nil).GetIndex), ctx, req)
+	return &MockBackendGetIndexCall{Call: call}
+}
+
+// MockBackendGetIndexCall wrap *gomock.Call
+type MockBackendGetIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetIndexCall) Return(arg0 *commonpb.Index, arg1 error) *MockBackendGetIndexCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetIndexCall) Do(f func(context.Context, *servicepb.GetIndexRequest) (*commonpb.Index, error)) *MockBackendGetIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetIndexCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexRequest) (*commonpb.Index, error)) *MockBackendGetIndexCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetIndexEntryStatus mocks base method.
+func (m *MockBackend) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexEntryStatus", ctx, req)
+	ret0, _ := ret[0].(*servicepb.IndexEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexEntryStatus indicates an expected call of GetIndexEntryStatus.
+func (mr *MockBackendMockRecorder) GetIndexEntryStatus(ctx, req any) *MockBackendGetIndexEntryStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexEntryStatus", reflect.TypeOf((*MockBackend)(nil).GetIndexEntryStatus), ctx, req)
+	return &MockBackendGetIndexEntryStatusCall{Call: call}
+}
+
+// MockBackendGetIndexEntryStatusCall wrap *gomock.Call
+type MockBackendGetIndexEntryStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetIndexEntryStatusCall) Return(arg0 *servicepb.IndexEntry, arg1 error) *MockBackendGetIndexEntryStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetIndexEntryStatusCall) Do(f func(context.Context, *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)) *MockBackendGetIndexEntryStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetIndexEntryStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)) *MockBackendGetIndexEntryStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetIndexStatus mocks base method.
+func (m *MockBackend) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexStatus", ctx, req)
+	ret0, _ := ret[0].(*servicepb.GetIndexStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexStatus indicates an expected call of GetIndexStatus.
+func (mr *MockBackendMockRecorder) GetIndexStatus(ctx, req any) *MockBackendGetIndexStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexStatus", reflect.TypeOf((*MockBackend)(nil).GetIndexStatus), ctx, req)
+	return &MockBackendGetIndexStatusCall{Call: call}
+}
+
+// MockBackendGetIndexStatusCall wrap *gomock.Call
+type MockBackendGetIndexStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetIndexStatusCall) Return(arg0 *servicepb.GetIndexStatusResponse, arg1 error) *MockBackendGetIndexStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetIndexStatusCall) Do(f func(context.Context, *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)) *MockBackendGetIndexStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetIndexStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)) *MockBackendGetIndexStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -974,6 +1092,45 @@ func (c *MockBackendListChaptersCall) Do(f func(context.Context) (cursor.Cursor[
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBackendListChaptersCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.Chapter], error)) *MockBackendListChaptersCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// ListIndexes mocks base method.
+func (m *MockBackend) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIndexes", ctx, req)
+	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Index])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIndexes indicates an expected call of ListIndexes.
+func (mr *MockBackendMockRecorder) ListIndexes(ctx, req any) *MockBackendListIndexesCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIndexes", reflect.TypeOf((*MockBackend)(nil).ListIndexes), ctx, req)
+	return &MockBackendListIndexesCall{Call: call}
+}
+
+// MockBackendListIndexesCall wrap *gomock.Call
+type MockBackendListIndexesCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendListIndexesCall) Return(arg0 cursor.Cursor[*commonpb.Index], arg1 error) *MockBackendListIndexesCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendListIndexesCall) Do(f func(context.Context, *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)) *MockBackendListIndexesCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendListIndexesCall) DoAndReturn(f func(context.Context, *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)) *MockBackendListIndexesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

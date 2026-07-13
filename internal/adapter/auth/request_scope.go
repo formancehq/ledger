@@ -15,6 +15,15 @@ func RequiredScopeForRequest(req *servicepb.Request) Scope {
 		return ScopeLedgersWrite
 	case *servicepb.Request_PromoteLedger:
 		return ScopeLedgersWrite
+	case *servicepb.Request_CreateIndex:
+		// Index management is a per-ledger write; the HTTP routes
+		// (POST/DELETE /v3/{ledgerName}/indexes[/{canonicalId}]) sit under
+		// the ledger:LedgerWrite group, so gRPC must agree — otherwise the
+		// same operation demands ledger:OpsWrite over gRPC (default fallthrough)
+		// and ledger:LedgerWrite over HTTP.
+		return ScopeLedgersWrite
+	case *servicepb.Request_DropIndex:
+		return ScopeLedgersWrite
 	case *servicepb.Request_RegisterSigningKey:
 		return ScopeOpsWrite
 	case *servicepb.Request_RevokeSigningKey:

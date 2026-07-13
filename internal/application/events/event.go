@@ -49,6 +49,8 @@ func LogToEvent(log *commonpb.Log) *eventspb.Event {
 			// Schema operations — no dedicated event type, use unspecified
 		case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 			// Schema operations — no dedicated event type, use unspecified
+		case *commonpb.LedgerLogPayload_OrderSkipped:
+			event.Type = commonpb.EventType_SKIPPED_ORDER
 		}
 	}
 

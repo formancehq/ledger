@@ -525,8 +525,8 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	// (machine.Preload installs them unconditionally), so any order carries it
 	// and the FSM's per-proposal dedup check finds it. Empty key = no idempotency.
 	if batch.key != "" && len(orders) > 0 {
-		needs.IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
-		perOrder[0].IdempotencyKeys[domain.IdempotencyKey{Key: batch.key}] = struct{}{}
+		needs.AddIdempotencyKey(batch.key)
+		perOrder[0].AddIdempotencyKey(batch.key)
 	}
 
 	// Orders-preparation phase ends here on the success path; record now so the
@@ -562,21 +562,24 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		))
 
 	// Build the per-order WriteOperation slice. Each operation carries
-	// its Coverage (for preload aggregation) and a SetCoverage closure
-	// that the runner invokes at marshal time to write the computed
-	// bitset onto Order.CoverageBits.
+	// its Coverage (for preload aggregation) and a Target pointer that
+	// the runner writes the computed bitset into at marshal time —
+	// pointer over closure avoids one heap alloc per order (the
+	// captured index).
 	operations := make([]plan.WriteOperation, len(orders))
+	cmdOrders := cmd.GetOrders()
 	for i := range orders {
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			SetCoverage: func(bits []byte) {
-				cmd.GetOrders()[i].CoverageBits = bits
-			},
+			Target:   &cmdOrders[i].CoverageBits,
 		}
 	}
 
 	preloadStart := time.Now()
-	build, err := a.builder.Build(operations)
+	// extractPreloadNeeds already built the aggregate while iterating
+	// orders; hand it to Build directly instead of paying a second
+	// Merge pass over per-order Coverages.
+	build, err := a.builder.Build(needs, operations)
 	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
 	if err != nil {
 		preloadSpan.End()
@@ -1640,10 +1643,21 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			},
 		})
 	case *servicepb.Request_Apply:
+		// Validate and extract the per-order skippable_reasons opt-in
+		// from the public payload BEFORE constructing the raft Order, so
+		// a bad whitelist gets a clear admission rejection instead of a
+		// silent FSM-side defense.
+		skippable, err := extractSkippableReasonsFromApply(reqType.Apply)
+		if err != nil {
+			return nil, err
+		}
+
 		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply)
 		if err != nil {
 			return nil, err
 		}
+
+		applyOrder.SkippableReasons = skippable
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),

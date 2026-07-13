@@ -29,6 +29,32 @@ func TestRequiredScopeForRequest_PromoteLedger(t *testing.T) {
 	assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(req))
 }
 
+// TestRequiredScopeForRequest_IndexManagement pins index create/drop to
+// ledger:LedgerWrite. This is the cross-transport parity guard: the HTTP routes
+// POST/DELETE /v3/{ledgerName}/indexes[/{canonicalId}] are mounted under the
+// ledger:LedgerWrite group (see internal/adapter/http/handler.go), so the gRPC
+// Apply path must resolve to the same scope. Without the explicit cases these
+// requests fell through to the ledger:OpsWrite default, letting an OpsWrite-only
+// token manage indexes over gRPC while HTTP required LedgerWrite.
+func TestRequiredScopeForRequest_IndexManagement(t *testing.T) {
+	t.Parallel()
+
+	indexRequests := []struct {
+		name string
+		req  *servicepb.Request
+	}{
+		{"CreateIndex", &servicepb.Request{Type: &servicepb.Request_CreateIndex{}}},
+		{"DropIndex", &servicepb.Request{Type: &servicepb.Request_DropIndex{}}},
+	}
+
+	for _, tc := range indexRequests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, ScopeLedgersWrite, RequiredScopeForRequest(tc.req))
+		})
+	}
+}
+
 func TestRequiredScopeForRequest_OpsWrite(t *testing.T) {
 	t.Parallel()
 

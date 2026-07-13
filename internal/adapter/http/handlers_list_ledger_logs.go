@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -50,27 +49,21 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	hasDateFilter := false
 
 	if sd := r.URL.Query().Get("startDate"); sd != "" {
-		t, err := time.Parse(time.RFC3339, sd)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid startDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "startDate", sd)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Min = &v
 		hasDateFilter = true
 	}
 
 	if ed := r.URL.Query().Get("endDate"); ed != "" {
-		t, err := time.Parse(time.RFC3339, ed)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid endDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "endDate", ed)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Max = &v
 		dateCond.MaxExclusive = true
 		hasDateFilter = true
@@ -87,16 +80,17 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	var filter *commonpb.QueryFilter
-	if len(filters) == 1 {
-		filter = filters[0]
-	} else if len(filters) > 1 {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: filters},
-			},
-		}
+	// The generic `filter` query parameter accepts either the textual filterexpr
+	// grammar or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
+	// after/startDate/endDate convenience params above.
+	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	if !ok {
+		return
 	}
+
+	filters = append(filters, generic)
+
+	filter := combineFilters(filters...)
 
 	cursor, err := s.backend.ListLogs(r.Context(), ledgerName, 0, pageSize, filter)
 	if err != nil {

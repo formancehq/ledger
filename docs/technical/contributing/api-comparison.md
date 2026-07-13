@@ -39,15 +39,15 @@ This document compares the POC's API with the original Formance ledger API and d
 | Bulk atomic | ✅ | ✅ | System-level atomicity (cross-ledger) |
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
-| Create ledger | ✅ | ✅ | |
+| Create ledger | ✅ | ✅ | HTTP + gRPC accept the full model: `initialSchema`, `accountTypes` (name/pattern/persistence/segmentTypes), `defaultEnforcementMode` |
 | Create mirror ledger | ✅ | ❌ | HTTP or PostgreSQL source |
 | Promote mirror ledger | ✅ | ❌ | Mirror → Normal mode |
 | Delete ledger | ✅ | ✅ | |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Account Types** |
-| Add account type | ✅ | ❌ | Pattern-based account validation |
-| List account types | ✅ | ❌ | List all types for a ledger |
+| Add account type | ✅ | ❌ | Full model over HTTP + gRPC: name, pattern, `persistence`, `segmentTypes` |
+| List account types | ✅ | ❌ | List all types for a ledger (HTTP + gRPC; includes persistence + segmentTypes) |
 | Get account type | ✅ | ❌ | Get details of a specific type |
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
@@ -66,6 +66,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Idempotency key | ✅ | ✅ | |
 | **Reference Uniqueness** |
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
+| Skip-on-conflict opt-in | ✅ | ❌ | Per-entry `skippableReasons: ["TRANSACTION_REFERENCE_CONFLICT"]` on the bulk endpoint → the entry's `BulkResult.data` carries an `OrderSkippedResponse` shape instead of the normal Transaction. The unitary POST endpoint intentionally does NOT expose the opt-in (a single-tx caller can catch the 4xx directly); gRPC clients can set `LedgerApplyRequest.skippable_reasons` on any Apply. |
 | **Numscript Library** |
 | Save numscript (versioned) | ✅ | ❌ | Per-ledger, semver versioning (e.g. "1.0.0") |
 | Get numscript (by version) | ✅ | ❌ | Per-ledger, query param `?version=1.0.0`, empty = latest |
@@ -73,6 +74,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression (textual form; audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
+| Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
@@ -91,7 +94,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Close chapter | ✅ | ❌ | Two-step close: CloseChapter → SealChapter |
 | Seal chapter (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
 | List chapters | ✅ | ❌ | gRPC streaming |
-| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with chapter ID; available on GetTransaction |
+| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts with chapter ID; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Chapter crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive chapter | ✅ | ❌ | Two-step archive: ArchiveChapter → ConfirmArchiveChapter with cold storage export |
@@ -104,9 +107,13 @@ This document compares the POC's API with the original Formance ledger API and d
 | Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
-| Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger |
-| Drop index | ✅ | ❌ | Remove an index from a ledger |
-| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER`) |
+| Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger. HTTP: `POST /v3/{ledger}/indexes`; gRPC: `Apply(CreateIndex)` |
+| Drop index | ✅ | ❌ | Remove an index from a ledger. HTTP: `DELETE /v3/{ledger}/indexes/{canonicalId}`; gRPC: `Apply(DropIndex)` |
+| Get index | ✅ | ❌ | Fetch a single registry entry. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}`; gRPC: `GetIndex` |
+| Get index status | ✅ | ❌ | Per-index backfill cursor + per-replica IndexVersionState. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/status`; gRPC: `GetIndexEntryStatus` |
+| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex` |
+| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress. HTTP: `GET /v3/{ledger}/indexes` (per-ledger), `GET /v3/_/indexes?scope=all\|bucket` (bucket-wide); gRPC: `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER` |
+| Aggregated index status | ✅ | ❌ | Cluster-wide progress (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) + IndexEntry list. HTTP: `GET /v3/_/indexes/status?ledger=`; gRPC: `GetIndexStatus` |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -153,7 +160,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Standard revert
 - ✅ `force` option (ignore insufficient balances)
 - ✅ `atEffectiveDate` option (use original transaction timestamp)
-- ✅ Revert metadata
+- ✅ Revert metadata (typed values — string, integer, boolean — preserved losslessly; unsupported values rejected with `400 INVALID_REQUEST`)
 - ✅ Verification that transaction is not already reverted
 
 **Navigable revert relationship.** The revert link is a first-class part of the
@@ -207,7 +214,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger (supports optional `chartOfAccounts` and `enforcementMode` in body)
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`.
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
@@ -217,7 +224,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 **Endpoints:**
 - `GET /v3/{ledgerName}/account-types` - List all account types for a ledger
 - `GET /v3/{ledgerName}/account-types/{typeName}` - Get details of a specific account type
-- `POST /v3/{ledgerName}/account-types` - Add a new account type
+- `POST /v3/{ledgerName}/account-types` - Add a new account type (body: name, pattern, optional `persistence` and `segmentTypes`)
 - `DELETE /v3/{ledgerName}/account-types/{typeName}` - Remove an account type
 
 **Features:**
@@ -363,6 +370,55 @@ When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `v
 - `content` (string): Numscript source code
 - `version` (string): Semver version (e.g. `"1.0.0"`)
 - `createdAt` (string, date-time): Timestamp
+
+### Filter input formats (dual-format contract, EN-1511)
+
+Every filtered surface — the list endpoints (`GET .../transactions`,
+`.../accounts`, `.../logs`, `GET /v3/_/audit-entries`), prepared-query
+create/update, and `ledgerctl --filter` — accepts a filter in **either** of two
+interchangeable representations. Both parse into the same `*commonpb.QueryFilter`
+and flow through the same compile/validate path (the per-target validity gate,
+`domain.ValidateFilterForTarget`), so a caller never needs to know which syntax a
+given endpoint "wants":
+
+| Representation | Looks like | Parsed by |
+|----------------|-----------|-----------|
+| **Textual** (`filterexpr` grammar) | `metadata[status] == "active"`, `address ^= "users:"`, `ledger == "main"` | `filterexpr.Parse` |
+| **Structured** (v2 JSON `QueryFilter` DSL) | `{"$match":{"metadata[status]":"active"}}` | `commonpb.QueryFilter.UnmarshalJSON` |
+
+Both go through one shared decoder, `filterexpr.DecodeDualFormat` (in
+`internal/pkg/filterexpr/decode.go`), which detects the form from the first
+non-whitespace byte:
+
+- `{` → structured JSON `QueryFilter` DSL;
+- `"` → a JSON-quoted string carrying textual `filterexpr` (body-field form);
+- anything else → raw textual `filterexpr` (query-string form).
+
+**How each form is passed over HTTP:**
+
+- **Query-string endpoints** (`?filter=`): the value is textual `filterexpr`
+  passed verbatim (URL-encoded). To pass the structured form, URL-encode the JSON
+  object as the value (`?filter=%7B%22%24match%22%3A…%7D`). The generic `filter`
+  parameter is AND-combined with the endpoint's remaining convenience params (the
+  transactions `startDate`/`endDate` timestamp range). It has no dedicated
+  address-prefix or reference aliases: an account address prefix is the textual
+  `filter=address ^= "users:"` (or structured
+  `?filter=%7B%22%24match%22%3A%7B%22address%22%3A%22users%3A%22%7D%7D`, i.e.
+  `{"$match":{"address":"users:"}}` with the trailing `:` marking a prefix
+  match), and a transaction reference is the structured
+  `?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D`
+  (`{"$match":{"reference":"ref-1"}}`) or the textual `filter=reference == "ref-1"`.
+- **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
+  object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
+  is the textual form.
+
+**Audit is text-only.** Audit conditions (`audit[...]`) have no structured JSON
+representation — their field names (`ledger`, `timestamp`, …) collide with the
+transaction/log conditions the JSON DSL already claims (EN-1241) — so the JSON
+codec rejects them. The dual-format decoder still accepts both forms as input on
+the audit endpoint; the textual form is simply the only one that can carry an
+audit condition, so it is the canonical representation for
+`GET /v3/_/audit-entries`.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
@@ -670,7 +726,22 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
-| `GET /v3/{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
+| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
+| `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
+| `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
+| `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
+| `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}/status` | ✅ | ❌ | IndexEntry (backfill cursor + per-replica IndexVersionState) |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}/inspect` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) — path unified with the DELETE/create routes |
+| `POST /v3/{ledgerName}/indexes` | ✅ | ❌ | Create an index (body: `{"id": "<canonical>"}`) |
+| `DELETE /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Drop an index |
+| `GET /v3/_/indexes?scope=all\|bucket` | ✅ | ❌ | List bucket-wide indexes (cluster-wide) |
+| `GET /v3/_/indexes/status?ledger=` | ✅ | ❌ | Aggregate indexer progress + IndexEntry list |
+| `GET /v3/_/indexes/{canonicalId}` | ✅ | ❌ | Get a single bucket-scoped Index entry |
+| `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 

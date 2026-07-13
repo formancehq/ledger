@@ -141,12 +141,18 @@ arm cannot silently drop a filter. The full DSL is documented under `QueryFilter
 This shape is shared by every filtered endpoint (and by the audit conditions in
 EN-1548): new conditions extend it as new `$match`/`$gt`/… over new field names.
 
-**REST prepared-query targets are `ACCOUNTS` / `TRANSACTIONS` only.** `LOGS` is a
-valid direct `ListLogs` target but not (yet) a usable *prepared-query* target:
-`query.Execute` hydrates only account/transaction data (`PreparedQueryCursor` has no
-log result field), so a LOGS prepared query would execute to an empty cursor. The
-REST create handler rejects it; if a LOGS query is created via gRPC/CLI, the REST
-list/get path still echoes its true target faithfully.
+**REST prepared-query targets are `ACCOUNTS`, `TRANSACTIONS` and `LOGS`** (EN-1503).
+For each target `query.Execute` hydrates exactly one `PreparedQueryCursor` result
+field: `account_data`, `transaction_data` or `log_data`. The LOGS path reuses the
+direct `ListLogs` machinery — the compiled LOGS iterator yields per-ledger logIDs,
+`ReadLedgerLogsCompiled` resolves them to global sequences through the log read-index
+and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
+log-only filter fields (`logId`, `date`, `ledger`) are valid only when the target is
+`LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
+compile layer is the backstop (it rejects those conditions on non-LOGS targets at
+execute time). The update path carries only the new filter (the target is immutable
+and not read by the handler), so it defers the log-only check to the compile
+backstop.
 
 ## Recent changes
 
@@ -156,6 +162,7 @@ list/get path still echoes its true target faithfully.
 | `7662d2bae` | Monotonic-skip and probe-based `AndIterator` optimisations for filter execution. |
 | `dedb005bc` (fix/376) | Fix protojson oneOf/enum encoding for prepared-query payloads. |
 | EN-1465 | v2-aligned `QueryFilter` JSON codec (`$and`/`$match`/…), replacing the protojson leak; string target enum on `PreparedQuery`. |
+| EN-1503 | `LOGS` becomes a usable prepared-query target over REST: `PreparedQueryCursor.log_data` field + LOGS enrichment in `query.Execute` (`EnrichLogs`), `LOGS` accepted by `parsePreparedQueryTarget`, target-aware `rejectLogOnlyConditions`. |
 
 ## What's not (yet) here
 

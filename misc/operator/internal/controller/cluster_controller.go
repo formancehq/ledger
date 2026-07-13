@@ -223,41 +223,74 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Reconcile auth keys from Credentials (before StatefulSet).
-	credentials, err := r.reconcileAuthKeys(ctx, ledger)
+	credentials, pendingReason, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
-	// Reconcile cluster secret only when TLS will be at least partially
-	// active during this pass. The secret is a static bearer token; it must
-	// never travel in plaintext. The state machine ensures the secret
-	// appears at the same time the StatefulSet moves to optional during a
-	// TLS toggle, and disappears symmetrically when TLS is turned off.
-	existingSTSForTLS, err := r.fetchExistingStatefulSet(ctx, ledger)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("fetching StatefulSet for TLS state: %w", err)
+	// Reconcile the cluster-secret (TLS static bearer token) BEFORE the
+	// AuthKeysPending gate, but only its SAFE (create/update) side: mayDelete=false.
+	// Creating/keeping the Secret while any StatefulSet references it never mutates
+	// the pod template or triggers a rollout, so it is safe (and necessary) even
+	// while the auth-keys fail-safe holds the StatefulSet pass — otherwise a Secret
+	// that went missing during a long Credentials-non-distribution window would
+	// crash restarted pods referencing CLUSTER_SECRET via SecretKeyRef. Deletion
+	// (TLS-off) is deferred to AFTER reconcileStatefulSet on the non-pending path,
+	// so we never delete a Secret still referenced by a StatefulSet we cannot update
+	// (EN-1487; only the pod-template mutation may be frozen, not this).
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, false); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
 	}
-	targetTLSForSecret := computeTargetTLSMode(
-		desiredTLSMode(ledger),
-		currentTLSModeFromStatefulSet(existingSTSForTLS),
-		rolloutConverged(existingSTSForTLS),
-	)
 
-	if shouldInjectClusterSecret(targetTLSForSecret) {
-		if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
-			logger.Error(err, "failed to reconcile cluster secret")
-
-			return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	// Fail-safe (EN-1487): the auth-key set cannot be safely reconciled yet.
+	// reconcileAuthKeys may have refreshed the ConfigMap's authorization metadata
+	// (carrying last-known key material forward), but we must NOT reconcile the
+	// StatefulSet now: rolling it while the key set is empty or would drop a
+	// still-authorized key risks emitting AUTH_ENABLED=true without a complete
+	// Ed25519 key set and crash-looping a healthy cluster. Defer ONLY the
+	// StatefulSet pod-template pass, keep the current template, surface
+	// AuthKeysPending, and requeue; the Credentials watch also reconverges the
+	// moment distribution completes. The structured reason distinguishes the empty
+	// (none distributed) path from the incomplete-carried-set path so the
+	// condition/event is accurate for both. Side-effects that do NOT roll the pod
+	// template on absent keys (the cluster-secret above, volume protection below)
+	// keep running so a prolonged freeze never strands them.
+	if pendingReason.pending() {
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "AuthKeysPending",
+			Status:             metav1.ConditionTrue,
+			Reason:             string(pendingReason),
+			Message:            pendingReason.conditionMessage(),
+			ObservedGeneration: ledger.Generation,
+		})
+		if r.Recorder != nil {
+			r.Recorder.Event(ledger, corev1.EventTypeWarning, "AuthKeysPending",
+				pendingReason.conditionMessage())
 		}
-	} else {
-		if err := r.deleteClusterSecret(ctx, ledger); err != nil {
-			logger.Error(err, "failed to delete cluster secret")
 
-			return ctrl.Result{}, fmt.Errorf("deleting ClusterSecret: %w", err)
+		// Option A (EN-1487): the StatefulSet template/rollout pass stays deferred
+		// while pending, but volume deletion-protection must NOT be gated behind
+		// that early return — it is independent of the auth-keys wiring and must
+		// keep tracking spec.persistence.deletionProtection (e.g. a scaled-out
+		// PVC/PV must still be stamped, or an opt-out unstamped) even during a
+		// prolonged Credentials-churn window. Run it here; its requeue folds into
+		// the pending requeue below (same short interval), so a volume still
+		// converging does not lose the AuthKeysPending re-check.
+		if _, err := r.reconcileVolumeProtectionPass(ctx, ledger); err != nil {
+			logger.Error(err, "failed to reconcile volume protection while auth keys pending")
+
+			return ctrl.Result{}, fmt.Errorf("reconciling volume protection while auth keys pending: %w", err)
 		}
+
+		return ctrl.Result{RequeueAfter: authKeysPendingRequeueInterval}, nil
 	}
+
+	// Auth keys resolved (or none match at all): clear any pending condition.
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, "AuthKeysPending")
 
 	// StatefulSet needs the specHash and credentials info
 	result, err := r.reconcileStatefulSet(ctx, ledger, specHash, credentials)
@@ -265,6 +298,16 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Error(err, "failed to reconcile StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
+	}
+
+	// Now that reconcileStatefulSet has run (not pending), the pod template has
+	// dropped the CLUSTER_SECRET SecretKeyRef if TLS is disabled — so it is finally
+	// safe to delete a now-unreferenced cluster-secret. mayDelete=true performs the
+	// deferred TLS-off cleanup the pre-gate pass intentionally skipped.
+	if err := r.reconcileClusterSecretForTLSState(ctx, ledger, true); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret after StatefulSet")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
 
 	return result, nil

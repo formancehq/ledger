@@ -5477,6 +5477,102 @@ func NewLedgerLogPayloadListReader(s []*LedgerLogPayload) LedgerLogPayloadListRe
 	return ledgerLogPayloadListReadonly(s)
 }
 
+// OrderSkippedLogReader provides read-only access to OrderSkippedLog.
+// Call Mutate() to obtain a mutable clone.
+type OrderSkippedLogReader interface {
+	GetReason() ErrorReason
+	GetContext() OrderSkippedLog_ContextMapReader
+	Mutate() *OrderSkippedLog
+}
+
+type orderSkippedLogReadonly OrderSkippedLog
+
+func (r *orderSkippedLogReadonly) GetReason() ErrorReason {
+	return (*OrderSkippedLog)(r).GetReason()
+}
+
+func (r *orderSkippedLogReadonly) GetContext() OrderSkippedLog_ContextMapReader {
+	return orderSkippedLog_contextMapReadonly((*OrderSkippedLog)(r).GetContext())
+}
+
+func (r *orderSkippedLogReadonly) Mutate() *OrderSkippedLog {
+	return (*OrderSkippedLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this OrderSkippedLog.
+func (m *OrderSkippedLog) AsReader() OrderSkippedLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*orderSkippedLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this OrderSkippedLog.
+func (m *OrderSkippedLog) Mutate() *OrderSkippedLog {
+	return m.CloneVT()
+}
+
+// OrderSkippedLogListReader provides read-only iteration over []*OrderSkippedLog.
+type OrderSkippedLogListReader interface {
+	Len() int
+	Get(i int) OrderSkippedLogReader
+	Range(yield func(int, OrderSkippedLogReader) bool)
+}
+
+type orderSkippedLogListReadonly []*OrderSkippedLog
+
+func (l orderSkippedLogListReadonly) Len() int { return len(l) }
+
+func (l orderSkippedLogListReadonly) Get(i int) OrderSkippedLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l orderSkippedLogListReadonly) Range(yield func(int, OrderSkippedLogReader) bool) {
+	for i, v := range l {
+		var r OrderSkippedLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewOrderSkippedLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewOrderSkippedLogListReader(s []*OrderSkippedLog) OrderSkippedLogListReader {
+	return orderSkippedLogListReadonly(s)
+}
+
+// OrderSkippedLog_ContextMapReader provides read-only access to OrderSkippedLog.Context.
+type OrderSkippedLog_ContextMapReader interface {
+	Len() int
+	Get(k string) (string, bool)
+	Range(yield func(string, string) bool)
+}
+
+type orderSkippedLog_contextMapReadonly map[string]string
+
+func (m orderSkippedLog_contextMapReadonly) Len() int { return len(m) }
+
+func (m orderSkippedLog_contextMapReadonly) Get(k string) (string, bool) {
+	v, ok := m[k]
+	return v, ok
+}
+
+func (m orderSkippedLog_contextMapReadonly) Range(yield func(string, string) bool) {
+	for k, v := range m {
+		if !yield(k, v) {
+			return
+		}
+	}
+}
+
 // CreatedIndexLogReader provides read-only access to CreatedIndexLog.
 // Call Mutate() to obtain a mutable clone.
 type CreatedIndexLogReader interface {
@@ -11727,6 +11823,7 @@ type PreparedQueryCursorReader interface {
 	GetNext() string
 	GetAccountData() AccountListReader
 	GetTransactionData() TransactionListReader
+	GetLogData() LogListReader
 	Mutate() *PreparedQueryCursor
 }
 
@@ -11754,6 +11851,10 @@ func (r *preparedQueryCursorReadonly) GetAccountData() AccountListReader {
 
 func (r *preparedQueryCursorReadonly) GetTransactionData() TransactionListReader {
 	return NewTransactionListReader((*PreparedQueryCursor)(r).GetTransactionData())
+}
+
+func (r *preparedQueryCursorReadonly) GetLogData() LogListReader {
+	return NewLogListReader((*PreparedQueryCursor)(r).GetLogData())
 }
 
 func (r *preparedQueryCursorReadonly) Mutate() *PreparedQueryCursor {

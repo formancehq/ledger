@@ -1389,9 +1389,14 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	return cfg
 }
 
-// isDataLog returns true if the log entry contains indexable data
-// (transactions, metadata). Returns false for config-mutation logs
-// (CreateIndex, DropIndex, IndexReady, etc.) which must be skipped during backfill.
+// isDataLog returns true if the log entry is a real ledger log the
+// backfill path must process: transactions, metadata, and OrderSkipped.
+// OrderSkipped carries its own log id and date (assigned by
+// assignSkipLogIDAndDate in the FSM apply path), so it participates in
+// the per-ledger LedgerLogIndex and the log-date builtin index just
+// like any other ledger log. Returns false for config-mutation logs
+// (CreateIndex, DropIndex, IndexReady, etc.) which the live path
+// already applied in-memory and never need re-indexing on backfill.
 func isDataLog(log *commonpb.Log) bool {
 	if log.GetPayload() == nil {
 		return false
@@ -1410,7 +1415,8 @@ func isDataLog(log *commonpb.Log) bool {
 	case *commonpb.LedgerLogPayload_CreatedTransaction,
 		*commonpb.LedgerLogPayload_RevertedTransaction,
 		*commonpb.LedgerLogPayload_SavedMetadata,
-		*commonpb.LedgerLogPayload_DeletedMetadata:
+		*commonpb.LedgerLogPayload_DeletedMetadata,
+		*commonpb.LedgerLogPayload_OrderSkipped:
 		return true
 	default:
 		return false

@@ -164,6 +164,33 @@ func TestLogToEvent(t *testing.T) {
 			expectedType: commonpb.EventType_DELETED_METADATA,
 			expectedName: "orders",
 		},
+		{
+			name: "SKIPPED_ORDER",
+			log: &commonpb.Log{
+				Sequence: 7,
+				Payload: &commonpb.LogPayload{
+					Type: &commonpb.LogPayload_Apply{
+						Apply: &commonpb.ApplyLedgerLog{
+							LedgerName: "orders",
+							Log: &commonpb.LedgerLog{
+								Date: &commonpb.Timestamp{Data: 7000},
+								Id:   5,
+								Data: &commonpb.LedgerLogPayload{
+									Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+										OrderSkipped: &commonpb.OrderSkippedLog{
+											Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+											Context: map[string]string{"reference": "ref-1"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedType: commonpb.EventType_SKIPPED_ORDER,
+			expectedName: "orders",
+		},
 	}
 
 	for _, tc := range tests {

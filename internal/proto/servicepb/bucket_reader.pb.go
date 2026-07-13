@@ -4064,6 +4064,7 @@ func NewLedgerActionListReader(s []*LedgerAction) LedgerActionListReader {
 type LedgerApplyRequestReader interface {
 	GetLedger() string
 	GetAction() LedgerActionReader
+	GetSkippableReasons() []commonpb.ErrorReason
 	Mutate() *LedgerApplyRequest
 }
 
@@ -4079,6 +4080,10 @@ func (r *ledgerApplyRequestReadonly) GetAction() LedgerActionReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *ledgerApplyRequestReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone((*LedgerApplyRequest)(r).GetSkippableReasons())
 }
 
 func (r *ledgerApplyRequestReadonly) Mutate() *LedgerApplyRequest {
@@ -8943,6 +8948,158 @@ func (l getIndexStatusResponseListReadonly) Range(yield func(int, GetIndexStatus
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewGetIndexStatusResponseListReader(s []*GetIndexStatusResponse) GetIndexStatusResponseListReader {
 	return getIndexStatusResponseListReadonly(s)
+}
+
+// GetIndexRequestReader provides read-only access to GetIndexRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetIndexRequestReader interface {
+	GetLedger() string
+	GetId() commonpb.IndexIDReader
+	Mutate() *GetIndexRequest
+}
+
+type getIndexRequestReadonly GetIndexRequest
+
+func (r *getIndexRequestReadonly) GetLedger() string {
+	return (*GetIndexRequest)(r).GetLedger()
+}
+
+func (r *getIndexRequestReadonly) GetId() commonpb.IndexIDReader {
+	v := (*GetIndexRequest)(r).GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *getIndexRequestReadonly) Mutate() *GetIndexRequest {
+	return (*GetIndexRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetIndexRequest.
+func (m *GetIndexRequest) AsReader() GetIndexRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getIndexRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetIndexRequest.
+func (m *GetIndexRequest) Mutate() *GetIndexRequest {
+	return m.CloneVT()
+}
+
+// GetIndexRequestListReader provides read-only iteration over []*GetIndexRequest.
+type GetIndexRequestListReader interface {
+	Len() int
+	Get(i int) GetIndexRequestReader
+	Range(yield func(int, GetIndexRequestReader) bool)
+}
+
+type getIndexRequestListReadonly []*GetIndexRequest
+
+func (l getIndexRequestListReadonly) Len() int { return len(l) }
+
+func (l getIndexRequestListReadonly) Get(i int) GetIndexRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getIndexRequestListReadonly) Range(yield func(int, GetIndexRequestReader) bool) {
+	for i, v := range l {
+		var r GetIndexRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetIndexRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetIndexRequestListReader(s []*GetIndexRequest) GetIndexRequestListReader {
+	return getIndexRequestListReadonly(s)
+}
+
+// GetIndexEntryStatusRequestReader provides read-only access to GetIndexEntryStatusRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetIndexEntryStatusRequestReader interface {
+	GetLedger() string
+	GetId() commonpb.IndexIDReader
+	Mutate() *GetIndexEntryStatusRequest
+}
+
+type getIndexEntryStatusRequestReadonly GetIndexEntryStatusRequest
+
+func (r *getIndexEntryStatusRequestReadonly) GetLedger() string {
+	return (*GetIndexEntryStatusRequest)(r).GetLedger()
+}
+
+func (r *getIndexEntryStatusRequestReadonly) GetId() commonpb.IndexIDReader {
+	v := (*GetIndexEntryStatusRequest)(r).GetId()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *getIndexEntryStatusRequestReadonly) Mutate() *GetIndexEntryStatusRequest {
+	return (*GetIndexEntryStatusRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetIndexEntryStatusRequest.
+func (m *GetIndexEntryStatusRequest) AsReader() GetIndexEntryStatusRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getIndexEntryStatusRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetIndexEntryStatusRequest.
+func (m *GetIndexEntryStatusRequest) Mutate() *GetIndexEntryStatusRequest {
+	return m.CloneVT()
+}
+
+// GetIndexEntryStatusRequestListReader provides read-only iteration over []*GetIndexEntryStatusRequest.
+type GetIndexEntryStatusRequestListReader interface {
+	Len() int
+	Get(i int) GetIndexEntryStatusRequestReader
+	Range(yield func(int, GetIndexEntryStatusRequestReader) bool)
+}
+
+type getIndexEntryStatusRequestListReadonly []*GetIndexEntryStatusRequest
+
+func (l getIndexEntryStatusRequestListReadonly) Len() int { return len(l) }
+
+func (l getIndexEntryStatusRequestListReadonly) Get(i int) GetIndexEntryStatusRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getIndexEntryStatusRequestListReadonly) Range(yield func(int, GetIndexEntryStatusRequestReader) bool) {
+	for i, v := range l {
+		var r GetIndexEntryStatusRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetIndexEntryStatusRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetIndexEntryStatusRequestListReader(s []*GetIndexEntryStatusRequest) GetIndexEntryStatusRequestListReader {
+	return getIndexEntryStatusRequestListReadonly(s)
 }
 
 // IndexEntryReader provides read-only access to IndexEntry.

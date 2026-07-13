@@ -75,6 +75,95 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
 }
 
+// TestHandleBulk_OrderSkippedSurfacesInResponse pins BOTH ends of the
+// per-entry skip wiring for the bulk endpoint:
+//
+//   - JSON decode side: a top-level `skippableReasons` on the entry (NOT
+//     nested inside data) is decoded onto BulkElement.SkippableReasons and
+//     hoisted onto the LedgerApplyRequest the backend receives. The test
+//     captures the request and asserts the list arrives untruncated.
+//   - Response side: when the FSM matched a whitelisted business failure
+//     and returned an OrderSkipped log, the bulk result's `data` carries
+//     a structured OrderSkippedResponse (skipped/reason/context) — not
+//     the legacy null that dropped the correlator.
+func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
+	t.Parallel()
+
+	var received *servicepb.ApplyRequest
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			received = req
+
+			return []*commonpb.Log{
+				{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_Apply{
+							Apply: &commonpb.ApplyLedgerLog{
+								Log: &commonpb.LedgerLog{
+									Id: 17,
+									Data: &commonpb.LedgerLogPayload{
+										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+											OrderSkipped: &commonpb.OrderSkippedLog{
+												Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+												Context: map[string]string{
+													"reference":             "dup",
+													"existingTransactionId": "42",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	body := strings.NewReader(`[
+		{"action":"CREATE_TRANSACTION","data":{"reference":"dup"},"skippableReasons":["TRANSACTION_REFERENCE_CONFLICT"]}
+	]`)
+	r := newRequest(t, http.MethodPost, "/ledger1/bulk", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+	w := httptest.NewRecorder()
+
+	srv.handleBulk(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Request-side assertion: the per-entry opt-in must reach the backend
+	// on the LedgerApplyRequest envelope (NOT on CreateTransactionPayload).
+	require.NotNil(t, received, "backend must have been called")
+	require.Len(t, received.GetUnsigned().GetRequests(), 1)
+	require.Equal(t,
+		[]commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+		received.GetUnsigned().GetRequests()[0].GetApply().GetSkippableReasons(),
+	)
+
+	resp := decodeResponse[bulkResponse](t, w)
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "CREATE_TRANSACTION", resp.Data[0].ResponseType)
+	require.Equal(t, uint64(17), resp.Data[0].LogID)
+	require.NotNil(t, resp.Data[0].Data)
+
+	// Data is unmarshalled as a map[string]any (interface{} round-trip).
+	skip, ok := resp.Data[0].Data.(map[string]any)
+	require.True(t, ok, "Data must be the structured OrderSkippedResponse shape (got %T)", resp.Data[0].Data)
+	require.Equal(t, true, skip["skipped"])
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", skip["reason"])
+
+	// Reason-specific correlator must round-trip through the bulk writer
+	// so clients can act on the existing tx id without a follow-up GET.
+	ctx, ok := skip["context"].(map[string]any)
+	require.True(t, ok, "context must round-trip as a nested object (got %T)", skip["context"])
+	require.Equal(t, "dup", ctx["reference"])
+	require.Equal(t, "42", ctx["existingTransactionId"])
+}
+
 func TestHandleBulk_EmptyArray(t *testing.T) {
 	t.Parallel()
 
