@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/google/uuid"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
@@ -443,7 +444,13 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			requests[i] = newRequest()
 		}
 
-		applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+		// A fresh idempotency key per batch, generated before the (possibly
+		// retried) Apply call: ledgerctl retries UNAVAILABLE up to 50 times, and
+		// gRPC replays the same request bytes on each attempt. The key makes the
+		// server replay an already-committed batch's outcome instead of applying
+		// it a second time — while distinct batches keep distinct keys and each
+		// apply exactly once.
+		applyReq, err := cmdutil.BuildIdempotentApplyRequest(cmd, uuid.NewString(), requests...)
 		if err != nil {
 			spinner.Fail("Failed to sign request")
 
