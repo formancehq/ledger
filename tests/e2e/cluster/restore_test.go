@@ -84,8 +84,9 @@ var _ = Describe("Restore", Ordered, func() {
 		httpPort   = testutil.TestSingleHTTPPort
 		grpcPort   = testutil.TestSingleGRPCPort
 		raftPort   = grpcPort - 1000
-		ledgerName = "restore-ledger"
-		ledger2    = "restore-ledger-2"
+		ledgerName  = "restore-ledger"
+		ledger2     = "restore-ledger-2"
+		chartLedger = "restore-chart-ledger"
 	)
 
 	var (
@@ -216,11 +217,33 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
+			// eve is funded BEFORE the checkpoint (input=1000, output=0). Its 0xFF
+			// cache entry is captured in the checkpoint; the drain below (post
+			// checkpoint) makes that cache entry stale. Phase 3 exercises it via apply.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "eve", big.NewInt(1000), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger2, nil)))
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
 				actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			// chart-ledger has a restrictive account-type chart declared BEFORE the
+			// checkpoint (type "main"), so strict enforcement is active. "wallet" is
+			// added after the checkpoint (below), so Phase 3 can check the apply path
+			// enforces the FULL chart — pre- and post-checkpoint types — on a restored
+			// node, reading LedgerInfo.AccountTypes from the cache.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(chartLedger, nil)))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "main", "main:{id}")))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+				actions.NewPosting("world", "main:1", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
@@ -262,6 +285,19 @@ var _ = Describe("Restore", Ordered, func() {
 				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
+
+			// Drain eve (a PRE-checkpoint account) AFTER the checkpoint: its volume
+			// changes only in the delta (output 0 → 1000, balance → 0). eve's 0xFF
+			// cache entry is now checkpoint-era stale while 0xF1 is rebuilt fresh.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("eve", "world", big.NewInt(1000), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			// Add an account type AFTER the checkpoint, so the chart-ledger's chart
+			// changes only in the delta. Phase 3 checks the apply path enforces it.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
+			Expect(err).To(Succeed())
 
 			// Declare metadata field types AFTER the full checkpoint, so they live
 			// only in the incremental export segments — the RebuildDelta replay
@@ -409,8 +445,8 @@ var _ = Describe("Restore", Ordered, func() {
 			resp, err := restoreClient.PreviewRestore(ctx, &restorepb.PreviewRestoreRequest{})
 			Expect(err).To(Succeed())
 
-			Expect(resp.LedgerCount).To(Equal(uint32(2)))
-			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2))
+			Expect(resp.LedgerCount).To(Equal(uint32(3)))
+			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2, chartLedger))
 			Expect(resp.LastAppliedIndex).To(BeNumerically(">", 0))
 			Expect(resp.LastSequence).To(BeNumerically(">", 0))
 		})
@@ -559,6 +595,55 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(daveResp.Volumes["USD"].Input).To(Equal("2000"),
 				"apply must see dave's restored balance via the cache; a cache/bloom-blind apply yields 500")
+		})
+
+		It("should apply against a PRE-checkpoint account's post-checkpoint balance after restore", func() {
+			// eve was funded before the checkpoint (input=1000) and drained after
+			// it (output=1000, balance 0). The drain lives only in the delta, so
+			// eve's 0xFF cache entry is checkpoint-era (input=1000, output=0) while
+			// 0xF1 is rebuilt fresh. The apply path reads the cache: a cache-blind
+			// restore adds to the stale (1000,0) and writes it back to 0xF1,
+			// clobbering the drain; a cache-aware restore refreshes 0xFF so apply
+			// sees (1000,1000). GetAccount below reads 0xF1 and exposes the clobber.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "eve", big.NewInt(500), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
+			Expect(err).To(Succeed())
+			Expect(eveResp.Volumes["USD"].Input).To(Equal("1500"))
+			Expect(eveResp.Volumes["USD"].Output).To(Equal("1000"),
+				"apply must see eve's post-checkpoint drain via a cache-aware restore; a cache-blind restore clobbers output to 0")
+		})
+
+		It("should enforce the restored account-type chart on the apply path after restore", func() {
+			// chart-ledger's chart is "main" (pre-checkpoint) + "wallet"
+			// (post-checkpoint). Strict enforcement reads the chart from
+			// LedgerInfo.AccountTypes via the FSM cache. A restored node must apply
+			// against the full, fresh chart. This is the LEDGER analogue of the eve
+			// volume test: it proves the apply path (not just the 0xF1 query path)
+			// sees rebuilt LedgerInfo — with #1554's 0xF1-only writes.
+
+			// Pre-checkpoint type survived restore and is still enforced.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+				actions.NewPosting("world", "main:2", big.NewInt(10), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed(), "pre-checkpoint account type must survive restore and match on the apply path")
+
+			// Post-checkpoint type is present in the apply-path cache after restore.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+				actions.NewPosting("world", "wallet:1", big.NewInt(10), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed(), "post-checkpoint account type must be applied on the restored node's apply path")
+
+			// The chart is genuinely restrictive — an account matching neither type
+			// is rejected. This guards that the two Succeeds above aren't passing
+			// merely because enforcement is off / the chart was lost on restore.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(chartLedger, []*commonpb.Posting{
+				actions.NewPosting("world", "random:1", big.NewInt(10), "USD"),
+			}, nil, nil)))
+			Expect(err).To(HaveOccurred(), "under strict enforcement, an account matching no declared type must be rejected")
 		})
 
 		It("should accept new transactions after restore", func() {
