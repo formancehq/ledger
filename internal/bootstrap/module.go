@@ -1282,9 +1282,7 @@ func Module() fx.Option {
 							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
-								SetCoverage: func(bits []byte) {
-									proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-								},
+								Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 							}}
 
 							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
@@ -1676,9 +1674,7 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
 	operations := []plan.WriteOperation{{
-		SetCoverage: func(bits []byte) {
-			proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {

@@ -8,20 +8,23 @@ package plan
 // rebuild under the proposal guard.
 //
 // The two fields are independent: an operation may declare reads
-// without setting coverage on a proto field (test scenarios), and an
-// operation with no reads may still want a (zero) bitset assigned to
-// pin "I read nothing" explicitly. In practice the common cases are
-// either both filled (admission orders, mirror cursor) or both nil
-// (cluster config, idempotency eviction, events sink — TUs whose
-// handlers don't read cache state).
+// without wiring Target (test scenarios), and an operation with no
+// reads may still want a (zero) bitset assigned to pin "I read
+// nothing" explicitly. In practice the common cases are either both
+// filled (admission orders, mirror cursor) or both nil (cluster
+// config, idempotency eviction, events sink — TUs whose handlers
+// don't read cache state).
 type WriteOperation struct {
 	// Coverage declares which cache keys this operation will read at FSM
 	// apply time. nil or empty Coverage means "no reads".
 	Coverage *Coverage
 
-	// SetCoverage receives the bitset computed from Coverage over the
-	// proposal's final AttributeCoverage slice. The callback writes it to
-	// the right field — Order.CoverageBits, TechnicalUpdate.CoverageBits,
-	// etc. nil callback = bitset discarded.
-	SetCoverage func(bits []byte)
+	// Target is the address of the []byte field the computed bitset
+	// must be written into (Order.CoverageBits, TechnicalUpdate.CoverageBits,
+	// etc.). Passing a pointer instead of a closure eliminates the
+	// per-operation heap allocation that a captured index would force
+	// — admission builds N of these on every proposal.
+	//
+	// A nil Target means "discard the bitset" (test-only pattern).
+	Target *[]byte
 }
