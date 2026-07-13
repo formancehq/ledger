@@ -365,6 +365,7 @@ paths:
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: Logs retrieved successfully
@@ -442,9 +443,10 @@ paths:
           schema:
             type: string
           description: |
-            Filter expression restricted to `audit[...]` conditions, using the
-            shared filter grammar (the same one accepted by `ledgerctl audit
-            list --filter`). Examples:
+            A filter, decoded by the same shared dual-format decoder every list
+            endpoint uses (see the `ListFilter` parameter). In practice audit
+            filters use the **textual** representation, restricted to `audit[...]`
+            conditions:
               - `audit[outcome] == failure`
               - `audit[ledger] == main`
               - `audit[order_type] in (create_transaction, revert_transaction)`
@@ -453,8 +455,11 @@ paths:
             Supported fields: `seq`, `proposal_id`, `log_seq` (numeric);
             `timestamp` (RFC3339 or unix microseconds); `outcome`
             (success|failure), `ledger`, `caller_subject`, `order_type`
-            (string). This is deliberately NOT the JSON QueryFilter DSL used by
-            prepared queries, which cannot represent audit conditions.
+            (string). Audit conditions have NO structured JSON QueryFilter
+            representation (their field names collide with the transaction/log
+            conditions the JSON DSL already claims), so the textual form is the
+            canonical one here; a JSON QueryFilter cannot carry an audit
+            condition and is rejected.
       responses:
         '200':
           description: List of audit entries
@@ -693,6 +698,7 @@ paths:
           schema:
             type: string
           description: Filter by exact-match transaction reference.
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: Transactions retrieved successfully.
@@ -788,6 +794,7 @@ paths:
             `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: List of accounts
@@ -2834,6 +2841,33 @@ components:
         maxLength: 256
       description: Idempotency key for the request
 
+    ListFilter:
+      name: filter
+      in: query
+      required: false
+      schema:
+        type: string
+      description: |
+        A filter, accepted in EITHER of two interchangeable representations that
+        parse to the same filter and are validated against the same per-target
+        rules:
+
+          - **Textual** — the human-readable filter grammar, e.g.
+            `metadata[status] == "active"`, `address ^= "users:"`,
+            `metadata[a] == "x" and metadata[b] == "y"`. Passed verbatim as the
+            query-parameter value (URL-encoded).
+          - **Structured** — the JSON QueryFilter DSL (see the `QueryFilter`
+            schema: `$and`/`$or`/`$not` + `$match`/`$gt`/`$exists`/…). Passed by
+            URL-encoding the JSON object as the query-parameter value.
+
+        A condition that is not valid on the endpoint's target (e.g. a
+        transaction-only condition on the accounts list) is rejected with 400.
+        This generic filter is AND-combined with any convenience parameters the
+        endpoint also exposes (e.g. `reference`, `prefix`, `startDate`/`endDate`).
+
+        Note: audit conditions (`audit[...]`) have no structured JSON form and
+        must be passed in the textual representation.
+
   responses:
     ServiceUnavailable:
       description: Service unavailable (no leader available)
@@ -4555,7 +4589,7 @@ components:
             filter fields (`logId`, `date`, `ledger`) are valid only when the
             target is `LOGS`.
         filter:
-          $ref: '#/components/schemas/QueryFilter'
+          $ref: '#/components/schemas/PreparedQueryFilterInput'
 
     UpdatePreparedQueryRequest:
       type: object
@@ -4563,7 +4597,7 @@ components:
         - filter
       properties:
         filter:
-          $ref: '#/components/schemas/QueryFilter'
+          $ref: '#/components/schemas/PreparedQueryFilterInput'
 
     ExecutePreparedQueryRequest:
       type: object
@@ -4747,6 +4781,25 @@ components:
           maxProperties: 1
           additionalProperties: true
 
+    PreparedQueryFilterInput:
+      description: >-
+        A filter supplied to a prepared-query create/update request, accepted in
+        EITHER of two interchangeable representations that parse to the same
+        filter and are validated against the same per-target rules (EN-1511):
+
+
+        - the structured JSON QueryFilter object (see `QueryFilter`); or
+
+        - the textual filter grammar carried as a JSON string, e.g.
+          `"metadata[status] == \"active\""`.
+
+
+        Responses always echo the stored filter back in the structured
+        `QueryFilter` form.
+      oneOf:
+        - $ref: '#/components/schemas/QueryFilter'
+        - type: string
+          description: Textual filter expression (filter grammar).
 
     ExecutePreparedQueryResponse:
       type: object

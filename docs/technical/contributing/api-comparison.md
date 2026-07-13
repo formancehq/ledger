@@ -73,7 +73,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression (textual form; audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
@@ -369,6 +369,48 @@ When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `v
 - `content` (string): Numscript source code
 - `version` (string): Semver version (e.g. `"1.0.0"`)
 - `createdAt` (string, date-time): Timestamp
+
+### Filter input formats (dual-format contract, EN-1511)
+
+Every filtered surface — the list endpoints (`GET .../transactions`,
+`.../accounts`, `.../logs`, `GET /v3/_/audit-entries`), prepared-query
+create/update, and `ledgerctl --filter` — accepts a filter in **either** of two
+interchangeable representations. Both parse into the same `*commonpb.QueryFilter`
+and flow through the same compile/validate path (the per-target validity gate,
+`domain.ValidateFilterForTarget`), so a caller never needs to know which syntax a
+given endpoint "wants":
+
+| Representation | Looks like | Parsed by |
+|----------------|-----------|-----------|
+| **Textual** (`filterexpr` grammar) | `metadata[status] == "active"`, `address ^= "users:"`, `ledger == "main"` | `filterexpr.Parse` |
+| **Structured** (v2 JSON `QueryFilter` DSL) | `{"$match":{"metadata[status]":"active"}}` | `commonpb.QueryFilter.UnmarshalJSON` |
+
+Both go through one shared decoder, `filterexpr.DecodeDualFormat` (in
+`internal/pkg/filterexpr/decode.go`), which detects the form from the first
+non-whitespace byte:
+
+- `{` → structured JSON `QueryFilter` DSL;
+- `"` → a JSON-quoted string carrying textual `filterexpr` (body-field form);
+- anything else → raw textual `filterexpr` (query-string form).
+
+**How each form is passed over HTTP:**
+
+- **Query-string endpoints** (`?filter=`): the value is textual `filterexpr`
+  passed verbatim (URL-encoded). To pass the structured form, URL-encode the JSON
+  object as the value (`?filter=%7B%22%24match%22%3A…%7D`). The generic `filter`
+  parameter is AND-combined with the endpoint's convenience params (`reference`,
+  `prefix`, `startDate`/`endDate`).
+- **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
+  object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
+  is the textual form.
+
+**Audit is text-only.** Audit conditions (`audit[...]`) have no structured JSON
+representation — their field names (`ledger`, `timestamp`, …) collide with the
+transaction/log conditions the JSON DSL already claims (EN-1241) — so the JSON
+codec rejects them. The dual-format decoder still accepts both forms as input on
+the audit endpoint; the textual form is simply the only one that can carry an
+audit condition, so it is the canonical representation for
+`GET /v3/_/audit-entries`.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
