@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -50,27 +49,21 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	hasDateFilter := false
 
 	if sd := r.URL.Query().Get("startDate"); sd != "" {
-		t, err := time.Parse(time.RFC3339, sd)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid startDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "startDate", sd)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Min = &v
 		hasDateFilter = true
 	}
 
 	if ed := r.URL.Query().Get("endDate"); ed != "" {
-		t, err := time.Parse(time.RFC3339, ed)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid endDate parameter, expected RFC3339 format"))
-
+		v, ok := parseFilterDateMicros(w, "endDate", ed)
+		if !ok {
 			return
 		}
 
-		v := uint64(t.UnixMicro())
 		dateCond.Max = &v
 		dateCond.MaxExclusive = true
 		hasDateFilter = true

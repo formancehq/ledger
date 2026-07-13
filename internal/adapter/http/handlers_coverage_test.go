@@ -799,31 +799,10 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-func TestHandleListAccounts_WithPrefix(t *testing.T) {
-	t.Parallel()
-
-	var capturedFilter *commonpb.QueryFilter
-
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Account], error) {
-			capturedFilter = filter
-
-			return cursor.NewSliceCursor[*commonpb.Account](nil), nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
-
-	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/ledger1/accounts?prefix=users:", nil, map[string]string{
-		"ledgerName": "ledger1",
-	})
-
-	srv.handleListAccounts(w, r)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	require.NotNil(t, capturedFilter)
-	require.Equal(t, "users:", capturedFilter.GetAddress().GetHardcodedPrefix())
-}
+// The removed `prefix=` account alias (EN-1540) and its canonical `filter=address
+// ^= "..."` replacement are covered by
+// TestHandleListAccounts_PrefixFilterCanonicalReplacement in
+// handlers_list_accounts_test.go.
 
 // --------------------------------------------------------------------------
 // handlers_list_all_ledgers.go: cursor iteration error

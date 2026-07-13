@@ -319,15 +319,14 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	var (
 		tx *commonpb.Transaction
-		// reader is the store a locally-derived receipt is read from: the
-		// checkpoint's fixed store, or (live path) a snapshot opened AFTER the
-		// transaction read so it can't predate the creation log. fwdReceipt is
-		// non-nil only when the read was forwarded to a signing node, which already
-		// produced the (authoritative, possibly empty) receipt — then we use it
-		// as-is rather than re-deriving from a possibly-stale local snapshot.
-		reader     dal.PebbleGetter
-		fwdReceipt *string
-		err        error
+		// receipt is the token to relay to the client. On the live path it is the
+		// receipt the controller signed (nil when this node has no signer) or, when
+		// the read was forwarded to a signing node, the authoritative token that node
+		// produced — used as-is rather than re-derived from a possibly-stale local
+		// snapshot. On the checkpoint path it is signed here from the checkpoint's
+		// fixed store, which the live controller does not read.
+		receipt *string
+		err     error
 	)
 
 	checkpoint := req.GetCheckpointId() > 0
@@ -342,82 +341,40 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 			_ = mainStore.Close()
 		}()
 
-		reader = mainStore
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
-	} else {
-		tx, fwdReceipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
-	}
+		if err != nil {
+			return nil, err
+		}
 
-	if err != nil {
-		return nil, err
+		if impl.receiptSigner != nil {
+			// Checkpoint read: sign from the checkpoint's fixed store so the
+			// receipt's ledger + creation-log reads stay self-consistent with the
+			// transaction, which was read from that same store.
+			receiptToken, cErr := impl.localCtrl.ComputeTransactionReceipt(ctx, mainStore, req.GetLedger(), req.GetTransactionId(), tx)
+			if cErr != nil {
+				return nil, fmt.Errorf("computing transaction receipt: %w", cErr)
+			}
+
+			receipt = &receiptToken
+		}
+	} else {
+		// Live path: the controller reads the transaction and, on the local branch,
+		// signs the receipt from a snapshot opened after the transaction read (its
+		// freshness barrier). When the read is forwarded to a signing node, the
+		// controller relays that node's authoritative receipt. Either way the
+		// receipt is already correct here — this adapter no longer re-signs.
+		tx, receipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
-	switch {
-	case fwdReceipt != nil:
-		// Forwarded read: relay the receipt the serving node signed (possibly
-		// empty, e.g. a reversal). It is already an authoritative token, so this
-		// node passes it through whether or not it can sign — re-deriving would
-		// read a possibly-stale local snapshot.
-		resp.Receipt = *fwdReceipt
-	case impl.receiptSigner != nil:
-		// Locally-served read: sign from a snapshot opened now — after the
-		// transaction read barrier — so the receipt's ledger + creation-log reads
-		// share one committed state at least as fresh as the transaction.
-		if !checkpoint {
-			handle, hErr := impl.store.NewReadHandle()
-			if hErr != nil {
-				return nil, fmt.Errorf("creating read handle: %w", hErr)
-			}
-
-			defer func() { _ = handle.Close() }()
-
-			reader = handle
-		}
-
-		receiptToken, err := impl.computeTransactionReceipt(ctx, reader, req.GetLedger(), req.GetTransactionId(), tx)
-		if err != nil {
-			return nil, fmt.Errorf("computing transaction receipt: %w", err)
-		}
-
-		resp.Receipt = receiptToken
+	if receipt != nil {
+		resp.Receipt = *receipt
 	}
 
 	return resp, nil
-}
-
-// computeTransactionReceipt computes a JWT receipt for an existing transaction
-// by looking up its creation log to extract the chapter ID. Ledger info and the
-// creation log are read from the supplied reader — the same store the
-// transaction was read from — so checkpoint reads stay self-consistent.
-func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
-	if err != nil {
-		return "", err
-	}
-
-	log, err := query.FindTransactionCreationLog(ctx, reader, impl.attrs.Transaction, ledgerInfo.GetName(), txID)
-	if errors.Is(err, domain.ErrNotFound) {
-		// No creation log for this transaction in this store (e.g. its log was
-		// archived/purged). The transaction is still readable; it just has no
-		// receipt. Not an error.
-		return "", nil
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// Receipts are only issued for created transactions, matching the Apply path
-	// (signReceiptIfNeeded skips non-created logs). A reversal transaction's
-	// creation log is a RevertedTransaction log, so it legitimately has no
-	// receipt — return empty rather than erroring.
-	created := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
-	if created == nil {
-		return "", nil
-	}
-
-	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetChapterId())
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
