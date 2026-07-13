@@ -3,6 +3,7 @@ package filterexpr
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -276,7 +277,7 @@ func formatNot(n *commonpb.NotFilter) (string, int) {
 // formatAsNotEqual tries to render a FieldCondition wrapped in NOT as a != expression.
 // Returns empty string if the condition is not a simple equality.
 func formatAsNotEqual(fc *commonpb.FieldCondition) string {
-	key := fc.GetField().GetMetadata()
+	key := quoteIfNeeded(fc.GetField().GetMetadata())
 	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
 		return fmt.Sprintf("metadata[%s] != %s", key, formatStringCondValue(cond.StringCond))
@@ -292,7 +293,7 @@ func formatAsNotEqual(fc *commonpb.FieldCondition) string {
 }
 
 func formatFieldCondition(fc *commonpb.FieldCondition) string {
-	key := fc.GetField().GetMetadata()
+	key := quoteIfNeeded(fc.GetField().GetMetadata())
 
 	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
@@ -534,12 +535,11 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 	}
 }
 
-// quoteIfNeeded wraps a value in double quotes if it contains spaces or matches
-// a DSL keyword. Simple identifiers are left bare.
+// quoteIfNeeded wraps a value in double quotes unless it can be emitted as a bare
+// token that Parse reads back as the same value. Since a bare Ident is
+// plain-alphanumeric (EN-1547), anything with a special char (`-`, `:`, `.`, `/`,
+// spaces, …) must be quoted to round-trip.
 func quoteIfNeeded(s string) string {
-	if s == "" {
-		return `""`
-	}
 	if needsQuoting(s) {
 		return `"` + s + `"`
 	}
@@ -547,22 +547,28 @@ func quoteIfNeeded(s string) string {
 	return s
 }
 
-var keywords = map[string]bool{
-	"and": true, "or": true, "not": true, "between": true,
-	"metadata": true, "address": true, "source": true, "destination": true,
-	"exists": true, "true": true, "false": true, "has": true, "asset": true,
-}
+var (
+	// bareIdent matches exactly the lexer's plain-alphanumeric Ident. A value is
+	// safe to emit unquoted only if it is a whole bare Ident (and not a structural
+	// operator, below); anything with a special char, a leading digit, or empty
+	// must be quoted or it would fail to reparse. Kept in lockstep with the Ident
+	// rule in parser.go.
+	bareIdent = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
+	// reservedOperators is the set of structural keywords that the value grammar
+	// does NOT accept as a bare value (Value.Kw admits the noun words and
+	// Value.Bool the booleans, but the operators must keep terminating
+	// expressions). A value equal to one of these must be quoted. Kept in lockstep
+	// with the lexer Keyword rule minus the noun/boolean words.
+	reservedOperators = map[string]bool{
+		"and": true, "or": true, "not": true, "in": true, "between": true,
+	}
+)
+
+// needsQuoting reports whether a value must be double-quoted to survive a
+// Format→Parse round-trip: it quotes anything that is not a clean bare Ident, and
+// also quotes a bare Ident that collides with a structural operator. Conservative
+// by design — over-quoting is harmless, under-quoting is a round-trip bug.
 func needsQuoting(s string) bool {
-	if keywords[s] {
-		return true
-	}
-	for _, c := range s {
-		if c == ' ' || c == '\t' || c == '"' || c == '\'' || c == '(' || c == ')' ||
-			c == '[' || c == ']' {
-			return true
-		}
-	}
-
-	return false
+	return !bareIdent.MatchString(s) || reservedOperators[s]
 }

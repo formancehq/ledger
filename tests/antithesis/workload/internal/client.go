@@ -421,6 +421,23 @@ func IsNotFound(err error) bool {
 // only so existing callers keep compiling.
 func IsLedgerNotFound(err error) bool { return IsNotFound(err) }
 
+// IsNoFullCheckpoint returns true if the error is the EN-888 precondition an
+// incremental backup returns when its destination has no full checkpoint yet
+// (server maps backup.ErrNoFullCheckpoint to FailedPrecondition). It is an
+// expected outcome under Antithesis scheduling — the incremental driver can run
+// before any full backup, or after a restore reset the destination — so drivers
+// treat it as acceptable rather than an Unreachable finding. Matched on the
+// FailedPrecondition code plus the stable "full checkpoint" message fragment,
+// since this precondition carries no ErrorInfo reason.
+func IsNoFullCheckpoint(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.FailedPrecondition &&
+		strings.Contains(st.Message(), "full checkpoint")
+}
+
 // IsTransient returns true for a retry-safe infrastructure error — not a
 // definitive business answer, not a local-lifecycle event. Retrying reaches a
 // definitive outcome: the condition clears (no leader → elected, lagging read

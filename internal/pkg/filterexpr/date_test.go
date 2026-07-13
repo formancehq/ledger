@@ -428,10 +428,15 @@ func TestParseDate_KeywordsUsableAsBareValues(t *testing.T) {
 
 // TestParseDate_DoesNotMistokenizeIdentifierPrefix is the regression for the
 // NumaryBot MAJOR: adding `date`/`timestamp` as lexer keywords with a `\b`
-// boundary would tokenize only the prefix of an identifier that continues with an
-// Ident-continuation char (`-`, `:`, `.`, `/`) — the keyword boundary matches
-// before those characters — and reject filters that parsed before. Matching them
-// as plain Idents instead keeps the whole identifier intact.
+// boundary would tokenize only the prefix of an identifier — reject filters that
+// parsed before. They are matched as grammar literals against the whole Ident
+// token instead, so a bare identifier that merely *starts* with `date`/`timestamp`
+// stays one token.
+//
+// Reconciled with the EN-1547 lexer tightening (Ident = ^[a-zA-Z_][a-zA-Z0-9_]*;
+// special characters must be quoted): the bare cases use valid Ident-continuation
+// keys, and keys/values carrying special chars (`-`, `.`, `/`, `:`) are quoted —
+// they still must not be mistokenized by the `date`/`timestamp` grammar literals.
 func TestParseDate_DoesNotMistokenizeIdentifierPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -439,12 +444,12 @@ func TestParseDate_DoesNotMistokenizeIdentifierPrefix(t *testing.T) {
 		name string
 		in   string
 	}{
-		{"date-prefixed metadata key", `metadata[date-range] == "x"`},
-		{"timestamp-prefixed metadata key", `metadata[timestamp-created] == "x"`},
-		{"dotted date key", `metadata[date.start] == "x"`},
-		{"slashed timestamp key", `metadata[timestamp/utc] == "x"`},
-		{"date-prefixed bare value", `metadata[k] == date-2023`},
-		{"colon timestamp bare value", `metadata[k] == timestamp:created`},
+		{"date-prefixed bare metadata key", `metadata[date_range] == "x"`},
+		{"timestamp-prefixed bare metadata key", `metadata[timestamp_created] == "x"`},
+		{"quoted dotted date key", `metadata["date.start"] == "x"`},
+		{"quoted slashed timestamp key", `metadata["timestamp/utc"] == "x"`},
+		{"quoted date-prefixed value", `metadata[k] == "date-2023"`},
+		{"quoted colon timestamp value", `metadata[k] == "timestamp:created"`},
 	}
 
 	for _, tc := range cases {

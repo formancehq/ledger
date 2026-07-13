@@ -33,6 +33,17 @@ var ErrFilterTooDeep = fmt.Errorf("filter expression nesting exceeds maximum dep
 // Custom lexer: Keywords are matched before Ident so that reserved words
 // (and, or, not, between, metadata, address, source, destination, exists,
 // true, false) cannot be consumed as bare values.
+//
+// A bare Ident is plain-alphanumeric (`[a-zA-Z_][a-zA-Z0-9_]*`): it does NOT
+// include `-`, `:`, `.`, `/`. Any key or value that contains one of those special
+// characters must be written as a quoted String (EN-1547). This is what makes the
+// keyword `\b` boundary safe — a keyword can no longer be the prefix of a longer
+// bare identifier that continues with punctuation (there is no such identifier),
+// so `metadata["x-request-id"]` / `metadata["foo.bar"]` are expressible via
+// quoting rather than mis-tokenizing. The one structured exception is the asset
+// reference `BASE/PRECISION` (e.g. USD/2), which has its own AssetRef token
+// (matched before Ident) because it is a first-class literal in the `has asset`
+// position, not a free-form string.
 var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Whitespace", Pattern: `\s+`},
 	{Name: "OpEq", Pattern: `==`},
@@ -51,7 +62,12 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Comma", Pattern: `,`},
 	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
-	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
+	// AssetRef is the base/precision asset reference (e.g. USD/2) used only in the
+	// `has asset` position. It is its own token — matched before Ident — because
+	// the `/` separator is not an Ident char. The bare base form (USD) has no `/`
+	// and lexes as an ordinary Ident; only the slashed form needs this rule.
+	{Name: "AssetRef", Pattern: `[a-zA-Z][a-zA-Z0-9]*/[0-9]+`},
+	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
 })
 
 var filterParser = participle.MustBuild[OrExpr](
@@ -595,7 +611,10 @@ func (d *DateCond) toProto() (*commonpb.QueryFilter, error) {
 // ("USD" → precision 0) or base/precision ("USD/4"). Resolved via the
 // ACCT_BUILTIN_INDEX_ASSET readstore index.
 type AssetCond struct {
-	Asset string `parser:"'has' 'asset' @Ident"`
+	// The operand is either a bare base (an Ident, e.g. USD) or a base/precision
+	// asset reference (the AssetRef token, e.g. USD/2). splitAsset validates the
+	// combined string against the canonical asset rules.
+	Asset string `parser:"'has' 'asset' @(AssetRef | Ident)"`
 }
 
 func (a *AssetCond) toProto() (*commonpb.QueryFilter, error) {
