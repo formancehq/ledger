@@ -137,11 +137,103 @@ func (e *AndExpr) toProto() (*commonpb.QueryFilter, error) {
 		filters[i] = f
 	}
 
+	// An `and` of exactly two complementary single-bound date/timestamp range
+	// clauses (one lower, one upper on the same builtin field) folds into a
+	// single range condition, mirroring the JSON codec's foldRangeAnd. This is
+	// what lets an exclusive closed range survive a Format -> Parse round-trip:
+	// Format emits `timestamp > X and timestamp < Y` (a `between` would drop the
+	// exclusivity), and this fold rebuilds the single UintCondition it came from.
+	if folded, ok := foldDateRangeAnd(filters); ok {
+		return folded, nil
+	}
+
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_And{
 			And: &commonpb.AndFilter{Filters: filters},
 		},
 	}, nil
+}
+
+// foldDateRangeAnd merges exactly two complementary single-bound range clauses on
+// the same builtin date field into one range condition. It is the textual-parser
+// counterpart of commonpb.foldRangeAnd (which folds the JSON `$and` of a $gt/$gte
+// and a $lt/$lte), so both DSLs collapse a closed range to the identical proto.
+// It only fires on the EN-1544 date fields — transaction `timestamp`
+// (QueryFilter_BuiltinUint) and log `date` (QueryFilter_LogBuiltinUint) — the
+// only builtin ranges the textual grammar produces. ok=false leaves the `and`
+// untouched.
+func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, bool) {
+	if len(filters) != 2 {
+		return nil, false
+	}
+
+	// Both transaction timestamp clauses.
+	if a, b := filters[0].GetBuiltinUint(), filters[1].GetBuiltinUint(); a != nil && b != nil {
+		if a.GetField() != b.GetField() {
+			return nil, false
+		}
+		uc, ok := mergeComplementaryBounds(a.GetCond(), b.GetCond())
+		if !ok {
+			return nil, false
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		}}, true
+	}
+
+	// Both log date clauses.
+	if a, b := filters[0].GetLogBuiltinUint(), filters[1].GetLogBuiltinUint(); a != nil && b != nil {
+		if a.GetField() != b.GetField() {
+			return nil, false
+		}
+		uc, ok := mergeComplementaryBounds(a.GetCond(), b.GetCond())
+		if !ok {
+			return nil, false
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		}}, true
+	}
+
+	return nil, false
+}
+
+// mergeComplementaryBounds combines two single-bound UintConditions — one with
+// only a lower bound, the other with only an upper bound — into one closed range,
+// preserving each side's exclusivity. Returns ok=false unless the pair is exactly
+// one lower + one upper single-bound condition (e.g. two lower bounds, an
+// already-closed range, or an equality do not fold).
+func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondition, bool) {
+	lower, upper := x, y
+	if isSingleLowerBound(y) && isSingleUpperBound(x) {
+		lower, upper = y, x
+	}
+
+	if !isSingleLowerBound(lower) || !isSingleUpperBound(upper) {
+		return nil, false
+	}
+
+	lo := lower.GetMin()
+	hi := upper.GetMax()
+
+	return &commonpb.UintCondition{
+		Min:          &lo,
+		Max:          &hi,
+		MinExclusive: lower.GetMinExclusive(),
+		MaxExclusive: upper.GetMaxExclusive(),
+	}, true
+}
+
+// isSingleLowerBound reports whether uc carries only a lower bound (Min set, Max
+// unset). isSingleUpperBound is the symmetric check.
+func isSingleLowerBound(uc *commonpb.UintCondition) bool {
+	return uc.Min != nil && uc.Max == nil
+}
+
+func isSingleUpperBound(uc *commonpb.UintCondition) bool {
+	return uc.Max != nil && uc.Min == nil
 }
 
 type UnaryExpr struct {

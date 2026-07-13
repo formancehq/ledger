@@ -55,61 +55,45 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 	}
 }
 
-// txBuiltinFieldNames is the reverse of the parser/codec txBuiltinFieldToJSON:
-// tx builtin enum -> DSL field name. Only the date-semantic fields plus id are
-// range-expressible in the DSL.
-var txBuiltinFieldNames = map[commonpb.TransactionBuiltinIndex]string{
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:          "id",
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:   "timestamp",
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT: "insertedAt",
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT: "revertedAt",
-}
-
-// txBuiltinDateFields are the tx builtin fields whose bounds render as quoted
-// RFC3339 (the date-semantic fields), so the output round-trips through the
-// datetime-aware parser. `id` is a plain count and renders as a raw integer.
-var txBuiltinDateFields = map[commonpb.TransactionBuiltinIndex]bool{
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:   true,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT: true,
-	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT: true,
-}
-
 // formatBuiltinUintCondition renders a transaction builtin uint range back into
-// `<field> OP value`, inverse of the parser's DateCond (for the date-semantic
-// fields) and of the structured codec. Date-semantic fields render as quoted
-// RFC3339; `id` renders as a raw integer (EN-1544).
+// `timestamp OP value`, the inverse of the parser's DateCond. `timestamp` is the
+// only transaction builtin field the textual grammar (DateCond) can read back, so
+// it is the only one we emit — advertising id/insertedAt/revertedAt here would
+// produce strings Parse cannot re-read, breaking the config export/apply
+// round-trip. Its bounds render as quoted RFC3339 (EN-1544).
 func formatBuiltinUintCondition(bc *commonpb.BuiltinUintCondition) string {
-	field, ok := txBuiltinFieldNames[bc.GetField()]
-	if !ok {
+	if bc.GetField() != commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP {
 		return "<unknown builtin field>"
 	}
 
-	return formatDateUintCondition(field, txBuiltinDateFields[bc.GetField()], bc.GetCond())
+	return formatDateUintCondition("timestamp", bc.GetCond())
 }
 
 // formatLogBuiltinUintCondition renders a log builtin uint range. The only field
-// is `date`, which is date-semantic (quoted RFC3339 output).
+// the textual grammar reads back is `date` (quoted RFC3339 output).
 func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) string {
 	switch lc.GetField() {
 	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-		return formatDateUintCondition("date", true, lc.GetCond())
+		return formatDateUintCondition("date", lc.GetCond())
 	default:
 		return "<unknown log field>"
 	}
 }
 
-// formatDateUintCondition renders a builtin uint range as `field OP value`. When
-// isDate is set, bounds render as quoted RFC3339 (round-tripping through the
-// datetime-aware parser); otherwise as raw unsigned integers. Builtin ranges are
-// never parameterized in the DSL, so only hardcoded bounds are formatted. This is
-// the top-level counterpart of formatAuditUintCondition (whose output is prefixed
-// with `audit[...]`).
-func formatDateUintCondition(field string, isDate bool, uc *commonpb.UintCondition) string {
-	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
-	if isDate {
-		render = func(v uint64) string {
-			return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
-		}
+// formatDateUintCondition renders a builtin date range as `field OP value` with
+// bounds as quoted RFC3339, the inverse of the parser's DateCond. Builtin ranges
+// are never parameterized in the DSL, so only hardcoded bounds are formatted.
+//
+// A closed range only renders as `between` when BOTH bounds are inclusive, since
+// `between` parses back inclusive on both ends. If either bound is exclusive (the
+// shape a JSON `$and` of `$gt`/`$lt` folds into) it renders as two comparison
+// clauses joined by `and` — `field > lo and field < hi` — which the parser folds
+// back into the same single condition (see foldDateRangeAnd), so the exclusivity
+// survives the round-trip instead of being silently widened. This is the
+// top-level counterpart of formatAuditUintCondition (prefixed with `audit[...]`).
+func formatDateUintCondition(field string, uc *commonpb.UintCondition) string {
+	render := func(v uint64) string {
+		return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
 	}
 
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
@@ -117,28 +101,41 @@ func formatDateUintCondition(field string, isDate bool, uc *commonpb.UintConditi
 	}
 
 	if uc.Min != nil && uc.Max != nil {
-		return fmt.Sprintf("%s between %s and %s", field, render(uc.GetMin()), render(uc.GetMax()))
+		if !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+			return fmt.Sprintf("%s between %s and %s", field, render(uc.GetMin()), render(uc.GetMax()))
+		}
+
+		return fmt.Sprintf("%s %s %s and %s %s %s",
+			field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin()),
+			field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax()))
 	}
 
 	if uc.Min != nil {
-		op := ">="
-		if uc.GetMinExclusive() {
-			op = ">"
-		}
-
-		return fmt.Sprintf("%s %s %s", field, op, render(uc.GetMin()))
+		return fmt.Sprintf("%s %s %s", field, lowerOp(uc.GetMinExclusive()), render(uc.GetMin()))
 	}
 
 	if uc.Max != nil {
-		op := "<="
-		if uc.GetMaxExclusive() {
-			op = "<"
-		}
-
-		return fmt.Sprintf("%s %s %s", field, op, render(uc.GetMax()))
+		return fmt.Sprintf("%s %s %s", field, upperOp(uc.GetMaxExclusive()), render(uc.GetMax()))
 	}
 
 	return field + " <uint?>"
+}
+
+// lowerOp / upperOp map a bound's exclusivity to its DSL comparison operator.
+func lowerOp(exclusive bool) string {
+	if exclusive {
+		return ">"
+	}
+
+	return ">="
+}
+
+func upperOp(exclusive bool) string {
+	if exclusive {
+		return "<"
+	}
+
+	return "<="
 }
 
 // auditFieldNames is the reverse of the parser's auditFieldKeys: enum -> DSL key.

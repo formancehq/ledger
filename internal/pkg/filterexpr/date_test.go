@@ -1,6 +1,7 @@
 package filterexpr
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,27 +51,52 @@ func TestParseTimestamp_TxRFC3339AndRawMatch(t *testing.T) {
 	}
 }
 
+// TestParseDate_ClosedRange asserts that an `and` of a lower and an upper bound
+// on the same date field folds into a single closed LogBuiltinUintCondition,
+// mirroring the JSON codec's foldRangeAnd. The fold is what lets Format emit the
+// two exclusive comparison clauses and still round-trip to one condition.
 func TestParseDate_ClosedRange(t *testing.T) {
 	t.Parallel()
 
 	filter, err := Parse(`date >= "2023-11-14T22:13:20Z" and date < "2023-11-15T22:13:20Z"`)
 	require.NoError(t, err)
 
-	// Two same-field bounds are two separate leaves under an $and here (the DSL
-	// does not fold textual conditions the way the JSON codec folds a range $and),
-	// but both must carry the coerced micros.
-	and := filter.GetAnd()
-	require.NotNil(t, and)
-	require.Len(t, and.GetFilters(), 2)
+	// No enclosing $and: the two complementary bounds fold into one range.
+	require.Nil(t, filter.GetAnd())
 
-	lo := and.GetFilters()[0].GetLogBuiltinUint()
-	require.NotNil(t, lo)
-	assert.Equal(t, wantDateMicros, lo.GetCond().GetMin())
+	lc := filter.GetLogBuiltinUint()
+	require.NotNil(t, lc)
+	assert.Equal(t, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, lc.GetField())
+	assert.Equal(t, wantDateMicros, lc.GetCond().GetMin())
+	assert.False(t, lc.GetCond().GetMinExclusive())
+	assert.Equal(t, wantDateMicros+24*60*60*1_000_000, lc.GetCond().GetMax())
+	assert.True(t, lc.GetCond().GetMaxExclusive())
+}
 
-	hi := and.GetFilters()[1].GetLogBuiltinUint()
-	require.NotNil(t, hi)
-	assert.Equal(t, wantDateMicros+24*60*60*1_000_000, hi.GetCond().GetMax())
-	assert.True(t, hi.GetCond().GetMaxExclusive())
+// TestParseDate_FoldOnlyComplementaryBounds guards that the date-range fold fires
+// only for exactly one lower + one upper bound on the same field. Non-foldable
+// `and` combinations stay as an explicit AndFilter.
+func TestParseDate_FoldOnlyComplementaryBounds(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{
+		// Two lower bounds (same direction) — not complementary.
+		`date >= "2023-11-14T22:13:20Z" and date > "2023-11-13T22:13:20Z"`,
+		// Different fields — date vs timestamp.
+		`date >= "2023-11-14T22:13:20Z" and timestamp < "2023-11-15T22:13:20Z"`,
+		// A closed range already (between) AND a further bound.
+		`date between "2023-11-14T22:13:20Z" and "2023-11-16T22:13:20Z" and date < "2023-11-15T22:13:20Z"`,
+	}
+
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+
+			filter, err := Parse(in)
+			require.NoError(t, err, in)
+			require.NotNil(t, filter.GetAnd(), "expected an unfolded AndFilter for %q", in)
+		})
+	}
 }
 
 func TestParseDate_Between(t *testing.T) {
@@ -121,6 +147,109 @@ func TestFormatDate_RoundTrip(t *testing.T) {
 			require.True(t, proto.Equal(f, reparsed),
 				"Format output must round-trip\n first: %v\n reparsed: %v", f, reparsed)
 		})
+	}
+}
+
+// TestFormatDate_PreservesExclusiveClosedRange is the regression for the flemzord
+// HIGH: a structured JSON `$and` of `$gt`/`$lt` on a date field folds into one
+// UintCondition with both exclusive flags. Format used to emit `between`, which
+// parses back inclusive on both ends — silently widening an exported prepared
+// query at the boundaries. Format must now emit the two comparison clauses, which
+// the parser folds back into the identical exclusive closed range.
+func TestFormatDate_PreservesExclusiveClosedRange(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		json     string
+		wantText string
+	}{
+		{
+			name:     "timestamp gt/lt (both exclusive)",
+			json:     `{"$and":[{"$gt":{"timestamp":"2023-11-14T22:13:20Z"}},{"$lt":{"timestamp":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `timestamp > "2023-11-14T22:13:20Z" and timestamp < "2023-11-15T22:13:20Z"`,
+		},
+		{
+			name:     "date gte/lt (upper exclusive only)",
+			json:     `{"$and":[{"$gte":{"date":"2023-11-14T22:13:20Z"}},{"$lt":{"date":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `date >= "2023-11-14T22:13:20Z" and date < "2023-11-15T22:13:20Z"`,
+		},
+		{
+			name:     "timestamp gt/lte (lower exclusive only)",
+			json:     `{"$and":[{"$gt":{"timestamp":"2023-11-14T22:13:20Z"}},{"$lte":{"timestamp":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `timestamp > "2023-11-14T22:13:20Z" and timestamp <= "2023-11-15T22:13:20Z"`,
+		},
+		{
+			name:     "date between (both inclusive) still uses between",
+			json:     `{"$and":[{"$gte":{"date":"2023-11-14T22:13:20Z"}},{"$lte":{"date":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `date between "2023-11-14T22:13:20Z" and "2023-11-15T22:13:20Z"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Build the folded proto exactly the way the JSON DSL does.
+			folded := &commonpb.QueryFilter{}
+			require.NoError(t, json.Unmarshal([]byte(tc.json), folded))
+			// Precondition: the JSON side really folded to one condition, not an $and.
+			require.Nil(t, folded.GetAnd(), "JSON input must fold to a single condition")
+
+			got := Format(folded)
+			require.Equal(t, tc.wantText, got)
+
+			reparsed, err := Parse(got)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(folded, reparsed),
+				"Format output must round-trip to the original exclusive range\n first: %v\n reparsed: %v", folded, reparsed)
+		})
+	}
+}
+
+// TestFormatDate_OnlyEmitsParseableFields is the regression for the flemzord
+// MEDIUM: Format used to emit id/insertedAt/revertedAt expressions the textual
+// parser (DateCond) cannot read back, so Parse(Format(f)) failed for those arms.
+// Format now renders only the fields the grammar admits (timestamp, date); other
+// builtin fields render as an explicit unknown marker rather than a lie that
+// won't reparse.
+func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
+	t.Parallel()
+
+	nonParseable := []commonpb.TransactionBuiltinIndex{
+		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+		commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+	}
+
+	lo := wantDateMicros
+	for _, field := range nonParseable {
+		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: field,
+				Cond:  &commonpb.UintCondition{Min: &lo},
+			},
+		}}
+		assert.Equal(t, "<unknown builtin field>", Format(f), field.String())
+	}
+
+	// And the two fields we DO emit must round-trip through Parse for every
+	// single-bound operator shape (== is covered by TestFormatDate_RoundTrip).
+	for _, field := range []string{"timestamp", "date"} {
+		for _, op := range []string{">", ">=", "<", "<="} {
+			in := field + " " + op + ` "2023-11-14T22:13:20Z"`
+			t.Run(in, func(t *testing.T) {
+				t.Parallel()
+
+				f, err := Parse(in)
+				require.NoError(t, err)
+				got := Format(f)
+				reparsed, err := Parse(got)
+				require.NoError(t, err, got)
+				require.True(t, proto.Equal(f, reparsed),
+					"Format must emit a parseable field\n first: %v\n reparsed: %v", f, reparsed)
+			})
+		}
 	}
 }
 
