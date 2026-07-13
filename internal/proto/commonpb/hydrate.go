@@ -16,6 +16,7 @@ const (
 	DeleteMetadataLogType           LogType = 3 // "DELETE_METADATA"
 	SetMetadataFieldTypeLogType     LogType = 4 // "SET_METADATA_FIELD_TYPE"
 	RemovedMetadataFieldTypeLogType LogType = 5 // "REMOVED_METADATA_FIELD_TYPE"
+	OrderSkippedLogType             LogType = 6 // "ORDER_SKIPPED"
 )
 
 // HydrateLog deserializes a log payload from JSON based on the log type.
@@ -35,6 +36,8 @@ func HydrateLog(logType LogType, data []byte) (proto.Message, error) {
 		payload = &SetMetadataFieldTypeLog{}
 	case RemovedMetadataFieldTypeLogType:
 		payload = &RemovedMetadataFieldTypeLog{}
+	case OrderSkippedLogType:
+		payload = &OrderSkippedLog{}
 	default:
 		return nil, fmt.Errorf("unknown log type: %d", logType)
 	}

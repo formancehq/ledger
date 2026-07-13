@@ -8,6 +8,27 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
+import "google/protobuf/descriptor.proto";
+
+// allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
+// with the business ErrorReasons a caller may list in
+// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
+// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
+// generates internal/proto/servicepb/bucket_skippable.pb.go — admission's
+// extractSkippableReasonsFromApply consumes that generated table so the
+// whitelist stays co-located with the wire declaration.
+//
+// A oneof case without the annotation has NO whitelist: any non-empty
+// LedgerApplyRequest.skippable_reasons on that action is rejected at
+// admission.
+//
+// Field number 71001 sits in a range outside the taken slots of
+// transitive dependencies (etcd uses 50000-50003, gogoproto uses
+// 62000-65012, google.api uses 72295728+) — collisions in the
+// same-message×same-number key would panic at runtime during package init.
+extend google.protobuf.FieldOptions {
+  repeated common.ErrorReason allowed_skippable_reasons = 71001;
+}
 
 // ============================================================================
 // gRPC Service
@@ -514,14 +535,30 @@ message RevertTransactionPayload {
 }
 
 // LedgerAction represents a single ledger action.
+//
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
 message LedgerAction {
   oneof data {
-    CreateTransactionPayload create_transaction = 1;
+    CreateTransactionPayload create_transaction = 1 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+    ];
     common.SaveMetadataCommand add_metadata = 2;
-    RevertTransactionPayload revert_transaction = 3;
-    common.DeleteMetadataCommand delete_metadata = 4;
-    AddAccountTypeRequest add_account_type = 5;
-    RemoveAccountTypeRequest remove_account_type = 6;
+    RevertTransactionPayload revert_transaction = 3 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+    ];
+    common.DeleteMetadataCommand delete_metadata = 4 [
+      (allowed_skippable_reasons) = ERROR_REASON_METADATA_NOT_FOUND
+    ];
+    AddAccountTypeRequest add_account_type = 5 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+    ];
+    RemoveAccountTypeRequest remove_account_type = 6 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+    ];
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
   }
 }
@@ -529,6 +566,20 @@ message LedgerAction {
 message LedgerApplyRequest {
   string ledger = 1;
   LedgerAction action = 2;
+  // Business error reasons the caller accepts to skip silently rather than
+  // fail the proposal. The FSM records a common.OrderSkippedLog for each
+  // matching skip; the proposal continues with Outcome=Success.
+  //
+  // Validated at admission against the per-action whitelist declared inline on
+  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+  // single source of truth; the generated SkippableReasonsForLedgerAction is
+  // what admission consults). Today: CreateTransaction accepts
+  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+  // declares no annotation is rejected up front. Empty (default) preserves the
+  // historical fail-fast behaviour.
+  repeated common.ErrorReason skippable_reasons = 3;
 }
 
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
@@ -740,6 +791,14 @@ enum CheckStoreErrorType {
   // ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
   // covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
   CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
+  // Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
+  // that the audit-bound Order.skippable_reasons whitelist does not allow, or
+  // a reason classified as KindInternal (structural failure). The OrderSkippedLog
+  // sits in the per-log projection which is NOT hash-chain bound, so a tampered
+  // skip log would otherwise let a duplicate caller observe a fabricated outcome
+  // for an order that should have been rejected hard. The skippable_reasons
+  // whitelist on the audit-bound Order is the source of truth.
+  CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
 }
 
 message CheckStoreError {

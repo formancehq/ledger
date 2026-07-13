@@ -8,6 +8,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// errorReasonPrefix mirrors domain.errorReasonPrefix without taking on a
+// domain import (this proto package sits below domain). Kept in lockstep
+// with internal/domain/reason.go: every commonpb.ErrorReason enum constant
+// is errorReasonPrefix + the short, client-facing Reason() string the
+// gRPC/HTTP error surface uses.
+const errorReasonPrefix = "ERROR_REASON_"
+
 // MarshalJSON implements json.Marshaler for GetTransactionResponse.
 func (x *GetTransactionResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
@@ -102,6 +109,32 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// errorReasonsFromStrings parses the short-form ErrorReason list a REST
+// caller submits (e.g. "TRANSACTION_REFERENCE_CONFLICT" — the same
+// identifier the gRPC ErrorInfo.reason and REST error responses use).
+// Re-prepends the "ERROR_REASON_" prefix to match the generated enum
+// constant before looking it up. Unknown names fail loudly so a typo in
+// `skippableReasons` is rejected at admission with a clear 400 rather
+// than silently dropped.
+func errorReasonsFromStrings(in []string) ([]commonpb.ErrorReason, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+
+	out := make([]commonpb.ErrorReason, len(in))
+
+	for i, name := range in {
+		code, ok := commonpb.ErrorReason_value[errorReasonPrefix+name]
+		if !ok {
+			return nil, fmt.Errorf("unknown ErrorReason %q at index %d", name, i)
+		}
+
+		out[i] = commonpb.ErrorReason(code)
+	}
+
+	return out, nil
+}
+
 // MarshalJSON implements json.Marshaler for RevertTransactionPayload.
 func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
@@ -131,17 +164,19 @@ const (
 
 // BulkElement represents a bulk element with idempotency key.
 type BulkElement struct {
-	Action         *LedgerAction
-	IdempotencyKey string
+	Action           *LedgerAction
+	IdempotencyKey   string
+	SkippableReasons []commonpb.ErrorReason
 }
 
 // UnmarshalJSON implements json.Unmarshaler for BulkElement.
 func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	// First pass: parse action and idempotency key
 	type rawElement struct {
-		Action         string        `json:"action"`
-		IdempotencyKey string        `json:"ik"`
-		Data           json.RawValue `json:"data"`
+		Action           string        `json:"action"`
+		IdempotencyKey   string        `json:"ik"`
+		Data             json.RawValue `json:"data"`
+		SkippableReasons []string      `json:"skippableReasons"`
 	}
 
 	var raw rawElement
@@ -151,7 +186,13 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("error parsing element: %w", err)
 	}
 
+	skippable, err := errorReasonsFromStrings(raw.SkippableReasons)
+	if err != nil {
+		return fmt.Errorf("invalid skippableReasons: %w", err)
+	}
+
 	x.IdempotencyKey = raw.IdempotencyKey
+	x.SkippableReasons = skippable
 	x.Action = &LedgerAction{}
 
 	// Parse data based on action

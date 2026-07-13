@@ -6,6 +6,8 @@ import (
 	"maps"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ErrNotFound is a sentinel error for missing records in storage lookups. It
@@ -465,6 +467,13 @@ func (e *ErrIdempotencyKeyConflict) Metadata() map[string]string {
 type ErrTransactionReferenceConflict struct {
 	Ledger    string
 	Reference string
+	// ExistingTransactionID is the id of the transaction that already owned
+	// the reference. Populated whenever the FSM detects the collision so
+	// downstream consumers (Metadata(), and through it the OrderSkippedLog
+	// context when the reason is whitelisted) can surface the existing tx
+	// id to clients without an extra lookup. Optional for backwards-
+	// compatible construction sites.
+	ExistingTransactionID uint64
 }
 
 func (e *ErrTransactionReferenceConflict) Error() string {
@@ -472,7 +481,35 @@ func (e *ErrTransactionReferenceConflict) Error() string {
 }
 func (*ErrTransactionReferenceConflict) Reason() string { return ErrReasonTransactionReferenceConflict }
 func (e *ErrTransactionReferenceConflict) Metadata() map[string]string {
-	return map[string]string{"ledger": e.Ledger, "reference": e.Reference}
+	md := map[string]string{"ledger": e.Ledger, "reference": e.Reference}
+	if e.ExistingTransactionID != 0 {
+		md["existingTransactionId"] = strconv.FormatUint(e.ExistingTransactionID, 10)
+	}
+
+	return md
+}
+
+// ErrInvalidSkippableReason — the caller listed an ErrorReason in
+// `skippable_reasons` that is not in the public business whitelist for the
+// operation. Structural / internal reasons can never be skipped silently, so
+// admission rejects them up front; this guarantees a poisoned admission
+// cannot smuggle a structural skip into the FSM (the processor would refuse
+// it too, but rejecting at the boundary gives the caller a clear 400-class
+// error instead of a silent failure).
+type ErrInvalidSkippableReason struct {
+	// Provided is the offending ErrorReason value the caller submitted.
+	// Carried as the typed enum (not a free string) so wire roundtrips are
+	// lossless and the gRPC adapter renders the same identifier the client
+	// shipped.
+	Provided commonpb.ErrorReason
+}
+
+func (e *ErrInvalidSkippableReason) Error() string {
+	return fmt.Sprintf("invalid skippable_reasons entry %q: not in the operation's business whitelist", ReasonString(e.Provided))
+}
+func (*ErrInvalidSkippableReason) Reason() string { return ErrReasonValidation }
+func (e *ErrInvalidSkippableReason) Metadata() map[string]string {
+	return map[string]string{"reason": ReasonString(e.Provided)}
 }
 
 // ErrTransactionNotFound — transaction ID is beyond the known range.
