@@ -18,6 +18,38 @@ type createLedgerBody struct {
 	Mode                   string            `json:"mode,omitempty"`
 	MirrorSource           *mirrorSourceBody `json:"mirrorSource,omitempty"`
 	DefaultEnforcementMode string            `json:"defaultEnforcementMode,omitempty"`
+	// InitialSchema declares metadata field types to seed at creation time.
+	InitialSchema []metadataFieldTypeBody `json:"initialSchema,omitempty"`
+	// AccountTypes declares the initial account types (name -> full model).
+	AccountTypes map[string]accountTypeBody `json:"accountTypes,omitempty"`
+}
+
+// metadataFieldTypeBody is the camelCase JSON representation of a
+// SetMetadataFieldTypeCommand used to seed a ledger's initial metadata schema.
+type metadataFieldTypeBody struct {
+	TargetType string `json:"targetType"` // account | transaction | ledger
+	Key        string `json:"key"`
+	Type       string `json:"type"` // string | int64 | bool | uint64 | ... | datetime
+}
+
+// toProto converts the metadata field type body to its proto command, reusing
+// the shared commonpb enum parsers.
+func (b metadataFieldTypeBody) toProto() (*commonpb.SetMetadataFieldTypeCommand, error) {
+	targetType, err := commonpb.ParseTargetType(b.TargetType)
+	if err != nil {
+		return nil, err
+	}
+
+	metadataType, err := commonpb.ParseMetadataType(b.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	return &commonpb.SetMetadataFieldTypeCommand{
+		TargetType: targetType,
+		Key:        b.Key,
+		Type:       metadataType,
+	}, nil
 }
 
 // mirrorSourceBody holds the mirror source configuration.
@@ -86,6 +118,31 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 			}
 
 			createReq.DefaultEnforcementMode = mode
+		}
+
+		for i, cmd := range body.InitialSchema {
+			converted, err := cmd.toProto()
+			if err != nil {
+				writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("initialSchema[%d]: %w", i, err))
+
+				return
+			}
+
+			createReq.InitialSchema = append(createReq.InitialSchema, converted)
+		}
+
+		if len(body.AccountTypes) > 0 {
+			createReq.AccountTypes = make(map[string]*commonpb.AccountType, len(body.AccountTypes))
+			for name, at := range body.AccountTypes {
+				converted, err := at.toProto()
+				if err != nil {
+					writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("accountTypes[%q]: %w", name, err))
+
+					return
+				}
+
+				createReq.AccountTypes[name] = converted
+			}
 		}
 	}
 

@@ -3,7 +3,6 @@ package accounttypes
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -103,26 +102,15 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
+// FormatPersistence returns the canonical uppercase name for a persistence
+// enum. It delegates to the shared commonpb helper so the CLI, HTTP API, and
+// OpenAPI spec stay in sync.
 func FormatPersistence(p commonpb.AccountTypePersistence) string {
-	switch p {
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
-		return "EPHEMERAL"
-	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-		return "TRANSIENT"
-	default:
-		return "NORMAL"
-	}
+	return commonpb.PersistenceToString(p)
 }
 
+// ParsePersistence converts a persistence string to its enum. It delegates to
+// the shared commonpb helper (case-insensitive, empty defaults to NORMAL).
 func ParsePersistence(s string) (commonpb.AccountTypePersistence, error) {
-	switch strings.ToLower(s) {
-	case "normal", "":
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL, nil
-	case "ephemeral":
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, nil
-	case "transient":
-		return commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT, nil
-	default:
-		return 0, fmt.Errorf("unknown persistence mode %q (valid: normal, ephemeral, transient)", s)
-	}
+	return commonpb.ParsePersistence(s)
 }

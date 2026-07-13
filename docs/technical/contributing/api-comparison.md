@@ -39,15 +39,15 @@ This document compares the POC's API with the original Formance ledger API and d
 | Bulk atomic | ✅ | ✅ | System-level atomicity (cross-ledger) |
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
-| Create ledger | ✅ | ✅ | |
+| Create ledger | ✅ | ✅ | HTTP + gRPC accept the full model: `initialSchema`, `accountTypes` (name/pattern/persistence/segmentTypes), `defaultEnforcementMode` |
 | Create mirror ledger | ✅ | ❌ | HTTP or PostgreSQL source |
 | Promote mirror ledger | ✅ | ❌ | Mirror → Normal mode |
 | Delete ledger | ✅ | ✅ | |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Account Types** |
-| Add account type | ✅ | ❌ | Pattern-based account validation |
-| List account types | ✅ | ❌ | List all types for a ledger |
+| Add account type | ✅ | ❌ | Full model over HTTP + gRPC: name, pattern, `persistence`, `segmentTypes` |
+| List account types | ✅ | ❌ | List all types for a ledger (HTTP + gRPC; includes persistence + segmentTypes) |
 | Get account type | ✅ | ❌ | Get details of a specific type |
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
@@ -214,7 +214,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /v3/{ledgerName}` - Create a ledger (supports optional `chartOfAccounts` and `enforcementMode` in body)
+- `POST /v3/{ledgerName}` - Create a ledger. Optional body fields: `mode`, `mirrorSource`, `defaultEnforcementMode`, `initialSchema` (metadata field types), and `accountTypes` (full account-type model — name/pattern/persistence/segmentTypes). These mirror the gRPC `CreateLedgerRequest`.
 - `DELETE /v3/{ledgerName}` - Delete a ledger
 - `GET /v3/{ledgerName}` - Get ledger info (read)
 - `GET /v3/` - List all ledgers (read)
@@ -224,7 +224,7 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 **Endpoints:**
 - `GET /v3/{ledgerName}/account-types` - List all account types for a ledger
 - `GET /v3/{ledgerName}/account-types/{typeName}` - Get details of a specific account type
-- `POST /v3/{ledgerName}/account-types` - Add a new account type
+- `POST /v3/{ledgerName}/account-types` - Add a new account type (body: name, pattern, optional `persistence` and `segmentTypes`)
 - `DELETE /v3/{ledgerName}/account-types/{typeName}` - Remove an account type
 
 **Features:**

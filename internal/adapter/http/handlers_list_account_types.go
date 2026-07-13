@@ -8,8 +8,10 @@ import (
 )
 
 type accountTypeJSON struct {
-	Name    string `json:"name"`
-	Pattern string `json:"pattern"`
+	Name         string                               `json:"name"`
+	Pattern      string                               `json:"pattern"`
+	Persistence  string                               `json:"persistence"`
+	SegmentTypes map[string]*commonpb.SegmentTypeJSON `json:"segmentTypes,omitempty"`
 }
 
 type listAccountTypesResponse struct {
@@ -17,10 +19,20 @@ type listAccountTypesResponse struct {
 }
 
 func toAccountTypeJSON(at *commonpb.AccountType) accountTypeJSON {
-	return accountTypeJSON{
-		Name:    at.GetName(),
-		Pattern: at.GetPattern(),
+	out := accountTypeJSON{
+		Name:        at.GetName(),
+		Pattern:     at.GetPattern(),
+		Persistence: commonpb.PersistenceToString(at.GetPersistence()),
 	}
+
+	if len(at.GetSegmentTypes()) > 0 {
+		out.SegmentTypes = make(map[string]*commonpb.SegmentTypeJSON, len(at.GetSegmentTypes()))
+		for name, st := range at.GetSegmentTypes() {
+			out.SegmentTypes[name] = commonpb.SegmentTypeToJSON(st)
+		}
+	}
+
+	return out
 }
 
 // handleListAccountTypes handles GET /{ledgerName}/account-types.
