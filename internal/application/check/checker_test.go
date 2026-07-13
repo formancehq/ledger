@@ -2441,7 +2441,7 @@ func TestSeedExpectedFromBaseline(t *testing.T) {
 
 	dest, err := store.BaselineSnapshotDir()
 	require.NoError(t, err)
-	require.NoError(t, attributes.CreateBaselineSnapshot(reader, attributes.New(), dest))
+	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
 	_ = reader.Close()
 
 	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
