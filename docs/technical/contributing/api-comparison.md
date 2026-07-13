@@ -159,7 +159,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Standard revert
 - ✅ `force` option (ignore insufficient balances)
 - ✅ `atEffectiveDate` option (use original transaction timestamp)
-- ✅ Revert metadata
+- ✅ Revert metadata (typed values — string, integer, boolean — preserved losslessly; unsupported values rejected with `400 INVALID_REQUEST`)
 - ✅ Verification that transaction is not already reverted
 
 **Navigable revert relationship.** The revert link is a first-class part of the
