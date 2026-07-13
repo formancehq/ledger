@@ -191,3 +191,70 @@ func TestQuoting_FormatRoundTripsSpecialChars(t *testing.T) {
 		})
 	}
 }
+
+// structuralKeywords are the words that remain reserved lexer keywords after
+// EN-1547 (they must keep terminating expressions). They are the interesting
+// stress case for the quote-strings design: a bare punctuated form starting with
+// one (metadata[and-x]) is rejected like any punctuated bare identifier, while the
+// quoted form is a normal key/value that round-trips.
+var structuralKeywords = []string{"and", "or", "not", "in", "between"}
+
+// TestQuoting_StructuralKeywordPrefixes locks the behavior flemzord asked about
+// (PR #1582 P2): for each structural keyword, a punctuated key/value that starts
+// with it parses only when quoted, the bare form is rejected, and Format quotes
+// it so the round-trip holds. Also covers the structural-word-exact value
+// (`== "and"`), which must be quoted by Format to reparse as a string.
+func TestQuoting_StructuralKeywordPrefixes(t *testing.T) {
+	t.Parallel()
+
+	for _, kw := range structuralKeywords {
+		for _, sep := range specialChars {
+			punct := kw + sep + "x"
+
+			t.Run(punct, func(t *testing.T) {
+				t.Parallel()
+
+				// (a) quoted key parses; bare punctuated key rejected.
+				quotedKey := fmt.Sprintf(`metadata["%s"] == "v"`, punct)
+				fk, err := Parse(quotedKey)
+				require.NoError(t, err, quotedKey)
+				require.Equal(t, punct, fk.GetField().GetField().GetMetadata(), quotedKey)
+
+				bareKey := fmt.Sprintf(`metadata[%s] == "v"`, punct)
+				_, err = Parse(bareKey)
+				require.Error(t, err, bareKey)
+
+				// (b) quoted value parses.
+				quotedVal := fmt.Sprintf(`metadata[k] == "%s"`, punct)
+				fv, err := Parse(quotedVal)
+				require.NoError(t, err, quotedVal)
+				require.Equal(t, punct, fv.GetField().GetStringCond().GetHardcoded(), quotedVal)
+
+				// (c) Format round-trips the punctuated value (Format quotes it).
+				out := Format(fv)
+				rp, err := Parse(out)
+				require.NoError(t, err, out)
+				require.True(t, proto.Equal(fv, rp), "round-trip: value=%q Format=%q", punct, out)
+			})
+		}
+
+		// (d) The structural-word-exact string value must be quoted by Format so
+		// it reparses as a string rather than an operator token.
+		t.Run(kw+"_exact_value", func(t *testing.T) {
+			t.Parallel()
+
+			f, err := Parse(fmt.Sprintf(`metadata[k] == "%s"`, kw))
+			require.NoError(t, err)
+			require.Equal(t, kw, f.GetField().GetStringCond().GetHardcoded())
+
+			out := Format(f)
+			rp, err := Parse(out)
+			require.NoError(t, err, out)
+			require.True(t, proto.Equal(f, rp), "exact round-trip: %q Format=%q", kw, out)
+
+			// The bare operator word is NOT a valid value (it terminates the expr).
+			_, err = Parse("metadata[k] == " + kw)
+			require.Error(t, err)
+		})
+	}
+}

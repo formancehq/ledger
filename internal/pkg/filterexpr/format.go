@@ -438,21 +438,23 @@ func quoteIfNeeded(s string) string {
 	return s
 }
 
-// bareIdent matches exactly the lexer's plain-alphanumeric Ident. A value is safe
-// to emit unquoted only if it is a whole bare Ident (and not a structural
-// operator, below); anything with a special char, a leading digit, or empty must
-// be quoted or it would fail to reparse. Kept in lockstep with the Ident rule in
-// parser.go.
-var bareIdent = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+var (
+	// bareIdent matches exactly the lexer's plain-alphanumeric Ident. A value is
+	// safe to emit unquoted only if it is a whole bare Ident (and not a structural
+	// operator, below); anything with a special char, a leading digit, or empty
+	// must be quoted or it would fail to reparse. Kept in lockstep with the Ident
+	// rule in parser.go.
+	bareIdent = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// reservedOperators is the set of structural keywords that the value grammar does
-// NOT accept as a bare value (Value.Kw admits the noun words and Value.Bool the
-// booleans, but the operators must keep terminating expressions). A value equal
-// to one of these must be quoted. Kept in lockstep with the lexer Keyword rule
-// minus the noun/boolean words.
-var reservedOperators = map[string]bool{
-	"and": true, "or": true, "not": true, "in": true, "between": true,
-}
+	// reservedOperators is the set of structural keywords that the value grammar
+	// does NOT accept as a bare value (Value.Kw admits the noun words and
+	// Value.Bool the booleans, but the operators must keep terminating
+	// expressions). A value equal to one of these must be quoted. Kept in lockstep
+	// with the lexer Keyword rule minus the noun/boolean words.
+	reservedOperators = map[string]bool{
+		"and": true, "or": true, "not": true, "in": true, "between": true,
+	}
+)
 
 // needsQuoting reports whether a value must be double-quoted to survive a
 // Format→Parse round-trip: it quotes anything that is not a clean bare Ident, and
