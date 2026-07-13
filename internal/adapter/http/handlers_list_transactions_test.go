@@ -5,11 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -106,6 +108,64 @@ func TestHandleListTransactions_WithReferenceAndDateFilters(t *testing.T) {
 	and := capturedFilter.GetAnd()
 	require.NotNil(t, and)
 	require.Len(t, and.GetFilters(), 2)
+}
+
+// TestHandleListTransactions_DualFormatFilter is the endpoint-level EN-1511
+// acceptance check: the same logical filter passed via `?filter=` in the textual
+// form and in the structured JSON form reaches the backend as the same
+// QueryFilter.
+func TestHandleListTransactions_DualFormatFilter(t *testing.T) {
+	t.Parallel()
+
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+		t.Helper()
+
+		var captured *commonpb.QueryFilter
+
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+				captured = filter
+
+				return cursor.NewSliceCursor[*commonpb.Transaction](nil), nil
+			}).AnyTimes()
+		srv := newTestServer(t, backend)
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, target, nil, map[string]string{"ledgerName": "ledger1"})
+		srv.handleListTransactions(w, r)
+
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+		require.NotNil(t, captured)
+
+		return captured
+	}
+
+	// url.QueryEscape both values so the JSON braces / spaces survive the query
+	// string.
+	fromText := capture(t, "/ledger1/transactions?filter="+url.QueryEscape(`metadata[status] == "active"`))
+	fromJSON := capture(t, "/ledger1/transactions?filter="+url.QueryEscape(`{"$match":{"metadata[status]":"active"}}`))
+
+	require.True(t, proto.Equal(fromText, fromJSON),
+		"textual and JSON ?filter= forms must reach the backend as the same QueryFilter\n text: %v\n json: %v",
+		fromText, fromJSON)
+}
+
+// TestHandleListTransactions_FilterInvalidForTarget checks that a condition
+// invalid on the transactions target is rejected with a 400 for both forms.
+func TestHandleListTransactions_FilterInvalidForTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{`ledger == "main"`, `{"$match":{"ledger":"main"}}`} {
+		srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, "/ledger1/transactions?filter="+url.QueryEscape(raw), nil,
+			map[string]string{"ledgerName": "ledger1"})
+		srv.handleListTransactions(w, r)
+
+		require.Equal(t, http.StatusBadRequest, w.Code, "raw: %s", raw)
+	}
 }
 
 func TestHandleListTransactions_InvalidAfter(t *testing.T) {

@@ -52,6 +52,27 @@ sequenceDiagram
 
 The HTTP REST surface (`internal/adapter/http/`) is a thin wrapper that routes to the same controller methods.
 
+### Filter input: dual-format decode (EN-1511)
+
+Whatever the transport, a filter reaches the pipeline as a single
+`*commonpb.QueryFilter`. Callers may express it in **either** the textual
+`filterexpr` grammar (`metadata[k] == v`) or the structured v2 JSON
+`QueryFilter` DSL (`{"$match":{"metadata[k]":"v"}}`); both are decoded by the one
+shared helper `filterexpr.DecodeDualFormat` (`internal/pkg/filterexpr/decode.go`),
+which detects the form from the first non-whitespace byte, parses to the same
+proto, and applies the single per-target validity gate
+(`domain.ValidateFilterForTarget`). The HTTP list handlers call it via
+`parseListFilter` (`internal/adapter/http/list_filter.go`) for the `?filter=`
+query parameter and AND-combine the result with the endpoint's convenience params
+(`reference`, `prefix`, date range) through `combineFilters`; prepared-query
+create/update decode the JSON `filter` body field through the same helper; and
+`ledgerctl --filter` routes through it in `cmdutil.BuildQueryFilter`. Audit
+conditions (`audit[...]`) exist only in the textual form — the JSON codec has no
+representation for them (EN-1241) — so the textual form is canonical for
+`GET /v3/_/audit-entries`. See
+[api-comparison.md](../../../contributing/api-comparison.md#filter-input-formats-dual-format-contract-en-1511)
+for the full contract.
+
 ## Linearizability — `ReadIndex`
 
 `internal/infra/node/read_index.go:101` — `ReadIndexAndWait(ctx)`:

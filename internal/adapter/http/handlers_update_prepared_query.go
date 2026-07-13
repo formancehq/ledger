@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -39,10 +40,18 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// stored target by the FSM (processUpdatePreparedQuery →
 	// domain.ValidateFilterForTarget), the only layer that sees it — so an update
 	// cannot smuggle in a condition invalid for the query's target (EN-1504).
-	// This handler stays purely structural.
-	filter, err := decodePreparedQueryFilter(body.Filter)
+	// This handler stays purely structural: it accepts either the structured v2
+	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
+	// the target gate to the FSM.
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+
+	if filter == nil {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter is required"))
 
 		return
 	}

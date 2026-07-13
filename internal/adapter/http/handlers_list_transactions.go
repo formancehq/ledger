@@ -135,16 +135,17 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	var filter *commonpb.QueryFilter
-	if len(filters) == 1 {
-		filter = filters[0]
-	} else if len(filters) > 1 {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: filters},
-			},
-		}
+	// The generic `filter` query parameter accepts either the textual filterexpr
+	// grammar or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
+	// convenience params (reference, startDate/endDate) above.
+	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	if !ok {
+		return
 	}
+
+	filters = append(filters, generic)
+
+	filter := combineFilters(filters...)
 
 	ctx, profile := query.WithProfile(r.Context())
 

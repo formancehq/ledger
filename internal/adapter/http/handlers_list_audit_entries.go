@@ -2,11 +2,9 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -88,20 +86,17 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 }
 
 // parseAuditFilter parses the optional `filter` query parameter into a
-// QueryFilter using the shared filterexpr grammar. An absent filter yields a nil
-// filter (unfiltered read). A malformed filter is a 400.
+// QueryFilter via the shared dual-format decoder (EN-1511), the same one every
+// other list endpoint uses. An absent filter yields a nil filter (unfiltered
+// read). A malformed filter, or one carrying a condition invalid on the AUDIT
+// target, is a 400.
+//
+// In practice audit filters are textual: the structured v2 JSON DSL has no
+// representation for audit conditions (their field names collide with the
+// transaction/log conditions the codec already claims — EN-1241), so the codec
+// rejects them. The decoder still accepts the structured form as input; it just
+// cannot carry an audit condition, so the textual form is the canonical one for
+// this endpoint. See the handler doc above and commonpb/query_filter.go.
 func parseAuditFilter(w http.ResponseWriter, r *http.Request) (*commonpb.QueryFilter, bool) {
-	expr := r.URL.Query().Get("filter")
-	if expr == "" {
-		return nil, true
-	}
-
-	filter, err := filterexpr.Parse(expr)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid filter: %w", err))
-
-		return nil, false
-	}
-
-	return filter, true
+	return parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 }

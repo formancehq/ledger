@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -33,36 +32,4 @@ func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
 	}
 
 	return t, nil
-}
-
-// decodePreparedQueryFilter decodes the `filter` JSON value of a prepared-query
-// create/update request. The value uses the v2-aligned query DSL documented in
-// openapi.yml (combinators `$and`/`$or`/`$not` plus single-key operators
-// `$match`/`$gt`/`$exists`/…); the codec lives on commonpb.QueryFilter
-// (query_filter.go) and keeps the protobuf-internal oneof/wrapper names off the
-// public surface. An empty or absent filter is rejected — otherwise the prepared
-// query would store nil and fail later at execute time with "unknown filter
-// type: <nil>".
-func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, errors.New("filter is required")
-	}
-
-	filter := &commonpb.QueryFilter{}
-	if err := json.Unmarshal(raw, filter); err != nil {
-		return nil, fmt.Errorf("filter: %w", err)
-	}
-
-	if filter.GetFilter() == nil {
-		return nil, errors.New("filter must contain at least one condition")
-	}
-
-	// Per-target validity (a condition must be valid on the query's specific
-	// target — logId/date/ledger are valid on LOGS but not on
-	// ACCOUNTS/TRANSACTIONS) is enforced by domain.ValidateFilterForTarget at the
-	// admission + FSM layers, which know the concrete target for both create
-	// (from the request) and update (from the stored query). The create handler
-	// also runs it here for an early, precise 400; this decoder stays purely
-	// structural.
-	return filter, nil
 }
