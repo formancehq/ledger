@@ -46,7 +46,10 @@ func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bo
 //   - startDate/endDate  RFC3339, filter on transaction timestamp.
 //     Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be
 //     enabled on the ledger via `CreateIndex`.
-//   - reference          exact-match reference filter
+//   - filter             textual filterexpr grammar OR structured v2 JSON DSL
+//     (EN-1511). A reference selection is expressed through it as the structured
+//     `{"$match":{"reference":"<ref>"}}` (or textual `reference == "<ref>"`);
+//     there is no separate `reference` alias.
 //
 // Ordering convention (mirrors `ctrl.Controller.ListTransactions`): the
 // default (reverse=false) returns newest-first (descending transaction id);
@@ -88,18 +91,6 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 
 	var filters []*commonpb.QueryFilter
 
-	if ref := r.URL.Query().Get("reference"); ref != "" {
-		filters = append(filters, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Reference{
-				Reference: &commonpb.ReferenceCondition{
-					Cond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ref},
-					},
-				},
-			},
-		})
-	}
-
 	dateCond := &commonpb.UintCondition{}
 	hasDateFilter := false
 
@@ -135,9 +126,9 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	// The generic `filter` query parameter accepts either the textual filterexpr
-	// grammar or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
-	// convenience params (reference, startDate/endDate) above.
+	// The `filter` query parameter accepts either the textual filterexpr grammar
+	// or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
+	// startDate/endDate timestamp range above.
 	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if !ok {
 		return

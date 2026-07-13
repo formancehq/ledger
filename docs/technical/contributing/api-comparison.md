@@ -399,8 +399,15 @@ non-whitespace byte:
 - **Query-string endpoints** (`?filter=`): the value is textual `filterexpr`
   passed verbatim (URL-encoded). To pass the structured form, URL-encode the JSON
   object as the value (`?filter=%7B%22%24match%22%3A…%7D`). The generic `filter`
-  parameter is AND-combined with the endpoint's convenience params (`reference`,
-  `prefix`, `startDate`/`endDate`).
+  parameter is AND-combined with the endpoint's remaining convenience params (the
+  transactions `startDate`/`endDate` timestamp range). It has no dedicated
+  address-prefix or reference aliases: an account address prefix is the textual
+  `filter=address ^= "users:"` (or structured
+  `?filter=%7B%22%24match%22%3A%7B%22address%22%3A%22users%3A%22%7D%7D`, i.e.
+  `{"$match":{"address":"users:"}}` with the trailing `:` marking a prefix
+  match), and a transaction reference is the structured
+  `?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D`
+  (`{"$match":{"reference":"ref-1"}}`) or the textual `filter=reference == "ref-1"`.
 - **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
   object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
   is the textual form.
@@ -719,7 +726,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
-| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions with cursor pagination + reference/date filters |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
