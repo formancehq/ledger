@@ -956,7 +956,7 @@ ledgerctl accounts list --ledger my-ledger --prefix users:
 ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
 
 # Complex filter expression
-ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true and address ^= users:"
+ledgerctl accounts list --ledger my-ledger --filter 'metadata[active] == true and address ^= "users:"'
 
 # Combine prefix and filter (equivalent to AND)
 ledgerctl accounts list --ledger my-ledger --prefix users: --filter "metadata[tier] == gold"
@@ -997,6 +997,13 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 ```
 
+A bare `KEY` or `VALUE` is a plain-alphanumeric identifier (`[a-zA-Z_][a-zA-Z0-9_]*`).
+Any key or value that contains a special character — `-`, `:`, `.`, `/`, spaces, etc.
+— **must be quoted** (e.g. `metadata["x-request-id"] == "user:42"`,
+`address ^= "users:"`, `audit[ledger] == "my-ledger"`). The one exception is the
+asset reference in `has asset BASE/PRECISION`, whose `/` is part of the grammar
+(e.g. `has asset USD/2`).
+
 `audit[...]` conditions are only valid on `audit list` (see [audit list](#audit-list) for the field/operator matrix). They are rejected on other list endpoints.
 
 **Conditions:**
@@ -1033,8 +1040,8 @@ has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 
 | Format | Example | Type |
 |--------|---------|------|
-| Bare word | `premium` | string |
-| Quoted string | `"hello world"` or `'hello world'` | string |
+| Bare word (plain-alphanumeric only) | `premium` | string |
+| Quoted string (required for special chars `-`, `:`, `.`, `/`, spaces) | `"hello world"`, `"user:42"` | string |
 | Integer | `42`, `-5` | int64 |
 | Boolean | `true`, `false` | bool |
 
@@ -2317,7 +2324,7 @@ ledgerctl audit list --reverse
 ledgerctl audit list --filter 'audit[outcome] == failure'
 
 # Scope to a ledger (via the generic filter — no dedicated flag)
-ledgerctl audit list --filter 'audit[ledger] == my-ledger'
+ledgerctl audit list --filter 'audit[ledger] == "my-ledger"'
 
 # Combine outcome and ledger
 ledgerctl audit list --filter 'audit[outcome] == failure and audit[ledger] == main'

@@ -199,7 +199,9 @@ func TestFormatAudit_RoundTrip(t *testing.T) {
 	for _, in := range []string{
 		"audit[outcome] == failure",
 		"audit[ledger] == main",
-		"audit[caller_subject] == svc:payments",
+		// A value with a special char (`:`) must be quoted (EN-1547); Format emits
+		// and Parse reads the quoted form.
+		`audit[caller_subject] == "svc:payments"`,
 		"audit[seq] == 42",
 		"audit[seq] between 1000 and 2000",
 		`audit[timestamp] >= "2023-11-14T22:13:20Z"`,
