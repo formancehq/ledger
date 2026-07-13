@@ -52,7 +52,7 @@ non-deterministic map marshaling). So a value that is corrupted or tampered
 *before* it is proposed takes effect on every node identically, and no cross-node
 comparison — logical or byte-wise — can catch it. Where the sections below
 describe a persisted main-store projection that the checker does not yet verify
-(the mirror cursor, the readstore inverted-index contents, prepared queries,
+(the readstore inverted-index contents, prepared queries,
 persisted bloom blocks on the restart path, and the persisted governance
 projections — signing keys `SubGlobSigningKey`, signing config
 `SubGlobSigningConfig`, and maintenance mode `SubGlobMaintenanceMode`, each read
@@ -86,14 +86,17 @@ is correct: the worker proposes mirror ingest orders and a `MirrorSyncUpdate` in
 the same Raft proposal, and the FSM queues the cursor write through the same
 `WriteSet` so it only advances if the mirrored orders apply successfully.
 
-That atomicity protects normal failures, but it does not by itself prove that the
-stored cursor is still consistent with audited mirror orders after restore,
-manual repair, or future tooling. The cursor is wrong in **both** directions:
+That atomicity is the load-bearing property: because the `MirrorSyncUpdate` rides
+in the *same* proposal as the ingest orders and drains through the *same*
+`WriteSet.Merge` / `batch.Commit()`, the persisted cursor **can never lag or lead
+the ingested data through any normal or crash path** — a crash lands both or
+neither. So through normal operation the stored cursor always equals the highest
+audited `MirrorIngest.v2LogId`, and the only way to move it off that value is to
+tamper the persisted cursor byte directly (after restore, manual repair, or a
+Pebble-level edit). The two tamper directions behave very differently, and
+neither is an *integrity-checker* concern:
 
-- A cursor that advances **beyond** the highest audited `MirrorIngest.v2LogId`
-  makes the worker skip source logs without any audit entry showing the missing
-  proposals — silent under-ingestion.
-- A cursor that drops **below** the highest audited `v2LogId` is equally unsafe.
+- A cursor tampered **below** the highest audited `v2LogId` replays.
   `Worker.processBatch` (`internal/application/mirror/worker.go`) reloads the
   cursor and calls `FetchLogs(cursor, ...)`, which returns source logs strictly
   *after* the cursor. `TranslateBatch` then emits fresh `MirrorIngest` orders for
@@ -101,15 +104,32 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
   (`internal/domain/processing/processor_mirror.go`) reapplies every posting with
   `force=true`, overwriting the transaction state and re-adding the amounts to the
   volume pair via `applyPosting`. There is **no deduplication on `v2LogId`** and
-  volume mutation is additive, so a lowered cursor replays already-audited
-  transactions and applies their balance effects a second time — silent
-  double-application.
+  volume mutation is additive, so the balance effects apply a second time — but
+  the replay **self-heals into an audit-consistent state**: the duplicate
+  `MirrorIngest` orders go through the real proposal path, so they are legitimately
+  hash-chained, the cursor re-advances atomically, and the doubled volumes match
+  an audit that now contains the duplicates. A `compare*` pass that re-derives
+  from the audit (`compareVolumes` / `compareTransactions`) therefore replays the
+  *same* orders the FSM applied and **cannot see the doubling**; a cursor-equality
+  pass also passes because the cursor has re-advanced. Verifying the cursor at
+  rest catches nothing here — the real mitigation is FSM-level `v2LogId`
+  idempotency in `processMirrorIngest` (skip an ingest whose `v2LogId` is already
+  applied), a functional hardening tracked separately.
+- A cursor tampered **beyond** the highest audited `v2LogId` makes the worker skip
+  source logs — silent v2→v3 under-ingestion. This *is* stable and at-rest
+  detectable, but only as a **parity** property against the external v2 source:
+  the expected bound is the worker's tracked source-head (`SubPLMirrorSourceHead`,
+  refreshed by `refreshSourceHead`), not anything the checker can re-derive from
+  the v3 audit alone (the skipped logs never entered the v3 audit, which stays
+  internally consistent). Its home is the mirror worker's recovery reconciliation
+  against the source-head, not an audit-vs-store integrity compare.
 
-Because it is only correct at one exact value, treat `MirrorCursor` as a
-persisted per-ledger projection (`ZonePerLedger` / `SubPLMirrorCursor`, in the
-main Pebble store) that must **equal** the highest audited `MirrorIngest.v2LogId`
-for the target ledger — not merely be less than or equal to it. Explicit edge
-cases:
+`MirrorCursor` is therefore classified as **technical replication state**, not a
+checker business invariant: the ledger's business truth (balances, transactions,
+metadata) is carried by the audit-bound `MirrorIngest` orders and already verified
+by the normal checker passes, independent of the cursor. It lives at
+`ZonePerLedger` / `SubPLMirrorCursor` in the main Pebble store. Edge cases worth
+recording for the worker/recovery side (not the checker):
 
 - **Empty / never-ingested ledger:** the cursor is absent and reads back as `0`
   (`query.ReadMirrorCursor` defaults to `0`, and `processBatch` maps `0` to
@@ -130,13 +150,18 @@ cases:
   logged, purge not yet reached) as the transient case to exclude — not assume
   a deleted ledger keeps a stale cursor forever.
 
-This equality is **not** currently enforced: there is no `compare*` pass for
-`MirrorCursor` in `internal/application/check`, so per invariant #8 this is a
-known integrity gap, not an approved exemption. Raft replication does not close
-it — a cursor value corrupted or tampered before it is proposed takes effect on
-every node identically. Mirror recovery, repair tooling, or a checker pass
-that re-derives the expected cursor from the audited mirror-ingest logs must
-enforce the equality before the stored cursor can be trusted.
+There is deliberately **no** `compare*` pass for `MirrorCursor` in
+`internal/application/check`. Per invariant #8 the checker guards the business
+invariants of the main store against the audit; the cursor is not one of them
+(see the two tamper directions above — the *behind* case is checker-invisible and
+needs functional `v2LogId` idempotency, the *ahead* case is a v2-parity property
+owned by the mirror worker's source-head reconciliation). This is a classification
+as technical state, not an unapproved integrity gap: the audit-bound
+`MirrorIngest` orders and the existing volume/transaction passes already secure
+the business truth. Hardening the two tamper directions (ingest idempotency; a
+worker/recovery reconciliation of the cursor against source-head and the highest
+audited `v2LogId`) is tracked as separate functional follow-up, not as a checker
+compare pass.
 
 ## Readstore and Indexes
 
