@@ -92,6 +92,11 @@ service BucketService {
   rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
   // GetIndexStatus returns the current state of the read index builder
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  // GetIndex returns a single Index registry entry by (ledger, id).
+  rpc GetIndex(GetIndexRequest) returns (common.Index);
+  // GetIndexEntryStatus returns the per-index status view (registry entry +
+  // backfill cursor + per-replica IndexVersionState) for a single index.
+  rpc GetIndexEntryStatus(GetIndexEntryStatusRequest) returns (IndexEntry);
   // ListIndexes streams the bucket-scoped index registry, optionally filtered
   // to a single ledger (or to bucket-scoped indexes when ledger is empty).
   rpc ListIndexes(ListIndexesRequest) returns (stream common.Index);
@@ -1080,6 +1085,22 @@ message GetIndexStatusResponse {
   fixed64 lag = 3;
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 6;
+}
+
+// GetIndexRequest identifies a single Index registry entry to fetch.
+// Pass an empty ledger to address a bucket-scoped entry (e.g. audit
+// indexes); a non-empty ledger addresses the ledger-scoped slot.
+message GetIndexRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// GetIndexEntryStatusRequest identifies a single index whose per-replica
+// status view (registry entry + backfill cursor + IndexVersionState) is
+// returned.
+message GetIndexEntryStatusRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
 }
 
 // IndexEntry joins a ledger's index definition (status + audit metadata) with

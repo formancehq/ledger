@@ -179,6 +179,11 @@ paths:
       description: |
         Creates a new ledger with the specified name. Storage is configured at the server level.
         Each ledger has its own Raft group for data consistency. Requires `ledger:write` scope.
+
+        The ledger name `_` is reserved: all system / non-ledger routes live
+        under the `/v3/_/…` segment (e.g. `/v3/_/audit-entries`), so a ledger
+        named `_` would be unreachable over REST. Creating it is rejected with a
+        validation error.
       operationId: createLedger
       tags:
         - Ledgers
@@ -385,6 +390,143 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/_/audit-entries:
+    get:
+      summary: List audit entries
+      description: |
+        Lists audit trail entries (one per proposal, success or failure) across
+        the whole bucket, ordered by audit sequence ascending. Audit reads are
+        not ledger-scoped in the path — a single proposal can touch several
+        ledgers — so ledger scope, outcome and other dimensions are expressed
+        through the `filter` query parameter.
+
+        This endpoint always performs a live, best-effort read. Unlike the gRPC
+        `ListAuditEntries` surface, it does not expose the read-consistency
+        options (pinned checkpoint reads, or a consistency-bound wait on the
+        audit index): filtered reads are served by an asynchronous secondary
+        index and may transiently omit very recent entries that are not yet
+        indexed. A client that needs a pinned or consistency-bounded audit read
+        must use the gRPC surface.
+
+        Requires `ledger:AuditRead` scope.
+      operationId: listAuditEntries
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+          description: Maximum number of audit entries to return (0 = server default, capped at 1000)
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Audit sequence to start after (exclusive, opaque cursor for pagination)
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Iterate newest-first (descending sequence) when true
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: |
+            Filter expression restricted to `audit[...]` conditions, using the
+            shared filter grammar (the same one accepted by `ledgerctl audit
+            list --filter`). Examples:
+              - `audit[outcome] == failure`
+              - `audit[ledger] == main`
+              - `audit[order_type] in (create_transaction, revert_transaction)`
+              - `audit[seq] between 1000 and 2000`
+              - `audit[timestamp] >= "2023-11-14T22:13:20Z"`
+            Supported fields: `seq`, `proposal_id`, `log_seq` (numeric);
+            `timestamp` (RFC3339 or unix microseconds); `outcome`
+            (success|failure), `ledger`, `caller_subject`, `order_type`
+            (string). This is deliberately NOT the JSON QueryFilter DSL used by
+            prepared queries, which cannot represent audit conditions.
+      responses:
+        '200':
+          description: List of audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v3/_/audit-entries/{sequence}:
+    get:
+      summary: Get an audit entry
+      description: |
+        Returns a single audit entry by its global sequence, with per-order
+        `items` populated (the list endpoint omits `items` for compactness).
+        Requires `ledger:AuditRead` scope.
+      operationId: getAuditEntry
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Audit entry sequence
+      responses:
+        '200':
+          description: The audit entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
   /v3/{ledgerName}/promote:
     post:
       summary: Promote a mirror ledger
@@ -478,6 +620,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+    get:
+      summary: List transactions for a ledger
+      description: |
+        Lists transactions for a specific ledger. The default order is
+        newest-first (descending transaction id); pass `reverse=true` to
+        get oldest-first (ascending). Supports cursor pagination via the
+        `after` query parameter and optional date-range and reference
+        filters. Requires `ledger:TransactionRead` scope.
+
+        This is a live, best-effort read of the current committed state.
+        Unlike the gRPC API, it does not accept read-consistency options
+        (`checkpointId` / `minLogSequence`) to pin the read to a specific
+        applied index — use gRPC for consistency-bounded / checkpoint-pinned
+        reads. (Tracked follow-up, same carve-out as the audit reads.)
+      operationId: listLedgerTransactions
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Transaction id to start after (exclusive, for cursor pagination).
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Reverse the default order. Default (`false`) returns
+            newest-first (descending); `true` returns oldest-first
+            (ascending). Mirrors the gRPC `ListTransactions` reverse
+            flag semantic.
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp >= startDate (inclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
+            Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
+        - name: reference
+          in: query
+          schema:
+            type: string
+          description: Filter by exact-match transaction reference.
+      responses:
+        '200':
+          description: Transactions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Transaction (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -995,13 +1233,14 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v3/{ledgerName}/indexes/{metadataKey}:
+  /v3/{ledgerName}/indexes/{canonicalId}/inspect:
     get:
       summary: Inspect a metadata index
       description: |
         Scans a metadata index and returns distinct values, facets (value + count),
         or a summary (cardinality, min/max, existence counts). The index must be
-        in READY state. Requires `ledger:read` scope.
+        in READY state. Only metadata indexes are inspectable (builtin indexes
+        return 400). Requires `ledger:read` scope.
       operationId: inspectIndex
       tags:
         - Indexes
@@ -1010,19 +1249,15 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: metadataKey
+        - name: canonicalId
           in: path
           required: true
-          description: Metadata key to inspect
+          description: |
+            Canonical form of the target IndexID, e.g.
+            `metadata:TARGET_TYPE_ACCOUNT:color`. Must resolve to a metadata
+            index; builtin indexes (`tx_builtin:...`, etc.) are rejected.
           schema:
             type: string
-        - name: target
-          in: query
-          description: Target type
-          schema:
-            type: string
-            enum: [account, transaction]
-            default: account
         - name: mode
           in: query
           description: Inspection mode
@@ -1048,10 +1283,15 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/InspectSummaryResponse'
-                  - $ref: '#/components/schemas/InspectDistinctValuesResponse'
-                  - $ref: '#/components/schemas/InspectFacetsResponse'
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    oneOf:
+                      - $ref: '#/components/schemas/InspectSummaryResponse'
+                      - $ref: '#/components/schemas/InspectDistinctValuesResponse'
+                      - $ref: '#/components/schemas/InspectFacetsResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1899,6 +2139,619 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
+  /v3/_/logs/{sequence}:
+    get:
+      summary: Get a single system log by bucket-wide sequence
+      description: |
+        Returns the system log entry with the given bucket-wide sequence number.
+        Falls back to cold storage when the log has been archived. Requires
+        `ledger:OpsRead` scope.
+      operationId: getLog
+      tags:
+        - Logs
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+      responses:
+        '200':
+          description: Log retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: System log entry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/chapters:
+    get:
+      summary: List bucket chapters
+      description: |
+        Streams every chapter registered on the bucket, ordered by chapter id
+        ascending. Requires `ledger:OpsRead` scope.
+
+        Live, best-effort read: this route drains the full cursor and does not
+        expose the gRPC read-consistency / pagination options
+        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
+        for consistency-bounded reads. (Tracked follow-up.)
+      operationId: listChapters
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Chapters retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Chapter (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/chapter-schedule:
+    get:
+      summary: Get the chapter auto-rotation cron schedule
+      description: |
+        Returns the cluster-wide cron expression driving automatic chapter
+        rotation. An empty string means auto-rotation is disabled. Requires
+        `ledger:OpsRead` scope.
+      operationId: getChapterSchedule
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Chapter schedule retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      cron:
+                        type: string
+                        description: Cron expression, or empty when disabled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/events-sinks:
+    get:
+      summary: List configured event sinks
+      description: |
+        Returns every event sink configured on the cluster. Requires
+        `ledger:OpsRead` scope.
+      operationId: getEventsSinks
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Event sinks retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: >
+                      Configured sinks together with their per-sink status, at
+                      parity with the gRPC GetEventsSinks response.
+                    properties:
+                      sinks:
+                        type: array
+                        items:
+                          type: object
+                          description: SinkConfig (protobuf JSON representation)
+                      sinkStatuses:
+                        type: array
+                        items:
+                          type: object
+                          description: >
+                            SinkStatus (protobuf JSON representation): per-sink
+                            error status and last-emitted cursor.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/signing-keys:
+    get:
+      summary: List registered Ed25519 signing keys
+      description: |
+        Streams every Ed25519 signing key registered on the cluster. Requires
+        `ledger:OpsRead` scope.
+
+        Live, best-effort read: this route drains the full cursor and does not
+        expose the gRPC read-consistency / pagination options
+        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
+        for consistency-bounded reads. (Tracked follow-up.)
+      operationId: listSigningKeys
+      tags:
+        - Ops
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Signing keys retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: SigningKey (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/indexes:
+    get:
+      summary: List bucket-wide indexes
+      description: |
+        Streams the bucket-scoped index registry. The `scope` query parameter
+        selects the flavor: `all` (default, matches the ListIndexesRequest
+        proto default) streams every entry across ledgers, skipping orphan
+        entries whose owning ledger no longer exists; `bucket` surfaces only
+        bucket-scoped entries (empty ledger, e.g. audit indexes). Use
+        `GET /v3/{ledgerName}/indexes` for the per-ledger view. Requires
+        `ledger:OpsRead` scope.
+      operationId: listBucketIndexes
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [all, bucket]
+            default: all
+      responses:
+        '200':
+          description: Indexes retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/indexes/{canonicalId}:
+    get:
+      summary: Get a single bucket-scoped index registry entry
+      description: |
+        Returns the `Index` registry entry for a bucket-scoped index
+        (`Ledger == ""`, e.g. audit indexes). Ledger-scoped lookups go
+        through `GET /v3/{ledgerName}/indexes/{canonicalId}` — the two
+        keyspaces are distinct so a bucket-scoped lookup with the same
+        canonical will NotFound if only the ledger-scoped entry exists.
+        Requires `ledger:OpsRead` scope.
+      operationId: getBucketIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/indexes/{canonicalId}/status:
+    get:
+      summary: Get the per-replica status of a single bucket-scoped index
+      description: |
+        Returns the `IndexEntry` (registry entry + backfill cursor +
+        per-replica IndexVersionState) for a bucket-scoped index.
+        Requires `ledger:OpsRead` scope.
+      operationId: getBucketIndexEntryStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index entry retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: IndexEntry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/_/indexes/status:
+    get:
+      summary: Get aggregated index registry status
+      description: |
+        Returns the aggregated index registry status: per-index backfill cursor,
+        per-replica IndexVersionState (current/pending), and cluster-wide
+        counters (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize).
+        The optional `ledger` query parameter narrows the per-index entries to
+        a single ledger; the aggregated counters always cover the bucket.
+        Requires `ledger:OpsRead` scope.
+      operationId: getIndexStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: ledger
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Index status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: GetIndexStatusResponse (protobuf JSON representation)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes:
+    get:
+      summary: List indexes for a ledger
+      description: |
+        Streams the indexes registered on a specific ledger. Requires
+        `ledger:LedgerRead` scope.
+      operationId: listLedgerIndexes
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: Indexes retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create an index on a ledger
+      description: |
+        Registers a new index on the ledger. The FSM begins the backfill on
+        the next apply. The request body carries the target `IndexID` in
+        canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
+        for the format). Requires `ledger:LedgerWrite` scope.
+      operationId: createIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  description: |
+                    Canonical form of the target IndexID. One of:
+                      `tx_builtin:<TX_BUILTIN_INDEX_*>`
+                      `log_builtin:<LOG_BUILTIN_INDEX_*>`
+                      `account_builtin:<ACCT_BUILTIN_INDEX_*>`
+                      `metadata:<TARGET_TYPE_*>:<key>`
+                  example: metadata:TARGET_TYPE_ACCOUNT:color
+      responses:
+        '201':
+          description: |
+            Index creation queued. The body carries the canonical id of the
+            created index (round-trip normalized), usable directly on the
+            follow-up GET/DELETE `/v3/{ledgerName}/indexes/{canonicalId}` routes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateIndexResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes/{canonicalId}:
+    get:
+      summary: Get a single index registry entry
+      description: |
+        Returns the `Index` registry entry (id, buildStatus, ledger,
+        createdAt, lastBuiltAt, forwardEncodingVersion) for a single
+        index, serialized in protobuf-JSON camelCase. Requires
+        `ledger:LedgerRead` scope.
+      operationId: getIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: Index (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Drop an index from a ledger
+      description: |
+        Removes an index from a ledger. The path parameter carries the target
+        `IndexID` in canonical form (e.g. `metadata:TARGET_TYPE_ACCOUNT:color`,
+        `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`). Requires `ledger:LedgerWrite` scope.
+      operationId: dropIndex
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Index removed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v3/{ledgerName}/indexes/{canonicalId}/status:
+    get:
+      summary: Get the per-replica status of a single index
+      description: |
+        Returns the `IndexEntry` for a single index — the registry entry
+        joined with the backfill cursor and the per-replica
+        IndexVersionState (current + pending version). Use this to poll
+        for backfill completion after a `POST /v3/{ledgerName}/indexes`.
+        Requires `ledger:LedgerRead` scope.
+      operationId: getIndexEntryStatus
+      tags:
+        - Indexes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: canonicalId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Canonical form of the target IndexID.
+      responses:
+        '200':
+          description: Index entry retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    description: IndexEntry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -2100,6 +2953,24 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
+
+    CreateIndexResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              description: |
+                Canonical form of the created IndexID (round-trip normalized),
+                e.g. `metadata:TARGET_TYPE_ACCOUNT:color` or
+                `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`.
+              example: metadata:TARGET_TYPE_ACCOUNT:color
 
     GetLedgerResponse:
       type: object
@@ -3747,7 +4618,11 @@ components:
           enum:
             - ACCOUNTS
             - TRANSACTIONS
-          description: Target entity type
+            - LOGS
+          description: >-
+            Target entity type. `LOGS` queries return log entries; the log-only
+            filter fields (`logId`, `date`, `ledger`) are valid only when the
+            target is `LOGS`.
         filter:
           $ref: '#/components/schemas/QueryFilter'
 
@@ -3820,11 +4695,8 @@ components:
             - TRANSACTIONS
             - LOGS
           description: >-
-            Target entity type. `LOGS` only appears on prepared queries created
-            through gRPC/CLI — the REST create/update paths accept only
-            `ACCOUNTS` and `TRANSACTIONS` (see CreatePreparedQueryRequest) — but
-            list/get responses echo a query's true target, so a client must
-            tolerate `LOGS` here.
+            Target entity type. `LOGS`, `ACCOUNTS` and `TRANSACTIONS` are all
+            usable prepared-query targets (create, list/get and execute).
         filter:
           $ref: '#/components/schemas/QueryFilter'
         allowedModes:
@@ -3871,8 +4743,9 @@ components:
         a field that does not apply is rejected. The numeric built-ins
         (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are
         **range-only** — use `$gt`/`$gte`/`$lt`/`$lte`; `$match` on them is rejected.
-        The log-only fields (`logId`, `date`, `ledger`) are rejected on prepared
-        queries, which can only target accounts or transactions.
+        The log-only fields (`logId`, `date`, `ledger`) are valid only when the
+        prepared query targets `LOGS`; they are rejected on `ACCOUNTS` and
+        `TRANSACTIONS` targets.
 
 
         A value is either a JSON literal or a parameter reference
@@ -4065,3 +4938,100 @@ components:
         errorMessage:
           type: string
           description: Human-readable error message
+
+    AuditEntry:
+      type: object
+      description: |
+        A single audit trail entry for a proposal (success or failure). Exactly
+        one of `success` / `failure` is set. `items` is populated only by the
+        single-entry lookup, not by the list endpoint.
+      properties:
+        sequence:
+          type: integer
+          format: uint64
+          description: Global audit sequence number
+        timestamp:
+          type: string
+          format: date-time
+          description: Apply timestamp (RFC3339)
+        proposalId:
+          type: integer
+          format: uint64
+          description: Identifier of the proposal that produced this entry
+        success:
+          $ref: '#/components/schemas/AuditSuccess'
+        failure:
+          $ref: '#/components/schemas/AuditFailure'
+        orderCount:
+          type: integer
+          format: uint32
+          description: Number of orders in the proposal
+        items:
+          type: array
+          description: Per-order detail lines. Populated by the single-entry lookup; empty on list.
+          items:
+            $ref: '#/components/schemas/AuditItem'
+        ledgers:
+          type: array
+          description: Distinct ledger names targeted by the proposal's orders
+          items:
+            type: string
+        hash:
+          type: string
+          description: Hex-encoded batch integrity hash chaining audit entries
+        hashVersion:
+          type: integer
+          format: uint32
+          description: Hash algorithm version
+        callerSnapshot:
+          type: object
+          description: Admission-time auth snapshot (protobuf JSON); absent when auth is disabled or for system proposals
+        idempotency:
+          type: object
+          description: Batch identity / idempotency information (protobuf JSON)
+        signature:
+          type: object
+          description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+
+    AuditItem:
+      type: object
+      description: One order within a proposal.
+      properties:
+        orderIndex:
+          type: integer
+          format: uint32
+          description: Zero-based position of this order within the proposal
+        serializedOrder:
+          type: string
+          description: Hex-encoded deterministic serialized bytes of the order at apply time
+        logSequence:
+          type: integer
+          format: uint64
+          description: Sequence of the log produced by this order (0 for idempotent replay or failed proposals)
+
+    AuditSuccess:
+      type: object
+      description: The inclusive log sequence range created by a successful proposal.
+      properties:
+        minLogSequence:
+          type: integer
+          format: uint64
+        maxLogSequence:
+          type: integer
+          format: uint64
+
+    AuditFailure:
+      type: object
+      description: The reason and context for a failed proposal.
+      properties:
+        reason:
+          type: string
+          description: Typed error reason identifier (e.g. ERROR_REASON_INSUFFICIENT_FUNDS)
+        message:
+          type: string
+          description: Human-readable failure message
+        context:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional structured context for the failure

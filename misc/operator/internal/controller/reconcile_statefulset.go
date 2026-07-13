@@ -189,15 +189,44 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 	// rather than relying on an incidental later StatefulSet status change — in both
 	// directions: stamping a freshly scaled-out PVC/PV when protection is on, and
 	// unstamping a PVC born from a still-labeled immutable VCT after an opt-out.
-	if r.Clientset != nil {
-		volNames := pvcVolumeNames(&ledger.Spec.Persistence)
-		pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
-		}
-		if pending {
-			return ctrl.Result{RequeueAfter: volumeBindRequeueInterval}, nil
-		}
+	if result, err := r.reconcileVolumeProtectionPass(ctx, ledger); err != nil || !result.IsZero() {
+		return result, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// reconcileVolumeProtectionPass brings the deletion-protection labels on this
+// Cluster's PVCs/PVs in line with spec.persistence.deletionProtection and
+// returns a non-zero Result (a short requeue) when at least one volume is not
+// yet in its desired label state.
+//
+// Its inputs are derived entirely from the Cluster spec and the volumes that
+// already exist in the cluster; it does NOT depend on the StatefulSet template,
+// the auth-keys credentials, or the TLS mode computed by the rest of the
+// StatefulSet pass. That independence is what lets it run during
+// AuthKeysPending (EN-1487), where the template/rollout parts are deliberately
+// deferred but volume protection must still be maintained (Option A).
+//
+// A nil Clientset (unit tests without a typed client) is a no-op.
+func (r *ClusterReconciler) reconcileVolumeProtectionPass(ctx context.Context, ledger *ledgerv1alpha1.Cluster) (ctrl.Result, error) {
+	if r.Clientset == nil {
+		return ctrl.Result{}, nil
+	}
+
+	desiredReplicas := int32(3)
+	if ledger.Spec.Replicas != nil {
+		desiredReplicas = *ledger.Spec.Replicas
+	}
+
+	name := resourceName(ledger.Name)
+	volNames := pvcVolumeNames(&ledger.Spec.Persistence)
+	pending, err := reconcileVolumeProtection(ctx, r.Clientset, ledger.Namespace, name, desiredReplicas, volNames, ledger.Spec.Persistence.DeletionProtectionEnabled())
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("reconciling volume deletion-protection labels: %w", err)
+	}
+	if pending {
+		return ctrl.Result{RequeueAfter: volumeBindRequeueInterval}, nil
 	}
 
 	return ctrl.Result{}, nil

@@ -4230,6 +4230,13 @@ func (m *PreparedQueryCursor) CloneVT() *PreparedQueryCursor {
 		}
 		r.TransactionData = tmpContainer
 	}
+	if rhs := m.LogData; rhs != nil {
+		tmpContainer := make([]*Log, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.LogData = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -11622,6 +11629,23 @@ func (this *PreparedQueryCursor) EqualVT(that *PreparedQueryCursor) bool {
 			}
 			if q == nil {
 				q = &Transaction{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
+	if len(this.LogData) != len(that.LogData) {
+		return false
+	}
+	for i, vx := range this.LogData {
+		vy := that.LogData[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &Log{}
+			}
+			if q == nil {
+				q = &Log{}
 			}
 			if !p.EqualVT(q) {
 				return false
@@ -22248,6 +22272,18 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.LogData) > 0 {
+		for iNdEx := len(m.LogData) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.LogData[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
 	if len(m.TransactionData) > 0 {
 		for iNdEx := len(m.TransactionData) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.TransactionData[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -27386,6 +27422,12 @@ func (m *PreparedQueryCursor) SizeVT() (n int) {
 	}
 	if len(m.TransactionData) > 0 {
 		for _, e := range m.TransactionData {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	if len(m.LogData) > 0 {
+		for _, e := range m.LogData {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -51679,6 +51721,40 @@ func (m *PreparedQueryCursor) UnmarshalVT(dAtA []byte) error {
 			}
 			m.TransactionData = append(m.TransactionData, &Transaction{})
 			if err := m.TransactionData[len(m.TransactionData)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogData", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LogData = append(m.LogData, &Log{})
+			if err := m.LogData[len(m.LogData)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

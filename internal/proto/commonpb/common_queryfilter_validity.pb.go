@@ -165,7 +165,7 @@ var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
 		ConditionKindAudit:           false,
 	},
 	QueryTarget_QUERY_TARGET_LOGS: {
-		ConditionKindField:           true,
+		ConditionKindField:           false,
 		ConditionKindAddress:         false,
 		ConditionKindAnd:             true,
 		ConditionKindOr:              true,

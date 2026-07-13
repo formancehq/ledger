@@ -178,23 +178,36 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestHandleCreatePreparedQuery_LogsTargetRejected(t *testing.T) {
+func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {
 	t.Parallel()
 
-	// LOGS is not a usable prepared-query target over REST: query.Execute has
-	// no LOGS hydration path (PreparedQueryCursor carries only account/txn
-	// data), so a LOGS prepared query would execute to an empty cursor. REST
-	// must reject it at ingestion rather than advertise a broken path.
-	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+	// LOGS is a usable prepared-query target over REST (EN-1503): query.Execute
+	// hydrates the log_data cursor field for it. A LOGS-target prepared query
+	// with a log-only condition (logId/date/ledger) must be accepted and the
+	// target must reach the persisted request unchanged.
+	var captured *servicepb.Request
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			captured = reqs.GetUnsigned().GetRequests()[0]
+
+			return []*commonpb.Log{{}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
-		strings.NewReader(`{"name":"logs-q","target":"LOGS","filter":`+validFieldFilterJSON+`}`),
+		strings.NewReader(`{"name":"logs-q","target":"LOGS","filter":{"$gt":{"logId":"5"}}}`),
 		map[string]string{"ledgerName": "ledger1"})
 
 	srv.handleCreatePreparedQuery(w, r)
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.NotNil(t, captured)
+	create := captured.GetCreatePreparedQuery()
+	require.NotNil(t, create)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, create.GetQuery().GetTarget())
+	require.NotNil(t, create.GetQuery().GetFilter().GetLogId(), "logId condition must survive decoding for LOGS target")
 }
 
 func TestHandleCreatePreparedQuery_UnknownTargetRejected(t *testing.T) {

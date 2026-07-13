@@ -49,6 +49,8 @@ const (
 	BucketService_ListPreparedQueries_FullMethodName     = "/ledger.BucketService/ListPreparedQueries"
 	BucketService_ExecutePreparedQuery_FullMethodName    = "/ledger.BucketService/ExecutePreparedQuery"
 	BucketService_GetIndexStatus_FullMethodName          = "/ledger.BucketService/GetIndexStatus"
+	BucketService_GetIndex_FullMethodName                = "/ledger.BucketService/GetIndex"
+	BucketService_GetIndexEntryStatus_FullMethodName     = "/ledger.BucketService/GetIndexEntryStatus"
 	BucketService_ListIndexes_FullMethodName             = "/ledger.BucketService/ListIndexes"
 	BucketService_GetLedgerStats_FullMethodName          = "/ledger.BucketService/GetLedgerStats"
 	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
@@ -120,6 +122,11 @@ type BucketServiceClient interface {
 	ExecutePreparedQuery(ctx context.Context, in *ExecutePreparedQueryRequest, opts ...grpc.CallOption) (*ExecutePreparedQueryResponse, error)
 	// GetIndexStatus returns the current state of the read index builder
 	GetIndexStatus(ctx context.Context, in *GetIndexStatusRequest, opts ...grpc.CallOption) (*GetIndexStatusResponse, error)
+	// GetIndex returns a single Index registry entry by (ledger, id).
+	GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*commonpb.Index, error)
+	// GetIndexEntryStatus returns the per-index status view (registry entry +
+	// backfill cursor + per-replica IndexVersionState) for a single index.
+	GetIndexEntryStatus(ctx context.Context, in *GetIndexEntryStatusRequest, opts ...grpc.CallOption) (*IndexEntry, error)
 	// ListIndexes streams the bucket-scoped index registry, optionally filtered
 	// to a single ledger (or to bucket-scoped indexes when ledger is empty).
 	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error)
@@ -517,6 +524,26 @@ func (c *bucketServiceClient) GetIndexStatus(ctx context.Context, in *GetIndexSt
 	return out, nil
 }
 
+func (c *bucketServiceClient) GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*commonpb.Index, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(commonpb.Index)
+	err := c.cc.Invoke(ctx, BucketService_GetIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bucketServiceClient) GetIndexEntryStatus(ctx context.Context, in *GetIndexEntryStatusRequest, opts ...grpc.CallOption) (*IndexEntry, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IndexEntry)
+	err := c.cc.Invoke(ctx, BucketService_GetIndexEntryStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Index], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[10], BucketService_ListIndexes_FullMethodName, cOpts...)
@@ -667,6 +694,11 @@ type BucketServiceServer interface {
 	ExecutePreparedQuery(context.Context, *ExecutePreparedQueryRequest) (*ExecutePreparedQueryResponse, error)
 	// GetIndexStatus returns the current state of the read index builder
 	GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error)
+	// GetIndex returns a single Index registry entry by (ledger, id).
+	GetIndex(context.Context, *GetIndexRequest) (*commonpb.Index, error)
+	// GetIndexEntryStatus returns the per-index status view (registry entry +
+	// backfill cursor + per-replica IndexVersionState) for a single index.
+	GetIndexEntryStatus(context.Context, *GetIndexEntryStatusRequest) (*IndexEntry, error)
 	// ListIndexes streams the bucket-scoped index registry, optionally filtered
 	// to a single ledger (or to bucket-scoped indexes when ledger is empty).
 	ListIndexes(*ListIndexesRequest, grpc.ServerStreamingServer[commonpb.Index]) error
@@ -777,6 +809,12 @@ func (UnimplementedBucketServiceServer) ExecutePreparedQuery(context.Context, *E
 }
 func (UnimplementedBucketServiceServer) GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetIndexStatus not implemented")
+}
+func (UnimplementedBucketServiceServer) GetIndex(context.Context, *GetIndexRequest) (*commonpb.Index, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIndex not implemented")
+}
+func (UnimplementedBucketServiceServer) GetIndexEntryStatus(context.Context, *GetIndexEntryStatusRequest) (*IndexEntry, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIndexEntryStatus not implemented")
 }
 func (UnimplementedBucketServiceServer) ListIndexes(*ListIndexesRequest, grpc.ServerStreamingServer[commonpb.Index]) error {
 	return status.Error(codes.Unimplemented, "method ListIndexes not implemented")
@@ -1254,6 +1292,42 @@ func _BucketService_GetIndexStatus_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_GetIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetIndex(ctx, req.(*GetIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BucketService_GetIndexEntryStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIndexEntryStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetIndexEntryStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetIndexEntryStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetIndexEntryStatus(ctx, req.(*GetIndexEntryStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_ListIndexes_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ListIndexesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1444,6 +1518,14 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetIndexStatus",
 			Handler:    _BucketService_GetIndexStatus_Handler,
+		},
+		{
+			MethodName: "GetIndex",
+			Handler:    _BucketService_GetIndex_Handler,
+		},
+		{
+			MethodName: "GetIndexEntryStatus",
+			Handler:    _BucketService_GetIndexEntryStatus_Handler,
 		},
 		{
 			MethodName: "GetLedgerStats",

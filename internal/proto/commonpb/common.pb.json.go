@@ -415,11 +415,10 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 // encoded through QueryFilter's own hand-written MarshalJSON (canonical flat
 // shape) and the target is emitted as the bare string enum.
 //
-// REST can only create ACCOUNTS / TRANSACTIONS prepared queries (see
-// parsePreparedQueryTarget — LOGS prepared queries would execute to an empty
-// cursor). A LOGS-target query can still exist if created via gRPC/CLI; when
-// such a query is listed over REST we emit its true target ("LOGS") faithfully
-// rather than lying about it, so the map covers all three proto values.
+// REST can create ACCOUNTS / TRANSACTIONS / LOGS prepared queries (see
+// parsePreparedQueryTarget); the map covers all three proto values so the
+// listed target is emitted faithfully regardless of how the query was created
+// (REST or gRPC/CLI).
 func (x *PreparedQuery) MarshalJSON() ([]byte, error) {
 	target, ok := queryTargetToJSON[x.GetTarget()]
 	if !ok {
@@ -447,6 +446,9 @@ var queryTargetToJSON = map[QueryTarget]string{
 }
 
 // MarshalJSON implements json.Marshaler for PreparedQueryCursor.
+//
+// The cursor carries exactly one populated data field per query target:
+// accountData (ACCOUNTS), transactionData (TRANSACTIONS) or logData (LOGS).
 func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		PageSize        uint32         `json:"pageSize"`
@@ -455,6 +457,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		Next            string         `json:"next,omitempty"`
 		AccountData     []*Account     `json:"accountData,omitempty"`
 		TransactionData []*Transaction `json:"transactionData,omitempty"`
+		LogData         []*Log         `json:"logData,omitempty"`
 	}{
 		PageSize:        x.GetPageSize(),
 		HasMore:         x.GetHasMore(),
@@ -462,6 +465,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		Next:            x.GetNext(),
 		AccountData:     x.GetAccountData(),
 		TransactionData: x.GetTransactionData(),
+		LogData:         x.GetLogData(),
 	})
 }
 

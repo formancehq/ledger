@@ -658,6 +658,94 @@ func (c *MockBucketServiceClientGetEventsSinksCall) DoAndReturn(f func(context.C
 	return c
 }
 
+// GetIndex mocks base method.
+func (m *MockBucketServiceClient) GetIndex(ctx context.Context, in *servicepb.GetIndexRequest, opts ...grpc.CallOption) (*commonpb.Index, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetIndex", varargs...)
+	ret0, _ := ret[0].(*commonpb.Index)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndex indicates an expected call of GetIndex.
+func (mr *MockBucketServiceClientMockRecorder) GetIndex(ctx, in any, opts ...any) *MockBucketServiceClientGetIndexCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndex", reflect.TypeOf((*MockBucketServiceClient)(nil).GetIndex), varargs...)
+	return &MockBucketServiceClientGetIndexCall{Call: call}
+}
+
+// MockBucketServiceClientGetIndexCall wrap *gomock.Call
+type MockBucketServiceClientGetIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetIndexCall) Return(arg0 *commonpb.Index, arg1 error) *MockBucketServiceClientGetIndexCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetIndexCall) Do(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*commonpb.Index, error)) *MockBucketServiceClientGetIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetIndexCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexRequest, ...grpc.CallOption) (*commonpb.Index, error)) *MockBucketServiceClientGetIndexCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetIndexEntryStatus mocks base method.
+func (m *MockBucketServiceClient) GetIndexEntryStatus(ctx context.Context, in *servicepb.GetIndexEntryStatusRequest, opts ...grpc.CallOption) (*servicepb.IndexEntry, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetIndexEntryStatus", varargs...)
+	ret0, _ := ret[0].(*servicepb.IndexEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexEntryStatus indicates an expected call of GetIndexEntryStatus.
+func (mr *MockBucketServiceClientMockRecorder) GetIndexEntryStatus(ctx, in any, opts ...any) *MockBucketServiceClientGetIndexEntryStatusCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexEntryStatus", reflect.TypeOf((*MockBucketServiceClient)(nil).GetIndexEntryStatus), varargs...)
+	return &MockBucketServiceClientGetIndexEntryStatusCall{Call: call}
+}
+
+// MockBucketServiceClientGetIndexEntryStatusCall wrap *gomock.Call
+type MockBucketServiceClientGetIndexEntryStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetIndexEntryStatusCall) Return(arg0 *servicepb.IndexEntry, arg1 error) *MockBucketServiceClientGetIndexEntryStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetIndexEntryStatusCall) Do(f func(context.Context, *servicepb.GetIndexEntryStatusRequest, ...grpc.CallOption) (*servicepb.IndexEntry, error)) *MockBucketServiceClientGetIndexEntryStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetIndexEntryStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexEntryStatusRequest, ...grpc.CallOption) (*servicepb.IndexEntry, error)) *MockBucketServiceClientGetIndexEntryStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetIndexStatus mocks base method.
 func (m *MockBucketServiceClient) GetIndexStatus(ctx context.Context, in *servicepb.GetIndexStatusRequest, opts ...grpc.CallOption) (*servicepb.GetIndexStatusResponse, error) {
 	m.ctrl.T.Helper()

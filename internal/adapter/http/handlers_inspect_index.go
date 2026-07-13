@@ -2,12 +2,12 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -74,17 +74,29 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metadataKey := chi.URLParam(r, "metadataKey")
-	if metadataKey == "" {
-		writeBadRequest(w, "MISSING_METADATA_KEY", nil)
+	canonical, ok := requireCanonicalID(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := indexes.ParseCanonical(canonical)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
 	}
 
-	targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-	if r.URL.Query().Get("target") == "transaction" {
-		targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	// Inspect only makes sense on metadata indexes. Builtin indexes have no
+	// per-key value space to scan.
+	metaID := id.GetMetadata()
+	if metaID == nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("inspect is only supported on metadata indexes, got %s", canonical))
+
+		return
 	}
+
+	targetType := metaID.GetTarget()
+	metadataKey := metaID.GetKey()
 
 	var mode servicepb.InspectIndexMode
 	switch r.URL.Query().Get("mode") {
