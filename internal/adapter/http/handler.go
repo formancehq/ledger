@@ -35,6 +35,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
 	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
 	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
+	requireAuditRead := internalauth.RequireScope(authCfg, internalauth.ScopeAuditRead)
 	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
 	requireOpsRead := internalauth.RequireScope(authCfg, internalauth.ScopeOpsRead)
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
@@ -117,6 +118,18 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/transactions", server.handleListTransactions)
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+			})
+
+			// Audit read scope. Audit reads are cluster/bucket-wide (a proposal can
+			// touch several ledgers), so these routes are NOT under {ledgerName};
+			// ledger scope is expressed via the `filter` query parameter. They live
+			// under the reserved `/v3/_/…` system segment so they cannot collide
+			// with `/v3/{ledgerName}` routes: the ledger name `_` is reserved at
+			// admission (admission.ErrLedgerNameReservedPrefix), keeping the system
+			// namespace `/v3/_/…` and the ledger namespace disjoint by construction.
+			r.With(requireAuditRead).Group(func(r chi.Router) {
+				r.Get("/_/audit-entries", server.handleListAuditEntries)
+				r.Get("/_/audit-entries/{sequence}", server.handleGetAuditEntry)
 			})
 
 			// Ops read scope — bucket-wide reads not tied to a single ledger.

@@ -347,6 +347,43 @@ DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 
 **Response**: `204 No Content`
 
+### Audit
+
+Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
+`BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
+**bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
+— so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
+expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+
+#### List Audit Entries
+
+```http
+GET /v3/_/audit-entries?pageSize=100&after=42&reverse=false&filter=audit%5Boutcome%5D%20%3D%3D%20failure
+```
+
+Query parameters:
+- `pageSize`: max entries (default 100, capped at 1000)
+- `after`: audit sequence to start after (exclusive, opaque cursor)
+- `reverse`: `true` iterates newest-first
+- `filter`: a filter expression restricted to `audit[...]` conditions, using the
+  same grammar as `ledgerctl audit list --filter` (e.g.
+  `audit[outcome] == failure`, `audit[ledger] == main`,
+  `audit[order_type] in (create_transaction, revert_transaction)`). This is the
+  shared `filterexpr` DSL — **not** the JSON `QueryFilter` DSL used by prepared
+  queries, which cannot represent audit conditions. Filtered reads are served by
+  the asynchronous audit index; the consistency guarantee matches the gRPC
+  surface.
+
+**Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
+
+#### Get Audit Entry
+
+```http
+GET /v3/_/audit-entries/{sequence}
+```
+
+Returns a single `AuditEntry` by its global sequence, with per-order `items`
+populated. Missing sequences return `404`.
 ### Indexes
 
 Per-ledger and bucket-wide index management. See `openapi.yml` for the exhaustive schema; the flow below covers the create → observe → drop cycle.
