@@ -14,7 +14,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
-from hypothesis import HealthCheck, settings as hypothesis_settings
+from hypothesis import HealthCheck, Phase, settings as hypothesis_settings
 import schemathesis
 from schemathesis.checks import (
     not_a_server_error,
@@ -125,6 +125,16 @@ def main():
         default=50,
         help="Max examples per endpoint (default: 50)",
     )
+    parser.add_argument(
+        "--shrink",
+        action="store_true",
+        help=(
+            "Enable Hypothesis shrinking (minimizes failing examples). "
+            "Off by default: shrinking multiplies request volume by ~7x when "
+            "endpoints fail, without changing which failures are detected. "
+            "Enable locally when you need a minimal reproduction."
+        ),
+    )
     args = parser.parse_args()
 
     print(f"Loading schema from {OPENAPI_PATH}")
@@ -133,6 +143,18 @@ def main():
     print("=" * 60)
 
     schema = load_schema(args.base_url)
+
+    # Hypothesis phases. Shrinking is disabled by default: on a conformance
+    # gate it does not change which failures are found (that happens in the
+    # `generate` phase) — it only minimizes an already-found failing example,
+    # at the cost of a ~7x blowup in request volume when endpoints fail.
+    # Derive from the Hypothesis defaults and remove *only* `shrink`, so every
+    # other default phase (`explain`, etc.) stays enabled and `--shrink`
+    # faithfully restores the stock behavior.
+    if args.shrink:
+        phases = list(hypothesis_settings.default.phases)
+    else:
+        phases = [p for p in hypothesis_settings.default.phases if p is not Phase.shrink]
 
     has_failures = False
     has_errors = False
@@ -151,6 +173,7 @@ def main():
             max_examples=args.max_examples,
             suppress_health_check=[HealthCheck.filter_too_much],
             deadline=timedelta(seconds=30),
+            phases=phases,
         ),
     )
     for event in runner.execute():

@@ -5,7 +5,9 @@
 # waits for readiness, runs Schemathesis tests, then tears down.
 #
 # Usage: bash tests/schemathesis/run.sh
-# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES
+# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_SHRINK
+#   SCHEMATHESIS_SHRINK=1 re-enables Hypothesis shrinking (minimal failing
+#   examples) for local debugging. Off by default — see test_api.py --shrink.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,6 +64,11 @@ fi
 
 echo "==> Running Schemathesis tests..."
 echo ""
+SHRINK_FLAG=""
+if [ -n "${SCHEMATHESIS_SHRINK:-}" ] && [ "${SCHEMATHESIS_SHRINK}" != "0" ]; then
+    SHRINK_FLAG="--shrink"
+fi
 python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
-    --max-examples "$MAX_EXAMPLES"
+    --max-examples "$MAX_EXAMPLES" \
+    $SHRINK_FLAG

@@ -97,7 +97,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--cursor` | string | Opaque cursor returned by the previous page. Parsed per-resource into the appropriate type (string address, uint64 sequence, …). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
-| Filter | `--filter` | string | Boolean filter expression (see `filterexpr` grammar). |
+| Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
 | Consistency | `--min-log-sequence` | uint64 | Require the server to have applied at least this log sequence before reading. `FailedPrecondition` if not. |
@@ -971,6 +971,14 @@ ledgerctl accounts list --ledger my-ledger --json
 ##### Filter Expression Syntax
 
 The `--filter` flag accepts a human-readable boolean expression that maps to the underlying `QueryFilter` model.
+
+> **Two interchangeable forms (EN-1511).** `--filter` also accepts the structured
+> JSON `QueryFilter` DSL, e.g. `--filter '{"$match":{"metadata[category]":"premium"}}'`.
+> The textual grammar below and the JSON DSL parse to the same filter and are
+> validated against the same per-target rules, so either form works everywhere
+> `--filter` is accepted (the same dual-format contract every server-side
+> filtered endpoint honors). The textual form is the recommended, more concise
+> one for CLI use.
 
 **Grammar:**
 

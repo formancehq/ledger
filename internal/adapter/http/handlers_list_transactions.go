@@ -2,40 +2,12 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
-
-// parseFilterDateMicros parses an RFC3339 date query parameter and returns it
-// as Unix microseconds for a UintCondition bound. Transaction timestamps are
-// stored as unsigned microseconds, so a pre-epoch (negative UnixMicro) date
-// has no representable bound: casting it to uint64 would wrap to a huge value
-// and silently corrupt the filter (a start bound would exclude everything, an
-// end bound would include everything). Such dates are rejected with 400 rather
-// than accepted with garbage semantics. On error it writes the response and
-// returns ok=false; the caller must return immediately.
-func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bool) {
-	t, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, expected RFC3339 format", param))
-
-		return 0, false
-	}
-
-	micros := t.UnixMicro()
-	if micros < 0 {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, dates before 1970-01-01 are not supported", param))
-
-		return 0, false
-	}
-
-	return uint64(micros), true
-}
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
 // ledger's transactions. Query params:
@@ -46,7 +18,10 @@ func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bo
 //   - startDate/endDate  RFC3339, filter on transaction timestamp.
 //     Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be
 //     enabled on the ledger via `CreateIndex`.
-//   - reference          exact-match reference filter
+//   - filter             textual filterexpr grammar OR structured v2 JSON DSL
+//     (EN-1511). A reference selection is expressed through it as the structured
+//     `{"$match":{"reference":"<ref>"}}` (or textual `reference == "<ref>"`);
+//     there is no separate `reference` alias.
 //
 // Ordering convention (mirrors `ctrl.Controller.ListTransactions`): the
 // default (reverse=false) returns newest-first (descending transaction id);
@@ -88,18 +63,6 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 
 	var filters []*commonpb.QueryFilter
 
-	if ref := r.URL.Query().Get("reference"); ref != "" {
-		filters = append(filters, &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Reference{
-				Reference: &commonpb.ReferenceCondition{
-					Cond: &commonpb.StringCondition{
-						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: ref},
-					},
-				},
-			},
-		})
-	}
-
 	dateCond := &commonpb.UintCondition{}
 	hasDateFilter := false
 
@@ -135,16 +98,17 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	var filter *commonpb.QueryFilter
-	if len(filters) == 1 {
-		filter = filters[0]
-	} else if len(filters) > 1 {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: filters},
-			},
-		}
+	// The `filter` query parameter accepts either the textual filterexpr grammar
+	// or the structured v2 JSON DSL (EN-1511); it is AND-combined with the
+	// startDate/endDate timestamp range above.
+	generic, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	if !ok {
+		return
 	}
+
+	filters = append(filters, generic)
+
+	filter := combineFilters(filters...)
 
 	ctx, profile := query.WithProfile(r.Context())
 
