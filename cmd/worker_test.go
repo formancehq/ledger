@@ -29,9 +29,6 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 	})
 
 	// These flags come from iam.AddFlags (added to fix issue #1556).
-	// Note: --aws-role-arn is registered by iam.AddFlags but is not currently
-	// consumed by iam.LoadOptionFromFlags in go-libs; it is included here to
-	// confirm registration parity with serve and to catch any future removal.
 	t.Run("aws-region flag is registered", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRegionFlag)
@@ -62,12 +59,14 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 		require.NotNil(t, f, "--aws-profile flag must be registered on the worker command")
 	})
 
-	// Registered by iam.AddFlags but not consumed by iam.LoadOptionFromFlags;
-	// included to confirm registration parity and catch accidental removal.
-	t.Run("aws-role-arn flag is registered", func(t *testing.T) {
+	// --aws-role-arn is now fully supported: connectionOptionsFromFlags wraps
+	// the base AWS credentials with an STS AssumeRole provider when this flag
+	// is set, so the flag must be registered AND visible to operators.
+	t.Run("aws-role-arn flag is registered and visible", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRoleArnFlag)
 		require.NotNil(t, f, "--aws-role-arn flag must be registered on the worker command")
+		assert.False(t, f.Hidden, "--aws-role-arn must be visible now that role assumption is implemented")
 	})
 }
 
@@ -84,8 +83,6 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 	require.NotNil(t, f, "--postgres-aws-enable-iam flag must be registered on the serve command")
 	assert.Equal(t, "false", f.DefValue)
 
-	// Note: --aws-role-arn is registered by iam.AddFlags but not consumed by
-	// iam.LoadOptionFromFlags in the current go-libs version.
 	iamFlags := []string{
 		connect.PostgresAWSEnableIAMFlag,
 		iam.AWSRegionFlag,
@@ -103,4 +100,13 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 			require.NotNil(t, f, "--%s flag must be registered on the serve command", flagName)
 		})
 	}
+
+	// --aws-role-arn must be visible: connectionOptionsFromFlags implements role
+	// assumption via STS, so hiding it would mislead operators.
+	t.Run("aws-role-arn is visible on serve", func(t *testing.T) {
+		t.Parallel()
+		f := flags.Lookup(iam.AWSRoleArnFlag)
+		require.NotNil(t, f)
+		assert.False(t, f.Hidden, "--aws-role-arn must be visible now that role assumption is implemented")
+	})
 }

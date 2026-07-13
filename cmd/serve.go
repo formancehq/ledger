@@ -105,7 +105,7 @@ func NewServeCommand() *cobra.Command {
 				return err
 			}
 
-			connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
+			connectionOptions, err := connectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 			if err != nil {
 				return err
 			}
