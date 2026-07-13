@@ -14,6 +14,61 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
+// describableErrorSource is a ValueSource whose Balance read fails with an
+// arbitrary domain.Describable. It lets TestSafeResolveDependencies_*Survives*
+// prove that a typed Describable (its concrete type AND its Reason) survives
+// round-tripping through the numscript library's error path — the library wraps
+// store errors in QueryBalanceError, which implements Unwrap, and
+// convertNumscriptError returns the underlying Describable as-is.
+//
+// A real *state.ErrCoverageMiss cannot be constructed here (importing
+// internal/infra/state forms a cycle: state → processing → processing/numscript);
+// TestCoverageMissSurvivesNumscriptLibrary in internal/infra/state proves the
+// same round-trip with the concrete *state.ErrCoverageMiss.
+type describableErrorSource struct {
+	err domain.Describable
+}
+
+func (s describableErrorSource) Balance(string, string) (*big.Int, error) {
+	return nil, s.err
+}
+
+func (describableErrorSource) Metadata(string, string) (string, bool, error) {
+	return "", false, nil
+}
+
+// TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
+// domain.Describable returned by the store is NOT stringified/lost passing
+// through numscriptlib.ResolveDependencies: errors.As reaches the concrete type
+// and the Reason survives. This is what lets the FSM apply path recognise a
+// coverage-contract violation and surface it loudly (invariant #7) instead of
+// masking it as retryable stale.
+func TestSafeResolveDependencies_DescribableSurvivesLibrary(t *testing.T) {
+	t.Parallel()
+
+	// balance() in a var origin forces a store read during resolution.
+	parsed := numscriptlib.Parse(`
+		vars { monetary $amt = balance(@wallet, USD/2) }
+		send $amt (source = @wallet destination = @out)
+	`)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	// *domain.ErrInvalidExecutionPlan is a coverage-contract Describable owned by
+	// the domain package (no import cycle), standing in for the store-returned
+	// typed error.
+	sentinel := &domain.ErrInvalidExecutionPlan{Reason_: "undeclared key"}
+	store := NewStore(describableErrorSource{err: sentinel}, false)
+
+	_, err := SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
+	require.NotNil(t, err)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid,
+		"a typed Describable must survive the numscript library error path (errors.As)")
+	require.False(t, IsPanic(err))
+	require.Equal(t, domain.ErrReasonInvalidExecutionPlan, err.Reason())
+}
+
 // panickingStore is a minimal numscriptlib.Store whose reads panic. A generated
 // mock is used elsewhere for ValueSource, but the numscript-library Store type
 // has no mockgen directive in this repo, and a panic-path test only needs a

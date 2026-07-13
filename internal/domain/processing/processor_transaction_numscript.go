@@ -54,18 +54,35 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// SafeResolveDependencies recovers panics from the numscript library so a
 		// crafted input can never escape onto the deterministic Raft apply loop
 		// (which has no recover of its own) — an escaped panic would crash and
-		// could diverge nodes. A recovered panic is a "should not happen"
-		// (invariant #7) and must surface loudly, NOT be softened to stale, so it
-		// is distinguished from a genuine resolution error below.
+		// could diverge nodes. Not every resolve error is a stale input, so the
+		// three failure classes are triaged below.
 		if _, resolveErr := numscript.SafeResolveDependencies(parsed, context.Background(), vars, recording); resolveErr != nil {
+			// (1) A recovered panic is a "should not happen" (invariant #7) and
+			// must surface loudly, NOT be softened to stale.
 			if numscript.IsPanic(resolveErr) {
 				return nil, resolveErr
 			}
 
-			// A normal resolution error at apply time on a script admission
-			// already resolved is a genuine input-shift (a var origin now points
-			// at a missing/changed value), not a client script bug — surface it
-			// as stale so the client retries against fresh state.
+			// (2) A coverage-contract violation is an admission BUG: the
+			// resolution derived a key admission never declared, so the gated
+			// Scope refused the read (*state.ErrCoverageMiss) or the plan was
+			// structurally inconsistent (*domain.ErrInvalidExecutionPlan). Both
+			// arrive here as a domain.Describable whose typed error survives the
+			// numscript library's error path (the library's QueryBalanceError /
+			// QueryMetadataError implement Unwrap, and convertNumscriptError
+			// returns the Describable as-is). Softening this to retryable stale
+			// would hide the bug and spin the client in an infinite re-admit loop
+			// against the same missing declaration — surface it loudly (invariant
+			// #7). Matched by domain Reason so this file need not import
+			// internal/infra/state (which imports processing — import cycle).
+			if isCoverageContractViolation(resolveErr) {
+				return nil, resolveErr
+			}
+
+			// (3) Otherwise it is a genuine input-shift (a var origin now points
+			// at a missing/changed value) on a script admission already resolved,
+			// not a client script bug — surface it as stale so the client
+			// re-admits against fresh state.
 			return nil, domain.ErrStaleInputsResolution
 		}
 
@@ -256,6 +273,34 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		TransactionMetadata: txMeta,
 		AccountsMetadata:    accountsMeta,
 	}, nil
+}
+
+// isCoverageContractViolation reports whether err is an admission-contract
+// violation surfaced by the coverage-gated Scope during apply-time re-resolution
+// — a *state.ErrCoverageMiss (a key admission never declared) or a
+// *domain.ErrInvalidExecutionPlan (a structurally inconsistent plan). Both are
+// "should not happen" bugs (invariant #7) that must surface loudly rather than
+// be softened to the retryable ErrStaleInputsResolution.
+//
+// It matches on the stable domain Reason string rather than the concrete type so
+// this package need not import internal/infra/state (state imports processing —
+// an import cycle). Every Describable in the chain is inspected because the
+// numscript library wraps the store error (QueryBalanceError / QueryMetadataError
+// both implement Unwrap), so errors.As can reach the underlying typed error.
+func isCoverageContractViolation(err error) bool {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		describable, ok := e.(domain.Describable) //nolint:errorlint // deliberate per-node check; the loop unwraps the chain itself
+		if !ok {
+			continue
+		}
+
+		switch describable.Reason() {
+		case domain.ErrReasonCoverageMiss, domain.ErrReasonInvalidExecutionPlan:
+			return true
+		}
+	}
+
+	return false
 }
 
 // scopeValueSource reads balances and metadata through the FSM apply Scope.
