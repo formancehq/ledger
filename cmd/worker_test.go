@@ -14,7 +14,6 @@ import (
 // all required AWS IAM flags, so that users running the standalone worker binary
 // (e.g. on AWS ECS Fargate) can configure RDS IAM auth for the primary store
 // via CLI flags, not just via environment variables.
-//
 func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +28,10 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 		assert.Equal(t, "false", f.DefValue)
 	})
 
-	// These flags come from iam.AddFlags (added to fix issue #1556)
+	// These flags come from iam.AddFlags (added to fix issue #1556).
+	// Note: --aws-role-arn is registered by iam.AddFlags but is not currently
+	// consumed by iam.LoadOptionFromFlags in go-libs; it is included here to
+	// confirm registration parity with serve and to catch any future removal.
 	t.Run("aws-region flag is registered", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRegionFlag)
@@ -54,6 +56,14 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 		require.NotNil(t, f, "--aws-session-token flag must be registered on the worker command")
 	})
 
+	t.Run("aws-profile flag is registered", func(t *testing.T) {
+		t.Parallel()
+		f := flags.Lookup(iam.AWSProfileFlag)
+		require.NotNil(t, f, "--aws-profile flag must be registered on the worker command")
+	})
+
+	// Registered by iam.AddFlags but not consumed by iam.LoadOptionFromFlags;
+	// included to confirm registration parity and catch accidental removal.
 	t.Run("aws-role-arn flag is registered", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRoleArnFlag)
@@ -74,12 +84,15 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 	require.NotNil(t, f, "--postgres-aws-enable-iam flag must be registered on the serve command")
 	assert.Equal(t, "false", f.DefValue)
 
+	// Note: --aws-role-arn is registered by iam.AddFlags but not consumed by
+	// iam.LoadOptionFromFlags in the current go-libs version.
 	iamFlags := []string{
 		connect.PostgresAWSEnableIAMFlag,
 		iam.AWSRegionFlag,
 		iam.AWSAccessKeyIDFlag,
 		iam.AWSSecretAccessKeyFlag,
 		iam.AWSSessionTokenFlag,
+		iam.AWSProfileFlag,
 		iam.AWSRoleArnFlag,
 	}
 
@@ -91,4 +104,3 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 		})
 	}
 }
-
