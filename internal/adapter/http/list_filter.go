@@ -13,6 +13,10 @@ import (
 // for one, so a single-condition query is not needlessly wrapped in a 1-element
 // $and. This is the shared version of the ad-hoc combine logic the list handlers
 // used to each carry.
+//
+// NOTE: it compacts in place over the passed slice's backing array, so a caller
+// that spreads a slice (combineFilters(s...)) must treat s as consumed and not
+// read it afterward. All current callers do this as their last use of the slice.
 func combineFilters(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
 	compact := filters[:0]
 	for _, f := range filters {

@@ -90,6 +90,11 @@ func decodeDualFormat(raw []byte) (*commonpb.QueryFilter, error) {
 			return nil, fmt.Errorf("filter: %w", err)
 		}
 
+		// Defensive: the codec already rejects a structurally-empty object (`{}`
+		// fails with "empty object"), so a successful unmarshal normally populates
+		// the oneof. Guard the residual case where it does not, rather than passing
+		// an empty filter downstream (which would fail later at execute time with
+		// "unknown filter type: <nil>").
 		if filter.GetFilter() == nil {
 			return nil, errors.New("filter must contain at least one condition")
 		}
