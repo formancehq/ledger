@@ -46,6 +46,8 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatNot(v.Not)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
+	case *commonpb.QueryFilter_Ledger:
+		return formatLedgerCondition(v.Ledger), precLeaf
 	case *commonpb.QueryFilter_Audit:
 		return formatAuditCondition(v.Audit)
 	case *commonpb.QueryFilter_BuiltinUint:
@@ -236,6 +238,17 @@ func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonp
 	}
 
 	return key + " <uint?>"
+}
+
+// formatLedgerCondition renders a non-audit LedgerCondition as `ledger == value`,
+// the inverse of the parser's `ledger == VALUE` production (a bare `ledger` field
+// on a non-audit target). The value renders as a `$param` reference or a
+// quote-if-needed hardcoded string, the same value path every other string
+// condition uses. On the audit target the ledger field is carried by the
+// AuditCondition arm instead (formatAuditCondition), so this only ever sees the
+// transaction/log/account ledger condition.
+func formatLedgerCondition(lc *commonpb.LedgerCondition) string {
+	return "ledger == " + formatStringCondValue(lc.GetCond())
 }
 
 // formatAccountHasAsset renders an AccountHasAssetCondition as `has asset BASE`

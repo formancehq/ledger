@@ -490,6 +490,12 @@ func TestFormatRoundTrip(t *testing.T) {
 		{"between mixed param/literal", "metadata[age] between 18 and $max", ""},
 		{"AND of ranges round-trips as between", "metadata[age] >= 18 and metadata[age] < 65", "metadata[age] >= 18 and metadata[age] < 65"},
 		{"complex: source and destination", `source ^= "a:" and destination ^= "b:"`, ""},
+		// EN-1549: a bare `ledger` condition on a non-audit target renders back to
+		// the same textual form (previously formatted as "<unknown filter>", which
+		// broke the prepared-query config export/apply round-trip).
+		{"ledger exact", "ledger == main", ""},
+		{"ledger quoted value", `ledger == "my-ledger"`, ""},
+		{"ledger param", "ledger == $name", ""},
 	}
 
 	for _, tt := range tests {
