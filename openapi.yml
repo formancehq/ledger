@@ -2866,6 +2866,13 @@ components:
         `filter=address ^= "users:"`, a transaction reference via
         `filter={"$match":{"reference":"..."}}` (URL-encoded).
 
+        Date fields accept either an RFC3339 timestamp or raw Unix microseconds,
+        in both representations: on transactions `timestamp` / `insertedAt` /
+        `revertedAt` (e.g. textual `filter=timestamp >= "2023-11-14T22:13:20Z"`
+        or structured `filter={"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`), and
+        on logs `date` (e.g. `filter=date >= "2023-11-14T22:13:20Z"`). An RFC3339
+        value before the Unix epoch (1970-01-01) is rejected with 400.
+
         Note: audit conditions (`audit[...]`) have no structured JSON form and
         must be passed in the textual representation.
 
@@ -4853,7 +4860,11 @@ components:
         `{"$param": "<name>"}`, resolved at prepared-query execution time. A JSON
         `null` in value position is rejected. uint64 fields
         (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are carried
-        as decimal strings to stay lossless above 2^53.
+        as decimal strings to stay lossless above 2^53. The date-semantic fields
+        (`timestamp`, `insertedAt`, `revertedAt`, `date`) additionally accept an
+        RFC3339 timestamp string (e.g. `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`),
+        coerced to the same Unix microseconds as the raw form; a value before the
+        Unix epoch (1970-01-01) is rejected.
       minProperties: 1
       maxProperties: 1
       additionalProperties: true
