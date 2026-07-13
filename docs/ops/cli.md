@@ -2219,42 +2219,6 @@ ledgerctl store rebuild-audit-index --data-dir ./data --read-index-dir ./custom-
 
 ---
 
-### store rebuild-usage
-
-Drop the usage store directory and replay every audit entry from sequence 0 to rebuild all per-template invocation counters and per-ledger event counters from scratch. Purely offline — the server must be stopped.
-
-Use this after restoring from a backup, when the usage store becomes corrupted, or when a schema change requires the counters to be re-derived.
-
-```bash
-ledgerctl store rebuild-usage --data-dir /path/to/data [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--data-dir` | | Pebble data directory (required) |
-| `--usage-dir` | | Usage store output directory (default: `<data-dir>/usage/`) |
-| `--usage-batch-size` | `0` | Audit entries per Pebble batch commit (`0` = default 200) |
-
-**Behavior:**
-
-1. Removes the existing usage store directory (dropping every counter and cursor).
-2. Opens the primary Pebble data directory in read-only mode.
-3. Creates a fresh usage store.
-4. Replays every audit entry reachable in Pebble, materialising per-template usage records and per-ledger event counters.
-5. Reports the last processed audit sequence on completion.
-
-Note that audit entries archived to cold storage are not reconstructed — the rebuild only replays what is currently reachable in the primary Pebble store. Counters end up reflecting invocations from the earliest reachable audit entry forward.
-
-**Example:**
-
-```bash
-ledgerctl store rebuild-usage --data-dir ./data
-```
-
----
-
 ### audit
 
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.

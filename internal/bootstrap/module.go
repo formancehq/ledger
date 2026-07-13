@@ -668,8 +668,8 @@ func Module() fx.Option {
 			},
 			// Usage store (Pebble) — dedicated secondary store for the
 			// usagebuilder projections. Kept physically separate from the
-			// readstore so operational rebuild (`ledgerctl store rebuild-usage`)
-			// is just a directory drop.
+			// readstore so an operational reset is just a directory drop and
+			// the builder re-derives every counter from the audit chain.
 			func(cfg Config, logger logging.Logger) (*usagestore.Store, error) {
 				dir := filepath.Join(cfg.DataDir, "usage")
 

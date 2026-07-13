@@ -106,9 +106,9 @@ func (b *Builder) Start() {
 		b.reg = reg
 	}
 
-	// Wake on FSM commit signals when available. `notifications` is nil
-	// only in the offline rebuild path (RebuildAll), which does not go
-	// through Start — the guard is defensive.
+	// Wake on FSM commit signals when available. The guard is defensive:
+	// steady-state always wires notifications, but a nil value must not
+	// panic (e.g. a builder constructed in a test without a live FSM).
 	var wake <-chan struct{}
 	if b.notifications != nil {
 		wake = b.notifications.LogCommitted.C()

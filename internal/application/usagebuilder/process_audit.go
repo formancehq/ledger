@@ -114,13 +114,6 @@ func (s *batchState) empty() bool {
 	return len(s.counters) == 0 && len(s.templates) == 0 && len(s.deletedLedgers) == 0
 }
 
-// RebuildAll replays every audit entry from sequence 0, materialising the
-// usagestore projections from scratch. Intended for offline use via
-// `ledgerctl store rebuild-usage`. Returns the last processed audit sequence.
-func (b *Builder) RebuildAll() (uint64, error) {
-	return b.processAuditEntries(context.Background(), 0, time.Time{})
-}
-
 // processAuditEntries iterates audit entries after cursor, dispatches each
 // item, and commits per-ledger counter deltas + template usage updates
 // atomically alongside the cursor advance. Returns the new cursor.
@@ -293,8 +286,8 @@ func (b *Builder) dispatchOrder(
 	}
 
 	// DeleteLedger orders MUST be projected — otherwise the usagestore
-	// keeps stale rows for the dropped ledger until an operator runs
-	// rebuild-usage. Same story as the readstore's DeleteLedgerIndexes.
+	// keeps stale rows for the dropped ledger indefinitely. Same story as
+	// the readstore's DeleteLedgerIndexes.
 	if scoped.GetDeleteLedger() != nil {
 		state.markLedgerDeleted(ledger)
 

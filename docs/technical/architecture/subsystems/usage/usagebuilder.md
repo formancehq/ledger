@@ -110,7 +110,7 @@ stats.PostingCount, _ = snap.GetCounter(ledger, usagestore.CounterPosting)
 | Usagebuilder crash mid-batch | Cursor at last successful commit; committed counter deltas are durable | Loop restarts, reads persisted cursor, resumes from `cursor + 1`. |
 | Cold-storage archival of an early chapter | Nothing lost — counters already applied by the usagebuilder are persisted in usagestore | Cursor stays past the archived range; no re-processing. |
 | Ledger deletion (audit log `DeleteLedger`) | Usagestore range-deletes every counter + template row keyed on the ledger via `DeleteLedger(batch, ledgerName)` | Re-created ledgers start at zero counters; audit-chain history for the old incarnation is idempotent to re-process. |
-| Full rebuild via `ledgerctl store rebuild-usage` | Nothing — the usagestore directory is dropped | Cursor resets to 0; the builder replays the entire reachable audit chain into a fresh store. See [rebuild-usage](../../../ops/cli.md#store-rebuild-usage). |
+| Primary store rolled back beneath the persisted cursor | Nothing — `usagestore.Reset()` drops every counter + template row and clears the cursor | The next boot/tick replays from audit sequence 0 into the freshly-reset store. |
 
 ## Cutover semantics
 
@@ -118,16 +118,15 @@ The migration that introduced this subsystem (EN-1420 / EN-1422) moved every non
 
 ## Snapshot / restore
 
-The usagestore is not part of Pebble snapshots or backups: it is a projection that is trivially rebuildable from the audit chain. On restore, the operator can either:
+The usagestore is not part of Pebble snapshots or backups: it is a projection that is trivially rebuildable from the audit chain. On restore, the running usagebuilder catches up organically from wherever its persisted cursor points; if the primary store was rolled back beneath that cursor, `usagestore.Reset()` fires on the next boot/tick and the projection repopulates from audit sequence 0.
 
-- Let the running usagebuilder catch up organically from wherever its persisted cursor points, or
-- Run `ledgerctl store rebuild-usage` offline before restart to drop-and-repopulate.
+The audit chain remains the source of truth in every case.
 
-The audit chain remains the source of truth in both cases.
+> **3.0 limitation.** There is no offline drop-and-rebuild-from-scratch command. The now-removed `ledgerctl store rebuild-usage` replayed the audit chain from sequence 0 over the self-purging primary store, which undercounts `VolumeCount` once a chapter has been archived (the volumes touched by archived entries are gone from the reachable audit). Rather than ship a rebuild that lies, offline rebuild is deferred to 3.1, where it will seed `VolumeCount` from live `SubAttrVolume` state instead of replaying archived history. In 3.0, reconvergence relies exclusively on the online boot/tick fold + `Reset()`.
 
 ## Integrity verification (checker scope)
 
-The usagestore is **deliberately excluded from `internal/application/check/checker.go`**. Invariant #8 ("every persisted projection must be verified by the checker") is scoped to projections that live in the **primary** Pebble store — the store that participates in Pebble snapshots, backups and cold-storage, and that an operator cannot rebuild without stopping the cluster. The usagestore, like the read store (`readstore`), is a physically separate secondary Pebble instance at `<data-dir>/usage/`: it is never snapshotted, never backed up, and is trivially rebuildable offline via `ledgerctl store rebuild-usage` (drop the directory + replay from audit sequence 0). A tampered or corrupted usagestore is therefore not a durable integrity vector — the next rebuild reconstructs it from the hash-chained audit, which the checker *does* verify. Extending the checker to walk a peer store would couple it to a subsystem it has no authority over and duplicate the rebuild logic that already re-derives every counter from the same source of truth.
+The usagestore is **deliberately excluded from `internal/application/check/checker.go`**. Invariant #8 ("every persisted projection must be verified by the checker") is scoped to projections that live in the **primary** Pebble store — the store that participates in Pebble snapshots, backups and cold-storage, and that an operator cannot rebuild without stopping the cluster. The usagestore, like the read store (`readstore`), is a physically separate secondary Pebble instance at `<data-dir>/usage/`: it is never snapshotted, never backed up, and is rebuildable from the audit chain via the online boot/tick fold (and `usagestore.Reset()` on rollback detection). A tampered or corrupted usagestore is therefore not a durable integrity vector — the next fold reconstructs it from the hash-chained audit, which the checker *does* verify. Extending the checker to walk a peer store would couple it to a subsystem it has no authority over and duplicate the rebuild logic that already re-derives every counter from the same source of truth.
 
 ## Summary
 
@@ -140,4 +139,4 @@ The usagestore is **deliberately excluded from `internal/application/check/check
 | Read consistency | Multi-counter reads via `usagestore.NewSnapshot()` | `usagestore/snapshot.go`, `ctrl/controller_default.go` |
 | Isolation | Dedicated Pebble instance at `<data-dir>/usage/`, own comparer, WAL disabled | `usagestore/{store,comparer,keys}.go` |
 | Metrics | `tailworker.RegisterTailGauges` — 3 shared gauges (`last_indexed_sequence`, `audit_last_sequence`, `lag`) | `builder.go`, `internal/pkg/tailworker/gauges.go` |
-| Rebuild | `ledgerctl store rebuild-usage` — drop directory + replay | `cmd/ledgerctl/store/rebuild_usage.go` |
+| Rebuild | Online boot/tick fold from the persisted cursor; `usagestore.Reset()` drops rows + replays from 0 on rollback detection (offline rebuild-from-scratch deferred to 3.1 — see Snapshot / restore) | `builder.go`, `usagestore/store.go` |

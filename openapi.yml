@@ -1669,8 +1669,7 @@ paths:
         template returns a zero-valued response (not 404), so clients handle "never used" uniformly.
 
         On existing ledgers whose audit chain has been partially archived to cold storage, only
-        invocations still reachable in Pebble are counted. Use `ledgerctl store rebuild-usage` to
-        replay from the reachable start.
+        invocations still reachable in Pebble are counted.
       operationId: getNumscriptUsage
       tags:
         - Numscript Library

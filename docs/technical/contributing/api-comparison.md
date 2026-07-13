@@ -379,7 +379,7 @@ A never-invoked template returns a zero-valued response (not 404), so clients ha
 - `count` (uint64): Number of times the template has been invoked. `0` means not yet invoked (or the usagebuilder has not caught up).
 - `lastUsed` (string, date-time, nullable): Timestamp of the most recent invocation. Absent when count is 0.
 
-On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted — use `ledgerctl store rebuild-usage` to replay from the reachable start.
+On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 

@@ -193,7 +193,7 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 // boot replays from audit sequence 0. Used when the builder detects that the
 // primary store was rolled back beneath the persisted cursor: the retained
 // rows reflect audit entries that no longer exist, so a clean in-place rebuild
-// is the only way to reconverge without an operator running rebuild-usage.
+// on the next boot/tick is how the projection reconverges.
 //
 // The two ledger-scoped prefixes (PrefixTemplate 0x01, PrefixCounter 0x02) are
 // contiguous, so one DeleteRange over [0x01, 0x03) covers both; the internal
