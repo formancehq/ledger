@@ -1390,6 +1390,160 @@ func TestCollectExpectedSkippable_HonoursItemLogSequence(t *testing.T) {
 	require.Contains(t, expectedSkip, uint64(200))
 }
 
+// buildCreateLedgerItem wraps an empty CreateLedgerOrder into a serialized
+// audit item at the given log sequence — anchors the per-ledger nextTxID
+// counter to 1 so downstream tx-scoped metadata is attributed to the right id.
+func buildCreateLedgerItem(t *testing.T, ledger string, logSeq uint64) *auditpb.AuditItem {
+	t.Helper()
+
+	body, err := (&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger:  ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
+			},
+		},
+	}).MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
+}
+
+// buildCreateTxWithTxMetadataItem wraps a CreateTransactionOrder that declares
+// an (unclaimed) reference and carries TX-SCOPED metadata into a serialized
+// audit item at the given log sequence.
+func buildCreateTxWithTxMetadataItem(t *testing.T, ledger, reference, key string, logSeq uint64) *auditpb.AuditItem {
+	t.Helper()
+
+	body, err := (&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Reference: reference,
+								Metadata: map[string]*commonpb.MetadataValue{
+									key: commonpb.NewStringValue("v"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}).MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
+}
+
+// TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace pins the
+// tx-metadata namespace-mismatch finding (checker.go:2355): a live
+// CreateTransaction seeds chainBound.metadata for its TX-SCOPED metadata under
+// the SAME "tx:<id>" namespace verifySkippedOrder looks up via
+// metadataTimelineTarget(isTx=true, id). Before the fix the seed used a BARE
+// decimal target ("1") while the verifier keyed "tx:1", so a forged
+// METADATA_NOT_FOUND skip on tx metadata written by a successful transaction
+// saw an empty timeline and passed undetected (invariant #8).
+func TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace(t *testing.T) {
+	t.Parallel()
+
+	// Anchored ledger (CreateLedger live at 10, nextTxID=1); the first
+	// CreateTransaction at 50 takes tx id 1 and carries tx-scoped metadata
+	// "txkey".
+	items := []*auditpb.AuditItem{
+		buildCreateLedgerItem(t, "L", 10),
+		buildCreateTxWithTxMetadataItem(t, "L", "ref-1", "txkey", 50),
+	}
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+	collectExpectedSkippable(items, 1, ^uint64(0), expectedSkip, chainBound)
+
+	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"],
+		"live create's tx-scoped metadata must be seeded under the tx:<id> namespace")
+
+	// A forged METADATA_NOT_FOUND skip on the tx-scoped key must now be
+	// flagged: the transaction really wrote it, so the delete could not have
+	// legitimately skipped NOT_FOUND.
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "1",
+			metadataKey:        "txkey",
+			metadataTargetIsTx: true,
+		},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"})
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 60)
+}
+
+// TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay pins the
+// double-fold finding (checker.go:2106/2138): an upgraded store with legacy
+// per-order idempotency can hold TWO items sharing LogSequence=N WITHIN the
+// entry's fresh [Min,Max] range — two identical per-order requests with the
+// same idempotency key in one proposal (the first created log N + stored the
+// key, the second observed the key and emitted ReferenceSequence=N). Both
+// pass the range guard, so without a per-entry dedup set both would fold,
+// double-bumping nextTxID and duplicating the tx-metadata timeline. A forged
+// METADATA_NOT_FOUND skip on the MIS-attributed second tx id (which never
+// existed) would then slip through. Fold each in-range sequence exactly once.
+func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) {
+	t.Parallel()
+
+	chainBound := newChainBoundState()
+	expectedSkip := make(map[uint64]*expectedSkippableOrder)
+
+	// Anchor the ledger via an earlier entry (CreateLedger at log 10, range
+	// [10,10]) so the counter is seeded to 1 and tx-scoped metadata is
+	// attributed. chainBound persists across per-entry folds, mirroring real
+	// replay where CreateLedger and the transaction live in distinct entries.
+	collectExpectedSkippable(
+		[]*auditpb.AuditItem{buildCreateLedgerItem(t, "L", 10)},
+		10, 10, expectedSkip, chainBound,
+	)
+
+	// The tx entry: two items sharing LogSequence=50, both inside [Min=50,
+	// Max=50] — the fresh create + the legacy dup-key replay reference to the
+	// same log.
+	item := buildCreateTxWithTxMetadataItem(t, "L", "ref-1", "txkey", 50)
+	collectExpectedSkippable(
+		[]*auditpb.AuditItem{item, item},
+		50, 50, expectedSkip, chainBound,
+	)
+
+	// Exactly one tx id was consumed: nextTxID advanced from 1 to 2, NOT 3.
+	// A double-fold would leave nextTxID=3 and seed a phantom tx:2 timeline.
+	require.Equal(t, uint64(2), chainBound.nextTxID["L"],
+		"legacy dup-key replay sharing LogSequence must be folded once (nextTxID bumped once)")
+	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "2")]["txkey"],
+		"no phantom tx:2 timeline may be seeded by a double-folded replay")
+
+	// The single real tx (id 1) still carries its tx-scoped metadata, so a
+	// forged METADATA_NOT_FOUND on tx:1 is still flagged.
+	require.NotEmpty(t, chainBound.metadata["L"][metadataTimelineTarget(true, "1")]["txkey"],
+		"the real tx:1 metadata timeline must remain seeded exactly once")
+
+	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
+	expected := map[uint64]*expectedSkippableOrder{
+		60: {
+			reasons:            []commonpb.ErrorReason{reason},
+			ledger:             "L",
+			metadataTarget:     "1",
+			metadataKey:        "txkey",
+			metadataTargetIsTx: true,
+		},
+	}
+	payload := skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"})
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	requireInvalidSkipEvent(t, events, 60)
+}
+
 func skippedPayload(reason commonpb.ErrorReason) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
@@ -1965,29 +2119,33 @@ func TestCollectExpectedSkippable_TracksTransactionScopedMetadata(t *testing.T) 
 	cb := newChainBoundState()
 	collectExpectedSkippable(items, 1, ^uint64(0), map[uint64]*expectedSkippableOrder{}, cb)
 
-	// Tx-scoped metadata from CreateTransaction @ seq=11 → target="1".
-	fooMuts := cb.metadata["L"]["1"]["foo"]
+	// Tx-scoped metadata from CreateTransaction @ seq=11 → target="tx:1".
+	// The "tx:" namespace MUST match metadataTimelineTarget(isTx=true, id),
+	// which is what verifySkippedOrder keys on — a bare decimal target would
+	// leave the verifier's lookup empty and let a forged METADATA_NOT_FOUND
+	// on this key slip through (finding checker.go:2355).
+	fooMuts := cb.metadata["L"][metadataTimelineTarget(true, "1")]["foo"]
 	require.Len(t, fooMuts, 1)
 	require.True(t, fooMuts[0].exists, "CreateTransaction.metadata must be recorded as exists=true")
 	require.Equal(t, uint64(11), fooMuts[0].seq)
 
-	// Tx-scoped metadata from RevertTransaction @ seq=14 → target="3"
+	// Tx-scoped metadata from RevertTransaction @ seq=14 → target="tx:3"
 	// (revert consumes a new tx id after ref-A at 12 was assigned 2).
-	noteMuts := cb.metadata["L"]["3"]["note"]
+	noteMuts := cb.metadata["L"][metadataTimelineTarget(true, "3")]["note"]
 	require.Len(t, noteMuts, 1)
 	require.True(t, noteMuts[0].exists)
 	require.Equal(t, uint64(14), noteMuts[0].seq)
 
 	// Skipped CreateTransaction @ seq=13 did NOT consume tx id 3 and
 	// did NOT leak its metadata onto the timeline.
-	require.Empty(t, cb.metadata["L"]["3"]["skipped"], "skipped CreateTransaction.metadata must not surface on the timeline")
+	require.Empty(t, cb.metadata["L"][metadataTimelineTarget(true, "3")]["skipped"], "skipped CreateTransaction.metadata must not surface on the timeline")
 
 	// A skipped CreateTransaction never applies its account_metadata either
 	// (the sub-processor returns the conflict error before any Put), so it
 	// must not fabricate a presence for (account=alice, key=skipped-acct) —
 	// otherwise a later legitimate DeleteMetadata(METADATA_NOT_FOUND) on
 	// that key would be false-flagged as INVALID_SKIP.
-	require.Empty(t, cb.metadata["L"]["alice"]["skipped-acct"], "skipped CreateTransaction.account_metadata must not surface on the timeline")
+	require.Empty(t, cb.metadata["L"][metadataTimelineTarget(false, "alice")]["skipped-acct"], "skipped CreateTransaction.account_metadata must not surface on the timeline")
 
 	// Counter: 1 (initial) + create(1→2) + create(2→3) + skip + revert(3→4) = 4.
 	require.Equal(t, uint64(4), cb.nextTxID["L"], "nextTxID must reflect only successful CreateTransaction/RevertTransaction orders")

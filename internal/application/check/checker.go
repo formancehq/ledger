@@ -2057,6 +2057,20 @@ func collectExpectedSkippable(
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
 ) {
+	// Legacy per-order idempotency (pre-f9ee1e829) could produce TWO items
+	// carrying the SAME LogSequence WITHIN this entry's fresh [Min,Max]
+	// range: two identical per-order requests sharing an idempotency key in
+	// one proposal, where the first created log N + stored the key and the
+	// second observed the key and emitted ReferenceSequence=N. Both items
+	// then have LogSequence=N inside [Min,Max], so the range guard below
+	// admits both. Folding N twice double-bumps nextTxID and duplicates the
+	// metadata timeline for that log — a forged METADATA_NOT_FOUND on a
+	// mis-attributed tx id would then slip through. Each fresh log must be
+	// folded EXACTLY ONCE per entry, so track the sequences already folded
+	// here and skip repeats. (Post-f9ee1e829 stores never persist such
+	// duplicate-sequence items, so this set stays a singleton for them.)
+	foldedLogSeqs := make(map[uint64]struct{}, len(items))
+
 	for _, item := range items {
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
@@ -2100,6 +2114,15 @@ func collectExpectedSkippable(
 		if logSeq < minLogSeq || logSeq > maxLogSeq {
 			continue
 		}
+
+		// Fold each in-range log sequence exactly once per entry (see the
+		// foldedLogSeqs comment above): a legacy dup-key replay item shares
+		// LogSequence=N with the fresh apply of the same log, and re-folding
+		// N would double-count nextTxID and duplicate the metadata timeline.
+		if _, folded := foldedLogSeqs[logSeq]; folded {
+			continue
+		}
+		foldedLogSeqs[logSeq] = struct{}{}
 
 		ls := order.GetLedgerScoped()
 		if ls == nil {
@@ -2352,7 +2375,12 @@ func recordChainBoundMutations(
 					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
 				}
 
-				target := strconv.FormatUint(txID, 10)
+				// Seed under the SAME "tx:<id>" namespace verifySkippedOrder
+				// looks up via metadataTimelineTarget(isTx=true, id). A bare
+				// decimal target here would never match the verifier's keyed
+				// lookup, letting a forged METADATA_NOT_FOUND on tx metadata
+				// written by this successful transaction pass undetected.
+				target := metadataTimelineTarget(true, strconv.FormatUint(txID, 10))
 				for key := range ct.GetMetadata() {
 					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
 				}
@@ -2372,7 +2400,11 @@ func recordChainBoundMutations(
 			newTxID := allocateChainBoundTxID(ledger, chainBound)
 
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
-				target := strconv.FormatUint(newTxID, 10)
+				// Same "tx:<id>" namespacing as the CreateTransaction path
+				// above — the revert's metadata targets the newly-allocated
+				// revert tx, and verifySkippedOrder keys tx targets through
+				// metadataTimelineTarget(isTx=true, id).
+				target := metadataTimelineTarget(true, strconv.FormatUint(newTxID, 10))
 				for key := range rt.GetMetadata() {
 					appendMetadataMutation(chainBound.metadata, ledger, target, key, logSeq, true)
 				}
