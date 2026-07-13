@@ -161,6 +161,7 @@ func TestHandleCreatePreparedQuery_MissingFilter(t *testing.T) {
 	srv.handleCreatePreparedQuery(w, r)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "filter is required")
 }
 
 func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
@@ -168,14 +169,17 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
+	// A target is set so the request reaches the filter-decode branch (an empty
+	// `{}` filter), not the earlier target-required check.
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
-		strings.NewReader(`{"name":"my-query","filter":{}}`),
+		strings.NewReader(`{"name":"my-query","target":"ACCOUNTS","filter":{}}`),
 		map[string]string{"ledgerName": "ledger1"})
 
 	srv.handleCreatePreparedQuery(w, r)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "empty object")
 }
 
 func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {

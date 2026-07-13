@@ -365,6 +365,7 @@ paths:
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: Logs retrieved successfully
@@ -442,9 +443,10 @@ paths:
           schema:
             type: string
           description: |
-            Filter expression restricted to `audit[...]` conditions, using the
-            shared filter grammar (the same one accepted by `ledgerctl audit
-            list --filter`). Examples:
+            A filter, decoded by the same shared dual-format decoder every list
+            endpoint uses (see the `ListFilter` parameter). In practice audit
+            filters use the **textual** representation, restricted to `audit[...]`
+            conditions:
               - `audit[outcome] == failure`
               - `audit[ledger] == main`
               - `audit[order_type] in (create_transaction, revert_transaction)`
@@ -453,8 +455,11 @@ paths:
             Supported fields: `seq`, `proposal_id`, `log_seq` (numeric);
             `timestamp` (RFC3339 or unix microseconds); `outcome`
             (success|failure), `ledger`, `caller_subject`, `order_type`
-            (string). This is deliberately NOT the JSON QueryFilter DSL used by
-            prepared queries, which cannot represent audit conditions.
+            (string). Audit conditions have NO structured JSON QueryFilter
+            representation (their field names collide with the transaction/log
+            conditions the JSON DSL already claims), so the textual form is the
+            canonical one here; a JSON QueryFilter cannot carry an audit
+            condition and is rejected.
       responses:
         '200':
           description: List of audit entries
@@ -693,6 +698,7 @@ paths:
           schema:
             type: string
           description: Filter by exact-match transaction reference.
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: Transactions retrieved successfully.
@@ -788,6 +794,7 @@ paths:
             `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
+        - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
           description: List of accounts
@@ -2878,6 +2885,33 @@ components:
         maxLength: 256
       description: Idempotency key for the request
 
+    ListFilter:
+      name: filter
+      in: query
+      required: false
+      schema:
+        type: string
+      description: |
+        A filter, accepted in EITHER of two interchangeable representations that
+        parse to the same filter and are validated against the same per-target
+        rules:
+
+          - **Textual** — the human-readable filter grammar, e.g.
+            `metadata[status] == "active"`, `address ^= "users:"`,
+            `metadata[a] == "x" and metadata[b] == "y"`. Passed verbatim as the
+            query-parameter value (URL-encoded).
+          - **Structured** — the JSON QueryFilter DSL (see the `QueryFilter`
+            schema: `$and`/`$or`/`$not` + `$match`/`$gt`/`$exists`/…). Passed by
+            URL-encoding the JSON object as the query-parameter value.
+
+        A condition that is not valid on the endpoint's target (e.g. a
+        transaction-only condition on the accounts list) is rejected with 400.
+        This generic filter is AND-combined with any convenience parameters the
+        endpoint also exposes (e.g. `reference`, `prefix`, `startDate`/`endDate`).
+
+        Note: audit conditions (`audit[...]`) have no structured JSON form and
+        must be passed in the textual representation.
+
   responses:
     ServiceUnavailable:
       description: Service unavailable (no leader available)
@@ -2972,6 +3006,28 @@ components:
           format: int64
         - type: boolean
 
+    MetadataFieldTypeCommand:
+      type: object
+      description: Declares the type of a metadata field, seeding a ledger's initial metadata schema.
+      required:
+        - targetType
+        - key
+        - type
+      properties:
+        targetType:
+          type: string
+          enum: [account, transaction, ledger]
+          description: Which entity the metadata field applies to.
+        key:
+          type: string
+          description: Metadata key.
+          example: color
+        type:
+          type: string
+          enum: [string, int64, bool, uint64, int8, int16, int32, uint8, uint16, uint32, datetime]
+          description: Declared metadata value type.
+          example: string
+
     CreateLedgerRequest:
       type: object
       properties:
@@ -2989,6 +3045,30 @@ components:
           description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
+        defaultEnforcementMode:
+          type: string
+          enum:
+            - STRICT
+            - AUDIT
+          description: Default chart-of-accounts enforcement for accounts that match no account type.
+        initialSchema:
+          type: array
+          description: Metadata field type declarations to seed at creation time.
+          items:
+            $ref: '#/components/schemas/MetadataFieldTypeCommand'
+        accountTypes:
+          type: object
+          description: Initial account types (name -> account type definition).
+          additionalProperties:
+            $ref: '#/components/schemas/AddAccountTypeRequest'
+          example:
+            user-checking:
+              name: user-checking
+              pattern: 'users:{id}:checking'
+              persistence: EPHEMERAL
+              segmentTypes:
+                id:
+                  type: uuid
 
     CreateLedgerResponse:
       type: object
@@ -3084,6 +3164,11 @@ components:
                   NORMAL: fully persisted (default).
                   EPHEMERAL: persisted, purged when zero balance.
                   TRANSIENT: never persisted, must be zero at end of batch.
+              segmentTypes:
+                type: object
+                description: Maps a pattern variable name to a type constraint.
+                additionalProperties:
+                  $ref: '#/components/schemas/SegmentType'
           nullable: true
         default_enforcement_mode:
           type: string
@@ -4695,7 +4780,7 @@ components:
             filter fields (`logId`, `date`, `ledger`) are valid only when the
             target is `LOGS`.
         filter:
-          $ref: '#/components/schemas/QueryFilter'
+          $ref: '#/components/schemas/PreparedQueryFilterInput'
 
     UpdatePreparedQueryRequest:
       type: object
@@ -4703,7 +4788,7 @@ components:
         - filter
       properties:
         filter:
-          $ref: '#/components/schemas/QueryFilter'
+          $ref: '#/components/schemas/PreparedQueryFilterInput'
 
     ExecutePreparedQueryRequest:
       type: object
@@ -4887,6 +4972,25 @@ components:
           maxProperties: 1
           additionalProperties: true
 
+    PreparedQueryFilterInput:
+      description: >-
+        A filter supplied to a prepared-query create/update request, accepted in
+        EITHER of two interchangeable representations that parse to the same
+        filter and are validated against the same per-target rules (EN-1511):
+
+
+        - the structured JSON QueryFilter object (see `QueryFilter`); or
+
+        - the textual filter grammar carried as a JSON string, e.g.
+          `"metadata[status] == \"active\""`.
+
+
+        Responses always echo the stored filter back in the structured
+        `QueryFilter` form.
+      oneOf:
+        - $ref: '#/components/schemas/QueryFilter'
+        - type: string
+          description: Textual filter expression (filter grammar).
 
     ExecutePreparedQueryResponse:
       type: object
@@ -4935,6 +5039,28 @@ components:
           type: string
           description: Go runtime version the binary was built with
 
+    SegmentType:
+      type: object
+      description: |
+        Constraint for a variable segment in an account type pattern. The
+        `type` field discriminates the constraint kind; only `regex` carries a
+        value.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [regex, uuid, uint64, bytes]
+          description: |
+            regex: custom regular expression (requires `regex`).
+            uuid: RFC 4122 UUID format.
+            uint64: decimal uint64.
+            bytes: hex-encoded bytes (even length).
+        regex:
+          type: string
+          description: Regular expression to match the segment against. Required when `type` is `regex`.
+          example: '[A-Z]{2}[0-9]{14}'
+
     AddAccountTypeRequest:
       type: object
       required:
@@ -4944,15 +5070,36 @@ components:
         name:
           type: string
           description: Unique name for the account type
+          example: user-checking
         pattern:
           type: string
-          description: Account address pattern for validation (e.g. "users:*")
+          description: Account address pattern for validation. Variables use `{name}` segments.
+          example: 'users:{id}:checking'
+        persistence:
+          type: string
+          enum: [NORMAL, EPHEMERAL, TRANSIENT]
+          default: NORMAL
+          description: |
+            How account volumes are stored.
+            NORMAL: fully persisted (default).
+            EPHEMERAL: persisted, purged when zero balance after commit.
+            TRANSIENT: never persisted, must be zero at end of batch.
+          example: EPHEMERAL
+        segmentTypes:
+          type: object
+          description: Maps a pattern variable name to a type constraint.
+          additionalProperties:
+            $ref: '#/components/schemas/SegmentType'
+          example:
+            id:
+              type: uuid
 
     AccountTypeInfo:
       type: object
       required:
         - name
         - pattern
+        - persistence
       properties:
         name:
           type: string
@@ -4960,6 +5107,15 @@ components:
         pattern:
           type: string
           description: Account address pattern
+        persistence:
+          type: string
+          enum: [NORMAL, EPHEMERAL, TRANSIENT]
+          description: How account volumes are stored (NORMAL, EPHEMERAL, or TRANSIENT)
+        segmentTypes:
+          type: object
+          description: Maps a pattern variable name to a type constraint.
+          additionalProperties:
+            $ref: '#/components/schemas/SegmentType'
 
     ListAccountTypesResponse:
       type: object

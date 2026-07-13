@@ -242,10 +242,13 @@ type FilterOptions struct {
 	PrefixHelp string
 }
 
-// AddFilterFlags registers --filter (filterexpr DSL) on cmd, plus --prefix when
-// SupportsPrefix is set.
+// AddFilterFlags registers --filter on cmd, plus --prefix when SupportsPrefix
+// is set. --filter accepts either the textual filterexpr grammar
+// ("metadata[k] == v") or the structured v2 JSON DSL ('{"$match":{...}}') — the
+// same dual-format contract every server-side filtered endpoint honors
+// (EN-1511).
 func AddFilterFlags(cmd *cobra.Command, opts FilterOptions) {
-	cmd.Flags().String("filter", "", `Filter expression (see "filterexpr" grammar; e.g. "metadata[k] == v")`)
+	cmd.Flags().String("filter", "", `Filter expression: textual grammar ("metadata[k] == v") or JSON DSL ('{"$match":{"metadata[k]":"v"}}')`)
 
 	if opts.SupportsPrefix {
 		help := opts.PrefixHelp
@@ -274,15 +277,18 @@ func GetFilterFlags(cmd *cobra.Command) FilterFlags {
 // BuildQueryFilter combines a --filter expression and an optional --prefix into
 // a single QueryFilter. Returns nil when both inputs are empty.
 //
-// The prefix is applied as an AddressMatch_HardcodedPrefix; when --filter is
-// also set, the two are AND-combined.
+// --filter accepts either the textual filterexpr grammar or the structured v2
+// JSON DSL (EN-1511); the shared dual-format decoder detects the form. The
+// per-target validity gate is left to the server (the CLI does not resolve the
+// target here). The prefix is applied as an AddressMatch_HardcodedPrefix; when
+// --filter is also set, the two are AND-combined.
 func BuildQueryFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error) {
 	var parsed *commonpb.QueryFilter
 
 	if filterExpr != "" {
 		var err error
 
-		parsed, err = filterexpr.Parse(filterExpr)
+		parsed, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr))
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter expression: %w", err)
 		}

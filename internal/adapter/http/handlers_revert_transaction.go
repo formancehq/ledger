@@ -41,15 +41,19 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	// Extract optional fields from request body
 	if reqBody != nil {
 		if metadata, ok := reqBody["metadata"].(map[string]any); ok {
-			metadataMap := make(map[string]string)
+			// Decode metadata through the shared typed-metadata path so numeric,
+			// boolean and other non-string values survive losslessly (parity with
+			// create-transaction / set-metadata). Invalid values (objects, arrays,
+			// non-integer floats) are rejected with 400 INVALID_REQUEST instead of
+			// being silently dropped (EN-1509).
+			ms, err := commonpb.MetadataFromAnyMap(metadata)
+			if err != nil {
+				writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
 
-			for k, v := range metadata {
-				if strVal, ok := v.(string); ok {
-					metadataMap[k] = strVal
-				}
+				return
 			}
 
-			payload.Metadata = commonpb.MetadataFromGoMap(metadataMap)
+			payload.Metadata = ms
 		}
 
 		if force, ok := reqBody["force"].(bool); ok {
