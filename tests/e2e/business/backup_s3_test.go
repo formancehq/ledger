@@ -17,6 +17,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -223,43 +225,39 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		}
 	})
 
-	It("should succeed with incremental backup without a prior checkpoint", func() {
-		// Use a fresh bucket-id with no prior manifest
-		resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
+	It("should reject incremental backup without a prior checkpoint", func() {
+		// Use a fresh bucket-id with no prior manifest. An incremental backup is
+		// only meaningful on top of a full checkpoint (EN-888): the checkpoint
+		// carries the Global-zone persisted config, last-applied index, and
+		// timestamp restore needs, so an export-only artifact cannot be restored.
+		// The server must reject this, not publish an unrestorable artifact.
+		_, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 			Storage:  s3Storage(),
 			BucketId: "no-prior",
 		})
-		Expect(err).To(Succeed())
-		Expect(resp.GetLogEntriesExported()).To(BeNumerically(">", 0))
-		Expect(resp.GetAuditEntriesExported()).To(BeNumerically(">", 0))
+		Expect(err).To(HaveOccurred(), "incremental backup without a full checkpoint must fail")
+		st, ok := status.FromError(err)
+		Expect(ok).To(BeTrue(), "error must be a gRPC status")
+		Expect(st.Code()).To(Equal(codes.FailedPrecondition),
+			"missing full checkpoint must surface as FailedPrecondition")
+		Expect(st.Message()).To(ContainSubstring("full checkpoint"))
 
-		// Verify manifest was created with no checkpoint and with exports
-		manifest, err := readS3BackupManifest(ctx, s3Client)
-		Expect(err).To(Succeed())
-		// The "no-prior" bucket has its own manifest key, read it directly
-		noPriorManifest, err := func() (*backup.Manifest, error) {
-			output, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
-				Bucket: aws.String(backupS3Bucket),
-				Key:    aws.String("no-prior/backups/manifest.json"),
-			})
-			if err != nil {
-				return nil, err
-			}
-			defer func() { _ = output.Body.Close() }()
-			data, err := io.ReadAll(output.Body)
-			if err != nil {
-				return nil, err
-			}
-			var m backup.Manifest
-			if err := json.Unmarshal(data, &m); err != nil {
-				return nil, err
-			}
-			return &m, nil
-		}()
-		Expect(err).To(Succeed())
-		Expect(noPriorManifest.Checkpoint).To(BeNil())
-		Expect(noPriorManifest.Exports).NotTo(BeEmpty())
-		_ = manifest // main manifest is unaffected
+		// And NO artifact must be written for the "no-prior" bucket — neither a
+		// manifest nor any export segment.
+		_, getErr := s3Client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(backupS3Bucket),
+			Key:    aws.String("no-prior/backups/manifest.json"),
+		})
+		Expect(getErr).To(HaveOccurred(),
+			"no manifest must be published for a rejected checkpoint-less incremental backup")
+
+		listOut, listErr := s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket: aws.String(backupS3Bucket),
+			Prefix: aws.String("no-prior/"),
+		})
+		Expect(listErr).To(Succeed())
+		Expect(listOut.KeyCount).To(BeEquivalentTo(0),
+			"no object of any kind must be published under the no-prior/ prefix")
 	})
 
 	It("should export new entries incrementally after a full backup", func() {
