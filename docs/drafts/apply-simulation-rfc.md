@@ -116,22 +116,39 @@ type StateReader interface {
 
 Today the two write halves are `batchEffects` (admission) and `WriteSet` (FSM). Generalize:
 
+The write half's **balance primitive must be posting-shaped, not delta-shaped.** The FSM apply path (`applyPosting`) needs the full posting — source, destination, asset, amount, and side — to increment the source's `Output` and the destination's `Input` **separately** (materialized volumes) and to run the source balance check. A `AddBalanceDelta(key, delta)` primitive collapses source and destination into two independent net-per-volume-key deltas and **destroys** exactly the information `applyPosting` requires: which side moved, and the source/destination pairing for the balance check. A net-delta sink therefore cannot reconstruct materialized-volume semantics, which §3.2's asymmetry note and §4 both require. So the sink's balance operation is the posting; the net delta is a *projection* admission derives from it, never the sink's primitive.
+
 ```go
 // Illustrative — the write half of the interpreter.
 type WriteSink interface {
-    AddBalanceDelta(key domain.VolumeKey, delta *big.Int)
+    // Balance mutation is posting-shaped: the FSM needs source/destination,
+    // asset, amount and side to update materialized volumes (source Output++,
+    // destination Input++) and run the source balance check. Admission's
+    // implementation projects this to a net (input−output) delta per volume key
+    // for its intra-batch overlay; the FSM's implementation materializes the two
+    // volume sides. force is threaded so each backend applies the balance-check
+    // policy identically (§8, force question).
+    ApplyPosting(p Posting, force bool) error
+
     SetMetadata(key domain.MetadataKey, value string)
     DeleteMetadata(key domain.MetadataKey)
     PutTransactionState(txID uint64, state *TransactionState)
     MarkReverted(txID uint64)
     PutReference(ref string, txID uint64)
 }
+
+// Posting is the balance-mutation unit the interpreter emits (already the shape
+// of a numscript-produced posting and of RevertTransaction's reversed postings).
+type Posting struct {
+    Source, Destination, Asset string
+    Amount                     *big.Int
+}
 ```
 
-- Admission's `WriteSink` = the `batchEffects` overlay. Writes accumulate so the next same-batch order's `StateReader` sees them; discarded after the batch. This is *exactly* what `batchEffects.addBalanceDelta` / `setMetadata` / `deleteMetadata` do today — the interface just names them.
-- FSM's `WriteSink` = the `WriteSet`. Writes commit via Merge.
+- Admission's `WriteSink` = the `batchEffects` overlay. `ApplyPosting` **projects** the posting to a net (input−output) delta per volume key (source `−amount`, destination `+amount`) so a later same-batch `balance()` sees the right number — exactly what `batchEffects.addBalanceDelta` does today, but now driven by the posting rather than being the interpreter's primitive. `SetMetadata` / `DeleteMetadata` accumulate as today. All writes are discarded after the batch. Admission's `ApplyPosting` swallows the balance-check failure (best-effort, §4.2); it still records the delta so downstream orders resolve correctly.
+- FSM's `WriteSink` = the `WriteSet`. `ApplyPosting` materializes both volume sides via the existing `applyPosting` path (source `Output += amount`, destination `Input += amount`) and runs the authoritative source balance check unless `force`. Other writes commit via Merge.
 
-**Note the asymmetry that must be preserved:** admission folds *net balance deltas* (input−output), because it only needs a later `balance()` to see the right number. The FSM writes *materialized volumes* (Input and Output separately, via `applyPosting`). The `WriteSink` abstraction must not force these to be the same representation — `AddBalanceDelta` is the admission-shaped operation; the FSM's implementation translates a posting into a full volume update. The interpreter emits **postings** (source, dest, asset, amount); each backend's `WriteSink` decides how to record them. This keeps the interpreter representation-agnostic and lets the FSM keep its exact volume math.
+**The asymmetry the posting-shaped sink preserves:** admission needs only *net balance deltas* (input−output) for a later `balance()`; the FSM needs *materialized volumes* (Input and Output separately). Because the interpreter emits **postings** and each backend's `ApplyPosting` decides how to record them, the interpreter stays representation-agnostic, admission keeps its cheap net-delta overlay, and the FSM keeps its exact volume math and balance check — with no information lost at the seam.
 
 ---
 
@@ -191,8 +208,8 @@ The apply path checks `expected == recording.Hash()` **before** committing to th
 |---|---|---|---|
 | `DiscoverNumscriptDependencies` `SafeResolveDependencies` pass | `numscript/discover.go` | the single `simulate` pass (numscript order), reads recorded → preload + InputsHash | **kept** (becomes the one pass) |
 | `DiscoverNumscriptDependencies` `SafeRun` effects pass | `numscript/discover.go` | **removed** — effects are the `WriteSink` writes of the single pass | **DELETED** |
-| `NetBalanceDeltas` / `MetadataWrites` on `DiscoveryResult` | `numscript/discover.go` | become `WriteSink.AddBalanceDelta` / `SetMetadata` calls | **DELETED** (as separate result fields) |
-| postings-only inline balance fold | `admission.go:~1493` | `simulate` for CreateTransaction (postings branch) → `WriteSink.AddBalanceDelta` | **DELETED** (moves into interpreter) |
+| `NetBalanceDeltas` / `MetadataWrites` on `DiscoveryResult` | `numscript/discover.go` | become `WriteSink.ApplyPosting` (net delta is a projection) / `SetMetadata` calls | **DELETED** (as separate result fields) |
+| postings-only inline balance fold | `admission.go:~1493` | `simulate` for CreateTransaction (postings branch) → `WriteSink.ApplyPosting` | **DELETED** (moves into interpreter) |
 | reversed-delta fold | `admission.go:~1421` | `simulate` for RevertTransaction → `WriteSink` (reversed postings) | **DELETED** (moves into interpreter) |
 | `effects.setMetadata` (AddMetadata) | `admission.go:~1452` | `simulate` for AddMetadata → `WriteSink.SetMetadata` | **DELETED** (moves into interpreter) |
 | `effects.deleteMetadata` tombstone (DeleteMetadata) | `admission.go:~1465` | `simulate` for DeleteMetadata → `WriteSink.DeleteMetadata` | **DELETED** (moves into interpreter) |
