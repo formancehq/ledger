@@ -163,15 +163,20 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "users:", am.GetHardcodedPrefix())
 	})
 
-	t.Run("address bare word", func(t *testing.T) {
+	t.Run("address prefix with special char must be quoted", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("address ^= users:")
+		// A `:` is not a bare-Ident char (EN-1547): the prefix must be quoted.
+		filter, err := Parse(`address ^= "users:"`)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
 		require.NotNil(t, am)
 		assert.Equal(t, "users:", am.GetHardcodedPrefix())
+
+		// The bare (unquoted) punctuated form is rejected.
+		_, err = Parse("address ^= users:")
+		require.Error(t, err)
 	})
 
 	t.Run("AND", func(t *testing.T) {
@@ -1047,11 +1052,15 @@ func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
 		assert.Equal(t, "asset", f.GetField().GetStringCond().GetHardcoded())
 	})
 
-	t.Run("has-prefixed address segment lexes as one identifier", func(t *testing.T) {
+	t.Run("has-prefixed address segment must be quoted", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("address ^= has:wallet")
+		// The `:` makes this not a bare Ident (EN-1547): quote it.
+		f, err := Parse(`address ^= "has:wallet"`)
 		require.NoError(t, err)
 		assert.Equal(t, "has:wallet", f.GetAddress().GetHardcodedPrefix())
+
+		_, err = Parse("address ^= has:wallet")
+		require.Error(t, err)
 	})
 }
