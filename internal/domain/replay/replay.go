@@ -74,6 +74,12 @@ func ReplayLedgerLog(
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
 		}
 
+		if ref := tx.GetReference(); ref != "" {
+			if err := w.SetTransactionReference(ledger, ref, tx.GetId()); err != nil {
+				return fmt.Errorf("putting reference for created tx %d: %w", tx.GetId(), err)
+			}
+		}
+
 		for account, metadataMap := range p.CreatedTransaction.GetAccountMetadata() {
 			if metadataMap != nil {
 				for key, value := range metadataMap.GetValues() {
@@ -120,6 +126,12 @@ func ReplayLedgerLog(
 
 		if err := w.CreateTransaction(revertTxCanonical, seq, revertTx.GetTimestamp(), revertTx.GetMetadata(), revertTx.GetPostings(), p.RevertedTransaction.GetRevertedTransactionId()); err != nil {
 			return fmt.Errorf("putting tx state for revert tx %d: %w", revertTx.GetId(), err)
+		}
+
+		if ref := revertTx.GetReference(); ref != "" {
+			if err := w.SetTransactionReference(ledger, ref, revertTx.GetId()); err != nil {
+				return fmt.Errorf("putting reference for revert tx %d: %w", revertTx.GetId(), err)
+			}
 		}
 
 	case *commonpb.LedgerLogPayload_SavedMetadata:

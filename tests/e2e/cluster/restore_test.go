@@ -87,6 +87,8 @@ var _ = Describe("Restore", Ordered, func() {
 		ledgerName  = "restore-ledger"
 		ledger2     = "restore-ledger-2"
 		chartLedger = "restore-chart-ledger"
+		deltaLedger = "restore-ledger-delta"
+		deltaRef    = "delta-ref-1"
 	)
 
 	var (
@@ -299,6 +301,20 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeAction(chartLedger, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
+			// A ledger created AFTER the full checkpoint lives only in the
+			// incremental exports. Its LedgerInfo + LedgerBoundaries must be
+			// rebuilt into the 0xF1 attribute zone the apply-path preload reads,
+			// or a later write to it fails ErrLedgerNotFound. The funding tx
+			// carries a reference so Phase 3 can check reference idempotency.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(deltaLedger, nil)))
+			Expect(err).To(Succeed())
+			fundDelta := actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+				actions.NewPosting("world", "founder", big.NewInt(9000), "USD"),
+			}, nil, nil)
+			fundDelta.GetApply().GetAction().GetCreateTransaction().Reference = deltaRef
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", fundDelta))
+			Expect(err).To(Succeed())
+
 			// Declare metadata field types AFTER the full checkpoint, so they live
 			// only in the incremental export segments — the RebuildDelta replay
 			// path, not the raw checkpoint copy. Phase 3 reads them back.
@@ -445,8 +461,8 @@ var _ = Describe("Restore", Ordered, func() {
 			resp, err := restoreClient.PreviewRestore(ctx, &restorepb.PreviewRestoreRequest{})
 			Expect(err).To(Succeed())
 
-			Expect(resp.LedgerCount).To(Equal(uint32(3)))
-			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2, chartLedger))
+			Expect(resp.LedgerCount).To(Equal(uint32(4)))
+			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2, chartLedger, deltaLedger))
 			Expect(resp.LastAppliedIndex).To(BeNumerically(">", 0))
 			Expect(resp.LastSequence).To(BeNumerically(">", 0))
 		})
@@ -644,6 +660,59 @@ var _ = Describe("Restore", Ordered, func() {
 				actions.NewPosting("world", "random:1", big.NewInt(10), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred(), "under strict enforcement, an account matching no declared type must be rejected")
+		})
+
+		It("should have the delta ledger's data restored from export segments", func() {
+			founderResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "founder"})
+			Expect(err).To(Succeed())
+			Expect(founderResp.Volumes["USD"].Input).To(Equal("9000"))
+		})
+
+		It("should reconstruct ledger stats for a ledger created after the checkpoint", func() {
+			// deltaLedger was created and funded (1 tx, 1 posting world->founder)
+			// entirely in the delta. RebuildDelta must rebuild its boundary
+			// counters from the exports, not leave them at zero.
+			stats, err := actions.GetLedgerStats(ctx, client, deltaLedger)
+			Expect(err).To(Succeed())
+			Expect(stats.GetTransactionCount()).To(Equal(uint64(1)))
+			Expect(stats.GetLogCount()).To(Equal(uint64(1)))
+			Expect(stats.GetPostingCount()).To(Equal(uint64(1)))
+			Expect(stats.GetVolumeCount()).To(Equal(uint64(2)), "world + founder")
+			Expect(stats.GetMetadataCount()).To(Equal(uint64(0)))
+			Expect(stats.GetRevertCount()).To(Equal(uint64(0)))
+			Expect(stats.GetReferenceCount()).To(Equal(uint64(1)), "the funding tx carried a reference")
+		})
+
+		It("should enforce reference idempotency reconstructed from the delta", func() {
+			// The delta funding tx carried deltaRef. RebuildDelta must rebuild
+			// the reference index into the 0xF1 attribute zone, or reusing the
+			// reference is wrongly accepted after restore.
+			dup := actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+				actions.NewPosting("founder", "someone", big.NewInt(1), "USD"),
+			}, nil, nil)
+			dup.GetApply().GetAction().GetCreateTransaction().Reference = deltaRef
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", dup))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("already exists"))
+		})
+
+		It("should accept transactions on a ledger created after the checkpoint", func() {
+			// deltaLedger was created after the full checkpoint, so its
+			// LedgerInfo and LedgerBoundaries live only in the incremental
+			// exports. Queries (ListLedgers, GetAccount) read the global/volume
+			// zones and see it, but the apply path preloads the ledger and its
+			// boundaries from the 0xF1 attribute zone: RebuildDelta must rebuild
+			// both there, or loadLedger/loadBoundaries return ErrLedgerNotFound
+			// and this write fails.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(deltaLedger, []*commonpb.Posting{
+				actions.NewPosting("founder", "employee", big.NewInt(1200), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			employeeResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "employee"})
+			Expect(err).To(Succeed())
+			Expect(employeeResp.Volumes["USD"].Input).To(Equal("1200"))
 		})
 
 		It("should accept new transactions after restore", func() {

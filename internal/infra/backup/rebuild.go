@@ -9,6 +9,7 @@ import (
 	"math/big"
 
 	"github.com/holiman/uint256"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -45,9 +46,12 @@ func RebuildDelta(
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
 		ledger:         attrs.Ledger,
+		references:     attrs.References,
+		boundary:       attrs.Boundary,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
 		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
+		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -64,6 +68,8 @@ func RebuildDelta(
 		return fmt.Errorf("creating read handle: %w", err)
 	}
 	defer func() { _ = readHandle.Close() }()
+
+	writer.readHandle = readHandle
 
 	// Seed ledger account types from state already in the store. On an
 	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
@@ -158,6 +164,12 @@ func RebuildDelta(
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
 			}
 
+			if err := writer.advanceLogID(ledgerName, p.Apply.GetLog().GetId()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("advancing boundary log id at log %d: %w", seq, err)
+			}
+
 		case *commonpb.LogPayload_CreateLedger:
 			if p.CreateLedger == nil {
 				continue
@@ -183,6 +195,8 @@ func RebuildDelta(
 				rawLedgerTypes[info.GetName()] = cloned
 				ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(cloned)
 			}
+
+			writer.initBoundaries(info.GetName())
 
 		case *commonpb.LogPayload_DeleteLedger:
 			// Deletion is handled by system state; nothing to rebuild here
@@ -343,6 +357,31 @@ func RebuildDelta(
 
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing final batch: %w", err)
+	}
+
+	// Net attribute counts (VolumeCount, MetadataCount, ReferenceCount) are
+	// read from the committed 0xF1 state, so this runs after the attribute
+	// commit. The boundaries themselves are then written in their own batch.
+	countHandle, err := store.NewDirectReadHandle()
+	if err != nil {
+		return fmt.Errorf("opening read handle for boundary counts: %w", err)
+	}
+	defer func() { _ = countHandle.Close() }()
+
+	if err := writer.countNetAttributes(countHandle); err != nil {
+		return fmt.Errorf("counting net attributes for boundaries: %w", err)
+	}
+
+	writer.batch = store.OpenWriteSession()
+
+	if err := writer.flushBoundaries(); err != nil {
+		_ = writer.batch.Cancel()
+
+		return fmt.Errorf("flushing rebuilt boundaries: %w", err)
+	}
+
+	if err := writer.batch.Commit(); err != nil {
+		return fmt.Errorf("committing boundaries batch: %w", err)
 	}
 
 	logger.WithFields(map[string]any{
@@ -588,6 +627,8 @@ type attributeReplayWriter struct {
 	metadata       *attributes.Attribute[*commonpb.MetadataValue]
 	tx             *attributes.Attribute[*commonpb.TransactionState]
 	ledger         *attributes.Attribute[*commonpb.LedgerInfo]
+	references     *attributes.Attribute[*commonpb.TransactionReferenceValue]
+	boundary       *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
 	pendingVolumes map[string]*raftcmdpb.VolumePair
 	pendingTx      map[string]*commonpb.TransactionState
 
@@ -596,6 +637,154 @@ type attributeReplayWriter struct {
 	// account-type replays fold into these and re-save. Seeded from the
 	// checkpoint and extended as CreateLedger logs replay.
 	ledgerInfos map[string]*commonpb.LedgerInfo
+
+	// LedgerBoundaries per touched ledger. The apply path preloads boundaries
+	// from the SubAttrBoundary attribute, which the log replay does not write
+	// per-entry: NextTransactionId / NextLogId and the per-transaction counters
+	// accumulate here, seeded from the checkpoint on first touch via
+	// readHandle, and are flushed in their own batch after the attribute
+	// commit (net counts are derived from the committed 0xF1 state).
+	boundaries map[string]*raftcmdpb.LedgerBoundaries
+	readHandle dal.PebbleReader
+}
+
+// boundaryFor returns the working LedgerBoundaries for a ledger, seeding it from
+// the checkpoint on first touch (a ledger created in the delta has none, so it
+// starts at the genesis {1,1}). The returned pointer is mutated in place and
+// written back by flushBoundaries.
+func (w *attributeReplayWriter) boundaryFor(ledgerName string) (*raftcmdpb.LedgerBoundaries, error) {
+	if b, ok := w.boundaries[ledgerName]; ok {
+		return b, nil
+	}
+
+	existing, err := w.boundary.Get(w.readHandle, domain.LedgerKey{Name: ledgerName}.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("reading boundaries for ledger %q: %w", ledgerName, err)
+	}
+
+	if existing == nil {
+		existing = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	}
+
+	w.boundaries[ledgerName] = existing
+
+	return existing, nil
+}
+
+// initBoundaries resets a ledger's boundaries to the genesis state, matching the
+// live CreateLedger handler. A ledger recreated in the delta starts fresh.
+func (w *attributeReplayWriter) initBoundaries(ledgerName string) {
+	w.boundaries[ledgerName] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+}
+
+// advanceLogID bumps NextLogId past a replayed ledger log, mirroring the live
+// apply path's per-log increment.
+func (w *attributeReplayWriter) advanceLogID(ledgerName string, logID uint64) error {
+	b, err := w.boundaryFor(ledgerName)
+	if err != nil {
+		return err
+	}
+
+	if next := logID + 1; next > b.GetNextLogId() {
+		b.NextLogId = next
+	}
+
+	return nil
+}
+
+// recordTransactionBoundary advances a ledger's boundaries for one created
+// transaction: NextTransactionId past its id, PostingCount by its postings, and
+// RevertCount when it reverts another (revert reversals carry revertsTransaction
+// and flow through CreateTransaction like any other tx).
+func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, postingCount int, revertsTransaction uint64) error {
+	var tk domain.TransactionKey
+	if err := tk.Unmarshal(canonicalKey); err != nil {
+		return fmt.Errorf("parsing transaction key for boundaries: %w", err)
+	}
+
+	b, err := w.boundaryFor(tk.LedgerName)
+	if err != nil {
+		return err
+	}
+
+	if next := tk.ID + 1; next > b.GetNextTransactionId() {
+		b.NextTransactionId = next
+	}
+
+	b.PostingCount += uint64(postingCount)
+
+	if revertsTransaction != 0 {
+		b.RevertCount++
+	}
+
+	return nil
+}
+
+// countNetAttributes sets VolumeCount, MetadataCount and ReferenceCount for
+// every touched ledger to the number of persisted keys in the committed 0xF1
+// state. These are net (last-value) counts, so counting the final keys is
+// exact: ephemeral and transient volumes have already been purged, matching the
+// live counters.
+//
+// NumscriptExecutionCount is carried from the checkpoint — the audit chain
+// records the resulting transaction, never that it came from a script, so it
+// cannot be re-derived. EphemeralEvictedCount / TransientUsedCount are also
+// carried unchanged.
+func (w *attributeReplayWriter) countNetAttributes(reader dal.PebbleReader) error {
+	for name, b := range w.boundaries {
+		prefix := domain.LedgerKey{Name: name}.Bytes()
+
+		volumeCount, err := countAttributeKeys(w.volume, reader, prefix)
+		if err != nil {
+			return fmt.Errorf("counting volumes for ledger %q: %w", name, err)
+		}
+
+		metadataCount, err := countAttributeKeys(w.metadata, reader, prefix)
+		if err != nil {
+			return fmt.Errorf("counting metadata for ledger %q: %w", name, err)
+		}
+
+		referenceCount, err := countAttributeKeys(w.references, reader, prefix)
+		if err != nil {
+			return fmt.Errorf("counting references for ledger %q: %w", name, err)
+		}
+
+		b.VolumeCount = volumeCount
+		b.MetadataCount = metadataCount
+		b.ReferenceCount = referenceCount
+	}
+
+	return nil
+}
+
+// countAttributeKeys counts the persisted keys under a canonical prefix (the
+// fixed-width ledger name) in the 0xF1 attribute zone.
+func countAttributeKeys[V proto.Message](attr *attributes.Attribute[V], reader dal.PebbleReader, prefix []byte) (uint64, error) {
+	si, err := attr.NewStreamingIter(reader, prefix)
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = si.Close() }()
+
+	var count uint64
+	for si.Next() {
+		count++
+	}
+
+	return count, si.Err()
+}
+
+// flushBoundaries writes every touched ledger's boundaries to the SubAttrBoundary
+// attribute. Called after countNetAttributes, in its own post-commit batch.
+func (w *attributeReplayWriter) flushBoundaries() error {
+	for name, b := range w.boundaries {
+		if _, err := w.boundary.Set(w.batch, domain.LedgerKey{Name: name}.Bytes(), b); err != nil {
+			return fmt.Errorf("writing boundaries for ledger %q: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
@@ -716,6 +905,10 @@ func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*commonpb.Transactio
 }
 
 func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
+	if err := w.recordTransactionBoundary(canonicalKey, len(postings), revertsTransaction); err != nil {
+		return err
+	}
+
 	txState := &commonpb.TransactionState{
 		CreatedByLog:       seq,
 		Metadata:           metadata,
@@ -731,6 +924,17 @@ func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint6
 	w.pendingTx[string(canonicalKey)] = txState
 
 	return nil
+}
+
+// SetTransactionReference reconstructs the reference→txID uniqueness index in
+// the SubAttrReference attribute, so reference idempotency is enforced against
+// delta transactions after a restore.
+func (w *attributeReplayWriter) SetTransactionReference(ledgerName, reference string, txID uint64) error {
+	key := domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: reference}.Bytes()
+
+	_, err := w.references.Set(w.batch, key, &commonpb.TransactionReferenceValue{TransactionId: txID})
+
+	return err
 }
 
 func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {

@@ -263,6 +263,14 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
+// SetTransactionReference is a no-op in the checker: the reference index is a
+// projection the checker does not yet verify (there is no compareReferences
+// pass — see invariant 8), so there is nothing to reconstruct here. Only the
+// restore replay's writer implements it, to rebuild the index after a restore.
+func (s *replayStore) SetTransactionReference(_, _ string, _ uint64) error {
+	return nil
+}
+
 // setRevertedBy records that a transaction was reverted via merge (no read).
 func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)

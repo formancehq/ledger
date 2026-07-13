@@ -220,6 +220,50 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.NotNil(t, pair)
 	require.Equal(t, "8", pair.GetInput().ToBigInt().String())
 	require.Equal(t, "5", pair.GetOutput().ToBigInt().String())
+
+	// Boundaries are rebuilt into the attribute zone with reconstructed
+	// counters. Log ids here equal the log sequence (test fixture), so
+	// NextLogId is max(seq)+1 over the four apply logs (seqs 2-5).
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary, "boundaries must be reconstructed into the attribute zone")
+	require.Equal(t, uint64(4), boundary.GetNextTransactionId(), "3 transactions created")
+	require.Equal(t, uint64(6), boundary.GetNextLogId())
+	require.Equal(t, uint64(3), boundary.GetPostingCount(), "one posting per transaction")
+	require.Equal(t, uint64(0), boundary.GetRevertCount())
+	require.Equal(t, uint64(2), boundary.GetVolumeCount(), "orders:1 + world; ephemeral orders:1 kept because input != output")
+	require.Equal(t, uint64(0), boundary.GetMetadataCount())
+}
+
+func TestRebuildDelta_ReconstructsTransactionReference(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+
+	tx := createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 100))
+	tx.GetCreatedTransaction().GetTransaction().Reference = "ref-1"
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", tx)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	ref, err := attrs.References.Get(handle, domain.TransactionReferenceKey{LedgerName: "ledger", Reference: "ref-1"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, ref, "reference index must be reconstructed")
+	require.Equal(t, uint64(1), ref.GetTransactionId())
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), boundary.GetReferenceCount())
 }
 
 // TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog: a post-checkpoint
@@ -375,6 +419,11 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 
 	store := newRebuildTestStore(t)
 	attrs := attributes.New()
+
+	readHandle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
 	writer := &attributeReplayWriter{
 		store:          store,
 		batch:          store.OpenWriteSession(),
@@ -382,9 +431,13 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
 		ledger:         attrs.Ledger,
+		references:     attrs.References,
+		boundary:       attrs.Boundary,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
 		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
+		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
+		readHandle:     readHandle,
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
@@ -407,7 +460,7 @@ func TestAttributeReplayWriter_SetRevertedByPreservesCreatedByLog(t *testing.T) 
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x0042")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 42}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 42,
 		&commonpb.Timestamp{Data: 100},
@@ -440,7 +493,7 @@ func TestAttributeReplayWriter_SaveTxMetadataPreservesCreatedByLog(t *testing.T)
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00043")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 43}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 43,
 		&commonpb.Timestamp{Data: 200},
@@ -471,7 +524,7 @@ func TestAttributeReplayWriter_TwoMetadataUpsertsInSameBatchMerge(t *testing.T) 
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00044")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 44}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 44,
 		&commonpb.Timestamp{Data: 300}, nil, nil, 0,
@@ -498,7 +551,7 @@ func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00045")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 45}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 45,
 		&commonpb.Timestamp{Data: 400},
