@@ -9,6 +9,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// entWith builds a *raftpb.Entry for decoded_entry_test literals.
+func entWith(index, term uint64, t raftpb.EntryType, data []byte) *raftpb.Entry {
+	return &raftpb.Entry{
+		Index: new(index),
+		Term:  new(term),
+		Type:  new(t),
+		Data:  data,
+	}
+}
+
 // marshalProposal builds a Proposal with one ledger-apply order and returns
 // its wire bytes — the smallest valid payload DecodeEntries will accept.
 func marshalProposal(t *testing.T, id uint64) []byte {
@@ -60,18 +70,18 @@ func TestDecodeEntries(t *testing.T) {
 
 	t.Run("empty slice", func(t *testing.T) {
 		t.Parallel()
-		decoded, err := DecodeEntries([]raftpb.Entry{})
+		decoded, err := DecodeEntries([]*raftpb.Entry{})
 		require.NoError(t, err)
 		require.Nil(t, decoded)
 	})
 
 	t.Run("mixed: normal, conf-change, empty-data", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 1, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 1)},
-			{Index: 2, Term: 1, Type: raftpb.EntryConfChange, Data: []byte("ignored payload")},
-			{Index: 3, Term: 1, Type: raftpb.EntryNormal /* empty Data */},
-			{Index: 4, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 4)},
+		entries := []*raftpb.Entry{
+			entWith(1, 1, raftpb.EntryNormal, marshalProposal(t, 1)),
+			entWith(2, 1, raftpb.EntryConfChange, []byte("ignored payload")),
+			entWith(3, 1, raftpb.EntryNormal, nil),
+			entWith(4, 1, raftpb.EntryNormal, marshalProposal(t, 4)),
 		}
 
 		decoded, err := DecodeEntries(entries)
@@ -84,7 +94,7 @@ func TestDecodeEntries(t *testing.T) {
 		require.Equal(t, uint64(1), decoded[0].Proposal.GetId())
 
 		require.Nil(t, decoded[1].Proposal, "EntryConfChange carries no proposal payload")
-		require.Equal(t, raftpb.EntryConfChange, decoded[1].Entry.Type)
+		require.Equal(t, raftpb.EntryConfChange, decoded[1].Entry.GetType())
 
 		require.Nil(t, decoded[2].Proposal, "EntryNormal with empty Data carries no proposal payload")
 
@@ -94,9 +104,9 @@ func TestDecodeEntries(t *testing.T) {
 
 	t.Run("malformed payload returns error and nil slice", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 10, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 10)},
-			{Index: 11, Term: 1, Type: raftpb.EntryNormal, Data: []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}}, // not a valid Proposal wire form
+		entries := []*raftpb.Entry{
+			entWith(10, 1, raftpb.EntryNormal, marshalProposal(t, 10)),
+			entWith(11, 1, raftpb.EntryNormal, []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}), // not a valid Proposal wire form
 		}
 
 		decoded, err := DecodeEntries(entries)
@@ -107,9 +117,9 @@ func TestDecodeEntries(t *testing.T) {
 
 	t.Run("malformed payload at first position", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 20, Term: 1, Type: raftpb.EntryNormal, Data: []byte{0xff, 0xff, 0xff}},
-			{Index: 21, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 21)},
+		entries := []*raftpb.Entry{
+			entWith(20, 1, raftpb.EntryNormal, []byte{0xff, 0xff, 0xff}),
+			entWith(21, 1, raftpb.EntryNormal, marshalProposal(t, 21)),
 		}
 
 		decoded, err := DecodeEntries(entries)
@@ -133,10 +143,10 @@ func TestReleaseDecodedEntries(t *testing.T) {
 
 	t.Run("nils out Proposal pointers so double-release is safe", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 1, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 1)},
-			{Index: 2, Term: 1, Type: raftpb.EntryConfChange},
-			{Index: 3, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 3)},
+		entries := []*raftpb.Entry{
+			entWith(1, 1, raftpb.EntryNormal, marshalProposal(t, 1)),
+			entWith(2, 1, raftpb.EntryConfChange, nil),
+			entWith(3, 1, raftpb.EntryNormal, marshalProposal(t, 3)),
 		}
 
 		decoded, err := DecodeEntries(entries)
@@ -168,8 +178,8 @@ func TestDecodedEntryRequiresCheckpoint(t *testing.T) {
 
 	t.Run("apply-only proposal", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 1, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, 1)},
+		entries := []*raftpb.Entry{
+			entWith(1, 1, raftpb.EntryNormal, marshalProposal(t, 1)),
 		}
 		decoded, err := DecodeEntries(entries)
 		require.NoError(t, err)
@@ -181,8 +191,8 @@ func TestDecodedEntryRequiresCheckpoint(t *testing.T) {
 
 	t.Run("checkpoint-trigger proposal", func(t *testing.T) {
 		t.Parallel()
-		entries := []raftpb.Entry{
-			{Index: 1, Term: 1, Type: raftpb.EntryNormal, Data: marshalCheckpointProposal(t, 1)},
+		entries := []*raftpb.Entry{
+			entWith(1, 1, raftpb.EntryNormal, marshalCheckpointProposal(t, 1)),
 		}
 		decoded, err := DecodeEntries(entries)
 		require.NoError(t, err)
@@ -196,21 +206,21 @@ func TestDecodedEntryRequiresCheckpoint(t *testing.T) {
 func TestValidateCheckpointEntryPositionsDecoded(t *testing.T) {
 	t.Parallel()
 
-	apply := func(t *testing.T, idx uint64) raftpb.Entry {
+	apply := func(t *testing.T, idx uint64) *raftpb.Entry {
 		t.Helper()
 
-		return raftpb.Entry{Index: idx, Term: 1, Type: raftpb.EntryNormal, Data: marshalProposal(t, idx)}
+		return entWith(idx, 1, raftpb.EntryNormal, marshalProposal(t, idx))
 	}
-	chkpt := func(t *testing.T, idx uint64) raftpb.Entry {
+	chkpt := func(t *testing.T, idx uint64) *raftpb.Entry {
 		t.Helper()
 
-		return raftpb.Entry{Index: idx, Term: 1, Type: raftpb.EntryNormal, Data: marshalCheckpointProposal(t, idx)}
+		return entWith(idx, 1, raftpb.EntryNormal, marshalCheckpointProposal(t, idx))
 	}
 
-	confChange := raftpb.Entry{Index: 99, Term: 1, Type: raftpb.EntryConfChange}
-	emptyData := raftpb.Entry{Index: 99, Term: 1, Type: raftpb.EntryNormal}
+	confChange := entWith(99, 1, raftpb.EntryConfChange, nil)
+	emptyData := entWith(99, 1, raftpb.EntryNormal, nil)
 
-	decode := func(t *testing.T, entries []raftpb.Entry) []DecodedEntry {
+	decode := func(t *testing.T, entries []*raftpb.Entry) []DecodedEntry {
 		t.Helper()
 
 		d, err := DecodeEntries(entries)
@@ -228,28 +238,28 @@ func TestValidateCheckpointEntryPositionsDecoded(t *testing.T) {
 	t.Run("no trigger", func(t *testing.T) {
 		t.Parallel()
 		require.NoError(t, ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{apply(t, 1), apply(t, 2)}),
+			decode(t, []*raftpb.Entry{apply(t, 1), apply(t, 2)}),
 		))
 	})
 
 	t.Run("trigger last", func(t *testing.T) {
 		t.Parallel()
 		require.NoError(t, ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{apply(t, 1), chkpt(t, 2)}),
+			decode(t, []*raftpb.Entry{apply(t, 1), chkpt(t, 2)}),
 		))
 	})
 
 	t.Run("single trigger", func(t *testing.T) {
 		t.Parallel()
 		require.NoError(t, ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{chkpt(t, 1)}),
+			decode(t, []*raftpb.Entry{chkpt(t, 1)}),
 		))
 	})
 
 	t.Run("trigger first", func(t *testing.T) {
 		t.Parallel()
 		err := ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{chkpt(t, 1), apply(t, 2)}),
+			decode(t, []*raftpb.Entry{chkpt(t, 1), apply(t, 2)}),
 		)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "applier must pre-split")
@@ -258,7 +268,7 @@ func TestValidateCheckpointEntryPositionsDecoded(t *testing.T) {
 	t.Run("trigger middle", func(t *testing.T) {
 		t.Parallel()
 		err := ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{apply(t, 1), chkpt(t, 2), apply(t, 3)}),
+			decode(t, []*raftpb.Entry{apply(t, 1), chkpt(t, 2), apply(t, 3)}),
 		)
 		require.Error(t, err)
 	})
@@ -266,7 +276,7 @@ func TestValidateCheckpointEntryPositionsDecoded(t *testing.T) {
 	t.Run("conf-change and empty entries are skipped", func(t *testing.T) {
 		t.Parallel()
 		require.NoError(t, ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{confChange, emptyData, chkpt(t, 100)}),
+			decode(t, []*raftpb.Entry{confChange, emptyData, chkpt(t, 100)}),
 		))
 	})
 
@@ -274,7 +284,7 @@ func TestValidateCheckpointEntryPositionsDecoded(t *testing.T) {
 		t.Parallel()
 		// emptyData has no Proposal; the trailing chkpt is last, so this is valid.
 		require.NoError(t, ValidateCheckpointEntryPositionsDecoded(
-			decode(t, []raftpb.Entry{apply(t, 1), emptyData, chkpt(t, 100)}),
+			decode(t, []*raftpb.Entry{apply(t, 1), emptyData, chkpt(t, 100)}),
 		))
 	})
 }

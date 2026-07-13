@@ -1,6 +1,9 @@
 package processing
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -38,8 +41,13 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
 	}
 
-	// Check for conflicts with existing account types.
-	for existingName, existing := range info.GetAccountTypes() {
+	// Check for conflicts with existing account types. Iterate names in sorted
+	// order so the selected conflict (surfaced in the chain-bound
+	// ErrAccountTypeConflict → AuditFailure) is identical on every replica —
+	// a raw map range could pick a different conflicting type per node
+	// (invariant #2). See EN-1521.
+	for _, existingName := range slices.Sorted(maps.Keys(info.GetAccountTypes())) {
+		existing := info.GetAccountTypes()[existingName]
 		existingSegments, parseErr := accounttype.ParsePattern(existing.GetPattern())
 		if parseErr != nil {
 			continue
@@ -75,6 +83,17 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 	}
 
 	info = info.CloneVT()
+
+	// An empty name is not a valid account type (processAddAccountType
+	// rejects it symmetrically), so a RemoveAccountType targeting "" is a
+	// validation error, NOT a legitimate ACCOUNT_TYPE_NOT_FOUND outcome.
+	// Rejecting it here as a non-skippable validation failure prevents a
+	// degenerate OrderSkippedLog with context.name="" from ever being
+	// produced (INVALID_PATTERN is not in any skippable whitelist), which
+	// the checker would otherwise misclassify.
+	if order.GetName() == "" {
+		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
+	}
 
 	if _, exists := info.GetAccountTypes()[order.GetName()]; !exists {
 		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}

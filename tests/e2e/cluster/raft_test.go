@@ -220,7 +220,7 @@ var _ = Describe("Simple cluster", func() {
 					followerID = ((lid + 1) % countInstances) + 1
 					By(fmt.Sprintf("Blocking MsgApp from the leader to follower %d", followerID), func() {
 						gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
-							if msg.To == followerID && msg.Type == raftpb.MsgApp {
+							if msg.GetTo() == followerID && msg.GetType() == raftpb.MsgApp {
 								return false
 							}
 							return true

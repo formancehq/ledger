@@ -47,7 +47,7 @@ func TestApplierPipelinedCheckpointDoesNotRace(t *testing.T) {
 		a1, _ := makeCreateLedgerEntry(t, idx, fmt.Sprintf("pipelined-%d-a1", c))
 		idx++
 		a2, _ := makeCreateLedgerEntry(t, idx, fmt.Sprintf("pipelined-%d-a2", c))
-		setup.applier.Submit([]raftpb.Entry{a1, a2}, setup.confState, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{a1, a2}, setup.confState, nil, setup.stop)
 
 		// Second batch: another CreateLedger followed by CreateQueryCheckpoint
 		// as the LAST entry. PrepareEntries for this batch runs concurrently
@@ -56,7 +56,7 @@ func TestApplierPipelinedCheckpointDoesNotRace(t *testing.T) {
 		b1, _ := makeCreateLedgerEntry(t, idx, fmt.Sprintf("pipelined-%d-b1", c))
 		idx++
 		chkpt, _ := makeCreateQueryCheckpointEntry(t, idx)
-		setup.applier.Submit([]raftpb.Entry{b1, chkpt}, setup.confState, nil, setup.stop)
+		setup.applier.Submit([]*raftpb.Entry{b1, chkpt}, setup.confState, nil, setup.stop)
 
 		want = append(want,
 			fmt.Sprintf("pipelined-%d-a1", c),

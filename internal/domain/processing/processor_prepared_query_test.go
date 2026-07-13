@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func TestProcessCreatePreparedQuery_TreatsNotFoundAsMiss(t *testing.T) {
 	})
 
 	order := &raftcmdpb.CreatePreparedQueryOrder{
-		Query: &commonpb.PreparedQuery{Name: "q1"},
+		Query: &commonpb.PreparedQuery{Name: "q1", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
 	}
 
 	payload, derr := processCreatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
@@ -70,4 +71,84 @@ func TestProcessUpdatePreparedQuery_NotFoundReturnsTypedError(t *testing.T) {
 
 	var notFound *domain.ErrPreparedQueryNotFound
 	require.ErrorAs(t, derr, &notFound, "update on a missing PQ must surface ErrPreparedQueryNotFound, not ErrStorageOperation")
+}
+
+// TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget pins the
+// EN-1504 guarantee that an update validates its new filter against the
+// *stored* target (read from the cache, not the request — an update carries no
+// target). Admission cannot catch this because it never loads the existing
+// query; the FSM is the only layer that sees the stored target. Here the query
+// was created on ACCOUNTS, and the update tries to smuggle in a
+// transaction-only `reference` condition, which must be rejected.
+func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+
+	pq := setupPreparedQueriesStub(mockStore)
+	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+		return (&commonpb.PreparedQuery{
+			Name:   "q1",
+			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		}).AsReader(), nil
+	})
+	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+		t.Fatal("Put must not be called when the new filter is invalid for the stored target")
+	})
+
+	newFilter := &commonpb.QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$match":{"reference":"r"}}`), newFilter))
+
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1", Filter: newFilter}
+	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.NotNil(t, derr, "a transaction-only condition must be rejected on an ACCOUNTS prepared query")
+
+	var business *domain.BusinessError
+	require.ErrorAs(t, derr, &business)
+	require.Contains(t, derr.Error(), "accounts")
+}
+
+// TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a
+// legacy escape hatch: CLI/gRPC creation used to accept non-executable targets
+// (e.g. AUDIT) before EN-1504, so such a query can already sit in storage. An
+// update must not write its filter back — ExecutePreparedQuery cannot hydrate
+// AUDIT — so the stored-target executability gate fires before condition
+// validity is ever evaluated. Delete stays allowed; only the rewrite is blocked.
+// (LOGS is executable as of EN-1503, so it no longer belongs in this class —
+// AUDIT is the remaining non-executable target.)
+func TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+
+	pq := setupPreparedQueriesStub(mockStore)
+	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+		return (&commonpb.PreparedQuery{
+			Name:   "legacy-audit",
+			Target: commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+		}).AsReader(), nil
+	})
+	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+		t.Fatal("Put must not be called when the stored target is not executable")
+	})
+
+	// The stored-target executability gate fires before condition validity is
+	// even evaluated, so the filter's own validity is irrelevant here — any
+	// structurally decodable filter must be rejected on the non-executable
+	// stored target.
+	newFilter := &commonpb.QueryFilter{}
+	require.NoError(t, json.Unmarshal([]byte(`{"$exists":{"metadata":"x"}}`), newFilter))
+
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "legacy-audit", Filter: newFilter}
+	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.NotNil(t, derr)
+	require.ErrorIs(t, derr, domain.ErrPreparedQueryTargetUnsupported)
 }

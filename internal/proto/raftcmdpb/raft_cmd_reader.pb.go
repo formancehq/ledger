@@ -2661,11 +2661,16 @@ func NewDeleteLedgerOrderListReader(s []*DeleteLedgerOrder) DeleteLedgerOrderLis
 // LedgerApplyOrderReader provides read-only access to LedgerApplyOrder.
 // Call Mutate() to obtain a mutable clone.
 type LedgerApplyOrderReader interface {
+	GetSkippableReasons() []commonpb.ErrorReason
 	GetData() isLedgerApplyOrder_Data
 	Mutate() *LedgerApplyOrder
 }
 
 type ledgerApplyOrderReadonly LedgerApplyOrder
+
+func (r *ledgerApplyOrderReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone((*LedgerApplyOrder)(r).GetSkippableReasons())
+}
 
 func (r *ledgerApplyOrderReadonly) GetData() isLedgerApplyOrder_Data {
 	return (*LedgerApplyOrder)(r).GetData()

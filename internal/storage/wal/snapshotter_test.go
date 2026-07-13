@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -26,11 +27,11 @@ func TestSnapshotter_SaveAndLoad(t *testing.T) {
 
 	s := newTestSnapshotter(t)
 
-	snap := raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{
-			Index:     42,
-			Term:      3,
-			ConfState: raftpb.ConfState{Voters: []uint64{1, 2, 3}},
+	snap := &raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{
+			Index:     proto.Uint64(42),
+			Term:      proto.Uint64(3),
+			ConfState: &raftpb.ConfState{Voters: []uint64{1, 2, 3}},
 		},
 		Data: []byte("fsm-state"),
 	}
@@ -40,10 +41,10 @@ func TestSnapshotter_SaveAndLoad(t *testing.T) {
 	loaded, err := s.Load()
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
-	require.Equal(t, uint64(42), loaded.Metadata.Index)
-	require.Equal(t, uint64(3), loaded.Metadata.Term)
-	require.Equal(t, []byte("fsm-state"), loaded.Data)
-	require.Equal(t, []uint64{1, 2, 3}, loaded.Metadata.ConfState.Voters)
+	require.Equal(t, uint64(42), loaded.GetMetadata().GetIndex())
+	require.Equal(t, uint64(3), loaded.GetMetadata().GetTerm())
+	require.Equal(t, []byte("fsm-state"), loaded.GetData())
+	require.Equal(t, []uint64{1, 2, 3}, loaded.GetMetadata().GetConfState().GetVoters())
 }
 
 func TestSnapshotter_LoadEmpty(t *testing.T) {
@@ -62,20 +63,20 @@ func TestSnapshotter_LoadLatest(t *testing.T) {
 	s := newTestSnapshotter(t)
 
 	// Save two snapshots
-	require.NoError(t, s.Save(raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{Index: 10, Term: 1},
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(10), Term: proto.Uint64(1)},
 		Data:     []byte("old"),
 	}))
-	require.NoError(t, s.Save(raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{Index: 20, Term: 2},
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(20), Term: proto.Uint64(2)},
 		Data:     []byte("new"),
 	}))
 
 	loaded, err := s.Load()
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
-	require.Equal(t, uint64(20), loaded.Metadata.Index)
-	require.Equal(t, []byte("new"), loaded.Data)
+	require.Equal(t, uint64(20), loaded.GetMetadata().GetIndex())
+	require.Equal(t, []byte("new"), loaded.GetData())
 }
 
 func TestSnapshotter_CleansUpOldFiles(t *testing.T) {
@@ -83,11 +84,11 @@ func TestSnapshotter_CleansUpOldFiles(t *testing.T) {
 
 	s := newTestSnapshotter(t)
 
-	require.NoError(t, s.Save(raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{Index: 10, Term: 1},
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(10), Term: proto.Uint64(1)},
 	}))
-	require.NoError(t, s.Save(raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{Index: 20, Term: 2},
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(20), Term: proto.Uint64(2)},
 	}))
 
 	// Before cleanup, both snap files exist

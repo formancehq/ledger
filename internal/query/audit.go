@@ -2,7 +2,9 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -64,6 +66,214 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	}
 
 	return dal.NewProtoCursor[*auditpb.AuditEntry](iter), nil
+}
+
+// ReadAuditEntriesPage returns a bounded page of audit entries honoring an
+// index-compiled filter, an opaque sequence cursor, reverse iteration and a
+// page size — the audit analogue of the index-backed transaction/account list
+// paths. It reads entries from reader (the audit zone in the main store) and,
+// when the filter narrows to an explicit sequence set, resolves that set via
+// the readstore audit index (already applied by the caller through
+// CompileAuditFilter).
+//
+// Parameters:
+//   - candidateSeqs / narrowed: the compiled filter's index result. When
+//     narrowed is true, candidateSeqs is the ascending set of matching audit
+//     sequences and only those are materialized. When false, every entry in
+//     [loSeq, hiSeq] is a candidate.
+//   - loSeq, hiSeq: inclusive audit-sequence bounds (from audit[seq] and from
+//     the compiled filter). Defaults span the whole zone.
+//   - afterSeq: opaque cursor; 0 means "from the head". Exclusive.
+//   - reverse: false streams ascending by sequence (oldest first); true streams
+//     descending (newest first).
+//   - pageSize: maximum entries to return.
+//
+// Entries whose sequence is indexed but no longer present in the zone (chapter
+// purge, per EN-1339) are skipped rather than erroring.
+func ReadAuditEntriesPage(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	candidateSeqs []uint64,
+	narrowed bool,
+	loSeq, hiSeq uint64,
+	afterSeq uint64,
+	reverse bool,
+	pageSize uint32,
+) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	_, span := queryTracer.Start(ctx, "query.list_audit_entries_page",
+		trace.WithAttributes(
+			attribute.Bool("narrowed", narrowed),
+			attribute.Bool("reverse", reverse),
+			attribute.Int64("page_size", int64(pageSize)),
+		))
+	defer span.End()
+
+	if narrowed {
+		return readAuditPageFromSeqSet(reader, candidateSeqs, loSeq, hiSeq, afterSeq, reverse, pageSize)
+	}
+
+	return readAuditPageFromZone(reader, loSeq, hiSeq, afterSeq, reverse, pageSize)
+}
+
+// readAuditPageFromSeqSet materializes a page from an explicit, ascending set
+// of candidate sequences. The window ([loSeq, hiSeq]), reverse ordering and the
+// exclusive cursor are applied on the sequence slice first; then entries are
+// materialized in order and the page is capped at pageSize *valid* entries.
+//
+// Truncation happens AFTER the purged-sequence skip, not before: a candidate
+// that is indexed but no longer in the audit zone (chapter purge, EN-1339)
+// must not consume a page slot, otherwise a page could return fewer than
+// pageSize entries while more valid entries exist further down the candidate
+// set — which also breaks the handler's peek-ahead (it fetches pageSize+1 to
+// decide whether to emit an x-next-cursor trailer, and a purge inside that
+// slack would drop the "more pages" signal). We therefore keep consuming
+// candidates until we have pageSize valid entries (or exhaust the set).
+func readAuditPageFromSeqSet(
+	reader dal.PebbleReader,
+	seqs []uint64,
+	loSeq, hiSeq, afterSeq uint64,
+	reverse bool,
+	pageSize uint32,
+) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	// Restrict to the [loSeq, hiSeq] window carried by the compiled filter.
+	filtered := seqs[:0:0]
+	for _, s := range seqs {
+		if s >= loSeq && s <= hiSeq {
+			filtered = append(filtered, s)
+		}
+	}
+
+	if reverse {
+		slices.Reverse(filtered)
+	}
+
+	// Apply the exclusive cursor.
+	if afterSeq != 0 {
+		idx := 0
+		for idx < len(filtered) {
+			s := filtered[idx]
+			if (!reverse && s <= afterSeq) || (reverse && s >= afterSeq) {
+				idx++
+
+				continue
+			}
+
+			break
+		}
+		filtered = filtered[idx:]
+	}
+
+	entries := make([]*auditpb.AuditEntry, 0, min(len(filtered), pageCap(pageSize)))
+	for _, s := range filtered {
+		entry, err := ReadAuditEntry(context.Background(), reader, s)
+		if errors.Is(err, domain.ErrNotFound) {
+			// Indexed but purged from the zone — skip WITHOUT consuming a page
+			// slot (EN-1339 tolerates dangling index entries; drop+rebuild
+			// reclaims them).
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading audit entry %d: %w", s, err)
+		}
+
+		entries = append(entries, entry)
+
+		// Cap on valid entries, after the purge skip above.
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
+			break
+		}
+	}
+
+	return cursor.NewSliceCursor(entries), nil
+}
+
+// pageCap returns a sane initial capacity for a page slice: pageSize when set,
+// else a small default to avoid a zero-cap allocation growth loop.
+func pageCap(pageSize uint32) int {
+	if pageSize == 0 {
+		return 16
+	}
+
+	return int(pageSize)
+}
+
+// readAuditPageFromZone streams a page directly from the audit zone within the
+// [loSeq, hiSeq] window, honoring the exclusive cursor and reverse iteration.
+func readAuditPageFromZone(
+	reader dal.PebbleReader,
+	loSeq, hiSeq, afterSeq uint64,
+	reverse bool,
+	pageSize uint32,
+) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	// Lower bound (inclusive): max(loSeq, afterSeq+1 in ascending).
+	lo := loSeq
+	hi := hiSeq
+
+	if !reverse && afterSeq != 0 && afterSeq+1 > lo {
+		lo = afterSeq + 1
+	}
+	if reverse && afterSeq != 0 && afterSeq-1 < hi {
+		hi = afterSeq - 1
+	}
+	if lo > hi {
+		return cursor.NewSliceCursor([]*auditpb.AuditEntry{}), nil
+	}
+
+	kb := dal.NewKeyBuilder()
+	lowerBound := kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(lo).Build()
+
+	kb2 := dal.NewKeyBuilder()
+	var upperBound []byte
+	if hi == ^uint64(0) {
+		upperBound = kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutBytes(dal.MaxUint64Bytes).Build()
+	} else {
+		// Upper bound is exclusive, so hi+1 includes hi.
+		upperBound = kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(hi + 1).Build()
+	}
+
+	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
+	if err != nil {
+		return nil, fmt.Errorf("creating iterator for audit entries: %w", err)
+	}
+
+	entries := make([]*auditpb.AuditEntry, 0, pageCap(pageSize))
+	valid := iter.Last
+	if !reverse {
+		valid = iter.First
+	}
+
+	for ok := valid(); ok; {
+		value, valErr := iter.ValueAndErr()
+		if valErr != nil {
+			_ = iter.Close()
+
+			return nil, fmt.Errorf("reading audit entry value: %w", valErr)
+		}
+
+		entry := &auditpb.AuditEntry{}
+		if unmarshalErr := entry.UnmarshalVT(value); unmarshalErr != nil {
+			_ = iter.Close()
+
+			return nil, fmt.Errorf("unmarshaling audit entry: %w", unmarshalErr)
+		}
+
+		entries = append(entries, entry)
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
+			break
+		}
+
+		if reverse {
+			ok = iter.Prev()
+		} else {
+			ok = iter.Next()
+		}
+	}
+
+	if closeErr := iter.Close(); closeErr != nil {
+		return nil, fmt.Errorf("closing audit entry iterator: %w", closeErr)
+	}
+
+	return cursor.NewSliceCursor(entries), nil
 }
 
 // ReadAuditItems returns all audit items for the given audit sequence.

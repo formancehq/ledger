@@ -352,7 +352,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	preloadStart := time.Now()
 
-	_, perOrder := w.extractMirrorNeeds(cmd)
+	aggregate, perOrder := w.extractMirrorNeeds(cmd)
 
 	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
 	// The FSM processes TechnicalUpdates on any proposal (machine.go).
@@ -373,24 +373,25 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	tuNeeds := plan.NewCoverage()
 	tuNeeds.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
+	// Roll the cursor TU's need into the batch aggregate — Build no
+	// longer recomputes it from operations.
+	aggregate.Merge(tuNeeds)
+
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
+	cmdOrders := cmd.GetOrders()
 	for i := range orders {
 		operations = append(operations, plan.WriteOperation{
 			Coverage: perOrder[i],
-			SetCoverage: func(bits []byte) {
-				cmd.GetOrders()[i].CoverageBits = bits
-			},
+			Target:   &cmdOrders[i].CoverageBits,
 		})
 	}
 
 	operations = append(operations, plan.WriteOperation{
 		Coverage: tuNeeds,
-		SetCoverage: func(bits []byte) {
-			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
 	})
 
-	build, err := w.builder.Build(operations)
+	build, err := w.builder.Build(aggregate, operations)
 	if err != nil {
 		build.ReleaseLoaders()
 
@@ -529,12 +530,10 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 
 	operations := []plan.WriteOperation{{
 		Coverage: needs,
-		SetCoverage: func(bits []byte) {
-			cmd.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
-	build, err := w.builder.Build(operations)
+	build, err := w.builder.Build(needs, operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()

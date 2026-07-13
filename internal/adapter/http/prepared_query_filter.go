@@ -1,34 +1,35 @@
 package http
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// decodePreparedQueryFilter decodes the `filter` JSON value of a prepared-query
-// create/update request. The default `encoding/json` decoder cannot dispatch
-// protobuf `oneof` variants, so we route the field through `protojson` to keep
-// REST behaviour aligned with the gRPC path. An empty or absent filter is
-// rejected — otherwise the prepared query would store nil and fail later at
-// execute time with "unknown filter type: <nil>".
-func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, errors.New("filter is required")
+// preparedQueryTargets maps the public REST target enum to the proto
+// QueryTarget. ACCOUNTS, TRANSACTIONS and LOGS are all usable prepared-query
+// targets over REST: query.Execute hydrates the matching cursor field
+// (account_data / transaction_data / log_data) for each. See openapi.yml.
+var preparedQueryTargets = map[string]commonpb.QueryTarget{
+	"ACCOUNTS":     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	"TRANSACTIONS": commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	"LOGS":         commonpb.QueryTarget_QUERY_TARGET_LOGS,
+}
+
+// parsePreparedQueryTarget resolves the `target` field of a prepared-query
+// request. An unknown or unsupported value is rejected loudly rather than
+// silently coerced to a default (which would run a different query than the
+// caller asked for).
+func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
+	if target == "" {
+		return 0, errors.New("target is required (ACCOUNTS, TRANSACTIONS or LOGS)")
 	}
 
-	filter := &commonpb.QueryFilter{}
-	if err := protojson.Unmarshal(raw, filter); err != nil {
-		return nil, fmt.Errorf("filter: %w", err)
+	t, ok := preparedQueryTargets[target]
+	if !ok {
+		return 0, fmt.Errorf("unknown or unsupported target %q (use ACCOUNTS, TRANSACTIONS or LOGS)", target)
 	}
 
-	if filter.GetFilter() == nil {
-		return nil, errors.New("filter must contain at least one condition")
-	}
-
-	return filter, nil
+	return t, nil
 }

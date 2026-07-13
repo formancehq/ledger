@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -67,6 +68,36 @@ func requireTransactionID(w http.ResponseWriter, r *http.Request) (uint64, bool)
 	return transactionID, true
 }
 
+// requireCanonicalID extracts, path-unescapes, and non-empty-validates the
+// {canonicalId} URL parameter shared by every single-index route (get / status
+// / inspect / drop, both bucket- and ledger-scoped).
+//
+// A canonical index id can contain characters that are reserved in a path
+// segment — most importantly the metadata form `metadata:<target>:<key>` where
+// <key> is a namespaced metadata key such as `formance.com/reviewed`. The
+// slash and colon must be percent-encoded by the client (`%2F`, `%3A`); chi
+// routes on r.URL.RawPath and hands back the still-escaped segment via
+// URLParam, so ParseCanonical would otherwise see the literal `%2F`/`%3A` and
+// reject or mis-parse the id. Unescape here before handing it to the caller so
+// every canonical-id route addresses namespaced keys correctly.
+func requireCanonicalID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	raw := chi.URLParam(r, "canonicalId")
+	if raw == "" {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("index id is required"))
+
+		return "", false
+	}
+
+	canonical, err := url.PathUnescape(raw)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid index id encoding: %w", err))
+
+		return "", false
+	}
+
+	return canonical, true
+}
+
 const (
 	defaultPageSize uint32 = 100
 	maxPageSize     uint32 = 1000
@@ -121,12 +152,17 @@ func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*comm
 
 // drainCursor collects all items from a cursor into a slice.
 // Closes the cursor and writes an error response on failure, returning false.
+//
+// The returned slice is always non-nil (an empty cursor yields `[]T{}`, not
+// nil), so list handlers that pass it to writeOK serialize `{"data":[]}` rather
+// than `{"data":null}` — the empty-list shape the OpenAPI schemas promise, which
+// generated clients iterate safely.
 func drainCursor[T any](w http.ResponseWriter, r *http.Request, cursor cursor.Cursor[T]) ([]T, bool) {
 	defer func() {
 		_ = cursor.Close()
 	}()
 
-	var items []T
+	items := []T{}
 
 	for {
 		item, err := cursor.Next()

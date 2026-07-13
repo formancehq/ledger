@@ -8,6 +8,27 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 import "common.proto";
 import "audit.proto";
 import "signature.proto";
+import "google/protobuf/descriptor.proto";
+
+// allowed_skippable_reasons annotates a oneof case inside LedgerAction.data
+// with the business ErrorReasons a caller may list in
+// LedgerApplyRequest.skippable_reasons for that action. protoc-gen-skippable
+// (misc/proto → tools/protoc-gen-skippable) reads these annotations and
+// generates internal/proto/servicepb/bucket_skippable.pb.go — admission's
+// extractSkippableReasonsFromApply consumes that generated table so the
+// whitelist stays co-located with the wire declaration.
+//
+// A oneof case without the annotation has NO whitelist: any non-empty
+// LedgerApplyRequest.skippable_reasons on that action is rejected at
+// admission.
+//
+// Field number 71001 sits in a range outside the taken slots of
+// transitive dependencies (etcd uses 50000-50003, gogoproto uses
+// 62000-65012, google.api uses 72295728+) — collisions in the
+// same-message×same-number key would panic at runtime during package init.
+extend google.protobuf.FieldOptions {
+  repeated common.ErrorReason allowed_skippable_reasons = 71001;
+}
 
 // ============================================================================
 // gRPC Service
@@ -71,6 +92,11 @@ service BucketService {
   rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
   // GetIndexStatus returns the current state of the read index builder
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  // GetIndex returns a single Index registry entry by (ledger, id).
+  rpc GetIndex(GetIndexRequest) returns (common.Index);
+  // GetIndexEntryStatus returns the per-index status view (registry entry +
+  // backfill cursor + per-replica IndexVersionState) for a single index.
+  rpc GetIndexEntryStatus(GetIndexEntryStatusRequest) returns (IndexEntry);
   // ListIndexes streams the bucket-scoped index registry, optionally filtered
   // to a single ledger (or to bucket-scoped indexes when ledger is empty).
   rpc ListIndexes(ListIndexesRequest) returns (stream common.Index);
@@ -509,14 +535,30 @@ message RevertTransactionPayload {
 }
 
 // LedgerAction represents a single ledger action.
+//
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
 message LedgerAction {
   oneof data {
-    CreateTransactionPayload create_transaction = 1;
+    CreateTransactionPayload create_transaction = 1 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+    ];
     common.SaveMetadataCommand add_metadata = 2;
-    RevertTransactionPayload revert_transaction = 3;
-    common.DeleteMetadataCommand delete_metadata = 4;
-    AddAccountTypeRequest add_account_type = 5;
-    RemoveAccountTypeRequest remove_account_type = 6;
+    RevertTransactionPayload revert_transaction = 3 [
+      (allowed_skippable_reasons) = ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+    ];
+    common.DeleteMetadataCommand delete_metadata = 4 [
+      (allowed_skippable_reasons) = ERROR_REASON_METADATA_NOT_FOUND
+    ];
+    AddAccountTypeRequest add_account_type = 5 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+    ];
+    RemoveAccountTypeRequest remove_account_type = 6 [
+      (allowed_skippable_reasons) = ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+    ];
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 7;
   }
 }
@@ -524,6 +566,20 @@ message LedgerAction {
 message LedgerApplyRequest {
   string ledger = 1;
   LedgerAction action = 2;
+  // Business error reasons the caller accepts to skip silently rather than
+  // fail the proposal. The FSM records a common.OrderSkippedLog for each
+  // matching skip; the proposal continues with Outcome=Success.
+  //
+  // Validated at admission against the per-action whitelist declared inline on
+  // each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+  // single source of truth; the generated SkippableReasonsForLedgerAction is
+  // what admission consults). Today: CreateTransaction accepts
+  // TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+  // DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+  // RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+  // declares no annotation is rejected up front. Empty (default) preserves the
+  // historical fail-fast behaviour.
+  repeated common.ErrorReason skippable_reasons = 3;
 }
 
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
@@ -735,17 +791,25 @@ enum CheckStoreErrorType {
   // ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
   // covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
   CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
+  // Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
+  // that the audit-bound Order.skippable_reasons whitelist does not allow, or
+  // a reason classified as KindInternal (structural failure). The OrderSkippedLog
+  // sits in the per-log projection which is NOT hash-chain bound, so a tampered
+  // skip log would otherwise let a duplicate caller observe a fabricated outcome
+  // for an order that should have been rejected hard. The skippable_reasons
+  // whitelist on the audit-bound Order is the source of truth.
+  CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
   // Emitted when a ledger's stored metadata schema (LedgerInfo.MetadataSchema)
   // diverges from the field-type declarations the checker re-derived by
   // replaying CreateLedger.initial_schema + SetMetadataFieldType /
   // RemovedMetadataFieldType log payloads. The schema is a projection of those
   // audit-bound orders.
-  CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH = 11;
+  CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH = 12;
   // Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
   // diverge from the set the checker re-derived by replaying AddAccountType /
   // RemoveAccountType log payloads. The account-type chart is a projection of
   // those audit-bound orders.
-  CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 12;
+  CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 13;
   // Emitted when the audit says a ledger is live (a CreateLedger event with no
   // later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
   // archiving) but the store has no live LedgerInfo for it — the entry is either
@@ -753,14 +817,14 @@ enum CheckStoreErrorType {
   // compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
   // so both shapes would otherwise escape every projection check. This is the
   // reverse of UNKNOWN_LEDGER.
-  CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 13;
+  CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 14;
   // Emitted when the store holds a live LedgerInfo for a ledger the audit never
   // created (no CreateLedger event, and — under archiving — not present in the
   // baseline). Such a row exposes an unaudited ledger through ListLedgers while
   // carrying no schema/account types the projection passes could otherwise flag.
   // The audit-derived ledger set is never seeded from the live store, so this
   // comparison stays honest.
-  CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 14;
+  CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 15;
   // Emitted when the reference→txID uniqueness index (SubAttrReference)
   // diverges from the references the checker re-derived by replaying
   // CreatedTransaction / RevertedTransaction log payloads (baseline-seeded
@@ -768,7 +832,7 @@ enum CheckStoreErrorType {
   // reference the audit did assign, or a reference pointing at a different
   // transaction. The index enforces reference idempotency, so a tampered row
   // silently changes which duplicates get rejected.
-  CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH = 15;
+  CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH = 16;
   // Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
   // re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
   // from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
@@ -778,7 +842,7 @@ enum CheckStoreErrorType {
   // themselves are verified entry-by-entry by their own passes.
   // EphemeralEvictedCount / TransientUsedCount are informational and excluded
   // (cf. Index BuildStatus).
-  CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 16;
+  CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 17;
 }
 
 message CheckStoreError {
@@ -801,11 +865,11 @@ message CheckStoreProgress {
 // ============================================================================
 
 message ListAuditEntriesRequest {
+  // options carries the whole read contract. Audit has NO dedicated top-level
+  // filters: ledger scope and outcome selection are expressed through
+  // options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
+  // failure`), exactly like every other filtered list endpoint.
   common.ListOptions options = 1;
-  // failures_only filters audit entries to only those carrying a failure status.
-  bool failures_only = 2;
-  // ledger filters audit entries to only those containing orders targeting this ledger.
-  string ledger = 3;
 }
 
 message GetAuditEntryRequest {
@@ -1065,6 +1129,22 @@ message GetIndexStatusResponse {
   fixed64 lag = 3;
   fixed64 index_file_size = 4;
   repeated IndexEntry indexes = 6;
+}
+
+// GetIndexRequest identifies a single Index registry entry to fetch.
+// Pass an empty ledger to address a bucket-scoped entry (e.g. audit
+// indexes); a non-empty ledger addresses the ledger-scoped slot.
+message GetIndexRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
+}
+
+// GetIndexEntryStatusRequest identifies a single index whose per-replica
+// status view (registry entry + backfill cursor + IndexVersionState) is
+// returned.
+message GetIndexEntryStatusRequest {
+  string ledger = 1;
+  common.IndexID id = 2;
 }
 
 // IndexEntry joins a ledger's index definition (status + audit metadata) with

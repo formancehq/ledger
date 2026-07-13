@@ -189,19 +189,19 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	var cursorStr string
-	if afterSequence != nil {
-		cursorStr = strconv.FormatUint(*afterSequence, 10)
+	if afterSequence > 0 {
+		cursorStr = strconv.FormatUint(afterSequence, 10)
 	}
 
 	stream, err := g.client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursorStr,
+			Reverse:  reverse,
+			Filter:   filter,
 		},
-		FailuresOnly: failuresOnly,
-		Ledger:       ledger,
 	})
 	if err != nil {
 		return nil, err
@@ -466,17 +466,43 @@ func (g *BucketGrpcClient) GetChapterSchedule(ctx context.Context) (string, erro
 	return resp.GetCron(), nil
 }
 
-func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
+		return nil, nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
 	}
 
-	return resp.GetSinks(), nil
+	return resp.GetSinks(), resp.GetSinkStatuses(), nil
 }
 
 func (g *BucketGrpcClient) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
 	return g.client.InspectIndex(ctx, req)
+}
+
+func (g *BucketGrpcClient) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	return g.client.GetIndexStatus(ctx, req)
+}
+
+func (g *BucketGrpcClient) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	return g.client.GetIndex(ctx, req)
+}
+
+func (g *BucketGrpcClient) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	return g.client.GetIndexEntryStatus(ctx, req)
+}
+
+func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	stream, err := g.client.ListIndexes(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC ListIndexes call failed: %w", err)
+	}
+
+	// Stream lazily rather than draining the whole registry into a slice on
+	// the follower: NewUpstreamPeekCursor yields each Index as Recv delivers
+	// it, so the first item is available before the leader sends EOF and peak
+	// memory is O(1) instead of O(total). Matches ListTransactions /
+	// ListAccounts / ListLogs.
+	return NewUpstreamPeekCursor(stream), nil
 }
 
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

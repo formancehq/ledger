@@ -165,18 +165,29 @@ func (p *Builder) LockTracker() { p.tracker.Lock() }
 func (p *Builder) UnlockTracker() { p.tracker.Unlock() }
 
 // Build resolves all preload needs optimistically without holding the
-// proposal lock. operations contribute their per-operation Coverage to a
-// single aggregate that drives the preload; the slice is retained on
-// the BuildResult so Run can assign each operation's coverage_bits at
-// marshal time.
+// proposal lock. The caller passes a pre-computed aggregate Coverage
+// (the union of every operation's Coverage) — admission and mirror
+// already build that aggregate while iterating their orders, so
+// re-scanning operations here to Merge them again would just double
+// the map allocations without adding information.
+//
+// Pass a fresh NewCoverage() when the caller has no aggregate handy;
+// nil is not accepted — the builder needs to look at Attributes /
+// IdempotencyKeys to schedule work.
+//
+// The operations slice is retained on the BuildResult so Run can
+// assign each operation's coverage_bits at marshal time.
 //
 // On error, the caller must call build.ReleaseLoaders().
-func (p *Builder) Build(operations []WriteOperation) (*BuildResult, error) {
-	aggregate := NewCoverage()
-	for _, op := range operations {
-		if op.Coverage != nil {
-			aggregate.Merge(op.Coverage)
-		}
+func (p *Builder) Build(aggregate *Coverage, operations []WriteOperation) (*BuildResult, error) {
+	// A collision recorded while building the aggregate Coverage (two
+	// distinct canonical keys sharing an XXH3-128 id) means a preload key
+	// was dropped. Fail loud here rather than let the order reach apply
+	// with a silent cache miss. ~2^-128, but a real occurrence would
+	// desync the FSM (invariant #7). No loaders acquired yet — the empty
+	// BuildResult is safe for the caller's ReleaseLoaders (nil token).
+	if err := aggregate.Err(); err != nil {
+		return &BuildResult{operations: operations, aggregate: aggregate}, err
 	}
 
 	nextIndex := p.tracker.Next()

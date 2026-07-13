@@ -97,7 +97,7 @@ scripting against the CLI predictable across resources.
 | Pagination | `--cursor` | string | Opaque cursor returned by the previous page. Parsed per-resource into the appropriate type (string address, uint64 sequence, …). |
 | Pagination | `--reverse` | bool | Reverse iteration order. Available on commands whose server endpoint supports it. |
 | Pagination | `--all` | bool | Fetch every page at once (no interactive pagination). Available on `accounts` and `transactions`. |
-| Filter | `--filter` | string | Boolean filter expression (see `filterexpr` grammar). |
+| Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
 | Consistency | `--min-log-sequence` | uint64 | Require the server to have applied at least this log sequence before reading. `FailedPrecondition` if not. |
@@ -972,6 +972,14 @@ ledgerctl accounts list --ledger my-ledger --json
 
 The `--filter` flag accepts a human-readable boolean expression that maps to the underlying `QueryFilter` model.
 
+> **Two interchangeable forms (EN-1511).** `--filter` also accepts the structured
+> JSON `QueryFilter` DSL, e.g. `--filter '{"$match":{"metadata[category]":"premium"}}'`.
+> The textual grammar below and the JSON DSL parse to the same filter and are
+> validated against the same per-target rules, so either form works everywhere
+> `--filter` is accepted (the same dual-format contract every server-side
+> filtered endpoint honors). The textual form is the recommended, more concise
+> one for CLI use.
+
 **Grammar:**
 
 ```
@@ -980,13 +988,16 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | address_cond | source_cond | destination_cond | has_asset_cond
+condition      := metadata_cond | audit_cond | address_cond | source_cond | destination_cond | has_asset_cond
 metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists")
+audit_cond     := "audit" "[" AUDIT_FIELD "]" ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
 source_cond    := "source" ("==" VALUE | "^=" VALUE)
 destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 ```
+
+`audit[...]` conditions are only valid on `audit list` (see [audit list](#audit-list) for the field/operator matrix). They are rejected on other list endpoints.
 
 **Conditions:**
 
@@ -2236,13 +2247,54 @@ ledgerctl audit list [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--failures-only` | `false` | Show only failed entries |
 | `--expand` | `false` | Expand orders within each audit entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Audit has **no dedicated filter flags** — there is no `--failures-only` and no
+`--ledger`. Selecting failures or scoping to a ledger is done through the generic
+`--filter` (e.g. `--filter 'audit[outcome] == failure'`,
+`--filter 'audit[ledger] == main'`), exactly like every other list command.
+
+Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+
+**Audit filter grammar (`--filter`):** the audit trail is queried through its
+secondary index, so `--filter` accepts `audit[<field>] <op> <value>` conditions
+combined with `and` / `or`:
+
+| Field | Type | Operators | Notes |
+|-------|------|-----------|-------|
+| `seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Audit sequence (served by an audit-zone key-range bound). |
+| `proposal_id` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | |
+| `timestamp` | datetime | `==`, `>`, `>=`, `<`, `<=`, `between` | RFC3339 (quoted, e.g. `"2023-11-14T22:13:20Z"`) or raw unix **microseconds**. |
+| `log_seq` | uint | `==`, `>`, `>=`, `<`, `<=`, `between` | Match-any over the entry's item log sequences. |
+| `outcome` | string | `==`, `in` | `success` or `failure`. |
+| `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
+| `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
+| `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
+
+Unsupported conditions are rejected with `InvalidArgument` rather than silently
+ignored: `not`, `!=` (both need a complement the index cannot serve), and any
+non-audit condition (`metadata[...]`, `address`, `source`, …). This keeps audit
+reads first-class with every other list endpoint while never degrading to a
+full-chain scan.
+
+> **Consistency note.** The audit secondary index is maintained by an
+> asynchronous per-node worker, so any *filtered* audit read (including an
+> `audit[ledger]` or `audit[outcome]` filter) is eventually consistent — a
+> just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
+> gates the read-side log index, not the audit index. An *unfiltered* read
+> (plain `audit list`, optionally with `--reverse` / `audit[seq]` bounds) reads
+> the audit zone directly and is strongly consistent.
+>
+> **Checkpoint + filter caveat.** A query checkpoint snapshots the audit index
+> at creation time; checkpoint creation waits for the log index but not yet for
+> the audit indexer, so a *filtered* read against `--checkpoint-id` may omit
+> entries whose audit-zone rows exist in the checkpoint but were not indexed
+> when it was taken (a frozen checkpoint never catches up). Unfiltered checkpoint
+> reads scan the zone directly and are unaffected. Making the audit indexer catch
+> up before the checkpoint snapshot is a tracked follow-up.
 
 **Behavior:**
-- Streams audit entries from the server
+- Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)
 - Each entry shows: sequence number, timestamp, proposal ID, and outcome (OK/FAIL)
 - By default, shows the order count summary; use `--expand` to show full order details
 - Below each entry, all orders are listed in a tree structure with:
@@ -2255,11 +2307,29 @@ Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `-
 **Example:**
 
 ```bash
-# List audit entries
+# List audit entries (oldest first, chronological)
 ledgerctl audit list
 
-# Show only failures
-ledgerctl audit list --failures-only
+# Newest first
+ledgerctl audit list --reverse
+
+# Show only failures (via the generic filter — no dedicated flag)
+ledgerctl audit list --filter 'audit[outcome] == failure'
+
+# Scope to a ledger (via the generic filter — no dedicated flag)
+ledgerctl audit list --filter 'audit[ledger] == my-ledger'
+
+# Combine outcome and ledger
+ledgerctl audit list --filter 'audit[outcome] == failure and audit[ledger] == main'
+
+# Filter by order type
+ledgerctl audit list --filter 'audit[order_type] in (create_transaction, revert_transaction)'
+
+# Sequence range
+ledgerctl audit list --filter 'audit[seq] between 1000 and 2000'
+
+# Read from a query checkpoint instead of the live store
+ledgerctl audit list --checkpoint-id 7
 
 # Resume after a previous page
 ledgerctl audit list --page-size 20 --cursor <token>
@@ -3919,7 +3989,6 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 | `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
 | `--audit-index-batch-size` | int | `1000` | Audit entries per Pebble batch commit when building the audit secondary index (0 = default 1000). |
-| `--audit-index-rebuild-threshold` | int | `0` | Drop and rebuild the audit index on boot when the cursor is this many entries behind the head (0 = never auto-rebuild). |
 | `--disable-audit-index` | bool | `false` | Disable the audit secondary index worker. When set, no audit index is built or maintained. |
 
 ```bash
@@ -4279,11 +4348,32 @@ if a cluster secret is configured without TLS (`--tls-cert-file` and
 
 **The Raft transport server enforces the secret on every RPC.** When
 `--cluster-secret` is set, the Raft gRPC server (transport stream + snapshot
-service) installs a server-side interceptor that rejects any call whose
-`authorization: Bearer …` metadata does not match the configured secret with
-`codes.Unauthenticated`. The comparison is constant-time. Leaving
-`--cluster-secret` empty preserves the historical unauthenticated behavior for
-single-node setups; multi-node deployments **MUST** set it.
+service + the `ClusterBootstrapService` used by `--join`) installs a
+server-side interceptor that rejects any call whose `authorization: Bearer …`
+metadata does not match the configured secret with `codes.Unauthenticated`.
+The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
+historical unauthenticated behavior for single-node setups; multi-node
+deployments **MUST** set it.
+
+**Joining fails fast on a secret mismatch.** A node started with `--join`
+against a cluster whose RaftServer requires a secret will **not** retry
+indefinitely if its own secret is missing or wrong — that is a
+misconfiguration, never a transient condition. The joining node's startup
+aborts immediately with an actionable error instead of the raw gRPC status:
+
+```
+cluster join rejected by peer 1 (node-1:7777): inter-node authentication failed
+(missing authorization metadata on Raft RPC); this node was started without
+--cluster-secret, but the target cluster requires one: set --cluster-secret to
+the value configured on the existing cluster nodes (and --tls-mode, which
+--cluster-secret requires)
+```
+
+If the joining node *does* pass a secret but it does not match, the hint
+instead tells you to verify the secret against the existing cluster nodes. The
+Kubernetes operator injects `CLUSTER_SECRET` into every pod whenever TLS is
+active, so this failure surfaces only in manual/non-operator deployments where
+one node's secret drifted from the rest of the cluster.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \

@@ -22,7 +22,7 @@ import (
 // this for every EntryConfChange* — a plain no-op is safe because
 // tests that don't exercise membership don't propose ConfChange
 // entries either.
-func noopConfChangeHandler(raftpb.Entry, *dal.WriteSession) error { return nil }
+func noopConfChangeHandler(*raftpb.Entry, *dal.WriteSession) error { return nil }
 
 func newNoopNotifier(t *testing.T) *MockNotifier {
 	t.Helper()

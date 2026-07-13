@@ -331,6 +331,49 @@ func TestEventToClickHouseJSON_DeletedMetadata_Transaction(t *testing.T) {
 	require.Equal(t, "some-key", *result.Key)
 }
 
+func TestEventToClickHouseJSON_OrderSkipped(t *testing.T) {
+	t.Parallel()
+
+	event := &eventspb.Event{
+		Type:        commonpb.EventType_SKIPPED_ORDER,
+		Ledger:      "orders",
+		LogSequence: 7,
+		Log: &commonpb.Log{
+			Sequence: 7,
+			Payload: &commonpb.LogPayload{
+				Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "orders",
+						Log: &commonpb.LedgerLog{
+							Id:   5,
+							Date: &commonpb.Timestamp{Data: 1700000500},
+							Data: &commonpb.LedgerLogPayload{
+								Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+									OrderSkipped: &commonpb.OrderSkippedLog{
+										Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+										Context: map[string]string{"reference": "ref-1"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	data, err := eventToSinkJSON(event)
+	require.NoError(t, err)
+
+	var result sinkEventData
+	require.NoError(t, json.Unmarshal(data, &result))
+	require.NotNil(t, result.SkippedReason)
+	// The sink must expose the short public identifier that callers submit in
+	// skippableReasons, NOT the generated enum name (ERROR_REASON_...).
+	require.Equal(t, "TRANSACTION_REFERENCE_CONFLICT", *result.SkippedReason)
+	require.Equal(t, map[string]string{"reference": "ref-1"}, result.SkippedContext)
+}
+
 func TestEventToClickHouseJSON_RegisterSigningKey(t *testing.T) {
 	t.Parallel()
 

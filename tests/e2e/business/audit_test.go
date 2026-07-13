@@ -28,6 +28,27 @@ func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClie
 	return actions.ListAuditEntriesWithRequest(ctx, client, req)
 }
 
+// auditStringFilter builds a single-condition string audit QueryFilter.
+func auditStringFilter(field commonpb.AuditField, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: field,
+				Condition: &commonpb.AuditCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+					},
+				},
+			},
+		},
+	}
+}
+
+// filterReq wraps a QueryFilter in a ListAuditEntriesRequest.
+func filterReq(filter *commonpb.QueryFilter) *servicepb.ListAuditEntriesRequest {
+	return &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{Filter: filter}}
+}
+
 // decodeOrder unmarshals AuditItem.serialized_order back into a typed Order.
 // The audit hash chain hashes the stored bytes directly (cf.
 // docs/ops/correctness.md); typed Order access is a display-side concern,
@@ -105,30 +126,28 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
-		// Filter by the original ledger — should not include the second ledger's entries
-		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: ledgerName,
-		})
-		Expect(err).To(Succeed())
+		// Filter by the original ledger via `audit[ledger] == <name>` — should not
+		// include the second ledger's entries. The ledger scope is served by the
+		// async audit index, so poll until it has caught up (Eventually).
+		Eventually(func(g Gomega) {
+			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
+			g.Expect(err).To(Succeed())
+			g.Expect(filtered).NotTo(BeEmpty())
 
-		for _, entry := range filtered {
-			Expect(entry.GetLedgers()).NotTo(BeEmpty(), "filtered entry should have ledgers populated")
-			found := false
-			for _, l := range entry.GetLedgers() {
-				if l == ledgerName {
-					found = true
-					break
-				}
+			for _, entry := range filtered {
+				g.Expect(entry.GetLedgers()).To(ContainElement(ledgerName),
+					"filtered entry should target ledger %q", ledgerName)
 			}
-			Expect(found).To(BeTrue(), "filtered entry should target ledger %q", ledgerName)
-		}
+		}).Should(Succeed())
 
 		// Filter by the other ledger — should include at least 2 entries (create + transaction)
-		otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: otherLedger,
-		})
-		Expect(err).To(Succeed())
-		Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
+		Eventually(func(g Gomega) {
+			otherFiltered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, otherLedger)))
+			g.Expect(err).To(Succeed())
+			g.Expect(len(otherFiltered)).To(BeNumerically(">=", 2))
+		}).Should(Succeed())
 	})
 
 	It("Should filter audit entries by failures only", func() {
@@ -144,15 +163,17 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
 
-		// Get failures only — every returned entry must be a failure
-		failures, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			FailuresOnly: true,
-		})
-		Expect(err).To(Succeed())
-		Expect(failures).NotTo(BeEmpty())
-		for _, entry := range failures {
-			Expect(entry.GetFailure()).NotTo(BeNil(), "expected only failure entries")
-		}
+		// Get failures only via the shared filter — every returned entry must be
+		// a failure. Served by the async audit index, so poll until caught up.
+		Eventually(func(g Gomega) {
+			failures, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
+			g.Expect(err).To(Succeed())
+			g.Expect(failures).NotTo(BeEmpty())
+			for _, entry := range failures {
+				g.Expect(entry.GetFailure()).NotTo(BeNil(), "expected only failure entries")
+			}
+		}).Should(Succeed())
 	})
 
 	It("Should support after_sequence pagination", func() {
@@ -321,14 +342,15 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
 
-		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			FailuresOnly: true,
-		})
-		Expect(err).To(Succeed())
-		Expect(entries).NotTo(BeEmpty())
-
-		last := entries[len(entries)-1]
-		Expect(last.GetFailure()).NotTo(BeNil())
+		var last *auditpb.AuditEntry
+		Eventually(func(g Gomega) {
+			entries, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))
+			g.Expect(err).To(Succeed())
+			g.Expect(entries).NotTo(BeEmpty())
+			last = entries[len(entries)-1]
+			g.Expect(last.GetFailure()).NotTo(BeNil())
+		}).Should(Succeed())
 
 		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
 			Sequence: last.Sequence,
@@ -408,15 +430,16 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should have ledgers field populated on list entries when filtering by ledger", func() {
-		filtered, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Ledger: ledgerName,
-		})
-		Expect(err).To(Succeed())
-		Expect(filtered).NotTo(BeEmpty())
+		Eventually(func(g Gomega) {
+			filtered, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, ledgerName)))
+			g.Expect(err).To(Succeed())
+			g.Expect(filtered).NotTo(BeEmpty())
 
-		for _, entry := range filtered {
-			Expect(entry.GetLedgers()).NotTo(BeEmpty(), "ledgers field should be populated on list entries")
-		}
+			for _, entry := range filtered {
+				g.Expect(entry.GetLedgers()).NotTo(BeEmpty(), "ledgers field should be populated on list entries")
+			}
+		}).Should(Succeed())
 	})
 
 	It("Should have multiple ledgers in a multi-ledger batch", func() {
@@ -435,6 +458,132 @@ var _ = Describe("Audit Log", Ordered, func() {
 		ledgers := last.GetLedgers()
 		Expect(ledgers).To(ContainElement(ledgerA))
 		Expect(ledgers).To(ContainElement(ledgerB))
+	})
+
+	It("Should honor options.filter for outcome == success (shared contract)", func() {
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			actions.NewPosting("world", "filter:ok", big.NewInt(10), "USD"),
+		}, nil, nil)))
+		Expect(err).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			entries, err := collectAuditEntries(sharedCtx, sharedClient,
+				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "success")))
+			g.Expect(err).To(Succeed())
+			g.Expect(entries).NotTo(BeEmpty())
+			for _, entry := range entries {
+				g.Expect(entry.GetSuccess()).NotTo(BeNil(), "expected only success entries")
+			}
+		}).Should(Succeed())
+	})
+
+	It("Should honor options.filter for order_type", func() {
+		orderTypeLedger := "audit-order-type"
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(orderTypeLedger, nil)))
+		Expect(err).To(Succeed())
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(orderTypeLedger, []*commonpb.Posting{
+			actions.NewPosting("world", "ot:dest", big.NewInt(5), "USD"),
+		}, nil, nil)))
+		Expect(err).To(Succeed())
+
+		// audit[ledger] == orderTypeLedger and audit[order_type] == create_transaction
+		filter := &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{
+				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+					auditStringFilter(commonpb.AuditField_AUDIT_FIELD_LEDGER, orderTypeLedger),
+					auditStringFilter(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, "create_transaction"),
+				}},
+			},
+		}
+
+		Eventually(func(g Gomega) {
+			entries, err := collectAuditEntries(sharedCtx, sharedClient, filterReq(filter))
+			g.Expect(err).To(Succeed())
+			g.Expect(entries).NotTo(BeEmpty(), "expected the create_transaction audit entry")
+			for _, entry := range entries {
+				g.Expect(entry.GetLedgers()).To(ContainElement(orderTypeLedger))
+			}
+		}).Should(Succeed())
+	})
+
+	It("Should honor options.reverse (newest first)", func() {
+		// Reverse iteration reads the audit zone directly (no filter), so it is
+		// strongly consistent — no Eventually needed.
+		asc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			Options: &commonpb.ListOptions{Reverse: false},
+		})
+		Expect(err).To(Succeed())
+		Expect(len(asc)).To(BeNumerically(">=", 2))
+
+		desc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+			Options: &commonpb.ListOptions{Reverse: true},
+		})
+		Expect(err).To(Succeed())
+		Expect(len(desc)).To(Equal(len(asc)))
+
+		// Ascending is oldest-first (increasing sequence); reverse is newest-first.
+		Expect(asc[0].GetSequence()).To(BeNumerically("<", asc[len(asc)-1].GetSequence()))
+		Expect(desc[0].GetSequence()).To(Equal(asc[len(asc)-1].GetSequence()))
+		Expect(desc[len(desc)-1].GetSequence()).To(Equal(asc[0].GetSequence()))
+	})
+
+	It("Should honor options.filter for audit[seq] range", func() {
+		all, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
+		Expect(err).To(Succeed())
+		Expect(len(all)).To(BeNumerically(">=", 3))
+
+		lo := all[0].GetSequence()
+		hi := all[len(all)-1].GetSequence() - 1
+		seqFilter := &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Audit{
+				Audit: &commonpb.AuditCondition{
+					Field: commonpb.AuditField_AUDIT_FIELD_SEQUENCE,
+					Condition: &commonpb.AuditCondition_UintCond{
+						UintCond: &commonpb.UintCondition{Min: &lo, Max: &hi},
+					},
+				},
+			},
+		}
+
+		ranged, err := collectAuditEntries(sharedCtx, sharedClient, filterReq(seqFilter))
+		Expect(err).To(Succeed())
+		for _, e := range ranged {
+			Expect(e.GetSequence()).To(BeNumerically(">=", lo))
+			Expect(e.GetSequence()).To(BeNumerically("<=", hi))
+		}
+	})
+
+	It("Should reject an unsupported filter (not) with InvalidArgument", func() {
+		notFilter := &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{
+					Filter: auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure"),
+				},
+			},
+		}
+
+		_, err := collectAuditEntries(sharedCtx, sharedClient, filterReq(notFilter))
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+	})
+
+	It("Should reject a non-audit filter condition with InvalidArgument", func() {
+		metaFilter := &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{
+				Field: &commonpb.FieldCondition{
+					Field: &commonpb.FieldRef{Metadata: "k"},
+					Condition: &commonpb.FieldCondition_StringCond{
+						StringCond: &commonpb.StringCondition{
+							Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "v"},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := collectAuditEntries(sharedCtx, sharedClient, filterReq(metaFilter))
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 	})
 
 	It("Should return NOT_FOUND for non-existent audit entry", func() {

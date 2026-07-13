@@ -230,17 +230,19 @@ func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
 		gotB  []byte
 		gotAB []byte
 		gotZ  []byte
-		gotN  bool // SetCoverage(nil) for the no-needs op
+		// Pre-seed gotN so the "target was written" assertion below can
+		// distinguish "applyBits touched it" from "still initial value".
+		gotN = []byte("sentinel")
 	)
 
 	build := &BuildResult{
 		operations: []WriteOperation{
-			{Coverage: needsA, SetCoverage: func(b []byte) { gotA = b }},
-			{Coverage: needsB, SetCoverage: func(b []byte) { gotB = b }},
-			{Coverage: needsAB, SetCoverage: func(b []byte) { gotAB = b }},
-			{Coverage: NewCoverage(), SetCoverage: func(b []byte) { gotZ = b }},
-			{Coverage: nil, SetCoverage: func(b []byte) { gotN = true }},
-			{Coverage: needsA, SetCoverage: nil}, // skip — nil callback, must not panic
+			{Coverage: needsA, Target: &gotA},
+			{Coverage: needsB, Target: &gotB},
+			{Coverage: needsAB, Target: &gotAB},
+			{Coverage: NewCoverage(), Target: &gotZ},
+			{Coverage: nil, Target: &gotN},
+			{Coverage: needsA, Target: nil}, // skip — nil target, must not panic
 		},
 	}
 
@@ -250,38 +252,36 @@ func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
 	require.Equal(t, []byte{0b10}, gotB, "op B flags only bit 1 (ledgerB at index 1)")
 	require.Equal(t, []byte{0b11}, gotAB, "op AB flags both bits")
 	require.Equal(t, []byte{0b00}, gotZ, "op with empty Coverage gets a zero bitset, not nil")
-	require.True(t, gotN, "nil Coverage op must still be invoked with nil per the original contract")
-	// gotN's nil-input path returns nil from bitsForNeedsWithIndex; the
-	// callback simply records that it ran.
+	require.Nil(t, gotN, "nil Coverage op still gets its target overwritten (nil bitset from bitsForNeedsWithIndex)")
 }
 
 // TestApplyBits_EmptyPlansPreservesNilContract pins the no-plan branch
 // of applyBits: when the proposal carries zero AttributeCoverage entries
 // (every WriteOperation has empty Coverage, common for technical-only
-// proposals), every SetCoverage callback must still fire with nil to
-// keep the original bitsForNeeds(_, nil) → nil contract that handlers
+// proposals), every non-nil Target must still be overwritten with nil
+// to keep the original bitsForNeeds(_, nil) → nil contract that handlers
 // rely on (a zero-length bitset is semantically different from a
 // missing one in the FSM's coverage check).
 func TestApplyBits_EmptyPlansPreservesNilContract(t *testing.T) {
 	t.Parallel()
 
-	calls := make([]struct {
-		called bool
-		got    []byte
-	}, 3)
+	// Pre-seed targets so we can distinguish "applyBits wrote nil"
+	// from "target left at initial value".
+	got0 := []byte("initial-0")
+	got1 := []byte("initial-1")
+	got2 := []byte("initial-2")
 
 	build := &BuildResult{
 		operations: []WriteOperation{
-			{Coverage: NewCoverage(), SetCoverage: func(b []byte) { calls[0].called = true; calls[0].got = b }},
-			{Coverage: nil, SetCoverage: func(b []byte) { calls[1].called = true; calls[1].got = b }},
-			{Coverage: NewCoverage(), SetCoverage: nil}, // must be skipped silently
+			{Coverage: NewCoverage(), Target: &got0},
+			{Coverage: nil, Target: &got1},
+			{Coverage: NewCoverage(), Target: nil}, // must be skipped silently
 		},
 	}
 
 	build.applyBits(nil, nil)
 
-	require.True(t, calls[0].called, "non-nil-callback op must be invoked even with empty plans")
-	require.Nil(t, calls[0].got, "empty plans must yield nil bitset (not zero-length)")
-	require.True(t, calls[1].called)
-	require.Nil(t, calls[1].got)
+	require.Nil(t, got0, "non-nil-target op must be overwritten with nil bitset")
+	require.Nil(t, got1, "nil-Coverage op still has its target written")
+	require.Equal(t, []byte("initial-2"), got2, "nil-Target op must be untouched")
 }

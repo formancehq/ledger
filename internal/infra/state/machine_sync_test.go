@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -70,8 +71,8 @@ func TestSynchronizeWithLeader(t *testing.T) {
 	// --- Leader sends a Raft snapshot at index 100 (no FSM data) ---
 	followerRecovery := NewRecovery(followerMachine, followerStore)
 	followerSync := NewSynchronizer(followerMachine, followerRecovery, dal.NewIncomingRestoreFactory(followerStore))
-	err = followerSync.InstallSnapshot(ctx, raftpb.Snapshot{
-		Metadata: raftpb.SnapshotMetadata{Index: 100},
+	err = followerSync.InstallSnapshot(ctx, &raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(100)},
 	})
 	require.NoError(t, err)
 
@@ -128,7 +129,7 @@ func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
 
 	followerRecovery := NewRecovery(followerMachine, followerStore)
 	followerSync := NewSynchronizer(followerMachine, followerRecovery, dal.NewIncomingRestoreFactory(followerStore))
-	require.NoError(t, followerSync.InstallSnapshot(ctx, raftpb.Snapshot{Metadata: raftpb.SnapshotMetadata{Index: 50}}))
+	require.NoError(t, followerSync.InstallSnapshot(ctx, &raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(50)}}))
 
 	_, err = followerSync.SynchronizeWithLeader(ctx, &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
 	require.NoError(t, err)

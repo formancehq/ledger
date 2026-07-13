@@ -10337,7 +10337,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.",
+               "description": "Rate of proposal guard rebuilds (boundary shifted) vs total guard acquisitions. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.\n\nThe denominator is admission.proposal_guard.duration_count — the number of times the proposal guard was actually acquired (one per proposal attempt that reached builder.Run). It is NOT admission.command.duration_count, which also counts commands rejected before proposal (bad signature, maintenance mode, validation/preload errors); using that would dilute the ratio with attempts the guard never saw.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -10422,7 +10422,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_admission_proposal_guard_rebuild{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_admission_command_duration_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "expr": "sum(rate(ledger_admission_proposal_guard_rebuild{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_admission_proposal_guard_duration_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Rebuild ratio - Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -10440,6 +10440,127 @@
                   }
                ],
                "title": "Proposal Guard Rebuild Rate & Ratio",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Time spent verifying the batch signature and unmarshaling the trusted ApplyBatch. First phase of the command lifecycle decomposed by admission.command.duration.",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "µs"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 40
+               },
+               "id": 109,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p50 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p95 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "B"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_resolve_batch_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p99 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "C"
+                  }
+               ],
+               "title": "Resolve Batch Duration (p50, p95, p99)",
                "type": "timeseries"
             },
             {
@@ -10507,11 +10628,11 @@
                },
                "gridPos": {
                   "h": 8,
-                  "w": 24,
+                  "w": 12,
                   "x": 0,
                   "y": 48
                },
-               "id": 109,
+               "id": 110,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10630,9 +10751,9 @@
                   "h": 8,
                   "w": 12,
                   "x": 12,
-                  "y": 40
+                  "y": 48
                },
-               "id": 110,
+               "id": 111,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10660,6 +10781,248 @@
                   }
                ],
                "title": "Command Size Distribution (stacked)",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Time spent converting requests to orders and extracting preload needs (excludes script-dependent needs). Phase of admission.command.duration.",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "µs"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 56
+               },
+               "id": 112,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p50 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p95 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "B"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_orders_preparation_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p99 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "C"
+                  }
+               ],
+               "title": "Orders Preparation Duration (p50, p95, p99)",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Time spent resolving Numscript references and enriching preload needs with script-discovered volumes/metadata. Phase of admission.command.duration.",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "µs"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 56
+               },
+               "id": 113,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p50 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p95 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "B"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_scripts_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p99 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "C"
+                  }
+               ],
+               "title": "Scripts Duration (p50, p95, p99)",
                "type": "timeseries"
             },
             {
@@ -10729,9 +11092,9 @@
                   "h": 8,
                   "w": 24,
                   "x": 0,
-                  "y": 56
+                  "y": 64
                },
-               "id": 111,
+               "id": 114,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10782,6 +11145,127 @@
                ],
                "title": "Propose Duration (p50, p95, p99)",
                "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Time spent resolving FSM results into concrete logs after apply, including the ReadLogBySequence reads done for idempotent replays (ReferenceSequence entries). Final phase of admission.command.duration; zero on the common create path.",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "µs"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 24,
+                  "x": 0,
+                  "y": 72
+               },
+               "id": 115,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.50, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p50 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.95, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p95 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "B"
+                  },
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "histogram_quantile(0.99, sum(rate(ledger_admission_response_resolution_duration_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le))",
+                     "legendFormat": "p99 - Node {{service_node_id}}",
+                     "range": true,
+                     "refId": "C"
+                  }
+               ],
+               "title": "Response Resolution Duration (p50, p95, p99)",
+               "type": "timeseries"
             }
          ],
          "title": "Admission",
@@ -10795,7 +11279,7 @@
             "x": 0,
             "y": 170
          },
-         "id": 112,
+         "id": 116,
          "panels": [
             {
                "datasource": {
@@ -10866,7 +11350,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 113,
+               "id": 117,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10987,7 +11471,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 114,
+               "id": 118,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11051,7 +11535,7 @@
             "x": 0,
             "y": 171
          },
-         "id": 115,
+         "id": 119,
          "panels": [
             {
                "datasource": {
@@ -11122,7 +11606,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 116,
+               "id": 120,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11221,7 +11705,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 117,
+               "id": 121,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11320,7 +11804,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 118,
+               "id": 122,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11441,7 +11925,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 119,
+               "id": 123,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11584,7 +12068,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 120,
+               "id": 124,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11637,7 +12121,7 @@
             "x": 0,
             "y": 172
          },
-         "id": 121,
+         "id": 125,
          "panels": [
             {
                "datasource": {
@@ -11708,7 +12192,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 122,
+               "id": 126,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11818,7 +12302,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 123,
+               "id": 127,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11871,7 +12355,7 @@
             "x": 0,
             "y": 173
          },
-         "id": 124,
+         "id": 128,
          "panels": [
             {
                "datasource": {
@@ -11908,7 +12392,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 125,
+               "id": 129,
                "options": {
                   "minVizHeight": 75,
                   "minVizWidth": 75,
@@ -12009,7 +12493,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 126,
+               "id": 130,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12108,7 +12592,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 127,
+               "id": 131,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12161,7 +12645,7 @@
             "x": 0,
             "y": 174
          },
-         "id": 128,
+         "id": 132,
          "panels": [
             {
                "datasource": {
@@ -12175,7 +12659,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 129,
+               "id": 133,
                "options": { },
                "targets": [
                   {
@@ -12205,7 +12689,7 @@
                   "x": 0,
                   "y": 20
                },
-               "id": 130,
+               "id": 134,
                "options": { },
                "targets": [
                   {
@@ -12235,7 +12719,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 131,
+               "id": 135,
                "options": { },
                "targets": [
                   {
@@ -12265,7 +12749,7 @@
                   "x": 0,
                   "y": 60
                },
-               "id": 132,
+               "id": 136,
                "options": { },
                "targets": [
                   {

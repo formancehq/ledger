@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -83,6 +86,20 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var d domain.Describable
 	if errors.As(err, &d) {
 		writeErrorResponse(w, kindToHTTPStatus(domain.Kind(d)), d.Reason(), err)
+
+		return
+	}
+
+	// A gRPC InvalidArgument status is a caller error, not a server fault, and
+	// must not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
+	// shared with the gRPC surface) rejects filters that parse but are not
+	// audit-supported — `not audit[...]`, a non-audit condition, an unknown
+	// field — as codes.InvalidArgument; surface that as a 400. Only
+	// InvalidArgument is translated here; other status codes keep the generic
+	// 500 fallthrough deliberately, since no other HTTP handler is expected to
+	// produce them and we do not want to leak arbitrary gRPC semantics.
+	if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New(st.Message()))
 
 		return
 	}

@@ -93,6 +93,67 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 
 **Cursor for `ListPreparedQueries`.** The cursor is the query name itself (printable ASCII, exactly what the name-validator requires). Listing is a single-ledger scan.
 
+## Canonical `QueryFilter` JSON shape (REST) — v2-aligned query DSL
+
+`QueryFilter` is a protobuf oneof; naively routing it through `protojson` leaks the
+proto-internal oneof/wrapper names onto the public REST surface (`and.filters[]`,
+`not.filter`, `field.field.metadata`, `stringCond`, `hardcodedExact`, and the
+`QUERY_TARGET_*` enum prefix). To keep the REST wire aligned with the rest of the
+Formance platform, `QueryFilter` carries a **hand-written JSON codec**
+(`internal/proto/commonpb/query_filter.go`) that mirrors the shared Formance query
+DSL (`go-libs/pkg/query`, as used by ledger v2). `PreparedQuery.MarshalJSON`
+(`internal/proto/commonpb/common.pb.json.go`) uses it plus a string target enum;
+the HTTP decoder (`internal/adapter/http/prepared_query_filter.go`) decodes through
+the same codec.
+
+The canonical shape (each node has **exactly one** top-level `$`-operator key):
+
+- **Combinators**: `{"$and": [QueryFilter, ...]}`, `{"$or": [QueryFilter, ...]}`
+  (both non-empty arrays), `{"$not": QueryFilter}`.
+- **Leaf conditions** — single-key operator over a one-field body:
+  - `{"$match": {"<field>": <value>}}` — equality; for `address`/`source`/`destination`
+    a trailing `:` means prefix, otherwise exact.
+  - `{"$gt"|"$gte"|"$lt"|"$lte": {"<field>": <value>}}` — range bound; a closed range
+    is an `$and` of a lower + an upper bound on the same field (the decoder folds it
+    back into one range condition).
+  - `{"$exists": {"metadata": "<key>"}}` — metadata key present.
+  - `{"$exists": {"asset": "<assetRef>"}}` — account has held the asset (`BASE` or
+    `BASE/PRECISION`, e.g. `USD/2`); this is how `AccountHasAssetCondition` is expressed.
+
+Fields: `metadata[<key>]`, `address`/`source`/`destination`, `reference`,
+`reverted` (bool), `ledger`, `id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`,
+`date`. A value is a JSON literal or a parameter reference `{"$param": "<name>"}`
+(prepared-query parameters). An address prefix is expressed with a trailing `:` under
+`$match` (e.g. `{"$match": {"address": "users:"}}`); a parameterised prefix has no
+DSL form (a param value cannot carry the trailing `:` marker), and the byte-level
+`AddressMatch_ParamPrefix`/`HardcodedPrefix` proto arms are not producible through
+the JSON/REST surface. uint64 fields are carried as decimal strings to stay lossless
+above 2^53.
+
+The codec is bidirectional and lossless. It fails loudly on an unknown operator, an
+empty `$and`/`$or`, an operator body without exactly one field, an unsupported field,
+an empty `$param` name, and a proto oneof arm it does not recognise — so a new proto
+arm cannot silently drop a filter. The full DSL is documented under `QueryFilter` in
+`openapi.yml`. Round-trip and error-path tests live in
+`internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
+`tests/e2e/business/prepared_query_rest_shape_test.go`.
+
+This shape is shared by every filtered endpoint (and by the audit conditions in
+EN-1548): new conditions extend it as new `$match`/`$gt`/… over new field names.
+
+**REST prepared-query targets are `ACCOUNTS`, `TRANSACTIONS` and `LOGS`** (EN-1503).
+For each target `query.Execute` hydrates exactly one `PreparedQueryCursor` result
+field: `account_data`, `transaction_data` or `log_data`. The LOGS path reuses the
+direct `ListLogs` machinery — the compiled LOGS iterator yields per-ledger logIDs,
+`ReadLedgerLogsCompiled` resolves them to global sequences through the log read-index
+and reads the log payloads from Pebble (`query.EnrichLogs`). Consequently the
+log-only filter fields (`logId`, `date`, `ledger`) are valid only when the target is
+`LOGS`; the REST create decode rejects them for `ACCOUNTS`/`TRANSACTIONS`, and the
+compile layer is the backstop (it rejects those conditions on non-LOGS targets at
+execute time). The update path carries only the new filter (the target is immutable
+and not read by the handler), so it defers the log-only check to the compile
+backstop.
+
 ## Recent changes
 
 | Commit | Effect |
@@ -100,6 +161,8 @@ These accelerators are correctness-neutral: turning them off (e.g. by a saturate
 | `c1f79db80` (EN-1321) | Wire prepared queries into the per-attribute bloom registry. |
 | `7662d2bae` | Monotonic-skip and probe-based `AndIterator` optimisations for filter execution. |
 | `dedb005bc` (fix/376) | Fix protojson oneOf/enum encoding for prepared-query payloads. |
+| EN-1465 | v2-aligned `QueryFilter` JSON codec (`$and`/`$match`/…), replacing the protojson leak; string target enum on `PreparedQuery`. |
+| EN-1503 | `LOGS` becomes a usable prepared-query target over REST: `PreparedQueryCursor.log_data` field + LOGS enrichment in `query.Execute` (`EnrichLogs`), `LOGS` accepted by `parsePreparedQueryTarget`, target-aware `rejectLogOnlyConditions`. |
 
 ## What's not (yet) here
 

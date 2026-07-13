@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -92,7 +91,7 @@ func TestRun_IdempotencyOnlyNeedsTakesFastPath(t *testing.T) {
 	cmd := &raftcmdpb.Proposal{Id: 42}
 
 	needs := NewCoverage()
-	needs.IdempotencyKeys[domain.IdempotencyKey{Key: "idem-only"}] = struct{}{}
+	needs.AddIdempotencyKey("idem-only")
 
 	build := &BuildResult{
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{

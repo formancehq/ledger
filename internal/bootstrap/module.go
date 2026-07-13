@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/fx"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -456,13 +457,13 @@ func Module() fx.Option {
 					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
 				}
 
-				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
+				freshStart := walFreshStart(len(snapshot.GetMetadata().GetConfState().GetVoters()) == 0)
 				params.Logger.WithFields(map[string]any{
 					"freshStart":    freshStart,
-					"walVoters":     snapshot.Metadata.ConfState.Voters,
-					"walLearners":   snapshot.Metadata.ConfState.Learners,
-					"snapshotIndex": snapshot.Metadata.Index,
-					"snapshotTerm":  snapshot.Metadata.Term,
+					"walVoters":     snapshot.GetMetadata().GetConfState().GetVoters(),
+					"walLearners":   snapshot.GetMetadata().GetConfState().GetLearners(),
+					"snapshotIndex": snapshot.GetMetadata().GetIndex(),
+					"snapshotTerm":  snapshot.GetMetadata().GetTerm(),
 				}).Infof("WAL fresh start detection")
 
 				n, err := node.NewNode(
@@ -569,7 +570,7 @@ func Module() fx.Option {
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
+				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, cfg.IdempotencyTTL, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, fsm.WaitForApplied)
@@ -655,9 +656,8 @@ func Module() fx.Option {
 			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *auditindexer.Indexer {
 				return auditindexer.New(
 					auditindexer.Config{
-						BatchSize:        cfg.AuditIndexConfig.BatchSize,
-						RebuildThreshold: cfg.AuditIndexConfig.RebuildThreshold,
-						Disabled:         cfg.AuditIndexConfig.Disabled,
+						BatchSize: cfg.AuditIndexConfig.BatchSize,
+						Disabled:  cfg.AuditIndexConfig.Disabled,
 					},
 					store, rs, logger, meterProvider.Meter("audit.index"),
 				)
@@ -790,16 +790,17 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				coldReader *coldstorage.ColdReader,
+				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -877,6 +878,26 @@ func Module() fx.Option {
 						return nil
 					},
 				})
+			},
+			// Join preflight (EN-1436): register this node as a learner on the
+			// leader and fail fast on stale raft Progress. Registered FIRST
+			// among the Raft startup hooks so its OnStart runs (and, on stale
+			// Progress, aborts boot) BEFORE any hook that lets inbound Raft
+			// traffic reach rawNode.Step — the Raft gRPC server start +
+			// membership.Start() and node.Run() below. fx runs OnStart hooks in
+			// Append order; keeping this closure ahead of those enforces the
+			// ordering the fail-fast depends on. See joinPreflightHook for the
+			// inbound-vs-outbound / no-deadlock rationale.
+			func(
+				lc fx.Lifecycle,
+				cfg Config,
+				logger logging.Logger,
+			) {
+				if !shouldRunJoinPreflight(cfg, logger) {
+					return
+				}
+
+				lc.Append(joinPreflightHook(cfg, logger))
 			},
 			func(
 				lc fx.Lifecycle,
@@ -1197,50 +1218,10 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Join mode: auto-register as learner on the leader after raft starts.
-			// Any peer will forward the request to the current leader automatically.
-			// The AddLearner call is idempotent: if the node is already a cluster
-			// member (e.g. after a crash-restart where the initial WAL was written
-			// but the AddLearner RPC never reached the leader), the server returns
-			// AlreadyExists which we treat as success.
-			//
-			// Skip entirely on restart: the CLUSTER_JOINED marker is written
-			// after the initial join succeeds (see tryAddLearner). On any
-			// subsequent boot — even one where --join is still in the CLI
-			// (e.g. E2E test framework that reuses Instruments across restarts)
-			// — re-running tryAddLearner would propose a redundant AddLearner
-			// for a node that is already a voter, racing leadership state and
-			// stalling the test's "should become follower" Eventually. The
-			// operator's StatefulSet entrypoint already gates --join on the
-			// same marker; this check makes the safety hold regardless of how
-			// the binary is invoked.
-			func(
-				lc fx.Lifecycle,
-				cfg Config,
-				logger logging.Logger,
-			) {
-				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
-					return
-				}
-
-				if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
-					logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
-
-					return
-				}
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.WithFields(map[string]any{
-							"nodeID":         cfg.RaftConfig.NodeID,
-							"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
-							"serviceAddress": cfg.ServiceAdvertiseAddr(),
-						}).Infof("Join mode: requesting peer to add this node as learner")
-
-						return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
-					},
-				})
-			},
+			// Join mode preflight is registered EARLIER (before the Raft
+			// transport/server/node startup hooks) so it runs before any inbound
+			// Raft traffic can be stepped — see the joinPreflightHook closure
+			// above and its doc comment for the EN-1436 ordering rationale.
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
@@ -1302,9 +1283,7 @@ func Module() fx.Option {
 							// WriteOperation with nil Coverage so the runner
 							// takes the fast path.
 							operations := []plan.WriteOperation{{
-								SetCoverage: func(bits []byte) {
-									proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-								},
+								Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 							}}
 
 							if err := proposeTechnical(ctx, builder, raftNode, proposal, operations); err != nil {
@@ -1370,6 +1349,112 @@ func Module() fx.Option {
 			},
 		),
 	)
+}
+
+// JoinAuthError is returned when a joining node is rejected by the target
+// cluster's inter-node RaftServer with codes.Unauthenticated. This is always
+// a cluster-secret misconfiguration (EN-1080): the join flow carries no user
+// JWT, so the only credential in play is the shared cluster secret sent as a
+// Bearer token. The error is fatal and never retried — looping on the same
+// (mis)configuration cannot succeed.
+//
+// It covers both inter-node join RPCs: peer discovery
+// (ClusterBootstrapService.GetPeers, before the fx app starts, where PeerID
+// is not yet known and stays 0) and learner registration
+// (ClusterBootstrapService.JoinAsLearner, which carries the target PeerID).
+type JoinAuthError struct {
+	// PeerID identifies the rejecting cluster member. It is 0 during peer
+	// discovery, where the joining node only knows the --join address.
+	PeerID      uint64
+	PeerAddress string
+	// HasSecret reports whether this node was started with --cluster-secret.
+	// It drives the actionable hint: a missing secret vs a mismatched one.
+	HasSecret bool
+	// Detail is the raw gRPC status message from the target for diagnostics.
+	Detail string
+}
+
+func (e *JoinAuthError) Error() string {
+	var hint string
+	if e.HasSecret {
+		hint = "this node was started with --cluster-secret, but the target cluster rejected it: " +
+			"verify the secret matches the value configured on the existing cluster nodes"
+	} else {
+		hint = "this node was started without --cluster-secret, but the target cluster requires one: " +
+			"set --cluster-secret to the value configured on the existing cluster nodes (and --tls-mode, which --cluster-secret requires)"
+	}
+
+	target := e.PeerAddress
+	if e.PeerID != 0 {
+		target = fmt.Sprintf("peer %d (%s)", e.PeerID, e.PeerAddress)
+	}
+
+	return fmt.Sprintf(
+		"cluster join rejected by %s: inter-node authentication failed (%s); %s",
+		target, e.Detail, hint,
+	)
+}
+
+// shouldRunJoinPreflight reports whether the join preflight (tryAddLearner)
+// must run for this boot. It runs only for a node that is joining an existing
+// cluster and has not yet recorded a successful join:
+//
+//   - Bootstrap nodes and nodes with no configured peers never join — they
+//     ARE the seed of the cluster.
+//   - A node whose WAL already carries the CLUSTER_JOINED marker has joined on
+//     a previous boot; re-running tryAddLearner would propose a redundant
+//     AddLearner for a node that is already a voter, racing leadership state.
+//     The operator's StatefulSet entrypoint already gates --join on the same
+//     marker; this check makes the safety hold regardless of how the binary is
+//     invoked (e.g. an E2E framework that reuses instruments across restarts).
+func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
+	if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
+		return false
+	}
+
+	if wal.IsClusterJoined(cfg.RaftConfig.WalDir) {
+		logger.Infof("CLUSTER_JOINED marker present, skipping learner registration")
+
+		return false
+	}
+
+	return true
+}
+
+// joinPreflightHook builds the OnStart hook that registers this node as a
+// learner on the leader (and fails fast on stale raft Progress, EN-1436).
+//
+// EN-1436 ordering (flemzord review on #1478): this hook MUST run BEFORE the
+// node starts accepting/stepping inbound Raft traffic — i.e. before the Raft
+// gRPC transport server begins serving, before membership.Start() wires the
+// leader connection, and before node.Run() drains the recv queues into
+// rawNode.Step. Otherwise, once the leader can reach this pod, it may deliver a
+// stale MsgApp/heartbeat whose Commit points past our (empty) log and trip
+// etcd-raft's "tocommit out of range" panic BEFORE this preflight returns the
+// STALE_RAFT_PROGRESS fail-fast — losing exactly the race the fail-fast exists
+// to prevent. Registering this hook earlier in the fx lifecycle guarantees its
+// OnStart runs (and, on stale Progress, aborts boot) before any inbound Raft
+// message can be stepped.
+//
+// This does NOT deadlock: the preflight reaches the leader over an OUTBOUND,
+// short-lived gRPC client it dials itself (see tryAddLearner) — it depends on
+// neither the local Raft gRPC server (inbound serving) nor the transport
+// connection pool that membership.Start() wires. Only INBOUND stepping is
+// gated behind the preflight; OUTBOUND dialing is always available because it
+// is self-contained. Gating inbound-serving on an outbound-only preflight is
+// therefore safe.
+func joinPreflightHook(cfg Config, logger logging.Logger) fx.Hook {
+	return fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			logger.WithFields(map[string]any{
+				"nodeID":         cfg.RaftConfig.NodeID,
+				"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+				"serviceAddress": cfg.ServiceAdvertiseAddr(),
+			}).Infof("Join mode: requesting peer to add this node as learner (preflight, before Raft traffic)")
+
+			return tryAddLearner(ctx, cfg, cfg.TLSConfig, logger)
+		},
+	}
 }
 
 // tryAddLearner attempts to register this node as a learner on an existing
@@ -1449,10 +1534,41 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 			}
 
 			st, ok := status.FromError(err)
+			// EN-1436: the leader detected this nodeID in its raft Progress
+			// with a non-zero Match but we (the caller) have no CLUSTER_JOINED
+			// marker on our WAL. The leader's Match for us points at state we
+			// don't have, and the next MsgApp/heartbeat would trigger
+			// etcd-raft's "tocommit out of range" panic. Fail fast with the
+			// operator-actionable server message rather than retry, mark, or
+			// silently crash-loop. The server message already contains the
+			// exact remediation command; surface it verbatim as the fatal
+			// reason.
+			//
+			// Match on the STALE_RAFT_PROGRESS ErrorInfo reason, not on the
+			// bare FailedPrecondition code: the removed-member blacklist
+			// rejection (EN-1045) is also FailedPrecondition but needs
+			// `forget-removed`, not `remove-node --force`. Conflating the two
+			// would print misleading remediation. A blacklist rejection falls
+			// through to the generic fatal handler below with its own message.
+			if ok && st.Code() == codes.FailedPrecondition && isStaleRaftProgress(st) {
+				logger.WithFields(map[string]any{
+					"peer":   peer.ID,
+					"nodeID": cfg.RaftConfig.NodeID,
+					"reason": st.Message(),
+				}).Errorf("STALE MEMBERSHIP on leader — operator action required to unblock rejoin")
+
+				return fmt.Errorf("stale raft membership on the leader: %s", st.Message())
+			}
+
+			// AlreadyExists path kept for rolling-upgrade compatibility with
+			// leaders that predate EN-1436's server-side fail-fast. Once every
+			// live cluster is past that version, this branch can be dropped —
+			// the invariant it silently patches (idempotent join treating
+			// stale Progress as success) is exactly the bug EN-1436 fixes.
 			if ok && st.Code() == codes.AlreadyExists {
 				logger.WithFields(map[string]any{
 					"nodeID": cfg.RaftConfig.NodeID,
-				}).Infof("Already a cluster member, skipping learner registration")
+				}).Infof("Already a cluster member, skipping learner registration (deprecated pre-EN-1436 semantics)")
 
 				if markErr := wal.MarkClusterJoined(cfg.RaftConfig.WalDir); markErr != nil {
 					return fmt.Errorf("marking cluster joined after AlreadyExists: %w", markErr)
@@ -1469,6 +1585,22 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				}).Infof("JoinAsLearner unavailable, will retry")
 
 				continue
+			}
+
+			// Unauthenticated is a hard configuration error, never transient:
+			// the target cluster's RaftServer rejected our cluster-secret
+			// bearer (missing, wrong, or malformed). Retrying with the same
+			// (mis)configuration can only loop forever, so fail fast with an
+			// actionable message instead of leaking the opaque gRPC status
+			// ("missing authorization metadata on Raft RPC", etc.) up the
+			// bootstrap chain. EN-1080.
+			if ok && st.Code() == codes.Unauthenticated {
+				return &JoinAuthError{
+					PeerID:      peer.ID,
+					PeerAddress: peer.Address,
+					HasSecret:   cfg.ClusterSecret != "",
+					Detail:      st.Message(),
+				}
 			}
 
 			// Non-transient error — fatal.
@@ -1488,6 +1620,22 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 
 		backoff = min(backoff*2, maxBackoff)
 	}
+}
+
+// isStaleRaftProgress reports whether a FailedPrecondition status carries the
+// EN-1436 STALE_RAFT_PROGRESS ErrorInfo reason, distinguishing a stale-raft-
+// progress join rejection (remediation: `remove-node --force`) from the
+// removed-member blacklist rejection (remediation: `forget-removed`), which is
+// also FailedPrecondition. Falls back to false when no matching detail is
+// present so unrelated FailedPrecondition responses keep their generic handling.
+func isStaleRaftProgress(st *status.Status) bool {
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.GetReason() == node.StaleRaftProgressReason {
+			return true
+		}
+	}
+
+	return false
 }
 
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
@@ -1527,9 +1675,7 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 	// applyClusterConfig reads cache-level configuration (Cache.GenerationThreshold,
 	// Cache.Epoch) but no keyed Registry.X.Get; no preload needed.
 	operations := []plan.WriteOperation{{
-		SetCoverage: func(bits []byte) {
-			proposal.GetTechnicalUpdates()[0].CoverageBits = bits
-		},
+		Target: &proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
 	if err := proposeTechnical(ctx, builder, n, proposal, operations); err != nil {

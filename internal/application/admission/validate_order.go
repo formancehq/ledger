@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -36,6 +37,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 		return &domain.BusinessError{Err: err}
 	}
 
+	if err := validateOrderCreateIndex(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
 	if err := validateOrderMirrorSource(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
@@ -51,7 +56,21 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	return domain.ValidateLedgerName(ls.GetLedger())
+	if err := domain.ValidateLedgerName(ls.GetLedger()); err != nil {
+		return err
+	}
+
+	// Reserve the ledger name "_" for the system / non-ledger HTTP routes, which
+	// all live under /v3/_/… so they never shadow a real ledger (see
+	// ErrLedgerNameReservedPrefix and internal/adapter/http/handler.go). Applied
+	// to every ledger-scoped order, not just CreateLedger: a "_" ledger can
+	// never legitimately exist, so rejecting it everywhere is safe and keeps the
+	// rule in one place.
+	if ls.GetLedger() == "_" {
+		return ErrLedgerNameReservedPrefix
+	}
+
+	return nil
 }
 
 // validateOrderMetadata validates that all metadata keys and values in the order
@@ -210,6 +229,31 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
+// validateOrderCreateIndex rejects a CreateIndex order for an IndexID the
+// builder has no backfill path for — which would otherwise be persisted as a
+// permanently-BUILDING registry entry that never completes. ParseCanonical
+// decodes any well-formed IndexID reachable from an HTTP/gRPC create body,
+// including unsupported enum values (e.g. metadata:TARGET_TYPE_LEDGER:<key>,
+// account_builtin:ACCT_BUILTIN_INDEX_UNSPECIFIED, log_builtin:...UNSPECIFIED),
+// so this gate covers every index kind via indexes.Supported.
+func validateOrderCreateIndex(order *raftcmdpb.Order) domain.Describable {
+	apply, ok := order.GetLedgerScoped().GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply)
+	if !ok {
+		return nil
+	}
+
+	ci, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateIndex)
+	if !ok {
+		return nil
+	}
+
+	if !indexes.Supported(ci.CreateIndex.GetId()) {
+		return ErrIndexTargetUnsupported
+	}
+
+	return nil
+}
+
 // validateOrderPreparedQuery rejects prepared-query orders whose payload is
 // malformed. After moving `ledger` off `common.PreparedQuery` onto the
 // surrounding wrapper (PR #522), a request with a valid wrapper ledger but
@@ -225,7 +269,21 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 			return domain.ErrPreparedQueryRequired
 		}
 
-		return domain.ValidatePreparedQueryName(q.GetName())
+		if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+			return err
+		}
+
+		// Reject a target the prepared-query executor cannot run (AUDIT, and any
+		// non-executable value a gRPC caller could set directly) before it is
+		// persisted, and validate each filter condition against that specific
+		// target — not the union of REST targets — so an ACCOUNTS query cannot
+		// store transaction-only conditions. Both gates share the commonpb
+		// validity table with the compile layer (EN-1504).
+		if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+			return domain.ErrPreparedQueryTargetUnsupported
+		}
+
+		return domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget())
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:
 		return domain.ValidatePreparedQueryName(p.UpdatePreparedQuery.GetName())
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:

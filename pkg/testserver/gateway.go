@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -282,7 +283,7 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 			for _, raftReqMsg := range req.GetRaft().GetMessages() {
 				raftMsg := &raftpb.Message{}
 
-				err := raftMsg.Unmarshal(raftReqMsg.GetMessage())
+				err := proto.Unmarshal(raftReqMsg.GetMessage(), raftMsg)
 				if err != nil {
 					g.logger.WithFields(map[string]any{
 						"error": err,
@@ -297,9 +298,9 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 				if !interceptor.InterceptRequest(raftMsg) {
 					if g.logger.Enabled(logging.DebugLevel) {
 						g.logger.WithFields(map[string]any{
-							"from_node": raftMsg.From,
-							"to_node":   raftMsg.To,
-							"msg_type":  raftMsg.Type.String(),
+							"from_node": raftMsg.GetFrom(),
+							"to_node":   raftMsg.GetTo(),
+							"msg_type":  raftMsg.GetType().String(),
 						}).Debugf("Message blocked by interceptor")
 					}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -33,16 +34,29 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	filter, err := decodePreparedQueryFilter(body.Filter)
+	target, err := parsePreparedQueryTarget(body.Target)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
 	}
 
-	target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	if body.Target == "TRANSACTIONS" {
-		target = commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+	// The `filter` field accepts either the structured v2 JSON DSL or a
+	// JSON-quoted textual filterexpr expression (EN-1511); DecodeDualFormat
+	// detects the form and runs the per-target validity gate for `target` — the
+	// same domain.ValidateFilterForTarget admission + FSM re-run, so gRPC callers
+	// and the update path are covered too (EN-1504).
+	filter, err := filterexpr.DecodeDualFormat(body.Filter, target)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", err)
+
+		return
+	}
+
+	if filter == nil {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("filter is required"))
+
+		return
 	}
 
 	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{

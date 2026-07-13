@@ -19,11 +19,14 @@ type Controller interface {
 
 	// Read operations
 	// GetTransaction returns the transaction and the receipt the serving node
-	// signed. The receipt is nil when this layer produced none — a locally-served
-	// read, where the gRPC adapter signs it from the post-read snapshot. It is
-	// non-nil and authoritative (possibly an empty string, e.g. a reversal) when
-	// the read was forwarded to a signing node, and must be used as-is rather than
-	// recomputed against a possibly-stale local snapshot.
+	// signed. On a locally-served read the receipt is signed by the controller
+	// from a snapshot opened after the transaction read (its freshness barrier):
+	// non-nil when a signer is configured — possibly an empty string, e.g. a
+	// reversal — and nil when the node has no signer. When the read is forwarded
+	// to a signing node the returned receipt is that node's authoritative token
+	// (again possibly empty), relayed as-is rather than recomputed against a
+	// possibly-stale local snapshot. Adapters surface the token verbatim and must
+	// not re-sign it.
 	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error)
 	ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
 	GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
@@ -39,7 +42,7 @@ type Controller interface {
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations
-	ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error)
+	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
 	// Chapter operations
@@ -68,10 +71,20 @@ type Controller interface {
 
 	// Cluster-wide config operations (read-only)
 	GetChapterSchedule(ctx context.Context) (string, error)
-	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error)
+	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)
 
 	// Index inspection
 	InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)
+
+	// Index registry — ListIndexes streams the bucket-scoped index registry
+	// (optionally filtered by ledger via req.Scope/req.Ledger),
+	// GetIndexStatus returns the aggregated (per-index cursor + per-replica
+	// version) snapshot exposed on the registry, and the single-entry
+	// getters return the Index / IndexEntry for a given (ledger, id) tuple.
+	ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)
+	GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)
+	GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error)
+	GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)
 
 	// Write operations - single entry point for all requests. The ApplyRequest
 	// is one atomic batch, signed or unsigned at the batch level.

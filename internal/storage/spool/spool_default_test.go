@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
 func newTestSpool(t *testing.T) *Default {
@@ -28,10 +29,10 @@ func newTestSpool(t *testing.T) *Default {
 	return s
 }
 
-func makeEntry(index uint64) raftpb.Entry {
-	return raftpb.Entry{
-		Index: index,
-		Term:  1,
+func makeEntry(index uint64) *raftpb.Entry {
+	return &raftpb.Entry{
+		Index: new(index),
+		Term:  proto.Uint64(1),
 		Data:  []byte("test-data"),
 	}
 }
@@ -116,12 +117,12 @@ func corruptRecordCRCAt(t *testing.T, path string, offset int64) {
 	require.NoError(t, err)
 }
 
-func collectEntries(t *testing.T, s *Default, end *Position, lastApplied uint64) []raftpb.Entry {
+func collectEntries(t *testing.T, s *Default, end *Position, lastApplied uint64) []*raftpb.Entry {
 	t.Helper()
 
-	var entries []raftpb.Entry
+	var entries []*raftpb.Entry
 
-	err := s.ReplayUntil(context.Background(), *end, lastApplied, func(e raftpb.Entry) error {
+	err := s.ReplayUntil(context.Background(), *end, lastApplied, func(e *raftpb.Entry) error {
 		entries = append(entries, e)
 
 		return nil
@@ -148,9 +149,9 @@ func TestDefaultSpoolFullCycle(t *testing.T) {
 	// Replay all (lastApplied=0 means all entries are new)
 	entries := collectEntries(t, s, end, 0)
 	require.Len(t, entries, 3)
-	require.Equal(t, uint64(1), entries[0].Index)
-	require.Equal(t, uint64(2), entries[1].Index)
-	require.Equal(t, uint64(3), entries[2].Index)
+	require.Equal(t, uint64(1), entries[0].GetIndex())
+	require.Equal(t, uint64(2), entries[1].GetIndex())
+	require.Equal(t, uint64(3), entries[2].GetIndex())
 }
 
 func TestDefaultSpoolReplayFiltersApplied(t *testing.T) {
@@ -168,8 +169,8 @@ func TestDefaultSpoolReplayFiltersApplied(t *testing.T) {
 	// Only entries with Index > 2 should be applied
 	entries := collectEntries(t, s, end, 2)
 	require.Len(t, entries, 2)
-	require.Equal(t, uint64(3), entries[0].Index)
-	require.Equal(t, uint64(4), entries[1].Index)
+	require.Equal(t, uint64(3), entries[0].GetIndex())
+	require.Equal(t, uint64(4), entries[1].GetIndex())
 }
 
 func TestDefaultSpoolReplayUntilEmptySpool(t *testing.T) {
@@ -253,8 +254,8 @@ func TestDefaultSpoolAdvanceReadCacheBetweenReplays(t *testing.T) {
 	// Replay from where we left off
 	entries = collectEntries(t, s, end2, 0)
 	require.Len(t, entries, 2)
-	require.Equal(t, uint64(3), entries[0].Index)
-	require.Equal(t, uint64(4), entries[1].Index)
+	require.Equal(t, uint64(3), entries[0].GetIndex())
+	require.Equal(t, uint64(4), entries[1].GetIndex())
 }
 
 func TestDefaultSpoolRotation(t *testing.T) {
@@ -280,8 +281,8 @@ func TestDefaultSpoolRotation(t *testing.T) {
 
 	entries := collectEntries(t, s, end, 0)
 	require.Len(t, entries, 200)
-	require.Equal(t, uint64(1), entries[0].Index)
-	require.Equal(t, uint64(200), entries[199].Index)
+	require.Equal(t, uint64(1), entries[0].GetIndex())
+	require.Equal(t, uint64(200), entries[199].GetIndex())
 }
 
 func TestDefaultSpoolPruneRemovesOldSegments(t *testing.T) {
@@ -321,8 +322,8 @@ func TestDefaultSpoolPruneRemovesOldSegments(t *testing.T) {
 	end, err := s2.End()
 	require.NoError(t, err)
 
-	var remaining []raftpb.Entry
-	require.NoError(t, s2.ReplayUntil(context.Background(), *end, 150, func(e raftpb.Entry) error {
+	var remaining []*raftpb.Entry
+	require.NoError(t, s2.ReplayUntil(context.Background(), *end, 150, func(e *raftpb.Entry) error {
 		remaining = append(remaining, e)
 
 		return nil
@@ -330,7 +331,7 @@ func TestDefaultSpoolPruneRemovesOldSegments(t *testing.T) {
 
 	// All remaining entries should have Index > 150
 	for _, e := range remaining {
-		require.Greater(t, e.Index, uint64(150))
+		require.Greater(t, e.GetIndex(), uint64(150))
 	}
 
 	require.NoError(t, s2.Close())
@@ -384,7 +385,7 @@ func TestDefaultSpoolReplayContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	err = s.ReplayUntil(ctx, *end, 0, func(_ raftpb.Entry) error {
+	err = s.ReplayUntil(ctx, *end, 0, func(_ *raftpb.Entry) error {
 		return nil
 	})
 	require.ErrorIs(t, err, context.Canceled)
@@ -415,7 +416,7 @@ func TestDefaultSpoolReplayApplyError(t *testing.T) {
 	require.NoError(t, err)
 
 	applyErr := errors.New("apply failed")
-	err = s.ReplayUntil(context.Background(), *end, 0, func(_ raftpb.Entry) error {
+	err = s.ReplayUntil(context.Background(), *end, 0, func(_ *raftpb.Entry) error {
 		return applyErr
 	})
 	require.ErrorIs(t, err, applyErr)
@@ -455,16 +456,16 @@ func TestDefaultSpoolReplayReturnsErrorOnPartialRecord(t *testing.T) {
 	end, err := s2.End()
 	require.NoError(t, err)
 
-	var entries []raftpb.Entry
-	err = s2.ReplayUntil(context.Background(), *end, 0, func(e raftpb.Entry) error {
+	var entries []*raftpb.Entry
+	err = s2.ReplayUntil(context.Background(), *end, 0, func(e *raftpb.Entry) error {
 		entries = append(entries, e)
 
 		return nil
 	})
 	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	require.Len(t, entries, 3)
-	require.Equal(t, uint64(1), entries[0].Index)
-	require.Equal(t, uint64(3), entries[2].Index)
+	require.Equal(t, uint64(1), entries[0].GetIndex())
+	require.Equal(t, uint64(3), entries[2].GetIndex())
 	require.Equal(t, corruptedSize, requireSegmentSize(t, lastSeg),
 		"ReplayUntil must not truncate corrupt tails through a separate fd")
 }
@@ -500,16 +501,16 @@ func TestDefaultSpoolReplayReturnsErrorOnCorruptRecord(t *testing.T) {
 	end, err := s2.End()
 	require.NoError(t, err)
 
-	var entries []raftpb.Entry
-	err = s2.ReplayUntil(context.Background(), *end, 0, func(e raftpb.Entry) error {
+	var entries []*raftpb.Entry
+	err = s2.ReplayUntil(context.Background(), *end, 0, func(e *raftpb.Entry) error {
 		entries = append(entries, e)
 
 		return nil
 	})
 	require.ErrorIs(t, err, ErrCorrupt)
 	require.Len(t, entries, 3)
-	require.Equal(t, uint64(1), entries[0].Index)
-	require.Equal(t, uint64(3), entries[2].Index)
+	require.Equal(t, uint64(1), entries[0].GetIndex())
+	require.Equal(t, uint64(3), entries[2].GetIndex())
 	require.Equal(t, corruptedSize, requireSegmentSize(t, lastSeg),
 		"ReplayUntil must not truncate corrupt tails through a separate fd")
 }
@@ -534,8 +535,8 @@ func TestDefaultSpoolReplayCorruptTailDoesNotDesyncLiveWriter(t *testing.T) {
 	lastSeg := requireLastSegment(t, s.cfg.Dir)
 	corruptRecordCRCAt(t, lastSeg, goodEnd.Offset)
 
-	var entries []raftpb.Entry
-	err = s.ReplayUntil(context.Background(), *corruptEnd, 0, func(e raftpb.Entry) error {
+	var entries []*raftpb.Entry
+	err = s.ReplayUntil(context.Background(), *corruptEnd, 0, func(e *raftpb.Entry) error {
 		entries = append(entries, e)
 
 		return nil
@@ -585,8 +586,8 @@ func TestDefaultSpoolCloseAndReopen(t *testing.T) {
 
 	entries := collectEntries(t, s2, end, 0)
 	require.Len(t, entries, 5)
-	require.Equal(t, uint64(1), entries[0].Index)
-	require.Equal(t, uint64(5), entries[4].Index)
+	require.Equal(t, uint64(1), entries[0].GetIndex())
+	require.Equal(t, uint64(5), entries[4].GetIndex())
 
 	require.NoError(t, s2.Close())
 }

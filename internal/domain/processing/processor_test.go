@@ -303,6 +303,121 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	require.Equal(t, uint64(110), response.MaxLogSequence)
 }
 
+// TestProcessOrders_SkipOnReferenceConflict pins the ProcessOrders skip
+// integration glue: matchOrderSkip, assignSkipLogIDAndDate and the
+// overlay-scoped rollback are individually unit-tested, but the
+// interleaving that ties them into a full skip cycle only surfaced under
+// e2e. This test drives the full unit-level path: a duplicate reference
+// triggers ErrTransactionReferenceConflict from processCreateTransaction,
+// ProcessOrders converts it into an OrderSkippedLog, allocates its log
+// id/date on the PARENT scope (not the overlay — the overlay is
+// discarded), and stamps a sequence id from IncrementNextSequenceID.
+func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 42}
+
+	// Existing reference: the audit-bound claim recorded by an earlier
+	// successful CreateTransaction. Its presence is the condition the
+	// sub-processor detects to raise ErrTransactionReferenceConflict, and
+	// its ExistingTransactionID surfaces on the skip's context so
+	// callers can correlate without a follow-up read.
+	existingRef := &commonpb.TransactionReferenceValue{TransactionId: 7}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
+
+	// The overlay pre-wraps every accessor at construction; register the
+	// stubs even for kinds this test does not exercise so the eager
+	// parent.<Kind>() calls don't fail as unexpected.
+	stubs := stubsFor(mockStore)
+	stubs.volumesStubFor(mockStore)
+	stubs.accountMetadataStubFor(mockStore)
+	stubs.transactionStatesStubFor(mockStore)
+	stubs.indexesStubFor(mockStore)
+	mockStore.EXPECT().LedgerMetadata().Return(&kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{}).AnyTimes()
+	mockStore.EXPECT().PreparedQueries().Return(&kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{}).AnyTimes()
+
+	trStub, _ := stubs.transactionReferencesStubFor(mockStore)
+	trStub.expectGet(domain.TransactionReferenceKey{LedgerName: "test-ledger", Reference: "ref-x"}, existingRef.AsReader(), nil)
+
+	// assignSkipLogIDAndDate reads GetDate() for the skip log's Date and
+	// bumps Boundaries.NextLogId on the parent — the boundary Put MUST
+	// hit the parent (not the discarded overlay) so the ledger-local log
+	// id sequence is preserved across the skip.
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	var putBoundaries *raftcmdpb.LedgerBoundaries
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, b *raftcmdpb.LedgerBoundaries) {
+		putBoundaries = b
+	})
+
+	// Global proposal-level sequence ID for the skip log.
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Postings: []*commonpb.Posting{{
+									Source:      "bank",
+									Destination: "users:123",
+									Amount:      commonpb.NewUint256FromUint64(100),
+									Asset:       "USD",
+								}},
+								Reference: "ref-x",
+							},
+						},
+						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
+					},
+				},
+			},
+		},
+	}
+
+	response, err := processor.ProcessOrders([]*raftcmdpb.Order{order}, mockFactory(mockStore), noopSink{})
+	require.NoError(t, err, "skip-tolerant order must not surface the whitelisted failure")
+	require.NotNil(t, response)
+
+	require.Len(t, response.CreatedLogs, 1, "the skip cycle must emit exactly one log")
+	require.Equal(t, uint64(100), response.CreatedLogs[0].GetSequence(), "the skip log must carry the sequence id from IncrementNextSequenceID")
+
+	require.Len(t, response.Logs, 1)
+	created := response.Logs[0].GetCreatedLog()
+	require.NotNil(t, created, "skip log must be materialised as CreatedLog (not a reference)")
+
+	apply := created.GetPayload().GetApply()
+	require.NotNil(t, apply)
+	require.Equal(t, "test-ledger", apply.GetLedgerName())
+	require.Equal(t, uint64(42), apply.GetLog().GetId(), "the skip log must consume the parent's NextLogId slot")
+	require.NotNil(t, apply.GetLog().GetDate(), "the skip log must carry a Date stamped from the parent Scope")
+
+	skipped := apply.GetLog().GetData().GetOrderSkipped()
+	require.NotNil(t, skipped, "the log payload must be OrderSkipped, not the failed CreateTransaction")
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, "test-ledger", skipped.GetContext()["ledger"])
+	require.Equal(t, "ref-x", skipped.GetContext()["reference"])
+
+	// Parent boundary Put must reflect the incremented slot: the skip
+	// consumed log id 42, next slot is 43.
+	require.NotNil(t, putBoundaries)
+	require.Equal(t, uint64(43), putBoundaries.GetNextLogId(), "parent NextLogId must advance past the skip")
+
+	require.Equal(t, uint64(100), response.MinLogSequence)
+	require.Equal(t, uint64(100), response.MaxLogSequence)
+}
+
 // TestProcessOrders_OrdersResultEmpty asserts the empty-batch sentinel:
 // no orders → empty CreatedLogs, MinLogSequence == MaxLogSequence == 0.
 // The AppliedProposal sync skips entries with MaxLogSequence == 0

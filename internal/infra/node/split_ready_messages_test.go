@@ -6,7 +6,31 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	raftpb "go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
+
+// msg builds a *raftpb.Message from scalar fields for terse test literals.
+func msg(mtype raftpb.MessageType, from, to uint64) *raftpb.Message {
+	return &raftpb.Message{
+		Type: new(mtype),
+		From: new(from),
+		To:   new(to),
+	}
+}
+
+func msgWithIndex(mtype raftpb.MessageType, from, to, index uint64) *raftpb.Message {
+	m := msg(mtype, from, to)
+	m.Index = new(index)
+
+	return m
+}
+
+func msgWithTerm(mtype raftpb.MessageType, from, to, term uint64) *raftpb.Message {
+	m := msg(mtype, from, to)
+	m.Term = new(term)
+
+	return m
+}
 
 // TestSplitReadyMessages_EmptyInput covers the trivial case.
 func TestSplitReadyMessages_EmptyInput(t *testing.T) {
@@ -25,9 +49,9 @@ func TestSplitReadyMessages_OutboundPassthrough(t *testing.T) {
 
 	const self = uint64(1)
 
-	msgs := []raftpb.Message{
-		{Type: raftpb.MsgApp, From: self, To: 2},
-		{Type: raftpb.MsgHeartbeat, From: self, To: 3},
+	msgs := []*raftpb.Message{
+		msg(raftpb.MsgApp, self, 2),
+		msg(raftpb.MsgHeartbeat, self, 3),
 	}
 
 	appendR, applyR, out := splitReadyMessages(self, msgs)
@@ -46,18 +70,19 @@ func TestSplitReadyMessages_AppendResponsesSelfPeerSplit(t *testing.T) {
 
 	const self = uint64(1)
 
-	selfAppendResp := raftpb.Message{Type: raftpb.MsgStorageAppendResp, To: self, From: raft.LocalAppendThread, Index: 42}
-	selfAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: self, From: self, Index: 42} // leader's self-ack
-	peerVoteResp := raftpb.Message{Type: raftpb.MsgVoteResp, To: 2, From: self, Term: 3}    // held back until durable
-	peerAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: 3, From: self, Index: 42}    // follower→leader after append
-	peerAppRespReject := raftpb.Message{Type: raftpb.MsgAppResp, To: 4, From: self, Reject: true}
+	selfAppendResp := msgWithIndex(raftpb.MsgStorageAppendResp, raft.LocalAppendThread, self, 42)
+	selfAppResp := msgWithIndex(raftpb.MsgAppResp, self, self, 42) // leader's self-ack
+	peerVoteResp := msgWithTerm(raftpb.MsgVoteResp, self, 2, 3)    // held back until durable
+	peerAppResp := msgWithIndex(raftpb.MsgAppResp, self, 3, 42)    // follower→leader after append
+	peerAppRespReject := msg(raftpb.MsgAppResp, self, 4)
+	peerAppRespReject.Reject = new(true)
 
-	msgs := []raftpb.Message{
+	msgs := []*raftpb.Message{
 		{
-			Type: raftpb.MsgStorageAppend,
-			To:   raft.LocalAppendThread,
-			From: self,
-			Responses: []raftpb.Message{
+			Type: new(raftpb.MsgStorageAppend),
+			To:   proto.Uint64(raft.LocalAppendThread),
+			From: proto.Uint64(self),
+			Responses: []*raftpb.Message{
 				selfAppendResp,
 				selfAppResp,
 				peerVoteResp,
@@ -69,10 +94,10 @@ func TestSplitReadyMessages_AppendResponsesSelfPeerSplit(t *testing.T) {
 
 	appendR, applyR, out := splitReadyMessages(self, msgs)
 
-	require.Equal(t, []raftpb.Message{selfAppendResp, selfAppResp}, appendR,
+	require.Equal(t, []*raftpb.Message{selfAppendResp, selfAppResp}, appendR,
 		"self-directed responses must go to appendResponses")
 	require.Empty(t, applyR)
-	require.Equal(t, []raftpb.Message{peerVoteResp, peerAppResp, peerAppRespReject}, out,
+	require.Equal(t, []*raftpb.Message{peerVoteResp, peerAppResp, peerAppRespReject}, out,
 		"peer-directed responses must go to outbound (transport.Send)")
 }
 
@@ -85,20 +110,20 @@ func TestSplitReadyMessages_ApplyResponsesNoSplit(t *testing.T) {
 
 	const self = uint64(1)
 
-	applyResp := raftpb.Message{Type: raftpb.MsgStorageApplyResp, To: self, From: raft.LocalApplyThread, Index: 42}
+	applyResp := msgWithIndex(raftpb.MsgStorageApplyResp, raft.LocalApplyThread, self, 42)
 
-	msgs := []raftpb.Message{
+	msgs := []*raftpb.Message{
 		{
-			Type:      raftpb.MsgStorageApply,
-			To:        raft.LocalApplyThread,
-			From:      self,
-			Responses: []raftpb.Message{applyResp},
+			Type:      new(raftpb.MsgStorageApply),
+			To:        proto.Uint64(raft.LocalApplyThread),
+			From:      proto.Uint64(self),
+			Responses: []*raftpb.Message{applyResp},
 		},
 	}
 
 	appendR, applyR, out := splitReadyMessages(self, msgs)
 	require.Empty(t, appendR)
-	require.Equal(t, []raftpb.Message{applyResp}, applyR)
+	require.Equal(t, []*raftpb.Message{applyResp}, applyR)
 	require.Empty(t, out)
 }
 
@@ -111,32 +136,32 @@ func TestSplitReadyMessages_MixedRealisticReady(t *testing.T) {
 
 	const self = uint64(1)
 
-	outboundApp := raftpb.Message{Type: raftpb.MsgApp, From: self, To: 2, Index: 5}
-	selfAppendResp := raftpb.Message{Type: raftpb.MsgStorageAppendResp, To: self, From: raft.LocalAppendThread, Index: 6}
-	selfAppResp := raftpb.Message{Type: raftpb.MsgAppResp, To: self, From: self, Index: 6}
-	applyResp := raftpb.Message{Type: raftpb.MsgStorageApplyResp, To: self, From: raft.LocalApplyThread, Index: 5}
+	outboundApp := msgWithIndex(raftpb.MsgApp, self, 2, 5)
+	selfAppendResp := msgWithIndex(raftpb.MsgStorageAppendResp, raft.LocalAppendThread, self, 6)
+	selfAppResp := msgWithIndex(raftpb.MsgAppResp, self, self, 6)
+	applyResp := msgWithIndex(raftpb.MsgStorageApplyResp, raft.LocalApplyThread, self, 5)
 
-	msgs := []raftpb.Message{
+	msgs := []*raftpb.Message{
 		outboundApp,
 		{
-			Type:      raftpb.MsgStorageAppend,
-			To:        raft.LocalAppendThread,
-			From:      self,
-			Responses: []raftpb.Message{selfAppendResp, selfAppResp},
+			Type:      new(raftpb.MsgStorageAppend),
+			To:        proto.Uint64(raft.LocalAppendThread),
+			From:      proto.Uint64(self),
+			Responses: []*raftpb.Message{selfAppendResp, selfAppResp},
 		},
 		{
-			Type:      raftpb.MsgStorageApply,
-			To:        raft.LocalApplyThread,
-			From:      self,
-			Responses: []raftpb.Message{applyResp},
+			Type:      new(raftpb.MsgStorageApply),
+			To:        proto.Uint64(raft.LocalApplyThread),
+			From:      proto.Uint64(self),
+			Responses: []*raftpb.Message{applyResp},
 		},
 	}
 
 	appendR, applyR, out := splitReadyMessages(self, msgs)
 
-	require.Equal(t, []raftpb.Message{selfAppendResp, selfAppResp}, appendR)
-	require.Equal(t, []raftpb.Message{applyResp}, applyR)
-	require.Equal(t, []raftpb.Message{outboundApp}, out)
+	require.Equal(t, []*raftpb.Message{selfAppendResp, selfAppResp}, appendR)
+	require.Equal(t, []*raftpb.Message{applyResp}, applyR)
+	require.Equal(t, []*raftpb.Message{outboundApp}, out)
 }
 
 // TestSplitReadyMessages_FollowerAllPeer — a follower after appending has no
@@ -148,20 +173,20 @@ func TestSplitReadyMessages_FollowerAllPeer(t *testing.T) {
 	const self = uint64(2) // follower
 	const leader = uint64(1)
 
-	selfAppendResp := raftpb.Message{Type: raftpb.MsgStorageAppendResp, To: self, From: raft.LocalAppendThread, Index: 6}
-	appRespToLeader := raftpb.Message{Type: raftpb.MsgAppResp, To: leader, From: self, Index: 6}
+	selfAppendResp := msgWithIndex(raftpb.MsgStorageAppendResp, raft.LocalAppendThread, self, 6)
+	appRespToLeader := msgWithIndex(raftpb.MsgAppResp, self, leader, 6)
 
-	msgs := []raftpb.Message{
+	msgs := []*raftpb.Message{
 		{
-			Type:      raftpb.MsgStorageAppend,
-			To:        raft.LocalAppendThread,
-			From:      self,
-			Responses: []raftpb.Message{selfAppendResp, appRespToLeader},
+			Type:      new(raftpb.MsgStorageAppend),
+			To:        proto.Uint64(raft.LocalAppendThread),
+			From:      proto.Uint64(self),
+			Responses: []*raftpb.Message{selfAppendResp, appRespToLeader},
 		},
 	}
 
 	appendR, _, out := splitReadyMessages(self, msgs)
-	require.Equal(t, []raftpb.Message{selfAppendResp}, appendR)
-	require.Equal(t, []raftpb.Message{appRespToLeader}, out,
+	require.Equal(t, []*raftpb.Message{selfAppendResp}, appendR)
+	require.Equal(t, []*raftpb.Message{appRespToLeader}, out,
 		"follower's MsgAppResp to leader must exit via transport")
 }

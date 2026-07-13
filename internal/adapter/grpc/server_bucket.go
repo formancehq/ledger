@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -27,7 +26,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
@@ -65,12 +63,13 @@ type BucketServiceServerImpl struct {
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	clusterID             string
+	idempotencyTTL        time.Duration
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, idempotencyTTL time.Duration, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -93,6 +92,7 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		clusterID:             clusterID,
+		idempotencyTTL:        idempotencyTTL,
 		info:                  info,
 		applyDuration:         applyDuration,
 		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
@@ -319,15 +319,14 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	var (
 		tx *commonpb.Transaction
-		// reader is the store a locally-derived receipt is read from: the
-		// checkpoint's fixed store, or (live path) a snapshot opened AFTER the
-		// transaction read so it can't predate the creation log. fwdReceipt is
-		// non-nil only when the read was forwarded to a signing node, which already
-		// produced the (authoritative, possibly empty) receipt — then we use it
-		// as-is rather than re-deriving from a possibly-stale local snapshot.
-		reader     dal.PebbleGetter
-		fwdReceipt *string
-		err        error
+		// receipt is the token to relay to the client. On the live path it is the
+		// receipt the controller signed (nil when this node has no signer) or, when
+		// the read was forwarded to a signing node, the authoritative token that node
+		// produced — used as-is rather than re-derived from a possibly-stale local
+		// snapshot. On the checkpoint path it is signed here from the checkpoint's
+		// fixed store, which the live controller does not read.
+		receipt *string
+		err     error
 	)
 
 	checkpoint := req.GetCheckpointId() > 0
@@ -342,82 +341,40 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 			_ = mainStore.Close()
 		}()
 
-		reader = mainStore
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
-	} else {
-		tx, fwdReceipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
-	}
+		if err != nil {
+			return nil, err
+		}
 
-	if err != nil {
-		return nil, err
+		if impl.receiptSigner != nil {
+			// Checkpoint read: sign from the checkpoint's fixed store so the
+			// receipt's ledger + creation-log reads stay self-consistent with the
+			// transaction, which was read from that same store.
+			receiptToken, cErr := impl.localCtrl.ComputeTransactionReceipt(ctx, mainStore, req.GetLedger(), req.GetTransactionId(), tx)
+			if cErr != nil {
+				return nil, fmt.Errorf("computing transaction receipt: %w", cErr)
+			}
+
+			receipt = &receiptToken
+		}
+	} else {
+		// Live path: the controller reads the transaction and, on the local branch,
+		// signs the receipt from a snapshot opened after the transaction read (its
+		// freshness barrier). When the read is forwarded to a signing node, the
+		// controller relays that node's authoritative receipt. Either way the
+		// receipt is already correct here — this adapter no longer re-signs.
+		tx, receipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
-	switch {
-	case fwdReceipt != nil:
-		// Forwarded read: relay the receipt the serving node signed (possibly
-		// empty, e.g. a reversal). It is already an authoritative token, so this
-		// node passes it through whether or not it can sign — re-deriving would
-		// read a possibly-stale local snapshot.
-		resp.Receipt = *fwdReceipt
-	case impl.receiptSigner != nil:
-		// Locally-served read: sign from a snapshot opened now — after the
-		// transaction read barrier — so the receipt's ledger + creation-log reads
-		// share one committed state at least as fresh as the transaction.
-		if !checkpoint {
-			handle, hErr := impl.store.NewReadHandle()
-			if hErr != nil {
-				return nil, fmt.Errorf("creating read handle: %w", hErr)
-			}
-
-			defer func() { _ = handle.Close() }()
-
-			reader = handle
-		}
-
-		receiptToken, err := impl.computeTransactionReceipt(ctx, reader, req.GetLedger(), req.GetTransactionId(), tx)
-		if err != nil {
-			return nil, fmt.Errorf("computing transaction receipt: %w", err)
-		}
-
-		resp.Receipt = receiptToken
+	if receipt != nil {
+		resp.Receipt = *receipt
 	}
 
 	return resp, nil
-}
-
-// computeTransactionReceipt computes a JWT receipt for an existing transaction
-// by looking up its creation log to extract the chapter ID. Ledger info and the
-// creation log are read from the supplied reader — the same store the
-// transaction was read from — so checkpoint reads stay self-consistent.
-func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
-	if err != nil {
-		return "", err
-	}
-
-	log, err := query.FindTransactionCreationLog(ctx, reader, impl.attrs.Transaction, ledgerInfo.GetName(), txID)
-	if errors.Is(err, domain.ErrNotFound) {
-		// No creation log for this transaction in this store (e.g. its log was
-		// archived/purged). The transaction is still readable; it just has no
-		// receipt. Not an error.
-		return "", nil
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// Receipts are only issued for created transactions, matching the Apply path
-	// (signReceiptIfNeeded skips non-created logs). A reversal transaction's
-	// creation log is a RevertedTransaction log, so it legitimately has no
-	// receipt — return empty rather than erroring.
-	created := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
-	if created == nil {
-		return "", nil
-	}
-
-	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetChapterId())
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
@@ -567,6 +524,55 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 	}
 
 	return impl.readStore.WaitForSequence(ctx, minLogSequence)
+}
+
+// waitFilteredAuditConsistency gives a live, filtered ListAuditEntries read a
+// read-your-writes guarantee against the async audit secondary index.
+//
+// min_log_sequence is a LOG sequence, but a filtered audit read resolves through
+// the audit index whose cursor (ReadAuditProgress) is an AUDIT sequence. The two
+// spaces diverge — the audit sequence advances on every proposal, including
+// failures that emit no log — so waiting for audit_progress >= min_log_sequence
+// would be incorrect. Instead, conservatively:
+//
+//  1. wait for the log index to reach min_log_sequence (waitMinLogSequence);
+//  2. read the current live audit head from the main store;
+//  3. wait for the audit index cursor to reach that observed head.
+//
+// This can over-wait (the head observed in step 2 may include audit entries
+// produced after min_log_sequence), which is acceptable for v3.0 and avoids a
+// new min_audit_sequence API. A minLogSeq of 0 means "no consistency bound
+// requested", so this is a no-op.
+//
+// Only the LIVE filtered path calls this. Unfiltered reads scan the Cold/Audit
+// zone directly and are always current, so they keep the direct fast path.
+// Checkpoint reads are frozen snapshots and are handled (and documented) at the
+// checkpoint-creation boundary, out of scope here.
+func (impl *BucketServiceServerImpl) waitFilteredAuditConsistency(ctx context.Context, minLogSeq uint64) error {
+	if minLogSeq == 0 {
+		return nil
+	}
+
+	if err := impl.waitMinLogSequence(ctx, minLogSeq); err != nil {
+		return err
+	}
+
+	handle, err := impl.store.NewDirectReadHandle()
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "opening read handle for audit head: %v", err)
+	}
+
+	auditHead, err := query.ReadLastAuditSequence(handle)
+	// Close before waiting: the handle holds dbMu.RLock for its lifetime, and the
+	// wait below can block for a while. We only need the head value, not the
+	// handle, past this point.
+	_ = handle.Close()
+
+	if err != nil {
+		return status.Errorf(codes.Internal, "reading live audit head: %v", err)
+	}
+
+	return impl.readStore.WaitForAuditSequence(ctx, auditHead)
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
@@ -859,159 +865,44 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *se
 		return nil, err
 	}
 
-	ledgerFilter := req.GetLedger()
+	return impl.ctrl.GetIndexStatus(ctx, req)
+}
 
-	lastIndexed, err := impl.readStore.LastIndexedSequence()
-	if err != nil {
-		return nil, fmt.Errorf("reading last indexed sequence: %w", err)
+// GetIndex returns a single Index registry entry. Scope aligns with
+// ListIndexes SCOPE_LEDGER (a per-ledger read tokens must be accepted).
+func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	requiredScope := internalauth.ScopeOpsRead
+	if req.GetLedger() != "" {
+		requiredScope = internalauth.ScopeLedgersRead
 	}
 
-	handle, err := impl.store.NewDirectReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-	defer func() { _ = handle.Close() }()
-
-	lastLog, err := query.ReadLastSequence(handle)
-	if err != nil {
-		return nil, fmt.Errorf("reading last log sequence: %w", err)
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
+		return nil, err
 	}
 
-	var lag uint64
-	if lastLog > lastIndexed {
-		lag = lastLog - lastIndexed
+	return impl.ctrl.GetIndex(ctx, req)
+}
+
+// GetIndexEntryStatus returns the per-replica status view for a single
+// index. Same auth model as GetIndex.
+func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	requiredScope := internalauth.ScopeOpsRead
+	if req.GetLedger() != "" {
+		requiredScope = internalauth.ScopeLedgersRead
 	}
 
-	var fileSize uint64
-	if info, err := os.Stat(impl.readStore.Path()); err == nil {
-		fileSize = uint64(info.Size())
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
+		return nil, err
 	}
 
-	// Read per-index backfill cursors keyed by (ledger name, IndexID canonical).
-	backfillEntries, err := impl.readStore.ListBackfillProgress()
-	if err != nil {
-		return nil, fmt.Errorf("reading backfill progress: %w", err)
-	}
-
-	type cursorKey struct {
-		ledger    string
-		canonical string
-	}
-
-	cursors := make(map[cursorKey]uint64, len(backfillEntries))
-
-	for _, e := range backfillEntries {
-		id := indexIDFromBackfillEntry(e)
-		if id == nil {
-			continue
-		}
-
-		cursors[cursorKey{ledger: e.LedgerName, canonical: indexes.Canonical(id)}] = e.Cursor
-	}
-
-	// Build a name → id map for active ledgers so the streaming scan of the
-	// index registry can attach the ledger ID needed for the backfill-cursor
-	// lookup and skip orphans from tombstoned ledgers in one pass.
-	ledgerCursor, err := query.ReadLedgers(ctx, handle)
-	if err != nil {
-		return nil, fmt.Errorf("reading ledgers: %w", err)
-	}
-	defer func() { _ = ledgerCursor.Close() }()
-
-	ledgerNameToID := make(map[string]uint32)
-
-	for {
-		info, lErr := ledgerCursor.Next()
-		if lErr != nil {
-			if errors.Is(lErr, io.EOF) {
-				break
-			}
-
-			return nil, fmt.Errorf("iterating ledgers: %w", lErr)
-		}
-
-		if info.GetDeletedAt() != nil {
-			continue
-		}
-
-		ledgerNameToID[info.GetName()] = info.GetId()
-	}
-
-	idxIter, err := impl.attrs.Index.NewStreamingIter(handle, nil)
-	if err != nil {
-		return nil, fmt.Errorf("opening index registry iterator: %w", err)
-	}
-	defer func() { _ = idxIter.Close() }()
-
-	var entries []*servicepb.IndexEntry
-
-	for idxIter.Next() {
-		idx := idxIter.Entry().Value
-		if idx == nil || idx.GetId() == nil {
-			continue
-		}
-
-		name := idx.GetLedger()
-
-		if name != "" {
-			if _, ok := ledgerNameToID[name]; !ok {
-				continue // orphan or tombstoned ledger — skip
-			}
-		}
-
-		if ledgerFilter != "" && name != ledgerFilter {
-			continue
-		}
-
-		canonical := indexes.Canonical(idx.GetId())
-		entry := &servicepb.IndexEntry{
-			Ledger: name,
-			Index:  idx,
-			Cursor: cursors[cursorKey{ledger: name, canonical: canonical}],
-		}
-
-		// Per-replica forward-encoding state. (0, 0) is the default
-		// zero value when the cache has no record — equivalent to
-		// "not yet built on this replica" so clients reading
-		// current_version == 0 keep the same semantics regardless of
-		// whether the entry exists or not. A real Pebble I/O failure
-		// surfaces as a logged warning + zero state — the status RPC
-		// is informational, so degrading to "BUILDING-looking" beats
-		// failing the whole response, but we log so operators can
-		// correlate.
-		state, ok, stateErr := impl.readStore.ReadIndexVersionState(name, canonical)
-		if stateErr != nil {
-			impl.logger.WithFields(map[string]any{
-				"ledger":    name,
-				"canonical": canonical,
-				"error":     stateErr,
-			}).Errorf("Reading IndexVersionState for GetIndexStatus")
-		} else if ok {
-			entry.CurrentVersion = state.CurrentVersion
-			entry.PendingVersion = state.PendingVersion
-		}
-
-		entries = append(entries, entry)
-	}
-
-	if err := idxIter.Err(); err != nil {
-		return nil, fmt.Errorf("iterating index registry: %w", err)
-	}
-
-	return &servicepb.GetIndexStatusResponse{
-		LastIndexedSequence: lastIndexed,
-		LastLogSequence:     lastLog,
-		Lag:                 lag,
-		IndexFileSize:       fileSize,
-		Indexes:             entries,
-	}, nil
+	return impl.ctrl.GetIndexEntryStatus(ctx, req)
 }
 
 // ListIndexes streams the bucket-scoped index registry, optionally filtered
 // to a ledger (or bucket-scoped entries only) via the request Scope field.
-// Filtering happens at the iteration layer: orphan entries belonging to
-// deleted ledgers are skipped, but ALL entries pass to the client when the
-// caller asks for SCOPE_ALL.
+// The filtering and orphan-entry skipping are implemented by
+// DefaultController.ListIndexes; this handler is the gRPC transport that
+// authenticates and pumps the cursor onto the stream.
 func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesRequest, stream servicepb.BucketService_ListIndexesServer) error {
 	ctx := stream.Context()
 
@@ -1029,147 +920,31 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 		return err
 	}
 
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER && req.GetLedger() == "" {
-		return status.Error(codes.InvalidArgument, "scope SCOPE_LEDGER requires a non-empty ledger name")
-	}
-
-	handle, err := impl.store.NewDirectReadHandle()
+	c, err := impl.ctrl.ListIndexes(ctx, req)
 	if err != nil {
-		return fmt.Errorf("creating read handle: %w", err)
-	}
-	defer func() { _ = handle.Close() }()
-
-	// For SCOPE_LEDGER, probe ledger existence up front. A missing or
-	// soft-deleted ledger surfaces as NotFound — callers migrating from the
-	// previous LedgerInfo-embedded view (ledgerctl, WaitFor*IndexReady
-	// helpers) used to receive that error via GetLedger and must keep being
-	// able to distinguish "no indexes" from "bad/deleted ledger name"
-	// (PR #453 review). Filtering also avoids surfacing orphan SubAttrIndex
-	// entries that survive in Pebble until the deferred ledger-data purge.
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
-		if _, err := query.GetLedgerByName(ctx, handle, req.GetLedger()); err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return status.Errorf(codes.NotFound, "ledger %q not found", req.GetLedger())
-			}
-
-			return fmt.Errorf("checking ledger %q: %w", req.GetLedger(), err)
+		switch {
+		case errors.Is(err, domain.ErrLedgerNameRequired):
+			return status.Error(codes.InvalidArgument, "scope SCOPE_LEDGER requires a non-empty ledger name")
+		default:
+			return err
 		}
 	}
+	defer func() { _ = c.Close() }()
 
-	// For SCOPE_LEDGER, bound the Pebble iterator to entries whose canonical
-	// key starts with `appendLedgerName(req.Ledger)` (the 64-byte zero-padded
-	// block). Without the bound, the iterator scans every entry in the
-	// SubAttrIndex zone and filters in memory — O(total indexes) instead of
-	// O(per-ledger indexes), which matters on buckets with thousands of
-	// ledgers. SCOPE_BUCKET and SCOPE_ALL keep the unbounded scan: bucket-
-	// scoped entries share the all-zero 64-byte prefix, and ALL needs the
-	// whole zone.
-	var canonicalPrefix []byte
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
-		canonicalPrefix = domain.IndexKey{LedgerName: req.GetLedger()}.Bytes()
-	}
-
-	idxIter, err := impl.attrs.Index.NewStreamingIter(handle, canonicalPrefix)
-	if err != nil {
-		return fmt.Errorf("opening index registry iterator: %w", err)
-	}
-	defer func() { _ = idxIter.Close() }()
-
-	// Memoize ledger existence across the stream — SCOPE_ALL would otherwise
-	// pay one Pebble Get per index entry. Bucket-scoped entries (Ledger == "")
-	// skip the lookup entirely.
-	activeLedger := make(map[string]bool)
-
-	for idxIter.Next() {
-		idx := idxIter.Entry().Value
-		if idx == nil || idx.GetId() == nil {
-			continue
-		}
-
-		switch req.GetScope() {
-		case servicepb.ListIndexesRequest_SCOPE_BUCKET:
-			if idx.GetLedger() != "" {
-				continue
+	for {
+		idx, err := c.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
 			}
-		case servicepb.ListIndexesRequest_SCOPE_LEDGER:
-			if idx.GetLedger() != req.GetLedger() {
-				continue
-			}
-		case servicepb.ListIndexesRequest_SCOPE_ALL:
-			// Drop entries whose owning ledger no longer exists — see the
-			// SCOPE_LEDGER short-circuit above for the orphan rationale.
-			name := idx.GetLedger()
-			if name != "" {
-				alive, cached := activeLedger[name]
-				if !cached {
-					_, err := query.GetLedgerByName(ctx, handle, name)
-					switch {
-					case err == nil:
-						alive = true
-					case errors.Is(err, domain.ErrNotFound):
-						alive = false
-					default:
-						return fmt.Errorf("checking ledger %q: %w", name, err)
-					}
 
-					activeLedger[name] = alive
-				}
-
-				if !alive {
-					continue
-				}
-			}
+			return err
 		}
 
 		if err := stream.Send(idx); err != nil {
 			return err
 		}
 	}
-
-	return idxIter.Err()
-}
-
-// indexIDFromBackfillEntry rebuilds the IndexID associated with a persisted
-// backfill cursor, given the BB-key encoding used by the indexbuilder.
-func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
-	switch e.Kind {
-	case readstore.BackfillKindTxBuiltin:
-		if len(e.Details) < 1 {
-			return nil
-		}
-
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{
-			TxBuiltin: commonpb.TransactionBuiltinIndex(e.Details[0]),
-		}}
-	case readstore.BackfillKindTxMetadata:
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-			Key:    string(e.Details),
-		}}}
-	case readstore.BackfillKindAcctBuiltin:
-		if len(e.Details) < 1 {
-			return nil
-		}
-
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{
-			AccountBuiltin: commonpb.AccountBuiltinIndex(e.Details[0]),
-		}}
-	case readstore.BackfillKindAcctMetadata:
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-			Key:    string(e.Details),
-		}}}
-	case readstore.BackfillKindLogBuiltin:
-		if len(e.Details) < 1 {
-			return nil
-		}
-
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
-		}}
-	}
-
-	return nil
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
@@ -1177,7 +952,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 		return err
 	}
 
-	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.localCtrl.ColdReader(), &impl.idempotencyTTL, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
@@ -1202,13 +977,9 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 
 	opts := req.GetOptions()
 
-	// The audit controller does not yet honor filter / reverse /
-	// checkpoint_id — see #436 for the alignment work.
-	if err := ValidateListOptions(opts, ListOptionsSupport{}); err != nil {
-		return err
-	}
-
-	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
+	// Audit listing is fully under the shared contract: filter (audit[...]
+	// conditions), reverse, and checkpoint_id are all honored (EN-1241).
+	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, Reverse: true, CheckpointID: true}); err != nil {
 		return err
 	}
 
@@ -1218,13 +989,52 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	}
 
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
+	fetchSize := pageSizePlusOne(pageSize)
 
-	var afterSeqPtr *uint64
-	if opts.GetCursor() != "" {
-		afterSeqPtr = &afterSeq
+	var c cursor.Cursor[*auditpb.AuditEntry]
+
+	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
+		mainStore, readIdx, openErr := impl.openCheckpointStores(ctx, cpID)
+		if openErr != nil {
+			return openErr
+		}
+
+		defer func() {
+			_ = readIdx.Close()
+			_ = mainStore.Close()
+		}()
+
+		// Known limitation (tracked as a follow-up): CreateQueryCheckpoint waits
+		// for the log-index builder (readStore.WaitForSequence) before snapshotting
+		// the readstore, but NOT for the separate async audit indexer. If the
+		// audit index lagged its zone at snapshot time, a *filtered* checkpoint
+		// read can omit audit entries that do exist in the checkpoint's audit
+		// zone, and — the checkpoint being frozen — it never catches up. The
+		// unfiltered checkpoint read is unaffected (it scans the zone directly).
+		// The proper fix belongs in the checkpoint-creation path (make the audit
+		// indexer catch up before the readstore checkpoint, mirroring the
+		// log-index WaitForSequence); it is out of scope here.
+		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+	} else {
+		minLogSeq := opts.GetRead().GetMinLogSequence()
+
+		// A filtered live read resolves through the async audit secondary index,
+		// which lags the audit zone independently of the log index. Gate it on the
+		// audit-index progress so the requested consistency bound actually covers
+		// the index this read consults. An unfiltered read scans the Cold/Audit
+		// zone directly and is always current, so it keeps the plain log-index wait
+		// (its fast path is unchanged).
+		if opts.GetFilter() != nil {
+			if waitErr := impl.waitFilteredAuditConsistency(ctx, minLogSeq); waitErr != nil {
+				return waitErr
+			}
+		} else if waitErr := impl.waitMinLogSequence(ctx, minLogSeq); waitErr != nil {
+			return waitErr
+		}
+
+		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	}
 
-	c, err := impl.ctrl.ListAuditEntries(ctx, afterSeqPtr, req.GetFailuresOnly(), pageSizePlusOne(pageSize), req.GetLedger())
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
@@ -1322,48 +1132,11 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, err
 	}
 
-	sinks, err := impl.ctrl.GetEventsSinks(ctx)
+	// Sink configs + per-sink status enrichment both live on the controller now,
+	// so gRPC and HTTP return identical data from one snapshot (EN-1472).
+	sinks, statuses, err := impl.ctrl.GetEventsSinks(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("loading sink configs: %w", err)
-	}
-
-	handle, err := impl.store.NewDirectReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-	defer func() { _ = handle.Close() }()
-
-	// Build statuses by merging error statuses (SubGlobSinkStatus) with cursors (SubGlobSinkCursor).
-	errorStatuses, err := query.ReadAllSinkStatuses(handle)
-	if err != nil {
-		return nil, fmt.Errorf("loading sink statuses: %w", err)
-	}
-
-	statusBySink := make(map[string]*commonpb.SinkStatus, len(errorStatuses))
-	for _, s := range errorStatuses {
-		statusBySink[s.GetSinkName()] = s
-	}
-
-	// Enrich with cursor values for every configured sink.
-	for _, sink := range sinks {
-		cursor, err := query.ReadSinkCursor(handle, sink.GetName())
-		if err != nil {
-			return nil, fmt.Errorf("loading sink cursor for %q: %w", sink.GetName(), err)
-		}
-
-		if existing, ok := statusBySink[sink.GetName()]; ok {
-			existing.Cursor = cursor
-		} else {
-			statusBySink[sink.GetName()] = &commonpb.SinkStatus{
-				SinkName: sink.GetName(),
-				Cursor:   cursor,
-			}
-		}
-	}
-
-	statuses := make([]*commonpb.SinkStatus, 0, len(statusBySink))
-	for _, s := range statusBySink {
-		statuses = append(statuses, s)
+		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 
 	return &servicepb.GetEventsSinksResponse{

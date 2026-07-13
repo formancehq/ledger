@@ -1,63 +1,38 @@
 package http
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestDecodePreparedQueryFilter(t *testing.T) {
+// Structural decode of the `filter` field (JSON DSL and textual filterexpr) now
+// lives in the shared filterexpr.DecodeDualFormat helper; see
+// internal/pkg/filterexpr/decode_test.go for its coverage.
+
+func TestParsePreparedQueryTarget(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name      string
-		raw       string
-		wantErr   string
-		assertion func(t *testing.T, filter any)
+		name    string
+		target  string
+		want    commonpb.QueryTarget
+		wantErr string
 	}{
-		{
-			name:    "missing",
-			raw:     "",
-			wantErr: "filter is required",
-		},
-		{
-			name:    "json null",
-			raw:     "null",
-			wantErr: "filter is required",
-		},
-		{
-			name:    "empty object",
-			raw:     "{}",
-			wantErr: "must contain at least one condition",
-		},
-		{
-			name:    "invalid json",
-			raw:     "not-json",
-			wantErr: "filter:",
-		},
-		{
-			name: "and filter with nested field oneof",
-			raw: `{"and":{"filters":[
-				{"field":{"field":{"metadata":"x"},"intCond":{"min":"1"}}},
-				{"field":{"field":{"metadata":"y"},"boolCond":{"hardcoded":true}}}
-			]}}`,
-		},
-		{
-			name: "or filter",
-			raw:  `{"or":{"filters":[{"field":{"field":{"metadata":"x"},"existsCond":{}}}]}}`,
-		},
-		{
-			name: "leaf field oneof",
-			raw:  `{"field":{"field":{"metadata":"x"},"existsCond":{}}}`,
-		},
+		{name: "accounts", target: "ACCOUNTS", want: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+		{name: "transactions", target: "TRANSACTIONS", want: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{name: "logs", target: "LOGS", want: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{name: "empty", target: "", wantErr: "target is required"},
+		{name: "unknown", target: "BOGUS", wantErr: "unknown or unsupported target"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			filter, err := decodePreparedQueryFilter(json.RawMessage(tc.raw))
+			got, err := parsePreparedQueryTarget(tc.target)
 			if tc.wantErr != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.wantErr)
@@ -66,8 +41,7 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			require.NotNil(t, filter)
-			require.NotNil(t, filter.GetFilter(), "oneof discriminator must be populated")
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

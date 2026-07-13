@@ -12,6 +12,7 @@ import (
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -58,17 +59,25 @@ const (
 	// ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
 	// covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH CheckStoreErrorType = 10
+	// Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
+	// that the audit-bound Order.skippable_reasons whitelist does not allow, or
+	// a reason classified as KindInternal (structural failure). The OrderSkippedLog
+	// sits in the per-log projection which is NOT hash-chain bound, so a tampered
+	// skip log would otherwise let a duplicate caller observe a fabricated outcome
+	// for an order that should have been rejected hard. The skippable_reasons
+	// whitelist on the audit-bound Order is the source of truth.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP CheckStoreErrorType = 11
 	// Emitted when a ledger's stored metadata schema (LedgerInfo.MetadataSchema)
 	// diverges from the field-type declarations the checker re-derived by
 	// replaying CreateLedger.initial_schema + SetMetadataFieldType /
 	// RemovedMetadataFieldType log payloads. The schema is a projection of those
 	// audit-bound orders.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH CheckStoreErrorType = 11
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH CheckStoreErrorType = 12
 	// Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
 	// diverge from the set the checker re-derived by replaying AddAccountType /
 	// RemoveAccountType log payloads. The account-type chart is a projection of
 	// those audit-bound orders.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 12
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 13
 	// Emitted when the audit says a ledger is live (a CreateLedger event with no
 	// later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
 	// archiving) but the store has no live LedgerInfo for it — the entry is either
@@ -76,14 +85,14 @@ const (
 	// compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
 	// so both shapes would otherwise escape every projection check. This is the
 	// reverse of UNKNOWN_LEDGER.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 13
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 14
 	// Emitted when the store holds a live LedgerInfo for a ledger the audit never
 	// created (no CreateLedger event, and — under archiving — not present in the
 	// baseline). Such a row exposes an unaudited ledger through ListLedgers while
 	// carrying no schema/account types the projection passes could otherwise flag.
 	// The audit-derived ledger set is never seeded from the live store, so this
 	// comparison stays honest.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER CheckStoreErrorType = 14
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER CheckStoreErrorType = 15
 	// Emitted when the reference→txID uniqueness index (SubAttrReference)
 	// diverges from the references the checker re-derived by replaying
 	// CreatedTransaction / RevertedTransaction log payloads (baseline-seeded
@@ -91,7 +100,7 @@ const (
 	// reference the audit did assign, or a reference pointing at a different
 	// transaction. The index enforces reference idempotency, so a tampered row
 	// silently changes which duplicates get rejected.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH CheckStoreErrorType = 15
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH CheckStoreErrorType = 16
 	// Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
 	// re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
 	// from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
@@ -101,7 +110,7 @@ const (
 	// themselves are verified entry-by-entry by their own passes.
 	// EphemeralEvictedCount / TransientUsedCount are informational and excluded
 	// (cf. Index BuildStatus).
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH CheckStoreErrorType = 16
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH CheckStoreErrorType = 17
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -118,12 +127,13 @@ var (
 		8:  "CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH",
 		9:  "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH",
 		10: "CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH",
-		11: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
-		12: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
-		13: "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER",
-		14: "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER",
-		15: "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH",
-		16: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
+		11: "CHECK_STORE_ERROR_TYPE_INVALID_SKIP",
+		12: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
+		13: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
+		14: "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER",
+		15: "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER",
+		16: "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH",
+		17: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -137,12 +147,13 @@ var (
 		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":   8,
 		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
 		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":              10,
-		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             11,
-		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       12,
-		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              13,
-		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            14,
-		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          15,
-		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           16,
+		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                11,
+		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             12,
+		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       13,
+		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              14,
+		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            15,
+		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          16,
+		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           17,
 	}
 )
 
@@ -366,7 +377,7 @@ func (x ListIndexesRequest_Scope) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ListIndexesRequest_Scope.Descriptor instead.
 func (ListIndexesRequest_Scope) EnumDescriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{115, 0}
+	return file_bucket_proto_rawDescGZIP(), []int{117, 0}
 }
 
 type GetAccountRequest struct {
@@ -3706,6 +3717,12 @@ func (x *RevertTransactionPayload) GetExpandVolumes() bool {
 }
 
 // LedgerAction represents a single ledger action.
+//
+// Each oneof case MAY carry an `(allowed_skippable_reasons)` annotation
+// (see the extension declaration at the top of this file). Admission
+// consumes the generated whitelist to validate LedgerApplyRequest
+// .skippable_reasons; cases without the annotation reject any non-empty
+// list from the caller.
 type LedgerAction struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Data:
@@ -3869,11 +3886,25 @@ func (*LedgerAction_RemoveAccountType) isLedgerAction_Data() {}
 func (*LedgerAction_SetDefaultEnforcementMode) isLedgerAction_Data() {}
 
 type LedgerApplyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Action        *LedgerAction          `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Action *LedgerAction          `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	// Business error reasons the caller accepts to skip silently rather than
+	// fail the proposal. The FSM records a common.OrderSkippedLog for each
+	// matching skip; the proposal continues with Outcome=Success.
+	//
+	// Validated at admission against the per-action whitelist declared inline on
+	// each LedgerAction.data oneof case via `(allowed_skippable_reasons)` (the
+	// single source of truth; the generated SkippableReasonsForLedgerAction is
+	// what admission consults). Today: CreateTransaction accepts
+	// TRANSACTION_REFERENCE_CONFLICT, RevertTransaction TRANSACTION_ALREADY_REVERTED,
+	// DeleteMetadata METADATA_NOT_FOUND, AddAccountType ACCOUNT_TYPE_ALREADY_EXISTS,
+	// RemoveAccountType ACCOUNT_TYPE_NOT_FOUND. An opt-in on an action that
+	// declares no annotation is rejected up front. Empty (default) preserves the
+	// historical fail-fast behaviour.
+	SkippableReasons []commonpb.ErrorReason `protobuf:"varint,3,rep,packed,name=skippable_reasons,json=skippableReasons,proto3,enum=common.ErrorReason" json:"skippable_reasons,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *LedgerApplyRequest) Reset() {
@@ -3916,6 +3947,13 @@ func (x *LedgerApplyRequest) GetLedger() string {
 func (x *LedgerApplyRequest) GetAction() *LedgerAction {
 	if x != nil {
 		return x.Action
+	}
+	return nil
+}
+
+func (x *LedgerApplyRequest) GetSkippableReasons() []commonpb.ErrorReason {
+	if x != nil {
+		return x.SkippableReasons
 	}
 	return nil
 }
@@ -5624,12 +5662,12 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 }
 
 type ListAuditEntriesRequest struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Options *commonpb.ListOptions  `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
-	// failures_only filters audit entries to only those carrying a failure status.
-	FailuresOnly bool `protobuf:"varint,2,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
-	// ledger filters audit entries to only those containing orders targeting this ledger.
-	Ledger        string `protobuf:"bytes,3,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// options carries the whole read contract. Audit has NO dedicated top-level
+	// filters: ledger scope and outcome selection are expressed through
+	// options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
+	// failure`), exactly like every other filtered list endpoint.
+	Options       *commonpb.ListOptions `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5669,20 +5707,6 @@ func (x *ListAuditEntriesRequest) GetOptions() *commonpb.ListOptions {
 		return x.Options
 	}
 	return nil
-}
-
-func (x *ListAuditEntriesRequest) GetFailuresOnly() bool {
-	if x != nil {
-		return x.FailuresOnly
-	}
-	return false
-}
-
-func (x *ListAuditEntriesRequest) GetLedger() string {
-	if x != nil {
-		return x.Ledger
-	}
-	return ""
 }
 
 type GetAuditEntryRequest struct {
@@ -7703,6 +7727,116 @@ func (x *GetIndexStatusResponse) GetIndexes() []*IndexEntry {
 	return nil
 }
 
+// GetIndexRequest identifies a single Index registry entry to fetch.
+// Pass an empty ledger to address a bucket-scoped entry (e.g. audit
+// indexes); a non-empty ledger addresses the ledger-scoped slot.
+type GetIndexRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetIndexRequest) Reset() {
+	*x = GetIndexRequest{}
+	mi := &file_bucket_proto_msgTypes[114]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetIndexRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetIndexRequest) ProtoMessage() {}
+
+func (x *GetIndexRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bucket_proto_msgTypes[114]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetIndexRequest.ProtoReflect.Descriptor instead.
+func (*GetIndexRequest) Descriptor() ([]byte, []int) {
+	return file_bucket_proto_rawDescGZIP(), []int{114}
+}
+
+func (x *GetIndexRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *GetIndexRequest) GetId() *commonpb.IndexID {
+	if x != nil {
+		return x.Id
+	}
+	return nil
+}
+
+// GetIndexEntryStatusRequest identifies a single index whose per-replica
+// status view (registry entry + backfill cursor + IndexVersionState) is
+// returned.
+type GetIndexEntryStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetIndexEntryStatusRequest) Reset() {
+	*x = GetIndexEntryStatusRequest{}
+	mi := &file_bucket_proto_msgTypes[115]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetIndexEntryStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetIndexEntryStatusRequest) ProtoMessage() {}
+
+func (x *GetIndexEntryStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bucket_proto_msgTypes[115]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetIndexEntryStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetIndexEntryStatusRequest) Descriptor() ([]byte, []int) {
+	return file_bucket_proto_rawDescGZIP(), []int{115}
+}
+
+func (x *GetIndexEntryStatusRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
+	if x != nil {
+		return x.Id
+	}
+	return nil
+}
+
 // IndexEntry joins a ledger's index definition (status + audit metadata) with
 // its backfill cursor position. Replaces the former IndexBackfillProgress.
 //
@@ -7729,7 +7863,7 @@ type IndexEntry struct {
 
 func (x *IndexEntry) Reset() {
 	*x = IndexEntry{}
-	mi := &file_bucket_proto_msgTypes[114]
+	mi := &file_bucket_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7741,7 +7875,7 @@ func (x *IndexEntry) String() string {
 func (*IndexEntry) ProtoMessage() {}
 
 func (x *IndexEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[114]
+	mi := &file_bucket_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7754,7 +7888,7 @@ func (x *IndexEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexEntry.ProtoReflect.Descriptor instead.
 func (*IndexEntry) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{114}
+	return file_bucket_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *IndexEntry) GetLedger() string {
@@ -7813,7 +7947,7 @@ type ListIndexesRequest struct {
 
 func (x *ListIndexesRequest) Reset() {
 	*x = ListIndexesRequest{}
-	mi := &file_bucket_proto_msgTypes[115]
+	mi := &file_bucket_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7825,7 +7959,7 @@ func (x *ListIndexesRequest) String() string {
 func (*ListIndexesRequest) ProtoMessage() {}
 
 func (x *ListIndexesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[115]
+	mi := &file_bucket_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7838,7 +7972,7 @@ func (x *ListIndexesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIndexesRequest.ProtoReflect.Descriptor instead.
 func (*ListIndexesRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{115}
+	return file_bucket_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *ListIndexesRequest) GetScope() ListIndexesRequest_Scope {
@@ -7866,7 +8000,7 @@ type GetLedgerStatsRequest struct {
 
 func (x *GetLedgerStatsRequest) Reset() {
 	*x = GetLedgerStatsRequest{}
-	mi := &file_bucket_proto_msgTypes[116]
+	mi := &file_bucket_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7878,7 +8012,7 @@ func (x *GetLedgerStatsRequest) String() string {
 func (*GetLedgerStatsRequest) ProtoMessage() {}
 
 func (x *GetLedgerStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[116]
+	mi := &file_bucket_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7891,7 +8025,7 @@ func (x *GetLedgerStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLedgerStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetLedgerStatsRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{116}
+	return file_bucket_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *GetLedgerStatsRequest) GetLedger() string {
@@ -7927,7 +8061,7 @@ type AggregateVolumesRequest struct {
 
 func (x *AggregateVolumesRequest) Reset() {
 	*x = AggregateVolumesRequest{}
-	mi := &file_bucket_proto_msgTypes[117]
+	mi := &file_bucket_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7939,7 +8073,7 @@ func (x *AggregateVolumesRequest) String() string {
 func (*AggregateVolumesRequest) ProtoMessage() {}
 
 func (x *AggregateVolumesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[117]
+	mi := &file_bucket_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7952,7 +8086,7 @@ func (x *AggregateVolumesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateVolumesRequest.ProtoReflect.Descriptor instead.
 func (*AggregateVolumesRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{117}
+	return file_bucket_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *AggregateVolumesRequest) GetLedger() string {
@@ -8014,7 +8148,7 @@ type QueryProfile struct {
 
 func (x *QueryProfile) Reset() {
 	*x = QueryProfile{}
-	mi := &file_bucket_proto_msgTypes[118]
+	mi := &file_bucket_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8026,7 +8160,7 @@ func (x *QueryProfile) String() string {
 func (*QueryProfile) ProtoMessage() {}
 
 func (x *QueryProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[118]
+	mi := &file_bucket_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8039,7 +8173,7 @@ func (x *QueryProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryProfile.ProtoReflect.Descriptor instead.
 func (*QueryProfile) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{118}
+	return file_bucket_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *QueryProfile) GetIndexDurationUs() int64 {
@@ -8116,7 +8250,7 @@ type IteratorProfile struct {
 
 func (x *IteratorProfile) Reset() {
 	*x = IteratorProfile{}
-	mi := &file_bucket_proto_msgTypes[119]
+	mi := &file_bucket_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8128,7 +8262,7 @@ func (x *IteratorProfile) String() string {
 func (*IteratorProfile) ProtoMessage() {}
 
 func (x *IteratorProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[119]
+	mi := &file_bucket_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8141,7 +8275,7 @@ func (x *IteratorProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IteratorProfile.ProtoReflect.Descriptor instead.
 func (*IteratorProfile) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{119}
+	return file_bucket_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *IteratorProfile) GetLabel() string {
@@ -8236,7 +8370,7 @@ type InspectIndexRequest struct {
 
 func (x *InspectIndexRequest) Reset() {
 	*x = InspectIndexRequest{}
-	mi := &file_bucket_proto_msgTypes[120]
+	mi := &file_bucket_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8248,7 +8382,7 @@ func (x *InspectIndexRequest) String() string {
 func (*InspectIndexRequest) ProtoMessage() {}
 
 func (x *InspectIndexRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[120]
+	mi := &file_bucket_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8261,7 +8395,7 @@ func (x *InspectIndexRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectIndexRequest.ProtoReflect.Descriptor instead.
 func (*InspectIndexRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{120}
+	return file_bucket_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *InspectIndexRequest) GetLedger() string {
@@ -8327,7 +8461,7 @@ type InspectIndexResponse struct {
 
 func (x *InspectIndexResponse) Reset() {
 	*x = InspectIndexResponse{}
-	mi := &file_bucket_proto_msgTypes[121]
+	mi := &file_bucket_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8339,7 +8473,7 @@ func (x *InspectIndexResponse) String() string {
 func (*InspectIndexResponse) ProtoMessage() {}
 
 func (x *InspectIndexResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[121]
+	mi := &file_bucket_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8352,7 +8486,7 @@ func (x *InspectIndexResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectIndexResponse.ProtoReflect.Descriptor instead.
 func (*InspectIndexResponse) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{121}
+	return file_bucket_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *InspectIndexResponse) GetResult() isInspectIndexResponse_Result {
@@ -8422,7 +8556,7 @@ type InspectDistinctValues struct {
 
 func (x *InspectDistinctValues) Reset() {
 	*x = InspectDistinctValues{}
-	mi := &file_bucket_proto_msgTypes[122]
+	mi := &file_bucket_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8434,7 +8568,7 @@ func (x *InspectDistinctValues) String() string {
 func (*InspectDistinctValues) ProtoMessage() {}
 
 func (x *InspectDistinctValues) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[122]
+	mi := &file_bucket_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8447,7 +8581,7 @@ func (x *InspectDistinctValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectDistinctValues.ProtoReflect.Descriptor instead.
 func (*InspectDistinctValues) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{122}
+	return file_bucket_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *InspectDistinctValues) GetValues() []*commonpb.MetadataValue {
@@ -8481,7 +8615,7 @@ type InspectFacet struct {
 
 func (x *InspectFacet) Reset() {
 	*x = InspectFacet{}
-	mi := &file_bucket_proto_msgTypes[123]
+	mi := &file_bucket_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8493,7 +8627,7 @@ func (x *InspectFacet) String() string {
 func (*InspectFacet) ProtoMessage() {}
 
 func (x *InspectFacet) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[123]
+	mi := &file_bucket_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8506,7 +8640,7 @@ func (x *InspectFacet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectFacet.ProtoReflect.Descriptor instead.
 func (*InspectFacet) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{123}
+	return file_bucket_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *InspectFacet) GetValue() *commonpb.MetadataValue {
@@ -8534,7 +8668,7 @@ type InspectFacets struct {
 
 func (x *InspectFacets) Reset() {
 	*x = InspectFacets{}
-	mi := &file_bucket_proto_msgTypes[124]
+	mi := &file_bucket_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8546,7 +8680,7 @@ func (x *InspectFacets) String() string {
 func (*InspectFacets) ProtoMessage() {}
 
 func (x *InspectFacets) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[124]
+	mi := &file_bucket_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8559,7 +8693,7 @@ func (x *InspectFacets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectFacets.ProtoReflect.Descriptor instead.
 func (*InspectFacets) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{124}
+	return file_bucket_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *InspectFacets) GetFacets() []*InspectFacet {
@@ -8596,7 +8730,7 @@ type InspectSummary struct {
 
 func (x *InspectSummary) Reset() {
 	*x = InspectSummary{}
-	mi := &file_bucket_proto_msgTypes[125]
+	mi := &file_bucket_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8608,7 +8742,7 @@ func (x *InspectSummary) String() string {
 func (*InspectSummary) ProtoMessage() {}
 
 func (x *InspectSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[125]
+	mi := &file_bucket_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8621,7 +8755,7 @@ func (x *InspectSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectSummary.ProtoReflect.Descriptor instead.
 func (*InspectSummary) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{125}
+	return file_bucket_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *InspectSummary) GetCardinality() uint64 {
@@ -8667,7 +8801,7 @@ type BarrierRequest struct {
 
 func (x *BarrierRequest) Reset() {
 	*x = BarrierRequest{}
-	mi := &file_bucket_proto_msgTypes[126]
+	mi := &file_bucket_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8679,7 +8813,7 @@ func (x *BarrierRequest) String() string {
 func (*BarrierRequest) ProtoMessage() {}
 
 func (x *BarrierRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[126]
+	mi := &file_bucket_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8692,7 +8826,7 @@ func (x *BarrierRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BarrierRequest.ProtoReflect.Descriptor instead.
 func (*BarrierRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{126}
+	return file_bucket_proto_rawDescGZIP(), []int{128}
 }
 
 type BarrierResponse struct {
@@ -8708,7 +8842,7 @@ type BarrierResponse struct {
 
 func (x *BarrierResponse) Reset() {
 	*x = BarrierResponse{}
-	mi := &file_bucket_proto_msgTypes[127]
+	mi := &file_bucket_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8720,7 +8854,7 @@ func (x *BarrierResponse) String() string {
 func (*BarrierResponse) ProtoMessage() {}
 
 func (x *BarrierResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[127]
+	mi := &file_bucket_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8733,7 +8867,7 @@ func (x *BarrierResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BarrierResponse.ProtoReflect.Descriptor instead.
 func (*BarrierResponse) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{127}
+	return file_bucket_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *BarrierResponse) GetCommitIndex() uint64 {
@@ -8743,11 +8877,28 @@ func (x *BarrierResponse) GetCommitIndex() uint64 {
 	return 0
 }
 
+var file_bucket_proto_extTypes = []protoimpl.ExtensionInfo{
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: ([]commonpb.ErrorReason)(nil),
+		Field:         71001,
+		Name:          "ledger.allowed_skippable_reasons",
+		Tag:           "varint,71001,rep,packed,name=allowed_skippable_reasons,enum=common.ErrorReason",
+		Filename:      "bucket.proto",
+	},
+}
+
+// Extension fields to descriptorpb.FieldOptions.
+var (
+	// repeated common.ErrorReason allowed_skippable_reasons = 71001;
+	E_AllowedSkippableReasons = &file_bucket_proto_extTypes[0]
+)
+
 var File_bucket_proto protoreflect.FileDescriptor
 
 const file_bucket_proto_rawDesc = "" +
 	"\n" +
-	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\"j\n" +
+	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"j\n" +
 	"\x11GetAccountRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12#\n" +
@@ -8970,19 +9121,20 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\a\x10\bR\x15transaction_reference\"\xd4\x04\n" +
-	"\fLedgerAction\x12Q\n" +
-	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadH\x00R\x11createTransaction\x12@\n" +
-	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12Q\n" +
-	"\x12revert_transaction\x18\x03 \x01(\v2 .ledger.RevertTransactionPayloadH\x00R\x11revertTransaction\x12H\n" +
-	"\x0fdelete_metadata\x18\x04 \x01(\v2\x1d.common.DeleteMetadataCommandH\x00R\x0edeleteMetadata\x12I\n" +
-	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestH\x00R\x0eaddAccountType\x12R\n" +
-	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestH\x00R\x11removeAccountType\x12k\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\a\x10\bR\x15transaction_reference\"\xf7\x04\n" +
+	"\fLedgerAction\x12X\n" +
+	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x11createTransaction\x12@\n" +
+	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
+	"\x12revert_transaction\x18\x03 \x01(\v2 .ledger.RevertTransactionPayloadB\x05\xca\xd5\"\x01\bH\x00R\x11revertTransaction\x12O\n" +
+	"\x0fdelete_metadata\x18\x04 \x01(\v2\x1d.common.DeleteMetadataCommandB\x05\xca\xd5\"\x01\x17H\x00R\x0edeleteMetadata\x12P\n" +
+	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestB\x05\xca\xd5\"\x01)H\x00R\x0eaddAccountType\x12Y\n" +
+	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestB\x05\xca\xd5\"\x01(H\x00R\x11removeAccountType\x12k\n" +
 	"\x1cset_default_enforcement_mode\x18\a \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementModeB\x06\n" +
-	"\x04data\"Z\n" +
+	"\x04data\"\x9c\x01\n" +
 	"\x12LedgerApplyRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12,\n" +
-	"\x06action\x18\x02 \x01(\v2\x14.ledger.LedgerActionR\x06action\"O\n" +
+	"\x06action\x18\x02 \x01(\v2\x14.ledger.LedgerActionR\x06action\x12@\n" +
+	"\x11skippable_reasons\x18\x03 \x03(\x0e2\x13.common.ErrorReasonR\x10skippableReasons\"O\n" +
 	"\x15AddAccountTypeRequest\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\".\n" +
 	"\x18RemoveAccountTypeRequest\x12\x12\n" +
@@ -9119,11 +9271,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"\x85\x01\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"H\n" +
 	"\x17ListAuditEntriesRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\x12#\n" +
-	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x16\n" +
-	"\x06ledger\x18\x03 \x01(\tR\x06ledger\"2\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xa2\x01\n" +
 	"\x0fListLogsRequest\x12\x16\n" +
@@ -9268,7 +9418,13 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x06R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x06R\rindexFileSize\x12,\n" +
-	"\aindexes\x18\x06 \x03(\v2\x12.ledger.IndexEntryR\aindexesJ\x04\b\x05\x10\x06R\x11backfill_progress\"\xb3\x01\n" +
+	"\aindexes\x18\x06 \x03(\v2\x12.ledger.IndexEntryR\aindexesJ\x04\b\x05\x10\x06R\x11backfill_progress\"J\n" +
+	"\x0fGetIndexRequest\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
+	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"U\n" +
+	"\x1aGetIndexEntryStatusRequest\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
+	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"\xb3\x01\n" +
 	"\n" +
 	"IndexEntry\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
@@ -9352,7 +9508,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa0\x06\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xc9\x06\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9365,13 +9521,14 @@ const file_bucket_proto_rawDesc = "" +
 	"0CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH\x10\b\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH\x10\t\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH\x10\n" +
-	"\x12*\n" +
-	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\v\x120\n" +
-	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\f\x12)\n" +
-	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\r\x12+\n" +
-	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x0e\x12-\n" +
-	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x0f\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x10*W\n" +
+	"\x12'\n" +
+	"#CHECK_STORE_ERROR_TYPE_INVALID_SKIP\x10\v\x12*\n" +
+	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\f\x120\n" +
+	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\r\x12)\n" +
+	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\x0e\x12+\n" +
+	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x0f\x12-\n" +
+	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x10\x12,\n" +
+	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x11*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
@@ -9383,7 +9540,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xf4\x14\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xf7\x15\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -9414,14 +9571,17 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13DeletePreparedQuery\x12\".ledger.DeletePreparedQueryRequest\x1a#.ledger.DeletePreparedQueryResponse\x12^\n" +
 	"\x13ListPreparedQueries\x12\".ledger.ListPreparedQueriesRequest\x1a#.ledger.ListPreparedQueriesResponse\x12a\n" +
 	"\x14ExecutePreparedQuery\x12#.ledger.ExecutePreparedQueryRequest\x1a$.ledger.ExecutePreparedQueryResponse\x12O\n" +
-	"\x0eGetIndexStatus\x12\x1d.ledger.GetIndexStatusRequest\x1a\x1e.ledger.GetIndexStatusResponse\x12:\n" +
+	"\x0eGetIndexStatus\x12\x1d.ledger.GetIndexStatusRequest\x1a\x1e.ledger.GetIndexStatusResponse\x122\n" +
+	"\bGetIndex\x12\x17.ledger.GetIndexRequest\x1a\r.common.Index\x12M\n" +
+	"\x13GetIndexEntryStatus\x12\".ledger.GetIndexEntryStatusRequest\x1a\x12.ledger.IndexEntry\x12:\n" +
 	"\vListIndexes\x12\x1a.ledger.ListIndexesRequest\x1a\r.common.Index0\x01\x12D\n" +
 	"\x0eGetLedgerStats\x12\x1d.ledger.GetLedgerStatsRequest\x1a\x13.common.LedgerStats\x12L\n" +
 	"\x10AggregateVolumes\x12\x1f.ledger.AggregateVolumesRequest\x1a\x17.common.AggregateResult\x12B\n" +
 	"\fGetNumscript\x12\x1b.ledger.GetNumscriptRequest\x1a\x15.common.NumscriptInfo\x12H\n" +
 	"\x0eListNumscripts\x12\x1d.ledger.ListNumscriptsRequest\x1a\x15.common.NumscriptInfo0\x01\x12I\n" +
 	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\x12:\n" +
-	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponseB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
+	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponse:p\n" +
+	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
 
 var (
 	file_bucket_proto_rawDescOnce sync.Once
@@ -9436,7 +9596,7 @@ func file_bucket_proto_rawDescGZIP() []byte {
 }
 
 var file_bucket_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 138)
+var file_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 140)
 var file_bucket_proto_goTypes = []any{
 	(CheckStoreErrorType)(0),                       // 0: ledger.CheckStoreErrorType
 	(PatternSegmentType)(0),                        // 1: ledger.PatternSegmentType
@@ -9557,84 +9717,88 @@ var file_bucket_proto_goTypes = []any{
 	(*ExecutePreparedQueryResponse)(nil),           // 116: ledger.ExecutePreparedQueryResponse
 	(*GetIndexStatusRequest)(nil),                  // 117: ledger.GetIndexStatusRequest
 	(*GetIndexStatusResponse)(nil),                 // 118: ledger.GetIndexStatusResponse
-	(*IndexEntry)(nil),                             // 119: ledger.IndexEntry
-	(*ListIndexesRequest)(nil),                     // 120: ledger.ListIndexesRequest
-	(*GetLedgerStatsRequest)(nil),                  // 121: ledger.GetLedgerStatsRequest
-	(*AggregateVolumesRequest)(nil),                // 122: ledger.AggregateVolumesRequest
-	(*QueryProfile)(nil),                           // 123: ledger.QueryProfile
-	(*IteratorProfile)(nil),                        // 124: ledger.IteratorProfile
-	(*InspectIndexRequest)(nil),                    // 125: ledger.InspectIndexRequest
-	(*InspectIndexResponse)(nil),                   // 126: ledger.InspectIndexResponse
-	(*InspectDistinctValues)(nil),                  // 127: ledger.InspectDistinctValues
-	(*InspectFacet)(nil),                           // 128: ledger.InspectFacet
-	(*InspectFacets)(nil),                          // 129: ledger.InspectFacets
-	(*InspectSummary)(nil),                         // 130: ledger.InspectSummary
-	(*BarrierRequest)(nil),                         // 131: ledger.BarrierRequest
-	(*BarrierResponse)(nil),                        // 132: ledger.BarrierResponse
-	nil,                                            // 133: ledger.CreateLedgerRequest.AccountTypesEntry
-	nil,                                            // 134: ledger.SaveLedgerMetadataRequest.MetadataEntry
-	nil,                                            // 135: ledger.ScriptReference.VarsEntry
-	nil,                                            // 136: ledger.CreateTransactionPayload.MetadataEntry
-	nil,                                            // 137: ledger.CreateTransactionPayload.AccountMetadataEntry
-	nil,                                            // 138: ledger.RevertTransactionPayload.MetadataEntry
-	nil,                                            // 139: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
-	nil,                                            // 140: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
-	nil,                                            // 141: ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry
-	nil,                                            // 142: ledger.ExecutePreparedQueryRequest.ParametersEntry
-	(*commonpb.Transaction)(nil),                   // 143: common.Transaction
-	(*commonpb.ListOptions)(nil),                   // 144: common.ListOptions
-	(*commonpb.SetMetadataFieldTypeCommand)(nil),   // 145: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                       // 146: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),            // 147: common.MirrorSourceConfig
-	(commonpb.ChartEnforcementMode)(0),             // 148: common.ChartEnforcementMode
-	(*commonpb.ReadOptions)(nil),                   // 149: common.ReadOptions
-	(*signaturepb.SignedApplyBatch)(nil),           // 150: signature.SignedApplyBatch
-	(*commonpb.CallerSnapshot)(nil),                // 151: common.CallerSnapshot
-	(*commonpb.Log)(nil),                           // 152: common.Log
-	(*commonpb.SinkConfig)(nil),                    // 153: common.SinkConfig
-	(commonpb.TargetType)(0),                       // 154: common.TargetType
-	(commonpb.MetadataType)(0),                     // 155: common.MetadataType
-	(*commonpb.IndexID)(nil),                       // 156: common.IndexID
-	(*commonpb.Posting)(nil),                       // 157: common.Posting
-	(*commonpb.Script)(nil),                        // 158: common.Script
-	(*commonpb.Timestamp)(nil),                     // 159: common.Timestamp
-	(*commonpb.SaveMetadataCommand)(nil),           // 160: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil),         // 161: common.DeleteMetadataCommand
-	(*commonpb.AccountType)(nil),                   // 162: common.AccountType
-	(*commonpb.SinkStatus)(nil),                    // 163: common.SinkStatus
-	(*commonpb.PreparedQuery)(nil),                 // 164: common.PreparedQuery
-	(*commonpb.QueryFilter)(nil),                   // 165: common.QueryFilter
-	(commonpb.QueryMode)(0),                        // 166: common.QueryMode
-	(*commonpb.PreparedQueryCursor)(nil),           // 167: common.PreparedQueryCursor
-	(*commonpb.AggregateResult)(nil),               // 168: common.AggregateResult
-	(*commonpb.Index)(nil),                         // 169: common.Index
-	(*commonpb.MetadataValue)(nil),                 // 170: common.MetadataValue
-	(*commonpb.MetadataMap)(nil),                   // 171: common.MetadataMap
-	(*commonpb.ParameterValue)(nil),                // 172: common.ParameterValue
-	(*commonpb.LedgerInfo)(nil),                    // 173: common.LedgerInfo
-	(*commonpb.Account)(nil),                       // 174: common.Account
-	(*auditpb.AuditEntry)(nil),                     // 175: audit.AuditEntry
-	(*commonpb.Chapter)(nil),                       // 176: common.Chapter
-	(*commonpb.SigningKey)(nil),                    // 177: common.SigningKey
-	(*commonpb.LedgerStats)(nil),                   // 178: common.LedgerStats
-	(*commonpb.NumscriptInfo)(nil),                 // 179: common.NumscriptInfo
+	(*GetIndexRequest)(nil),                        // 119: ledger.GetIndexRequest
+	(*GetIndexEntryStatusRequest)(nil),             // 120: ledger.GetIndexEntryStatusRequest
+	(*IndexEntry)(nil),                             // 121: ledger.IndexEntry
+	(*ListIndexesRequest)(nil),                     // 122: ledger.ListIndexesRequest
+	(*GetLedgerStatsRequest)(nil),                  // 123: ledger.GetLedgerStatsRequest
+	(*AggregateVolumesRequest)(nil),                // 124: ledger.AggregateVolumesRequest
+	(*QueryProfile)(nil),                           // 125: ledger.QueryProfile
+	(*IteratorProfile)(nil),                        // 126: ledger.IteratorProfile
+	(*InspectIndexRequest)(nil),                    // 127: ledger.InspectIndexRequest
+	(*InspectIndexResponse)(nil),                   // 128: ledger.InspectIndexResponse
+	(*InspectDistinctValues)(nil),                  // 129: ledger.InspectDistinctValues
+	(*InspectFacet)(nil),                           // 130: ledger.InspectFacet
+	(*InspectFacets)(nil),                          // 131: ledger.InspectFacets
+	(*InspectSummary)(nil),                         // 132: ledger.InspectSummary
+	(*BarrierRequest)(nil),                         // 133: ledger.BarrierRequest
+	(*BarrierResponse)(nil),                        // 134: ledger.BarrierResponse
+	nil,                                            // 135: ledger.CreateLedgerRequest.AccountTypesEntry
+	nil,                                            // 136: ledger.SaveLedgerMetadataRequest.MetadataEntry
+	nil,                                            // 137: ledger.ScriptReference.VarsEntry
+	nil,                                            // 138: ledger.CreateTransactionPayload.MetadataEntry
+	nil,                                            // 139: ledger.CreateTransactionPayload.AccountMetadataEntry
+	nil,                                            // 140: ledger.RevertTransactionPayload.MetadataEntry
+	nil,                                            // 141: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
+	nil,                                            // 142: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
+	nil,                                            // 143: ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry
+	nil,                                            // 144: ledger.ExecutePreparedQueryRequest.ParametersEntry
+	(*commonpb.Transaction)(nil),                   // 145: common.Transaction
+	(*commonpb.ListOptions)(nil),                   // 146: common.ListOptions
+	(*commonpb.SetMetadataFieldTypeCommand)(nil),   // 147: common.SetMetadataFieldTypeCommand
+	(commonpb.LedgerMode)(0),                       // 148: common.LedgerMode
+	(*commonpb.MirrorSourceConfig)(nil),            // 149: common.MirrorSourceConfig
+	(commonpb.ChartEnforcementMode)(0),             // 150: common.ChartEnforcementMode
+	(*commonpb.ReadOptions)(nil),                   // 151: common.ReadOptions
+	(*signaturepb.SignedApplyBatch)(nil),           // 152: signature.SignedApplyBatch
+	(*commonpb.CallerSnapshot)(nil),                // 153: common.CallerSnapshot
+	(*commonpb.Log)(nil),                           // 154: common.Log
+	(*commonpb.SinkConfig)(nil),                    // 155: common.SinkConfig
+	(commonpb.TargetType)(0),                       // 156: common.TargetType
+	(commonpb.MetadataType)(0),                     // 157: common.MetadataType
+	(*commonpb.IndexID)(nil),                       // 158: common.IndexID
+	(*commonpb.Posting)(nil),                       // 159: common.Posting
+	(*commonpb.Script)(nil),                        // 160: common.Script
+	(*commonpb.Timestamp)(nil),                     // 161: common.Timestamp
+	(*commonpb.SaveMetadataCommand)(nil),           // 162: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil),         // 163: common.DeleteMetadataCommand
+	(commonpb.ErrorReason)(0),                      // 164: common.ErrorReason
+	(*commonpb.AccountType)(nil),                   // 165: common.AccountType
+	(*commonpb.SinkStatus)(nil),                    // 166: common.SinkStatus
+	(*commonpb.PreparedQuery)(nil),                 // 167: common.PreparedQuery
+	(*commonpb.QueryFilter)(nil),                   // 168: common.QueryFilter
+	(commonpb.QueryMode)(0),                        // 169: common.QueryMode
+	(*commonpb.PreparedQueryCursor)(nil),           // 170: common.PreparedQueryCursor
+	(*commonpb.AggregateResult)(nil),               // 171: common.AggregateResult
+	(*commonpb.Index)(nil),                         // 172: common.Index
+	(*commonpb.MetadataValue)(nil),                 // 173: common.MetadataValue
+	(*commonpb.MetadataMap)(nil),                   // 174: common.MetadataMap
+	(*commonpb.ParameterValue)(nil),                // 175: common.ParameterValue
+	(*descriptorpb.FieldOptions)(nil),              // 176: google.protobuf.FieldOptions
+	(*commonpb.LedgerInfo)(nil),                    // 177: common.LedgerInfo
+	(*commonpb.Account)(nil),                       // 178: common.Account
+	(*auditpb.AuditEntry)(nil),                     // 179: audit.AuditEntry
+	(*commonpb.Chapter)(nil),                       // 180: common.Chapter
+	(*commonpb.SigningKey)(nil),                    // 181: common.SigningKey
+	(*commonpb.LedgerStats)(nil),                   // 182: common.LedgerStats
+	(*commonpb.NumscriptInfo)(nil),                 // 183: common.NumscriptInfo
 }
 var file_bucket_proto_depIdxs = []int32{
-	143, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
-	144, // 1: ledger.ListTransactionsRequest.options:type_name -> common.ListOptions
-	144, // 2: ledger.ListAccountsRequest.options:type_name -> common.ListOptions
-	145, // 3: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
-	146, // 4: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
-	147, // 5: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
-	133, // 6: ledger.CreateLedgerRequest.account_types:type_name -> ledger.CreateLedgerRequest.AccountTypesEntry
-	148, // 7: ledger.CreateLedgerRequest.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	144, // 8: ledger.ListLedgersRequest.options:type_name -> common.ListOptions
-	149, // 9: ledger.GetLedgerRequest.read:type_name -> common.ReadOptions
+	145, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
+	146, // 1: ledger.ListTransactionsRequest.options:type_name -> common.ListOptions
+	146, // 2: ledger.ListAccountsRequest.options:type_name -> common.ListOptions
+	147, // 3: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
+	148, // 4: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
+	149, // 5: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
+	135, // 6: ledger.CreateLedgerRequest.account_types:type_name -> ledger.CreateLedgerRequest.AccountTypesEntry
+	150, // 7: ledger.CreateLedgerRequest.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	146, // 8: ledger.ListLedgersRequest.options:type_name -> common.ListOptions
+	151, // 9: ledger.GetLedgerRequest.read:type_name -> common.ReadOptions
 	16,  // 10: ledger.ApplyRequest.unsigned:type_name -> ledger.ApplyBatch
-	150, // 11: ledger.ApplyRequest.signed:type_name -> signature.SignedApplyBatch
-	151, // 12: ledger.ApplyRequest.forwarded_caller_snapshot:type_name -> common.CallerSnapshot
+	152, // 11: ledger.ApplyRequest.signed:type_name -> signature.SignedApplyBatch
+	153, // 12: ledger.ApplyRequest.forwarded_caller_snapshot:type_name -> common.CallerSnapshot
 	18,  // 13: ledger.ApplyBatch.requests:type_name -> ledger.Request
-	152, // 14: ledger.ApplyResponse.logs:type_name -> common.Log
+	154, // 14: ledger.ApplyResponse.logs:type_name -> common.Log
 	58,  // 15: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	10,  // 16: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
 	11,  // 17: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
@@ -9669,184 +9833,193 @@ var file_bucket_proto_depIdxs = []int32{
 	48,  // 46: ledger.Request.delete_query_checkpoint_schedule:type_name -> ledger.DeleteQueryCheckpointScheduleRequest
 	22,  // 47: ledger.Request.save_ledger_metadata:type_name -> ledger.SaveLedgerMetadataRequest
 	23,  // 48: ledger.Request.delete_ledger_metadata:type_name -> ledger.DeleteLedgerMetadataRequest
-	134, // 49: ledger.SaveLedgerMetadataRequest.metadata:type_name -> ledger.SaveLedgerMetadataRequest.MetadataEntry
-	153, // 50: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
-	144, // 51: ledger.ListSigningKeysRequest.options:type_name -> common.ListOptions
-	144, // 52: ledger.ListChaptersRequest.options:type_name -> common.ListOptions
-	154, // 53: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	155, // 54: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
-	154, // 55: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	156, // 56: ledger.CreateIndexRequest.id:type_name -> common.IndexID
-	156, // 57: ledger.DropIndexRequest.id:type_name -> common.IndexID
-	149, // 58: ledger.GetNumscriptRequest.read:type_name -> common.ReadOptions
-	144, // 59: ledger.ListNumscriptsRequest.options:type_name -> common.ListOptions
-	135, // 60: ledger.ScriptReference.vars:type_name -> ledger.ScriptReference.VarsEntry
+	136, // 49: ledger.SaveLedgerMetadataRequest.metadata:type_name -> ledger.SaveLedgerMetadataRequest.MetadataEntry
+	155, // 50: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
+	146, // 51: ledger.ListSigningKeysRequest.options:type_name -> common.ListOptions
+	146, // 52: ledger.ListChaptersRequest.options:type_name -> common.ListOptions
+	156, // 53: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	157, // 54: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
+	156, // 55: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	158, // 56: ledger.CreateIndexRequest.id:type_name -> common.IndexID
+	158, // 57: ledger.DropIndexRequest.id:type_name -> common.IndexID
+	151, // 58: ledger.GetNumscriptRequest.read:type_name -> common.ReadOptions
+	146, // 59: ledger.ListNumscriptsRequest.options:type_name -> common.ListOptions
+	137, // 60: ledger.ScriptReference.vars:type_name -> ledger.ScriptReference.VarsEntry
 	54,  // 61: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
 	52,  // 62: ledger.DiscoveryResponse.server_info:type_name -> ledger.ServerInfo
-	157, // 63: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	158, // 64: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	159, // 65: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	136, // 66: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
-	137, // 67: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	159, // 63: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	160, // 64: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	161, // 65: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	138, // 66: ledger.CreateTransactionPayload.metadata:type_name -> ledger.CreateTransactionPayload.MetadataEntry
+	139, // 67: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
 	46,  // 68: ledger.CreateTransactionPayload.script_reference:type_name -> ledger.ScriptReference
-	138, // 69: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
+	140, // 69: ledger.RevertTransactionPayload.metadata:type_name -> ledger.RevertTransactionPayload.MetadataEntry
 	55,  // 70: ledger.LedgerAction.create_transaction:type_name -> ledger.CreateTransactionPayload
-	160, // 71: ledger.LedgerAction.add_metadata:type_name -> common.SaveMetadataCommand
+	162, // 71: ledger.LedgerAction.add_metadata:type_name -> common.SaveMetadataCommand
 	56,  // 72: ledger.LedgerAction.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	161, // 73: ledger.LedgerAction.delete_metadata:type_name -> common.DeleteMetadataCommand
+	163, // 73: ledger.LedgerAction.delete_metadata:type_name -> common.DeleteMetadataCommand
 	59,  // 74: ledger.LedgerAction.add_account_type:type_name -> ledger.AddAccountTypeRequest
 	60,  // 75: ledger.LedgerAction.remove_account_type:type_name -> ledger.RemoveAccountTypeRequest
 	61,  // 76: ledger.LedgerAction.set_default_enforcement_mode:type_name -> ledger.SetDefaultEnforcementModeRequest
 	57,  // 77: ledger.LedgerApplyRequest.action:type_name -> ledger.LedgerAction
-	162, // 78: ledger.AddAccountTypeRequest.account_type:type_name -> common.AccountType
-	148, // 79: ledger.SetDefaultEnforcementModeRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
-	148, // 80: ledger.SetDefaultEnforcementModeLedgerRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
-	162, // 81: ledger.AddAccountTypeLedgerRequest.account_type:type_name -> common.AccountType
-	69,  // 82: ledger.GetPrimaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
-	69,  // 83: ledger.GetSecondaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
-	70,  // 84: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
-	71,  // 85: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
-	72,  // 86: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
-	73,  // 87: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
-	74,  // 88: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
-	75,  // 89: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
-	76,  // 90: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
-	77,  // 91: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
-	78,  // 92: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
-	79,  // 93: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
-	82,  // 94: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
-	83,  // 95: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
-	0,   // 96: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
-	144, // 97: ledger.ListAuditEntriesRequest.options:type_name -> common.ListOptions
-	144, // 98: ledger.ListLogsRequest.options:type_name -> common.ListOptions
-	153, // 99: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
-	163, // 100: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
-	139, // 101: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
-	140, // 102: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
-	141, // 103: ledger.GetMetadataSchemaStatusResponse.ledger_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry
-	155, // 104: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
-	98,  // 105: ledger.AnalyzeAccountsResponse.patterns:type_name -> ledger.AccountPattern
-	95,  // 106: ledger.AnalyzeAccountsEvent.progress:type_name -> ledger.AnalyzeProgress
-	94,  // 107: ledger.AnalyzeAccountsEvent.result:type_name -> ledger.AnalyzeAccountsResponse
-	95,  // 108: ledger.AnalyzeTransactionsEvent.progress:type_name -> ledger.AnalyzeProgress
-	101, // 109: ledger.AnalyzeTransactionsEvent.result:type_name -> ledger.AnalyzeTransactionsResponse
-	99,  // 110: ledger.AccountPattern.segments:type_name -> ledger.PatternSegment
-	1,   // 111: ledger.PatternSegment.type:type_name -> ledger.PatternSegmentType
-	102, // 112: ledger.AnalyzeTransactionsResponse.flow_patterns:type_name -> ledger.FlowPattern
-	2,   // 113: ledger.FlowPattern.structure:type_name -> ledger.PostingStructure
-	103, // 114: ledger.FlowPattern.postings:type_name -> ledger.NormalizedPosting
-	104, // 115: ledger.FlowPattern.temporal:type_name -> ledger.TemporalStats
-	106, // 116: ledger.FlowPattern.volume_stats:type_name -> ledger.AssetVolumeStats
-	159, // 117: ledger.TemporalStats.first_seen:type_name -> common.Timestamp
-	159, // 118: ledger.TemporalStats.last_seen:type_name -> common.Timestamp
-	105, // 119: ledger.TemporalStats.peak_hours:type_name -> ledger.HourBucket
-	164, // 120: ledger.CreatePreparedQueryRequest.query:type_name -> common.PreparedQuery
-	165, // 121: ledger.UpdatePreparedQueryRequest.filter:type_name -> common.QueryFilter
-	164, // 122: ledger.ListPreparedQueriesResponse.queries:type_name -> common.PreparedQuery
-	142, // 123: ledger.ExecutePreparedQueryRequest.parameters:type_name -> ledger.ExecutePreparedQueryRequest.ParametersEntry
-	166, // 124: ledger.ExecutePreparedQueryRequest.mode:type_name -> common.QueryMode
-	167, // 125: ledger.ExecutePreparedQueryResponse.cursor:type_name -> common.PreparedQueryCursor
-	168, // 126: ledger.ExecutePreparedQueryResponse.aggregate:type_name -> common.AggregateResult
-	119, // 127: ledger.GetIndexStatusResponse.indexes:type_name -> ledger.IndexEntry
-	169, // 128: ledger.IndexEntry.index:type_name -> common.Index
-	4,   // 129: ledger.ListIndexesRequest.scope:type_name -> ledger.ListIndexesRequest.Scope
-	165, // 130: ledger.AggregateVolumesRequest.filter:type_name -> common.QueryFilter
-	124, // 131: ledger.QueryProfile.root_iterator:type_name -> ledger.IteratorProfile
-	124, // 132: ledger.IteratorProfile.children:type_name -> ledger.IteratorProfile
-	154, // 133: ledger.InspectIndexRequest.target_type:type_name -> common.TargetType
-	3,   // 134: ledger.InspectIndexRequest.mode:type_name -> ledger.InspectIndexMode
-	127, // 135: ledger.InspectIndexResponse.distinct_values:type_name -> ledger.InspectDistinctValues
-	129, // 136: ledger.InspectIndexResponse.facets:type_name -> ledger.InspectFacets
-	130, // 137: ledger.InspectIndexResponse.summary:type_name -> ledger.InspectSummary
-	170, // 138: ledger.InspectDistinctValues.values:type_name -> common.MetadataValue
-	170, // 139: ledger.InspectFacet.value:type_name -> common.MetadataValue
-	128, // 140: ledger.InspectFacets.facets:type_name -> ledger.InspectFacet
-	170, // 141: ledger.InspectSummary.min:type_name -> common.MetadataValue
-	170, // 142: ledger.InspectSummary.max:type_name -> common.MetadataValue
-	162, // 143: ledger.CreateLedgerRequest.AccountTypesEntry.value:type_name -> common.AccountType
-	170, // 144: ledger.SaveLedgerMetadataRequest.MetadataEntry.value:type_name -> common.MetadataValue
-	170, // 145: ledger.CreateTransactionPayload.MetadataEntry.value:type_name -> common.MetadataValue
-	171, // 146: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	170, // 147: ledger.RevertTransactionPayload.MetadataEntry.value:type_name -> common.MetadataValue
-	92,  // 148: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	92,  // 149: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	92,  // 150: ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	172, // 151: ledger.ExecutePreparedQueryRequest.ParametersEntry.value:type_name -> common.ParameterValue
-	13,  // 152: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
-	14,  // 153: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
-	5,   // 154: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
-	6,   // 155: ledger.BucketService.GetTransaction:input_type -> ledger.GetTransactionRequest
-	8,   // 156: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
-	9,   // 157: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
-	15,  // 158: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
-	65,  // 159: ledger.BucketService.GetPrimaryMetrics:input_type -> ledger.GetPrimaryMetricsRequest
-	67,  // 160: ledger.BucketService.GetSecondaryMetrics:input_type -> ledger.GetSecondaryMetricsRequest
-	80,  // 161: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
-	84,  // 162: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
-	85,  // 163: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
-	88,  // 164: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
-	34,  // 165: ledger.BucketService.ListChapters:input_type -> ledger.ListChaptersRequest
-	86,  // 166: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
-	87,  // 167: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
-	49,  // 168: ledger.BucketService.GetChapterSchedule:input_type -> ledger.GetChapterScheduleRequest
-	29,  // 169: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
-	51,  // 170: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
-	90,  // 171: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
-	93,  // 172: ledger.BucketService.AnalyzeAccounts:input_type -> ledger.AnalyzeAccountsRequest
-	100, // 173: ledger.BucketService.AnalyzeTransactions:input_type -> ledger.AnalyzeTransactionsRequest
-	107, // 174: ledger.BucketService.CreatePreparedQuery:input_type -> ledger.CreatePreparedQueryRequest
-	109, // 175: ledger.BucketService.UpdatePreparedQuery:input_type -> ledger.UpdatePreparedQueryRequest
-	111, // 176: ledger.BucketService.DeletePreparedQuery:input_type -> ledger.DeletePreparedQueryRequest
-	113, // 177: ledger.BucketService.ListPreparedQueries:input_type -> ledger.ListPreparedQueriesRequest
-	115, // 178: ledger.BucketService.ExecutePreparedQuery:input_type -> ledger.ExecutePreparedQueryRequest
-	117, // 179: ledger.BucketService.GetIndexStatus:input_type -> ledger.GetIndexStatusRequest
-	120, // 180: ledger.BucketService.ListIndexes:input_type -> ledger.ListIndexesRequest
-	121, // 181: ledger.BucketService.GetLedgerStats:input_type -> ledger.GetLedgerStatsRequest
-	122, // 182: ledger.BucketService.AggregateVolumes:input_type -> ledger.AggregateVolumesRequest
-	44,  // 183: ledger.BucketService.GetNumscript:input_type -> ledger.GetNumscriptRequest
-	45,  // 184: ledger.BucketService.ListNumscripts:input_type -> ledger.ListNumscriptsRequest
-	125, // 185: ledger.BucketService.InspectIndex:input_type -> ledger.InspectIndexRequest
-	131, // 186: ledger.BucketService.Barrier:input_type -> ledger.BarrierRequest
-	173, // 187: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
-	173, // 188: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
-	174, // 189: ledger.BucketService.GetAccount:output_type -> common.Account
-	7,   // 190: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
-	143, // 191: ledger.BucketService.ListTransactions:output_type -> common.Transaction
-	174, // 192: ledger.BucketService.ListAccounts:output_type -> common.Account
-	17,  // 193: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	66,  // 194: ledger.BucketService.GetPrimaryMetrics:output_type -> ledger.GetPrimaryMetricsResponse
-	68,  // 195: ledger.BucketService.GetSecondaryMetrics:output_type -> ledger.GetSecondaryMetricsResponse
-	81,  // 196: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	175, // 197: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
-	175, // 198: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
-	89,  // 199: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
-	176, // 200: ledger.BucketService.ListChapters:output_type -> common.Chapter
-	152, // 201: ledger.BucketService.ListLogs:output_type -> common.Log
-	152, // 202: ledger.BucketService.GetLog:output_type -> common.Log
-	50,  // 203: ledger.BucketService.GetChapterSchedule:output_type -> ledger.GetChapterScheduleResponse
-	177, // 204: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
-	53,  // 205: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
-	91,  // 206: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
-	96,  // 207: ledger.BucketService.AnalyzeAccounts:output_type -> ledger.AnalyzeAccountsEvent
-	97,  // 208: ledger.BucketService.AnalyzeTransactions:output_type -> ledger.AnalyzeTransactionsEvent
-	108, // 209: ledger.BucketService.CreatePreparedQuery:output_type -> ledger.CreatePreparedQueryResponse
-	110, // 210: ledger.BucketService.UpdatePreparedQuery:output_type -> ledger.UpdatePreparedQueryResponse
-	112, // 211: ledger.BucketService.DeletePreparedQuery:output_type -> ledger.DeletePreparedQueryResponse
-	114, // 212: ledger.BucketService.ListPreparedQueries:output_type -> ledger.ListPreparedQueriesResponse
-	116, // 213: ledger.BucketService.ExecutePreparedQuery:output_type -> ledger.ExecutePreparedQueryResponse
-	118, // 214: ledger.BucketService.GetIndexStatus:output_type -> ledger.GetIndexStatusResponse
-	169, // 215: ledger.BucketService.ListIndexes:output_type -> common.Index
-	178, // 216: ledger.BucketService.GetLedgerStats:output_type -> common.LedgerStats
-	168, // 217: ledger.BucketService.AggregateVolumes:output_type -> common.AggregateResult
-	179, // 218: ledger.BucketService.GetNumscript:output_type -> common.NumscriptInfo
-	179, // 219: ledger.BucketService.ListNumscripts:output_type -> common.NumscriptInfo
-	126, // 220: ledger.BucketService.InspectIndex:output_type -> ledger.InspectIndexResponse
-	132, // 221: ledger.BucketService.Barrier:output_type -> ledger.BarrierResponse
-	187, // [187:222] is the sub-list for method output_type
-	152, // [152:187] is the sub-list for method input_type
-	152, // [152:152] is the sub-list for extension type_name
-	152, // [152:152] is the sub-list for extension extendee
-	0,   // [0:152] is the sub-list for field type_name
+	164, // 78: ledger.LedgerApplyRequest.skippable_reasons:type_name -> common.ErrorReason
+	165, // 79: ledger.AddAccountTypeRequest.account_type:type_name -> common.AccountType
+	150, // 80: ledger.SetDefaultEnforcementModeRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
+	150, // 81: ledger.SetDefaultEnforcementModeLedgerRequest.enforcement_mode:type_name -> common.ChartEnforcementMode
+	165, // 82: ledger.AddAccountTypeLedgerRequest.account_type:type_name -> common.AccountType
+	69,  // 83: ledger.GetPrimaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	69,  // 84: ledger.GetSecondaryMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	70,  // 85: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
+	71,  // 86: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
+	72,  // 87: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
+	73,  // 88: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
+	74,  // 89: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
+	75,  // 90: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
+	76,  // 91: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
+	77,  // 92: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
+	78,  // 93: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
+	79,  // 94: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
+	82,  // 95: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
+	83,  // 96: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
+	0,   // 97: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
+	146, // 98: ledger.ListAuditEntriesRequest.options:type_name -> common.ListOptions
+	146, // 99: ledger.ListLogsRequest.options:type_name -> common.ListOptions
+	155, // 100: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
+	166, // 101: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
+	141, // 102: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
+	142, // 103: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
+	143, // 104: ledger.GetMetadataSchemaStatusResponse.ledger_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry
+	157, // 105: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
+	98,  // 106: ledger.AnalyzeAccountsResponse.patterns:type_name -> ledger.AccountPattern
+	95,  // 107: ledger.AnalyzeAccountsEvent.progress:type_name -> ledger.AnalyzeProgress
+	94,  // 108: ledger.AnalyzeAccountsEvent.result:type_name -> ledger.AnalyzeAccountsResponse
+	95,  // 109: ledger.AnalyzeTransactionsEvent.progress:type_name -> ledger.AnalyzeProgress
+	101, // 110: ledger.AnalyzeTransactionsEvent.result:type_name -> ledger.AnalyzeTransactionsResponse
+	99,  // 111: ledger.AccountPattern.segments:type_name -> ledger.PatternSegment
+	1,   // 112: ledger.PatternSegment.type:type_name -> ledger.PatternSegmentType
+	102, // 113: ledger.AnalyzeTransactionsResponse.flow_patterns:type_name -> ledger.FlowPattern
+	2,   // 114: ledger.FlowPattern.structure:type_name -> ledger.PostingStructure
+	103, // 115: ledger.FlowPattern.postings:type_name -> ledger.NormalizedPosting
+	104, // 116: ledger.FlowPattern.temporal:type_name -> ledger.TemporalStats
+	106, // 117: ledger.FlowPattern.volume_stats:type_name -> ledger.AssetVolumeStats
+	161, // 118: ledger.TemporalStats.first_seen:type_name -> common.Timestamp
+	161, // 119: ledger.TemporalStats.last_seen:type_name -> common.Timestamp
+	105, // 120: ledger.TemporalStats.peak_hours:type_name -> ledger.HourBucket
+	167, // 121: ledger.CreatePreparedQueryRequest.query:type_name -> common.PreparedQuery
+	168, // 122: ledger.UpdatePreparedQueryRequest.filter:type_name -> common.QueryFilter
+	167, // 123: ledger.ListPreparedQueriesResponse.queries:type_name -> common.PreparedQuery
+	144, // 124: ledger.ExecutePreparedQueryRequest.parameters:type_name -> ledger.ExecutePreparedQueryRequest.ParametersEntry
+	169, // 125: ledger.ExecutePreparedQueryRequest.mode:type_name -> common.QueryMode
+	170, // 126: ledger.ExecutePreparedQueryResponse.cursor:type_name -> common.PreparedQueryCursor
+	171, // 127: ledger.ExecutePreparedQueryResponse.aggregate:type_name -> common.AggregateResult
+	121, // 128: ledger.GetIndexStatusResponse.indexes:type_name -> ledger.IndexEntry
+	158, // 129: ledger.GetIndexRequest.id:type_name -> common.IndexID
+	158, // 130: ledger.GetIndexEntryStatusRequest.id:type_name -> common.IndexID
+	172, // 131: ledger.IndexEntry.index:type_name -> common.Index
+	4,   // 132: ledger.ListIndexesRequest.scope:type_name -> ledger.ListIndexesRequest.Scope
+	168, // 133: ledger.AggregateVolumesRequest.filter:type_name -> common.QueryFilter
+	126, // 134: ledger.QueryProfile.root_iterator:type_name -> ledger.IteratorProfile
+	126, // 135: ledger.IteratorProfile.children:type_name -> ledger.IteratorProfile
+	156, // 136: ledger.InspectIndexRequest.target_type:type_name -> common.TargetType
+	3,   // 137: ledger.InspectIndexRequest.mode:type_name -> ledger.InspectIndexMode
+	129, // 138: ledger.InspectIndexResponse.distinct_values:type_name -> ledger.InspectDistinctValues
+	131, // 139: ledger.InspectIndexResponse.facets:type_name -> ledger.InspectFacets
+	132, // 140: ledger.InspectIndexResponse.summary:type_name -> ledger.InspectSummary
+	173, // 141: ledger.InspectDistinctValues.values:type_name -> common.MetadataValue
+	173, // 142: ledger.InspectFacet.value:type_name -> common.MetadataValue
+	130, // 143: ledger.InspectFacets.facets:type_name -> ledger.InspectFacet
+	173, // 144: ledger.InspectSummary.min:type_name -> common.MetadataValue
+	173, // 145: ledger.InspectSummary.max:type_name -> common.MetadataValue
+	165, // 146: ledger.CreateLedgerRequest.AccountTypesEntry.value:type_name -> common.AccountType
+	173, // 147: ledger.SaveLedgerMetadataRequest.MetadataEntry.value:type_name -> common.MetadataValue
+	173, // 148: ledger.CreateTransactionPayload.MetadataEntry.value:type_name -> common.MetadataValue
+	174, // 149: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	173, // 150: ledger.RevertTransactionPayload.MetadataEntry.value:type_name -> common.MetadataValue
+	92,  // 151: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	92,  // 152: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	92,  // 153: ledger.GetMetadataSchemaStatusResponse.LedgerFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	175, // 154: ledger.ExecutePreparedQueryRequest.ParametersEntry.value:type_name -> common.ParameterValue
+	176, // 155: ledger.allowed_skippable_reasons:extendee -> google.protobuf.FieldOptions
+	164, // 156: ledger.allowed_skippable_reasons:type_name -> common.ErrorReason
+	13,  // 157: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
+	14,  // 158: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
+	5,   // 159: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
+	6,   // 160: ledger.BucketService.GetTransaction:input_type -> ledger.GetTransactionRequest
+	8,   // 161: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
+	9,   // 162: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
+	15,  // 163: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
+	65,  // 164: ledger.BucketService.GetPrimaryMetrics:input_type -> ledger.GetPrimaryMetricsRequest
+	67,  // 165: ledger.BucketService.GetSecondaryMetrics:input_type -> ledger.GetSecondaryMetricsRequest
+	80,  // 166: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
+	84,  // 167: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
+	85,  // 168: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
+	88,  // 169: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
+	34,  // 170: ledger.BucketService.ListChapters:input_type -> ledger.ListChaptersRequest
+	86,  // 171: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
+	87,  // 172: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
+	49,  // 173: ledger.BucketService.GetChapterSchedule:input_type -> ledger.GetChapterScheduleRequest
+	29,  // 174: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
+	51,  // 175: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
+	90,  // 176: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
+	93,  // 177: ledger.BucketService.AnalyzeAccounts:input_type -> ledger.AnalyzeAccountsRequest
+	100, // 178: ledger.BucketService.AnalyzeTransactions:input_type -> ledger.AnalyzeTransactionsRequest
+	107, // 179: ledger.BucketService.CreatePreparedQuery:input_type -> ledger.CreatePreparedQueryRequest
+	109, // 180: ledger.BucketService.UpdatePreparedQuery:input_type -> ledger.UpdatePreparedQueryRequest
+	111, // 181: ledger.BucketService.DeletePreparedQuery:input_type -> ledger.DeletePreparedQueryRequest
+	113, // 182: ledger.BucketService.ListPreparedQueries:input_type -> ledger.ListPreparedQueriesRequest
+	115, // 183: ledger.BucketService.ExecutePreparedQuery:input_type -> ledger.ExecutePreparedQueryRequest
+	117, // 184: ledger.BucketService.GetIndexStatus:input_type -> ledger.GetIndexStatusRequest
+	119, // 185: ledger.BucketService.GetIndex:input_type -> ledger.GetIndexRequest
+	120, // 186: ledger.BucketService.GetIndexEntryStatus:input_type -> ledger.GetIndexEntryStatusRequest
+	122, // 187: ledger.BucketService.ListIndexes:input_type -> ledger.ListIndexesRequest
+	123, // 188: ledger.BucketService.GetLedgerStats:input_type -> ledger.GetLedgerStatsRequest
+	124, // 189: ledger.BucketService.AggregateVolumes:input_type -> ledger.AggregateVolumesRequest
+	44,  // 190: ledger.BucketService.GetNumscript:input_type -> ledger.GetNumscriptRequest
+	45,  // 191: ledger.BucketService.ListNumscripts:input_type -> ledger.ListNumscriptsRequest
+	127, // 192: ledger.BucketService.InspectIndex:input_type -> ledger.InspectIndexRequest
+	133, // 193: ledger.BucketService.Barrier:input_type -> ledger.BarrierRequest
+	177, // 194: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
+	177, // 195: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
+	178, // 196: ledger.BucketService.GetAccount:output_type -> common.Account
+	7,   // 197: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
+	145, // 198: ledger.BucketService.ListTransactions:output_type -> common.Transaction
+	178, // 199: ledger.BucketService.ListAccounts:output_type -> common.Account
+	17,  // 200: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
+	66,  // 201: ledger.BucketService.GetPrimaryMetrics:output_type -> ledger.GetPrimaryMetricsResponse
+	68,  // 202: ledger.BucketService.GetSecondaryMetrics:output_type -> ledger.GetSecondaryMetricsResponse
+	81,  // 203: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
+	179, // 204: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
+	179, // 205: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
+	89,  // 206: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
+	180, // 207: ledger.BucketService.ListChapters:output_type -> common.Chapter
+	154, // 208: ledger.BucketService.ListLogs:output_type -> common.Log
+	154, // 209: ledger.BucketService.GetLog:output_type -> common.Log
+	50,  // 210: ledger.BucketService.GetChapterSchedule:output_type -> ledger.GetChapterScheduleResponse
+	181, // 211: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
+	53,  // 212: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
+	91,  // 213: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
+	96,  // 214: ledger.BucketService.AnalyzeAccounts:output_type -> ledger.AnalyzeAccountsEvent
+	97,  // 215: ledger.BucketService.AnalyzeTransactions:output_type -> ledger.AnalyzeTransactionsEvent
+	108, // 216: ledger.BucketService.CreatePreparedQuery:output_type -> ledger.CreatePreparedQueryResponse
+	110, // 217: ledger.BucketService.UpdatePreparedQuery:output_type -> ledger.UpdatePreparedQueryResponse
+	112, // 218: ledger.BucketService.DeletePreparedQuery:output_type -> ledger.DeletePreparedQueryResponse
+	114, // 219: ledger.BucketService.ListPreparedQueries:output_type -> ledger.ListPreparedQueriesResponse
+	116, // 220: ledger.BucketService.ExecutePreparedQuery:output_type -> ledger.ExecutePreparedQueryResponse
+	118, // 221: ledger.BucketService.GetIndexStatus:output_type -> ledger.GetIndexStatusResponse
+	172, // 222: ledger.BucketService.GetIndex:output_type -> common.Index
+	121, // 223: ledger.BucketService.GetIndexEntryStatus:output_type -> ledger.IndexEntry
+	172, // 224: ledger.BucketService.ListIndexes:output_type -> common.Index
+	182, // 225: ledger.BucketService.GetLedgerStats:output_type -> common.LedgerStats
+	171, // 226: ledger.BucketService.AggregateVolumes:output_type -> common.AggregateResult
+	183, // 227: ledger.BucketService.GetNumscript:output_type -> common.NumscriptInfo
+	183, // 228: ledger.BucketService.ListNumscripts:output_type -> common.NumscriptInfo
+	128, // 229: ledger.BucketService.InspectIndex:output_type -> ledger.InspectIndexResponse
+	134, // 230: ledger.BucketService.Barrier:output_type -> ledger.BarrierResponse
+	194, // [194:231] is the sub-list for method output_type
+	157, // [157:194] is the sub-list for method input_type
+	156, // [156:157] is the sub-list for extension type_name
+	155, // [155:156] is the sub-list for extension extendee
+	0,   // [0:155] is the sub-list for field type_name
 }
 
 func init() { file_bucket_proto_init() }
@@ -9919,7 +10092,7 @@ func file_bucket_proto_init() {
 		(*ExecutePreparedQueryResponse_Cursor)(nil),
 		(*ExecutePreparedQueryResponse_Aggregate)(nil),
 	}
-	file_bucket_proto_msgTypes[121].OneofWrappers = []any{
+	file_bucket_proto_msgTypes[123].OneofWrappers = []any{
 		(*InspectIndexResponse_DistinctValues)(nil),
 		(*InspectIndexResponse_Facets)(nil),
 		(*InspectIndexResponse_Summary)(nil),
@@ -9930,14 +10103,15 @@ func file_bucket_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bucket_proto_rawDesc), len(file_bucket_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   138,
-			NumExtensions: 0,
+			NumMessages:   140,
+			NumExtensions: 1,
 			NumServices:   1,
 		},
 		GoTypes:           file_bucket_proto_goTypes,
 		DependencyIndexes: file_bucket_proto_depIdxs,
 		EnumInfos:         file_bucket_proto_enumTypes,
 		MessageInfos:      file_bucket_proto_msgTypes,
+		ExtensionInfos:    file_bucket_proto_extTypes,
 	}.Build()
 	File_bucket_proto = out.File
 	file_bucket_proto_goTypes = nil

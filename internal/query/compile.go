@@ -15,18 +15,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// MaxFilterDepth bounds the recursion depth of compile() over
-// QueryFilter protos. A hostile client can hand-craft a deeply-nested
-// filter (e.g. 100k repetitions of And/Or/Not) and submit it via gRPC;
-// without a depth cap the compiler stack-overflows and aborts the
-// process (Go stack overflow is not catchable by recover) — a fatal
-// DoS. 100 is well above any legitimate query (review-2 L-19 / #341).
-const MaxFilterDepth = 100
+// MaxFilterDepth bounds the recursion depth of compile() over QueryFilter
+// protos (#341). The bound lives in internal/domain as the single source of
+// truth (see domain.MaxFilterDepth) so the prepared-query write-time walk
+// (domain.ValidateFilterForTarget) caps at the exact same value the compiler
+// enforces here at execute time; re-exported as a package-local const so this
+// package's existing references read unchanged.
+const MaxFilterDepth = domain.MaxFilterDepth
 
 // ErrFilterTooDeep is returned by Compile when the QueryFilter recursion
-// exceeds MaxFilterDepth. Typed Describable (KindValidation) so the gRPC
-// adapter maps it to InvalidArgument with the depth in the message.
-var ErrFilterTooDeep = domain.NewFilterCompilationError("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth)
+// exceeds MaxFilterDepth. Sourced from domain so the execute-time and
+// write-time paths return the same sentinel.
+var ErrFilterTooDeep = domain.ErrFilterTooDeep
 
 // compileCtx holds the immutable context threaded through the recursive
 // compilation pipeline. All fields are set once at the entry point and
@@ -101,6 +101,16 @@ func Compile(
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
+	// Reject an unsupported/unknown target at the earliest point. Without this
+	// guard compileUniverse's default arm returns an empty iterator, which the
+	// caller (executeList) turns into an empty-but-successful page BEFORE its own
+	// fail-loud switch — so a stored prepared query with a bad target (gRPC
+	// create validates only the name) would silently succeed with an empty
+	// result instead of surfacing the invariant violation.
+	if !isSupportedTarget(target) {
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", target)
+	}
+
 	if indexVersionFor == nil {
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
@@ -139,6 +149,19 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	ctx.depth++
 	defer func() { ctx.depth-- }()
 
+	// Single source of truth for per-target condition validity: reject any
+	// condition kind not declared valid on this target before dispatching to its
+	// compiler. This replaces the per-compiler / per-arm target guards that used
+	// to be scattered across this switch and the individual compilers
+	// (reverted → TX, accountHasAsset → ACCOUNTS, builtin uint → TX, log
+	// fields → LOGS). The verdict comes from commonpb.targetConditionValidity,
+	// which the REST decode layer also consults, so the two layers cannot drift.
+	// A ConditionKindUnknown (nil / unmapped arm) is never valid and is caught
+	// here loudly (invariant #7: never silently admit or drop a condition).
+	if err := rejectInvalidCondition(ctx.target, filter); err != nil {
+		return nil, err
+	}
+
 	switch f := filter.GetFilter().(type) {
 	case *commonpb.QueryFilter_Field:
 		return compileFieldCondition(ctx, f.Field)
@@ -163,12 +186,27 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_LogId:
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
 	case *commonpb.QueryFilter_Ledger:
-		// Ledger condition is a no-op in the Compile framework --- the ledger
-		// is already set in the context. Return the universe iterator.
-		return compileUniverse(ctx)
+		return compileLedgerCondition(ctx, f.Ledger)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
 	}
+}
+
+// rejectInvalidCondition validates a single QueryFilter node against the
+// authoritative per-target validity table (commonpb.targetConditionValidity),
+// returning a uniform, actionable error when the condition is not valid on the
+// target. Combinators are always valid; recursion into their children is handled
+// by the compile* combinators, each of which re-enters compile() and thus
+// re-runs this check per child.
+func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
+	kind := commonpb.ConditionKindOf(filter)
+	if commonpb.ConditionValidForTarget(target, kind) {
+		return nil
+	}
+
+	return domain.NewFilterCompilationError(
+		"condition %q is not valid on target %s",
+		kind.String(), commonpb.TargetHumanName(target))
 }
 
 // compileUniverse returns an iterator over ALL entities (no filter).
@@ -213,8 +251,39 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 		}), nil
 
 	default:
+		// Unreachable: Compile rejects unsupported targets up front
+		// (isSupportedTarget), so every compileUniverse call runs under a
+		// validated target. Fail loudly rather than return an empty iterator,
+		// which would silently mask a target that slipped past the guard.
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", ctx.target)
+	}
+}
+
+// compileLedgerCondition compiles a LedgerCondition (exact match on the ledger
+// name). Compilation is always scoped to a single ledger — ctx.ledgerName, the
+// one this query executes against — so the condition can only ever match that
+// ledger or nothing. It is therefore evaluated here rather than treated as a
+// no-op: when the condition names the executing ledger the result is the full
+// log universe; when it names any other ledger the result is empty (an
+// unsatisfiable filter, not a silent "all logs" — see
+// prepared_query_filter.go / EN-1503). LedgerCondition is only valid on LOGS
+// per the validity table, so no cross-target concern arises.
+func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.EntityIterator, error) {
+	if lc.GetCond() == nil {
+		return nil, domain.NewFilterCompilationError("ledger condition has no value")
+	}
+
+	want, err := resolveString(lc.GetCond(), ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	if want != ctx.ledgerName {
+		// Names a different ledger than the one being queried: unsatisfiable.
 		return &SliceIterator{}, nil
 	}
+
+	return compileUniverse(ctx)
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
@@ -341,10 +410,8 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 // maintained by the FSM and covers all history. value=true yields reverted
 // originals; value=false yields the universe minus the reverted set.
 func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.EntityIterator, error) {
-	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		return nil, domain.NewFilterCompilationError("reverted filter is only valid on transactions")
-	}
-
+	// Target validity (TRANSACTIONS only) is enforced at the dispatch site by
+	// rejectInvalidCondition against the single source of truth; no local guard.
 	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("reading reversion bitset: %w", err)
@@ -1074,10 +1141,8 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 // (assetBase, precision) cell. Valid only on the ACCOUNTS target. Requires the
 // account asset builtin index to be READY — there is no on-scan fallback.
 func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAssetCondition) (readstore.EntityIterator, error) {
-	if ctx.target != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return nil, domain.NewFilterCompilationError("has asset condition is only valid on the accounts target")
-	}
-
+	// Target validity (ACCOUNTS only) is enforced at the dispatch site by
+	// rejectInvalidCondition against the single source of truth; no local guard.
 	if _, err := requireIndexReady(ctx,
 		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 		"has asset"); err != nil {
@@ -1111,6 +1176,11 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 		return nil, domain.NewFilterCompilationError("builtin uint condition has no value")
 	}
 
+	// Target validity (TRANSACTIONS only) is enforced at the dispatch site by
+	// rejectInvalidCondition against the single source of truth. Transaction
+	// builtins (id/timestamp/insertedAt/revertedAt) read transaction indexes and
+	// yield transaction-keyed entities, so they are meaningful only on the
+	// transactions target; no local guard.
 	switch cond.GetField() {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
 		return compileTxIDCondition(ctx, cond.GetCond())
@@ -1558,16 +1628,26 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 	return NewTrackedIterator(iter, stats)
 }
 
-// targetHumanName returns a human-readable name for a query target.
-func targetHumanName(target commonpb.QueryTarget) string {
+// isSupportedTarget reports whether the compiler can materialize a query for
+// the given target. Kept as an explicit allow-list (not "!= 0") so a newly
+// added QueryTarget enum value is rejected until its iteration + enrichment
+// paths are wired, rather than silently falling through to an empty result.
+func isSupportedTarget(target commonpb.QueryTarget) bool {
 	switch target {
-	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		return "transactions"
-	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		return "logs"
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return true
 	default:
-		return "accounts"
+		return false
 	}
+}
+
+// targetHumanName returns a human-readable name for a query target. It
+// delegates to commonpb.TargetHumanName so the compile layer and the shared
+// validity table produce identical target labels.
+func targetHumanName(target commonpb.QueryTarget) string {
+	return commonpb.TargetHumanName(target)
 }
 
 // targetNamespaceAndLen returns the namespace and entity length for a query target.

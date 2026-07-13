@@ -77,24 +77,22 @@ func planAttrCode(plan *raftcmdpb.AttributeCoverage) byte {
 	return byte(plan.GetAttrCode())
 }
 
-// setIDInBitset walks every key in needs, computes its (U128, attrCode)
-// lookup key, and sets the matching bit in bits if the pair maps to an
-// AttributeCoverage index. Keys outside the map (idempotency tracker,
-// references whose preload was skipped) are silently dropped.
+// setIDInBitset walks every (attrCode, id) pair in needs and sets the
+// matching bit in bits if the pair maps to an AttributeCoverage index.
+// Since Coverage stores the U128 id directly (pre-computed at Add
+// time), no re-hashing or bytes/string conversion happens here — this
+// is the hot path that runs once per WriteOperation on every marshal
+// (twice on the rare rebuild). Keys outside the map (idempotency
+// tracker, references whose preload was skipped) are silently dropped.
 func setIDInBitset(bits []byte, indexByPlan map[planLookupKey]uint32, needs *Coverage) {
-	mark := func(canonical []byte, attrCode byte) {
-		u128, _ := attributes.MakeKey(canonical)
-		idx, ok := indexByPlan[planLookupKey{id: u128, attrCode: attrCode}]
-		if !ok {
-			return
-		}
+	for attrCode, byID := range needs.Attributes {
+		for id := range byID {
+			idx, ok := indexByPlan[planLookupKey{id: id, attrCode: attrCode}]
+			if !ok {
+				continue
+			}
 
-		bits[idx/8] |= 1 << (idx % 8)
-	}
-
-	for attrCode, set := range needs.Attributes {
-		for canonical := range set {
-			mark([]byte(canonical), attrCode)
+			bits[idx/8] |= 1 << (idx % 8)
 		}
 	}
 }

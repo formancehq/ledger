@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestLeadershipGainTarget(t *testing.T) {
@@ -25,14 +26,14 @@ func TestLeadershipGainTarget(t *testing.T) {
 		{
 			name: "single entry (the no-op) gives its own index",
 			rd: raft.Ready{
-				Entries: []raftpb.Entry{{Index: 42}},
+				Entries: []*raftpb.Entry{{Index: proto.Uint64(42)}},
 			},
 			want: 42,
 		},
 		{
 			name: "multiple entries — last index wins (the no-op is appended last)",
 			rd: raft.Ready{
-				Entries: []raftpb.Entry{{Index: 10}, {Index: 11}, {Index: 12}},
+				Entries: []*raftpb.Entry{{Index: proto.Uint64(10)}, {Index: proto.Uint64(11)}, {Index: proto.Uint64(12)}},
 			},
 			want: 12,
 		},

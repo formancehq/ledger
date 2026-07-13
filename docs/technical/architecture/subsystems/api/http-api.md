@@ -347,6 +347,115 @@ DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 
 **Response**: `204 No Content`
 
+### Audit
+
+Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
+`BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
+**bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
+— so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
+expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+
+#### List Audit Entries
+
+```http
+GET /v3/_/audit-entries?pageSize=100&after=42&reverse=false&filter=audit%5Boutcome%5D%20%3D%3D%20failure
+```
+
+Query parameters:
+- `pageSize`: max entries (default 100, capped at 1000)
+- `after`: audit sequence to start after (exclusive, opaque cursor)
+- `reverse`: `true` iterates newest-first
+- `filter`: a filter expression restricted to `audit[...]` conditions, using the
+  same grammar as `ledgerctl audit list --filter` (e.g.
+  `audit[outcome] == failure`, `audit[ledger] == main`,
+  `audit[order_type] in (create_transaction, revert_transaction)`). This is the
+  shared `filterexpr` DSL — **not** the JSON `QueryFilter` DSL used by prepared
+  queries, which cannot represent audit conditions. Filtered reads are served by
+  the asynchronous audit index; the consistency guarantee matches the gRPC
+  surface.
+
+**Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
+
+#### Get Audit Entry
+
+```http
+GET /v3/_/audit-entries/{sequence}
+```
+
+Returns a single `AuditEntry` by its global sequence, with per-order `items`
+populated. Missing sequences return `404`.
+### Indexes
+
+Per-ledger and bucket-wide index management. See `openapi.yml` for the exhaustive schema; the flow below covers the create → observe → drop cycle.
+
+**Canonical form**: index identifiers are exchanged as opaque strings produced by `indexes.Canonical` (`internal/domain/indexes/id.go`) — e.g. `metadata:TARGET_TYPE_ACCOUNT:color`, `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`, `log_builtin:LOG_BUILTIN_INDEX_DATE`. Only metadata indexes carry a target + key; builtin indexes name a proto enum value.
+
+#### Create an index
+
+```http
+POST /v3/{ledgerName}/indexes
+Content-Type: application/json
+
+{
+  "id": "metadata:TARGET_TYPE_ACCOUNT:color"
+}
+```
+
+Returns `201 Created` once the FSM has queued the backfill. The index enters `BUILDING` on the registry; poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` before running queries that need it.
+
+#### List indexes on a ledger
+
+```http
+GET /v3/{ledgerName}/indexes
+```
+
+Returns the `Index` registry entries owned by the ledger.
+
+#### Get a single index
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}
+```
+
+Returns the `Index` registry entry (id, build_status, ledger, created_at, last_built_at, forward_encoding_version).
+
+#### Get per-replica index status
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}/status
+```
+
+Returns the `IndexEntry` — the registry entry joined with the backfill cursor and the per-replica `IndexVersionState` (current + pending version). Use this to poll for backfill completion.
+
+#### Inspect a metadata index
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
+```
+
+Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`.
+
+#### Drop an index
+
+```http
+DELETE /v3/{ledgerName}/indexes/{canonicalId}
+```
+
+Returns `204 No Content` once the FSM has committed the drop.
+
+#### Bucket-wide index reads
+
+Cluster-wide observability (registry entries whose owning ledger is empty, aggregated indexer progress):
+
+```http
+GET /v3/_/indexes                        # ?scope=all (default) | bucket
+GET /v3/_/indexes/status?ledger=         # aggregate: LastIndexedSequence, Lag, IndexFileSize
+GET /v3/_/indexes/{canonicalId}          # single bucket-scoped Index entry
+GET /v3/_/indexes/{canonicalId}/status   # single bucket-scoped IndexEntry
+```
+
+The bucket-scoped single-index routes are a hook — no production write hits `SubAttrIndex` with an empty ledger today. The audit index (cross-ledger by nature) lives in a dedicated read-store keyspace and will be exposed on `GET /v3/audit-entries` per EN-1481, not through this hook.
+
 ### Cluster
 
 Cluster operations are available via the `ClusterService` gRPC API (port 8888) and the `ledgerctl cluster` CLI commands.

@@ -212,13 +212,13 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32, ledger string) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize, ledger)
+	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse)
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
@@ -370,10 +370,10 @@ func (b *RoutedController) GetChapterSchedule(ctx context.Context) (string, erro
 	return c.GetChapterSchedule(ctx)
 }
 
-func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, error) {
+func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return c.GetEventsSinks(ctx)
@@ -386,6 +386,42 @@ func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.Insp
 	}
 
 	return c.InspectIndex(ctx, req)
+}
+
+func (b *RoutedController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetIndexStatus(ctx, req)
+}
+
+func (b *RoutedController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetIndex(ctx, req)
+}
+
+func (b *RoutedController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetIndexEntryStatus(ctx, req)
+}
+
+func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ListIndexes(ctx, req)
 }
 
 var _ ctrl.Controller = (*RoutedController)(nil)

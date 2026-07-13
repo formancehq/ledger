@@ -15,10 +15,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// validFieldFilterJSON is a minimal QueryFilter wire shape with a populated
-// oneof, used to exercise the create/update paths without depending on the
-// full filter grammar.
-const validFieldFilterJSON = `{"field":{"field":{"metadata":"foo"},"existsCond":{}}}`
+// validFieldFilterJSON is a minimal QueryFilter wire shape (v2-aligned query
+// DSL) with a populated leaf condition, used to exercise the create/update
+// paths without depending on the full filter grammar.
+const validFieldFilterJSON = `{"$exists":{"metadata":"foo"}}`
 
 func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 	t.Parallel()
@@ -65,12 +65,10 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 		"name": "vip-high-risk",
 		"target": "ACCOUNTS",
 		"filter": {
-			"and": {
-				"filters": [
-					{"field": {"field": {"metadata": "risk_score"}, "intCond": {"min": "70"}}},
-					{"field": {"field": {"metadata": "vip"},        "boolCond": {"hardcoded": true}}}
-				]
-			}
+			"$and": [
+				{"$gte": {"metadata[risk_score]": 70}},
+				{"$match": {"metadata[vip]": true}}
+			]
 		}
 	}`
 
@@ -89,18 +87,19 @@ func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 	require.NotNil(t, filter, "filter was lost during decoding")
 
 	and := filter.GetAnd()
-	require.NotNil(t, and, "outer AND oneof was not dispatched")
+	require.NotNil(t, and, "outer $and was not dispatched")
 	require.Len(t, and.GetFilters(), 2)
 
 	first := and.GetFilters()[0].GetField()
-	require.NotNil(t, first, "first child field oneof was not dispatched")
+	require.NotNil(t, first, "first child metadata condition was not dispatched")
 	require.Equal(t, "risk_score", first.GetField().GetMetadata())
-	require.NotNil(t, first.GetIntCond(), "first child int_cond oneof was not dispatched")
+	require.NotNil(t, first.GetIntCond(), "first child int range was not dispatched")
+	require.Equal(t, int64(70), first.GetIntCond().GetMin())
 
 	second := and.GetFilters()[1].GetField()
 	require.NotNil(t, second)
 	require.Equal(t, "vip", second.GetField().GetMetadata())
-	require.NotNil(t, second.GetBoolCond(), "second child bool_cond oneof was not dispatched")
+	require.NotNil(t, second.GetBoolCond(), "second child bool condition was not dispatched")
 	require.True(t, second.GetBoolCond().GetHardcoded())
 }
 
@@ -162,6 +161,7 @@ func TestHandleCreatePreparedQuery_MissingFilter(t *testing.T) {
 	srv.handleCreatePreparedQuery(w, r)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "filter is required")
 }
 
 func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
@@ -169,9 +169,76 @@ func TestHandleCreatePreparedQuery_EmptyFilter(t *testing.T) {
 
 	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
 
+	// A target is set so the request reaches the filter-decode branch (an empty
+	// `{}` filter), not the earlier target-required check.
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
-		strings.NewReader(`{"name":"my-query","filter":{}}`),
+		strings.NewReader(`{"name":"my-query","target":"ACCOUNTS","filter":{}}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "empty object")
+}
+
+func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {
+	t.Parallel()
+
+	// LOGS is a usable prepared-query target over REST (EN-1503): query.Execute
+	// hydrates the log_data cursor field for it. A LOGS-target prepared query
+	// with a log-only condition (logId/date/ledger) must be accepted and the
+	// target must reach the persisted request unchanged.
+	var captured *servicepb.Request
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, reqs *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			captured = reqs.GetUnsigned().GetRequests()[0]
+
+			return []*commonpb.Log{{}}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"logs-q","target":"LOGS","filter":{"$gt":{"logId":"5"}}}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+	require.NotNil(t, captured)
+	create := captured.GetCreatePreparedQuery()
+	require.NotNil(t, create)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_LOGS, create.GetQuery().GetTarget())
+	require.NotNil(t, create.GetQuery().GetFilter().GetLogId(), "logId condition must survive decoding for LOGS target")
+}
+
+func TestHandleCreatePreparedQuery_UnknownTargetRejected(t *testing.T) {
+	t.Parallel()
+
+	// An unknown target must be rejected loudly, not silently coerced to a
+	// default (which would run a different query than requested).
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"q","target":"BOGUS","filter":`+validFieldFilterJSON+`}`),
+		map[string]string{"ledgerName": "ledger1"})
+
+	srv.handleCreatePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleCreatePreparedQuery_MissingTargetRejected(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries",
+		strings.NewReader(`{"name":"q","filter":`+validFieldFilterJSON+`}`),
 		map[string]string{"ledgerName": "ledger1"})
 
 	srv.handleCreatePreparedQuery(w, r)

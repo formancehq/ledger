@@ -134,10 +134,57 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&struct {
 			DeletedMetadata *DeletedMetadata `json:"deletedMetadata,omitempty"`
 		}{DeletedMetadata: p.DeletedMetadata})
+	case *LedgerLogPayload_OrderSkipped:
+		return p.OrderSkipped.MarshalJSON()
 	default:
 		// Other variants — use protojson for camelCase
 		return protojson.Marshal(x)
 	}
+}
+
+// MarshalJSON implements json.Marshaler for OrderSkippedLog. Renders the
+// ErrorReason as the SHORT identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
+// matching the wire convention used by the REST API surface
+// (skippableReasons, OrderSkippedResponse.reason, gRPC ErrorInfo.reason).
+// Standard encoding/json would emit the int enum value, breaking the
+// HydrateLog round-trip through LedgerLog's JSON layer.
+func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Reason  string            `json:"reason"`
+		Context map[string]string `json:"context,omitempty"`
+	}{
+		Reason:  strings.TrimPrefix(x.GetReason().String(), "ERROR_REASON_"),
+		Context: x.GetContext(),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for OrderSkippedLog. Accepts
+// the short reason identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT") and
+// re-prepends the "ERROR_REASON_" prefix before the enum-name lookup —
+// keeps the JSON wire symmetric with MarshalJSON and consistent with the
+// CreateTransactionPayload skippableReasons decoder.
+func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Reason  string            `json:"reason"`
+		Context map[string]string `json:"context"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.Reason != "" {
+		code, ok := ErrorReason_value["ERROR_REASON_"+aux.Reason]
+		if !ok {
+			return fmt.Errorf("unknown ErrorReason %q", aux.Reason)
+		}
+
+		x.Reason = ErrorReason(code)
+	}
+
+	x.Context = aux.Context
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
@@ -362,20 +409,46 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler for PreparedQuery.
 //
 // PreparedQuery embeds a *QueryFilter (a protobuf oneof) and exposes a
-// QueryTarget enum. Default encoding/json has no way to dispatch the oneof
-// variants (their Go fields carry only `protobuf:",oneof"` — no `json:` tag)
-// and emits the enum as a raw int. Result: `{"filter":{"Filter":{"Reference":
-// {"cond":{"Value":{"Hardcoded":"..."}}}}},"target":1}` instead of the
-// camelCase shape the REST contract advertises and that the input side
-// already accepts via `decodePreparedQueryFilter` (protojson).
+// QueryTarget enum. We deliberately do NOT route through protojson: that would
+// leak the protobuf-internal oneof/wrapper names of QueryFilter onto the public
+// REST surface (see the codec in query_filter.go). Instead the filter is
+// encoded through QueryFilter's own hand-written MarshalJSON (canonical flat
+// shape) and the target is emitted as the bare string enum.
 //
-// Route the whole value through protojson to keep the response symmetric
-// with the request — same class of bug as #459 / #473.
+// REST can create ACCOUNTS / TRANSACTIONS / LOGS prepared queries (see
+// parsePreparedQueryTarget); the map covers all three proto values so the
+// listed target is emitted faithfully regardless of how the query was created
+// (REST or gRPC/CLI).
 func (x *PreparedQuery) MarshalJSON() ([]byte, error) {
-	return protojson.Marshal(x)
+	target, ok := queryTargetToJSON[x.GetTarget()]
+	if !ok {
+		return nil, fmt.Errorf("prepared query: unknown target %v", x.GetTarget())
+	}
+
+	return json.Marshal(&struct {
+		Name   string       `json:"name"`
+		Target string       `json:"target"`
+		Filter *QueryFilter `json:"filter,omitempty"`
+	}{
+		Name:   x.GetName(),
+		Target: target,
+		Filter: x.GetFilter(),
+	})
+}
+
+// queryTargetToJSON maps the QueryTarget proto enum to the public string enum
+// documented in openapi.yml. Kept local so the public contract never inherits
+// the QUERY_TARGET_* proto prefixes.
+var queryTargetToJSON = map[QueryTarget]string{
+	QueryTarget_QUERY_TARGET_ACCOUNTS:     "ACCOUNTS",
+	QueryTarget_QUERY_TARGET_TRANSACTIONS: "TRANSACTIONS",
+	QueryTarget_QUERY_TARGET_LOGS:         "LOGS",
 }
 
 // MarshalJSON implements json.Marshaler for PreparedQueryCursor.
+//
+// The cursor carries exactly one populated data field per query target:
+// accountData (ACCOUNTS), transactionData (TRANSACTIONS) or logData (LOGS).
 func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		PageSize        uint32         `json:"pageSize"`
@@ -384,6 +457,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		Next            string         `json:"next,omitempty"`
 		AccountData     []*Account     `json:"accountData,omitempty"`
 		TransactionData []*Transaction `json:"transactionData,omitempty"`
+		LogData         []*Log         `json:"logData,omitempty"`
 	}{
 		PageSize:        x.GetPageSize(),
 		HasMore:         x.GetHasMore(),
@@ -391,6 +465,7 @@ func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
 		Next:            x.GetNext(),
 		AccountData:     x.GetAccountData(),
 		TransactionData: x.GetTransactionData(),
+		LogData:         x.GetLogData(),
 	})
 }
 

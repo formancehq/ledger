@@ -85,7 +85,7 @@ func ProposalRequiresCheckpoint(p *raftcmdpb.Proposal) bool {
 //
 // Unmarshal errors are intentionally swallowed: the main apply loop will
 // surface them with the appropriate error semantics.
-func ValidateCheckpointEntryPositions(entries []raftpb.Entry) error {
+func ValidateCheckpointEntryPositions(entries []*raftpb.Entry) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -97,19 +97,19 @@ func ValidateCheckpointEntryPositions(entries []raftpb.Entry) error {
 			break
 		}
 
-		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+		if entry.GetType() != raftpb.EntryNormal || len(entry.GetData()) == 0 {
 			continue
 		}
 
 		cmd := raftcmdpb.ProposalFromVTPool()
-		err := cmd.UnmarshalVT(entry.Data)
+		err := cmd.UnmarshalVT(entry.GetData())
 		triggers := err == nil && ClassifyCheckpointOrderPosition(cmd.GetOrders()) != CheckpointOrderAbsent
 		cmd.ReturnToVTPool()
 
 		if triggers {
 			return fmt.Errorf(
 				"checkpoint trigger entry at position %d/%d (raft index %d) — applier must pre-split",
-				i, len(entries), entry.Index,
+				i, len(entries), entry.GetIndex(),
 			)
 		}
 	}
@@ -140,7 +140,7 @@ func ValidateCheckpointEntryPositionsDecoded(decoded []DecodedEntry) error {
 
 		return fmt.Errorf(
 			"checkpoint trigger entry at position %d/%d (raft index %d) — applier must pre-split",
-			i, len(decoded), decoded[i].Entry.Index,
+			i, len(decoded), decoded[i].Entry.GetIndex(),
 		)
 	}
 
