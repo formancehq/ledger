@@ -12,21 +12,27 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// TestScope_TechnicalUpdate_CoverageMissShortCircuits pins that an
+// TestScope_TechnicalUpdate_CoverageMissPropagates pins that an
 // undeclared ledger read in a technical-update handler propagates the
-// *ErrCoverageMiss out of applyTechnicalUpdates, short-circuiting any
-// later handlers in the loop. Coverage miss = malformed plan, surfaced
-// as a business rejection — handlers that swallowed read errors before
-// the refactor no longer mask an admission bug.
-func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
+// *ErrCoverageMiss out of applyTechnicalUpdates rather than being
+// swallowed. Coverage miss = malformed plan, surfaced as a business
+// rejection — handlers that swallowed read errors before the refactor no
+// longer mask an admission bug.
+//
+// EN-1524 caps a proposal at one technical update, so the historical
+// two-TU variant of this test (which also asserted a later handler was
+// short-circuited) is now covered by the single-TU shape: the sole
+// MirrorSync handler reads an undeclared ledger and its coverage miss
+// must reach the caller.
+func TestScope_TechnicalUpdate_CoverageMissPropagates(t *testing.T) {
 	t.Parallel()
 
 	fsm, dataStore, _ := newTestMachine(t)
 
 	const gen0Byte byte = 0
 
-	// Seed the "ok" ledger in the cache + global store so the second
-	// handler would have a real entry to read if it were reached.
+	// Seed the "ok" ledger in the cache + global store so the plan has a
+	// real declared entry that is simply not the one the handler reads.
 	okKey := domain.LedgerKey{Name: "ok"}
 	okInfo := &commonpb.LedgerInfo{Id: 1, Name: "ok"}
 
@@ -36,8 +42,8 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	require.NoError(t, SaveLedger(seedBatch, okInfo))
 	require.NoError(t, seedBatch.Commit())
 
-	// ExecutionPlan declares ONLY "ok" — "missed" is intentionally absent so
-	// the first handler hits a coverage miss.
+	// ExecutionPlan declares ONLY "ok" — the TU targets "missed", which is
+	// intentionally absent so the handler hits a coverage miss.
 	okID, _ := attributes.MakeKey(okKey.Bytes())
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: fsm.Registry.Cache.BaseIndex.Gen0,
@@ -46,18 +52,16 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 		},
 	}
 
-	// Build the proposal with TWO MirrorSyncUpdate TechnicalUpdates.
-	// Order matters: "missed" first so its short-circuit happens BEFORE
-	// the second handler would queue a mirror-sync write. MirrorSync's
-	// handler calls scope.GetLedger — so the coverage miss surfaces
-	// from the same code path the historical IndexReady test exercised.
+	// A single MirrorSyncUpdate reading the undeclared ledger "missed".
+	// MirrorSync's handler calls scope.GetLedger, so the coverage miss
+	// surfaces from the same code path the historical IndexReady test
+	// exercised.
 	proposal := &raftcmdpb.Proposal{
 		Id:            1,
 		Date:          &commonpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
 			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed", Cursor: 1}}},
-			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "ok", Cursor: 2}}},
 		},
 	}
 
@@ -73,15 +77,11 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 
 	var miss *ErrCoverageMiss
 	require.ErrorAs(t, err, &miss, "the propagated error must wrap *ErrCoverageMiss")
-	// applyIndexReady reads LedgerInfo before the Index (to soft-skip on
-	// DeletedAt), so the first undeclared key the gate rejects is "ledgers".
 	require.Equal(t, "ledgers", miss.Attribute)
 
-	// The second handler MUST NOT have been reached — the first
-	// handler's coverage miss short-circuits the loop before "ok" is
-	// touched. A successful second handler would have queued a
-	// MirrorSyncWrite for "ok".
-	require.Empty(t, buffer.pendingMirrorSyncs, "later handler must not have queued an update — short-circuit failed")
+	// No mirror-sync write must have been queued: the coverage miss
+	// aborts the handler before QueueMirrorSync runs.
+	require.Empty(t, buffer.pendingMirrorSyncs, "handler must not have queued an update after a coverage miss")
 }
 
 // TestScope_TechnicalUpdate_PerUpdateCoverageIsolation pins that the

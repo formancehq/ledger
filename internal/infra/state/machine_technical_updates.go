@@ -32,6 +32,18 @@ import (
 // those and converts them into ApplyResult.Error so the proposer learns
 // about the rejection without an FSM-level abort.
 func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, batch *dal.WriteSession, raftIndex uint64, proposal *raftcmdpb.Proposal) error {
+	// Preflight the WHOLE technical-update envelope before dispatching a
+	// single handler. applyTechnicalUpdates below mutates state as it
+	// walks the slice (applyClusterConfig resets the cache, applyBackupOrder
+	// touches BackupJobsState, applyMirrorSyncUpdate queues into the
+	// WriteSet, …) — so a malformed later update, or an unsupported mixture
+	// of orders and technical updates, must be caught FIRST. Otherwise an
+	// earlier handler's direct mutation lands before the later update is
+	// rejected. See EN-1524.
+	if err := preflightTechnicalUpdates(proposal); err != nil {
+		return err
+	}
+
 	for i, tu := range proposal.GetTechnicalUpdates() {
 		scope, scopeErr := scopeFactory.NewScope(tu.GetCoverageBits())
 		if scopeErr != nil {
@@ -89,6 +101,100 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 			// rather than discover stale forward indexes later.
 			return fmt.Errorf("technical_updates[%d]: unsupported kind %T (drain Raft commits before upgrading past EN-1323)", i, kind)
 		}
+	}
+
+	return nil
+}
+
+// preflightTechnicalUpdates is a mutation-free pass over the WHOLE
+// technical-update envelope, run before applyTechnicalUpdates dispatches
+// any handler. It exists because the dispatch loop interleaves validation
+// with mutation: a handler mutates state (cache reset, backup-job map,
+// WriteSet queue) the instant it is reached, so a malformed later update
+// discovered mid-loop would land AFTER an earlier handler already mutated.
+// The preflight moves every cheap structural check ahead of the first
+// mutation. See EN-1524.
+//
+// Three classes of check, each mapped to the surfacing the FSM already
+// uses for that class:
+//
+//  1. Coverage bitset well-formedness — validated against the SAME
+//     execution plan the handlers' scopes will use, via the shared
+//     validateCoverageBits. A bit past the plan slice, a plan with a
+//     malformed AttributeID, or an attr_code the FSM does not handle
+//     surfaces as *domain.ErrInvalidExecutionPlan — a business rejection
+//     (planInvariantDescribable in machine.go recognises it), never an
+//     FSM abort, because no mutation has landed yet.
+//
+//  2. Producer-shape enforcement — the current producers emit exactly one
+//     shape each (see the proposal builders in bootstrap/module.go,
+//     application/events/emitter.go, application/backup/orchestrator.go,
+//     application/mirror/worker.go): (a) a non-MirrorSync technical update
+//     is technical-only and is the SOLE update in a zero-order proposal;
+//     (b) MirrorSync may coexist with its mirror-ingest order batch but
+//     remains the sole technical update in that proposal. A proposal that
+//     violates either — multiple technical updates, or non-MirrorSync
+//     updates riding alongside orders — is a producer bug, surfaced as
+//     *domain.ErrInvalidExecutionPlan (KindInternal) for the same
+//     no-mutation reason as (1).
+//
+//  3. nil / unsupported kind — surfaced FSM-fatally, identical to the
+//     dispatch loop's default arm. Per CLAUDE.md invariant #7 and the
+//     EN-1323 rolling-upgrade note there, a nil-kind technical update is
+//     an FSM-divergence signal (old nodes apply the pre-cutover payload,
+//     new nodes see nil), so it must fail loudly on every new node rather
+//     than degrade to a per-proposal business rejection.
+func preflightTechnicalUpdates(proposal *raftcmdpb.Proposal) error {
+	updates := proposal.GetTechnicalUpdates()
+	if len(updates) == 0 {
+		return nil
+	}
+
+	var plans []*raftcmdpb.AttributeCoverage
+	if plan := proposal.GetExecutionPlan(); plan != nil {
+		plans = plan.GetAttributes()
+	}
+
+	// Shape: at most one technical update per proposal. Every current
+	// producer emits exactly one; more than one means a producer bug or a
+	// forged proposal, and the two-shape contract below (which reasons
+	// about "the" technical update) only holds for a single update.
+	if len(updates) > 1 {
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: fmt.Sprintf("proposal carries %d technical updates; at most one is supported per proposal", len(updates)),
+		}
+	}
+
+	tu := updates[0]
+
+	// Coverage: validate the update's bitset against the final execution
+	// plan without touching any coverage slot (the mutation applyPlans
+	// would do). NewScope re-runs the mutating variant per handler; here we
+	// only need the reject-before-mutation guarantee.
+	if err := validateCoverageBits(plans, tu.GetCoverageBits(), nil); err != nil {
+		return fmt.Errorf("technical_updates[0]: %w", err)
+	}
+
+	// Kind + order coexistence. MirrorSync is the only kind allowed to ride
+	// alongside an order batch; every other kind is technical-only.
+	switch tu.GetKind().(type) {
+	case *raftcmdpb.TechnicalUpdate_MirrorSync:
+		// Allowed with or without orders (data batch vs. error report).
+	case *raftcmdpb.TechnicalUpdate_ClusterConfig,
+		*raftcmdpb.TechnicalUpdate_EventsSink,
+		*raftcmdpb.TechnicalUpdate_IdempotencyEviction,
+		*raftcmdpb.TechnicalUpdate_BackupOrder,
+		*raftcmdpb.TechnicalUpdate_IncrementalBackupOrder:
+		if len(proposal.GetOrders()) != 0 {
+			return &domain.ErrInvalidExecutionPlan{
+				Reason_: fmt.Sprintf("technical_updates[0]: %T is technical-only and cannot coexist with %d order(s)", tu.GetKind(), len(proposal.GetOrders())),
+			}
+		}
+	default:
+		// nil kind (rolling-upgrade IndexReady cutover) or a kind added
+		// without a preflight arm. FSM-fatal, matching the dispatch loop's
+		// default arm — see that comment and CLAUDE.md invariant #7.
+		return fmt.Errorf("technical_updates[0]: unsupported kind %T (drain Raft commits before upgrading past EN-1323)", tu.GetKind())
 	}
 
 	return nil

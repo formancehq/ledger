@@ -147,6 +147,44 @@ func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalid
 	return nil
 }
 
+// validateCoverageBits walks the bits set in coverageBits (LSB-first) and
+// checks each flagged plan WITHOUT mutating any coverage slot: every bit
+// must index a real plan entry, and every selected plan must carry a
+// 16-byte AttributeID plus an attr_code the FSM handles. The optional
+// visit callback fires once per set bit (in ascending bit order) so the
+// mutating caller (applyPlans) can count selected plans per slot without
+// re-walking the bitset.
+//
+// Extracted so both the scope-construction path (applyPlans) and the
+// mutation-free technical-update preflight (preflightTechnicalUpdates)
+// validate a coverage bitset against the same rules — the preflight must
+// reject a malformed bitset BEFORE any handler runs, so it cannot afford
+// applyPlans' slot mutation.
+func validateCoverageBits(plans []*raftcmdpb.AttributeCoverage, coverageBits []byte, visit func(bit int)) *domain.ErrInvalidExecutionPlan {
+	for byteIdx, b := range coverageBits {
+		for b != 0 {
+			bit := byteIdx*8 + lsbIndex(b)
+			b &= b - 1
+
+			if bit >= len(plans) {
+				return &domain.ErrInvalidExecutionPlan{
+					Reason_: fmt.Sprintf("coverage_bits flags position %d past plans length %d", bit, len(plans)),
+				}
+			}
+
+			if err := validatePlan(plans[bit], bit); err != nil {
+				return err
+			}
+
+			if visit != nil {
+				visit(bit)
+			}
+		}
+	}
+
+	return nil
+}
+
 // applyPlans walks the plans slice narrowed to the entries flagged in
 // coverageBits (LSB-first) and appends each selected plan's U128 to the
 // matching coverage slot. Empty coverageBits means "admit no plan" —
@@ -183,23 +221,10 @@ func applyPlans(coverage *coverageSlots, plans []*raftcmdpb.AttributeCoverage, c
 
 	var counts [len(cacheAttrKinds)]int
 
-	for byteIdx, b := range coverageBits {
-		for b != 0 {
-			bit := byteIdx*8 + lsbIndex(b)
-			b &= b - 1
-
-			if bit >= len(plans) {
-				return &domain.ErrInvalidExecutionPlan{
-					Reason_: fmt.Sprintf("coverage_bits flags position %d past plans length %d", bit, len(plans)),
-				}
-			}
-
-			if err := validatePlan(plans[bit], bit); err != nil {
-				return err
-			}
-
-			counts[coverageSlotIndex[byte(plans[bit].GetAttrCode())]]++
-		}
+	if err := validateCoverageBits(plans, coverageBits, func(bit int) {
+		counts[coverageSlotIndex[byte(plans[bit].GetAttrCode())]]++
+	}); err != nil {
+		return err
 	}
 
 	for i, n := range counts {
