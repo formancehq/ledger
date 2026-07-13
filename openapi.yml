@@ -615,7 +615,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict (e.g. concurrent modification)
+          description: Conflict (concurrent modification, or reference already claimed by another transaction). Callers that need continue-on-failure semantics should use the bulk endpoint with a per-entry `skippableReasons` list.
           content:
             application/json:
               schema:
@@ -3229,7 +3229,11 @@ components:
             - ADD_METADATA
             - REVERT_TRANSACTION
             - DELETE_METADATA
-          description: The type of operation to perform
+          description: |
+            The type of operation to perform. The REST bulk endpoint accepts
+            these four actions only; account-type actions
+            (`ADD_ACCOUNT_TYPE` / `REMOVE_ACCOUNT_TYPE`) are gRPC-only and
+            are rejected here.
         ik:
           type: string
           maxLength: 256
@@ -3241,6 +3245,33 @@ components:
             - $ref: '#/components/schemas/RevertTransactionRequest'
             - $ref: '#/components/schemas/DeleteMetadataRequest'
           description: Operation-specific data
+        skippableReasons:
+          type: array
+          items:
+            type: string
+            enum:
+              - TRANSACTION_REFERENCE_CONFLICT
+              - TRANSACTION_ALREADY_REVERTED
+              - METADATA_NOT_FOUND
+          description: |
+            Opt-in continue-on-failure list for this entry. When the FSM
+            would otherwise reject the underlying order with a business
+            error whose typed reason matches one of these entries, the
+            order is recorded as an `OrderSkippedLog` (no state mutation)
+            and the bulk result's `data` surfaces the skip context.
+            Reasons outside the per-action business whitelist (structural
+            / internal reasons) are rejected at admission. Accepted
+            reasons per action on this REST endpoint:
+              - `CREATE_TRANSACTION` → `TRANSACTION_REFERENCE_CONFLICT`
+              - `REVERT_TRANSACTION` → `TRANSACTION_ALREADY_REVERTED`
+              - `DELETE_METADATA`    → `METADATA_NOT_FOUND`
+            The FSM also supports skipping `ADD_ACCOUNT_TYPE`
+            (`ACCOUNT_TYPE_ALREADY_EXISTS`) and `REMOVE_ACCOUNT_TYPE`
+            (`ACCOUNT_TYPE_NOT_FOUND`), but those actions are **gRPC-only**:
+            the REST bulk endpoint does not accept account-type actions (see
+            the `action` enum above), so their reasons are not offered here.
+            Empty (default) preserves the historical fail-on-error
+            behaviour.
 
     AddMetadataRequest:
       type: object
@@ -3368,11 +3399,22 @@ components:
           description: Error description (present only on error)
         data:
           description: |
-            Operation result data. For `CREATE_TRANSACTION` this is the full
-            created transaction object. Omitted for other actions and on error.
+            Operation result data. Shape depends on the originating action:
+              - `CREATE_TRANSACTION` success: a `TransactionResponse` — the
+                created Transaction object.
+              - Any skippable action skip (when the item opted into
+                `skippableReasons` and the FSM matched one): an
+                `OrderSkippedResponse` with `skipped: true`, `reason`, and
+                reason-specific `context`. Emitted for every REST-supported
+                skippable action — CREATE_TRANSACTION, REVERT_TRANSACTION,
+                DELETE_METADATA — not just create.
+              - Other successful non-create actions: `null`.
+            Branch on `OrderSkippedResponse.skipped` to distinguish a skip
+            from a successful transaction.
           nullable: true
-          allOf:
+          oneOf:
             - $ref: '#/components/schemas/TransactionResponse'
+            - $ref: '#/components/schemas/OrderSkippedResponse'
 
     CreateTransactionResponse:
       type: object
@@ -3406,6 +3448,33 @@ components:
               items:
                 $ref: '#/components/schemas/ChartViolation'
               description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
+
+    OrderSkippedResponse:
+      type: object
+      description: |
+        Shape returned in the bulk result's `data` field when a bulk entry
+        opted into `skippableReasons` and the FSM matched one of the
+        listed reasons (no state mutation occurred). `skipped` is always
+        `true` on this shape — branch on it to distinguish from the
+        normal Transaction data.
+      required:
+        - skipped
+        - reason
+      properties:
+        skipped:
+          type: boolean
+          description: Always true on this shape.
+        reason:
+          type: string
+          description: Typed reason that matched the skip (e.g. `TRANSACTION_REFERENCE_CONFLICT`). Same identifier the gRPC ErrorInfo.reason and the REST error responses use.
+        context:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Reason-specific correlator. For
+            `TRANSACTION_REFERENCE_CONFLICT`, contains
+            `reference` and `existingTransactionId`.
 
     GetTransactionResponse:
       type: object

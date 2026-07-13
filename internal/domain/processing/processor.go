@@ -185,9 +185,82 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			tagger.BeginOrder(i)
 		}
 
-		payload, err := p.processOrder(order, orderScope, ctx)
+		// Per-order rollback for orders that opt in via skippable_reasons:
+		// every Scope mutation made by the sub-processor goes through an
+		// orderOverlayScope that buffers writes locally. If ProcessOrders
+		// later converts the failure into an OrderSkippedLog, the overlay
+		// is dropped without Commit() and the parent state stays untouched
+		// — the order is effectively rolled back. Orders without
+		// skippable_reasons retain the historical zero-overhead path.
+		//
+		// The overlay is wrapped in a skipSafeScope: any mutation whose
+		// effect the overlay does NOT buffer (signing keys, maintenance
+		// mode, chapter mutations, numscript library, query-checkpoint
+		// state) panics via trapUnbuffered rather than silently leaking to
+		// the parent — assert.Unreachable is layered on top so the same
+		// call surfaces as a first-class finding under Antithesis, but
+		// the panic is the hard-stop that catches the invariant outside
+		// Antithesis where the SDK's assert.Unreachable is a no-op.
+		// skipSafeScope does not embed Scope, so a future method added to
+		// the interface fails to compile until it is explicitly
+		// classified there.
+		processScope := orderScope
+
+		var overlay *orderOverlayScope
+		if len(orderSkippableReasons(order)) > 0 {
+			overlay = newOrderOverlayScope(orderScope)
+			processScope = newSkipSafeScope(overlay)
+		}
+
+		payload, err := p.processOrder(order, processScope, ctx)
 		if err != nil {
+			if skippedPayload, matched := matchOrderSkip(order, err); matched {
+				// Drop the overlay (no Commit) → all writes the sub-
+				// processor staged are rolled back atomically. The
+				// boundary slot (NextLogId / Date) IS consumed on the
+				// PARENT scope so the skip log gets a per-ledger id
+				// and date like every other ledger log — the read-side
+				// index keys per-ledger logs by (ledger, log_id) and
+				// silently overwrites if every skip lands at id 0.
+				if err := assignSkipLogIDAndDate(orderScope, order, skippedPayload); err != nil {
+					return nil, err
+				}
+
+				nextSequenceID := orderScope.IncrementNextSequenceID()
+				skipLog := &commonpb.Log{
+					Sequence: nextSequenceID,
+					Payload:  skippedPayload,
+				}
+				logs[i] = &raftcmdpb.CreatedLogOrReference{
+					Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
+						CreatedLog: skipLog,
+					},
+				}
+
+				sink.Absorb(order, skipLog)
+
+				result.CreatedLogs = append(result.CreatedLogs, skipLog)
+				if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
+					result.MinLogSequence = nextSequenceID
+				}
+				if nextSequenceID > result.MaxLogSequence {
+					result.MaxLogSequence = nextSequenceID
+				}
+
+				continue
+			}
+
 			return nil, err
+		}
+
+		if overlay != nil {
+			if err := overlay.Commit(); err != nil {
+				// Coverage-miss surfaced by a staged Delete (invariant #6):
+				// the FSM apply path must not silently drop tombstones —
+				// wrap as ErrStorageOperation so the order fails loudly
+				// (mirrors buildPostCommitVolumes / applyPosting).
+				return nil, &domain.ErrStorageOperation{Operation: "committing order overlay", Cause: err}
+			}
 		}
 
 		nextSequenceID := orderScope.IncrementNextSequenceID()

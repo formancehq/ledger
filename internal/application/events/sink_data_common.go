@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -53,6 +54,10 @@ type sinkEventData struct {
 
 	// Sink events
 	SinkName *string `json:"sinkName,omitempty"`
+
+	// SKIPPED_ORDER
+	SkippedReason  *string           `json:"skippedReason,omitempty"`
+	SkippedContext map[string]string `json:"skippedContext,omitempty"`
 }
 
 type sinkTransaction struct {
@@ -155,6 +160,15 @@ func sinkPopulateApply(data *sinkEventData, apply *commonpb.ApplyLedgerLog) {
 		// Schema operations — no sink-specific data
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		// Schema operations — no sink-specific data
+
+	case *commonpb.LedgerLogPayload_OrderSkipped:
+		// Serialize the short public identifier (e.g. TRANSACTION_REFERENCE_CONFLICT)
+		// rather than the generated enum name (ERROR_REASON_...) so sink consumers
+		// can match against the same values callers submit in skippableReasons and
+		// that the REST/bulk response and OrderSkippedLog JSON already expose.
+		reason := domain.ReasonString(lp.OrderSkipped.GetReason())
+		data.SkippedReason = &reason
+		data.SkippedContext = lp.OrderSkipped.GetContext()
 	}
 }
 

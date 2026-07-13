@@ -4069,6 +4069,7 @@ func NewLedgerActionListReader(s []*LedgerAction) LedgerActionListReader {
 type LedgerApplyRequestReader interface {
 	GetLedger() string
 	GetAction() LedgerActionReader
+	GetSkippableReasons() []commonpb.ErrorReason
 	Mutate() *LedgerApplyRequest
 }
 
@@ -4084,6 +4085,10 @@ func (r *ledgerApplyRequestReadonly) GetAction() LedgerActionReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *ledgerApplyRequestReadonly) GetSkippableReasons() []commonpb.ErrorReason {
+	return slices.Clone((*LedgerApplyRequest)(r).GetSkippableReasons())
 }
 
 func (r *ledgerApplyRequestReadonly) Mutate() *LedgerApplyRequest {

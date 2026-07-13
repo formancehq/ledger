@@ -684,6 +684,18 @@ func WithReference(req *servicepb.Request, reference string) *servicepb.Request 
 	return req
 }
 
+// WithSkippableReasons sets the per-apply skippable_reasons whitelist on an
+// Apply request. Each reason is a business-level error the caller accepts to
+// see converted into an OrderSkippedLog instead of failing the proposal.
+// Validated at admission against a per-action whitelist.
+func WithSkippableReasons(req *servicepb.Request, reasons ...commonpb.ErrorReason) *servicepb.Request {
+	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
+		reqType.Apply.SkippableReasons = reasons
+	}
+
+	return req
+}
+
 // WithIdempotencyKey wraps requests into an unsigned ApplyRequest under the
 // given idempotency key — idempotency is keyed per atomic batch.
 func WithIdempotencyKey(key string, reqs ...*servicepb.Request) *servicepb.ApplyRequest {

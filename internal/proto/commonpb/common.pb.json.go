@@ -134,10 +134,57 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 		return json.Marshal(&struct {
 			DeletedMetadata *DeletedMetadata `json:"deletedMetadata,omitempty"`
 		}{DeletedMetadata: p.DeletedMetadata})
+	case *LedgerLogPayload_OrderSkipped:
+		return p.OrderSkipped.MarshalJSON()
 	default:
 		// Other variants — use protojson for camelCase
 		return protojson.Marshal(x)
 	}
+}
+
+// MarshalJSON implements json.Marshaler for OrderSkippedLog. Renders the
+// ErrorReason as the SHORT identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
+// matching the wire convention used by the REST API surface
+// (skippableReasons, OrderSkippedResponse.reason, gRPC ErrorInfo.reason).
+// Standard encoding/json would emit the int enum value, breaking the
+// HydrateLog round-trip through LedgerLog's JSON layer.
+func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Reason  string            `json:"reason"`
+		Context map[string]string `json:"context,omitempty"`
+	}{
+		Reason:  strings.TrimPrefix(x.GetReason().String(), "ERROR_REASON_"),
+		Context: x.GetContext(),
+	})
+}
+
+// UnmarshalJSON implements json.Unmarshaler for OrderSkippedLog. Accepts
+// the short reason identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT") and
+// re-prepends the "ERROR_REASON_" prefix before the enum-name lookup —
+// keeps the JSON wire symmetric with MarshalJSON and consistent with the
+// CreateTransactionPayload skippableReasons decoder.
+func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Reason  string            `json:"reason"`
+		Context map[string]string `json:"context"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.Reason != "" {
+		code, ok := ErrorReason_value["ERROR_REASON_"+aux.Reason]
+		if !ok {
+			return fmt.Errorf("unknown ErrorReason %q", aux.Reason)
+		}
+
+		x.Reason = ErrorReason(code)
+	}
+
+	x.Context = aux.Context
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape

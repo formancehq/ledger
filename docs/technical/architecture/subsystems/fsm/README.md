@@ -10,6 +10,7 @@ The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, 
 | [cache-layers.md](cache-layers.md) | FSM-side read/write layering: WriteSet → DerivedKeyStore → Plan → KeyStore → AttributeCache. |
 | [preload.md](preload.md) | Preload contract: `Needs` declaration, `MirrorPreload`, `PredictedIndex` stale-detection, and the component-owns-its-needs rule. |
 | [coverage-gate.md](coverage-gate.md) | The per-order coverage bits the FSM uses to gate every cache read against admission's declared `Needs`. |
+| [skippable-orders.md](skippable-orders.md) | Continue-on-failure batches: the commit-or-discard `orderOverlayScope` / `skipSafeScope` rollback mechanism, the per-action skippable whitelist, and checker verification. |
 
 ## Related
 

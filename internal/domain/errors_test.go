@@ -334,6 +334,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrLedgerDeleted":                 &ErrLedgerDeleted{},
 		"ErrIdempotencyKeyConflict":        &ErrIdempotencyKeyConflict{},
 		"ErrTransactionReferenceConflict":  &ErrTransactionReferenceConflict{},
+		"ErrInvalidSkippableReason":        &ErrInvalidSkippableReason{},
 		"ErrTransactionReferenceNotFound":  &ErrTransactionReferenceNotFound{},
 		"ErrTransactionNotFound":           &ErrTransactionNotFound{},
 		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},

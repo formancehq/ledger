@@ -122,10 +122,14 @@ type bulkResult struct {
 }
 
 // convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
+// The per-entry SkippableReasons list is hoisted onto the LedgerApplyRequest so
+// admission validates it against the per-action whitelist and the FSM records
+// an OrderSkippedLog when a matching business failure fires.
 func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement) *servicepb.Request {
 	applyRequest := &servicepb.LedgerApplyRequest{
-		Ledger: ledgerName,
-		Action: elem.Action,
+		Ledger:           ledgerName,
+		Action:           elem.Action,
+		SkippableReasons: elem.SkippableReasons,
 	}
 
 	return &servicepb.Request{
@@ -267,12 +271,26 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			continue
 		}
 
-		// Extract data from log
+		// Extract data from log. Bulk entries that opted into
+		// `skippableReasons` (per-entry, not on the payload) may surface as
+		// an OrderSkipped payload here when the FSM matched a whitelisted
+		// business failure; that case fills Data with an
+		// OrderSkippedResponse — clients branch on `data.skipped` to
+		// distinguish the skip path from the normal Transaction data
+		// without an extra log fetch. The unitary POST endpoint does not
+		// expose skippableReasons, so this branch is bulk-only.
 		if log := result.log; log != nil {
 			apiResults[i].LogID = log.GetId()
-			if log.GetData() != nil {
-				if ct := log.GetData().GetCreatedTransaction(); ct != nil {
-					data = ct.GetTransaction()
+			if payload := log.GetData(); payload != nil {
+				switch p := payload.GetPayload().(type) {
+				case *commonpb.LedgerLogPayload_CreatedTransaction:
+					data = p.CreatedTransaction.GetTransaction()
+				case *commonpb.LedgerLogPayload_OrderSkipped:
+					data = OrderSkippedResponse{
+						Skipped: true,
+						Reason:  domain.ReasonString(p.OrderSkipped.GetReason()),
+						Context: p.OrderSkipped.GetContext(),
+					}
 				}
 			}
 		}
@@ -360,6 +378,17 @@ type bulkAPIResult struct {
 	Data             any    `json:"data,omitempty"`
 	ResponseType     string `json:"responseType"`
 	LogID            uint64 `json:"logID"`
+}
+
+// OrderSkippedResponse is the bulk-entry response body returned when an entry
+// opted into `skippableReasons` (per-entry field, not on the CreateTransaction
+// payload) and the FSM matched one of the listed reasons. Clients branch on
+// `data.skipped` to distinguish the skip path from a normal CreatedTransaction
+// data payload without an extra log fetch.
+type OrderSkippedResponse struct {
+	Skipped bool              `json:"skipped"`
+	Reason  string            `json:"reason"`
+	Context map[string]string `json:"context,omitempty"`
 }
 
 // bulkResponse is the response structure for bulk operations.
