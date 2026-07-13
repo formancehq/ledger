@@ -182,14 +182,21 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 		}
 
 		key := it.Key()
-		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8]
-		if len(key) < 2+1+8 {
-			continue
+		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// Require the exact shape, an in-range block index, and a full-length
+		// value. A malformed row was previously skipped, after which the filter
+		// was still published ready — a missing block is a false negative that
+		// suppresses a required Pebble preload. Fail closed instead so
+		// readiness stays false and recovery/follower-sync fails explicitly
+		// (EN-1527).
+		const bloomKeyLen = 2 + 1 + 8
+		if len(key) != bloomKeyLen {
+			return fmt.Errorf("persisted bloom row for attr 0x%02x has key length %d, expected %d — store corrupted", f.attrCode, len(key), bloomKeyLen)
 		}
 
 		blockIdx := binary.BigEndian.Uint64(key[3:])
 		if blockIdx >= f.filter.BlockCount() {
-			continue
+			return fmt.Errorf("persisted bloom block index %d for attr 0x%02x is out of range (block count %d) — store corrupted", blockIdx, f.attrCode, f.filter.BlockCount())
 		}
 
 		val, err := it.ValueAndErr()
@@ -197,8 +204,8 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 			return fmt.Errorf("reading bloom block %d: %w", blockIdx, err)
 		}
 
-		if len(val) < blockBytes {
-			continue
+		if len(val) != blockBytes {
+			return fmt.Errorf("persisted bloom block %d for attr 0x%02x has %d value bytes, expected %d — store corrupted", blockIdx, f.attrCode, len(val), blockBytes)
 		}
 
 		f.filter.OrBlock(blockIdx, unmarshalBlock(val))
@@ -528,6 +535,103 @@ func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReade
 	}
 
 	return nil
+}
+
+// knownBloomAttrCodes returns the set of every attribute-type byte that CAN
+// carry a bloom filter, independent of what the current config enables. Derived
+// from bloomTypes(nil) so it stays in lock-step with the type registry and
+// never needs a second hardcoded list.
+func knownBloomAttrCodes() map[byte]struct{} {
+	known := make(map[byte]struct{})
+	for _, bt := range bloomTypes(nil) {
+		known[bt.attrCode] = struct{}{}
+	}
+
+	return known
+}
+
+// ClassifyPersistedNamespace scans every row under [ZoneGlobal][SubGlobBloom]
+// and classifies the persisted-block set against the current filter config,
+// returning (configDrift, err):
+//
+//   - err != nil — genuine corruption: a row whose attribute-type byte is not a
+//     known bloom type at all, or a row too short to carry an attribute-type
+//     byte. Recovery must fail closed (EN-1527): the per-filter RestoreFromStore
+//     iterates only enabled sub-ranges, so such a row would otherwise be
+//     silently skipped while hasPersistedBloomBlocks still selects the
+//     persisted-block restore path and publishes a ready filter with a false
+//     negative.
+//   - configDrift == true — a row for a KNOWN attribute type that is simply not
+//     enabled in the current FilterSet. This is not corruption: the node was
+//     restarted with CLI bloom settings that disable an attribute the persisted
+//     cluster config had enabled, and the config-update proposal that purges and
+//     rebuilds these blocks only runs after the node boots and acquires
+//     leadership. The persisted-block set is therefore stale/incomplete for the
+//     current config, so the caller must take the full-rebuild path rather than
+//     trust the persisted blocks — but must NOT abort boot, or the node could
+//     never propose the config that reconciles the drift.
+//
+// A clean namespace (every row belongs to an enabled filter) returns
+// (false, nil).
+func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.PebbleReader) (bool, error) {
+	snap := fs.filters.Load()
+	if snap == nil {
+		return false, nil
+	}
+
+	enabled := make(map[byte]struct{})
+	for _, f := range snap.allFilters() {
+		if f != nil {
+			enabled[f.attrCode] = struct{}{}
+		}
+	}
+
+	known := knownBloomAttrCodes()
+
+	it, err := store.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
+		UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+	})
+	if err != nil {
+		return false, fmt.Errorf("creating bloom namespace iterator: %w", err)
+	}
+
+	defer func() { _ = it.Close() }()
+
+	configDrift := false
+
+	for it.First(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
+		key := it.Key()
+		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// The attrCode lives at offset 2; a shorter row cannot belong to any
+		// filter's sub-range and is unparseable — treat as corruption.
+		if len(key) < 3 {
+			return false, fmt.Errorf("persisted bloom row %x is too short to carry an attribute-type byte — store corrupted", key)
+		}
+
+		attrCode := key[2]
+		if _, ok := enabled[attrCode]; ok {
+			continue
+		}
+
+		// Not enabled: a known attribute type is config drift (tolerate, rebuild);
+		// an unknown type is corruption (fail closed).
+		if _, ok := known[attrCode]; !ok {
+			return false, fmt.Errorf("persisted bloom row %x has unknown attribute-type byte 0x%02x — store corrupted or written by an incompatible binary", key, attrCode)
+		}
+
+		configDrift = true
+	}
+
+	if err := it.Error(); err != nil {
+		return false, fmt.Errorf("iterating bloom namespace: %w", err)
+	}
+
+	return configDrift, nil
 }
 
 // PopulateFromStore scans the Pebble attribute range and inserts all existing
