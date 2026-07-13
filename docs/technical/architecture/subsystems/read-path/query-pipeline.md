@@ -63,8 +63,11 @@ which detects the form from the first non-whitespace byte, parses to the same
 proto, and applies the single per-target validity gate
 (`domain.ValidateFilterForTarget`). The HTTP list handlers call it via
 `parseListFilter` (`internal/adapter/http/list_filter.go`) for the `?filter=`
-query parameter and AND-combine the result with the endpoint's convenience params
-(`reference`, `prefix`, date range) through `combineFilters`; prepared-query
+query parameter and AND-combine the result with the transactions endpoint's
+remaining convenience param — the `startDate`/`endDate` range — through
+`combineFilters` (the `reference` and `prefix` aliases were removed in EN-1540:
+account prefix is now `address ^= "..."`, transaction reference is structured
+`{"$match":{"reference":"..."}}`); prepared-query
 create/update decode the JSON `filter` body field through the same helper; and
 `ledgerctl --filter` routes through it in `cmdutil.BuildQueryFilter`. Audit
 conditions (`audit[...]`) exist only in the textual form — the JSON codec has no
