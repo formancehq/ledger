@@ -249,15 +249,10 @@ func TestDownloadCheckpointFiles_RespectsParallelism(t *testing.T) {
 
 	s := NewRestoreServiceServer(t.TempDir(), "test-cluster", parallelism, noopLogger{})
 
-	files := make(map[string]int64, fileCount)
-	for i := range fileCount {
-		files[uniqueName(i)] = 7
-	}
-
-	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: files}}
+	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: checkpointFilesFor(fileCount)}}
 	job := &downloadJob{}
 
-	err := s.downloadCheckpointFiles(context.Background(), job, mock, manifest, "prefix/", s.stagingDir())
+	err := s.downloadCheckpointFiles(context.Background(), job, mock, manifest, s.stagingDir())
 	require.NoError(t, err)
 	require.EqualValues(t, fileCount, job.filesDownloaded.Load())
 	require.Equal(t, int32(parallelism), maxInflight.Load(), "max concurrent fetches must equal configured parallelism")
@@ -285,14 +280,9 @@ func TestDownloadCheckpointFiles_ErrorAbortsOthers(t *testing.T) {
 
 	s := NewRestoreServiceServer(t.TempDir(), "test-cluster", 4, noopLogger{})
 
-	files := make(map[string]int64, 100)
-	for i := range 100 {
-		files[uniqueName(i)] = 1
-	}
+	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: checkpointFilesFor(100)}}
 
-	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: files}}
-
-	err := s.downloadCheckpointFiles(context.Background(), &downloadJob{}, mock, manifest, "prefix/", s.stagingDir())
+	err := s.downloadCheckpointFiles(context.Background(), &downloadJob{}, mock, manifest, s.stagingDir())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "boom")
 	require.Less(t, int(calls.Load()), 100, "errgroup should short-circuit before every worker runs")
@@ -325,12 +315,7 @@ func TestDownloadCheckpointFiles_ContextCancel(t *testing.T) {
 
 	s := NewRestoreServiceServer(t.TempDir(), "test-cluster", 4, noopLogger{})
 
-	files := make(map[string]int64, 20)
-	for i := range 20 {
-		files[uniqueName(i)] = 1
-	}
-
-	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: files}}
+	manifest := &backup.Manifest{Checkpoint: &backup.CheckpointManifest{Files: checkpointFilesFor(20)}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -338,7 +323,7 @@ func TestDownloadCheckpointFiles_ContextCancel(t *testing.T) {
 		cancel()
 	}()
 
-	err := s.downloadCheckpointFiles(ctx, &downloadJob{}, mock, manifest, "prefix/", s.stagingDir())
+	err := s.downloadCheckpointFiles(ctx, &downloadJob{}, mock, manifest, s.stagingDir())
 	require.ErrorIs(t, err, errCanceled)
 }
 
@@ -355,6 +340,19 @@ func TestStartDownloadBackup_RejectsAfterSuccess(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, err.Error(), "already downloaded")
+}
+
+// checkpointFilesFor builds a manifest Files map of n entries, each with a
+// content-addressed key derived from its filename (the mock storage ignores the
+// key, so the exact hash is irrelevant here).
+func checkpointFilesFor(n int) map[string]backup.CheckpointFile {
+	files := make(map[string]backup.CheckpointFile, n)
+	for i := range n {
+		name := uniqueName(i)
+		files[name] = backup.CheckpointFile{Size: 7, Key: "prefix/" + name + ".hash"}
+	}
+
+	return files
 }
 
 // uniqueName produces filenames that survive map iteration order but stay
