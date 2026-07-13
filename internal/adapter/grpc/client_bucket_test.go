@@ -124,6 +124,73 @@ func TestListTransactions_StreamError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestListIndexes_StreamsIncrementally pins the routed ListIndexes client to
+// lazy streaming: each Next() must trigger exactly one upstream Recv and yield
+// that item, rather than draining the whole registry into a slice before the
+// first item is available. The recvCount assertions are the regression guard —
+// the previous buffering implementation consumed every Recv (up to EOF) before
+// returning the cursor, so recvCount would already equal len(items)+1 before
+// the first Next().
+func TestListIndexes_StreamsIncrementally(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+
+	items := []*commonpb.Index{{Id: &commonpb.IndexID{}}, {Id: &commonpb.IndexID{}}}
+
+	recvCount := 0
+	stream := NewMockServerStreamingClient[commonpb.Index](ctrl)
+	stream.EXPECT().Trailer().Return(metadata.MD{}).AnyTimes()
+	stream.EXPECT().Recv().DoAndReturn(func() (*commonpb.Index, error) {
+		if recvCount >= len(items) {
+			recvCount++
+
+			return nil, io.EOF
+		}
+
+		item := items[recvCount]
+		recvCount++
+
+		return item, nil
+	}).AnyTimes()
+
+	mock.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).Return(stream, nil)
+
+	client := NewLedgerGrpcClient(mock)
+	c, err := client.ListIndexes(context.Background(), &servicepb.ListIndexesRequest{})
+	require.NoError(t, err)
+
+	// Building the cursor must not have consumed the stream (buffering would
+	// have driven Recv to EOF here).
+	require.Equal(t, 0, recvCount, "cursor construction must not drain the upstream stream")
+
+	first, err := c.Next()
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Equal(t, 1, recvCount, "first Next() must trigger exactly one Recv")
+
+	second, err := c.Next()
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.Equal(t, 2, recvCount)
+
+	_, err = c.Next()
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestListIndexes_StreamError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	mock.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init failed"))
+
+	client := NewLedgerGrpcClient(mock)
+	_, err := client.ListIndexes(context.Background(), &servicepb.ListIndexesRequest{})
+	require.Error(t, err)
+}
+
 func TestGetAccount_Success(t *testing.T) {
 	t.Parallel()
 

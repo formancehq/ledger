@@ -1,9 +1,11 @@
 package wal
 
 import (
+	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -111,6 +113,229 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return countWALFiles(t, w.etcdWalDir) < segmentsAfterWrite
 	}, 10*time.Second, 200*time.Millisecond, "old WAL segments should be purged")
+}
+
+// --- EN-1525: fail-closed on a missing creation marker ---
+
+// walDirWithMarkerRemoved builds a WAL under a fresh dataDir, applies mutate
+// (may be nil for a pristine empty WAL), closes it, then deletes the creation
+// marker so a subsequent New() takes the marker-missing branch. Returns the
+// dataDir and its etcd WAL subdir.
+func walDirWithMarkerRemoved(t *testing.T, mutate func(t *testing.T, w *DefaultWAL)) (string, string) {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dir := t.TempDir()
+	w, err := New(dir, logger, meter)
+	require.NoError(t, err)
+	if mutate != nil {
+		mutate(t, w)
+	}
+	require.NoError(t, w.Close())
+	require.NoError(t, os.Remove(filepath.Join(dir, walCreationCompletedFile)),
+		"the creation marker must exist after a normal create")
+
+	return dir, filepath.Join(dir, etcdWalDir)
+}
+
+// reopenWAL runs New() against an existing dataDir (the marker-missing branch)
+// and returns the resulting error, closing the WAL on success.
+func reopenWAL(t *testing.T, dir string) error {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	w, err := New(dir, logger, meter)
+	if err == nil {
+		t.Cleanup(func() { _ = w.Close() })
+	}
+
+	return err
+}
+
+// TestNew_MarkerMissing_EmptyWAL_Recreates covers the disposable
+// empty-bootstrap remnant: a crash between wal.Create and the marker write
+// leaves a fresh, state-free WAL. New() must clean it up and recreate the
+// marker (existing bootstrap-recovery behaviour).
+func TestNew_MarkerMissing_EmptyWAL_Recreates(t *testing.T) {
+	t.Parallel()
+
+	dir, _ := walDirWithMarkerRemoved(t, nil)
+
+	require.NoError(t, reopenWAL(t, dir), "a verified-empty WAL must be recreated, not rejected")
+	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
+	require.NoError(t, statErr, "the creation marker must be rewritten after recreation")
+}
+
+// TestNew_MarkerMissing_PopulatedHardState_FailsClosed is the core EN-1525
+// guarantee: a WAL holding a HardState (votes/commit) must never be deleted
+// merely because the marker is absent. In the default test build assert is a
+// no-op, so the mandatory return — not the assert — must stop the fall-through
+// to os.RemoveAll: New() returns an error AND the WAL survives untouched.
+func TestNew_MarkerMissing_PopulatedHardState_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		require.NoError(t, w.Append(hs(2, 1, 5), []*raftpb.Entry{ent(1, 2, []byte("x"))}))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "populated WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_EntriesOnly_FailsClosed pins that "populated" covers a
+// WAL with log entries even when the HardState is still empty (term/vote/commit
+// all zero) — it is not the disposable remnant and must not be deleted.
+func TestNew_MarkerMissing_EntriesOnly_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		// Empty HardState + a log entry: Append keeps the empty HardState and
+		// persists the entry, yielding an entries-only WAL on reopen.
+		require.NoError(t, w.Append(hs(0, 0, 0), []*raftpb.Entry{ent(1, 1, []byte("payload"))}))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "entries-only WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_MalformedWAL_FailsClosed pins that an unreadable /
+// ambiguous WAL is never coerced to "empty" and deleted: it fails startup with
+// a contextual error and the files survive.
+func TestNew_MarkerMissing_MalformedWAL_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		require.NoError(t, w.Append(hs(3, 2, 9), []*raftpb.Entry{ent(1, 3, []byte("y"))}))
+	})
+
+	// Corrupt every WAL segment in place.
+	segments, err := filepath.Glob(filepath.Join(etcdDir, "*.wal"))
+	require.NoError(t, err)
+	require.NotEmpty(t, segments)
+	for _, seg := range segments {
+		info, statErr := os.Stat(seg)
+		require.NoError(t, statErr)
+		garbage := make([]byte, info.Size())
+		for i := range garbage {
+			garbage[i] = 0xFF
+		}
+		require.NoError(t, os.WriteFile(seg, garbage, 0o600))
+	}
+	before := countWALFiles(t, etcdDir)
+
+	err = reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "unverifiable WAL must be preserved")
+}
+
+// tearWALTail simulates a torn write on the final segment: it locates the end of
+// the valid records (etcd preallocates and zero-fills the segment, so the first
+// zero-length frame header marks the tail), writes a frame header claiming a
+// payload larger than the bytes that follow, and truncates so the claimed
+// payload is missing. On the next read the decoder reads the length, cannot
+// io.ReadFull the payload, and returns io.ErrUnexpectedEOF — exactly the
+// crash-mid-Save signature that wal.ReadAll silently tolerates in read mode.
+func tearWALTail(t *testing.T, etcdDir string) {
+	t.Helper()
+
+	segments, err := filepath.Glob(filepath.Join(etcdDir, "*.wal"))
+	require.NoError(t, err)
+	require.NotEmpty(t, segments)
+	slices.Sort(segments)
+	last := segments[len(segments)-1]
+
+	data, err := os.ReadFile(last)
+	require.NoError(t, err)
+
+	// Walk framed records until the zeroed preallocated tail (length field 0).
+	off := int64(0)
+	for off+8 <= int64(len(data)) {
+		l := int64(binary.LittleEndian.Uint64(data[off : off+8]))
+		if l == 0 {
+			break
+		}
+		recBytes := int64(uint64(l) & ^(uint64(0xff) << 56))
+		var padBytes int64
+		if l < 0 {
+			padBytes = int64((uint64(l) >> 56) & 0x7)
+		}
+		off += 8 + recBytes + padBytes
+	}
+	require.Positive(t, off, "must have decoded at least one valid record before the tail")
+
+	const claimedPayload = int64(256)
+	hdr := make([]byte, 8)
+	binary.LittleEndian.PutUint64(hdr, uint64(claimedPayload))
+	f, err := os.OpenFile(last, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteAt(hdr, off)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Keep only half the claimed payload on disk: a torn write.
+	require.NoError(t, os.Truncate(last, off+8+claimedPayload/2))
+}
+
+// TestNew_MarkerMissing_TornTail_FailsClosed pins the torn-tail gap: a WAL whose
+// consensus record was only partially written (crash/power-loss mid-Save) must
+// fail closed even when every fully-decodable record before it is state-free.
+// This is the case wal.ReadAll's read-mode path hides: it silently accepts
+// io.ErrUnexpectedEOF and returns the (empty) records decoded so far, so the WAL
+// reads as not-populated and would be deleted — discarding the torn but
+// acknowledged consensus write. Starting from a fresh bootstrap WAL (no Append)
+// isolates the torn record as the only thing distinguishing this from the
+// disposable empty remnant, so the fail-closed decision rests entirely on the
+// EN-1525 raw-decoder terminal-error check, not on any surviving state record.
+func TestNew_MarkerMissing_TornTail_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, nil)
+
+	tearWALTail(t, etcdDir)
+	before := countWALFiles(t, etcdDir)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "torn-tail WAL must be preserved")
+}
+
+// TestNew_MarkerMissing_SnapshotConfStateOnly_FailsClosed pins the snapshot-record
+// gap: CreateSnapshot persists a walpb.Snapshot carrying the cluster ConfState
+// but writes no HardState or log entry. wal.ReadAll drops snapshot records, so
+// such a WAL — the initial CreateSnapshot(0, initialConfState) crashing before
+// any consensus write — would read as empty and be deleted, discarding the
+// persisted cluster membership. The raw-decoder scan classifies a snapshot record
+// with voters as populated even at index 0.
+func TestNew_MarkerMissing_SnapshotConfStateOnly_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, func(t *testing.T, w *DefaultWAL) {
+		// Index 0 initial snapshot carrying only the cluster membership.
+		require.NoError(t, w.CreateSnapshot(0, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}, nil))
+	})
+	before := countWALFiles(t, etcdDir)
+	require.Positive(t, before)
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "refusing to delete")
+	require.Equal(t, before, countWALFiles(t, etcdDir), "snapshot-ConfState WAL must be preserved")
 }
 
 // --- InitialState tests ---

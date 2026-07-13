@@ -73,6 +73,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression |
+| Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
@@ -104,9 +106,13 @@ This document compares the POC's API with the original Formance ledger API and d
 | Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
-| Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger |
-| Drop index | ✅ | ❌ | Remove an index from a ledger |
-| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER`) |
+| Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, inserted-at, or account-asset indexes per ledger. HTTP: `POST /v3/{ledger}/indexes`; gRPC: `Apply(CreateIndex)` |
+| Drop index | ✅ | ❌ | Remove an index from a ledger. HTTP: `DELETE /v3/{ledger}/indexes/{canonicalId}`; gRPC: `Apply(DropIndex)` |
+| Get index | ✅ | ❌ | Fetch a single registry entry. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}`; gRPC: `GetIndex` |
+| Get index status | ✅ | ❌ | Per-index backfill cursor + per-replica IndexVersionState. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/status`; gRPC: `GetIndexEntryStatus` |
+| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex` |
+| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress. HTTP: `GET /v3/{ledger}/indexes` (per-ledger), `GET /v3/_/indexes?scope=all\|bucket` (bucket-wide); gRPC: `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER` |
+| Aggregated index status | ✅ | ❌ | Cluster-wide progress (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) + IndexEntry list. HTTP: `GET /v3/_/indexes/status?ledger=`; gRPC: `GetIndexStatus` |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -694,7 +700,22 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
-| `GET /v3/{ledgerName}/indexes/{metadataKey}` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions with cursor pagination + reference/date filters |
+| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
+| `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
+| `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
+| `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
+| `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}/status` | ✅ | ❌ | IndexEntry (backfill cursor + per-replica IndexVersionState) |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}/inspect` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) — path unified with the DELETE/create routes |
+| `POST /v3/{ledgerName}/indexes` | ✅ | ❌ | Create an index (body: `{"id": "<canonical>"}`) |
+| `DELETE /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Drop an index |
+| `GET /v3/_/indexes?scope=all\|bucket` | ✅ | ❌ | List bucket-wide indexes (cluster-wide) |
+| `GET /v3/_/indexes/status?ledger=` | ✅ | ❌ | Aggregate indexer progress + IndexEntry list |
+| `GET /v3/_/indexes/{canonicalId}` | ✅ | ❌ | Get a single bucket-scoped Index entry |
+| `GET /v3/_/indexes/{canonicalId}/status` | ✅ | ❌ | Bucket-scoped IndexEntry |
 | `POST /v3/{ledgerName}/bulk` | ✅ | ❌ | Bulk operations (alternate path without underscore) |
 | `GET /_info` | ✅ | ❌ | Server build info (`version`, `commit`, `buildDate`, `goVersion`); unauthenticated, flat JSON (no `data` envelope) |
 

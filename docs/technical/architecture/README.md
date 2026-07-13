@@ -11,6 +11,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [overview.md](overview.md) | First read — system components, main interactions, and high-level design. |
 | [data-flows.md](data-flows.md) | Detailed sequence diagrams for write / read / synchronization flows. |
 | [data-model.md](data-model.md) | Ledger system, transaction management, and data organisation. |
+| [audit-vs-technical-state.md](audit-vs-technical-state.md) | Classification rule for audit-bound, checker-verified, and operational technical state. |
 
 ## Subsystems
 
@@ -36,6 +37,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [data-flows.md](data-flows.md) | Sequence diagrams that span multiple subsystems. |
 | [data-model.md](data-model.md) | Ledgers, transactions, postings — the core domain shape. |
 | [data-model/color-of-money.md](data-model/color-of-money.md) | Per-bucket "color of money" balance segregation — key encoding, numscript contract, collapse modes. |
+| [audit-vs-technical-state.md](audit-vs-technical-state.md) | Boundary between business truth, governance truth, operational state, and rebuildable projections. |
 | [primitives/uint256-wire-format.md](primitives/uint256-wire-format.md) | Fixed-size monetary-amount wire format used everywhere on the boundary. |
 
 ## Conventions

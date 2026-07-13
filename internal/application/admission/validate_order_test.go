@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -61,6 +62,54 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: domain.ErrLedgerNameRequired,
 		},
 		{
+			name: "reserved '_' ledger name rejected",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// The guard covers every ledger-scoped order, not just CreateLedger:
+			// a "_" ledger persisted before this reservation (e.g. on upgrade)
+			// can never be written to either, so its /v3/_/… routes stay
+			// unreachable-via-ledger for good.
+			name: "reserved '_' rejected on Apply too",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// Only the exact segment "_" is reserved (it backs the /v3/_/…
+			// system route namespace); names that merely start with '_' remain
+			// valid ledger names.
+			name: "underscore-prefixed name is allowed",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_internal",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "null byte in Apply ledger",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -107,6 +156,88 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			t.Parallel()
 
 			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestValidateOrder_CreateIndexTarget pins EN-1472: a CreateIndex order must
+// target an IndexID the builder can backfill. ParseCanonical decodes any
+// well-formed IndexID (e.g. "metadata:TARGET_TYPE_LEDGER:<key>",
+// "account_builtin:ACCT_BUILTIN_INDEX_UNSPECIFIED"), so admission is the gate
+// that stops a permanently-unbuilt index from being persisted (from gRPC or
+// HTTP alike). Covers metadata targets and builtin enum values.
+func TestValidateOrder_CreateIndexTarget(t *testing.T) {
+	t.Parallel()
+
+	createIndexOrder := func(id *commonpb.IndexID) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "l",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateIndex{
+								CreateIndex: &raftcmdpb.CreateIndexOrder{Id: id},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		id      *commonpb.IndexID
+		wantErr error
+	}{
+		{
+			name: "metadata index on ACCOUNT is valid",
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "color"),
+		},
+		{
+			name: "metadata index on TRANSACTION is valid",
+			id:   indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "color"),
+		},
+		{
+			name:    "metadata index on LEDGER is rejected",
+			id:      indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "color"),
+			wantErr: ErrIndexTargetUnsupported,
+		},
+		{
+			name: "tx builtin index is valid",
+			id:   indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		},
+		{
+			name: "account builtin ASSET is valid",
+			id:   indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		},
+		{
+			name:    "account builtin UNSPECIFIED is rejected",
+			id:      indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_UNSPECIFIED),
+			wantErr: ErrIndexTargetUnsupported,
+		},
+		{
+			name: "log builtin DATE is valid",
+			id:   indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		},
+		{
+			name:    "log builtin UNSPECIFIED is rejected",
+			id:      indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED),
+			wantErr: ErrIndexTargetUnsupported,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(createIndexOrder(tt.id))
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 			} else {

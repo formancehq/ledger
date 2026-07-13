@@ -11842,6 +11842,7 @@ type PreparedQueryCursorReader interface {
 	GetNext() string
 	GetAccountData() AccountListReader
 	GetTransactionData() TransactionListReader
+	GetLogData() LogListReader
 	Mutate() *PreparedQueryCursor
 }
 
@@ -11869,6 +11870,10 @@ func (r *preparedQueryCursorReadonly) GetAccountData() AccountListReader {
 
 func (r *preparedQueryCursorReadonly) GetTransactionData() TransactionListReader {
 	return NewTransactionListReader((*PreparedQueryCursor)(r).GetTransactionData())
+}
+
+func (r *preparedQueryCursorReadonly) GetLogData() LogListReader {
+	return NewLogListReader((*PreparedQueryCursor)(r).GetLogData())
 }
 
 func (r *preparedQueryCursorReadonly) Mutate() *PreparedQueryCursor {

@@ -3235,6 +3235,15 @@ func (m *PreparedQueryCursor) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.LogData) > 0 {
+		for iNdEx := len(m.LogData) - 1; iNdEx >= 0; iNdEx-- {
+			size, _ := m.LogData[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
 	if len(m.TransactionData) > 0 {
 		for iNdEx := len(m.TransactionData) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.TransactionData[iNdEx].MarshalToSizedBufferDeterministicVT(dAtA[:i])

@@ -194,18 +194,19 @@ func ValidatePreparedQueryName(name string) Describable {
 }
 
 // IsPreparedQueryExecutableTarget reports whether a QueryTarget can back a
-// prepared query today. Prepared-query execution (query.Execute) hydrates only
-// account and transaction results into PreparedQueryCursor; LOGS and AUDIT route
-// through paths the prepared-query executor does not implement (ListLogs /
-// CompileAuditFilter), and AUDIT is additionally not covered by the public
-// target JSON mapping — so a prepared query stored on those targets would fail
-// later at execute/marshal time. Enforced at write time (admission + FSM) across
-// gRPC and HTTP so a persisted prepared query is always executable. LOGS becomes
-// executable with EN-1503.
+// prepared query today. Prepared-query execution (query.Execute) hydrates the
+// account_data / transaction_data / log_data fields of PreparedQueryCursor for
+// ACCOUNTS / TRANSACTIONS / LOGS respectively (LOGS wired via query.EnrichLogs,
+// EN-1503). AUDIT routes through a path the prepared-query executor does not
+// implement (CompileAuditFilter) and is additionally not covered by the public
+// target JSON mapping — so a prepared query stored on AUDIT would fail later at
+// execute/marshal time. Enforced at write time (admission + FSM) across gRPC and
+// HTTP so a persisted prepared query is always executable.
 func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		return true
 	default:
 		return false
@@ -231,6 +232,16 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 	return validateFilterForTarget(f, target, 0)
 }
 
+// validateFilterForTarget is the depth-bounded recursive core of
+// ValidateFilterForTarget. depth counts every node entered so far (combinators
+// AND leaves), and the cap is checked at the top of every node — the exact
+// counting query.compile uses (which checks `depth >= MaxFilterDepth` on entry
+// of every node before dispatching). Matching it node-for-node keeps the two
+// guards in lockstep: a filter accepted at write time is guaranteed to compile
+// at execute time, and vice versa (a shallower write-time bound would let an
+// unexecutable prepared query be persisted; a deeper one would overflow the
+// stack here before Compile's guard is ever reached — the exact fatal DoS,
+// invariant #7).
 func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
 	if f == nil {
 		return nil
