@@ -726,10 +726,11 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, p
 // exact: ephemeral and transient volumes have already been purged, matching the
 // live counters.
 //
-// NumscriptExecutionCount is carried from the checkpoint — the audit chain
-// records the resulting transaction, never that it came from a script, so it
-// cannot be re-derived. EphemeralEvictedCount / TransientUsedCount are also
-// carried unchanged.
+// NumscriptExecutionCount is carried from the checkpoint — the ledger-log
+// stream records the resulting transaction, not that it came from a script.
+// The order in AuditItem.serialized_order does carry the script, but this
+// replay does not decode audit orders. EphemeralEvictedCount /
+// TransientUsedCount are also carried unchanged.
 func (w *attributeReplayWriter) countNetAttributes(reader dal.PebbleReader) error {
 	for name, b := range w.boundaries {
 		prefix := domain.LedgerKey{Name: name}.Bytes()
