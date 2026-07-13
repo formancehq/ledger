@@ -95,6 +95,18 @@ var ErrLegacyManifestFormat = errors.New(
 		"(checkpoint.files as sizes, not {size,key}); this backup was written by an " +
 		"older binary and must be retaken with the current version before it can be restored")
 
+// ErrNoFullCheckpoint is returned by RunIncrementalBackup when the destination
+// manifest has no full checkpoint (Checkpoint == nil): either the destination is
+// empty/fresh, or it holds an export-only manifest. An incremental backup is
+// only meaningful on top of a full checkpoint — the checkpoint is what carries
+// the Global-zone persisted config, last-applied index, and timestamp that
+// restore needs to build a valid store. Publishing export-only segments against
+// a checkpoint-less manifest would produce an artifact restore cannot turn into
+// a store, so the incremental path fails fast and asks for a full backup first.
+var ErrNoFullCheckpoint = errors.New(
+	"backup: incremental backup requires an existing full checkpoint; " +
+		"none found at the destination — run a full backup before any incremental backup")
+
 // ReadManifest reads and decodes a manifest from storage.
 func ReadManifest(ctx context.Context, storage Storage, key string) (*Manifest, error) {
 	reader, err := storage.GetFile(ctx, key)

@@ -422,6 +422,18 @@ func RunIncrementalBackup(
 		return nil, err
 	}
 
+	// An incremental backup is only meaningful layered on top of a full
+	// checkpoint. A checkpoint-less manifest — a fresh/empty destination, or an
+	// export-only manifest — carries none of the Global-zone persisted config,
+	// last-applied index, or timestamp that restore needs to reconstruct a store,
+	// so publishing export segments against it would leave an artifact restore
+	// cannot use (restore validation fails on the missing persisted config). Fail
+	// fast here, BEFORE taking a snapshot or uploading any segment, so no export
+	// artifact is published for an unrestorable base.
+	if manifest.Checkpoint == nil {
+		return nil, ErrNoFullCheckpoint
+	}
+
 	// 2. Take a point-in-time snapshot for consistent reads
 	readHandle, err := store.NewReadHandle()
 	if err != nil {

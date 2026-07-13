@@ -164,9 +164,14 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 	store := newBackupTestStore(t)
 	writeCorruptColdEntry(t, store, dal.SubColdAudit, 10)
 
-	storage := &recordingStorage{} // empty manifest is fine; we fail before the no-op check
+	// A prior full checkpoint exists so we get past the no-full-checkpoint guard
+	// and actually reach the audit sequence read this test targets.
+	body, err := json.Marshal(&Manifest{Checkpoint: &CheckpointManifest{}})
+	require.NoError(t, err)
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
+	storage := &recordingStorage{manifestBody: body}
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail when the audit sequence read fails")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -223,6 +228,69 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 	require.Error(t, err, "RunIncrementalBackup must fail on a corrupt existing manifest")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
 		"manifest must not be overwritten when the existing manifest is corrupt")
+}
+
+// TestRunIncrementalBackup_RejectsCheckpointlessManifest is the EN-888
+// restore-safety guard: an incremental backup layered on a manifest with no full
+// checkpoint (a fresh/empty destination, or an export-only manifest) would
+// publish export segments that carry none of the Global-zone persisted config,
+// last-applied index, or timestamp restore needs — an artifact restore cannot
+// turn into a store. RunIncrementalBackup must reject such a manifest with the
+// typed ErrNoFullCheckpoint and publish NO artifact.
+func TestRunIncrementalBackup_RejectsCheckpointlessManifest(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// Something IS exportable — proves the rejection is about the missing
+	// checkpoint, not an empty range.
+	writeSuccessAuditEntryWithItem(t, store, 1)
+
+	// An export-only manifest: Exports present, Checkpoint nil. This is exactly
+	// the checkpoint-less shape (a fresh/empty destination decodes the same way,
+	// with both fields zero).
+	body, err := json.Marshal(&Manifest{
+		Exports: []ExportSegment{{Type: "audit", StartSeq: 1, EndSeq: 1, Key: "some/key"}},
+	})
+	require.NoError(t, err)
+
+	storage := &recordingStorage{manifestBody: body}
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+
+	require.ErrorIs(t, err, ErrNoFullCheckpoint,
+		"RunIncrementalBackup must reject a manifest without a full checkpoint")
+	require.Empty(t, storage.putKeys,
+		"RunIncrementalBackup must publish NO artifact (no manifest, no segment) when there is no full checkpoint")
+}
+
+// TestRunIncrementalBackup_ProceedsOnFullCheckpoint is the positive counterpart:
+// a normal incremental layered on top of a real full checkpoint still exports
+// new entries and republishes the manifest.
+func TestRunIncrementalBackup_ProceedsOnFullCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// New entries beyond the checkpoint's LastAuditSequence=0 → range (0,1].
+	writeSuccessAuditEntryWithItem(t, store, 1)
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
+	}))
+
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err, "a normal incremental on top of a full checkpoint must succeed")
+	require.NotNil(t, result)
+	require.EqualValues(t, 1, result.AuditEntriesExported)
+
+	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotNil(t, manifest.Checkpoint, "the full checkpoint must be preserved")
+	require.NotNil(t, findExport(manifest, "audit"), "the new audit segment must be published")
 }
 
 // TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected verifies the unit's
