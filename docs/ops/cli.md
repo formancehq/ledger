@@ -43,6 +43,7 @@ These flags are available for all commands:
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
 | `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
 | `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
+| `--rescale` | | Re-express amounts at a given scale in human-readable output, summing same-currency balances across precisions. Absent = no rescaling; `--rescale` alone = scale 0; `--rescale=N` = scale N. Does not affect `--json`/`--yaml` output. See [Amount Rescaling](#amount-rescaling). |
 
 ### TLS server name (verifying by name while dialing by IP)
 
@@ -130,6 +131,31 @@ ledgerctl ledgers list
 ```
 
 Buffered spans are flushed (with a 5s timeout) before the process exits — on both success and error paths — so short-lived invocations still deliver their traces.
+
+### Amount Rescaling
+
+`--rescale` is a global, display-only flag that re-expresses ledger amounts at a
+chosen scale in the human-readable tables/text, summing same-currency balances
+that were recorded at different precisions (e.g. `USD/2` and `USD/3`) into a
+single base-currency figure.
+
+| Form | Meaning |
+|---|---|
+| flag absent | No rescaling. Amounts render exactly as stored, one row per `CUR/precision`. |
+| `--rescale` (no value) | Rescale to scale `0` — whole units, dropping the precision suffix (e.g. `1234 USD/2` → `12.34 USD`). |
+| `--rescale=N` | Rescale to scale `N` (e.g. `--rescale=2` → `6912.9 USD/2`). `N` is a `uint8`; values above `255` are rejected at parse time. |
+
+Same-currency rows are first summed at the group's highest precision, then
+re-expressed at the requested scale; scaling to a coarser scale yields a decimal
+fraction, a finer scale pads with zeros.
+
+**Structured output is never rescaled.** `--json` / `--yaml` always emit the raw
+integer amounts and full `CUR/precision` asset strings so scripts stay stable,
+regardless of `--rescale`. Rescaling applies only to the rendered tables/text.
+
+Applies to the volume/balance columns of `accounts list`, `accounts get`,
+`accounts aggregate-volumes`, `transactions` post-commit volumes, and
+`queries execute` aggregate results.
 
 ### Shared Flag Contract
 
@@ -987,6 +1013,8 @@ ledgerctl accounts list [flags]
 
 **Behavior:**
 - Accounts are listed in alphabetical order by default; use `--reverse` for reverse-alphabetical (Z→A)
+- Each account row includes a **balances** column showing one balance (`input − output`) per `(asset, color)` bucket the account holds. Colored buckets are labelled `ASSET[COLOR]`; the uncolored bucket is labelled by its asset alone
+- The global `--rescale` flag re-expresses those balances at a chosen scale in the table (see [Amount Rescaling](#amount-rescaling)); it does not affect `--json`/`--yaml` output. Colors stay segregated: only precisions of the same color are summed
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
@@ -1801,9 +1829,16 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
 # Aggregate with filter
 ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[category] == premium"
 
-# Output as JSON
+# Sum same-currency rows across precisions and show whole units (display only)
+ledgerctl accounts aggregate-volumes --ledger my-ledger --rescale
+
+# Output as JSON (raw integer amounts and full CUR/precision assets; --rescale ignored)
 ledgerctl accounts aggregate-volumes --ledger my-ledger --json
 ```
+
+**Behavior:**
+- With the global `--rescale` flag, same-currency rows that differ only in precision are merged server-side (`use_max_precision`) and re-expressed at the requested scale in the table (see [Amount Rescaling](#amount-rescaling))
+- Structured output (`--json`/`--yaml`) is never rescaled or merged: it returns the raw per-precision volumes with integer amounts
 
 ---
 
