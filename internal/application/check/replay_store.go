@@ -271,6 +271,13 @@ func (s *replayStore) SetTransactionReference(_, _ string, _ uint64) error {
 	return nil
 }
 
+// SetDefaultEnforcementMode is a no-op in the checker: the enforcement mode
+// lives on LedgerInfo, not in the checker's attribute merge store. Only the
+// restore replay's writer folds it onto the rebuilt LedgerInfo.
+func (s *replayStore) SetDefaultEnforcementMode(_ string, _ commonpb.ChartEnforcementMode) error {
+	return nil
+}
+
 // setRevertedBy records that a transaction was reverted via merge (no read).
 func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)

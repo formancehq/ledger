@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math/big"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 	"google.golang.org/protobuf/proto"
 
@@ -57,6 +58,7 @@ func RebuildDelta(
 	sinkConfig := attrs.SinkConfig
 	numscriptContent := attrs.NumscriptContent
 	numscriptVersion := attrs.NumscriptVersion
+	ledgerMetadata := attrs.LedgerMetadata
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
@@ -199,11 +201,32 @@ func RebuildDelta(
 			writer.initBoundaries(info.GetName())
 
 		case *commonpb.LogPayload_DeleteLedger:
-			// Deletion is handled by system state; nothing to rebuild here
+			if p.DeleteLedger == nil {
+				continue
+			}
+
+			if err := writer.deleteLedger(p.DeleteLedger.GetName(), p.DeleteLedger.GetDeletedAt(), seq); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying ledger deletion at log %d: %w", seq, err)
+			}
+
+			// Enforcement / purge context must not outlive the ledger.
+			// Recreation is impossible (processCreateLedger rejects
+			// tombstoned names), so nothing reseeds these.
+			delete(rawLedgerTypes, p.DeleteLedger.GetName())
+			delete(ledgerAccountTypes, p.DeleteLedger.GetName())
 
 		case *commonpb.LogPayload_PromoteLedger:
-			// Promotion changes ledger mode — would need to read and update LedgerInfo.
-			// For now, the original CreateLedger captures the initial state.
+			if p.PromoteLedger == nil {
+				continue
+			}
+
+			if err := writer.promoteLedger(p.PromoteLedger.GetName()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying ledger promotion at log %d: %w", seq, err)
+			}
 
 		case *commonpb.LogPayload_RegisterSigningKey:
 			if p.RegisterSigningKey != nil {
@@ -243,6 +266,28 @@ func RebuildDelta(
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving events sink at log %d: %w", seq, err)
+				}
+			}
+
+		case *commonpb.LogPayload_SavedLedgerMetadata:
+			if p.SavedLedgerMetadata != nil {
+				for key, value := range p.SavedLedgerMetadata.GetMetadata() {
+					mk := domain.LedgerMetadataKey{LedgerName: p.SavedLedgerMetadata.GetLedger(), Key: key}
+					if _, err := ledgerMetadata.Set(batch, mk.Bytes(), value); err != nil {
+						_ = batch.Cancel()
+
+						return fmt.Errorf("saving ledger metadata at log %d: %w", seq, err)
+					}
+				}
+			}
+
+		case *commonpb.LogPayload_DeletedLedgerMetadata:
+			if p.DeletedLedgerMetadata != nil {
+				mk := domain.LedgerMetadataKey{LedgerName: p.DeletedLedgerMetadata.GetLedger(), Key: p.DeletedLedgerMetadata.GetKey()}
+				if err := ledgerMetadata.Delete(batch, mk.Bytes()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("deleting ledger metadata at log %d: %w", seq, err)
 				}
 			}
 
@@ -357,6 +402,10 @@ func RebuildDelta(
 
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing final batch: %w", err)
+	}
+
+	if err := writer.applyAuditOrderEffects(readHandle, fromLogSeq, fromAuditSeq); err != nil {
+		return fmt.Errorf("applying audit order effects to boundaries: %w", err)
 	}
 
 	// Net attribute counts (VolumeCount, MetadataCount, ReferenceCount) are
@@ -648,6 +697,151 @@ type attributeReplayWriter struct {
 	readHandle dal.PebbleReader
 }
 
+// applyAuditOrderEffects folds order-level boundary effects that the ledger-log
+// stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
+// keeps only the original v2 id) and NumscriptExecutionCount (CreatedTransaction
+// logs record the resulting postings, not the content source). Both live on the
+// order itself, which AuditItem.serialized_order preserves — bound into the
+// audit hash chain and shipped by the incremental export's auditItem segments.
+//
+// Items with log_sequence == 0 (failed proposals, idempotent replays) and items
+// at or below fromLogSeq (already folded into the checkpoint) contribute
+// nothing. Admission enforces postings XOR script/reference
+// (validateOrderContent), so a successful order carrying either script form
+// executed the numscript path — an unresolvable or empty reference fails at the
+// FSM and produces no log.
+func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, fromLogSeq, fromAuditSeq uint64) error {
+	lower := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+		PutUint64(fromAuditSeq + 1).
+		Build()
+	upper := []byte{dal.ZoneCold, dal.SubColdAuditItem + 1}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	if err != nil {
+		return fmt.Errorf("creating audit item iter: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading audit item value: %w", err)
+		}
+
+		item := &auditpb.AuditItem{}
+		if err := item.UnmarshalVT(value); err != nil {
+			return fmt.Errorf("unmarshaling audit item %x: %w", iter.Key(), err)
+		}
+
+		if item.GetLogSequence() == 0 || item.GetLogSequence() <= fromLogSeq {
+			continue
+		}
+
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			return fmt.Errorf("unmarshaling order from audit item %x: %w", iter.Key(), err)
+		}
+
+		ls := order.GetLedgerScoped()
+		if ls == nil {
+			continue
+		}
+
+		fillGap := ls.GetMirrorIngest().GetEntry().GetFillGap()
+		ct := ls.GetApply().GetCreateTransaction()
+		isNumscript := ct != nil && (ct.GetScript().GetPlain() != "" || ct.GetNumscriptReference().GetName() != "")
+
+		if fillGap == nil && !isNumscript {
+			continue
+		}
+
+		info := w.ledgerInfos[ls.GetLedger()]
+		if info == nil {
+			return fmt.Errorf("invariant: audit item for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ls.GetLedger())
+		}
+
+		// A ledger deleted later in the delta has no boundary row in the end
+		// state (deleteLedger dropped it); its earlier activity must not
+		// resurrect one.
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		b, err := w.boundaryFor(ls.GetLedger())
+		if err != nil {
+			return err
+		}
+
+		for _, id := range fillGap.GetSkippedTransactionIds() {
+			if next := id + 1; next > b.GetNextTransactionId() {
+				b.NextTransactionId = next
+			}
+		}
+
+		if isNumscript {
+			b.NumscriptExecutionCount++
+		}
+	}
+
+	return iter.Error()
+}
+
+// deleteLedger reproduces the live DeleteLedger apply state: the LedgerInfo
+// tombstone (DeletedAt), the boundary-row drop, and the pending-cleanup marker.
+// The ledger's data rows stay in place — on the live path they are purged only
+// when a covering purge range (chapter archival) executes the deferred cleanup,
+// which the restored cluster picks up through the same marker
+// (ReadPendingLedgerCleanups at boot).
+func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *commonpb.Timestamp, seq uint64) error {
+	info := w.ledgerInfos[name]
+	if info == nil {
+		return fmt.Errorf("invariant: DeleteLedger for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", name)
+	}
+
+	info.DeletedAt = deletedAt
+
+	if err := w.saveLedgerInfo(info); err != nil {
+		return err
+	}
+
+	if err := w.boundary.Delete(w.batch, domain.LedgerKey{Name: name}.Bytes()); err != nil {
+		return fmt.Errorf("deleting boundaries for ledger %q: %w", name, err)
+	}
+
+	delete(w.boundaries, name)
+
+	return state.SavePendingLedgerCleanup(w.batch, name, seq)
+}
+
+// promoteLedger folds a PromoteLedger log onto the ledger's LedgerInfo,
+// matching the live handler: mirror mode ends, the mirror source is cleared.
+func (w *attributeReplayWriter) promoteLedger(name string) error {
+	info := w.ledgerInfos[name]
+	if info == nil {
+		return fmt.Errorf("invariant: PromoteLedger for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", name)
+	}
+
+	info.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+	info.MirrorSource = nil
+
+	return w.saveLedgerInfo(info)
+}
+
+// SetDefaultEnforcementMode folds an enforcement-mode change replayed from the
+// log onto the ledger's in-memory LedgerInfo and re-persists it.
+func (w *attributeReplayWriter) SetDefaultEnforcementMode(ledger string, mode commonpb.ChartEnforcementMode) error {
+	info := w.ledgerInfos[ledger]
+	if info == nil {
+		return fmt.Errorf("invariant: SetDefaultEnforcementMode for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ledger)
+	}
+
+	info.DefaultEnforcementMode = mode
+
+	return w.saveLedgerInfo(info)
+}
+
 // boundaryFor returns the working LedgerBoundaries for a ledger, seeding it from
 // the checkpoint on first touch (a ledger created in the delta has none, so it
 // starts at the genesis {1,1}). The returned pointer is mutated in place and
@@ -726,11 +920,10 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, p
 // exact: ephemeral and transient volumes have already been purged, matching the
 // live counters.
 //
-// NumscriptExecutionCount is carried from the checkpoint — the ledger-log
-// stream records the resulting transaction, not that it came from a script.
-// The order in AuditItem.serialized_order does carry the script, but this
-// replay does not decode audit orders. EphemeralEvictedCount /
-// TransientUsedCount are also carried unchanged.
+// NextTransactionId, NextLogId, PostingCount, RevertCount accumulate during
+// the log replay; NumscriptExecutionCount and the mirror fill-gap advances come
+// from applyAuditOrderEffects. EphemeralEvictedCount / TransientUsedCount are
+// carried from the checkpoint unchanged.
 func (w *attributeReplayWriter) countNetAttributes(reader dal.PebbleReader) error {
 	for name, b := range w.boundaries {
 		prefix := domain.LedgerKey{Name: name}.Bytes()

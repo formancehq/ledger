@@ -207,13 +207,21 @@ func ReplayLedgerLog(
 			}
 		}
 	case *commonpb.LedgerLogPayload_FillGap:
-		// No state to track
+		// The log carries only the original v2 id; the skipped transaction
+		// ids live on the MirrorFillGap order, which the restore rebuild
+		// folds in from AuditItem.serialized_order (applyAuditOrderEffects).
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_DropIndex:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
-		// No state to track
+		if p.UpdatedDefaultEnforcementMode == nil {
+			return nil
+		}
+
+		if err := w.SetDefaultEnforcementMode(ledger, p.UpdatedDefaultEnforcementMode.GetEnforcementMode()); err != nil {
+			return fmt.Errorf("replaying default enforcement mode: %w", err)
+		}
 	}
 
 	return nil

@@ -30,4 +30,6 @@ type Writer interface {
 	// Account types also live on LedgerInfo and are keyed by ledger.
 	AddAccountType(ledger string, accountType *commonpb.AccountType) error
 	RemoveAccountType(ledger string, name string) error
+	// The default enforcement mode lives on LedgerInfo as well.
+	SetDefaultEnforcementMode(ledger string, mode commonpb.ChartEnforcementMode) error
 }
