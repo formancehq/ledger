@@ -356,6 +356,8 @@ paths:
             format: date-time
           description: |
             Filter logs with date >= startDate (inclusive, RFC3339 format).
+            Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
+            dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
         - name: endDate
           in: query
@@ -364,6 +366,8 @@ paths:
             format: date-time
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
+            Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
+            dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
       responses:
