@@ -49,7 +49,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|date|timestamp|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -445,6 +445,14 @@ func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 // gate (domain.ValidateFilterForTarget) rejects `date` on a non-logs target and
 // `timestamp` on a non-transactions target downstream — the same gate the
 // structured JSON DSL goes through.
+//
+// `date`/`timestamp` are deliberately NOT lexer keywords: participle matches the
+// `'date'`/`'timestamp'` grammar literals against the plain `Ident` token by
+// value, so they act as field names at condition position while remaining usable
+// as ordinary identifiers everywhere else. Making them keywords would tokenize
+// only the prefix of an identifier that continues with an Ident-continuation char
+// (`-`, `:`, `.`, `/`) — e.g. `metadata[date-range]` — because the keyword `\b`
+// boundary matches before those characters, breaking filters that parsed before.
 type DateCond struct {
 	Field string      `parser:"@('date' | 'timestamp')"`
 	Op    *MetadataOp `parser:"@@"`
@@ -694,7 +702,7 @@ type Value struct {
 	// keywords are listed — the structural operators (and/or/not/in/between)
 	// are deliberately excluded so they keep terminating expressions rather
 	// than being swallowed as values. true/false are handled by Bool above.
-	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'date' | 'timestamp' | 'exists')"`
+	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'exists')"`
 	Bare string `parser:"| @Ident"`
 }
 

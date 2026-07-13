@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -84,6 +85,45 @@ func TestParseDate_Between(t *testing.T) {
 	assert.Equal(t, uint64(1700086400000000), bc.GetCond().GetMax())
 }
 
+// TestFormatDate_RoundTrip is the regression for the NumaryBot MINOR: Format had
+// no case for QueryFilter_LogBuiltinUint / QueryFilter_BuiltinUint, so a textual
+// date/timestamp filter rendered as "<unknown filter>" (prepared-query listings
+// call Format). Date-semantic bounds render as quoted RFC3339 so they parse back
+// to the same filter.
+func TestFormatDate_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{`date >= "2023-11-14T22:13:20Z"`, `date >= "2023-11-14T22:13:20Z"`},
+		{`timestamp >= "2023-11-14T22:13:20Z"`, `timestamp >= "2023-11-14T22:13:20Z"`},
+		{`timestamp == "2023-11-14T22:13:20Z"`, `timestamp == "2023-11-14T22:13:20Z"`},
+		{`date < "2023-11-14T22:13:20Z"`, `date < "2023-11-14T22:13:20Z"`},
+		// Raw micros normalize to the canonical quoted RFC3339 rendering.
+		{`timestamp >= 1700000000000000`, `timestamp >= "2023-11-14T22:13:20Z"`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+
+			f, err := Parse(tc.in)
+			require.NoError(t, err)
+
+			got := Format(f)
+			require.Equal(t, tc.want, got)
+
+			// And the formatted string must parse back to an equivalent filter.
+			reparsed, err := Parse(got)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(f, reparsed),
+				"Format output must round-trip\n first: %v\n reparsed: %v", f, reparsed)
+		})
+	}
+}
+
 func TestParseDate_RejectsPreEpoch(t *testing.T) {
 	t.Parallel()
 
@@ -116,9 +156,9 @@ func TestParseDate_RejectsParam(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not support parameters")
 }
 
-// TestParseDate_TimestampStillUsableAsBareValue guards the grammar change: making
-// date/timestamp lexer keywords must not stop them being usable as bare metadata
-// values (they are in the Value.Kw allow-list).
+// TestParseDate_KeywordsUsableAsBareValues guards that `date`/`timestamp` remain
+// usable as bare metadata values. Because they are matched as plain Idents (not
+// lexer keywords), the bare `Value.Bare` production captures them naturally.
 func TestParseDate_KeywordsUsableAsBareValues(t *testing.T) {
 	t.Parallel()
 
@@ -129,5 +169,37 @@ func TestParseDate_KeywordsUsableAsBareValues(t *testing.T) {
 		filter, err := Parse(in)
 		require.NoError(t, err, in)
 		require.NotNil(t, filter.GetField(), in)
+	}
+}
+
+// TestParseDate_DoesNotMistokenizeIdentifierPrefix is the regression for the
+// NumaryBot MAJOR: adding `date`/`timestamp` as lexer keywords with a `\b`
+// boundary would tokenize only the prefix of an identifier that continues with an
+// Ident-continuation char (`-`, `:`, `.`, `/`) — the keyword boundary matches
+// before those characters — and reject filters that parsed before. Matching them
+// as plain Idents instead keeps the whole identifier intact.
+func TestParseDate_DoesNotMistokenizeIdentifierPrefix(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"date-prefixed metadata key", `metadata[date-range] == "x"`},
+		{"timestamp-prefixed metadata key", `metadata[timestamp-created] == "x"`},
+		{"dotted date key", `metadata[date.start] == "x"`},
+		{"slashed timestamp key", `metadata[timestamp/utc] == "x"`},
+		{"date-prefixed bare value", `metadata[k] == date-2023`},
+		{"colon timestamp bare value", `metadata[k] == timestamp:created`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			filter, err := Parse(tc.in)
+			require.NoError(t, err, tc.in)
+			require.NotNil(t, filter.GetField(), tc.in)
+		})
 	}
 }
