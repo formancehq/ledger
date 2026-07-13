@@ -1,11 +1,13 @@
 package http
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -63,6 +65,55 @@ func writeCreated(w http.ResponseWriter, data any) {
 	writeJSONResponse(w, http.StatusCreated, BaseResponse[any]{
 		Data: data,
 	})
+}
+
+// writeProtoOK writes a 200 OK response whose `data` is a single protobuf
+// message serialized via protojson. Handlers that return a proto message
+// directly (index registry entries, index status, logs, …) MUST use this
+// rather than writeOK: sonic serializes from the Go `json:` struct tags, which
+// protoc-gen emits in snake_case (e.g. last_indexed_sequence), whereas the
+// wire/OpenAPI contract is protobuf-JSON camelCase (lastIndexedSequence).
+// Routing through protojson keeps the HTTP body byte-identical to the gRPC-
+// gateway shape. See handlers_get_events_sinks.go for the original precedent.
+func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
+	raw, err := protojson.Marshal(msg)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
+
+		return
+	}
+
+	writeOK(w, json.RawValue(raw))
+}
+
+// writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
+// protobuf messages, each serialized via protojson (camelCase — see
+// writeProtoOK). protojson has no slice entry point, so each element is
+// marshaled individually and assembled into the array here. A nil/empty slice
+// serializes as `[]`, matching the drained-cursor list handlers.
+func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
+	var buf bytes.Buffer
+
+	buf.WriteByte('[')
+
+	for i, msg := range msgs {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+
+		raw, err := protojson.Marshal(msg)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
+
+			return
+		}
+
+		buf.Write(raw)
+	}
+
+	buf.WriteByte(']')
+
+	writeOK(w, json.RawValue(buf.Bytes()))
 }
 
 // writeBadRequest writes a 400 Bad Request response.

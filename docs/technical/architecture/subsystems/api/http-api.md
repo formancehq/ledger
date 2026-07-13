@@ -347,6 +347,78 @@ DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 
 **Response**: `204 No Content`
 
+### Indexes
+
+Per-ledger and bucket-wide index management. See `openapi.yml` for the exhaustive schema; the flow below covers the create → observe → drop cycle.
+
+**Canonical form**: index identifiers are exchanged as opaque strings produced by `indexes.Canonical` (`internal/domain/indexes/id.go`) — e.g. `metadata:TARGET_TYPE_ACCOUNT:color`, `tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP`, `log_builtin:LOG_BUILTIN_INDEX_DATE`. Only metadata indexes carry a target + key; builtin indexes name a proto enum value.
+
+#### Create an index
+
+```http
+POST /v3/{ledgerName}/indexes
+Content-Type: application/json
+
+{
+  "id": "metadata:TARGET_TYPE_ACCOUNT:color"
+}
+```
+
+Returns `201 Created` once the FSM has queued the backfill. The index enters `BUILDING` on the registry; poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` before running queries that need it.
+
+#### List indexes on a ledger
+
+```http
+GET /v3/{ledgerName}/indexes
+```
+
+Returns the `Index` registry entries owned by the ledger.
+
+#### Get a single index
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}
+```
+
+Returns the `Index` registry entry (id, build_status, ledger, created_at, last_built_at, forward_encoding_version).
+
+#### Get per-replica index status
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}/status
+```
+
+Returns the `IndexEntry` — the registry entry joined with the backfill cursor and the per-replica `IndexVersionState` (current + pending version). Use this to poll for backfill completion.
+
+#### Inspect a metadata index
+
+```http
+GET /v3/{ledgerName}/indexes/{canonicalId}/inspect?mode=summary
+```
+
+Scans the index and returns distinct values, facets, or a summary (`mode=distinctValues|facets|summary`). Only metadata indexes are inspectable; builtin canonicals return `400`.
+
+#### Drop an index
+
+```http
+DELETE /v3/{ledgerName}/indexes/{canonicalId}
+```
+
+Returns `204 No Content` once the FSM has committed the drop.
+
+#### Bucket-wide index reads
+
+Cluster-wide observability (registry entries whose owning ledger is empty, aggregated indexer progress):
+
+```http
+GET /v3/_/indexes                        # ?scope=all (default) | bucket
+GET /v3/_/indexes/status?ledger=         # aggregate: LastIndexedSequence, Lag, IndexFileSize
+GET /v3/_/indexes/{canonicalId}          # single bucket-scoped Index entry
+GET /v3/_/indexes/{canonicalId}/status   # single bucket-scoped IndexEntry
+```
+
+The bucket-scoped single-index routes are a hook — no production write hits `SubAttrIndex` with an empty ledger today. The audit index (cross-ledger by nature) lives in a dedicated read-store keyspace and will be exposed on `GET /v3/audit-entries` per EN-1481, not through this hook.
+
 ### Cluster
 
 Cluster operations are available via the `ClusterService` gRPC API (port 8888) and the `ledgerctl cluster` CLI commands.

@@ -195,6 +195,14 @@ func (s *Store) ReadProgress() (uint64, error) {
 	return progressCursor.Read(s.db)
 }
 
+// ReadProgressFrom is the snapshot-aware variant of ReadProgress: it reads
+// from an arbitrary PebbleGetter (typically a *pebble.Snapshot taken via
+// NewSnapshot()) instead of the live DB, so multi-step readers can pin a
+// consistent view.
+func (s *Store) ReadProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+	return progressCursor.Read(reader)
+}
+
 // WriteProgress stores the last indexed log sequence.
 func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 	return progressCursor.Write(batch, sequence)
@@ -203,6 +211,13 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 // LastIndexedSequence returns the last indexed log sequence (read-only).
 func (s *Store) LastIndexedSequence() (uint64, error) {
 	return s.ReadProgress()
+}
+
+// LastIndexedSequenceFrom is the snapshot-aware variant. Callers that hold
+// a snapshot for a multi-step read must use this form so the value stays
+// pinned to the snapshot rather than advancing under their feet.
+func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error) {
+	return s.ReadProgressFrom(reader)
 }
 
 // NotifyProgress wakes all goroutines waiting in WaitForSequence /
@@ -497,10 +512,22 @@ func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
 
 // ReadAllBackfillProgress returns all backfill cursors for startup recovery.
 func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
+	return readAllBackfillProgress(s.db)
+}
+
+// ReadAllBackfillProgressFrom is the snapshot-aware variant of
+// ReadAllBackfillProgress. Multi-step callers hold a *pebble.Snapshot
+// (via NewSnapshot()) and pass it in so every cursor in the returned
+// map is coherent with the caller's other snapshot-based reads.
+func (s *Store) ReadAllBackfillProgressFrom(reader dal.PebbleReader) (map[string]uint64, error) {
+	return readAllBackfillProgress(reader)
+}
+
+func readAllBackfillProgress(reader dal.PebbleReader) (map[string]uint64, error) {
 	prefix := BackfillKeyPrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -542,7 +569,18 @@ type BackfillEntry struct {
 
 // ListBackfillProgress reads and decodes all backfill progress entries.
 func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
-	all, err := s.ReadAllBackfillProgress()
+	return decodeBackfillProgress(s.ReadAllBackfillProgress())
+}
+
+// ListBackfillProgressFrom is the snapshot-aware variant of
+// ListBackfillProgress. Multi-step callers reading from a
+// *pebble.Snapshot pass it here so the per-cursor values in the
+// returned slice come from the same point-in-time view.
+func (s *Store) ListBackfillProgressFrom(reader dal.PebbleReader) ([]BackfillEntry, error) {
+	return decodeBackfillProgress(s.ReadAllBackfillProgressFrom(reader))
+}
+
+func decodeBackfillProgress(all map[string]uint64, err error) ([]BackfillEntry, error) {
 	if err != nil {
 		return nil, err
 	}
