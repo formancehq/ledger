@@ -297,6 +297,15 @@ func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
 
 var _ CanonicalBytes = (*TransactionReferenceKey)(nil)
 
+// LedgerScopedPrefix returns the fixed-width canonical prefix shared by every
+// ledger-scoped attribute key (the ledger name padded to
+// dal.LedgerNameFixedSize). Scans over ledger-scoped keys must use this, not
+// the raw name: an unpadded prefix also matches every ledger whose name
+// extends it ("pay" would match "payments").
+func LedgerScopedPrefix(name string) []byte {
+	return appendLedgerName(nil, name)
+}
+
 // LedgerKey identifies a ledger by name. Used as the attribute key for
 // LedgerInfo and Boundaries (keyed by name for name-based lookups).
 type LedgerKey struct {

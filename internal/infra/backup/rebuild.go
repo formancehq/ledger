@@ -706,10 +706,7 @@ type attributeReplayWriter struct {
 //
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
-// nothing. Admission enforces postings XOR script/reference
-// (validateOrderContent), so a successful order carrying either script form
-// executed the numscript path — an unresolvable or empty reference fails at the
-// FSM and produces no log.
+// nothing. See replay.OrderEffects for why script detection is exact.
 func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, fromLogSeq, fromAuditSeq uint64) error {
 	lower := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
@@ -739,27 +736,18 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			continue
 		}
 
-		order := &raftcmdpb.Order{}
-		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-			return fmt.Errorf("unmarshaling order from audit item %x: %w", iter.Key(), err)
+		effects, err := replay.DecodeOrderEffects(item.GetSerializedOrder())
+		if err != nil {
+			return fmt.Errorf("decoding order from audit item %x: %w", iter.Key(), err)
 		}
 
-		ls := order.GetLedgerScoped()
-		if ls == nil {
+		if effects.Ledger == "" {
 			continue
 		}
 
-		fillGap := ls.GetMirrorIngest().GetEntry().GetFillGap()
-		ct := ls.GetApply().GetCreateTransaction()
-		isNumscript := ct != nil && (ct.GetScript().GetPlain() != "" || ct.GetNumscriptReference().GetName() != "")
-
-		if fillGap == nil && !isNumscript {
-			continue
-		}
-
-		info := w.ledgerInfos[ls.GetLedger()]
+		info := w.ledgerInfos[effects.Ledger]
 		if info == nil {
-			return fmt.Errorf("invariant: audit item for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", ls.GetLedger())
+			return fmt.Errorf("invariant: audit item for ledger %q with no LedgerInfo seeded from checkpoint or CreateLedger replay", effects.Ledger)
 		}
 
 		// A ledger deleted later in the delta has no boundary row in the end
@@ -769,18 +757,18 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			continue
 		}
 
-		b, err := w.boundaryFor(ls.GetLedger())
+		b, err := w.boundaryFor(effects.Ledger)
 		if err != nil {
 			return err
 		}
 
-		for _, id := range fillGap.GetSkippedTransactionIds() {
+		for _, id := range effects.SkippedTransactionIDs {
 			if next := id + 1; next > b.GetNextTransactionId() {
 				b.NextTransactionId = next
 			}
 		}
 
-		if isNumscript {
+		if effects.IsNumscript {
 			b.NumscriptExecutionCount++
 		}
 	}
@@ -926,7 +914,7 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, p
 // carried from the checkpoint unchanged.
 func (w *attributeReplayWriter) countNetAttributes(reader dal.PebbleReader) error {
 	for name, b := range w.boundaries {
-		prefix := domain.LedgerKey{Name: name}.Bytes()
+		prefix := domain.LedgerScopedPrefix(name)
 
 		volumeCount, err := countAttributeKeys(w.volume, reader, prefix)
 		if err != nil {

@@ -894,3 +894,37 @@ func TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp(t *testing.T) {
 
 	require.NoError(t, writer.RemoveMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"))
 }
+
+// TestRebuildDelta_CountsDoNotBleedAcrossPrefixLedgers: net counts must scan
+// with the padded ledger prefix — an unpadded prefix also matches every
+// ledger whose name extends it.
+func TestRebuildDelta_CountsDoNotBleedAcrossPrefixLedgers(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "pay", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), createLedgerLog(2, "payments", 2)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "pay",
+		createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 10)),
+	)))
+	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "payments",
+		createdTransactionPayload(1, rebuildTestPosting("world", "bob", "USD", 10)),
+	)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "pay"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(2), boundary.GetVolumeCount(),
+		`"pay" must count only its own rows (world + alice), not "payments" rows too`)
+}

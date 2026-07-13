@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -22,6 +23,7 @@ const (
 	replayPrefixVolume      = 'V'
 	replayPrefixMetadata    = 'M'
 	replayPrefixTransaction = 'T'
+	replayPrefixReference   = 'R'
 )
 
 // Metadata value encoding in the replay store:
@@ -263,12 +265,17 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
-// SetTransactionReference is a no-op in the checker: the reference index is a
-// projection the checker does not yet verify (there is no compareReferences
-// pass — see invariant 8), so there is nothing to reconstruct here. Only the
-// restore replay's writer implements it, to rebuild the index after a restore.
-func (s *replayStore) SetTransactionReference(_, _ string, _ uint64) error {
-	return nil
+// SetTransactionReference records an expected reference→txID assignment.
+// References are set-once (admission rejects duplicates), so a plain Set is
+// the whole merge; compareReferences reads these back against the stored
+// SubAttrReference index.
+func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID uint64) error {
+	key := replayKey(replayPrefixReference, domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: reference}.Bytes())
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], txID)
+
+	return s.db.Set(key, buf[:], pebble.NoSync)
 }
 
 // SetDefaultEnforcementMode is a no-op in the checker: the enforcement mode
@@ -335,8 +342,9 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 }
 
 // SetMetadataFieldType / RemoveMetadataFieldType are no-ops here: the schema
-// lives on LedgerInfo, not in this attribute merge store. Verifying the schema
-// projection in the checker (the invariant-8 gap) is left as a follow-up.
+// lives on LedgerInfo, not in this attribute merge store. The checker re-derives
+// the expected schema in the Check() replay loop (as it does for index activity)
+// and verifies it against the stored LedgerInfo in compareSchema.
 func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
 	return nil
 }
