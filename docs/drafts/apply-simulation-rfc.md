@@ -116,7 +116,7 @@ type StateReader interface {
 
 Today the two write halves are `batchEffects` (admission) and `WriteSet` (FSM). Generalize:
 
-The write half's **balance primitive must be posting-shaped, not delta-shaped.** The FSM apply path (`applyPosting`) needs the full posting — source, destination, asset, amount, and side — to increment the source's `Output` and the destination's `Input` **separately** (materialized volumes) and to run the source balance check. A `AddBalanceDelta(key, delta)` primitive collapses source and destination into two independent net-per-volume-key deltas and **destroys** exactly the information `applyPosting` requires: which side moved, and the source/destination pairing for the balance check. A net-delta sink therefore cannot reconstruct materialized-volume semantics, which §3.2's asymmetry note and §4 both require. So the sink's balance operation is the posting; the net delta is a *projection* admission derives from it, never the sink's primitive.
+The write half's **balance primitive is the posting**, because that is what the FSM apply path needs. `applyPosting` requires the full posting — source, destination, asset, amount, and side — to increment the source's `Output` and the destination's `Input` **separately** (materialized volumes) and to run the source balance check. A net-per-volume-key delta cannot carry that: it loses which side moved and the source/destination pairing, so it cannot reconstruct the materialized-volume semantics §3.2 and §4 require. The sink's balance operation is therefore the posting; a net delta is a *projection* admission derives from it, not a sink primitive.
 
 ```go
 // Illustrative — the write half of the interpreter.
