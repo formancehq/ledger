@@ -84,16 +84,21 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 
 	var trailer metadata.MD
 
-	// With --rescale, ask the server to merge same-base assets under the highest
-	// precision observed (use_max_precision), so the group-by-base aggregation is
-	// done once, server-side, on the native uint256 volumes. The CLI then only
-	// re-expresses each merged row at the requested scale for display.
+	// With --rescale on the human-readable path, ask the server to merge
+	// same-base assets under the highest precision observed (use_max_precision),
+	// so the group-by-base aggregation is done once, server-side, on the native
+	// uint256 volumes; the CLI then only re-expresses each merged row at the
+	// requested scale for display. Structured output (--json/--yaml) must keep the
+	// raw integer amounts and full "CUR/precision" strings (see the --rescale flag
+	// contract in main.go), so the merge is gated off there.
+	useMaxPrecision := rescale != nil && !cmdutil.IsStructuredOutput(cmd)
+
 	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
 		MinLogSequence:  minLogSeq,
 		CheckpointId:    checkpointID,
-		UseMaxPrecision: rescale != nil,
+		UseMaxPrecision: useMaxPrecision,
 	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 
