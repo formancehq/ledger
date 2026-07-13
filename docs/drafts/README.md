@@ -22,6 +22,9 @@ Exploratory documentation on advanced features and concepts.
 ### [Advanced Read Queries](./advanced-read-queries.md)
 Design draft for advanced read capabilities: ListAccounts with prefix filtering, AggregateBalances, ListLogs per ledger, ledger stats, point-in-time reads, and transactions-by-account index. Leverages Pebble's sorted key layout for efficient range scans.
 
+### [Unified Hot-Path Apply Simulation RFC](./apply-simulation-rfc.md)
+Investigation spike (EN-1545) proposing a single `simulate(order, StateReader, WriteSink)` interpreter run in two modes (admission dry-run, FSM apply) to eliminate admission's hand-derived shadow of the FSM apply path and the redundant double numscript evaluation. Includes a go/no-go recommendation and a phased migration plan. Depends on EN-1406.
+
 ### [Chart of Accounts](./chart-of-accounts.md)
 RFC for declarative account address validation. Defines a per-ledger chart of accounts with fixed and variable segments, regex constraints, default metadata, and configurable enforcement modes (strict/audit). Replaces the v2 magic JSON format with an idiomatic, protobuf-typeable structure.
 
