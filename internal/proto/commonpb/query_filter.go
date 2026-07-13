@@ -918,12 +918,28 @@ type bound struct {
 func (b bound) isLower() bool     { return b.op == opGt || b.op == opGte }
 func (b bound) isExclusive() bool { return b.op == opGt || b.op == opLt }
 
+// dateSemanticFields are the builtin uint fields whose bounds represent a moment
+// in time, stored as unsigned Unix microseconds. Their DSL bounds additionally
+// accept an RFC3339 timestamp (coerced through CoerceDatetimeMicros), on top of
+// the raw-microsecond form. Plain-count uint fields (id, logId) and metadata uint
+// ranges are NOT in this set: they only ever parse as raw uints.
+var dateSemanticFields = map[string]struct{}{
+	"timestamp":  {},
+	"insertedAt": {},
+	"revertedAt": {},
+	"date":       {},
+}
+
 // buildRange assembles one or two same-field bounds into the matching range
 // proto condition, dispatching on the field name.
 func buildRange(field string, bounds []bound) (*QueryFilter, error) {
+	// Date-semantic bounds coerce RFC3339 strings to micros; every other uint
+	// field parses raw uints only.
+	coerce := boundUintCoercer(field)
+
 	switch field {
 	case "id", "timestamp", "insertedAt", "revertedAt":
-		uc, err := uintConditionFromBounds(bounds)
+		uc, err := uintConditionFromBounds(bounds, coerce)
 		if err != nil {
 			return nil, err
 		}
@@ -932,14 +948,14 @@ func buildRange(field string, bounds []bound) (*QueryFilter, error) {
 			Field: txBuiltinFieldFromJSON[field], Cond: uc,
 		}}}, nil
 	case "logId":
-		uc, err := uintConditionFromBounds(bounds)
+		uc, err := uintConditionFromBounds(bounds, coerce)
 		if err != nil {
 			return nil, err
 		}
 
 		return &QueryFilter{Filter: &QueryFilter_LogId{LogId: &LogIdCondition{Cond: uc}}}, nil
 	case "date":
-		uc, err := uintConditionFromBounds(bounds)
+		uc, err := uintConditionFromBounds(bounds, coerce)
 		if err != nil {
 			return nil, err
 		}
@@ -955,7 +971,7 @@ func buildRange(field string, bounds []bound) (*QueryFilter, error) {
 			// signed bounds are JSON numbers. A param-only range carries no
 			// literal to inspect and defaults to the signed form.
 			if boundsAreUnsigned(bounds) {
-				uc, err := uintConditionFromBounds(bounds)
+				uc, err := uintConditionFromBounds(bounds, coerce)
 				if err != nil {
 					return nil, err
 				}
@@ -1033,7 +1049,30 @@ func intConditionFromBounds(bounds []bound) (*IntCondition, error) {
 	return ic, nil
 }
 
-func uintConditionFromBounds(bounds []bound) (*UintCondition, error) {
+// boundUintCoercer returns the uint64 parser for a range field's literal bounds.
+// Date-semantic fields (timestamp/insertedAt/revertedAt/date) additionally accept
+// an RFC3339 timestamp via the shared CoerceDatetimeMicros (EN-1544); every other
+// uint field parses the raw-uint form only (jsonValue.asUint64), so an RFC3339
+// string on, say, `id` still fails as before.
+func boundUintCoercer(field string) func(jsonValue) (uint64, error) {
+	if _, ok := dateSemanticFields[field]; ok {
+		return func(v jsonValue) (uint64, error) {
+			s, err := v.asString()
+			if err != nil {
+				// A JSON number literal (e.g. {"$gte":{"date":1700000000000000}})
+				// is not a string; fall back to the raw-uint decoding so both the
+				// numeric and decimal-string micro forms keep working.
+				return v.asUint64()
+			}
+
+			return CoerceDatetimeMicros(s)
+		}
+	}
+
+	return func(v jsonValue) (uint64, error) { return v.asUint64() }
+}
+
+func uintConditionFromBounds(bounds []bound, coerce func(jsonValue) (uint64, error)) (*UintCondition, error) {
 	uc := &UintCondition{}
 	for _, b := range bounds {
 		if b.isLower() {
@@ -1041,7 +1080,7 @@ func uintConditionFromBounds(bounds []bound) (*UintCondition, error) {
 			if b.value.isParam() {
 				uc.ParamMin = b.value.param
 			} else {
-				n, err := b.value.asUint64()
+				n, err := coerce(b.value)
 				if err != nil {
 					return nil, err
 				}
@@ -1053,7 +1092,7 @@ func uintConditionFromBounds(bounds []bound) (*UintCondition, error) {
 			if b.value.isParam() {
 				uc.ParamMax = b.value.param
 			} else {
-				n, err := b.value.asUint64()
+				n, err := coerce(b.value)
 				if err != nil {
 					return nil, err
 				}

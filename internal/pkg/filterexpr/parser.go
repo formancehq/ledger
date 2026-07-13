@@ -49,7 +49,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|date|timestamp|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -183,6 +183,7 @@ type Condition struct {
 	Asset    *AssetCond    `parser:"  @@"`
 	Metadata *MetadataCond `parser:"| @@"`
 	Audit    *AuditCond    `parser:"| @@"`
+	Date     *DateCond     `parser:"| @@"`
 	Address  *AddressCond  `parser:"| @@"`
 	Ledger   *LedgerCond   `parser:"| @@"`
 }
@@ -198,6 +199,10 @@ func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 
 	if c.Audit != nil {
 		return c.Audit.toProto()
+	}
+
+	if c.Date != nil {
+		return c.Date.toProto()
 	}
 
 	if c.Ledger != nil {
@@ -297,39 +302,51 @@ func (a *AuditCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilte
 // datetimeToProto builds a uint audit condition whose operands may be written as
 // an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or as raw unsigned
 // microseconds. Both forms coerce to the uint64 microseconds the audit index
-// stores, reusing the platform datetime parser (commonpb.ParseDatetimeMicros)
-// that backs METADATA_TYPE_DATETIME fields.
+// stores, through the shared commonpb.CoerceDatetimeMicros (the same coercion the
+// structured JSON DSL and the top-level date/timestamp fields use, EN-1544).
 func (a *AuditCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
 	parse := func(v *Value) (uint64, error) {
 		if v.Param != "" {
 			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
 		}
 
-		s := v.resolve()
-		if micros, ok := commonpb.ParseDatetimeMicros(s); ok {
-			if micros < 0 {
-				return 0, fmt.Errorf("audit field %q does not support timestamps before the Unix epoch, got %q", a.Field, s)
-			}
-
-			return uint64(micros), nil
-		}
-
-		n, err := strconv.ParseUint(s, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("audit field %q requires an RFC3339 timestamp or unsigned microseconds, got %q", a.Field, s)
-		}
-
-		return n, nil
+		return coerceDatetimeValue(v)
 	}
 
 	return a.uintProtoWithParse(field, parse)
+}
+
+// coerceDatetimeValue turns a resolved DSL Value into the uint64 microseconds a
+// date index stores, accepting an RFC3339 timestamp or raw unsigned microseconds
+// through the single shared coercion (commonpb.CoerceDatetimeMicros). Pre-epoch
+// RFC3339 values are rejected there. Shared by the audit[timestamp] field and the
+// top-level date/timestamp fields (EN-1544) so all three define the accepted
+// forms once. Callers reject $param operands before calling this.
+func coerceDatetimeValue(v *Value) (uint64, error) {
+	return commonpb.CoerceDatetimeMicros(v.resolve())
 }
 
 // uintProtoWithParse assembles a uint audit condition from the operator, using
 // parse to turn each operand into a uint64. Shared by plain-uint fields and the
 // datetime timestamp field.
 func (a *AuditCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
-	op := a.Op
+	uc, err := uintConditionFromOp(a.Op, parse)
+	if err != nil {
+		return nil, fmt.Errorf("audit field %q: %w", a.Field, err)
+	}
+
+	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+}
+
+// uintConditionFromOp folds a comparison operator (==, >, >=, <, <=, between)
+// into a single commonpb.UintCondition, using parse to turn each operand Value
+// into a uint64. It is the shared range assembler for every textual uint range
+// field — the audit uint/datetime fields and the top-level date/timestamp fields
+// (EN-1544) — so the operator-to-bound mapping lives in one place. Parameters
+// ($param) are not accepted here: the fields that use this helper are evaluated
+// without a parameter-resolution context, and each parse closure rejects a param
+// operand with a field-specific message.
+func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*commonpb.UintCondition, error) {
 	uc := &commonpb.UintCondition{}
 
 	switch {
@@ -374,10 +391,10 @@ func (a *AuditCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Va
 		}
 		uc.Min, uc.Max = &lo, &hi
 	default:
-		return nil, fmt.Errorf("audit field %q supports ==, >, >=, <, <= and between only", a.Field)
+		return nil, errors.New("supports ==, >, >=, <, <= and between only")
 	}
 
-	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+	return uc, nil
 }
 
 func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
@@ -412,6 +429,63 @@ func (a *AuditCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
 	default:
 		return nil, fmt.Errorf("audit field %q supports == and in only", a.Field)
+	}
+}
+
+// --- Date / timestamp conditions ---
+
+// DateCond is the top-level `date OP value` (logs) / `timestamp OP value`
+// (transactions) range filter over a builtin date index (EN-1544). The operand
+// is an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or raw unsigned
+// microseconds — the same forms audit[timestamp] accepts, coerced through the one
+// shared datetime coercion. `date` compiles to a log date condition
+// (LogBuiltinIndex_DATE); `timestamp` to a transaction timestamp condition
+// (TransactionBuiltinIndex_TIMESTAMP). Which target each is valid on is NOT
+// decided here: the field just selects the proto arm, and the per-target validity
+// gate (domain.ValidateFilterForTarget) rejects `date` on a non-logs target and
+// `timestamp` on a non-transactions target downstream — the same gate the
+// structured JSON DSL goes through.
+type DateCond struct {
+	Field string      `parser:"@('date' | 'timestamp')"`
+	Op    *MetadataOp `parser:"@@"`
+}
+
+func (d *DateCond) toProto() (*commonpb.QueryFilter, error) {
+	if d.Op == nil {
+		return nil, fmt.Errorf("%s field requires an operator", d.Field)
+	}
+
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("%s field does not support parameters", d.Field)
+		}
+
+		return coerceDatetimeValue(v)
+	}
+
+	uc, err := uintConditionFromOp(d.Op, parse)
+	if err != nil {
+		return nil, fmt.Errorf("%s field: %w", d.Field, err)
+	}
+
+	switch d.Field {
+	case "date":
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+				Cond:  uc,
+			},
+		}}, nil
+	case "timestamp":
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+				Cond:  uc,
+			},
+		}}, nil
+	default:
+		// Unreachable: the grammar only admits "date" | "timestamp".
+		return nil, fmt.Errorf("invariant: unhandled date field %q", d.Field)
 	}
 }
 
@@ -620,7 +694,7 @@ type Value struct {
 	// keywords are listed — the structural operators (and/or/not/in/between)
 	// are deliberately excluded so they keep terminating expressions rather
 	// than being swallowed as values. true/false are handled by Bool above.
-	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'exists')"`
+	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'date' | 'timestamp' | 'exists')"`
 	Bare string `parser:"| @Ident"`
 }
 
