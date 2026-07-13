@@ -3,10 +3,41 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+// parseFilterDateMicros parses an RFC3339 date query parameter and returns it
+// as Unix microseconds for a UintCondition bound. Builtin date indexes (both
+// transaction timestamps and log dates) are stored as unsigned microseconds, so
+// a pre-epoch (negative UnixMicro) date has no representable bound: casting it
+// to uint64 would wrap to a huge value and silently corrupt the filter (a start
+// bound would exclude everything, an end bound would include everything). Such
+// dates are rejected with 400 rather than accepted with garbage semantics. On
+// error it writes the response and returns ok=false; the caller must return
+// immediately.
+//
+// Shared by handleListTransactions and handleListLedgerLogs so both list
+// endpoints validate startDate/endDate identically (EN-1542).
+func parseFilterDateMicros(w http.ResponseWriter, param, raw string) (uint64, bool) {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, expected RFC3339 format", param))
+
+		return 0, false
+	}
+
+	micros := t.UnixMicro()
+	if micros < 0 {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s parameter, dates before 1970-01-01 are not supported", param))
+
+		return 0, false
+	}
+
+	return uint64(micros), true
+}
 
 // combineFilters AND-combines the non-nil filters into a single QueryFilter.
 // Returns nil for zero filters (unfiltered read) and the sole filter unwrapped
