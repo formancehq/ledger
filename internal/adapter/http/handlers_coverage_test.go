@@ -51,6 +51,40 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
 }
 
+// TestNewHandler_SystemRoutesUnderReservedSegment pins the EN-1472 routing
+// contract: bucket-wide system reads live under the reserved `/v3/_/…` segment
+// (disjoint from `/v3/{ledgerName}/…`), so they never shadow — and are never
+// shadowed by — a real ledger. The pre-move path `/v3/chapters` must no longer
+// resolve.
+func TestNewHandler_SystemRoutesUnderReservedSegment(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListChapters(gomock.Any()).DoAndReturn(
+		func(_ context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
+			return cursor.NewSliceCursor([]*commonpb.Chapter{{Id: 1}}), nil
+		}).AnyTimes()
+	// The pre-move `/v3/chapters` now falls through to `/v3/{ledgerName}`
+	// (handleGetLedger with ledgerName="chapters"); stub GetLedgerByName so that
+	// path returns a clean error instead of an unexpected-call panic.
+	backend.EXPECT().GetLedgerByName(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("no such ledger")).AnyTimes()
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
+
+	// The system route resolves under the reserved `_` segment.
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v3/_/chapters", nil))
+	require.Equal(t, http.StatusOK, w.Code, "GET /v3/_/chapters must route to handleListChapters")
+
+	// The pre-move path is gone: `/v3/chapters` now resolves to handleGetLedger
+	// (a different handler, ledgerName="chapters"), not the chapters handler, so
+	// it must not return the chapters 200.
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v3/chapters", nil))
+	require.NotEqual(t, http.StatusOK, w.Code,
+		"GET /v3/chapters must no longer resolve to the chapters handler after the /_/ move")
+}
+
 func TestNewHandler_LivezEndpoint(t *testing.T) {
 	t.Parallel()
 

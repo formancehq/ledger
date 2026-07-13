@@ -46,9 +46,7 @@ func (b *backupProposer) Propose(ctx context.Context, cmd *raftcmdpb.Proposal) e
 	for i := range tus {
 		operations = append(operations, plan.WriteOperation{
 			Coverage: nil, // backup apply does not read FSM cache
-			SetCoverage: func(bits []byte) {
-				cmd.GetTechnicalUpdates()[i].CoverageBits = bits
-			},
+			Target:   &tus[i].CoverageBits,
 		})
 	}
 

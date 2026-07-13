@@ -48,6 +48,111 @@ func TestCompile_RejectsDeeplyNestedFilter(t *testing.T) {
 		"deeply-nested QueryFilter must trip the depth guard, got: %v", err)
 }
 
+// ledgerFilter builds a LOGS-target LedgerCondition (exact match on name).
+func ledgerFilter(name string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{
+			Ledger: &commonpb.LedgerCondition{
+				Cond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: name},
+				},
+			},
+		},
+	}
+}
+
+// TestCompile_LedgerConditionOtherLedgerIsEmpty is the regression for the
+// EN-1503 review: a LOGS-target LedgerCondition naming a ledger other than the
+// one the query executes against must compile to an empty (unsatisfiable)
+// result, not silently fall through to the universe of the executing ledger's
+// logs. The mismatch branch returns before touching any Pebble reader, so no
+// store setup is needed.
+func TestCompile_LedgerConditionOtherLedgerIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctx := &compileCtx{
+		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerName: "ledger-a",
+	}
+
+	iter, err := compile(ctx, ledgerFilter("ledger-b"))
+	require.NoError(t, err)
+	require.NotNil(t, iter)
+	defer iter.Close()
+
+	// Empty iterator: a filter naming a different ledger can match nothing.
+	require.False(t, iter.Next(), "LedgerCondition on a different ledger must yield no rows")
+	require.NoError(t, iter.Err())
+}
+
+// TestCompile_LedgerConditionMissingValue asserts a LedgerCondition carrying no
+// StringCondition value fails loudly rather than silently matching everything.
+func TestCompile_LedgerConditionMissingValue(t *testing.T) {
+	t.Parallel()
+
+	ctx := &compileCtx{
+		target:     commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerName: "ledger-a",
+	}
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{Ledger: &commonpb.LedgerCondition{}},
+	}
+
+	_, err := compile(ctx, filter)
+	require.Error(t, err)
+}
+
+// TestCompile_DepthBoundMatchesValidator pins that the execute-time guard in
+// compile() and the write-time guard in domain.ValidateFilterForTarget agree at
+// the exact boundary — a filter accepted at write time must compile, and one
+// rejected at write time must fail to compile. A drift here would let a prepared
+// query be persisted that then fails only at execute time (or vice versa). Both
+// count every node (combinators AND the leaf), so N combinators wrapping a leaf
+// enters the leaf at depth N: N == MaxFilterDepth-1 is the deepest both accept,
+// N == MaxFilterDepth is rejected by both.
+func TestCompile_DepthBoundMatchesValidator(t *testing.T) {
+	t.Parallel()
+
+	// Leaf is a metadata field condition (valid on ACCOUNTS, needs no reader —
+	// the depth guard fires or the leaf validity check passes before any store
+	// access on the accepted path). Wrap in single-child Or combinators.
+	nested := func(combinators int) *commonpb.QueryFilter {
+		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+			Field: fieldCondition("k", &commonpb.ExistsCondition{}),
+		}}
+		for range combinators {
+			f = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
+				Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{f}},
+			}}
+		}
+
+		return f
+	}
+
+	target := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+
+	// N == MaxFilterDepth-1: both accept (compile reaches the leaf; validator
+	// returns nil).
+	deepestOK := nested(MaxFilterDepth - 1)
+	require.Nil(t, domain.ValidateFilterForTarget(deepestOK, target),
+		"validator must accept MaxFilterDepth-1 combinators")
+	ctx := &compileCtx{target: target}
+	_, err := compile(ctx, deepestOK)
+	require.False(t, errors.Is(err, ErrFilterTooDeep),
+		"compile must not trip the depth guard at MaxFilterDepth-1 combinators (got: %v)", err)
+
+	// N == MaxFilterDepth: both reject with the depth error.
+	tooDeep := nested(MaxFilterDepth)
+	valErr := domain.ValidateFilterForTarget(tooDeep, target)
+	require.NotNil(t, valErr, "validator must reject MaxFilterDepth combinators")
+	require.Contains(t, valErr.Error(), "nesting depth")
+	ctx = &compileCtx{target: target}
+	_, err = compile(ctx, tooDeep)
+	require.True(t, errors.Is(err, ErrFilterTooDeep),
+		"compile must trip the depth guard at MaxFilterDepth combinators (got: %v)", err)
+}
+
 func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
 	fc := &commonpb.FieldCondition{
 		Field: &commonpb.FieldRef{Metadata: metaKey},
@@ -807,6 +912,72 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 	var building *domain.ErrIndexBuilding
 	require.False(t, errors.As(err, &building),
 		"a Pebble I/O failure must NOT be reported as ErrIndexBuilding — that would mask a real outage as a transient readiness state")
+}
+
+// TestCompile_RejectsUnsupportedTarget is the regression for flemzord's P2 on
+// #1563 (EN-1503). A prepared query stored via gRPC (which validates only the
+// name) can carry an unsupported/unknown QueryTarget. Before the fix,
+// compileUniverse's default arm returned an empty iterator for such a target,
+// which executeList turned into an empty-but-successful page BEFORE reaching its
+// own fail-loud switch — a silent success that masks the invariant violation.
+// Compile must now reject an unsupported target loudly at the earliest point,
+// for both the filtered and unfiltered (universe) paths.
+func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
+	t.Parallel()
+
+	// An enum value outside the wired set (ACCOUNTS/TRANSACTIONS/LOGS).
+	const badTarget = commonpb.QueryTarget(9999)
+
+	info := &commonpb.LedgerInfo{Name: "ledger1"}
+
+	cases := []struct {
+		name   string
+		filter *commonpb.QueryFilter
+	}{
+		{
+			name:   "nil filter (universe path)",
+			filter: nil,
+		},
+		{
+			name: "field filter",
+			filter: &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: fieldCondition("x", &commonpb.ExistsCondition{}),
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			iter, err := Compile(
+				nil, nil, tc.filter, badTarget, "ledger1",
+				nil, nil, info, nil, nil, nil, nil)
+			require.Error(t, err, "unsupported target must fail loudly, not return an (empty) iterator")
+			require.Nil(t, iter)
+
+			var compileErr *domain.ErrFilterCompilation
+			require.ErrorAs(t, err, &compileErr,
+				"unsupported target must surface as a filter-compilation error (got %T: %v)", err, err)
+			require.Contains(t, err.Error(), "unsupported query target")
+		})
+	}
+}
+
+// TestIsSupportedTarget pins the exact allow-list so a new QueryTarget enum
+// value is rejected until its iteration + enrichment paths are wired.
+func TestIsSupportedTarget(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
+	require.True(t, isSupportedTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	// No zero sentinel exists (ACCOUNTS == 0), so an unsupported value can only
+	// be an out-of-range enum — the shape a corrupt/forward-compat stored proto
+	// would take.
+	require.False(t, isSupportedTarget(commonpb.QueryTarget(9999)))
 }
 
 // staticIndexLookup is an in-memory indexes.Lookup for unit tests that

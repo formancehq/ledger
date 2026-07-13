@@ -34,14 +34,14 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	filter, err := decodePreparedQueryFilter(body.Filter)
+	target, err := parsePreparedQueryTarget(body.Target)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
 		return
 	}
 
-	target, err := parsePreparedQueryTarget(body.Target)
+	filter, err := decodePreparedQueryFilter(body.Filter)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

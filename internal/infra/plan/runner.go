@@ -258,17 +258,17 @@ func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.Attrib
 	}
 
 	for _, op := range b.operations {
-		if op.SetCoverage == nil {
+		if op.Target == nil {
 			continue
 		}
 
 		if planCount == 0 {
-			op.SetCoverage(nil)
+			*op.Target = nil
 
 			continue
 		}
 
-		op.SetCoverage(bitsForNeedsWithIndex(op.Coverage, planCount, index))
+		*op.Target = bitsForNeedsWithIndex(op.Coverage, planCount, index)
 	}
 }
 

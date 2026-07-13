@@ -31,15 +31,24 @@ var (
 
 	// ErrLedgerNameReservedPrefix rejects the ledger name "_". That single
 	// segment is reserved for system / non-ledger HTTP routes, which all live
-	// under /v3/_/… (e.g. GET /v3/_/audit-entries) and share the
-	// /v3/{ledgerName} path namespace. A ledger named "_" would be shadowed by
-	// that fixed segment. Reserving the one segment "_" — rather than an
-	// ever-growing list of individual reserved words — keeps the guard in
-	// lock-step with the route table for free and applies uniformly across
-	// transports (see internal/adapter/http/handler.go). Enforced on every
-	// ledger-scoped order (validateOrderLedgerName), not just CreateLedger, so a
-	// "_" ledger can never be created or written to. EN-1472 (#1531) carries the
-	// same guard for its bucket-wide routes; whichever lands first owns the code
-	// and the other resolves the trivial conflict.
+	// under /v3/_/… (e.g. GET /v3/_/audit-entries, /v3/_/chapters, /v3/_/indexes,
+	// /v3/_/events-sinks, /v3/_/signing-keys) and share the /v3/{ledgerName} path
+	// namespace. A ledger named "_" would be shadowed by that fixed segment.
+	// Reserving the one segment "_" — rather than an ever-growing list of
+	// individual reserved words — keeps the guard in lock-step with the route
+	// table for free and applies uniformly across transports (see
+	// internal/adapter/http/handler.go). Enforced on every ledger-scoped order
+	// (validateOrderLedgerName), not just CreateLedger, so a "_" ledger can never
+	// be created or written to.
 	ErrLedgerNameReservedPrefix = domain.NewValidationSentinel("ledger name \"_\" is reserved for system API routes")
+
+	// ErrIndexTargetUnsupported rejects a CreateIndex order for an IndexID the
+	// builder has no backfill path for: a metadata target other than
+	// ACCOUNT/TRANSACTION (e.g. LEDGER), an account builtin other than ASSET
+	// (e.g. the UNSPECIFIED sentinel), a log builtin other than DATE, or an
+	// out-of-range builtin enum. Such an index would be persisted in the
+	// registry but never built, so it is rejected at admission (covering gRPC
+	// and HTTP) rather than silently creating a permanently-unbuilt index.
+	// See indexes.Supported.
+	ErrIndexTargetUnsupported = domain.NewValidationSentinel("index target not supported (metadata: ACCOUNT/TRANSACTION; account builtin: ASSET; log builtin: DATE)")
 )

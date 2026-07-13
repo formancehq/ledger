@@ -1281,12 +1281,17 @@ extend google.protobuf.FieldOptions {
 message QueryFilter {
   oneof filter {
     // Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
-    // valid on every target; per-target index/schema availability is enforced
-    // separately by the compiler.
+    // valid on ACCOUNTS and TRANSACTIONS, which have a populated metadata index.
+    // LOGS is deliberately excluded: there is no log-metadata index — the index
+    // builder never populates the NamespaceLog metadata keyspace that
+    // compileFieldCondition scans — so a metadata filter on LOGS would return
+    // empty or error at execute time. Advertising the capability without an
+    // index behind it is a lying contract, so it is rejected up front at
+    // admission/validation instead. Building a real log-metadata index is a
+    // separate feature (out of scope for EN-1503, tracked separately).
     FieldCondition field = 1 [
       (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
-      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
-      (allowed_query_targets) = QUERY_TARGET_LOGS
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
     ];
     // Address matches resolve to account addresses (ACCOUNTS) or to the
     // account→transaction index (TRANSACTIONS). There is no account→log
@@ -1584,6 +1589,7 @@ message PreparedQueryCursor {
   string next = 4;
   repeated Account account_data = 5;
   repeated Transaction transaction_data = 6;
+  repeated Log log_data = 7;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.
