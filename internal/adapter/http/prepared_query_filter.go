@@ -9,15 +9,13 @@ import (
 )
 
 // preparedQueryTargets maps the public REST target enum to the proto
-// QueryTarget. Only ACCOUNTS and TRANSACTIONS are exposed over REST: the
-// prepared-query execution path (query.Execute) hydrates only account and
-// transaction data — there is no log result field on PreparedQueryCursor — so a
-// LOGS-target prepared query would execute to an empty cursor. LOGS remains a
-// valid direct ListLogs target; it is just not a usable *prepared-query* target
-// yet, so REST does not advertise it. See openapi.yml (ACCOUNTS/TRANSACTIONS).
+// QueryTarget. ACCOUNTS, TRANSACTIONS and LOGS are all usable prepared-query
+// targets over REST: query.Execute hydrates the matching cursor field
+// (account_data / transaction_data / log_data) for each. See openapi.yml.
 var preparedQueryTargets = map[string]commonpb.QueryTarget{
 	"ACCOUNTS":     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 	"TRANSACTIONS": commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	"LOGS":         commonpb.QueryTarget_QUERY_TARGET_LOGS,
 }
 
 // parsePreparedQueryTarget resolves the `target` field of a prepared-query
@@ -26,12 +24,12 @@ var preparedQueryTargets = map[string]commonpb.QueryTarget{
 // caller asked for).
 func parsePreparedQueryTarget(target string) (commonpb.QueryTarget, error) {
 	if target == "" {
-		return 0, errors.New("target is required (ACCOUNTS or TRANSACTIONS)")
+		return 0, errors.New("target is required (ACCOUNTS, TRANSACTIONS or LOGS)")
 	}
 
 	t, ok := preparedQueryTargets[target]
 	if !ok {
-		return 0, fmt.Errorf("unknown or unsupported target %q (use ACCOUNTS or TRANSACTIONS)", target)
+		return 0, fmt.Errorf("unknown or unsupported target %q (use ACCOUNTS, TRANSACTIONS or LOGS)", target)
 	}
 
 	return t, nil
@@ -60,9 +58,11 @@ func decodePreparedQueryFilter(raw json.RawMessage) (*commonpb.QueryFilter, erro
 	}
 
 	// Per-target validity (a condition must be valid on the query's specific
-	// target) is enforced by domain.ValidateFilterForTarget at the admission +
-	// FSM layers, which know the concrete target for both create (from the
-	// request) and update (from the stored query). The create handler also runs
-	// it here for an early, precise 400; this decoder stays purely structural.
+	// target — logId/date/ledger are valid on LOGS but not on
+	// ACCOUNTS/TRANSACTIONS) is enforced by domain.ValidateFilterForTarget at the
+	// admission + FSM layers, which know the concrete target for both create
+	// (from the request) and update (from the stored query). The create handler
+	// also runs it here for an early, precise 400; this decoder stays purely
+	// structural.
 	return filter, nil
 }

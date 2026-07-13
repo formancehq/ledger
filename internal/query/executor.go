@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -131,7 +132,7 @@ func Execute(
 
 	switch req.GetMode() {
 	case commonpb.QueryMode_QUERY_MODE_LIST:
-		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, ledgerInfo.GetName(), enricher)
+		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 		if err != nil {
 			return nil, err
 		}
@@ -164,6 +165,7 @@ func executeList(
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	reader dal.PebbleReader,
+	indexReader dal.PebbleReader,
 	ledgerName string,
 	enricher *EntityEnricher,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
@@ -218,6 +220,19 @@ func executeList(
 		}
 
 		cursor.TransactionData = txns
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		logs, err := EnrichLogs(reader, indexReader, ledgerName, entities)
+		if err != nil {
+			return nil, err
+		}
+
+		cursor.LogData = logs
+	default:
+		// The compiler only produces iterators for targets the switch above
+		// handles; any other target here is a wiring bug (a new target added to
+		// Compile without a matching enrichment branch), not a runtime
+		// condition. Fail loudly rather than return an emptily-populated cursor.
+		return nil, fmt.Errorf("invariant: unsupported prepared-query list target %v", target)
 	}
 
 	if hasMore {
@@ -265,6 +280,27 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 	}
 
 	return txns, nil
+}
+
+// EnrichLogs hydrates a slice of raw logID bytes (as produced by the LOGS
+// compiled iterator) into full Log objects. It mirrors the direct ListLogs
+// path: the compiled iterator yields per-ledger logIDs, ReadLedgerLogsCompiled
+// resolves them to global sequences via the log read-index and reads the log
+// payloads from Pebble. pebbleReader reads the log payloads (Cold zone);
+// indexReader resolves logID → sequence through the same snapshot used for
+// iteration.
+func EnrichLogs(pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+	c, err := ReadLedgerLogsCompiled(pebbleReader, indexReader, ledgerName, logIDs)
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger logs: %w", err)
+	}
+
+	logs, err := cursor.Collect(c)
+	if err != nil {
+		return nil, fmt.Errorf("collecting ledger logs: %w", err)
+	}
+
+	return logs, nil
 }
 
 func emptyListResponse(pageSize uint32) *servicepb.ExecutePreparedQueryResponse {

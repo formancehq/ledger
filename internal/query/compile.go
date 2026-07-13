@@ -101,6 +101,16 @@ func Compile(
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 ) (readstore.EntityIterator, error) {
+	// Reject an unsupported/unknown target at the earliest point. Without this
+	// guard compileUniverse's default arm returns an empty iterator, which the
+	// caller (executeList) turns into an empty-but-successful page BEFORE its own
+	// fail-loud switch — so a stored prepared query with a bad target (gRPC
+	// create validates only the name) would silently succeed with an empty
+	// result instead of surfacing the invariant violation.
+	if !isSupportedTarget(target) {
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", target)
+	}
+
 	if indexVersionFor == nil {
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
@@ -176,9 +186,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_LogId:
 		return compileLogIdCondition(ctx, f.LogId.GetCond())
 	case *commonpb.QueryFilter_Ledger:
-		// Ledger condition is a no-op in the Compile framework --- the ledger
-		// is already set in the context. Return the universe iterator.
-		return compileUniverse(ctx)
+		return compileLedgerCondition(ctx, f.Ledger)
 	default:
 		return nil, domain.NewFilterCompilationError("unknown filter type: %T", filter.GetFilter())
 	}
@@ -243,8 +251,39 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 		}), nil
 
 	default:
+		// Unreachable: Compile rejects unsupported targets up front
+		// (isSupportedTarget), so every compileUniverse call runs under a
+		// validated target. Fail loudly rather than return an empty iterator,
+		// which would silently mask a target that slipped past the guard.
+		return nil, domain.NewFilterCompilationError("unsupported query target %v", ctx.target)
+	}
+}
+
+// compileLedgerCondition compiles a LedgerCondition (exact match on the ledger
+// name). Compilation is always scoped to a single ledger — ctx.ledgerName, the
+// one this query executes against — so the condition can only ever match that
+// ledger or nothing. It is therefore evaluated here rather than treated as a
+// no-op: when the condition names the executing ledger the result is the full
+// log universe; when it names any other ledger the result is empty (an
+// unsatisfiable filter, not a silent "all logs" — see
+// prepared_query_filter.go / EN-1503). LedgerCondition is only valid on LOGS
+// per the validity table, so no cross-target concern arises.
+func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (readstore.EntityIterator, error) {
+	if lc.GetCond() == nil {
+		return nil, domain.NewFilterCompilationError("ledger condition has no value")
+	}
+
+	want, err := resolveString(lc.GetCond(), ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	if want != ctx.ledgerName {
+		// Names a different ledger than the one being queried: unsatisfiable.
 		return &SliceIterator{}, nil
 	}
+
+	return compileUniverse(ctx)
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
@@ -1587,6 +1626,21 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 	profile.Root = stats
 
 	return NewTrackedIterator(iter, stats)
+}
+
+// isSupportedTarget reports whether the compiler can materialize a query for
+// the given target. Kept as an explicit allow-list (not "!= 0") so a newly
+// added QueryTarget enum value is rejected until its iteration + enrichment
+// paths are wired, rather than silently falling through to an empty result.
+func isSupportedTarget(target commonpb.QueryTarget) bool {
+	switch target {
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return true
+	default:
+		return false
+	}
 }
 
 // targetHumanName returns a human-readable name for a query target. It

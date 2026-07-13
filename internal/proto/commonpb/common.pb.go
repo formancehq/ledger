@@ -10029,8 +10029,14 @@ type isQueryFilter_Filter interface {
 
 type QueryFilter_Field struct {
 	// Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
-	// valid on every target; per-target index/schema availability is enforced
-	// separately by the compiler.
+	// valid on ACCOUNTS and TRANSACTIONS, which have a populated metadata index.
+	// LOGS is deliberately excluded: there is no log-metadata index — the index
+	// builder never populates the NamespaceLog metadata keyspace that
+	// compileFieldCondition scans — so a metadata filter on LOGS would return
+	// empty or error at execute time. Advertising the capability without an
+	// index behind it is a lying contract, so it is rejected up front at
+	// admission/validation instead. Building a real log-metadata index is a
+	// separate feature (out of scope for EN-1503, tracked separately).
 	Field *FieldCondition `protobuf:"bytes,1,opt,name=field,proto3,oneof"`
 }
 
@@ -11640,6 +11646,7 @@ type PreparedQueryCursor struct {
 	Next            string                 `protobuf:"bytes,4,opt,name=next,proto3" json:"next,omitempty"`
 	AccountData     []*Account             `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
 	TransactionData []*Transaction         `protobuf:"bytes,6,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
+	LogData         []*Log                 `protobuf:"bytes,7,rep,name=log_data,json=logData,proto3" json:"log_data,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -11712,6 +11719,13 @@ func (x *PreparedQueryCursor) GetAccountData() []*Account {
 func (x *PreparedQueryCursor) GetTransactionData() []*Transaction {
 	if x != nil {
 		return x.TransactionData
+	}
+	return nil
+}
+
+func (x *PreparedQueryCursor) GetLogData() []*Log {
+	if x != nil {
+		return x.LogData
 	}
 	return nil
 }
@@ -13164,9 +13178,9 @@ const file_common_proto_rawDesc = "" +
 	"\x15RemovedAccountTypeLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"k\n" +
 	" UpdatedDefaultEnforcementModeLog\x12G\n" +
-	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xba\x06\n" +
-	"\vQueryFilter\x127\n" +
-	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\aڼ\x18\x03\x00\x01\x02H\x00R\x05field\x128\n" +
+	"\x10enforcement_mode\x18\x01 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"\xb9\x06\n" +
+	"\vQueryFilter\x126\n" +
+	"\x05field\x18\x01 \x01(\v2\x16.common.FieldConditionB\x06ڼ\x18\x02\x00\x01H\x00R\x05field\x128\n" +
 	"\aaddress\x18\x02 \x01(\v2\x14.common.AddressMatchB\x06ڼ\x18\x02\x00\x01H\x00R\aaddress\x12/\n" +
 	"\x03and\x18\x03 \x01(\v2\x11.common.AndFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x03and\x12,\n" +
 	"\x02or\x18\x04 \x01(\v2\x10.common.OrFilterB\bڼ\x18\x04\x00\x01\x02\x03H\x00R\x02or\x12.\n" +
@@ -13272,14 +13286,15 @@ const file_common_proto_rawDesc = "" +
 	"\x06groups\x18\x02 \x03(\v2\x1e.common.GroupedAggregateResultR\x06groups\"d\n" +
 	"\x16GroupedAggregateResult\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x122\n" +
-	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xf1\x01\n" +
+	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\x99\x02\n" +
 	"\x13PreparedQueryCursor\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1a\n" +
 	"\bprevious\x18\x03 \x01(\tR\bprevious\x12\x12\n" +
 	"\x04next\x18\x04 \x01(\tR\x04next\x122\n" +
 	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
-	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"\xb8\x03\n" +
+	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\x12&\n" +
+	"\blog_data\x18\a \x03(\v2\v.common.LogR\alogData\"\xb8\x03\n" +
 	"\vLedgerStats\x12+\n" +
 	"\x11transaction_count\x18\x01 \x01(\x06R\x10transactionCount\x12!\n" +
 	"\fvolume_count\x18\x02 \x01(\x06R\vvolumeCount\x12%\n" +
@@ -13950,37 +13965,38 @@ var file_common_proto_depIdxs = []int32{
 	161, // 240: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
 	31,  // 241: common.PreparedQueryCursor.account_data:type_name -> common.Account
 	25,  // 242: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
-	167, // 243: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
-	169, // 244: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	170, // 245: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	172, // 246: common.ListOptions.read:type_name -> common.ReadOptions
-	140, // 247: common.ListOptions.filter:type_name -> common.QueryFilter
-	20,  // 248: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	20,  // 249: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	27,  // 250: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	29,  // 251: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	20,  // 252: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	28,  // 253: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	34,  // 254: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	34,  // 255: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	34,  // 256: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	20,  // 257: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	136, // 258: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 259: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	20,  // 260: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	136, // 261: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	20,  // 262: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	20,  // 263: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	20,  // 264: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	132, // 265: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	195, // 266: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	195, // 267: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	16,  // 268: common.allowed_query_targets:type_name -> common.QueryTarget
-	269, // [269:269] is the sub-list for method output_type
-	269, // [269:269] is the sub-list for method input_type
-	268, // [268:269] is the sub-list for extension type_name
-	266, // [266:268] is the sub-list for extension extendee
-	0,   // [0:266] is the sub-list for field type_name
+	42,  // 243: common.PreparedQueryCursor.log_data:type_name -> common.Log
+	167, // 244: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
+	169, // 245: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	170, // 246: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	172, // 247: common.ListOptions.read:type_name -> common.ReadOptions
+	140, // 248: common.ListOptions.filter:type_name -> common.QueryFilter
+	20,  // 249: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	20,  // 250: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	27,  // 251: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	29,  // 252: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	20,  // 253: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	28,  // 254: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	34,  // 255: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	34,  // 256: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	34,  // 257: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	20,  // 258: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	136, // 259: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 260: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	20,  // 261: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	136, // 262: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	20,  // 263: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	20,  // 264: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	20,  // 265: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	132, // 266: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	195, // 267: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	195, // 268: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	16,  // 269: common.allowed_query_targets:type_name -> common.QueryTarget
+	270, // [270:270] is the sub-list for method output_type
+	270, // [270:270] is the sub-list for method input_type
+	269, // [269:270] is the sub-list for extension type_name
+	267, // [267:269] is the sub-list for extension extendee
+	0,   // [0:267] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
