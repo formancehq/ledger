@@ -157,22 +157,23 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 			g.Expect(execErr).To(Succeed())
 			g.Expect(execResp.StatusCode).To(Equal(http.StatusOK), "unexpected execute status; body=%s", string(execRaw))
 
-			// The ExecutePreparedQueryResponse envelope still leaks the raw
-			// protobuf oneof shape (Go-cased Result.Cursor) pending EN-1465's
-			// envelope cleanup; the cursor payload itself is camelCase. Assert on
-			// the actual wire path so the test tracks reality, not the intended
-			// envelope.
+			// EN-1465 replaced the leaked PascalCase proto oneof
+			// (`Result.Cursor`) with a clean discriminated camelCase envelope:
+			// the execute handler emits a top-level `{"cursor":{…}}` /
+			// `{"aggregateResult":{…}}` body (writeJSONResponse, no BaseResponse
+			// `data` wrapper). The LOGS cursor carries its logs under `logData`.
 			var execBody struct {
-				Result struct {
-					Cursor struct {
-						LogData []json.RawMessage `json:"logData"`
-					} `json:"Cursor"`
-				} `json:"Result"`
+				Cursor struct {
+					LogData []json.RawMessage `json:"logData"`
+				} `json:"cursor"`
 			}
 			g.Expect(json.Unmarshal(execRaw, &execBody)).To(Succeed())
+			// The camelCase envelope must be used, never the old Go-cased oneof.
+			g.Expect(string(execRaw)).NotTo(ContainSubstring(`"Result"`), "PascalCase oneof leaked; body=%s", string(execRaw))
+			g.Expect(string(execRaw)).NotTo(ContainSubstring(`"Cursor"`), "PascalCase oneof leaked; body=%s", string(execRaw))
 			// The log payload field is logData (camelCase); it must carry the
 			// ledger's logs rather than the pre-EN-1503 empty cursor.
-			g.Expect(len(execBody.Result.Cursor.LogData)).To(BeNumerically(">=", 2), "logData empty; body=%s", string(execRaw))
+			g.Expect(len(execBody.Cursor.LogData)).To(BeNumerically(">=", 2), "logData empty; body=%s", string(execRaw))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
