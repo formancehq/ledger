@@ -159,6 +159,16 @@ func TestOtelExecPrologue(t *testing.T) {
 			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_MODE=http"},
 			wantDisabled: "true",
 		},
+		{
+			name:         "traces disabled at Cluster level disables the SDK despite a configured endpoint",
+			env:          []string{"OTEL_TRACES=false", "OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantDisabled: "true",
+		},
+		{
+			name:         "traces enabled with an endpoint still translates",
+			env:          []string{"OTEL_TRACES=true", "OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantEndpoint: "http://collector:4317",
+		},
 	}
 
 	for _, tt := range tests {

@@ -63,6 +63,22 @@ func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interfa
 	}, nil
 }
 
+// podExecWithTimeout runs podExec under its own ledgerExecTimeout. Every
+// operator-owned in-pod ledgerctl invocation must be bounded by a per-exec
+// deadline so a single blocked exec — a stuck SPDY stream or a ledgerctl
+// process sitting in its OTEL shutdown flush — cannot hold the whole reconcile.
+// The Ledger reconcile path wraps its calls at each call site; the Cluster
+// scale-down path, which reused the outer reconcile context, goes through this
+// helper.
+func podExecWithTimeout(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
+	namespace, podName, container string, command []string,
+) (*execResult, error) {
+	execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
+	defer cancel()
+
+	return podExec(execCtx, cfg, clientset, namespace, podName, container, command)
+}
+
 // raftScaleDown removes Raft nodes before StatefulSet scale-down.
 // It removes nodes from highest ordinal to desired, sequentially.
 // Leadership is transferred to node 1 (pod-0) first to ensure the leader isn't being removed.
@@ -85,7 +101,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
-	result, err := podExec(ctx, cfg, clientset, ledger.Namespace, pod0, container,
+	result, err := podExecWithTimeout(ctx, cfg, clientset, ledger.Namespace, pod0, container,
 		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", "1"),
 	)
 	if err != nil {
@@ -173,7 +189,7 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 		"force", force,
 	)
 
-	result, err := podExec(ctx, cfg, clientset, namespace, pod0, container, args)
+	result, err := podExecWithTimeout(ctx, cfg, clientset, namespace, pod0, container, args)
 	if err != nil {
 		// Idempotent: node already removed or never in cluster.
 		if result != nil && (isNodeNotInCluster(result.Stderr) || isNodeNotInCluster(result.Stdout)) {
@@ -250,14 +266,18 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 //     OTEL_EXPORTER_OTLP_PROTOCOL, so an HTTP collector isn't hit with the
 //     default gRPC exporter (which would flush-fail and hang).
 //
-// When no endpoint is configured, disable the SDK entirely so the flush is a
-// no-op. The go-libs var names are the ones this same operator injects in
+// The SDK is disabled entirely (flush becomes a no-op) when either traces are
+// turned off at the Cluster level — go-libs injects OTEL_TRACES=false, a flag
+// ledgerctl does not itself honor, so a stale/configured endpoint would
+// otherwise still be exported — or no endpoint is configured at all. The
+// go-libs var names are the ones this same operator injects in
 // appendMonitoringEnvVars, so both ends stay in sync.
 //
 // A configured-but-unreachable collector can still spend up to the 5s flush
 // budget on exit; ledgerExecTimeout is sized above that so it never surfaces as
 // a spurious "context deadline exceeded".
-const otelExecPrologue = `if [ -n "${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT:-}" ]; then ` +
+const otelExecPrologue = `if [ "${OTEL_TRACES:-}" = "false" ] || [ -z "${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT:-}" ]; then ` +
+	`export OTEL_SDK_DISABLED=true; else ` +
 	`case "$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" in ` +
 	`http://*|https://*) export OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" ;; ` +
 	`*) if [ "${OTEL_TRACES_EXPORTER_OTLP_INSECURE:-}" = "true" ]; then ` +
@@ -265,8 +285,7 @@ const otelExecPrologue = `if [ -n "${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT:-}" ]; t
 	`export OTEL_EXPORTER_OTLP_ENDPOINT="https://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; fi ;; ` +
 	`esac; ` +
 	`if [ -n "${OTEL_TRACES_EXPORTER_OTLP_MODE:-}" ]; then ` +
-	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; ` +
-	`else export OTEL_SDK_DISABLED=true; fi; `
+	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; fi; `
 
 // shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
 // A single quote inside the string is encoded as `'\”` (close, escaped
