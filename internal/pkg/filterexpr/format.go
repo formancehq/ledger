@@ -2,6 +2,7 @@ package filterexpr
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -92,9 +93,7 @@ func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string
 // survives the round-trip instead of being silently widened. This is the
 // top-level counterpart of formatAuditUintCondition (prefixed with `audit[...]`).
 func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, int) {
-	render := func(v uint64) string {
-		return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
-	}
+	render := renderDatetimeBound
 
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
 		return fmt.Sprintf("%s == %s", field, render(uc.GetMin())), precLeaf
@@ -122,6 +121,26 @@ func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, 
 	}
 
 	return field + " <uint?>", precLeaf
+}
+
+// renderDatetimeBound renders a microsecond bound as a quoted RFC3339 string
+// when that form round-trips through the decoder, and falls back to the raw
+// unsigned-microsecond form otherwise. The decoder (`commonpb.CoerceDatetimeMicros`)
+// accepts the full uint64 raw range, but RFC3339 cannot represent every such
+// value: `int64(v)` wraps for `v > math.MaxInt64` (yielding a pre-epoch time the
+// decoder rejects), and years past 9999 format to a non-RFC3339 5-digit-year
+// string that fails to parse back. In both cases the raw-uint form is the only
+// rendering that survives Parse(Format(f)); we verify the round-trip against the
+// actual decoder rather than guessing the boundary.
+func renderDatetimeBound(v uint64) string {
+	if v <= math.MaxInt64 {
+		s := time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano)
+		if back, err := commonpb.CoerceDatetimeMicros(s); err == nil && back == v {
+			return strconv.Quote(s)
+		}
+	}
+
+	return strconv.FormatUint(v, 10)
 }
 
 // lowerOp / upperOp map a bound's exclusivity to its DSL comparison operator.
@@ -180,9 +199,7 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
 	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
 	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
-		render = func(v uint64) string {
-			return strconv.Quote(time.UnixMicro(int64(v)).UTC().Format(time.RFC3339Nano))
-		}
+		render = renderDatetimeBound
 	}
 
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {

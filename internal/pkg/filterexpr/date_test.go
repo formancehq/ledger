@@ -260,6 +260,78 @@ func TestFormatDate_NotWrapsExclusiveRange(t *testing.T) {
 	}
 }
 
+// TestFormatDate_RawMicrosOutsideRFC3339Range is the regression for the flemzord
+// MEDIUM: the decoder accepts the full uint64 raw-microsecond range, but the
+// formatter always emitted RFC3339 — which wraps for v > math.MaxInt64 (pre-epoch,
+// rejected by the decoder) and emits a non-RFC3339 5-digit-year string for years
+// past 9999. Both fail Parse(Format(f)). Format must fall back to raw micros for
+// bounds RFC3339 cannot round-trip.
+func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		field commonpb.TransactionBuiltinIndex
+		v     uint64
+		want  string
+	}{
+		{
+			name: "year beyond 9999 (still <= MaxInt64)",
+			v:    300000000000000000, // ~year 11500 — RFC3339 emits a 5-digit year
+			want: `timestamp >= 300000000000000000`,
+		},
+		{
+			name: "above MaxInt64 (int64 conversion wraps)",
+			v:    18446744073709551615, // math.MaxUint64
+			want: `timestamp >= 18446744073709551615`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			min := tc.v
+			f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+				BuiltinUint: &commonpb.BuiltinUintCondition{
+					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+					Cond:  &commonpb.UintCondition{Min: &min},
+				},
+			}}
+
+			got := Format(f)
+			require.Equal(t, tc.want, got, "must render raw micros, not an unparseable RFC3339 string")
+
+			reparsed, err := Parse(got)
+			require.NoError(t, err, "raw-micros output must parse back")
+			require.True(t, proto.Equal(f, reparsed),
+				"Format output must round-trip for out-of-RFC3339-range bounds\n first: %v\n reparsed: %v", f, reparsed)
+		})
+	}
+
+	// Same guarantee on the audit[timestamp] arm.
+	t.Run("audit[timestamp] above MaxInt64", func(t *testing.T) {
+		t.Parallel()
+
+		min := uint64(18446744073709551615)
+		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_TIMESTAMP,
+				Condition: &commonpb.AuditCondition_UintCond{
+					UintCond: &commonpb.UintCondition{Min: &min},
+				},
+			},
+		}}
+
+		got := Format(f)
+		require.Equal(t, `audit[timestamp] >= 18446744073709551615`, got)
+
+		reparsed, err := Parse(got)
+		require.NoError(t, err)
+		require.True(t, proto.Equal(f, reparsed), "audit[timestamp] raw micros must round-trip")
+	})
+}
+
 // TestFormatDate_OnlyEmitsParseableFields is the regression for the flemzord
 // MEDIUM: Format used to emit id/insertedAt/revertedAt expressions the textual
 // parser (DateCond) cannot read back, so Parse(Format(f)) failed for those arms.
