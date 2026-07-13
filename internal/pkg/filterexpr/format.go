@@ -2,6 +2,7 @@ package filterexpr
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -425,8 +426,11 @@ func formatAddressMatch(am *commonpb.AddressMatch) string {
 	}
 }
 
-// quoteIfNeeded wraps a value in double quotes if it contains spaces or matches
-// a DSL keyword. Simple identifiers are left bare.
+// quoteIfNeeded wraps a value in double quotes if it contains characters the
+// lexer cannot carry in a bare Ident, or if it equals a reserved structural
+// keyword (which would otherwise re-lex as an operator token rather than a
+// value). Simple identifiers — including the demoted noun words like `audit` or
+// `ledger`, which are ordinary Idents now (EN-1547) — are left bare.
 func quoteIfNeeded(s string) string {
 	if s == "" {
 		return `""`
@@ -438,22 +442,30 @@ func quoteIfNeeded(s string) string {
 	return s
 }
 
-var keywords = map[string]bool{
-	"and": true, "or": true, "not": true, "between": true,
-	"metadata": true, "address": true, "source": true, "destination": true,
-	"exists": true, "true": true, "false": true, "has": true, "asset": true,
+// reservedKeywords is exactly the set of lexer keywords (the structural
+// operators). A bare value equal to one of these would re-lex as that operator
+// token and fail to reparse as a value, so Format must quote it. The noun words
+// (metadata/address/…/audit) and the boolean literals are NOT here: they lex as
+// Ident and round-trip bare — quoting them would be spurious. Kept in lockstep
+// with the lexer `Keyword` rule in parser.go.
+var reservedKeywords = map[string]bool{
+	"and": true, "or": true, "not": true, "in": true, "between": true,
 }
 
-func needsQuoting(s string) bool {
-	if keywords[s] {
-		return true
-	}
-	for _, c := range s {
-		if c == ' ' || c == '\t' || c == '"' || c == '\'' || c == '(' || c == ')' ||
-			c == '[' || c == ']' {
-			return true
-		}
-	}
+// bareIdent matches exactly what the lexer's Ident rule accepts as a single bare
+// token: a leading letter/underscore then letters, digits, `_`, `:`, `.`, `-`,
+// `/`. A value is safe to emit unquoted ONLY if it is a whole bare Ident and not
+// a reserved operator; anything else (leading digit, spaces, `,`/`=`/`@`/…, empty
+// string) must be quoted or it would fail to reparse. Kept in lockstep with the
+// Ident rule in parser.go.
+var bareIdent = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_:.\-/]*$`)
 
-	return false
+// needsQuoting reports whether a value must be double-quoted to survive a
+// Format→Parse round-trip. It quotes anything that is not a clean, non-reserved
+// bare identifier — the inverse of "can the lexer carry this as one Ident token
+// that the grammar reads as a value". This is deliberately conservative:
+// over-quoting a value that could have been bare is harmless, under-quoting one
+// that cannot is a round-trip bug.
+func needsQuoting(s string) bool {
+	return reservedKeywords[s] || !bareIdent.MatchString(s)
 }

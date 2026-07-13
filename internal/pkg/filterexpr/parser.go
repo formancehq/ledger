@@ -30,9 +30,26 @@ const MaxParseDepth = 200
 // indicators exceed MaxParseDepth.
 var ErrFilterTooDeep = fmt.Errorf("filter expression nesting exceeds maximum depth (%d)", MaxParseDepth)
 
-// Custom lexer: Keywords are matched before Ident so that reserved words
-// (and, or, not, between, metadata, address, source, destination, exists,
-// true, false) cannot be consumed as bare values.
+// Custom lexer: only the STRUCTURAL operators (and, or, not, in, between) are
+// lexer keywords, matched before Ident so they always terminate expressions and
+// cannot be swallowed as bare values. Every "noun"/field word (metadata, address,
+// source, destination, ledger, audit, exists) and the boolean literals (true,
+// false) are deliberately NOT lexer keywords: they lex as Ident and the grammar
+// matches them as literals by value (participle matches a `'word'` literal
+// against an Ident token whose value equals the word). This is what keeps them
+// usable as field selectors at condition position while remaining ordinary
+// identifiers everywhere else.
+//
+// Making a noun word a lexer keyword would mis-tokenize any identifier that
+// merely STARTS with it and continues with an Ident-continuation char (`-`, `:`,
+// `.`, `/`): the keyword's `\b` boundary matches before those chars (Go's `\b`
+// treats them as non-word), so e.g. `metadata[ledger-x]` or `source.id` would
+// tokenize as the keyword plus a dangling `-x`/`.id` and be rejected even though
+// they are valid identifiers (EN-1547). The structural operators do not have this
+// hazard in practice — they are whole words surrounded by whitespace/parens in
+// the grammar, never identifier prefixes — and they MUST stay reserved so an
+// unquoted `and`/`or`/`not`/`in`/`between` keeps terminating an expression rather
+// than being read as a value.
 var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Whitespace", Pattern: `\s+`},
 	{Name: "OpEq", Pattern: `==`},
@@ -49,7 +66,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
 	{Name: "Comma", Pattern: `,`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|audit|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -613,14 +630,18 @@ type Value struct {
 	Param string `parser:"  '$' @Ident"`
 	Str   string `parser:"| @String"`
 	Num   string `parser:"| @Number"`
-	Bool  string `parser:"| @('true' | 'false')"`
-	// Kw accepts the "noun" keywords as bare right-hand-side values so that a
+	// Bool matches the boolean literals. They are Ident tokens (not lexer
+	// keywords, EN-1547); the `'true'|'false'` grammar literals match an Ident
+	// whose value is exactly `true`/`false`, so `== true` is a bool while
+	// `== true-ish` (a single Ident) falls through to Bare as a string.
+	Bool string `parser:"| @('true' | 'false')"`
+	// Bare captures any other unquoted identifier as a value. Because the noun
+	// words (metadata/address/source/destination/ledger/audit/exists) are no
+	// longer lexer keywords, they lex as Ident and are captured here too, so a
 	// reserved word can still be used as an unquoted value (e.g.
-	// `metadata[type] == audit` / `== ledger` / `== source`). Only field/prefix
-	// keywords are listed — the structural operators (and/or/not/in/between)
-	// are deliberately excluded so they keep terminating expressions rather
-	// than being swallowed as values. true/false are handled by Bool above.
-	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'audit' | 'exists')"`
+	// `metadata[type] == audit`). The structural operators (and/or/not/in/between)
+	// remain lexer keywords and so are NOT captured here — they keep terminating
+	// an expression rather than being swallowed as a value.
 	Bare string `parser:"| @Ident"`
 }
 
@@ -635,10 +656,6 @@ func (v *Value) resolve() string {
 
 	if v.Bool != "" {
 		return v.Bool
-	}
-
-	if v.Kw != "" {
-		return v.Kw
 	}
 
 	return v.Bare
