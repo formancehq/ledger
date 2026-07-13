@@ -93,7 +93,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Close chapter | ✅ | ❌ | Two-step close: CloseChapter → SealChapter |
 | Seal chapter (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
 | List chapters | ✅ | ❌ | gRPC streaming |
-| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with chapter ID; available on GetTransaction |
+| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts with chapter ID; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Chapter crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive chapter | ✅ | ❌ | Two-step archive: ArchiveChapter → ConfirmArchiveChapter with cold storage export |
