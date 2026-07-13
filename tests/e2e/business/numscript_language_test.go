@@ -359,14 +359,17 @@ send [USD/2 60] (
 		It("Should bind account, asset, monetary, number, string and portion vars from the vars map", func() {
 			// One program that consumes every externally-typed variable form the
 			// client can pass through the string vars map:
-			//   - account : resolved source/destination
+			//   - account : resolved source AND destinations ($primary/$secondary)
 			//   - asset   : the send asset
 			//   - number  : interpolated amount via [ $asset $count ]
-			//   - monetary: a literal amount passed whole
+			//   - monetary: a whole literal amount ($bonus) sent in a second block
 			//   - portion : a split ratio for the destination
 			//   - string  : stored via set_tx_meta
 			fund(ledgerName, "vr:src", "USD/2 1000")
 
+			// Every declared var is consumed: the account vars drive the
+			// destinations (not hard-coded account literals), and the monetary var
+			// $bonus is sent whole in its own block so its typed form is exercised.
 			script := `
 vars {
   account $source
@@ -374,6 +377,7 @@ vars {
   account $secondary
   asset $currency
   number $count
+  monetary $bonus
   portion $split
   string $note
 }
@@ -383,9 +387,14 @@ set_tx_meta("note", $note)
 send [$currency $count] (
   source = $source
   destination = {
-    $split to @vr:primary
-    remaining to @vr:secondary
+    $split to $primary
+    remaining to $secondary
   }
+)
+
+send $bonus (
+  source = $source
+  destination = $primary
 )
 `
 			resp, err := apply(ledgerName, script, map[string]string{
@@ -394,20 +403,24 @@ send [$currency $count] (
 				"secondary": "vr:secondary",
 				"currency":  "USD/2",
 				"count":     "400",
+				"bonus":     "USD/2 50",
 				"split":     "1/4",
 				"note":      "typed-vars",
 			})
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(2))
+			// 3 postings: split 1/4 (=100) to primary, remaining (=300) to
+			// secondary, plus the $bonus (=50) to primary.
+			Expect(createdTx.Transaction.Postings).To(HaveLen(3))
 			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
 
 			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(meta["note"]).To(Equal("typed-vars"))
 
-			// 400 sent: 1/4 (=100) to primary, remaining (=300) to secondary.
-			expectBalance(ledgerName, "vr:src", "USD/2", "600")
-			expectBalance(ledgerName, "vr:primary", "USD/2", "100")
+			// src sends 400 + 50 = 450 (1000 - 450 = 550 left).
+			// primary receives 100 (split) + 50 (bonus) = 150; secondary 300.
+			expectBalance(ledgerName, "vr:src", "USD/2", "550")
+			expectBalance(ledgerName, "vr:primary", "USD/2", "150")
 			expectBalance(ledgerName, "vr:secondary", "USD/2", "300")
 		})
 
