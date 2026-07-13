@@ -2,31 +2,17 @@ package state
 
 import (
 	"context"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript/numscriptmock"
 )
-
-// coverageMissSource is a numscript.ValueSource whose balance read fails with a
-// real *ErrCoverageMiss — the exact error the coverage-gated apply Scope returns
-// when a Numscript resolution derives a key admission never declared.
-type coverageMissSource struct {
-	miss *ErrCoverageMiss
-}
-
-func (s coverageMissSource) Balance(string, string) (*big.Int, error) {
-	return nil, s.miss
-}
-
-func (coverageMissSource) Metadata(string, string) (string, bool, error) {
-	return "", false, nil
-}
 
 // TestCoverageMissSurvivesNumscriptLibrary is the definitive proof for the
 // EN-1406 coverage-vs-stale fix: a real *ErrCoverageMiss returned by the store
@@ -55,8 +41,17 @@ func TestCoverageMissSurvivesNumscriptLibrary(t *testing.T) {
 	`)
 	require.Empty(t, parsed.GetParsingErrors())
 
+	// A real *ErrCoverageMiss (not a fake) returned from the generated
+	// MockValueSource — the same error the coverage-gated apply Scope returns
+	// when a Numscript resolution derives a key admission never declared.
 	miss := &ErrCoverageMiss{Attribute: "volumes", IDHex: "deadbeef", RaftIndex: 42}
-	store := numscript.NewStore(coverageMissSource{miss: miss}, false)
+
+	ctrl := gomock.NewController(t)
+	source := numscriptmock.NewMockValueSource(ctrl)
+	source.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, miss)
+	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
+
+	store := numscript.NewStore(source, false)
 
 	_, err := numscript.SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
 	require.NotNil(t, err)
