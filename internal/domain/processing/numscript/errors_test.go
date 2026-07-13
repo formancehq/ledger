@@ -1,6 +1,7 @@
 package numscript
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,6 +13,72 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
+
+// panickingStore is a minimal numscriptlib.Store whose reads panic. A generated
+// mock is used elsewhere for ValueSource, but the numscript-library Store type
+// has no mockgen directive in this repo, and a panic-path test only needs a
+// store that panics on the first read — a hand-rolled double is the simplest
+// faithful way to drive that path.
+type panickingStore struct{}
+
+func (panickingStore) GetBalances(context.Context, numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
+	panic("boom: numscript library store panic")
+}
+
+func (panickingStore) GetAccountsMetadata(context.Context, numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	panic("boom: numscript library store panic")
+}
+
+// TestSafeResolveDependencies_RecoversPanic proves the finding-#1 fix: a panic
+// raised while resolving dependencies (here from the store, reachable on the FSM
+// apply path and at admission) is recovered and returned as a domain.Describable
+// ErrNumscriptRuntime, never escaping the wrapper. An escaped panic on the Raft
+// apply loop would crash the node / diverge the cluster (invariant #7).
+func TestSafeResolveDependencies_RecoversPanic(t *testing.T) {
+	t.Parallel()
+
+	// balance() in a var origin is evaluated during dependency resolution, so
+	// the store's GetBalances is consulted (and panics).
+	parsed := numscriptlib.Parse(`
+		vars { monetary $amt = balance(@wallet, USD/2) }
+		send $amt (source = @wallet destination = @out)
+	`)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	var recovered domain.Describable
+	require.NotPanics(t, func() {
+		_, recovered = SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, panickingStore{})
+	})
+
+	require.NotNil(t, recovered)
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, recovered, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "numscript panic:")
+
+	require.True(t, IsPanic(recovered),
+		"a recovered panic must be identifiable so the FSM apply path surfaces it loudly instead of masking it as stale")
+}
+
+// TestSafeResolveDependencies_NormalErrorIsNotPanic guards the discriminator the
+// FSM apply path relies on: a genuine (non-panic) resolution error must NOT be
+// flagged as a panic, so it can still be softened to ErrStaleInputsResolution.
+func TestSafeResolveDependencies_NormalErrorIsNotPanic(t *testing.T) {
+	t.Parallel()
+
+	// An undefined variable used as an account origin fails resolution with a
+	// normal library error (no panic, no store read).
+	parsed := numscriptlib.Parse(`
+		vars { account $missing }
+		send [USD/2 100] (source = $missing destination = @out)
+	`)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	_, err := SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, numscriptlib.StaticStore{})
+	require.NotNil(t, err)
+	require.False(t, IsPanic(err),
+		"a normal resolution error must not be flagged as a panic — the apply path still maps it to stale")
+}
 
 func TestErrNumscriptParse_Error(t *testing.T) {
 	t.Parallel()

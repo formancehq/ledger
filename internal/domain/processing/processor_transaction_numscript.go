@@ -51,11 +51,21 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
 		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()))
 
-		if _, resolveErr := parsed.ResolveDependencies(context.Background(), vars, recording); resolveErr != nil {
-			// A resolution error at apply time on a script admission already
-			// resolved is a genuine input-shift (a var origin now points at a
-			// missing/changed value), not a client script bug — surface it as
-			// stale so the client retries against fresh state.
+		// SafeResolveDependencies recovers panics from the numscript library so a
+		// crafted input can never escape onto the deterministic Raft apply loop
+		// (which has no recover of its own) — an escaped panic would crash and
+		// could diverge nodes. A recovered panic is a "should not happen"
+		// (invariant #7) and must surface loudly, NOT be softened to stale, so it
+		// is distinguished from a genuine resolution error below.
+		if _, resolveErr := numscript.SafeResolveDependencies(parsed, context.Background(), vars, recording); resolveErr != nil {
+			if numscript.IsPanic(resolveErr) {
+				return nil, resolveErr
+			}
+
+			// A normal resolution error at apply time on a script admission
+			// already resolved is a genuine input-shift (a var origin now points
+			// at a missing/changed value), not a client script bug — surface it
+			// as stale so the client retries against fresh state.
 			return nil, domain.ErrStaleInputsResolution
 		}
 

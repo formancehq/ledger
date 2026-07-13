@@ -80,9 +80,9 @@ func DiscoverNumscriptDependencies(
 
 	recording := NewRecordingStore(NewStore(source, force))
 
-	resolved, err := parsed.ResolveDependencies(context.Background(), variablesMap, recording)
+	resolved, err := SafeResolveDependencies(parsed, context.Background(), variablesMap, recording)
 	if err != nil {
-		return nil, convertNumscriptError(err)
+		return nil, err
 	}
 
 	result := &DiscoveryResult{
