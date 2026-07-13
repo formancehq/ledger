@@ -2928,6 +2928,28 @@ components:
           format: int64
         - type: boolean
 
+    MetadataFieldTypeCommand:
+      type: object
+      description: Declares the type of a metadata field, seeding a ledger's initial metadata schema.
+      required:
+        - targetType
+        - key
+        - type
+      properties:
+        targetType:
+          type: string
+          enum: [account, transaction, ledger]
+          description: Which entity the metadata field applies to.
+        key:
+          type: string
+          description: Metadata key.
+          example: color
+        type:
+          type: string
+          enum: [string, int64, bool, uint64, int8, int16, int32, uint8, uint16, uint32, datetime]
+          description: Declared metadata value type.
+          example: string
+
     CreateLedgerRequest:
       type: object
       properties:
@@ -2945,6 +2967,30 @@ components:
           description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
+        defaultEnforcementMode:
+          type: string
+          enum:
+            - STRICT
+            - AUDIT
+          description: Default chart-of-accounts enforcement for accounts that match no account type.
+        initialSchema:
+          type: array
+          description: Metadata field type declarations to seed at creation time.
+          items:
+            $ref: '#/components/schemas/MetadataFieldTypeCommand'
+        accountTypes:
+          type: object
+          description: Initial account types (name -> account type definition).
+          additionalProperties:
+            $ref: '#/components/schemas/AddAccountTypeRequest'
+          example:
+            user-checking:
+              name: user-checking
+              pattern: 'users:{id}:checking'
+              persistence: EPHEMERAL
+              segmentTypes:
+                id:
+                  type: uuid
 
     CreateLedgerResponse:
       type: object
@@ -3040,6 +3086,11 @@ components:
                   NORMAL: fully persisted (default).
                   EPHEMERAL: persisted, purged when zero balance.
                   TRANSIENT: never persisted, must be zero at end of batch.
+              segmentTypes:
+                type: object
+                description: Maps a pattern variable name to a type constraint.
+                additionalProperties:
+                  $ref: '#/components/schemas/SegmentType'
           nullable: true
         default_enforcement_mode:
           type: string
@@ -4795,6 +4846,28 @@ components:
           type: string
           description: Go runtime version the binary was built with
 
+    SegmentType:
+      type: object
+      description: |
+        Constraint for a variable segment in an account type pattern. The
+        `type` field discriminates the constraint kind; only `regex` carries a
+        value.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [regex, uuid, uint64, bytes]
+          description: |
+            regex: custom regular expression (requires `regex`).
+            uuid: RFC 4122 UUID format.
+            uint64: decimal uint64.
+            bytes: hex-encoded bytes (even length).
+        regex:
+          type: string
+          description: Regular expression to match the segment against. Required when `type` is `regex`.
+          example: '[A-Z]{2}[0-9]{14}'
+
     AddAccountTypeRequest:
       type: object
       required:
@@ -4804,15 +4877,36 @@ components:
         name:
           type: string
           description: Unique name for the account type
+          example: user-checking
         pattern:
           type: string
-          description: Account address pattern for validation (e.g. "users:*")
+          description: Account address pattern for validation. Variables use `{name}` segments.
+          example: 'users:{id}:checking'
+        persistence:
+          type: string
+          enum: [NORMAL, EPHEMERAL, TRANSIENT]
+          default: NORMAL
+          description: |
+            How account volumes are stored.
+            NORMAL: fully persisted (default).
+            EPHEMERAL: persisted, purged when zero balance after commit.
+            TRANSIENT: never persisted, must be zero at end of batch.
+          example: EPHEMERAL
+        segmentTypes:
+          type: object
+          description: Maps a pattern variable name to a type constraint.
+          additionalProperties:
+            $ref: '#/components/schemas/SegmentType'
+          example:
+            id:
+              type: uuid
 
     AccountTypeInfo:
       type: object
       required:
         - name
         - pattern
+        - persistence
       properties:
         name:
           type: string
@@ -4820,6 +4914,15 @@ components:
         pattern:
           type: string
           description: Account address pattern
+        persistence:
+          type: string
+          enum: [NORMAL, EPHEMERAL, TRANSIENT]
+          description: How account volumes are stored (NORMAL, EPHEMERAL, or TRANSIENT)
+        segmentTypes:
+          type: object
+          description: Maps a pattern variable name to a type constraint.
+          additionalProperties:
+            $ref: '#/components/schemas/SegmentType'
 
     ListAccountTypesResponse:
       type: object
