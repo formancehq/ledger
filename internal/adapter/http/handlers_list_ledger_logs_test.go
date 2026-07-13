@@ -223,7 +223,7 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 			wantStatus:  http.StatusOK,
 			wantBackend: true,
 			bound: &expectBound{
-				min: ptrUint64(mustMicros("1970-01-01T00:00:00Z")), // == 0
+				min: new(mustMicros("1970-01-01T00:00:00Z")), // == 0
 			},
 		},
 		{
@@ -232,7 +232,7 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 			wantStatus:  http.StatusOK,
 			wantBackend: true,
 			bound: &expectBound{
-				min: ptrUint64(mustMicros("2024-01-01T00:00:00Z")),
+				min: new(mustMicros("2024-01-01T00:00:00Z")),
 			},
 		},
 		{
@@ -241,7 +241,7 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 			wantStatus:  http.StatusOK,
 			wantBackend: true,
 			bound: &expectBound{
-				max:          ptrUint64(mustMicros("2024-12-31T23:59:59Z")),
+				max:          new(mustMicros("2024-12-31T23:59:59Z")),
 				maxExclusive: true,
 			},
 		},
@@ -251,8 +251,8 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 			wantStatus:  http.StatusOK,
 			wantBackend: true,
 			bound: &expectBound{
-				min:          ptrUint64(mustMicros("2024-01-01T00:00:00Z")),
-				max:          ptrUint64(mustMicros("2024-12-31T23:59:59Z")),
+				min:          new(mustMicros("2024-01-01T00:00:00Z")),
+				max:          new(mustMicros("2024-12-31T23:59:59Z")),
 				maxExclusive: true,
 			},
 		},
@@ -322,8 +322,6 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 		})
 	}
 }
-
-func ptrUint64(v uint64) *uint64 { return &v }
 
 func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	t.Parallel()
