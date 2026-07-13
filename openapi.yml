@@ -3539,7 +3539,22 @@ components:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/TransactionResponse'
+          type: object
+          required:
+            - transaction
+            - receipt
+          properties:
+            transaction:
+              $ref: '#/components/schemas/TransactionResponse'
+            receipt:
+              type: string
+              description: >-
+                Signed verifiability receipt (JWT) for the transaction, mirroring
+                the gRPC GetTransaction response. Reused from the controller read
+                path — never recomputed at the HTTP layer — so it reflects the
+                same committed state as the returned transaction. Always present;
+                an empty string means the transaction legitimately has no receipt
+                (e.g. a reversal, or a serving node that cannot sign).
 
     GetAccountResponse:
       type: object

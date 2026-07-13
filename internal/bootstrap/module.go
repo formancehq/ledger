@@ -790,16 +790,17 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				coldReader *coldstorage.ColdReader,
+				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
