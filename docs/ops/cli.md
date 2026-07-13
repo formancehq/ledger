@@ -4017,7 +4017,6 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 | `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
 | `--audit-index-batch-size` | int | `1000` | Audit entries per Pebble batch commit when building the audit secondary index (0 = default 1000). |
-| `--audit-index-rebuild-threshold` | int | `0` | Drop and rebuild the audit index on boot when the cursor is this many entries behind the head (0 = never auto-rebuild). |
 | `--disable-audit-index` | bool | `false` | Disable the audit secondary index worker. When set, no audit index is built or maintained. |
 
 ```bash

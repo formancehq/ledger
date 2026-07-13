@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestDecodePreparedQueryFilter(t *testing.T) {
@@ -57,11 +59,13 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			wantErr: "unknown operator",
 		},
 		// Per-target validity (rejecting a condition invalid on the query's
-		// specific target, e.g. logId/date/ledger on an ACCOUNTS query) is now
-		// enforced by domain.ValidateFilterForTarget at the admission/FSM layers
-		// and by the create handler — see TestValidateFilterForTarget
-		// (internal/domain) and the admission validate_order tests. This decoder
-		// is purely structural, so a log-only condition decodes fine here.
+		// specific target, e.g. logId/date/ledger on an ACCOUNTS query, and
+		// accepting them for LOGS) is enforced by domain.ValidateFilterForTarget
+		// at the admission/FSM layers and by the create handler — see
+		// TestValidateFilterForTarget (internal/domain) and the admission
+		// validate_order tests. This decoder is purely structural, so any
+		// syntactically valid condition — including log-only ones — decodes fine
+		// here regardless of target.
 		{
 			name: "log-only condition decodes (target validity checked later)",
 			raw:  `{"$gt":{"logId":"5"}}`,
@@ -93,6 +97,40 @@ func TestDecodePreparedQueryFilter(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, filter)
 			require.NotNil(t, filter.GetFilter(), "oneof discriminator must be populated")
+		})
+	}
+}
+
+func TestParsePreparedQueryTarget(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		target  string
+		want    commonpb.QueryTarget
+		wantErr string
+	}{
+		{name: "accounts", target: "ACCOUNTS", want: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS},
+		{name: "transactions", target: "TRANSACTIONS", want: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{name: "logs", target: "LOGS", want: commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{name: "empty", target: "", wantErr: "target is required"},
+		{name: "unknown", target: "BOGUS", wantErr: "unknown or unsupported target"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := parsePreparedQueryTarget(tc.target)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
 		})
 	}
 }

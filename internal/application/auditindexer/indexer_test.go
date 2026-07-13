@@ -89,65 +89,19 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 	require.Equal(t, uint64(5), cursor)
 }
 
+// TestShouldRebuildOnBoot covers the sole retained rebuild trigger: a missing
+// cursor (0) with entries present (fresh index over a populated audit zone).
+// The audit chain is append-only and monotone, so a "cursor ahead of head"
+// state is unreachable and no gap-based heuristic exists — a lagging cursor is
+// resumed incrementally, never rebuilt from 0.
 func TestShouldRebuildOnBoot(t *testing.T) {
 	t.Parallel()
 	idx, _, _ := newIndexerForTest(t)
-	idx.cfg.RebuildThreshold = 100
 
 	require.True(t, idx.shouldRebuildOnBoot(0, 5), "missing cursor with entries -> rebuild")
 	require.False(t, idx.shouldRebuildOnBoot(0, 0), "empty store -> no rebuild")
-	require.False(t, idx.shouldRebuildOnBoot(5, 10), "small gap -> no rebuild")
-	require.True(t, idx.shouldRebuildOnBoot(5, 200), "gap beyond threshold -> rebuild")
-	require.True(t, idx.shouldRebuildOnBoot(10, 5), "cursor ahead of audit head (post-restore) -> rebuild")
-	require.True(t, idx.shouldRebuildOnBoot(10, 0), "cursor set but store emptied below it -> rebuild")
-
-	idx.cfg.RebuildThreshold = 0
-	require.False(t, idx.shouldRebuildOnBoot(5, 1_000_000), "threshold 0 disables gap-based rebuild")
-}
-
-// TestBootRebuildOnStaleCursor drives the boot path (loop -> shouldRebuildOnBoot
-// -> Rebuild): entries present and the persisted cursor lagging the last audit
-// sequence beyond RebuildThreshold must trigger a drop+rebuild on Start, leaving
-// the index fully repopulated and the cursor at the latest sequence.
-func TestBootRebuildOnStaleCursor(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	idx, mainStore, rs := newIndexerForTest(t)
-	idx.cfg.RebuildThreshold = 1
-	idx.batchSize = 1
-
-	for s := uint64(1); s <= 3; s++ {
-		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
-			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-			Ledgers: []string{"main"},
-		})
-	}
-
-	// Index the first entry only, then write a stale low cursor so the boot gap
-	// (last=3, cursor=1) exceeds the threshold and forces a rebuild branch.
-	_, _, err := idx.processBatch(ctx, 0)
-	require.NoError(t, err)
-	cursor, err := rs.ReadAuditProgress()
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), cursor)
-
-	last, err := idx.lastAuditSequence()
-	require.NoError(t, err)
-	require.True(t, idx.shouldRebuildOnBoot(cursor, last), "stale cursor beyond threshold must rebuild on boot")
-
-	idx.Start()
-	t.Cleanup(idx.Stop)
-
-	require.Eventually(t, func() bool {
-		c, err := rs.ReadAuditProgress()
-
-		return err == nil && c == 3
-	}, 5*time.Second, 20*time.Millisecond)
-
-	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
-	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 3}, seqs)
+	require.False(t, idx.shouldRebuildOnBoot(5, 10), "cursor lagging head -> incremental catch-up, no rebuild")
+	require.False(t, idx.shouldRebuildOnBoot(5, 1_000_000), "large lag -> incremental catch-up, no rebuild")
 }
 
 func TestIndexerCatchUpAndResume(t *testing.T) {
@@ -328,58 +282,4 @@ func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
 	require.NoError(t, err)
 	require.Len(t, seqs, total)
-}
-
-// TestProcessTickRebuildsWhenCursorAheadOfHead reproduces the runtime main-store
-// restore scenario: SynchronizeWithLeader/RestoreCheckpoint replaces the main
-// store in place and can drop the audit head below the persisted readstore
-// cursor (a separate DB, untouched by restore). The boot shouldRebuildOnBoot
-// check runs only once, before the ticker, so the already-running loop must
-// self-heal via processTick — a bare ProcessOnce would scan past every surviving
-// lower-sequence entry forever, leaving them permanently unindexed.
-func TestProcessTickRebuildsWhenCursorAheadOfHead(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	idx, mainStore, rs := newIndexerForTest(t)
-
-	// Surviving audit head after the (simulated) rollback: entries 1..3.
-	for s := uint64(1); s <= 3; s++ {
-		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
-			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-			Ledgers: []string{"main"},
-		})
-	}
-
-	// Persist a stale-high cursor (as if the pre-rollback head was 5) with the
-	// surviving entries unindexed — the state a runtime restore leaves behind.
-	batch := rs.NewBatch()
-	require.NoError(t, rs.WriteAuditProgress(batch, 5))
-	require.NoError(t, batch.Commit())
-
-	last, err := idx.lastAuditSequence()
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), last)
-	require.True(t, cursorAheadOfHead(5, last))
-
-	// A bare ProcessOnce scans from the stale cursor (5), finds nothing after it,
-	// and strands entries 1..3 with the cursor still at 5 — the bug this fixes.
-	reached, err := idx.ProcessOnce(ctx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(5), reached)
-	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
-	require.NoError(t, err)
-	require.Empty(t, seqs, "bare ProcessOnce cannot self-heal a stale-high cursor")
-
-	// processTick detects cursor > head and rebuilds, resetting the cursor to the
-	// surviving head and re-indexing every entry at/below it.
-	require.NoError(t, idx.processTick(ctx))
-
-	cursor, err := rs.ReadAuditProgress()
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), cursor, "rebuild resets the cursor to the surviving audit head")
-
-	seqs, err = rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
-	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 3}, seqs, "surviving entries must be re-indexed after rollback")
 }

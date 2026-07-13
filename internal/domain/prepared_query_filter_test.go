@@ -24,8 +24,9 @@ func TestIsPreparedQueryExecutableTarget(t *testing.T) {
 
 	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
 	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
-	// LOGS is not yet executable as a prepared query (EN-1503); AUDIT never is.
-	require.False(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	// LOGS is executable as a prepared query since EN-1503 (query.EnrichLogs).
+	require.True(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_LOGS))
+	// AUDIT never is (no cursor field, no public target JSON mapping).
 	require.False(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT))
 	require.False(t, domain.IsPreparedQueryExecutableTarget(commonpb.QueryTarget(999)))
 }
@@ -73,6 +74,34 @@ func TestValidateFilterForTarget(t *testing.T) {
 			wantErr: "transactions",
 		},
 		{
+			name:   "log-only logId valid on logs",
+			raw:    `{"$gt":{"logId":"5"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "ledger condition valid on logs",
+			raw:    `{"$match":{"ledger":"main"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:    "address rejected on logs (no account→log translation)",
+			raw:     `{"$match":{"address":"world"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "logs",
+		},
+		{
+			name:    "metadata rejected on logs (no log-metadata index)",
+			raw:     `{"$match":{"metadata[k]":"v"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "logs",
+		},
+		{
+			name:    "metadata $exists rejected on logs (no log-metadata index)",
+			raw:     `{"$exists":{"metadata":"k"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "logs",
+		},
+		{
 			name:    "invalid condition nested in $and is rejected",
 			raw:     `{"$and":[{"$exists":{"metadata":"x"}},{"$gt":{"logId":"5"}}]}`,
 			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
@@ -107,39 +136,92 @@ func TestValidateFilterForTarget(t *testing.T) {
 	}
 }
 
-// nestFilter wraps a leaf condition in `depth` levels of $not so the resulting
-// tree has exactly `depth`+1 nodes on its single path. $not is a structural
-// combinator (always valid on ACCOUNTS), so depth — not condition validity — is
-// what these cases exercise.
-func nestFilter(leaf *commonpb.QueryFilter, depth int) *commonpb.QueryFilter {
-	f := leaf
-	for range depth {
-		f = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: f}},
-		}
-	}
-
-	return f
-}
-
-// TestValidateFilterForTarget_DepthCap pins the write-time recursion cap to the
-// same MaxFilterDepth query.Compile enforces at execute time: a tree at the
-// limit is accepted, one past it is rejected with ErrFilterTooDeep. Without this
-// cap a deeper-but-otherwise-valid filter would be persisted here yet fail every
-// execution (and the deep write itself reopens the #341 stack-exhaustion path).
-func TestValidateFilterForTarget_DepthCap(t *testing.T) {
+// TestValidateFilterForTarget_RejectsDeeplyNestedFilter is the regression for
+// the EN-1503 review P1: ValidateFilterForTarget runs at write time (admission
+// + FSM) on an untrusted gRPC filter, before query.Compile's depth guard can
+// fire. Without its own bound, a hostile deeply-nested $and/$or/$not tree would
+// blow the Go stack here — an unrecoverable, fatal DoS. Build a chain deeper
+// than domain.MaxFilterDepth and assert it is rejected loudly rather than
+// recursing. Both CreatePreparedQuery and UpdatePreparedQuery route their
+// untrusted filter through this same function, so one guard covers both paths.
+func TestValidateFilterForTarget_RejectsDeeplyNestedFilter(t *testing.T) {
 	t.Parallel()
 
-	leaf := mustFilter(t, `{"$exists":{"metadata":"x"}}`)
+	build := func(wrap func(child *commonpb.QueryFilter) *commonpb.QueryFilter) *commonpb.QueryFilter {
+		// Innermost leaf is a valid LOGS condition so, absent the depth guard,
+		// the walk would traverse the whole chain and succeed.
+		var f = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+			},
+		}
 
-	// The combinator-consumed budget is MaxFilterDepth: a chain of
-	// (MaxFilterDepth-1) $not wrappers plus the leaf sits exactly at the limit.
-	atLimit := nestFilter(leaf, domain.MaxFilterDepth-1)
-	require.Nil(t, domain.ValidateFilterForTarget(atLimit, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS))
+		for range domain.MaxFilterDepth + 5 {
+			f = wrap(f)
+		}
 
-	// One level deeper trips the cap before reaching the (valid) leaf.
-	overLimit := nestFilter(leaf, domain.MaxFilterDepth)
-	err := domain.ValidateFilterForTarget(overLimit, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
-	require.NotNil(t, err)
-	require.ErrorIs(t, err, domain.ErrFilterTooDeep)
+		return f
+	}
+
+	andWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{child}},
+		}}
+	}
+	orWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{child}},
+		}}
+	}
+	notWrap := func(child *commonpb.QueryFilter) *commonpb.QueryFilter {
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
+			Not: &commonpb.NotFilter{Filter: child},
+		}}
+	}
+
+	for name, wrap := range map[string]func(*commonpb.QueryFilter) *commonpb.QueryFilter{
+		"and": andWrap,
+		"or":  orWrap,
+		"not": notWrap,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := domain.ValidateFilterForTarget(build(wrap), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+			require.NotNil(t, err, "deeply-nested %s filter must trip the depth guard", name)
+			require.Contains(t, err.Error(), "nesting depth")
+		})
+	}
+
+	// Boundary must match query.Compile node-for-node: Compile checks
+	// `depth >= MaxFilterDepth` on entry of every node (combinators AND the
+	// leaf), so with N combinators wrapping a leaf the leaf is entered at
+	// depth==N. The deepest tree both accept has N == MaxFilterDepth-1
+	// combinators (leaf entered at depth MaxFilterDepth-1, still under the cap);
+	// N == MaxFilterDepth is rejected (leaf entered at depth MaxFilterDepth).
+	// A shallower write-time bound would persist prepared queries that fail to
+	// compile at execute time — the off-by-one this pins against.
+	nestedLogId := func(combinators int) *commonpb.QueryFilter {
+		var f = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogId{
+				LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{}},
+			},
+		}
+		for range combinators {
+			f = andWrap(f)
+		}
+
+		return f
+	}
+
+	require.Nil(t, domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth-1),
+		commonpb.QueryTarget_QUERY_TARGET_LOGS),
+		"MaxFilterDepth-1 combinators must be accepted (matches query.Compile)")
+
+	atCap := domain.ValidateFilterForTarget(nestedLogId(domain.MaxFilterDepth),
+		commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NotNil(t, atCap,
+		"MaxFilterDepth combinators must be rejected (matches query.Compile)")
+	require.Contains(t, atCap.Error(), "nesting depth")
+	require.ErrorIs(t, atCap, domain.ErrFilterTooDeep)
 }
