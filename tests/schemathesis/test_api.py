@@ -148,9 +148,13 @@ def main():
     # gate it does not change which failures are found (that happens in the
     # `generate` phase) — it only minimizes an already-found failing example,
     # at the cost of a ~7x blowup in request volume when endpoints fail.
-    phases = [Phase.explicit, Phase.reuse, Phase.generate, Phase.target]
+    # Derive from the Hypothesis defaults and remove *only* `shrink`, so every
+    # other default phase (`explain`, etc.) stays enabled and `--shrink`
+    # faithfully restores the stock behavior.
     if args.shrink:
-        phases.append(Phase.shrink)
+        phases = list(hypothesis_settings.default.phases)
+    else:
+        phases = [p for p in hypothesis_settings.default.phases if p is not Phase.shrink]
 
     has_failures = False
     has_errors = False
