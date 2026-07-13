@@ -207,6 +207,59 @@ func TestFormatDate_PreservesExclusiveClosedRange(t *testing.T) {
 	}
 }
 
+// TestFormatDate_NotWrapsExclusiveRange is the regression for the flemzord HIGH:
+// an exclusive two-sided date range renders as two clauses joined by `and`, so it
+// carries `and` precedence, not leaf precedence. Under a wrapping `not` the pair
+// must be parenthesized — otherwise Format emits `not a and b`, which reparses as
+// `(not a) and b` and silently changes the filter's meaning.
+func TestFormatDate_NotWrapsExclusiveRange(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		json     string
+		wantText string
+	}{
+		{
+			name:     "not over exclusive timestamp range",
+			json:     `{"$and":[{"$gt":{"timestamp":"2023-11-14T22:13:20Z"}},{"$lt":{"timestamp":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `not (timestamp > "2023-11-14T22:13:20Z" and timestamp < "2023-11-15T22:13:20Z")`,
+		},
+		{
+			name:     "not over exclusive date range",
+			json:     `{"$and":[{"$gt":{"date":"2023-11-14T22:13:20Z"}},{"$lt":{"date":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `not (date > "2023-11-14T22:13:20Z" and date < "2023-11-15T22:13:20Z")`,
+		},
+		{
+			name:     "not over inclusive range keeps between (leaf, no parens)",
+			json:     `{"$and":[{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}},{"$lte":{"timestamp":"2023-11-15T22:13:20Z"}}]}`,
+			wantText: `not timestamp between "2023-11-14T22:13:20Z" and "2023-11-15T22:13:20Z"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			inner := &commonpb.QueryFilter{}
+			require.NoError(t, json.Unmarshal([]byte(tc.json), inner))
+			require.Nil(t, inner.GetAnd(), "JSON input must fold to a single condition")
+
+			notFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{Filter: inner},
+			}}
+
+			got := Format(notFilter)
+			require.Equal(t, tc.wantText, got)
+
+			reparsed, err := Parse(got)
+			require.NoError(t, err)
+			require.True(t, proto.Equal(notFilter, reparsed),
+				"Format output must round-trip under not\n first: %v\n reparsed: %v", notFilter, reparsed)
+		})
+	}
+}
+
 // TestFormatDate_OnlyEmitsParseableFields is the regression for the flemzord
 // MEDIUM: Format used to emit id/insertedAt/revertedAt expressions the textual
 // parser (DateCond) cannot read back, so Parse(Format(f)) failed for those arms.
