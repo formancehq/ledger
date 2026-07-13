@@ -190,17 +190,17 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 
 // Reset wipes every projection row (all per-template usage records and all
 // per-ledger counters) and clears the persisted progress cursor, so the next
-// boot replays from audit sequence 0. Used when the builder detects that the
-// primary store was rolled back beneath the persisted cursor: the retained
-// rows reflect audit entries that no longer exist, so a clean in-place rebuild
-// on the next boot/tick is how the projection reconverges.
+// boot replays from audit sequence 0. It is a full-rebuild primitive: the
+// projection reconverges by re-folding the audit chain from the start. The
+// builder itself never calls this for a rollback — the audit chain is
+// append-only so the persisted cursor can never sit ahead of the head; Reset
+// exists for an explicit operator-triggered rebuild of the side-store.
 //
 // The two ledger-scoped prefixes (PrefixTemplate 0x01, PrefixCounter 0x02) are
 // contiguous, so one DeleteRange over [0x01, 0x03) covers both; the internal
-// progress key ([0xFE][0x01]) is deleted point-wise. A crash mid-reset is
-// safe: the cursor is either still ahead (rollback re-detected next boot) or
-// already gone (replay from 0), so the rows can never survive with a stale
-// non-zero cursor.
+// progress key ([0xFE][0x01]) is deleted point-wise. Rows and cursor are wiped
+// in a single Pebble batch, so a crash applies all of it or none of it — the
+// rows can never survive with a stale non-zero cursor.
 func (s *Store) Reset() error {
 	batch := s.NewBatch()
 

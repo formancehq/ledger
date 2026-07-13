@@ -119,7 +119,7 @@ Full keyspace conventions in `internal/storage/usagestore/keys.go`. The `[ledger
 
 ### Why the usagestore counters are not a checker target (design decision, not a gap)
 
-The checker (invariant #8) verifies projections persisted **in the primary Pebble store** — the store it operates on: `Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, idempotency outcomes, the index registry, and the exclusion projection above. The usagestore is a **distinct, peer secondary Pebble instance** (`<data-dir>/usage/`) holding a *derived cache* of counters, rebuildable from the audit chain via the automatic boot/tick fold (and `usagestore.Reset()` on rollback detection). Its authoritativeness is explicitly bounded by "eventually consistent with the FSM".
+The checker (invariant #8) verifies projections persisted **in the primary Pebble store** — the store it operates on: `Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, idempotency outcomes, the index registry, and the exclusion projection above. The usagestore is a **distinct, peer secondary Pebble instance** (`<data-dir>/usage/`) holding a *derived cache* of counters, rebuilt from the audit chain by the boot/tick fold, which folds forward from the persisted cursor (from an empty cursor, i.e. `usagestore.Reset()` or a wiped `<data-dir>/usage/`, that replays from audit sequence 0). There is no automatic rollback rewind — the audit chain is append-only, so the cursor never sits ahead of the head. Its authoritativeness is explicitly bounded by "eventually consistent with the FSM".
 
 Consequently, the three volume-annotation categories are deliberately **not** given a dedicated usagestore checker pass:
 
