@@ -2,6 +2,8 @@ package filterexpr
 
 import (
 	"testing"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // FuzzFilterExprParse fuzzes the filter expression DSL parser.
@@ -43,10 +45,24 @@ func FuzzFilterExprParse(f *testing.F) {
 	f.Add(`metadata[key] == ""`)
 	f.Add(`metadata[key] == -9223372036854775808`)
 	f.Add(`address == "a:b:c:d:e:f:g"`)
+	// Bare, target-aware fields (EN-1549): resolved differently per target.
+	f.Add(`timestamp >= "2023-11-14T22:13:20Z"`)
+	f.Add(`ledger == main`)
+	f.Add(`outcome == failure`)
+	f.Add(`seq between 1000 and 2000`)
+	f.Add(`order_type in (create_transaction, revert_transaction)`)
+	f.Add(`proposal_id == 42`)
+	f.Add(`outcome == failure and ledger == main`)
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// Parse must not panic on any input.
-		// Errors are expected for invalid input.
-		_, _ = Parse(input)
+		// Parse must not panic on any input, on any target. Errors are expected
+		// for invalid input; the audit target additionally exercises the bare
+		// audit-field resolution path.
+		for _, target := range []commonpb.QueryTarget{
+			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			commonpb.QueryTarget_QUERY_TARGET_AUDIT,
+		} {
+			_, _ = Parse(input, target)
+		}
 	})
 }

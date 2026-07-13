@@ -290,7 +290,7 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
 	t.Parallel()
 
-	fromText, err := DecodeDualFormat([]byte(`audit[outcome] == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "textual audit filter must decode")
 	require.NotNil(t, fromText)
 	require.IsType(t, &commonpb.QueryFilter_Audit{}, fromText.GetFilter())
@@ -300,6 +300,40 @@ func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
 	// transaction/log conditions the JSON DSL already claims).
 	_, err = DecodeDualFormat([]byte(`{"$match":{"outcome":"failure"}}`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.Error(t, err, "audit has no structured JSON form; a structured filter must not decode to a valid audit condition")
+}
+
+// TestDecodeDualFormat_BareFieldTargetAwareResolution is the core EN-1549 check:
+// the SAME bare field name resolves to a different proto arm depending on the
+// query target. `timestamp` and `ledger` collide between the audit arm and the
+// transaction/ledger arms; the target is what disambiguates them.
+func TestDecodeDualFormat_BareFieldTargetAwareResolution(t *testing.T) {
+	t.Parallel()
+
+	// timestamp: audit arm on AUDIT, transaction builtin arm on TRANSACTIONS.
+	auditTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, auditTs.GetAudit(), "timestamp on AUDIT must resolve to the audit arm")
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditTs.GetAudit().GetField())
+
+	txTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.NoError(t, err)
+	require.NotNil(t, txTs.GetBuiltinUint(), "timestamp on TRANSACTIONS must resolve to the transaction builtin arm")
+
+	// ledger: audit ledger arm on AUDIT, LedgerCondition on LOGS.
+	auditLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, auditLedger.GetAudit(), "ledger on AUDIT must resolve to the audit arm")
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, auditLedger.GetAudit().GetField())
+
+	logLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NoError(t, err)
+	require.NotNil(t, logLedger.GetLedger(), "ledger on LOGS must resolve to the LedgerCondition arm")
+
+	// An audit-only field name (outcome) has no meaning off the audit target: it
+	// is rejected at parse time on a non-audit target.
+	_, err = DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.Error(t, err, "outcome must not resolve on a non-audit target")
+	require.Contains(t, err.Error(), "unknown field")
 }
 
 // TestDecodeDualFormatStructuralOnly_SkipsTargetGate confirms the update-path

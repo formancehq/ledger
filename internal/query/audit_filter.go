@@ -86,13 +86,13 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 	// table): only condition kinds declared valid on QUERY_TARGET_AUDIT reach a
 	// compiler. This is the same table query.Compile consults for the other
 	// targets, so audit-condition validity is declared alongside them rather
-	// than as an undocumented exception. Concretely it admits audit[...] leaves
+	// than as an undocumented exception. Concretely it admits audit-condition leaves
 	// and and/or, and rejects not and every non-audit condition — matching the
 	// dispatch below.
 	kind := commonpb.ConditionKindOf(filter)
 	if !commonpb.ConditionValidForTarget(commonpb.QueryTarget_QUERY_TARGET_AUDIT, kind) {
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
-			"unsupported filter for audit entries: only audit[...] conditions combined with and/or are allowed")
+			"unsupported filter for audit entries: only bare audit fields combined with and/or are allowed")
 	}
 
 	switch f := filter.GetFilter().(type) {
@@ -107,7 +107,7 @@ func compileAuditNode(idx AuditIndexReader, filter *commonpb.QueryFilter, depth 
 		// audit target. Kept as a defensive loud failure (invariant #7) in case
 		// the table and this dispatch ever diverge.
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
-			"unsupported filter for audit entries: only audit[...] conditions combined with and/or are allowed")
+			"unsupported filter for audit entries: only bare audit fields combined with and/or are allowed")
 	}
 }
 
@@ -148,12 +148,12 @@ func compileAuditSeqBound(cond *commonpb.AuditCondition) (auditCompiled, error) 
 	uc := cond.GetUintCond()
 	if uc == nil {
 		return auditCompiled{}, status.Error(codes.InvalidArgument,
-			"audit[seq] requires a numeric condition")
+			"seq requires a numeric condition")
 	}
 
 	bounds, err := resolveUintBounds(uc, nil)
 	if err != nil {
-		return auditCompiled{}, status.Errorf(codes.InvalidArgument, "audit[seq]: %v", err)
+		return auditCompiled{}, status.Errorf(codes.InvalidArgument, "seq: %v", err)
 	}
 
 	out := unconstrained()
@@ -182,7 +182,7 @@ func compileAuditOutcome(idx AuditIndexReader, cond *commonpb.AuditCondition) (a
 	sc := cond.GetStringCond()
 	if sc == nil {
 		return auditCompiled{}, status.Error(codes.InvalidArgument,
-			"audit[outcome] requires a string condition")
+			"outcome requires a string condition")
 	}
 
 	val := sc.GetHardcoded()
@@ -194,7 +194,7 @@ func compileAuditOutcome(idx AuditIndexReader, cond *commonpb.AuditCondition) (a
 		success = false
 	default:
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
-			"audit[outcome] must be \"success\" or \"failure\", got %q", val)
+			"outcome must be \"success\" or \"failure\", got %q", val)
 	}
 
 	seqs, err := idx.AuditSeqsByOutcome(success)
@@ -302,7 +302,7 @@ func compileAuditOr(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth
 		// index set. Reject rather than over-match.
 		if !c.narrowed {
 			return auditCompiled{}, status.Error(codes.InvalidArgument,
-				"audit[seq] cannot appear inside an or; combine sequence bounds with and, or filter on an indexed field")
+				"seq cannot appear inside an or; combine sequence bounds with and, or filter on an indexed field")
 		}
 
 		if first {

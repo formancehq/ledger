@@ -14,6 +14,11 @@ import (
 // 2023-11-14T22:13:20Z == 1_700_000_000 s == 1_700_000_000_000_000 µs.
 const wantDateMicros = uint64(1_700_000_000_000_000)
 
+// tx is a non-audit target under which the bare intrinsic fields (date,
+// timestamp, ledger) resolve to their own arms (EN-1549). Any non-audit target
+// resolves them identically; TRANSACTIONS is the representative choice.
+const tx = commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
+
 func TestParseDate_LogRFC3339AndRawMatch(t *testing.T) {
 	t.Parallel()
 
@@ -23,7 +28,7 @@ func TestParseDate_LogRFC3339AndRawMatch(t *testing.T) {
 		`date >= "2023-11-14T22:13:20Z"`,
 		"date >= 1700000000000000",
 	} {
-		filter, err := Parse(in)
+		filter, err := Parse(in, tx)
 		require.NoError(t, err, in)
 
 		lc := filter.GetLogBuiltinUint()
@@ -41,7 +46,7 @@ func TestParseTimestamp_TxRFC3339AndRawMatch(t *testing.T) {
 		`timestamp >= "2023-11-14T22:13:20Z"`,
 		"timestamp >= 1700000000000000",
 	} {
-		filter, err := Parse(in)
+		filter, err := Parse(in, tx)
 		require.NoError(t, err, in)
 
 		bc := filter.GetBuiltinUint()
@@ -58,7 +63,7 @@ func TestParseTimestamp_TxRFC3339AndRawMatch(t *testing.T) {
 func TestParseDate_ClosedRange(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse(`date >= "2023-11-14T22:13:20Z" and date < "2023-11-15T22:13:20Z"`)
+	filter, err := Parse(`date >= "2023-11-14T22:13:20Z" and date < "2023-11-15T22:13:20Z"`, tx)
 	require.NoError(t, err)
 
 	// No enclosing $and: the two complementary bounds fold into one range.
@@ -92,7 +97,7 @@ func TestParseDate_FoldOnlyComplementaryBounds(t *testing.T) {
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 
-			filter, err := Parse(in)
+			filter, err := Parse(in, tx)
 			require.NoError(t, err, in)
 			require.NotNil(t, filter.GetAnd(), "expected an unfolded AndFilter for %q", in)
 		})
@@ -102,7 +107,7 @@ func TestParseDate_FoldOnlyComplementaryBounds(t *testing.T) {
 func TestParseDate_Between(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse(`timestamp between "2023-11-14T22:13:20Z" and 1700086400000000`)
+	filter, err := Parse(`timestamp between "2023-11-14T22:13:20Z" and 1700086400000000`, tx)
 	require.NoError(t, err)
 
 	bc := filter.GetBuiltinUint()
@@ -135,14 +140,14 @@ func TestFormatDate_RoundTrip(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := Parse(tc.in)
+			f, err := Parse(tc.in, tx)
 			require.NoError(t, err)
 
 			got := Format(f)
 			require.Equal(t, tc.want, got)
 
 			// And the formatted string must parse back to an equivalent filter.
-			reparsed, err := Parse(got)
+			reparsed, err := Parse(got, tx)
 			require.NoError(t, err)
 			require.True(t, proto.Equal(f, reparsed),
 				"Format output must round-trip\n first: %v\n reparsed: %v", f, reparsed)
@@ -199,7 +204,7 @@ func TestFormatDate_PreservesExclusiveClosedRange(t *testing.T) {
 			got := Format(folded)
 			require.Equal(t, tc.wantText, got)
 
-			reparsed, err := Parse(got)
+			reparsed, err := Parse(got, tx)
 			require.NoError(t, err)
 			require.True(t, proto.Equal(folded, reparsed),
 				"Format output must round-trip to the original exclusive range\n first: %v\n reparsed: %v", folded, reparsed)
@@ -252,7 +257,7 @@ func TestFormatDate_NotWrapsExclusiveRange(t *testing.T) {
 			got := Format(notFilter)
 			require.Equal(t, tc.wantText, got)
 
-			reparsed, err := Parse(got)
+			reparsed, err := Parse(got, tx)
 			require.NoError(t, err)
 			require.True(t, proto.Equal(notFilter, reparsed),
 				"Format output must round-trip under not\n first: %v\n reparsed: %v", notFilter, reparsed)
@@ -302,15 +307,15 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 			got := Format(f)
 			require.Equal(t, tc.want, got, "must render raw micros, not an unparseable RFC3339 string")
 
-			reparsed, err := Parse(got)
+			reparsed, err := Parse(got, tx)
 			require.NoError(t, err, "raw-micros output must parse back")
 			require.True(t, proto.Equal(f, reparsed),
 				"Format output must round-trip for out-of-RFC3339-range bounds\n first: %v\n reparsed: %v", f, reparsed)
 		})
 	}
 
-	// Same guarantee on the audit[timestamp] arm.
-	t.Run("audit[timestamp] above MaxInt64", func(t *testing.T) {
+	// Same guarantee on the bare audit timestamp arm (EN-1549).
+	t.Run("audit timestamp above MaxInt64", func(t *testing.T) {
 		t.Parallel()
 
 		min := uint64(18446744073709551615)
@@ -324,11 +329,11 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 		}}
 
 		got := Format(f)
-		require.Equal(t, `audit[timestamp] >= 18446744073709551615`, got)
+		require.Equal(t, `timestamp >= 18446744073709551615`, got)
 
-		reparsed, err := Parse(got)
+		reparsed, err := Parse(got, audit)
 		require.NoError(t, err)
-		require.True(t, proto.Equal(f, reparsed), "audit[timestamp] raw micros must round-trip")
+		require.True(t, proto.Equal(f, reparsed), "audit timestamp raw micros must round-trip")
 	})
 }
 
@@ -366,10 +371,10 @@ func TestFormatDate_OnlyEmitsParseableFields(t *testing.T) {
 			t.Run(in, func(t *testing.T) {
 				t.Parallel()
 
-				f, err := Parse(in)
+				f, err := Parse(in, tx)
 				require.NoError(t, err)
 				got := Format(f)
-				reparsed, err := Parse(got)
+				reparsed, err := Parse(got, tx)
 				require.NoError(t, err, got)
 				require.True(t, proto.Equal(f, reparsed),
 					"Format must emit a parseable field\n first: %v\n reparsed: %v", f, reparsed)
@@ -385,7 +390,7 @@ func TestParseDate_RejectsPreEpoch(t *testing.T) {
 		`date >= "1969-12-31T00:00:00Z"`,
 		`timestamp >= "1969-12-31T00:00:00Z"`,
 	} {
-		_, err := Parse(in)
+		_, err := Parse(in, tx)
 		require.Error(t, err, in)
 		assert.Contains(t, err.Error(), "Unix epoch", in)
 	}
@@ -394,7 +399,7 @@ func TestParseDate_RejectsPreEpoch(t *testing.T) {
 func TestParseDate_RejectsGarbageValue(t *testing.T) {
 	t.Parallel()
 
-	_, err := Parse(`date >= "not-a-date"`)
+	_, err := Parse(`date >= "not-a-date"`, tx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RFC3339")
 }
@@ -405,7 +410,7 @@ func TestParseDate_RejectsParam(t *testing.T) {
 	// date/timestamp are index-resolved range fields evaluated without a
 	// parameter-resolution context; a $param operand is rejected, mirroring the
 	// audit datetime field.
-	_, err := Parse(`date >= $since`)
+	_, err := Parse(`date >= $since`, tx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not support parameters")
 }
@@ -420,7 +425,7 @@ func TestParseDate_KeywordsUsableAsBareValues(t *testing.T) {
 		"metadata[kind] == date",
 		"metadata[kind] == timestamp",
 	} {
-		filter, err := Parse(in)
+		filter, err := Parse(in, tx)
 		require.NoError(t, err, in)
 		require.NotNil(t, filter.GetField(), in)
 	}
@@ -456,7 +461,7 @@ func TestParseDate_DoesNotMistokenizeIdentifierPrefix(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			filter, err := Parse(tc.in)
+			filter, err := Parse(tc.in, tx)
 			require.NoError(t, err, tc.in)
 			require.NotNil(t, filter.GetField(), tc.in)
 		})

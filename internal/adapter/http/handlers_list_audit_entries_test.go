@@ -162,8 +162,9 @@ func TestHandleListAuditEntries_InvalidPageSize(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestHandleListAuditEntries_LedgerFilter checks that a `filter` with an
-// audit[ledger] condition is parsed via filterexpr and forwarded to the backend.
+// TestHandleListAuditEntries_LedgerFilter checks that a `filter` with a
+// bare `ledger` condition is parsed via filterexpr (audit target) and
+// forwarded to the backend.
 func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
 	t.Parallel()
 
@@ -181,7 +182,7 @@ func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("audit[ledger] == main"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("ledger == main"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -204,7 +205,7 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("audit[outcome] == failure"), nil, nil)
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("outcome == failure"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 
@@ -226,7 +227,7 @@ func TestHandleListAuditEntries_InvalidFilter(t *testing.T) {
 
 // TestHandleListAuditEntries_UnsupportedFilterMapsTo400 covers a filter that
 // parses (filterexpr accepts it) but the audit compiler rejects with a gRPC
-// codes.InvalidArgument (e.g. `not audit[...]`, a non-audit condition). Such an
+// codes.InvalidArgument (e.g. `not outcome == failure`, a non-audit condition). Such an
 // error must surface as a 400, not a 500.
 func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
 	t.Parallel()
@@ -239,8 +240,8 @@ func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	// `not audit[...]` parses fine but the compiler rejects it.
-	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("not audit[outcome] == failure"), nil, nil)
+	// `not outcome == failure` parses fine but the compiler rejects it.
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape("not outcome == failure"), nil, nil)
 
 	srv.handleListAuditEntries(w, r)
 

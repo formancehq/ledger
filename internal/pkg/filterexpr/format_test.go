@@ -33,7 +33,7 @@ func TestFormatAccountHasAsset(t *testing.T) {
 	t.Run("round-trips through Parse", func(t *testing.T) {
 		t.Parallel()
 		for _, in := range []string{"has asset USD", "has asset USD/2"} {
-			f, err := Parse(in)
+			f, err := Parse(in, tx)
 			require.NoError(t, err)
 			assert.Equal(t, in, Format(f), "round-trip for %q", in)
 		}
@@ -495,7 +495,7 @@ func TestFormatRoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			parsed, err := Parse(tt.input)
+			parsed, err := Parse(tt.input, tx)
 			require.NoError(t, err)
 
 			got := Format(parsed)

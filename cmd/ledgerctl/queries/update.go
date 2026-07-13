@@ -51,7 +51,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	filterExpr, _ := cmd.Flags().GetString("filter")
 
-	filter, err := filterexpr.Parse(filterExpr)
+	// The update carries only the new filter, not the target — the target is
+	// immutable and lives on the stored prepared query (the FSM re-validates the
+	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
+	// known here" entry point: it resolves bare fields with a non-audit target
+	// (prepared queries are never audit) and defers the per-target validity gate
+	// to the server (EN-1549).
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr))
 	if err != nil {
 		return fmt.Errorf("invalid filter expression: %w", err)
 	}

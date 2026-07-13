@@ -70,8 +70,15 @@ account prefix is now `address ^= "..."`, transaction reference is structured
 `{"$match":{"reference":"..."}}`); prepared-query
 create/update decode the JSON `filter` body field through the same helper; and
 `ledgerctl --filter` routes through it in `cmdutil.BuildQueryFilter`. Audit
-conditions (`audit[...]`) exist only in the textual form — the JSON codec has no
-representation for them (EN-1241) — so the textual form is canonical for
+fields are written **bare** (`outcome`, `ledger`, `seq`, `proposal_id`,
+`timestamp`, `log_seq`, `caller_subject`, `order_type`) and resolved against the
+audit query target (EN-1549 — this replaced the old `audit[...]` namespaced
+syntax, a breaking change with no backward compatibility). Bare `timestamp` and
+`ledger` collide with the transaction `timestamp` field and the top-level
+`ledger` condition, so they resolve to the audit condition only on the audit
+target — which is why audit fields are valid on that endpoint alone. Audit
+conditions exist only in the textual form — the JSON codec has no representation
+for them (EN-1241) — so the textual form is canonical for
 `GET /v3/_/audit-entries`. See
 [api-comparison.md](../../../contributing/api-comparison.md#filter-input-formats-dual-format-contract-en-1511)
 for the full contract.
@@ -87,7 +94,7 @@ date bound written as **either** an RFC3339 timestamp (e.g.
 |--------|---------|------------|
 | transactions | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
 | logs | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
-| audit | `audit[timestamp] >= "2023-11-14T22:13:20Z"` | — (audit is text-only) |
+| audit | `timestamp >= "2023-11-14T22:13:20Z"` (bare, resolved on the audit target) | — (audit is text-only) |
 
 The raw-microsecond form of each still parses (`timestamp >= 1700000000000000`),
 so this is purely additive. All three surfaces (audit, transactions, logs) funnel
