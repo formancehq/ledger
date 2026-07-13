@@ -478,6 +478,10 @@ enum EventType {
   DELETED_METADATA = 4;
   CREATED_LEDGER = 5;
   DELETED_LEDGER = 6;
+  // SKIPPED_ORDER is emitted when a batch order tripped a whitelisted business
+  // failure (skippable_reasons) and was skipped instead of failing the whole
+  // proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
+  SKIPPED_ORDER = 7;
 }
 
 // ============================================================================
@@ -686,7 +690,27 @@ message LedgerLogPayload {
     AddedAccountTypeLog added_account_type = 13;
     RemovedAccountTypeLog removed_account_type = 14;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
+    OrderSkippedLog order_skipped = 16;
   }
+}
+
+// OrderSkippedLog records an order that the FSM rejected with a business
+// error whose reason was listed in the order's `skippable_reasons` whitelist.
+// No state mutation occurred for the skipped order, but the rest of the
+// proposal applied normally. The `reason` here is a PROJECTION and is NOT
+// hash-chain-bound — only the AuditItem.serialized_order (the submitted
+// order, including its allowed skippable_reasons whitelist) is bound. Because
+// the projected reason can be tampered with, the checker does not trust it:
+// it replays the serialized order against the audit-derived state at the
+// applied index, re-derives the failure the FSM must have produced, and
+// confirms that reason both matches the projection and was whitelisted
+// (defense against forged skip entries).
+message OrderSkippedLog {
+  ErrorReason reason = 1;
+  // Free-form context populated by the producing branch. Conventional keys
+  // are documented case-by-case (e.g. reference / existingTransactionId for
+  // TRANSACTION_REFERENCE_CONFLICT). Treat as opaque if the reason is unknown.
+  map<string, string> context = 2;
 }
 
 // CreatedIndexLog records the creation of an index.

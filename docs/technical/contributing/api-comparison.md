@@ -66,6 +66,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Idempotency key | ✅ | ✅ | |
 | **Reference Uniqueness** |
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
+| Skip-on-conflict opt-in | ✅ | ❌ | Per-entry `skippableReasons: ["TRANSACTION_REFERENCE_CONFLICT"]` on the bulk endpoint → the entry's `BulkResult.data` carries an `OrderSkippedResponse` shape instead of the normal Transaction. The unitary POST endpoint intentionally does NOT expose the opt-in (a single-tx caller can catch the 4xx directly); gRPC clients can set `LedgerApplyRequest.skippable_reasons` on any Apply. |
 | **Numscript Library** |
 | Save numscript (versioned) | ✅ | ❌ | Per-ledger, semver versioning (e.g. "1.0.0") |
 | Get numscript (by version) | ✅ | ❌ | Per-ledger, query param `?version=1.0.0`, empty = latest |

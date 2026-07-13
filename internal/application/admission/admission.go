@@ -1522,10 +1522,21 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			},
 		})
 	case *servicepb.Request_Apply:
+		// Validate and extract the per-order skippable_reasons opt-in
+		// from the public payload BEFORE constructing the raft Order, so
+		// a bad whitelist gets a clear admission rejection instead of a
+		// silent FSM-side defense.
+		skippable, err := extractSkippableReasonsFromApply(reqType.Apply)
+		if err != nil {
+			return nil, err
+		}
+
 		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply)
 		if err != nil {
 			return nil, err
 		}
+
+		applyOrder.SkippableReasons = skippable
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),
