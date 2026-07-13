@@ -98,59 +98,75 @@ func TestOtelExecPrologue(t *testing.T) {
 	// Execute the prologue in a real shell and report the resolved values so
 	// the test exercises the actual POSIX-sh logic the pod runs, not a Go
 	// re-implementation of it.
-	run := func(env []string) (endpoint, sdkDisabled string) {
+	run := func(env []string) (endpoint, protocol, sdkDisabled string) {
 		t.Helper()
-		script := otelExecPrologue + `printf '%s\n%s\n' "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_SDK_DISABLED:-}"`
+		script := otelExecPrologue + `printf '%s\n%s\n%s\n' "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_PROTOCOL:-}" "${OTEL_SDK_DISABLED:-}"`
 		cmd := exec.Command("/bin/sh", "-c", script)
-		// Start from a clean env so an OTEL_* var on the developer's machine
-		// cannot leak into the assertion.
-		cmd.Env = env
+		// Run with an explicit environment (never nil): a nil Env makes
+		// exec.Command inherit the parent's, so an OTEL_* var on the developer's
+		// or CI runner's machine would leak in and make the assertion flaky.
+		cmd.Env = append([]string{}, env...)
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "prologue failed: %s", out)
-		// Two printf lines; do not trim, so an empty value keeps its line.
+		// Three printf lines; do not trim, so an empty value keeps its line.
 		lines := strings.Split(string(out), "\n")
-		require.GreaterOrEqual(t, len(lines), 2, "unexpected output: %q", string(out))
+		require.GreaterOrEqual(t, len(lines), 3, "unexpected output: %q", string(out))
 
-		return lines[0], lines[1]
+		return lines[0], lines[1], lines[2]
 	}
 
 	tests := []struct {
 		name         string
 		env          []string
 		wantEndpoint string
+		wantProtocol string
 		wantDisabled string
 	}{
 		{
 			name:         "no endpoint disables the SDK",
 			env:          nil,
-			wantEndpoint: "",
 			wantDisabled: "true",
 		},
 		{
 			name:         "insecure endpoint gets http scheme",
 			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector.monitoring.svc:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
 			wantEndpoint: "http://collector.monitoring.svc:4317",
-			wantDisabled: "",
 		},
 		{
 			name:         "secure endpoint gets https scheme",
 			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector.monitoring.svc:4317"},
 			wantEndpoint: "https://collector.monitoring.svc:4317",
-			wantDisabled: "",
 		},
 		{
 			name:         "endpoint already carrying a scheme is left untouched",
 			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=http://collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
 			wantEndpoint: "http://collector:4317",
-			wantDisabled: "",
+		},
+		{
+			name:         "http mode is translated to the standard protocol",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4318", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true", "OTEL_TRACES_EXPORTER_OTLP_MODE=http"},
+			wantEndpoint: "http://collector:4318",
+			wantProtocol: "http",
+		},
+		{
+			name:         "grpc mode is translated to the standard protocol",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true", "OTEL_TRACES_EXPORTER_OTLP_MODE=grpc"},
+			wantEndpoint: "http://collector:4317",
+			wantProtocol: "grpc",
+		},
+		{
+			name:         "mode without an endpoint still disables the SDK",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_MODE=http"},
+			wantDisabled: "true",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			endpoint, disabled := run(tt.env)
+			endpoint, protocol, disabled := run(tt.env)
 			require.Equal(t, tt.wantEndpoint, endpoint)
+			require.Equal(t, tt.wantProtocol, protocol)
 			require.Equal(t, tt.wantDisabled, disabled)
 		})
 	}

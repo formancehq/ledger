@@ -229,33 +229,44 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 	return []string{"/bin/sh", "-c", cmd}
 }
 
-// otelExecPrologue makes ledgerctl's OpenTelemetry setup cheap when the
-// operator execs it inside a ledger pod, so a per-invocation trace flush can
-// never exceed ledgerExecTimeout and turn an index/create/cluster command into
-// an opaque "context deadline exceeded".
+// otelExecPrologue bridges the pod's go-libs OTEL_* env to the names ledgerctl
+// (a standard OTEL SDK consumer) actually reads, so an in-pod exec exports
+// traces correctly when a collector is configured and pays no cost when one is
+// not.
 //
 // The pod carries go-libs' OTEL_* env — OTEL_TRACES_EXPORTER=otlp plus the
-// endpoint under the go-libs name OTEL_TRACES_EXPORTER_OTLP_ENDPOINT — but
-// ledgerctl reads the OTEL-SDK-standard OTEL_EXPORTER_OTLP_ENDPOINT, which the
-// pod never sets. With the exporter selected but no standard endpoint
-// resolvable, ledgerctl builds an OTLP exporter against the SDK default
-// localhost:4317, and its deferred span flush blocks for the full 5s shutdown
-// timeout on every invocation.
+// endpoint/insecure/mode under the go-libs names OTEL_TRACES_EXPORTER_OTLP_*
+// — but ledgerctl reads the OTEL-SDK-standard OTEL_EXPORTER_OTLP_ENDPOINT /
+// OTEL_EXPORTER_OTLP_PROTOCOL, which the pod never sets. With the exporter
+// selected but no standard endpoint resolvable, ledgerctl builds an OTLP
+// exporter against the SDK default localhost:4317, and its deferred span flush
+// blocks for the full 5s shutdown timeout on every invocation.
 //
-// Fix: if a traces endpoint is configured, expose it under the standard name
-// (adding the http/https scheme the SDK requires — derived from the go-libs
-// insecure flag, since a bare host:port makes the SDK attempt TLS against a
-// plaintext collector and hang the same 5s). If no endpoint is configured,
-// disable the SDK entirely so the flush is a no-op. The go-libs var names are
-// the ones this same operator injects in appendMonitoringEnvVars, so both ends
-// stay in sync.
+// So, when a traces endpoint is configured:
+//   - expose it under the standard name, adding the http/https scheme the SDK
+//     requires (derived from the go-libs insecure flag — a bare host:port makes
+//     the SDK attempt TLS against a plaintext collector and hang the same 5s);
+//   - translate the go-libs OTLP mode (grpc|http) to the standard
+//     OTEL_EXPORTER_OTLP_PROTOCOL, so an HTTP collector isn't hit with the
+//     default gRPC exporter (which would flush-fail and hang).
+//
+// When no endpoint is configured, disable the SDK entirely so the flush is a
+// no-op. The go-libs var names are the ones this same operator injects in
+// appendMonitoringEnvVars, so both ends stay in sync.
+//
+// A configured-but-unreachable collector can still spend up to the 5s flush
+// budget on exit; ledgerExecTimeout is sized above that so it never surfaces as
+// a spurious "context deadline exceeded".
 const otelExecPrologue = `if [ -n "${OTEL_TRACES_EXPORTER_OTLP_ENDPOINT:-}" ]; then ` +
 	`case "$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" in ` +
 	`http://*|https://*) export OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT" ;; ` +
 	`*) if [ "${OTEL_TRACES_EXPORTER_OTLP_INSECURE:-}" = "true" ]; then ` +
 	`export OTEL_EXPORTER_OTLP_ENDPOINT="http://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; else ` +
 	`export OTEL_EXPORTER_OTLP_ENDPOINT="https://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; fi ;; ` +
-	`esac; else export OTEL_SDK_DISABLED=true; fi; `
+	`esac; ` +
+	`if [ -n "${OTEL_TRACES_EXPORTER_OTLP_MODE:-}" ]; then ` +
+	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; ` +
+	`else export OTEL_SDK_DISABLED=true; fi; `
 
 // shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
 // A single quote inside the string is encoded as `'\”` (close, escaped
