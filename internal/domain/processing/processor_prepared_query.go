@@ -106,6 +106,15 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 
 	updated := existing.Mutate()
 
+	// An update replaces the stored filter, so a nil filter would silently erase
+	// it — ValidateFilterForTarget accepts nil (it means "no filter"), so without
+	// this guard `updated.Filter = nil` would persist and the prepared query would
+	// lose its definition. Reject it at the FSM (the audit/replay-determinism layer
+	// of the dual-layer rule) as well as at admission (CLI/HTTP, for UX).
+	if order.GetFilter() == nil {
+		return nil, domain.ErrPreparedQueryFilterRequired
+	}
+
 	// An update carries only the new filter; the target is fixed at creation and
 	// read here from the stored query (the cache, per invariant #3).
 	//

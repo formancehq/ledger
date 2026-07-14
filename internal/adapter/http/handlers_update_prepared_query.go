@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -42,8 +43,10 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	// cannot smuggle in a condition invalid for the query's target (EN-1504).
 	// This handler stays purely structural: it accepts either the structured v2
 	// JSON DSL or a JSON-quoted textual filterexpr expression (EN-1511) and defers
-	// the target gate to the FSM.
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter)
+	// the target gate to the FSM. Bare-field resolution uses a non-audit target
+	// (EN-1549): prepared queries are only ever ACCOUNTS/TRANSACTIONS/LOGS, all of
+	// which resolve the bare intrinsic fields identically.
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly(body.Filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

@@ -1973,6 +1973,7 @@ func (m *LedgerBoundaries) CloneVT() *LedgerBoundaries {
 	r.TransientUsedCount = m.TransientUsedCount
 	r.RevertCount = m.RevertCount
 	r.NumscriptExecutionCount = m.NumscriptExecutionCount
+	r.LastMirrorV2LogId = m.LastMirrorV2LogId
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5845,6 +5846,9 @@ func (this *LedgerBoundaries) EqualVT(that *LedgerBoundaries) bool {
 		return false
 	}
 	if this.NumscriptExecutionCount != that.NumscriptExecutionCount {
+		return false
+	}
+	if this.LastMirrorV2LogId != that.LastMirrorV2LogId {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11117,6 +11121,12 @@ func (m *LedgerBoundaries) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.LastMirrorV2LogId != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LastMirrorV2LogId))
+		i--
+		dAtA[i] = 0x59
+	}
 	if m.NumscriptExecutionCount != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.NumscriptExecutionCount))
@@ -14459,6 +14469,9 @@ func (m *LedgerBoundaries) SizeVT() (n int) {
 		n += 9
 	}
 	if m.NumscriptExecutionCount != 0 {
+		n += 9
+	}
+	if m.LastMirrorV2LogId != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -25776,6 +25789,16 @@ func (m *LedgerBoundaries) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.NumscriptExecutionCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 11:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastMirrorV2LogId", wireType)
+			}
+			m.LastMirrorV2LogId = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LastMirrorV2LogId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

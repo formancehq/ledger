@@ -33,7 +33,7 @@ func TestFormatAccountHasAsset(t *testing.T) {
 	t.Run("round-trips through Parse", func(t *testing.T) {
 		t.Parallel()
 		for _, in := range []string{"has asset USD", "has asset USD/2"} {
-			f, err := Parse(in)
+			f, err := Parse(in, tx)
 			require.NoError(t, err)
 			assert.Equal(t, in, Format(f), "round-trip for %q", in)
 		}
@@ -490,12 +490,18 @@ func TestFormatRoundTrip(t *testing.T) {
 		{"between mixed param/literal", "metadata[age] between 18 and $max", ""},
 		{"AND of ranges round-trips as between", "metadata[age] >= 18 and metadata[age] < 65", "metadata[age] >= 18 and metadata[age] < 65"},
 		{"complex: source and destination", `source ^= "a:" and destination ^= "b:"`, ""},
+		// EN-1549: a bare `ledger` condition on a non-audit target renders back to
+		// the same textual form (previously formatted as "<unknown filter>", which
+		// broke the prepared-query config export/apply round-trip).
+		{"ledger exact", "ledger == main", ""},
+		{"ledger quoted value", `ledger == "my-ledger"`, ""},
+		{"ledger param", "ledger == $name", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			parsed, err := Parse(tt.input)
+			parsed, err := Parse(tt.input, tx)
 			require.NoError(t, err)
 
 			got := Format(parsed)

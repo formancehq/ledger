@@ -330,7 +330,7 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 }
 
 // ListAuditEntries collects all audit entries from the streaming RPC. When
-// failuresOnly is true it applies the shared filter `audit[outcome] == failure`
+// failuresOnly is true it applies the shared filter `outcome == failure`
 // (failures_only is no longer a top-level request field — EN-1241).
 //
 // Consistency: with failuresOnly=false the read streams the audit zone directly
@@ -350,7 +350,7 @@ func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient,
 }
 
 // AuditOutcomeFilter builds the QueryFilter matching audit entries by outcome:
-// success=true -> `audit[outcome] == success`, success=false -> failure.
+// success=true -> `outcome == success`, success=false -> failure.
 func AuditOutcomeFilter(success bool) *commonpb.QueryFilter {
 	val := "failure"
 	if success {

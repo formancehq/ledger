@@ -81,8 +81,8 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 //     narrowed is true, candidateSeqs is the ascending set of matching audit
 //     sequences and only those are materialized. When false, every entry in
 //     [loSeq, hiSeq] is a candidate.
-//   - loSeq, hiSeq: inclusive audit-sequence bounds (from audit[seq] and from
-//     the compiled filter). Defaults span the whole zone.
+//   - loSeq, hiSeq: inclusive audit-sequence bounds (from the bare seq field and
+//     from the compiled filter). Defaults span the whole zone.
 //   - afterSeq: opaque cursor; 0 means "from the head". Exclusive.
 //   - reverse: false streams ascending by sequence (oldest first); true streams
 //     descending (newest first).

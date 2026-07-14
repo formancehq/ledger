@@ -93,17 +93,40 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
 - A cursor that advances **beyond** the highest audited `MirrorIngest.v2LogId`
   makes the worker skip source logs without any audit entry showing the missing
   proposals — silent under-ingestion.
-- A cursor that drops **below** the highest audited `v2LogId` is equally unsafe.
-  `Worker.processBatch` (`internal/application/mirror/worker.go`) reloads the
-  cursor and calls `FetchLogs(cursor, ...)`, which returns source logs strictly
-  *after* the cursor. `TranslateBatch` then emits fresh `MirrorIngest` orders for
-  logs that were already ingested, and `processMirrorCreatedTransaction`
-  (`internal/domain/processing/processor_mirror.go`) reapplies every posting with
-  `force=true`, overwriting the transaction state and re-adding the amounts to the
-  volume pair via `applyPosting`. There is **no deduplication on `v2LogId`** and
-  volume mutation is additive, so a lowered cursor replays already-audited
-  transactions and applies their balance effects a second time — silent
-  double-application.
+- A cursor that drops **below** the highest audited `v2LogId` makes
+  `Worker.processBatch` (`internal/application/mirror/worker.go`) reload the
+  cursor and call `FetchLogs(cursor, ...)`, which returns source logs strictly
+  *after* the cursor. `TranslateBatch` then re-emits `MirrorIngest` orders for
+  logs that were already ingested. **The FSM now enforces a contiguous applied
+  prefix (EN-1550).** `processMirrorIngest`
+  (`internal/domain/processing/processor_mirror.go`) records the highest applied
+  source id in `LedgerBoundaries.last_mirror_v2_log_id` — a true contiguous
+  prefix, since the worker ingests contiguously including `FillGap` orders — and,
+  *before* applying any posting or mutating any state, first rejects a malformed
+  `v2LogId == 0` (source v2 log ids are 1-based, so 0 is tamper/corruption) with
+  `ErrMirrorV2LogIDInvalid` (`KindInternal`) — it is never applied, since a 0 is
+  never recorded as `last` and a silently-applied 0 would be re-appliable forever.
+  It then decides three ways against the next slot (`expected = last + 1`):
+  - `v2LogId <= last`: already applied. Idempotent **no-op** — return `(nil, nil)`,
+    which `ProcessOrders` treats as "no log" (no sequence id consumed, no
+    audit-visible `Log`, no sink absorb). Postings are not re-forced, so balances
+    cannot double (pre-EN-1550 this replay caused silent **double-application** via
+    `force=true` additive volume mutation with no dedup on `v2LogId`).
+  - `v2LogId == expected`: the next contiguous log. Apply and advance `last`.
+  - `v2LogId > expected`: a **gap** — the cursor/high-water mark is ahead of the
+    applied prefix. Impossible under contiguous ingestion, so it is
+    corruption/tampering. The FSM **fails loud** (`ErrMirrorV2LogIDGap`,
+    `KindInternal`) and mutates nothing — it never silently applies past the gap
+    (which would desync nodes) or skips it. The rejection is deterministic (same
+    input → same rejection on every node); the worker surfaces it as a repeating
+    apply error rather than corrupting state.
+
+  The guard is a pure function of applied per-ledger state; v2 log ids are 1-based
+  and strictly increasing per source (`TranslateBatch`), so it is FSM-deterministic
+  and needs no new preload/coverage key (it lives inside the already-covered
+  boundaries). Only the **behind** direction is handled here; recovering a cursor
+  that is *ahead* of the true source head is worker-side source-head recovery and
+  remains out of scope.
 
 Because it is only correct at one exact value, treat `MirrorCursor` as a
 persisted per-ledger projection (`ZonePerLedger` / `SubPLMirrorCursor`, in the
@@ -137,6 +160,40 @@ it — a cursor value corrupted or tampered before it is proposed takes effect o
 every node identically. Mirror recovery, repair tooling, or a checker pass
 that re-derives the expected cursor from the audited mirror-ingest logs must
 enforce the equality before the stored cursor can be trusted.
+
+`LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
+mark) **is** covered by the checker as a full invariant-#8 **equality** check.
+`compareMirrorV2LogID` (`internal/application/check/checker.go`) verifies, per
+ledger, that the stored `last_mirror_v2_log_id` **equals** `max(audited
+MirrorIngest.v2_log_id)`, emitting `CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH`
+on **any** divergence. Because the FSM enforces a contiguous applied prefix (the
+gap reject above), the persisted high-water mark must be exactly the max audited
+`v2_log_id` at rest — no more, no less:
+- `stored > max`: claims a source v2 log no audit entry recorded (future ingests
+  wrongly skipped).
+- `stored < max`: the projection lost applied ground (an already-applied ingest
+  would be re-applied).
+
+The audited max is derived from the live audit chain
+(`recordMirrorIngestMutations`) layered over a baseline floor
+(`foldBaselineBoundaries` seeds it from the archived
+`LedgerBoundaries.last_mirror_v2_log_id`, which the compact baseline snapshot now
+carries — `writeBaselineAttributes` includes `Boundary` rows), so a ledger whose
+mirror ingests live only in an archived chapter is not undercounted. A regular
+(never-mirrored) ledger has stored `0` and audited max `0` → equal → not flagged.
+The comparison is driven from the **union** of stored boundary rows and
+audited-mirror ledgers, so a mirror ledger with audited ingests but no stored row
+(audited max > 0, row absent) is treated as stored `0` and flagged — an absent
+`last_mirror_v2_log_id` for an audited *active* mirror ledger is caught, not
+skipped. The absent-row check is suppressed only for a ledger audited as
+**deleted** (a `DeleteLedger` log replayed in the verified range): `WriteSet.Absorb`
+removes the boundary row on deletion, so its missing row is legitimate, not
+corruption. Present-row equality still applies to every ledger.
+
+There is **no** legacy / no-backfill leniency: existing pre-field clusters are
+**unsupported** — we do not ship a compat shim, and a store that predates
+`last_mirror_v2_log_id` would fail this equality (and simply re-mirror), which is
+acceptable pre-GA.
 
 ## Readstore and Indexes
 

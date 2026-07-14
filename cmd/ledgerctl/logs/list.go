@@ -56,7 +56,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return errors.New("--ledger flag is required")
 	}
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return err
 	}

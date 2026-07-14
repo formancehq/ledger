@@ -1039,7 +1039,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should return accounts matching any role in the list", func() {
 			// metadata[role] in (admin, viewer) → alice, charlie, diana
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
@@ -1071,7 +1071,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should combine in filter with AND on different fields", func() {
 			// metadata[role] in (admin, viewer) and metadata[tier] in (gold) → alice, diana
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer) and metadata[tier] in (gold)`)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer) and metadata[tier] in (gold)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
@@ -1103,7 +1103,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should support in with quoted string values", func() {
 			// metadata[tier] in ("gold", "silver") → alice, bob, diana
-			filter, err := filterexpr.Parse(`metadata[tier] in ("gold", "silver")`)
+			filter, err := filterexpr.Parse(`metadata[tier] in ("gold", "silver")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
@@ -1162,7 +1162,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		It("Should return transactions involving any address in the list", func() {
 			// address in ("alice", "charlie") → tx0 (world→alice), tx2 (alice→charlie)
-			filter, err := filterexpr.Parse(`address in ("alice", "charlie")`)
+			filter, err := filterexpr.Parse(`address in ("alice", "charlie")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
@@ -1236,7 +1236,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			// `between 30 and 60` matches bob(35) and charlie(50).
 			// Proves the IntCondition survives store + retrieve through the
 			// prepared-query proto round trip.
-			filter, err := filterexpr.Parse("metadata[age] between 30 and 60")
+			filter, err := filterexpr.Parse("metadata[age] between 30 and 60", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{

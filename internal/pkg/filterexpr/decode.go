@@ -23,7 +23,12 @@ import (
 //   - structured — the v2 QueryFilter JSON DSL ($and/$or/$not + $match/$gt/…),
 //     decoded by commonpb.QueryFilter.UnmarshalJSON (query_filter.go);
 //   - textual    — the human-readable filterexpr grammar (metadata[k] == v,
-//     audit[outcome] == failure, …), parsed by Parse.
+//     outcome == failure, …), parsed by Parse. The textual grammar resolves a
+//     handful of bare fields against `target` (EN-1549): on QUERY_TARGET_AUDIT
+//     the bare audit fields (outcome, ledger, seq, timestamp, …) resolve to the
+//     audit arm, so the target must be threaded into the parse — a bare
+//     `timestamp`/`ledger` means the audit condition here, but the transaction
+//     timestamp / ledger condition on the other targets.
 //
 // Form detection is purely structural and does not depend on the transport: the
 // first non-whitespace byte of the raw value decides. A leading '{' is the
@@ -41,15 +46,16 @@ import (
 // already claim them; see commonpb/query_filter.go, EN-1241). This is not a
 // special case here: the structured decoder rejects audit conditions on its own,
 // so a structured-form audit filter fails with that codec's error, while the
-// textual form parses the audit arm natively. Callers that read AUDIT should
-// document the textual form as the canonical one.
+// textual form parses the audit arm natively (the bare audit fields resolve to
+// the audit arm precisely because `target` is QUERY_TARGET_AUDIT). Callers that
+// read AUDIT should document the textual form as the canonical one.
 //
 // A nil/empty raw value yields (nil, nil): "no filter" is a valid unfiltered
 // read for the list endpoints. Callers that require a filter (prepared queries)
 // check for nil themselves — the same contract the previous per-endpoint
 // decoders had.
 func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
-	filter, err := decodeDualFormat(raw)
+	filter, err := decodeDualFormat(raw, target)
 	if err != nil {
 		return nil, err
 	}
@@ -66,17 +72,29 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 }
 
 // DecodeDualFormatStructuralOnly is DecodeDualFormat without the per-target
-// validity gate. It exists for the prepared-query update path, which does not
-// see the target (the target is immutable and lives on the stored query, so the
-// FSM applies the gate against it — see handlers_update_prepared_query.go). Every
-// other caller MUST use DecodeDualFormat so form and validity are checked in one
-// place.
-func DecodeDualFormatStructuralOnly(raw []byte) (*commonpb.QueryFilter, error) {
-	return decodeDualFormat(raw)
+// validity gate: it resolves bare fields against target (EN-1549) but leaves the
+// validity check to the server. Two kinds of caller use it:
+//
+//   - the prepared-query UPDATE path, which does not see the target (the target
+//     is immutable and lives on the stored query, so the FSM applies the gate
+//     against it — see handlers_update_prepared_query.go). It passes a non-audit
+//     target for resolution, which is sound because prepared queries are only
+//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is gRPC-only, never a prepared-query
+//     target — see http.preparedQueryTargets) and every non-audit target resolves
+//     the bare intrinsic fields identically (`timestamp` → transaction range,
+//     `date` → log range, `ledger` → LedgerCondition);
+//   - the ledgerctl list commands, which DO know their endpoint's target and pass
+//     it (audit list passes QUERY_TARGET_AUDIT so bare audit fields resolve to the
+//     audit arm) but let the server run the authoritative validity gate.
+//
+// Every server-side list handler MUST use DecodeDualFormat instead, so form and
+// validity are checked in one place.
+func DecodeDualFormatStructuralOnly(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	return decodeDualFormat(raw, target)
 }
 
 // decodeDualFormat performs form detection + parse, without the validity gate.
-func decodeDualFormat(raw []byte) (*commonpb.QueryFilter, error) {
+func decodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
 		return nil, nil
@@ -108,23 +126,24 @@ func decodeDualFormat(raw []byte) (*commonpb.QueryFilter, error) {
 			return nil, fmt.Errorf("filter: %w", err)
 		}
 
-		return parseTextual(expr)
+		return parseTextual(expr, target)
 
 	default:
 		// Raw textual filterexpr (query-string form).
-		return parseTextual(string(trimmed))
+		return parseTextual(string(trimmed), target)
 	}
 }
 
-// parseTextual parses a textual filterexpr expression, treating an empty string
-// as "no filter" for symmetry with the empty-raw case (a body field of `""` or a
-// query param of `?filter=` is an explicit no-op, not a parse error).
-func parseTextual(expr string) (*commonpb.QueryFilter, error) {
+// parseTextual parses a textual filterexpr expression, resolving bare fields
+// against target, and treating an empty string as "no filter" for symmetry with
+// the empty-raw case (a body field of `""` or a query param of `?filter=` is an
+// explicit no-op, not a parse error).
+func parseTextual(expr string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	if expr == "" {
 		return nil, nil
 	}
 
-	filter, err := Parse(expr)
+	filter, err := Parse(expr, target)
 	if err != nil {
 		return nil, fmt.Errorf("filter: %w", err)
 	}
