@@ -32,6 +32,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -522,6 +523,14 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// both surface here through state's typed sentinels.
 	if errors.Is(err, state.ErrBackupInProgress) ||
 		errors.Is(err, state.ErrBackupJobIDCollision) {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// Incremental backup attempted against a destination with no full checkpoint
+	// (EN-888): a precondition failure, not an opaque server error. FailedPrecondition
+	// tells the operator (and the Antithesis oracle) that a full backup must run first,
+	// and keeps this off the "unexpected error" path.
+	if errors.Is(err, backup.ErrNoFullCheckpoint) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 

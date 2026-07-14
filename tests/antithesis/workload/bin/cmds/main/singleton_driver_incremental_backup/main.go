@@ -35,6 +35,25 @@ func main() {
 
 	client := clusterpb.NewClusterServiceClient(conn)
 
+	// 0. Establish a full checkpoint first. An incremental backup is only
+	//    meaningful layered on a full checkpoint (EN-888): the checkpoint carries
+	//    the Global-zone persisted config, last-applied index, and timestamp that
+	//    restore needs, so the server now rejects an incremental against a
+	//    checkpoint-less destination with FailedPrecondition. Antithesis schedules
+	//    drivers randomly, so this driver cannot assume the full-backup driver ran
+	//    first — it takes its own full backup to guarantee the precondition holds.
+	if _, err := client.Backup(ctx, &clusterpb.BackupRequest{Storage: s3Storage()}); err != nil {
+		if internal.IsTransient(err) {
+			log.Printf("Backup (pre-incremental) transient error: %v", err)
+			return
+		}
+
+		assert.Unreachable("Backup (pre-incremental) returned unexpected error",
+			internal.Details{"error": err})
+
+		return
+	}
+
 	// 1. Run an incremental backup (exports log/audit entries since last export).
 	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 		Storage: s3Storage(),
@@ -48,6 +67,14 @@ func main() {
 		// External service errors (S3 connectivity) are acceptable under chaos.
 		if internal.IsExternalServiceError(err) {
 			log.Printf("IncrementalBackup external service error: %v", err)
+			return
+		}
+
+		// A concurrent restore/backup on the same destination can remove the
+		// checkpoint between step 0 and here; the no-full-checkpoint precondition
+		// is then an expected, acceptable outcome — not a finding (EN-888).
+		if internal.IsNoFullCheckpoint(err) {
+			log.Printf("IncrementalBackup: no full checkpoint at destination (acceptable): %v", err)
 			return
 		}
 
@@ -74,7 +101,8 @@ func main() {
 		Storage: s3Storage(),
 	})
 	if err != nil {
-		if internal.IsTransient(err) || internal.IsExternalServiceError(err) {
+		if internal.IsTransient(err) || internal.IsExternalServiceError(err) ||
+			internal.IsNoFullCheckpoint(err) {
 			return
 		}
 
