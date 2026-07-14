@@ -227,6 +227,46 @@ func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
 	require.Empty(t, got, "archived-mirror ledger with stored == archived max must not be flagged")
 }
 
+// TestCompareMirrorV2LogID_AbsentRowFlagged pins the union-driven comparison
+// (NumaryBot checker.go:930): a mirror ledger that has audited MirrorIngest
+// orders (auditedMax > 0) but NO stored boundary row must be flagged — treated as
+// stored 0 (0 != max). Iterating only existing rows would silently skip it,
+// leaving the disappearance of last_mirror_v2_log_id undetected.
+func TestCompareMirrorV2LogID_AbsentRowFlagged(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	// No boundary row written for "gone-mirror", but the audit shows ingests up
+	// to v2LogId 5.
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"gone-mirror": 5})
+
+	require.Len(t, got, 1)
+	require.Equal(t, "gone-mirror", got[0].GetLedger())
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+}
+
+// TestCompareMirrorV2LogID_AbsentRowNonMirrorNotFlagged: a ledger with neither a
+// boundary row nor audited ingests (both 0) is not in scope and not flagged —
+// the union defaults both sides to 0.
+func TestCompareMirrorV2LogID_AbsentRowNonMirrorNotFlagged(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	// A present, healthy mirror row alongside no entry at all for any absent
+	// non-mirror ledger — nothing spurious is emitted.
+	writeBoundaries(t, store, attrs, "healthy", &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 4,
+	})
+
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"healthy": 4})
+
+	require.Empty(t, got)
+}
+
 // TestCompareMirrorV2LogID_MultiLedgerIsolation: only the diverging ledger is
 // flagged; a healthy (equal) sibling in the same store is untouched.
 func TestCompareMirrorV2LogID_MultiLedgerIsolation(t *testing.T) {

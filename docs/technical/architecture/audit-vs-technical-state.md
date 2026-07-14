@@ -181,6 +181,10 @@ The audited max is derived from the live audit chain
 carries — `writeBaselineAttributes` includes `Boundary` rows), so a ledger whose
 mirror ingests live only in an archived chapter is not undercounted. A regular
 (never-mirrored) ledger has stored `0` and audited max `0` → equal → not flagged.
+The comparison is driven from the **union** of stored boundary rows and
+audited-mirror ledgers, so a mirror ledger whose `Boundary` row is deleted/absent
+(audited max > 0 but no row) is treated as stored `0` and flagged — an absent
+`last_mirror_v2_log_id` for an audited mirror ledger is caught, not skipped.
 
 There is **no** legacy / no-backfill leniency: existing pre-field clusters are
 **unsupported** — we do not ship a compat shim, and a store that predates

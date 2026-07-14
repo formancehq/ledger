@@ -918,7 +918,18 @@ func (c *Checker) compareIndexes(
 // A mirror ledger corrupted to 0 has audited max > 0 → not equal → flagged. There
 // is no legacy/no-backfill leniency: existing pre-field clusters are unsupported
 // (no compat shim).
+//
+// The comparison is driven from the UNION of (a) ledgers with a stored boundary
+// row and (b) ledgers with audited MirrorIngest orders (maxMirrorV2LogID > 0).
+// Iterating only stored rows would silently miss a mirror ledger whose Boundary
+// row was deleted/lost (audited max > 0 but no row): treated as stored 0, it is
+// flagged (0 != max) instead of skipped — otherwise the disappearance of
+// last_mirror_v2_log_id would go undetected and the idempotency guard would treat
+// already-applied source logs as fresh.
 func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, callback func(*servicepb.CheckStoreEvent)) {
+	// Collect stored last_mirror_v2_log_id per ledger from the live boundary rows.
+	stored := make(map[string]uint64)
+
 	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
@@ -939,15 +950,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 			continue
 		}
 
-		stored := entry.Value.GetLastMirrorV2LogId()
-		auditedMax := chainBound.maxMirrorV2LogID[lk.Name]
-
-		if stored != auditedMax {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
-				fmt.Sprintf("stored last_mirror_v2_log_id %d does not equal max audited MirrorIngest v2_log_id %d for ledger %q: the idempotent-replay high-water mark diverges from the audit chain",
-					stored, auditedMax, lk.Name),
-				0, lk.Name, "", ""))
-		}
+		stored[lk.Name] = entry.Value.GetLastMirrorV2LogId()
 	}
 
 	if err := iter.Close(); err != nil {
@@ -960,6 +963,47 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 	if err := iter.Err(); err != nil {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("live boundaries iterator error: %v", err), 0, "", "", ""))
+
+		return
+	}
+
+	// Compare over the union of stored rows and audited-mirror ledgers, in
+	// sorted order so events are emitted deterministically. A ledger present in
+	// only one set defaults to 0 on the other side (absent row → stored 0;
+	// non-mirror ledger → audited max 0).
+	ledgers := make(map[string]struct{}, len(stored)+len(chainBound.maxMirrorV2LogID))
+	for name := range stored {
+		ledgers[name] = struct{}{}
+	}
+
+	for name := range chainBound.maxMirrorV2LogID {
+		ledgers[name] = struct{}{}
+	}
+
+	names := make([]string, 0, len(ledgers))
+	for name := range ledgers {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	for _, name := range names {
+		storedV2 := stored[name]
+		auditedMax := chainBound.maxMirrorV2LogID[name]
+
+		if storedV2 != auditedMax {
+			_, hasRow := stored[name]
+
+			detail := "the idempotent-replay high-water mark diverges from the audit chain"
+			if !hasRow {
+				detail = "the ledger has audited MirrorIngest orders but no stored boundary row (last_mirror_v2_log_id lost)"
+			}
+
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+				fmt.Sprintf("stored last_mirror_v2_log_id %d does not equal max audited MirrorIngest v2_log_id %d for ledger %q: %s",
+					storedV2, auditedMax, name, detail),
+				0, name, "", ""))
+		}
 	}
 }
 
