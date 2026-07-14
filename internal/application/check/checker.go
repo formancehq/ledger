@@ -631,6 +631,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
+	c.compareMirrorV2LogID(snap, chainBound, callback)
+
 	return nil
 }
 
@@ -894,6 +896,74 @@ func (c *Checker) compareIndexes(
 				key.LedgerName, key.Canonical),
 			0, key.LedgerName, "", "",
 		))
+	}
+}
+
+// compareMirrorV2LogID bounds each mirror ledger's stored
+// LedgerBoundaries.last_mirror_v2_log_id against the maximum audited
+// MirrorIngest.v2_log_id for that ledger (chainBound.maxMirrorV2LogID, seeded
+// from the baseline floor and layered with the live audit chain).
+//
+// The check is deliberately ONE-SIDED (a bound, not equality): it emits
+// CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD only when the stored value is
+// GREATER than the audited max — the corruption/data-loss direction, where the
+// high-water mark claims to have consumed a source v2 log absent from the audit
+// and would wrongly skip future ingests at those ids. It does NOT flag stored <
+// max or stored == 0: those are the legitimate legacy / no-upgrade-backfill /
+// self-healing states (existing clusters carry no last_mirror_v2_log_id and the
+// field only advances on future ingests). Strict equality would false-positive
+// on every pre-EN-1550 store, which is exactly why this is a bound.
+//
+// last_mirror_v2_log_id is itself derivable from the audited MirrorIngest orders
+// (max applied v2_log_id) and only gates FUTURE application, so this bound is the
+// full checker obligation for it — there is no separate value-equality pass.
+func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, callback func(*servicepb.CheckStoreEvent)) {
+	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+			fmt.Sprintf("failed to create live boundaries iterator: %v", err), 0, "", "", ""))
+
+		return
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var lk domain.LedgerKey
+		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		if lk.Name == "" || entry.Value == nil {
+			continue
+		}
+
+		stored := entry.Value.GetLastMirrorV2LogId()
+		if stored == 0 {
+			// Never-ingested / legacy ledger: not a mirror ledger, or a
+			// pre-EN-1550 store with no high-water mark. Nothing to bound.
+			continue
+		}
+
+		auditedMax := chainBound.maxMirrorV2LogID[lk.Name]
+		if stored > auditedMax {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+				fmt.Sprintf("stored last_mirror_v2_log_id %d exceeds max audited MirrorIngest v2_log_id %d for ledger %q: high-water mark is ahead of the audit chain (future source logs at these ids would be wrongly skipped)",
+					stored, auditedMax, lk.Name),
+				0, lk.Name, "", ""))
+		}
+	}
+
+	if err := iter.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+			fmt.Sprintf("closing live boundaries iterator: %v", err), 0, "", "", ""))
+
+		return
+	}
+
+	if err := iter.Err(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+			fmt.Sprintf("live boundaries iterator error: %v", err), 0, "", "", ""))
 	}
 }
 
@@ -1879,6 +1949,15 @@ type chainBoundState struct {
 	// fire for it: a missing claim/mutation on a live-created ledger is a
 	// forged skip, not an archive limitation (finding 2adbf685cc).
 	ledgerCreationSeenLive map[string]struct{}
+	// maxMirrorV2LogID is the highest audited MirrorIngest.v2_log_id observed
+	// per ledger — from the live audit chain (recordMirrorIngestMutations) plus
+	// a baseline floor (foldBaselineBoundaries seeds it from the archived
+	// LedgerBoundaries.last_mirror_v2_log_id, so ledgers whose mirror ingests
+	// live in an archived chapter are not undercounted). compareMirrorV2LogID
+	// bounds the stored last_mirror_v2_log_id against this max: stored ABOVE it
+	// is corruption/data-loss (EN-1550), stored at-or-below is the legitimate
+	// legacy / self-healing state and is not flagged.
+	maxMirrorV2LogID map[string]uint64
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -1903,6 +1982,7 @@ func newChainBoundState() *chainBoundState {
 		nextTxID:               make(map[string]uint64),
 		ledgerCreationSeen:     make(map[string]struct{}),
 		ledgerCreationSeenLive: make(map[string]struct{}),
+		maxMirrorV2LogID:       make(map[string]uint64),
 	}
 }
 
@@ -2588,6 +2668,13 @@ func recordMirrorIngestMutations(
 		return
 	}
 
+	// Track the highest audited source v2_log_id per ledger (any ingest kind
+	// carries it on the wrapping MirrorLogEntry). compareMirrorV2LogID bounds
+	// the stored LedgerBoundaries.last_mirror_v2_log_id against this max.
+	if v2 := entry.GetV2LogId(); v2 > chainBound.maxMirrorV2LogID[ledger] {
+		chainBound.maxMirrorV2LogID[ledger] = v2
+	}
+
 	if mct := entry.GetCreatedTransaction(); mct != nil {
 		if ref := mct.GetReference(); ref != "" {
 			rememberReferenceClaim(chainBound.references, ledger, ref, logSeq)
@@ -3100,6 +3187,17 @@ func (c *Checker) foldBaselineBoundaries(
 
 		if lk.Name == "" || entry.Value == nil {
 			continue
+		}
+
+		// Baseline floor for the mirror v2LogId high-water mark: at the archive
+		// boundary, LedgerBoundaries.last_mirror_v2_log_id equals the max
+		// MirrorIngest.v2_log_id applied up to that point, so it is a valid lower
+		// bound for the archived audited max. Without this, a ledger whose mirror
+		// ingests all live in an archived chapter would have live-only max 0 and
+		// compareMirrorV2LogID would false-positive on its legitimate stored
+		// value. Fold as a max so live ingests after the boundary still win.
+		if v2 := entry.Value.GetLastMirrorV2LogId(); v2 > chainBound.maxMirrorV2LogID[lk.Name] {
+			chainBound.maxMirrorV2LogID[lk.Name] = v2
 		}
 
 		next := entry.Value.GetNextTransactionId()

@@ -799,6 +799,15 @@ enum CheckStoreErrorType {
   // for an order that should have been rejected hard. The skippable_reasons
   // whitelist on the audit-bound Order is the source of truth.
   CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
+  // Emitted when a mirror ledger's stored LedgerBoundaries.last_mirror_v2_log_id
+  // is GREATER than the maximum audited MirrorIngest.v2_log_id for that ledger.
+  // last_mirror_v2_log_id is the idempotent-replay high-water mark (EN-1550): it
+  // gates future ingests, so a value ahead of the audit claims to have consumed a
+  // source v2 log that no audit entry recorded — future source logs at those ids
+  // would be wrongly skipped (silent under-ingestion / data loss). The bound is
+  // deliberately one-sided: stored BELOW the audited max (or 0) is a legitimate
+  // legacy / no-backfill / self-healing state and is NOT flagged.
+  CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD = 12;
 }
 
 message CheckStoreError {

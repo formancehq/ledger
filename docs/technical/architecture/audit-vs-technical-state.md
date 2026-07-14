@@ -148,18 +148,28 @@ that re-derives the expected cursor from the audited mirror-ingest logs must
 enforce the equality before the stored cursor can be trusted.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
-mark) does **not** add a new tamper vector and needs **no** new checker pass. It
-is derivable from the audited `MirrorIngest` orders — it is exactly the maximum
-applied `v2LogId`, the same quantity the (still-owed) `MirrorCursor` equality
-above re-derives — and it only *gates future application* by turning a replayed
-ingest into a no-op. Tampering it can only make the guard stricter (skip a not-yet
--applied log, which the pending `MirrorCursor` equality check would already flag
-as under-ingestion) or looser (admit an already-applied `v2LogId`), and the
-looser case cannot double a balance on its own: the double-application it would
-re-enable is precisely what the same-proposal, audit-bound posting effects and
-the `MirrorCursor` equality already govern. It is not independently
-business-authoritative, so it rides on the mirror-cursor coverage rather than
-earning its own `compare*` pass.
+mark) **is** covered by the checker, as a **bound, not an equality**:
+`compareMirrorV2LogID` (`internal/application/check/checker.go`) verifies, per
+mirror ledger, that the stored `last_mirror_v2_log_id` is `<= max(audited
+MirrorIngest.v2_log_id)` and emits `CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD`
+**only** when the stored value is strictly greater than that audited max. The
+audited max is derived from the live audit chain
+(`recordMirrorIngestMutations`) layered over a baseline floor
+(`foldBaselineBoundaries` seeds it from the archived
+`LedgerBoundaries.last_mirror_v2_log_id`), so a ledger whose mirror ingests live
+only in an archived chapter is not undercounted.
+
+The bound is deliberately one-sided. `stored > max` is the corruption/data-loss
+direction: the high-water mark claims to have consumed a source v2 log that no
+audit entry recorded, so future source logs at those ids would be wrongly skipped
+(silent under-ingestion). The **behind / legacy direction is intentionally not
+flagged**: there is no upgrade backfill for existing clusters (pre-GA, no compat
+shim), so a pre-EN-1550 store legitimately carries `last_mirror_v2_log_id == 0`
+or a value below the audited max while the field self-heals forward on the next
+ingest. Strict equality would false-positive on every such store — which is
+exactly why the checker uses a `<=` bound. This bound is the full checker
+obligation for the field; because it is derivable from the audited orders and
+only gates *future* application, there is no separate value-equality pass.
 
 ## Readstore and Indexes
 
