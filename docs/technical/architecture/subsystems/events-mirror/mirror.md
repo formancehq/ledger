@@ -137,7 +137,7 @@ apiVersion: ledger.formance.com/v1alpha1
 kind: Ledger
 spec:
   name: my-ledger
-  clusterRef: my-service
+  clusterRef: my-cluster
   mode: mirror
   mirrorSource: { ... }
   indexes:

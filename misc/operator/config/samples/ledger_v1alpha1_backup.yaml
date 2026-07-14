@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: my-backup
 spec:
-  clusterRef: my-ledger
+  clusterRef: my-cluster
   destination:
     driver: s3
     s3:
