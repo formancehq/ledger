@@ -139,34 +139,39 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				}, nil)))
 			Expect(err).To(Succeed())
 
-			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-
-			logs := collectLogs(stream)
-			Expect(logs).NotTo(BeEmpty())
-
-			// At least one of the two logs in the batch must carry
-			// {Account: clearing:ep1, Asset: USD} in its purged_volumes.
-			// The index builder uses this tuple to skip the matching
-			// account->transaction mapping while preserving any other
-			// asset's mappings on the same account.
+			// ListLogs is served from the eventually-consistent read-side, so
+			// retry until the batch's logs have been indexed (mirrors every
+			// other read-after-write assertion in this file).
 			type touched struct{ Account, Asset string }
-			var purged []touched
-			for _, log := range logs {
-				apply := log.GetPayload().GetApply()
-				if apply == nil || apply.GetLedgerName() != ledgerName {
-					continue
-				}
-				if ll := apply.GetLog(); ll != nil {
-					for _, v := range ll.GetPurgedVolumes() {
-						purged = append(purged, touched{Account: v.GetAccount(), Asset: v.GetAsset()})
+			Eventually(func(g Gomega) {
+				stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+
+				logs := collectLogs(stream)
+				g.Expect(logs).NotTo(BeEmpty())
+
+				// At least one of the two logs in the batch must carry
+				// {Account: clearing:ep1, Asset: USD} in its purged_volumes.
+				// The index builder uses this tuple to skip the matching
+				// account->transaction mapping while preserving any other
+				// asset's mappings on the same account.
+				var purged []touched
+				for _, log := range logs {
+					apply := log.GetPayload().GetApply()
+					if apply == nil || apply.GetLedgerName() != ledgerName {
+						continue
+					}
+					if ll := apply.GetLog(); ll != nil {
+						for _, v := range ll.GetPurgedVolumes() {
+							purged = append(purged, touched{Account: v.GetAccount(), Asset: v.GetAsset()})
+						}
 					}
 				}
-			}
-			Expect(purged).To(ContainElement(touched{Account: "clearing:ep1", Asset: "USD"}),
-				"at least one log in the batch should list (clearing:ep1, USD) as purged")
+				g.Expect(purged).To(ContainElement(touched{Account: "clearing:ep1", Asset: "USD"}),
+					"at least one log in the batch should list (clearing:ep1, USD) as purged")
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

@@ -444,6 +444,26 @@ the audit endpoint; the textual form is simply the only one that can carry an
 audit condition, so it is the canonical representation for
 `GET /v3/_/audit-entries`.
 
+**Date fields accept RFC3339 or raw microseconds (EN-1544).** The builtin date
+indexes store unsigned Unix microseconds, but their DSL bounds accept **either** an
+RFC3339 timestamp **or** the raw-microsecond form, in both representations:
+
+| Target | Field | Textual | Structured |
+|--------|-------|---------|------------|
+| transactions | `timestamp` (also `insertedAt`, `revertedAt`) | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
+| logs | `date` | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
+| audit | `audit[timestamp]` | `audit[timestamp] >= "2023-11-14T22:13:20Z"` | — (audit is text-only) |
+
+The raw form still parses (`timestamp >= 1700000000000000`), so this is purely
+additive. RFC3339 acceptance and pre-epoch rejection are defined once, in the
+shared `commonpb.CoerceDatetimeMicros`, reused by the audit / transactions / logs
+DSL paths and by the transport-level `startDate`/`endDate` convenience params
+(`startDate`/`endDate` remain RFC3339-only). A pre-epoch RFC3339 value (negative
+`UnixMicro`) has no representable unsigned bound and is rejected with `400`. The
+`date` and `timestamp` fields are subject to the same per-target validity gate —
+`date` is valid on logs only, `timestamp` (like `insertedAt`/`revertedAt`) on
+transactions only — enforced identically for both serializations.
+
 ### 10. Prepared Queries and User-Configurable Indexes
 
 Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).

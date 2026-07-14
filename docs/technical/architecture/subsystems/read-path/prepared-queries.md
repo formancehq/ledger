@@ -47,7 +47,7 @@ Condition: metadata[key] == value
          | exists transaction <reference>
 ```
 
-The reserved words are: `and`, `or`, `not`, `in`, `between`, `metadata`, `address`, `source`, `destination`, `exists`, `true`, `false`. Nesting depth is capped at 200 tokens to keep parsing bounded.
+The reserved words are only the structural operators: `and`, `or`, `not`, `in`, `between`. Field/noun words (`metadata`, `address`, `source`, `destination`, `ledger`, `audit`, `exists`, `has`, `asset`) and the boolean literals (`true`, `false`) are ordinary identifiers — they act as field selectors at condition position but are otherwise usable as plain keys/values. A bare identifier is plain-alphanumeric (`[a-zA-Z_][a-zA-Z0-9_]*`); any key or value containing a special character (`-`, `:`, `.`, `/`, spaces, …) must be quoted (e.g. `metadata["x-request-id"] == "user:42"`). The one structured exception is the asset reference in `has asset BASE/PRECISION` (e.g. `USD/2`), whose `/` is part of the grammar. Nesting depth is capped at 200 tokens to keep parsing bounded.
 
 The parser produces a `*commonpb.QueryFilter` — a typed proto that the FSM stores verbatim. The compiler (`internal/query/compile.go:90`) turns that proto into an iterator tree at execution time, gated through `requireIndexReady` so an index in mid-rewrite returns `ErrIndexBuilding` rather than producing partial results.
 
