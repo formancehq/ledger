@@ -31,8 +31,9 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 
 // collectMirrorV2LogIDEvents runs compareMirrorV2LogID against the store's live
 // boundaries with the given audited-max map and returns only the
-// MIRROR_V2LOGID_MISMATCH errors.
-func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64) []*servicepb.CheckStoreError {
+// MIRROR_V2LOGID_MISMATCH errors. deletedLedgers names ledgers audited as
+// deleted (their absent boundary row is legitimate).
+func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*servicepb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, nil, logging.Testing())
@@ -45,9 +46,14 @@ func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attribute
 	chainBound := newChainBoundState()
 	maps.Copy(chainBound.maxMirrorV2LogID, maxV2)
 
+	deletedInReplay := make(map[string]struct{}, len(deletedLedgers))
+	for _, name := range deletedLedgers {
+		deletedInReplay[name] = struct{}{}
+	}
+
 	var got []*servicepb.CheckStoreError
 
-	checker.compareMirrorV2LogID(handle, chainBound, func(event *servicepb.CheckStoreEvent) {
+	checker.compareMirrorV2LogID(handle, chainBound, deletedInReplay, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH {
 			got = append(got, e.Error)
@@ -218,7 +224,7 @@ func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
 	defer func() { _ = liveHandle.Close() }()
 
 	var got []*servicepb.CheckStoreError
-	checker.compareMirrorV2LogID(liveHandle, chainBound, func(event *servicepb.CheckStoreEvent) {
+	checker.compareMirrorV2LogID(liveHandle, chainBound, nil, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			got = append(got, e.Error)
 		}
@@ -245,6 +251,24 @@ func TestCompareMirrorV2LogID_AbsentRowFlagged(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, "gone-mirror", got[0].GetLedger())
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+}
+
+// TestCompareMirrorV2LogID_DeletedMirrorLedgerNotFlagged pins that a LEGITIMATELY
+// DELETED mirror ledger — audited ingests (max > 0), a DeleteLedger log in the
+// verified range, and its boundary row removed by WriteSet.Absorb — is NOT
+// flagged. Without the deleted-ledger exclusion the absent-row branch would
+// false-positive on a healthy deletion (NumaryBot checker.go:979).
+func TestCompareMirrorV2LogID_DeletedMirrorLedgerNotFlagged(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	// Audited ingests up to v2LogId 5, no boundary row (removed on delete), and
+	// the ledger is in the audited deleted set.
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"deleted-mirror": 5}, "deleted-mirror")
+
+	require.Empty(t, got)
 }
 
 // TestCompareMirrorV2LogID_AbsentRowNonMirrorNotFlagged: a ledger with neither a

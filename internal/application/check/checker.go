@@ -631,7 +631,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
-	c.compareMirrorV2LogID(snap, chainBound, callback)
+	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
 
 	return nil
 }
@@ -926,7 +926,14 @@ func (c *Checker) compareIndexes(
 // flagged (0 != max) instead of skipped — otherwise the disappearance of
 // last_mirror_v2_log_id would go undetected and the idempotency guard would treat
 // already-applied source logs as fresh.
-func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, callback func(*servicepb.CheckStoreEvent)) {
+//
+// deletedInReplay names ledgers whose DeleteLedger log was replayed in the
+// verified range. WriteSet.Absorb legitimately removes the Boundary row on
+// ledger deletion, so the absent-row branch is suppressed for a deleted ledger:
+// its missing boundary is expected, not corruption. The present-row equality
+// checks (ahead/behind/corrupt-to-zero) still apply to every ledger, including
+// one in the pending-cleanup window whose row is still present.
+func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) {
 	// Collect stored last_mirror_v2_log_id per ledger from the live boundary rows.
 	stored := make(map[string]uint64)
 
@@ -993,6 +1000,15 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 
 		if storedV2 != auditedMax {
 			_, hasRow := stored[name]
+
+			// Absent-row case for a ledger audited as DELETED: the Boundary row
+			// is legitimately gone (WriteSet.Absorb removes it on deletion), so
+			// this is not corruption — skip. Present-row divergences still flag.
+			if !hasRow {
+				if _, deleted := deletedInReplay[name]; deleted {
+					continue
+				}
+			}
 
 			detail := "the idempotent-replay high-water mark diverges from the audit chain"
 			if !hasRow {
