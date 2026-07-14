@@ -240,7 +240,7 @@ func batchDeleteQueryCheckpointSchedule(b *dal.WriteSession) error {
 
 // SaveReversionWord writes a single bitset word for a ledger.
 // Key: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func saveReversionWord(b *dal.WriteSession, ledgerName string, wordIndex uint64, value uint64) error {
+func SaveReversionWord(b *dal.WriteSession, ledgerName string, wordIndex uint64, value uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLReversions).
 		PutLedgerNameFixed(ledgerName).
 		PutUint64(wordIndex)

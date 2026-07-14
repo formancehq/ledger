@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -41,18 +42,20 @@ func RebuildDelta(
 	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
-		store:          store,
-		batch:          batch,
-		volume:         attrs.Volume,
-		metadata:       attrs.Metadata,
-		tx:             attrs.Transaction,
-		ledger:         attrs.Ledger,
-		references:     attrs.References,
-		boundary:       attrs.Boundary,
-		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
-		pendingTx:      make(map[string]*commonpb.TransactionState),
-		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
-		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
+		store:           store,
+		batch:           batch,
+		volume:          attrs.Volume,
+		metadata:        attrs.Metadata,
+		tx:              attrs.Transaction,
+		ledger:          attrs.Ledger,
+		references:      attrs.References,
+		boundary:        attrs.Boundary,
+		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
+		pendingTx:       make(map[string]*commonpb.TransactionState),
+		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
+		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:      make(map[string]*bitset.Bitset),
+		dirtyReversions: make(map[string]struct{}),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -82,6 +85,17 @@ func RebuildDelta(
 
 		return fmt.Errorf("seeding ledger context: %w", err)
 	}
+
+	// Seed the reversion bitsets from the checkpoint so delta reverts fold
+	// into (not clobber) the words that already hold pre-checkpoint reverts.
+	seededReversions, err := query.ReadReversions(readHandle)
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("seeding reversion bitsets: %w", err)
+	}
+
+	writer.reversions = seededReversions
 
 	logCursor, err := query.ReadLogsSince(ctx, readHandle, fromLogSeq)
 	if err != nil {
@@ -429,6 +443,12 @@ func RebuildDelta(
 		return fmt.Errorf("flushing rebuilt boundaries: %w", err)
 	}
 
+	if err := writer.flushReversions(); err != nil {
+		_ = writer.batch.Cancel()
+
+		return fmt.Errorf("flushing rebuilt reversion bitsets: %w", err)
+	}
+
 	if err := writer.batch.Commit(); err != nil {
 		return fmt.Errorf("committing boundaries batch: %w", err)
 	}
@@ -695,6 +715,16 @@ type attributeReplayWriter struct {
 	// commit (net counts are derived from the committed 0xF1 state).
 	boundaries map[string]*raftcmdpb.LedgerBoundaries
 	readHandle dal.PebbleReader
+
+	// Reversion bitsets per ledger (ZonePerLedger/SubPLReversions). The FSM's
+	// already-reverted gate reads these — not the tx rows'
+	// RevertedByTransaction markers — so every replayed RevertedTransaction
+	// must fold into them or a restored node re-admits reverts of
+	// already-reverted transactions. Seeded from the checkpoint rows; ledgers
+	// touched by the replay are flushed by flushReversions alongside the
+	// boundaries.
+	reversions      map[string]*bitset.Bitset
+	dirtyReversions map[string]struct{}
 }
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
@@ -799,6 +829,12 @@ func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *commonpb.Ti
 	}
 
 	delete(w.boundaries, name)
+
+	// The stored reversion rows linger until the covering purge (parity with
+	// the live path), but the in-memory fold must reset so a recreated ledger
+	// starts from an empty bitset.
+	delete(w.reversions, name)
+	delete(w.dirtyReversions, name)
 
 	return state.SavePendingLedgerCleanup(w.batch, name, seq)
 }
@@ -955,6 +991,32 @@ func countAttributeKeys[V proto.Message](attr *attributes.Attribute[V], reader d
 	}
 
 	return count, si.Err()
+}
+
+// flushReversions writes the reversion bitset words of every ledger the
+// replay reverted in, in the same [zone][sub][ledger][wordIndex] layout the
+// FSM persists (SaveReversionWord). Untouched ledgers keep their
+// checkpoint-time rows; zero words are skipped — a missing row reads as an
+// all-zero word (query.ReadReversions).
+func (w *attributeReplayWriter) flushReversions() error {
+	for name := range w.dirtyReversions {
+		bs := w.reversions[name]
+		if bs == nil {
+			continue
+		}
+
+		for i, word := range bs.Words() {
+			if word == 0 {
+				continue
+			}
+
+			if err := state.SaveReversionWord(w.batch, name, uint64(i), word); err != nil {
+				return fmt.Errorf("writing reversion word for ledger %q: %w", name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // flushBoundaries writes every touched ledger's boundaries to the SubAttrBoundary
@@ -1134,6 +1196,22 @@ func (w *attributeReplayWriter) SetRevertedBy(canonicalKey []byte, revertTxID ui
 	}
 
 	w.pendingTx[string(canonicalKey)] = existing
+
+	// Fold the reverted id into the ledger's reversion bitset — the structure
+	// the FSM's already-reverted gate actually reads.
+	var tk domain.TransactionKey
+	if err := tk.Unmarshal(canonicalKey); err != nil {
+		return fmt.Errorf("unmarshaling reverted transaction key: %w", err)
+	}
+
+	bs := w.reversions[tk.LedgerName]
+	if bs == nil {
+		bs = &bitset.Bitset{}
+		w.reversions[tk.LedgerName] = bs
+	}
+
+	bs.Set(tk.ID)
+	w.dirtyReversions[tk.LedgerName] = struct{}{}
 
 	return nil
 }

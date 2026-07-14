@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"math/big"
+	"math/bits"
 	"slices"
 	"strconv"
 	"time"
@@ -661,6 +662,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, pendingCleanupLedgers, callback); err != nil {
 		return err
 	}
 
@@ -5051,6 +5056,68 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 			},
 		},
 	}
+}
+
+// compareReversions verifies the persisted reversion bitsets
+// (ZonePerLedger/SubPLReversions) — the projection the FSM's already-reverted
+// gate reads — against the reverted-transaction set derived from the audit:
+// baseline tx-row markers (seedTxTrackingFromBaseline) plus the replayed
+// RevertedTransaction logs. That derivation is complete across archived
+// chapters, so the comparison is exact equality both ways: a bit the audit
+// set but the store lost re-admits a double revert (double refund) past the
+// gate, and a stored bit the audit never set silently blocks a legitimate
+// revert. Ledgers pending cleanup (or deleted outright) are skipped — their
+// rows legitimately linger until a covering purge, and the gate never reads
+// bitsets of non-live ledgers.
+func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers, pendingCleanupLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+	stored, err := query.ReadReversions(reader)
+	if err != nil {
+		return fmt.Errorf("reading stored reversion bitsets: %w", err)
+	}
+
+	for name := range knownLedgers {
+		if _, pending := pendingCleanupLedgers[name]; pending {
+			continue
+		}
+
+		var derivedWords, storedWords []uint64
+		if bs := derived[name]; bs != nil {
+			derivedWords = bs.Words()
+		}
+
+		if bs := stored[name]; bs != nil {
+			storedWords = bs.Words()
+		}
+
+		words := max(len(derivedWords), len(storedWords))
+		for i := range words {
+			var d, s uint64
+			if i < len(derivedWords) {
+				d = derivedWords[i]
+			}
+
+			if i < len(storedWords) {
+				s = storedWords[i]
+			}
+
+			for diff := d ^ s; diff != 0; diff &= diff - 1 {
+				bit := bits.TrailingZeros64(diff)
+				txID := uint64(i)*64 + uint64(bit)
+
+				if d&(1<<bit) != 0 {
+					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+						fmt.Sprintf("reversion bit missing for tx %d in ledger %q: the audit reverts it but the stored bitset does not — the already-reverted gate would re-admit a double revert", txID, name),
+						name, txID))
+				} else {
+					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+						fmt.Sprintf("unaudited reversion bit for tx %d in ledger %q: the stored bitset marks it reverted but no audit-backed revert exists", txID, name),
+						name, txID))
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // checkReversionInvariants tracks transaction IDs and validates reversion invariants

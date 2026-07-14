@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -717,19 +718,21 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	writer := &attributeReplayWriter{
-		store:          store,
-		batch:          store.OpenWriteSession(),
-		volume:         attrs.Volume,
-		metadata:       attrs.Metadata,
-		tx:             attrs.Transaction,
-		ledger:         attrs.Ledger,
-		references:     attrs.References,
-		boundary:       attrs.Boundary,
-		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
-		pendingTx:      make(map[string]*commonpb.TransactionState),
-		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
-		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
-		readHandle:     readHandle,
+		store:           store,
+		batch:           store.OpenWriteSession(),
+		volume:          attrs.Volume,
+		metadata:        attrs.Metadata,
+		tx:              attrs.Transaction,
+		ledger:          attrs.Ledger,
+		references:      attrs.References,
+		boundary:        attrs.Boundary,
+		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
+		pendingTx:       make(map[string]*commonpb.TransactionState),
+		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
+		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:      make(map[string]*bitset.Bitset),
+		dirtyReversions: make(map[string]struct{}),
+		readHandle:      readHandle,
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
