@@ -189,13 +189,21 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 	return s.db.Delete(oldKey, pebble.NoSync)
 }
 
-// setMetadata stores a metadata value in the replay store (pure write).
-func (s *replayStore) SetMetadata(canonicalKey []byte, value string) error {
+// setMetadata stores a metadata value in the replay store (pure write). The
+// typed value is kept intact — a marshaled MetadataValue after the flag byte —
+// so the compare pass can flag a live row whose type diverges from the log
+// (e.g. a bool stored as its string rendering).
+func (s *replayStore) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
-	data := make([]byte, 1+len(value))
+	encoded, err := value.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling metadata value: %w", err)
+	}
+
+	data := make([]byte, 1+len(encoded))
 	data[0] = metaFlagSet
-	copy(data[1:], value)
+	copy(data[1:], encoded)
 
 	return s.db.Set(key, data, pebble.NoSync)
 }

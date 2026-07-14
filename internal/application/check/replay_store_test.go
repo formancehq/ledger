@@ -11,6 +11,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// decodeReplayMetaValue unmarshals the MetadataValue stored after the flag byte.
+func decodeReplayMetaValue(t *testing.T, val []byte) *commonpb.MetadataValue {
+	t.Helper()
+
+	mv := &commonpb.MetadataValue{}
+	require.NoError(t, mv.UnmarshalVT(val[1:]))
+
+	return mv
+}
+
 func newTestReplayStore(t *testing.T) *replayStore {
 	t.Helper()
 
@@ -115,14 +125,25 @@ func TestReplayStoreMetadataSetAndRead(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, "admin"))
+	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 
 	require.Equal(t, byte(metaFlagSet), val[0])
-	require.Equal(t, "admin", string(val[1:]))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
+
+	// Typed values keep their arm — a bool must not come back as its string
+	// rendering.
+	boolKey := []byte("ledger\x00account\x00flag")
+	require.NoError(t, rs.SetMetadata(boolKey, commonpb.NewBoolValue(true)))
+
+	boolVal, boolCloser, err := rs.db.Get(replayKey(replayPrefixMetadata, boolKey))
+	require.NoError(t, err)
+	defer func() { _ = boolCloser.Close() }()
+
+	require.True(t, decodeReplayMetaValue(t, boolVal).EqualVT(commonpb.NewBoolValue(true)))
 }
 
 func TestReplayStoreMetadataOverwrite(t *testing.T) {
@@ -131,14 +152,14 @@ func TestReplayStoreMetadataOverwrite(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, "user"))
-	require.NoError(t, rs.SetMetadata(key, "admin"))
+	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("user")))
+	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 
-	require.Equal(t, "admin", string(val[1:]))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
 }
 
 func TestReplayStoreMetadataDelete(t *testing.T) {
@@ -147,7 +168,7 @@ func TestReplayStoreMetadataDelete(t *testing.T) {
 	rs := newTestReplayStore(t)
 	key := []byte("ledger\x00account\x00role")
 
-	require.NoError(t, rs.SetMetadata(key, "admin"))
+	require.NoError(t, rs.SetMetadata(key, commonpb.NewStringValue("admin")))
 	require.NoError(t, rs.DeleteMetadata(key))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, key))
@@ -326,7 +347,7 @@ func TestReplayStorePrefixIter(t *testing.T) {
 	// Write data across all three prefixes.
 	require.NoError(t, rs.AddVolumeDelta([]byte("k1"), big.NewInt(10), big.NewInt(0)))
 	require.NoError(t, rs.AddVolumeDelta([]byte("k2"), big.NewInt(20), big.NewInt(0)))
-	require.NoError(t, rs.SetMetadata([]byte("m1"), "v1"))
+	require.NoError(t, rs.SetMetadata([]byte("m1"), commonpb.NewStringValue("v1")))
 	require.NoError(t, rs.CreateTransaction([]byte("t1"), 1, nil, nil, nil, 0))
 
 	// Volume prefix should yield exactly 2 entries.

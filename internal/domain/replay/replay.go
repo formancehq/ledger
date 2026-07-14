@@ -92,7 +92,7 @@ func ReplayLedgerLog(
 					}
 
 					if value != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
+						if err := w.SetMetadata(mk.Bytes(), value); err != nil {
 							return fmt.Errorf("setting account metadata: %w", err)
 						}
 					}
@@ -152,7 +152,7 @@ func ReplayLedgerLog(
 					}
 
 					if value != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
+						if err := w.SetMetadata(mk.Bytes(), value); err != nil {
 							return fmt.Errorf("setting metadata: %w", err)
 						}
 					}

@@ -1293,9 +1293,39 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 	return errorCount
 }
 
+// metaValueDisplay renders a metadata value with its type for check events, so
+// a type-only divergence (bool false vs string "false") is visible in the
+// message.
+func metaValueDisplay(v *commonpb.MetadataValue) string {
+	var kind string
+
+	switch v.GetType().(type) {
+	case *commonpb.MetadataValue_StringValue:
+		kind = "string"
+	case *commonpb.MetadataValue_IntValue:
+		kind = "int"
+	case *commonpb.MetadataValue_UintValue:
+		kind = "uint"
+	case *commonpb.MetadataValue_BoolValue:
+		kind = "bool"
+	case *commonpb.MetadataValue_DatetimeValue:
+		kind = "datetime"
+	case *commonpb.MetadataValue_NullValue:
+		kind = "null"
+	default:
+		kind = "unset"
+	}
+
+	return fmt.Sprintf("%q (%s)", commonpb.MetadataValueToString(v), kind)
+}
+
 // compareMetadata performs a 3-way merge comparison for account metadata.
-// Replay entries encode SET (flag 0x00 + value) or DELETED (flag 0x01).
-// expected = replay override if present, else baseline; compare with live.
+// Replay entries encode SET (flag 0x00 + marshaled MetadataValue) or DELETED
+// (flag 0x01). expected = replay override if present, else baseline; compare
+// with live. Values are compared as typed protos, not string renderings — the
+// FSM stores the order's MetadataValue verbatim, so a live row whose type
+// diverges from the log (bool false vs string "false") is a projection
+// mismatch even when the renderings agree.
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
@@ -1303,7 +1333,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	errorCount := 0
 
 	// Collect live metadata
-	liveMetadata := make(map[string]string)
+	liveMetadata := make(map[string]*commonpb.MetadataValue)
 
 	liveIter, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -1315,7 +1345,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 	for liveIter.Next() {
 		e := liveIter.Entry()
-		liveMetadata[string(e.CanonicalKey)] = commonpb.MetadataValueToString(e.Value)
+		liveMetadata[string(e.CanonicalKey)] = e.Value
 	}
 
 	if err := liveIter.Close(); err != nil {
@@ -1333,7 +1363,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	// Collect baseline metadata (if available)
-	baselineMetadata := make(map[string]string) // key -> string value
+	baselineMetadata := make(map[string]*commonpb.MetadataValue)
 
 	if baselineDB != nil {
 		baselineIter, err := c.attrs.Metadata.NewStreamingIter(baselineDB, nil)
@@ -1346,7 +1376,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 		for baselineIter.Next() {
 			e := baselineIter.Entry()
-			baselineMetadata[string(e.CanonicalKey)] = commonpb.MetadataValueToString(e.Value)
+			baselineMetadata[string(e.CanonicalKey)] = e.Value
 		}
 
 		if err := baselineIter.Close(); err != nil {
@@ -1367,7 +1397,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	// Collect replay metadata state
 	type replayMeta struct {
 		deleted bool
-		value   string // only valid when !deleted
+		value   *commonpb.MetadataValue // only valid when !deleted
 	}
 
 	replayEntries := make(map[string]replayMeta)
@@ -1400,7 +1430,17 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if valBytes[0] == metaFlagDeleted {
 			replayEntries[string(canonicalKey)] = replayMeta{deleted: true}
 		} else {
-			replayEntries[string(canonicalKey)] = replayMeta{value: string(valBytes[1:])}
+			mv := &commonpb.MetadataValue{}
+			if err := mv.UnmarshalVT(valBytes[1:]); err != nil {
+				_ = replayIter.Close()
+
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+					fmt.Sprintf("unmarshaling replay metadata value: %v", err), 0, "", "", ""))
+
+				return 1
+			}
+
+			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
 		}
 	}
 
@@ -1445,7 +1485,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		}
 
 		// Compute expected value
-		var expectedValue string
+		var expectedValue *commonpb.MetadataValue
 		expectedExists := false
 
 		if rm, hasReplay := replayEntries[key]; hasReplay {
@@ -1465,21 +1505,21 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if expectedExists != actualExists {
 			if expectedExists {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-					fmt.Sprintf("metadata missing for %s/%s: expected %q",
-						mk.Account, mk.Key, expectedValue),
+					fmt.Sprintf("metadata missing for %s/%s: expected %s",
+						mk.Account, mk.Key, metaValueDisplay(expectedValue)),
 					0, mk.LedgerName, mk.Account, ""))
 			} else {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-					fmt.Sprintf("unexpected metadata for %s/%s: got %q",
-						mk.Account, mk.Key, actualValue),
+					fmt.Sprintf("unexpected metadata for %s/%s: got %s",
+						mk.Account, mk.Key, metaValueDisplay(actualValue)),
 					0, mk.LedgerName, mk.Account, ""))
 			}
 
 			errorCount++
-		} else if expectedExists && expectedValue != actualValue {
+		} else if expectedExists && !expectedValue.EqualVT(actualValue) {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("metadata mismatch for %s/%s: expected %q, got %q",
-					mk.Account, mk.Key, expectedValue, actualValue),
+				fmt.Sprintf("metadata mismatch for %s/%s: expected %s, got %s",
+					mk.Account, mk.Key, metaValueDisplay(expectedValue), metaValueDisplay(actualValue)),
 				0, mk.LedgerName, mk.Account, ""))
 
 			errorCount++

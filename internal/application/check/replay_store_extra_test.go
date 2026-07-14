@@ -6,6 +6,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestReplayStoreMoveVolumeTransfersAndDeletes(t *testing.T) {
@@ -76,7 +78,7 @@ func TestReplayStoreMoveMetadataTransfersAndDeletes(t *testing.T) {
 	oldKey := []byte("ledger\x00old-account\x01role")
 	newKey := []byte("ledger\x00new-account\x01role")
 
-	require.NoError(t, rs.SetMetadata(oldKey, "admin"))
+	require.NoError(t, rs.SetMetadata(oldKey, commonpb.NewStringValue("admin")))
 
 	require.NoError(t, rs.MoveMetadata(oldKey, newKey))
 
@@ -85,7 +87,7 @@ func TestReplayStoreMoveMetadataTransfersAndDeletes(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 	require.Equal(t, byte(metaFlagSet), val[0])
-	require.Equal(t, "admin", string(val[1:]))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
 
 	// Old key should be deleted
 	_, _, err = rs.db.Get(replayKey(replayPrefixMetadata, oldKey))
@@ -113,15 +115,15 @@ func TestReplayStoreMoveMetadataOverwritesExistingTarget(t *testing.T) {
 	oldKey := []byte("ledger\x00src\x01role")
 	newKey := []byte("ledger\x00dst\x01role")
 
-	require.NoError(t, rs.SetMetadata(newKey, "user"))
-	require.NoError(t, rs.SetMetadata(oldKey, "admin"))
+	require.NoError(t, rs.SetMetadata(newKey, commonpb.NewStringValue("user")))
+	require.NoError(t, rs.SetMetadata(oldKey, commonpb.NewStringValue("admin")))
 
 	require.NoError(t, rs.MoveMetadata(oldKey, newKey))
 
 	val, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, newKey))
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
-	require.Equal(t, "admin", string(val[1:]))
+	require.True(t, decodeReplayMetaValue(t, val).EqualVT(commonpb.NewStringValue("admin")))
 }
 
 func TestReplayStoreDeleteVolume(t *testing.T) {
