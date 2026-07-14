@@ -144,10 +144,11 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		Expect(manifest.Checkpoint.Files).NotTo(BeEmpty())
 		Expect(manifest.Exports).To(BeEmpty())
 
-		for filename := range manifest.Checkpoint.Files {
-			key := azureBackupDataPfx + filename
-			Expect(azureBlobExists(ctx, azureClient, key)).To(BeTrue(),
-				"Azure blob %s should exist", key)
+		for _, cf := range manifest.Checkpoint.Files {
+			Expect(cf.Key).To(HavePrefix(azureBackupDataPfx),
+				"checkpoint object key must live under the data/ prefix")
+			Expect(azureBlobExists(ctx, azureClient, cf.Key)).To(BeTrue(),
+				"Azure blob %s should exist", cf.Key)
 		}
 	})
 

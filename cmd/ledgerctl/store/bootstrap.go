@@ -86,7 +86,6 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	manifestKey := bucketID + "/backups/manifest.json"
-	fileKeyPrefix := bucketID + "/backups/data/"
 
 	// Read manifest
 	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest...")
@@ -107,12 +106,14 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(fmt.Errorf("reading manifest data: %w", err))
 	}
 
-	var manifest backup.Manifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+	manifestPtr, err := backup.DecodeManifest(manifestData)
+	if err != nil {
 		spinner.Fail("Failed to parse manifest")
 
 		return cmdutil.Displayed(fmt.Errorf("parsing manifest: %w", err))
 	}
+
+	manifest := *manifestPtr
 
 	if manifest.Checkpoint == nil && len(manifest.Exports) == 0 {
 		spinner.Fail("Manifest contains no checkpoint and no exports")
@@ -140,8 +141,11 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 		var totalBytes uint64
 
-		for filename := range manifest.Checkpoint.Files {
-			key := fileKeyPrefix + filename
+		for filename, cf := range manifest.Checkpoint.Files {
+			// Resolve by the content-addressed key recorded in the manifest,
+			// never by reconstructing prefix+filename: the manifest is the
+			// authoritative pointer to the exact object bytes it committed.
+			key := cf.Key
 			destPath := filepath.Join(stagingDir, filepath.FromSlash(filename))
 
 			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {

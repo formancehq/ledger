@@ -50,7 +50,7 @@ Examples:
   ledgerctl audit list
   ledgerctl audit list --reverse
   ledgerctl audit list --filter 'audit[outcome] == failure'
-  ledgerctl audit list --filter 'audit[ledger] == my-ledger'
+  ledgerctl audit list --filter 'audit[ledger] == "my-ledger"'
   ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,

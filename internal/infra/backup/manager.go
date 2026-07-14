@@ -2,7 +2,10 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -71,62 +74,95 @@ func RunBackup(
 		_ = store.RemoveTemporaryCheckpoint(checkpointName)
 	}()
 
-	// 2. List files in checkpoint
-	localFiles, err := listCheckpointFiles(checkpointPath)
+	// 2. List files in the checkpoint, hashing each so its stored key is
+	// content-addressed (see CheckpointFile / CheckpointFileKey). The hash both
+	// makes the object immutable per content and lets us skip re-uploading files
+	// already present under the same key.
+	checkpointFiles, err := listCheckpointFiles(bucketID, checkpointPath)
 	if err != nil {
 		return nil, fmt.Errorf("listing checkpoint files: %w", err)
 	}
 
-	// 3. Read existing manifest
-	existingManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
+	// 3. Read existing manifest. It is used for two things: logging the upload
+	// delta, and classifying which objects the post-manifest prune (step 8)
+	// removes — objects the previous manifest referenced are stale checkpoint
+	// files this run superseded (normal churn, counted as FilesDeleted), objects
+	// it did not are true orphans leaked by a crashed run (OrphansDeleted).
+	// Correctness of the upload no longer depends on diffing sizes — the
+	// content-addressed key is the diff.
+	// A legacy pre-content-addressing manifest is NOT fatal here: a full backup
+	// overwrites the manifest wholesale and never diffs against it, so retaking a
+	// full backup with the current binary is exactly the documented recovery path
+	// out of a legacy manifest. Treat it as a warning and proceed with no
+	// previous-manifest keys (so its objects, which live under bare data/<name>
+	// keys, all classify as orphans on prune). (The incremental path, which does
+	// depend on the existing manifest, keeps the error fatal — see
+	// RunIncrementalBackup.)
+	prevManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 	if err != nil {
-		return nil, err
-	}
+		if errors.Is(err, ErrLegacyManifestFormat) {
+			logger.Infof("Existing manifest uses the legacy pre-content-addressing format; " +
+				"a full backup replaces it wholesale, so proceeding and overwriting it")
 
-	// 4. Compute diff against previous checkpoint files
-	var previousFiles map[string]int64
-	if existingManifest.Checkpoint != nil {
-		previousFiles = existingManifest.Checkpoint.Files
-	} else {
-		previousFiles = make(map[string]int64)
-	}
-
-	toUpload, toDelete := diffFiles(localFiles, previousFiles)
-
-	logger.WithFields(map[string]any{
-		"totalFiles": len(localFiles),
-		"toUpload":   len(toUpload),
-		"toDelete":   len(toDelete),
-	}).Infof("Backup diff computed")
-
-	// 5. Upload new/changed files
-	for _, filename := range toUpload {
-		if err := uploadFile(ctx, storage, checkpointPath, CheckpointFileKey(bucketID, filename), filename); err != nil {
+			prevManifest = &Manifest{}
+		} else {
 			return nil, err
 		}
 	}
 
-	// 6. Delete stale checkpoint files from storage
-	for _, filename := range toDelete {
-		if err := storage.DeleteFile(ctx, CheckpointFileKey(bucketID, filename)); err != nil {
-			logger.WithFields(map[string]any{
-				"file":  filename,
-				"error": err,
-			}).Errorf("Failed to delete stale backup file (non-fatal)")
+	prevCheckpointKeys := checkpointKeySet(prevManifest)
+	prevExportKeys := exportKeySet(prevManifest)
+
+	// 4. Determine which files still need uploading. A file whose
+	// content-addressed key already exists on storage is byte-identical to what
+	// is already there (that is what content-addressing guarantees), so it is
+	// skipped — this is the incremental dedup, now keyed by content rather than
+	// by name+size. Objects the new manifest will NOT reference are left in
+	// place and removed by the post-manifest orphan prune (step 8).
+	//
+	// Existence is resolved with a single List of the checkpoint prefix rather
+	// than one GetObject/HEAD per file: a full backup hashes hundreds/thousands
+	// of SSTs and a per-file remote round trip would dominate the wall clock.
+	// The List is done once and every computed content-addressed key is compared
+	// against the returned set locally.
+	existingKeys, err := listKeySet(ctx, storage, CheckpointPrefix(bucketID))
+	if err != nil {
+		return nil, fmt.Errorf("listing existing checkpoint objects: %w", err)
+	}
+
+	var toUpload []string
+
+	for filename, cf := range checkpointFiles {
+		if _, exists := existingKeys[cf.Key]; !exists {
+			toUpload = append(toUpload, filename)
 		}
 	}
 
-	// 7. Clean up old exports (they are obsolete after a new checkpoint)
-	for _, seg := range existingManifest.Exports {
-		if err := storage.DeleteFile(ctx, seg.Key); err != nil {
-			logger.WithFields(map[string]any{
-				"segment": seg.Key,
-				"error":   err,
-			}).Errorf("Failed to delete stale export segment (non-fatal)")
+	logger.WithFields(map[string]any{
+		"totalFiles": len(checkpointFiles),
+		"toUpload":   len(toUpload),
+	}).Infof("Backup diff computed")
+
+	// 5. Upload the new/changed files.
+	//
+	// Crash-safety ordering (EN-888 / EN-1055): every object the new manifest
+	// will reference is uploaded BEFORE the manifest is written, and NO stale
+	// object is deleted before the new manifest is committed. Uploads are
+	// content-addressed, so this NEVER overwrites an object the currently
+	// published manifest still references (a changed file — e.g. a grown Pebble
+	// MANIFEST — lands on a new key). Combined with deferring all deletion to
+	// the post-manifest orphan prune (step 8), this makes the whole cycle
+	// crash-safe: a crash at any point before WriteManifest leaves the previous
+	// manifest fully restorable, and a crash after it leaves the new one
+	// restorable — there is never a window where the current manifest points at
+	// a half-written or deleted object.
+	for _, filename := range toUpload {
+		if err := uploadFile(ctx, storage, checkpointPath, checkpointFiles[filename].Key, filename); err != nil {
+			return nil, err
 		}
 	}
 
-	// 8. Read sequences from the checkpoint to record in manifest
+	// 6. Read sequences from the checkpoint to record in manifest
 	checkpointStore, err := dal.OpenReadOnly(checkpointPath, logger)
 	if err != nil {
 		return nil, fmt.Errorf("opening checkpoint for reading sequences: %w", err)
@@ -161,14 +197,14 @@ func RunBackup(
 		return nil, fmt.Errorf("reading last audit sequence from checkpoint: %w", err)
 	}
 
-	// 9. Write updated manifest with new checkpoint and empty exports
+	// 7. Write updated manifest with new checkpoint and empty exports
 	newManifest := &Manifest{
 		Checkpoint: &CheckpointManifest{
 			Timestamp:         time.Now().UTC().Format(time.RFC3339Nano),
 			LastAppliedIndex:  lastAppliedIndex,
 			LastLogSequence:   lastLogSeq,
 			LastAuditSequence: lastAuditSeq,
-			Files:             localFiles,
+			Files:             checkpointFiles,
 		},
 		Exports: nil,
 	}
@@ -177,38 +213,74 @@ func RunBackup(
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
-	// 10. Prune orphans left behind by earlier failed runs. The manifest is the
-	// authoritative inventory; anything under data/ or exports/ not in it is dead
-	// weight. Runs that crashed before writing a manifest leak files the diff
-	// step (which compares against the *previous manifest*) cannot reach.
-	expectedKeys := make(map[string]struct{}, len(localFiles))
-	for filename := range localFiles {
-		expectedKeys[CheckpointFileKey(bucketID, filename)] = struct{}{}
+	// 8. Prune orphans now that the new manifest is committed. The manifest is
+	// the authoritative inventory; anything under data/ or exports/ not in it is
+	// dead weight — this includes both the stale checkpoint files this run
+	// replaced and every export segment obsoleted by the new checkpoint, plus
+	// files leaked by earlier runs that crashed before writing a manifest (the
+	// diff step, which compares against the *previous manifest*, cannot reach
+	// those). Running the prune strictly after WriteManifest is what makes the
+	// cycle crash-safe: at no point is a still-referenced object deleted.
+	expectedKeys := make(map[string]struct{}, len(checkpointFiles))
+	for _, cf := range checkpointFiles {
+		expectedKeys[cf.Key] = struct{}{}
 	}
 
-	orphansDeleted := pruneOrphans(ctx, logger, storage, CheckpointPrefix(bucketID), expectedKeys)
+	deletedCheckpointKeys := pruneOrphans(ctx, logger, storage, CheckpointPrefix(bucketID), expectedKeys)
 	// A full backup writes Exports: nil, so every export segment in storage is
-	// now orphaned and can be removed.
-	orphansDeleted += pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), nil)
+	// removed here. When this full backup follows one or more incrementals, the
+	// previous committed manifest referenced those export segments as live
+	// objects now rolled up into the new checkpoint — deleting them is ordinary
+	// supersede churn (files_deleted), not a failed-run leftover (orphans_deleted).
+	deletedExportKeys := pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), nil)
+
+	// Classify every deletion: a key the PREVIOUS manifest referenced — as a
+	// checkpoint file OR an export segment — is something this run superseded,
+	// ordinary churn reported as BackupResponse.files_deleted. A key no manifest
+	// referenced is a true orphan (leaked by a run that crashed before writing a
+	// manifest), reported as orphans_deleted.
+	filesDeleted := 0
+	orphansDeleted := 0
+
+	for _, key := range deletedCheckpointKeys {
+		if _, wasReferenced := prevCheckpointKeys[key]; wasReferenced {
+			filesDeleted++
+		} else {
+			orphansDeleted++
+		}
+	}
+
+	for _, key := range deletedExportKeys {
+		if _, wasReferenced := prevExportKeys[key]; wasReferenced {
+			filesDeleted++
+		} else {
+			orphansDeleted++
+		}
+	}
 
 	duration := time.Since(start)
 
 	logger.WithFields(map[string]any{
 		"duration":          duration.String(),
 		"uploaded":          len(toUpload),
-		"deleted":           len(toDelete),
+		"filesDeleted":      filesDeleted,
 		"orphansDeleted":    orphansDeleted,
-		"total":             len(localFiles),
+		"total":             len(checkpointFiles),
 		"lastLogSequence":   lastLogSeq,
 		"lastAuditSequence": lastAuditSeq,
 		"lastAppliedIndex":  lastAppliedIndex,
 	}).Infof("Backup completed")
 
 	return &Result{
-		FilesUploaded:     len(toUpload),
-		FilesDeleted:      len(toDelete),
+		FilesUploaded: len(toUpload),
+		// FilesDeleted counts objects this run superseded — checkpoint files and
+		// export segments the previous manifest referenced that the new manifest
+		// no longer does (normal roll-up churn). OrphansDeleted counts everything
+		// else the post-manifest prune removed: files leaked by earlier runs that
+		// crashed before writing a manifest.
+		FilesDeleted:      filesDeleted,
 		OrphansDeleted:    orphansDeleted,
-		TotalFiles:        len(localFiles),
+		TotalFiles:        len(checkpointFiles),
 		LastLogSequence:   lastLogSeq,
 		LastAuditSequence: lastAuditSeq,
 		LastAppliedIndex:  lastAppliedIndex,
@@ -219,22 +291,23 @@ func RunBackup(
 // pruneOrphanExports removes every object under exports/ that is not listed in
 // the manifest's export set. Used by RunIncrementalBackup both in its no-op
 // path (nothing new to export, but old garbage may still be sitting there) and
-// after writing a new manifest.
+// after writing a new manifest. Returns the number of objects deleted.
 func pruneOrphanExports(ctx context.Context, logger logging.Logger, storage Storage, bucketID string, exports []ExportSegment) int {
 	expectedKeys := make(map[string]struct{}, len(exports))
 	for _, seg := range exports {
 		expectedKeys[seg.Key] = struct{}{}
 	}
 
-	return pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), expectedKeys)
+	return len(pruneOrphans(ctx, logger, storage, ExportPrefix(bucketID), expectedKeys))
 }
 
 // pruneOrphans lists every object under prefix and deletes any whose key is not
 // in expectedKeys. A nil or empty expectedKeys deletes every object under the
-// prefix. Failures are logged and counted as non-orphan (a transient List or
-// Delete error must never fail the surrounding backup — the manifest is already
-// committed and the next run will retry).
-func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, prefix string, expectedKeys map[string]struct{}) int {
+// prefix. It returns the keys it successfully deleted so callers can classify
+// them (e.g. stale-vs-orphan). Failures are logged and skipped (a transient
+// List or Delete error must never fail the surrounding backup — the manifest is
+// already committed and the next run will retry).
+func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, prefix string, expectedKeys map[string]struct{}) []string {
 	keys, err := storage.ListFiles(ctx, prefix)
 	if err != nil {
 		logger.WithFields(map[string]any{
@@ -242,10 +315,10 @@ func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, p
 			"error":  err,
 		}).Errorf("Failed to list backup objects for orphan prune (non-fatal)")
 
-		return 0
+		return nil
 	}
 
-	deleted := 0
+	var deleted []string
 
 	for _, key := range keys {
 		if _, kept := expectedKeys[key]; kept {
@@ -261,10 +334,63 @@ func pruneOrphans(ctx context.Context, logger logging.Logger, storage Storage, p
 			continue
 		}
 
-		deleted++
+		deleted = append(deleted, key)
 	}
 
 	return deleted
+}
+
+// checkpointKeySet returns the set of content-addressed checkpoint object keys a
+// manifest references. Used to classify prune deletions: a deleted key present
+// here was a live checkpoint file the manifest owned. A nil or checkpoint-less
+// manifest yields an empty set.
+func checkpointKeySet(manifest *Manifest) map[string]struct{} {
+	if manifest == nil || manifest.Checkpoint == nil {
+		return map[string]struct{}{}
+	}
+
+	keys := make(map[string]struct{}, len(manifest.Checkpoint.Files))
+	for _, cf := range manifest.Checkpoint.Files {
+		keys[cf.Key] = struct{}{}
+	}
+
+	return keys
+}
+
+// exportKeySet returns the set of export-segment object keys a manifest
+// references. Used to classify prune deletions: a deleted export key present
+// here was a live segment the previous manifest owned that a new full
+// checkpoint superseded — normal roll-up churn, not an orphan. A nil or
+// export-less manifest yields an empty set.
+func exportKeySet(manifest *Manifest) map[string]struct{} {
+	if manifest == nil {
+		return map[string]struct{}{}
+	}
+
+	keys := make(map[string]struct{}, len(manifest.Exports))
+	for _, seg := range manifest.Exports {
+		keys[seg.Key] = struct{}{}
+	}
+
+	return keys
+}
+
+// listKeySet lists every object under prefix once and returns their keys as a
+// set for local membership tests. This replaces a per-file remote existence
+// probe (one GetObject/HEAD each) with a single List when many keys must be
+// checked against storage.
+func listKeySet(ctx context.Context, storage Storage, prefix string) (map[string]struct{}, error) {
+	keys, err := storage.ListFiles(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	set := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		set[key] = struct{}{}
+	}
+
+	return set, nil
 }
 
 // RunIncrementalBackup exports new log and audit entries since the last backup.
@@ -294,6 +420,18 @@ func RunIncrementalBackup(
 	manifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 	if err != nil {
 		return nil, err
+	}
+
+	// An incremental backup is only meaningful layered on top of a full
+	// checkpoint. A checkpoint-less manifest — a fresh/empty destination, or an
+	// export-only manifest — carries none of the Global-zone persisted config,
+	// last-applied index, or timestamp that restore needs to reconstruct a store,
+	// so publishing export segments against it would leave an artifact restore
+	// cannot use (restore validation fails on the missing persisted config). Fail
+	// fast here, BEFORE taking a snapshot or uploading any segment, so no export
+	// artifact is published for an unrestorable base.
+	if manifest.Checkpoint == nil {
+		return nil, ErrNoFullCheckpoint
 	}
 
 	// 2. Take a point-in-time snapshot for consistent reads
@@ -689,9 +827,14 @@ func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filen
 	return nil
 }
 
-// listCheckpointFiles walks the checkpoint directory and returns all files with their sizes.
-func listCheckpointFiles(dir string) (map[string]int64, error) {
-	files := make(map[string]int64)
+// listCheckpointFiles walks the checkpoint directory and returns, per local
+// filename, its size and content-addressed storage key. Each file is hashed
+// (sha256 over its bytes) so its key embeds the content: a file whose bytes
+// change between checkpoints — notably Pebble's same-named MANIFEST-NNNNNN that
+// grows in place — maps to a different key and is uploaded as a new object
+// instead of overwriting the one the currently published manifest references.
+func listCheckpointFiles(bucketID, dir string) (map[string]CheckpointFile, error) {
+	files := make(map[string]CheckpointFile)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -707,8 +850,17 @@ func listCheckpointFiles(dir string) (map[string]int64, error) {
 			return err
 		}
 
-		// Normalize to forward slashes for consistent keys across platforms
-		files[filepath.ToSlash(relPath)] = info.Size()
+		hash, err := hashFile(path)
+		if err != nil {
+			return fmt.Errorf("hashing %s: %w", relPath, err)
+		}
+
+		// Normalize to forward slashes for consistent keys across platforms.
+		name := filepath.ToSlash(relPath)
+		files[name] = CheckpointFile{
+			Size: info.Size(),
+			Key:  CheckpointFileKey(bucketID, name, hash),
+		}
 
 		return nil
 	})
@@ -716,22 +868,20 @@ func listCheckpointFiles(dir string) (map[string]int64, error) {
 	return files, err
 }
 
-// diffFiles computes which files need to be uploaded and deleted.
-// A file needs uploading if it's new or its size changed.
-// A file needs deletion if it's no longer in the checkpoint.
-func diffFiles(current, previous map[string]int64) (toUpload, toDelete []string) {
-	for filename, size := range current {
-		prevSize, exists := previous[filename]
-		if !exists || prevSize != size {
-			toUpload = append(toUpload, filename)
-		}
+// hashFile returns the hex-encoded sha256 of a file's contents, streamed so
+// memory stays bounded regardless of file size.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
 	}
 
-	for filename := range previous {
-		if _, exists := current[filename]; !exists {
-			toDelete = append(toDelete, filename)
-		}
+	defer func() { _ = f.Close() }()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
 	}
 
-	return toUpload, toDelete
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
