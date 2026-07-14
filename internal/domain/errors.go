@@ -221,6 +221,8 @@ const (
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
+	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
+	ErrReasonMirrorV2LogIDInvalid          = "MIRROR_V2_LOG_ID_INVALID"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -406,6 +408,11 @@ var (
 	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
 	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
 	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	// ErrPreparedQueryFilterRequired guards the update path: an update replaces the
+	// stored filter, so a nil filter would silently erase it (a prepared query is
+	// defined by its filter). Rejecting nil keeps the stored query intact and the
+	// audit trail deterministic on wire-replay.
+	ErrPreparedQueryFilterRequired = NewValidationSentinel("prepared query filter is required")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.
@@ -753,6 +760,51 @@ func (e *ErrLedgerNotInMirrorMode) Error() string {
 }
 func (*ErrLedgerNotInMirrorMode) Reason() string { return ErrReasonLedgerNotInMirrorMode }
 func (e *ErrLedgerNotInMirrorMode) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
+}
+
+// ErrMirrorV2LogIDGap — a mirror ingest arrived with a v2LogId beyond the next
+// contiguous slot (Expected) after the applied prefix (LastMirrorV2LogId is
+// Expected-1). The worker ingests contiguously (including FillGap orders), so a
+// gap means the persisted high-water mark or the source cursor is ahead of the
+// applied prefix — corruption/tampering, impossible in normal operation. The FSM
+// rejects the order without mutation rather than silently applying past the gap
+// (which would desync nodes) or skipping it. KindInternal: server-side
+// data-corruption invariant, not a client mistake (invariant #7 fail-loud on an
+// impossible-by-design branch).
+type ErrMirrorV2LogIDGap struct {
+	Name     string
+	Got      uint64
+	Expected uint64
+}
+
+func (e *ErrMirrorV2LogIDGap) Error() string {
+	return fmt.Sprintf("invariant: mirror v2LogId gap on ledger %s: got %d, expected %d", e.Name, e.Got, e.Expected)
+}
+func (*ErrMirrorV2LogIDGap) Reason() string { return ErrReasonMirrorV2LogIDGap }
+func (e *ErrMirrorV2LogIDGap) Metadata() map[string]string {
+	return map[string]string{
+		"name":     e.Name,
+		"got":      strconv.FormatUint(e.Got, 10),
+		"expected": strconv.FormatUint(e.Expected, 10),
+	}
+}
+
+// ErrMirrorV2LogIDInvalid — a mirror ingest carried a v2LogId of 0. Source v2
+// log ids are 1-based, so 0 is malformed/tampered. The FSM rejects it before any
+// mutation rather than applying it: a 0 is never recorded as the high-water mark,
+// so applying it would leave it re-appliable forever (no marker stops the
+// replay). KindInternal: server-side data-corruption invariant, not a client
+// mistake (invariant #7 fail-loud on an impossible-by-design branch).
+type ErrMirrorV2LogIDInvalid struct {
+	Name string
+}
+
+func (e *ErrMirrorV2LogIDInvalid) Error() string {
+	return fmt.Sprintf("invariant: mirror ingest on ledger %s carries invalid v2LogId 0 (source v2 log ids are 1-based)", e.Name)
+}
+func (*ErrMirrorV2LogIDInvalid) Reason() string { return ErrReasonMirrorV2LogIDInvalid }
+func (e *ErrMirrorV2LogIDInvalid) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
 }
 

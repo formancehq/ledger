@@ -105,7 +105,7 @@ var ErrDatetimeBeforeEpoch = errors.New("dates before the Unix epoch (1970-01-01
 // ("1700000000000000") into the uint64 microseconds the index stores. It is the
 // single coercion the whole filter surface shares (EN-1544): the structured
 // QueryFilter JSON DSL date/timestamp bounds, the textual filterexpr
-// date/timestamp field, and the audit[timestamp] datetime field all funnel
+// date/timestamp field, and the audit timestamp datetime field all funnel
 // through it so RFC3339 acceptance and pre-epoch rejection are defined once.
 //
 // An RFC3339 value before the Unix epoch returns ErrDatetimeBeforeEpoch. A value

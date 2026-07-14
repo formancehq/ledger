@@ -5254,6 +5254,7 @@ func NewCreatedLogOrReferenceListReader(s []*CreatedLogOrReference) CreatedLogOr
 type LedgerBoundariesReader interface {
 	GetNextTransactionId() uint64
 	GetNextLogId() uint64
+	GetLastMirrorV2LogId() uint64
 	Mutate() *LedgerBoundaries
 }
 
@@ -5265,6 +5266,10 @@ func (r *ledgerBoundariesReadonly) GetNextTransactionId() uint64 {
 
 func (r *ledgerBoundariesReadonly) GetNextLogId() uint64 {
 	return (*LedgerBoundaries)(r).GetNextLogId()
+}
+
+func (r *ledgerBoundariesReadonly) GetLastMirrorV2LogId() uint64 {
+	return (*LedgerBoundaries)(r).GetLastMirrorV2LogId()
 }
 
 func (r *ledgerBoundariesReadonly) Mutate() *LedgerBoundaries {

@@ -115,7 +115,7 @@ func TestBuildListOptions(t *testing.T) {
 
 	t.Run("with filter", func(t *testing.T) {
 		t.Parallel()
-		f, err := cmdutil.BuildQueryFilter("", "users:")
+		f, err := cmdutil.BuildQueryFilter("", "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 
 		opts := cmdutil.BuildListOptions(cmdutil.PaginationFlags{}, cmdutil.ConsistencyFlags{}, f)
@@ -195,7 +195,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("empty inputs return nil", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("", "")
+		f, err := cmdutil.BuildQueryFilter("", "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.Nil(t, f)
 	})
@@ -203,7 +203,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("prefix only", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter("", "users:")
+		f, err := cmdutil.BuildQueryFilter("", "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
@@ -215,7 +215,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("filter only", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "")
+		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 		// filterexpr.Parse produces a FieldCondition oneof variant for metadata.
@@ -225,7 +225,7 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("filter + prefix combined", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "users:")
+		f, err := cmdutil.BuildQueryFilter(`metadata[k] == "v"`, "users:", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 		require.NotNil(t, f.GetAnd())
@@ -238,9 +238,39 @@ func TestBuildQueryFilter(t *testing.T) {
 	t.Run("invalid filter expression", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := cmdutil.BuildQueryFilter("@@invalid@@", "")
+		_, err := cmdutil.BuildQueryFilter("@@invalid@@", "", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid filter expression")
+	})
+
+	// EN-1549: the `ledgerctl audit list` path builds its filter through
+	// BuildQueryFilter with QUERY_TARGET_AUDIT, so a bare audit field must resolve
+	// to the audit arm. This is the CLI-path regression guard for the audit list
+	// command — before threading the target it decoded as TRANSACTIONS and a bare
+	// audit-only field (outcome) failed to parse.
+	t.Run("bare audit field resolves on the audit target", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := cmdutil.BuildQueryFilter("outcome == failure", "", commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+		require.NoError(t, err)
+		require.NotNil(t, f)
+
+		ac := f.GetAudit()
+		require.NotNil(t, ac, "outcome must resolve to the audit arm on the audit target")
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, ac.GetField())
+		require.Equal(t, "failure", ac.GetStringCond().GetHardcoded())
+	})
+
+	// A bare shared field (ledger) must also resolve to the audit arm on the audit
+	// target, not the top-level LedgerCondition arm.
+	t.Run("bare ledger resolves to the audit arm on the audit target", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := cmdutil.BuildQueryFilter("ledger == main", "", commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+		require.NoError(t, err)
+		require.NotNil(t, f)
+		require.NotNil(t, f.GetAudit(), "ledger must resolve to the audit arm on the audit target")
+		require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, f.GetAudit().GetField())
 	})
 }
 
