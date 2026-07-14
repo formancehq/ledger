@@ -46,6 +46,8 @@ func formatFilter(f *commonpb.QueryFilter) (string, int) {
 		return formatNot(v.Not)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return formatAccountHasAsset(v.AccountHasAsset), precLeaf
+	case *commonpb.QueryFilter_Ledger:
+		return formatLedgerCondition(v.Ledger), precLeaf
 	case *commonpb.QueryFilter_Audit:
 		return formatAuditCondition(v.Audit)
 	case *commonpb.QueryFilter_BuiltinUint:
@@ -92,7 +94,8 @@ func formatLogBuiltinUintCondition(lc *commonpb.LogBuiltinUintCondition) (string
 // clauses joined by `and` — `field > lo and field < hi` — which the parser folds
 // back into the same single condition (see foldDateRangeAnd), so the exclusivity
 // survives the round-trip instead of being silently widened. This is the
-// top-level counterpart of formatAuditUintCondition (prefixed with `audit[...]`).
+// transaction/log counterpart of formatAuditUintCondition; both now emit bare
+// field names, disambiguated only by the re-parse target (EN-1549).
 func formatDateUintCondition(field string, uc *commonpb.UintCondition) (string, int) {
 	render := renderDatetimeBound
 
@@ -173,30 +176,35 @@ var auditFieldNames = map[commonpb.AuditField]string{
 	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:     "order_type",
 }
 
-// formatAuditCondition renders an AuditCondition back into `audit[field] OP
-// value`, inverse of the parser's AuditCond production.
+// formatAuditCondition renders an AuditCondition back into the bare `field OP
+// value` form, inverse of the parser's FieldCond production on the audit target
+// (EN-1549). The `audit[...]` namespace prefix is gone: the audit fields are bare
+// (`outcome == failure`, `ledger == main`, `timestamp >= "…"`). The output is
+// only unambiguous when re-parsed on the audit target — `ledger`/`timestamp`
+// collide with the transaction/log arms otherwise — which is exactly the contract
+// (an audit filter is always re-parsed with QUERY_TARGET_AUDIT).
 func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 	key, ok := auditFieldNames[ac.GetField()]
 	if !ok {
-		return "audit[<unknown>]", precLeaf
+		return "<unknown audit field>", precLeaf
 	}
 
 	switch cond := ac.GetCondition().(type) {
 	case *commonpb.AuditCondition_StringCond:
-		return fmt.Sprintf("audit[%s] == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
+		return fmt.Sprintf("%s == %s", key, formatStringCondValue(cond.StringCond)), precLeaf
 	case *commonpb.AuditCondition_UintCond:
 		// Audit ranges always render as `between`/single-bound (never an
 		// `and`-join), so they are always leaf-precedence.
 		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond), precLeaf
 	default:
-		return fmt.Sprintf("audit[%s] <unknown>", key), precLeaf
+		return key + " <unknown>", precLeaf
 	}
 }
 
-// formatAuditUintCondition renders a UintCondition on an audit field. The audit
-// DSL only produces hardcoded bounds (no params), so only those are formatted.
-// The timestamp field is a datetime: its bounds render as quoted RFC3339 so the
-// output round-trips through the datetime-aware parser.
+// formatAuditUintCondition renders a UintCondition on a bare audit field. The
+// audit DSL only produces hardcoded bounds (no params), so only those are
+// formatted. The timestamp field is a datetime: its bounds render as quoted
+// RFC3339 so the output round-trips through the datetime-aware parser.
 func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonpb.UintCondition) string {
 	render := func(v uint64) string { return strconv.FormatUint(v, 10) }
 	if field == commonpb.AuditField_AUDIT_FIELD_TIMESTAMP {
@@ -204,11 +212,11 @@ func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonp
 	}
 
 	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
-		return fmt.Sprintf("audit[%s] == %s", key, render(uc.GetMin()))
+		return fmt.Sprintf("%s == %s", key, render(uc.GetMin()))
 	}
 
 	if uc.Min != nil && uc.Max != nil {
-		return fmt.Sprintf("audit[%s] between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
+		return fmt.Sprintf("%s between %s and %s", key, render(uc.GetMin()), render(uc.GetMax()))
 	}
 
 	if uc.Min != nil {
@@ -217,7 +225,7 @@ func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonp
 			op = ">"
 		}
 
-		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMin()))
+		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMin()))
 	}
 
 	if uc.Max != nil {
@@ -226,10 +234,21 @@ func formatAuditUintCondition(key string, field commonpb.AuditField, uc *commonp
 			op = "<"
 		}
 
-		return fmt.Sprintf("audit[%s] %s %s", key, op, render(uc.GetMax()))
+		return fmt.Sprintf("%s %s %s", key, op, render(uc.GetMax()))
 	}
 
-	return fmt.Sprintf("audit[%s] <uint?>", key)
+	return key + " <uint?>"
+}
+
+// formatLedgerCondition renders a non-audit LedgerCondition as `ledger == value`,
+// the inverse of the parser's `ledger == VALUE` production (a bare `ledger` field
+// on a non-audit target). The value renders as a `$param` reference or a
+// quote-if-needed hardcoded string, the same value path every other string
+// condition uses. On the audit target the ledger field is carried by the
+// AuditCondition arm instead (formatAuditCondition), so this only ever sees the
+// transaction/log/account ledger condition.
+func formatLedgerCondition(lc *commonpb.LedgerCondition) string {
+	return "ledger == " + formatStringCondValue(lc.GetCond())
 }
 
 // formatAccountHasAsset renders an AccountHasAssetCondition as `has asset BASE`

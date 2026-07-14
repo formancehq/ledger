@@ -29,17 +29,17 @@ func NewListCommand() *cobra.Command {
 Entries are shown oldest first by default (chronological); use --reverse for newest first.
 
 Filtering is done entirely through the generic --filter flag (same DSL as the
-other list commands); there are no audit-specific flags. It accepts audit[...]
-conditions combined with and/or:
-  audit[outcome] == failure
-  audit[ledger] == main
-  audit[ledger] == main and audit[order_type] == create_transaction
-  audit[order_type] in (create_transaction, revert_transaction)
-  audit[caller_subject] == "svc:payments"
-  audit[seq] between 1000 and 2000
-  audit[proposal_id] == 42
-  audit[timestamp] >= "2023-11-14T22:13:20Z"    # RFC3339 or raw unix microseconds
-  audit[log_seq] == 500
+other list commands); there are no audit-specific flags. On the audit endpoint
+the audit fields are bare (no audit[...] prefix), combined with and/or:
+  outcome == failure
+  ledger == main
+  ledger == main and order_type == create_transaction
+  order_type in (create_transaction, revert_transaction)
+  caller_subject == "svc:payments"
+  seq between 1000 and 2000
+  proposal_id == 42
+  timestamp >= "2023-11-14T22:13:20Z"    # RFC3339 or raw unix microseconds
+  log_seq == 500
 
 Supported fields: seq, proposal_id, log_seq (numeric); timestamp
 (RFC3339 or unix microseconds); outcome (success|failure), ledger,
@@ -49,8 +49,8 @@ Unsupported conditions (not, non-indexed fields) are rejected.
 Examples:
   ledgerctl audit list
   ledgerctl audit list --reverse
-  ledgerctl audit list --filter 'audit[outcome] == failure'
-  ledgerctl audit list --filter 'audit[ledger] == "my-ledger"'
+  ledgerctl audit list --filter 'outcome == failure'
+  ledgerctl audit list --filter 'ledger == "my-ledger"'
   ledgerctl audit list --checkpoint-id 7`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -93,7 +93,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return errors.New("--expand cannot be combined with --checkpoint-id: audit entry expansion always reads the live store")
 	}
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	if err != nil {
 		return err
 	}

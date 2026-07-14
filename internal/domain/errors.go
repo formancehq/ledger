@@ -406,6 +406,11 @@ var (
 	ErrPreparedQueryNameInvalidChar   = NewValidationSentinel("prepared query name must contain only printable ASCII (0x20–0x7E)")
 	ErrPreparedQueryNameTooLong       = NewValidationSentinel("prepared query name exceeds maximum length of 256 bytes")
 	ErrPreparedQueryTargetUnsupported = NewValidationSentinel("prepared query target is not supported (use ACCOUNTS, TRANSACTIONS or LOGS)")
+	// ErrPreparedQueryFilterRequired guards the update path: an update replaces the
+	// stored filter, so a nil filter would silently erase it (a prepared query is
+	// defined by its filter). Rejecting nil keeps the stored query intact and the
+	// audit trail deterministic on wire-replay.
+	ErrPreparedQueryFilterRequired = NewValidationSentinel("prepared query filter is required")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.

@@ -27,13 +27,13 @@ func TestQuoting_MetadataKeyRequiresQuotingForSpecialChars(t *testing.T) {
 
 			// Quoted: parses, key preserved verbatim.
 			quoted := fmt.Sprintf(`metadata["%s"] == "v"`, key)
-			f, err := Parse(quoted)
+			f, err := Parse(quoted, tx)
 			require.NoError(t, err, quoted)
 			require.Equal(t, key, f.GetField().GetField().GetMetadata(), quoted)
 
 			// Bare: rejected.
 			bare := fmt.Sprintf(`metadata[%s] == "v"`, key)
-			_, err = Parse(bare)
+			_, err = Parse(bare, tx)
 			require.Error(t, err, bare)
 		})
 	}
@@ -85,12 +85,12 @@ func TestQuoting_ValueRequiresQuotingForSpecialChars(t *testing.T) {
 				t.Parallel()
 
 				quoted := fmt.Sprintf(tc.quotedTmpl, val)
-				f, err := Parse(quoted)
+				f, err := Parse(quoted, tx)
 				require.NoError(t, err, quoted)
 				require.Equal(t, val, tc.get(f), quoted)
 
 				bare := fmt.Sprintf(tc.bareTmpl, val)
-				_, err = Parse(bare)
+				_, err = Parse(bare, tx)
 				require.Error(t, err, bare)
 			})
 		}
@@ -102,18 +102,18 @@ func TestQuoting_ValueRequiresQuotingForSpecialChars(t *testing.T) {
 func TestQuoting_AuditValueRequiresQuoting(t *testing.T) {
 	t.Parallel()
 
-	f, err := Parse(`audit[caller_subject] == "svc:payments"`)
+	f, err := Parse(`caller_subject == "svc:payments"`, audit)
 	require.NoError(t, err)
 	require.Equal(t, "svc:payments", f.GetAudit().GetStringCond().GetHardcoded())
 
-	_, err = Parse("audit[caller_subject] == svc:payments")
+	_, err = Parse("caller_subject == svc:payments", audit)
 	require.Error(t, err)
 
-	f, err = Parse(`audit[ledger] == "my-ledger"`)
+	f, err = Parse(`ledger == "my-ledger"`, audit)
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", f.GetAudit().GetStringCond().GetHardcoded())
 
-	_, err = Parse("audit[ledger] == my-ledger")
+	_, err = Parse("ledger == my-ledger", audit)
 	require.Error(t, err)
 }
 
@@ -123,12 +123,12 @@ func TestQuoting_AuditValueRequiresQuoting(t *testing.T) {
 func TestQuoting_AssetRefStillBare(t *testing.T) {
 	t.Parallel()
 
-	f, err := Parse("has asset USD/2")
+	f, err := Parse("has asset USD/2", tx)
 	require.NoError(t, err)
 	require.Equal(t, "USD", f.GetAccountHasAsset().GetAssetBase())
 	require.Equal(t, uint32(2), f.GetAccountHasAsset().GetPrecision())
 
-	f, err = Parse("has asset USD")
+	f, err = Parse("has asset USD", tx)
 	require.NoError(t, err)
 	require.Equal(t, "USD", f.GetAccountHasAsset().GetAssetBase())
 	require.Equal(t, uint32(0), f.GetAccountHasAsset().GetPrecision())
@@ -146,15 +146,15 @@ func TestQuoting_PlainFormsStillBare(t *testing.T) {
 		"ledger == main",
 		"metadata[flag] == true",
 		"metadata[n] == 42",
-		"audit[outcome] == failure",
-		// noun words usable as bare values (still lexer keywords, via Value.Kw)
+		// `audit` is now an ordinary identifier (no longer a keyword) usable bare;
+		// `ledger` remains a lexer keyword usable as a bare value via Value.Kw.
 		"metadata[type] == audit",
 		"metadata[type] == ledger",
 	} {
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := Parse(in)
+			_, err := Parse(in, tx)
 			require.NoError(t, err, in)
 		})
 	}
@@ -171,7 +171,6 @@ func TestQuoting_FormatRoundTripsSpecialChars(t *testing.T) {
 		`metadata[k] == "foo.bar"`,
 		`address ^= "users:"`,
 		`source == "merchants:alice"`,
-		`audit[caller_subject] == "svc:payments"`,
 		"has asset USD/2",
 		// reserved operators as string values must be quoted by Format
 		`metadata[k] == "in"`,
@@ -180,16 +179,30 @@ func TestQuoting_FormatRoundTripsSpecialChars(t *testing.T) {
 		t.Run(in, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := Parse(in)
+			f, err := Parse(in, tx)
 			require.NoError(t, err, in)
 
 			out := Format(f)
-			reparsed, err := Parse(out)
+			reparsed, err := Parse(out, tx)
 			require.NoError(t, err, "Format output %q must reparse", out)
 			require.True(t, proto.Equal(f, reparsed),
 				"round-trip mismatch: in=%q Format=%q", in, out)
 		})
 	}
+
+	// The bare audit field value with a special char round-trips on the audit
+	// target (EN-1549): Format emits the quoted form, which reparses identically.
+	t.Run("audit caller_subject quoted", func(t *testing.T) {
+		t.Parallel()
+
+		f, err := Parse(`caller_subject == "svc:payments"`, audit)
+		require.NoError(t, err)
+
+		out := Format(f)
+		reparsed, err := Parse(out, audit)
+		require.NoError(t, err, "Format output %q must reparse", out)
+		require.True(t, proto.Equal(f, reparsed), "audit round-trip mismatch: Format=%q", out)
+	})
 }
 
 // structuralKeywords are the words that remain reserved lexer keywords after
@@ -216,23 +229,23 @@ func TestQuoting_StructuralKeywordPrefixes(t *testing.T) {
 
 				// (a) quoted key parses; bare punctuated key rejected.
 				quotedKey := fmt.Sprintf(`metadata["%s"] == "v"`, punct)
-				fk, err := Parse(quotedKey)
+				fk, err := Parse(quotedKey, tx)
 				require.NoError(t, err, quotedKey)
 				require.Equal(t, punct, fk.GetField().GetField().GetMetadata(), quotedKey)
 
 				bareKey := fmt.Sprintf(`metadata[%s] == "v"`, punct)
-				_, err = Parse(bareKey)
+				_, err = Parse(bareKey, tx)
 				require.Error(t, err, bareKey)
 
 				// (b) quoted value parses.
 				quotedVal := fmt.Sprintf(`metadata[k] == "%s"`, punct)
-				fv, err := Parse(quotedVal)
+				fv, err := Parse(quotedVal, tx)
 				require.NoError(t, err, quotedVal)
 				require.Equal(t, punct, fv.GetField().GetStringCond().GetHardcoded(), quotedVal)
 
 				// (c) Format round-trips the punctuated value (Format quotes it).
 				out := Format(fv)
-				rp, err := Parse(out)
+				rp, err := Parse(out, tx)
 				require.NoError(t, err, out)
 				require.True(t, proto.Equal(fv, rp), "round-trip: value=%q Format=%q", punct, out)
 			})
@@ -243,17 +256,17 @@ func TestQuoting_StructuralKeywordPrefixes(t *testing.T) {
 		t.Run(kw+"_exact_value", func(t *testing.T) {
 			t.Parallel()
 
-			f, err := Parse(fmt.Sprintf(`metadata[k] == "%s"`, kw))
+			f, err := Parse(fmt.Sprintf(`metadata[k] == "%s"`, kw), tx)
 			require.NoError(t, err)
 			require.Equal(t, kw, f.GetField().GetStringCond().GetHardcoded())
 
 			out := Format(f)
-			rp, err := Parse(out)
+			rp, err := Parse(out, tx)
 			require.NoError(t, err, out)
 			require.True(t, proto.Equal(f, rp), "exact round-trip: %q Format=%q", kw, out)
 
 			// The bare operator word is NOT a valid value (it terminates the expr).
-			_, err = Parse("metadata[k] == " + kw)
+			_, err = Parse("metadata[k] == "+kw, tx)
 			require.Error(t, err)
 		})
 	}

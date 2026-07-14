@@ -616,7 +616,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 			var filter *commonpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
-				filter, err = filterexpr.Parse(desiredPQ.Filter)
+				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
 				if err != nil {
 					return nil, fmt.Errorf("prepared query %q filter: %w", name, err)
 				}
@@ -652,7 +652,7 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 			var filter *commonpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
-				filter, err = filterexpr.Parse(desiredPQ.Filter)
+				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
 				if err != nil {
 					return nil, fmt.Errorf("prepared query %q filter: %w", name, err)
 				}
@@ -695,10 +695,12 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 
 		// Same target — only Filter can have moved. Use the in-place update.
 		if currentPQ.Filter != desiredPQ.Filter {
+			target := parseQueryTarget(desiredPQ.Target)
+
 			var filter *commonpb.QueryFilter
 			if desiredPQ.Filter != "" {
 				var err error
-				filter, err = filterexpr.Parse(desiredPQ.Filter)
+				filter, err = filterexpr.Parse(desiredPQ.Filter, target)
 				if err != nil {
 					return nil, fmt.Errorf("prepared query %q filter: %w", name, err)
 				}

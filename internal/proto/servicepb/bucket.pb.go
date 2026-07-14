@@ -5609,8 +5609,8 @@ type ListAuditEntriesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// options carries the whole read contract. Audit has NO dedicated top-level
 	// filters: ledger scope and outcome selection are expressed through
-	// options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
-	// failure`), exactly like every other filtered list endpoint.
+	// options.filter with bare audit fields (e.g. `ledger == <name>`,
+	// `outcome == failure`), exactly like every other filtered list endpoint.
 	Options       *commonpb.ListOptions `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
