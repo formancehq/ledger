@@ -55,6 +55,22 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			json:   `{"$match":{"ledger":"main"}}`,
 			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
+		{
+			// EN-1544: the textual `date` field and the structured `date` bound both
+			// coerce the same RFC3339 string to a log date condition.
+			name:   "date RFC3339 on logs",
+			text:   `date >= "2023-11-14T22:13:20Z"`,
+			json:   `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			// EN-1544: the textual `timestamp` field and the structured `timestamp`
+			// bound both coerce the same RFC3339 string to a tx timestamp condition.
+			name:   "timestamp RFC3339 on transactions",
+			text:   `timestamp >= "2023-11-14T22:13:20Z"`,
+			json:   `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
 	}
 
 	for _, tc := range cases {
@@ -73,6 +89,102 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 				"text and JSON forms must decode to the same QueryFilter\n text: %v\n json: %v",
 				fromText, fromJSON)
 		})
+	}
+}
+
+// TestDecodeDualFormat_DatePerTarget locks the per-target validity of the EN-1544
+// date/timestamp fields: `date` compiles to a log condition (valid on LOGS only)
+// and `timestamp` to a transaction condition (valid on TRANSACTIONS only). The
+// gate runs on the decoded proto, so it applies to BOTH serializations
+// identically — using the wrong target is a 400 regardless of the form used.
+func TestDecodeDualFormat_DatePerTarget(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		raw     string
+		target  commonpb.QueryTarget
+		wantErr string // empty => must succeed
+	}{
+		{
+			name:   "textual date on logs is valid",
+			raw:    `date >= "2023-11-14T22:13:20Z"`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "structured date on logs is valid",
+			raw:    `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:    "textual date on transactions is rejected",
+			raw:     `date >= "2023-11-14T22:13:20Z"`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			wantErr: "not valid on transactions",
+		},
+		{
+			name:    "structured date on transactions is rejected",
+			raw:     `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			wantErr: "not valid on transactions",
+		},
+		{
+			name:   "textual timestamp on transactions is valid",
+			raw:    `timestamp >= "2023-11-14T22:13:20Z"`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:    "textual timestamp on logs is rejected",
+			raw:     `timestamp >= "2023-11-14T22:13:20Z"`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "not valid on logs",
+		},
+		{
+			name:    "structured timestamp on accounts is rejected",
+			raw:     `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			wantErr: "not valid on accounts",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			filter, err := DecodeDualFormat([]byte(tc.raw), tc.target)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, filter)
+		})
+	}
+}
+
+// TestDecodeDualFormat_DateRejectsPreEpoch locks pre-epoch rejection at the DSL
+// layer for both serializations (EN-1544), consistent with the transport-level
+// rejection (EN-1542).
+func TestDecodeDualFormat_DateRejectsPreEpoch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		raw    string
+		target commonpb.QueryTarget
+	}{
+		{`date >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`{"$gte":{"date":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`timestamp >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{`{"$gte":{"timestamp":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+	}
+
+	for _, tc := range cases {
+		_, err := DecodeDualFormat([]byte(tc.raw), tc.target)
+		require.Error(t, err, tc.raw)
+		require.Contains(t, err.Error(), "Unix epoch", tc.raw)
 	}
 }
 

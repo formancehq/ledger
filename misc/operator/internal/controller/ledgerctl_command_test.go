@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -75,15 +76,108 @@ func TestLedgerctlCommand_TLSModes(t *testing.T) {
 			shell := cmd[2]
 
 			// Args are single-quoted to neutralize shell metacharacters that
-			// can reach this helper from CRD fields or Secret values.
-			require.True(t, strings.HasPrefix(shell, "./ledgerctl 'store' 'backup'"),
-				"shell command must start with the (quoted) ledgerctl subcommand, got %q", shell)
+			// can reach this helper from CRD fields or Secret values. The
+			// ledgerctl invocation is preceded by the OTEL env prologue.
+			require.Contains(t, shell, "./ledgerctl 'store' 'backup'",
+				"shell command must contain the (quoted) ledgerctl subcommand, got %q", shell)
+			require.True(t, strings.HasPrefix(shell, otelExecPrologue),
+				"shell command must start with the OTEL env prologue, got %q", shell)
 			for _, fragment := range tt.wantContains {
 				require.Contains(t, shell, fragment)
 			}
 			for _, fragment := range tt.wantNotContain {
 				require.NotContains(t, shell, fragment)
 			}
+		})
+	}
+}
+
+func TestOtelExecPrologue(t *testing.T) {
+	t.Parallel()
+
+	// Execute the prologue in a real shell and report the resolved values so
+	// the test exercises the actual POSIX-sh logic the pod runs, not a Go
+	// re-implementation of it.
+	run := func(env []string) (endpoint, protocol, sdkDisabled string) {
+		t.Helper()
+		script := otelExecPrologue + `printf '%s\n%s\n%s\n' "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" "${OTEL_EXPORTER_OTLP_PROTOCOL:-}" "${OTEL_SDK_DISABLED:-}"`
+		cmd := exec.Command("/bin/sh", "-c", script)
+		// Run with an explicit environment (never nil): a nil Env makes
+		// exec.Command inherit the parent's, so an OTEL_* var on the developer's
+		// or CI runner's machine would leak in and make the assertion flaky.
+		cmd.Env = append([]string{}, env...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "prologue failed: %s", out)
+		// Three printf lines; do not trim, so an empty value keeps its line.
+		lines := strings.Split(string(out), "\n")
+		require.GreaterOrEqual(t, len(lines), 3, "unexpected output: %q", string(out))
+
+		return lines[0], lines[1], lines[2]
+	}
+
+	tests := []struct {
+		name         string
+		env          []string
+		wantEndpoint string
+		wantProtocol string
+		wantDisabled string
+	}{
+		{
+			name:         "no endpoint disables the SDK",
+			env:          nil,
+			wantDisabled: "true",
+		},
+		{
+			name:         "insecure endpoint gets http scheme",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector.monitoring.svc:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantEndpoint: "http://collector.monitoring.svc:4317",
+		},
+		{
+			name:         "secure endpoint gets https scheme",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector.monitoring.svc:4317"},
+			wantEndpoint: "https://collector.monitoring.svc:4317",
+		},
+		{
+			name:         "endpoint already carrying a scheme is left untouched",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=http://collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantEndpoint: "http://collector:4317",
+		},
+		{
+			name:         "http mode is translated to the standard protocol",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4318", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true", "OTEL_TRACES_EXPORTER_OTLP_MODE=http"},
+			wantEndpoint: "http://collector:4318",
+			wantProtocol: "http",
+		},
+		{
+			name:         "grpc mode is translated to the standard protocol",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true", "OTEL_TRACES_EXPORTER_OTLP_MODE=grpc"},
+			wantEndpoint: "http://collector:4317",
+			wantProtocol: "grpc",
+		},
+		{
+			name:         "mode without an endpoint still disables the SDK",
+			env:          []string{"OTEL_TRACES_EXPORTER_OTLP_MODE=http"},
+			wantDisabled: "true",
+		},
+		{
+			name:         "traces disabled at Cluster level disables the SDK despite a configured endpoint",
+			env:          []string{"OTEL_TRACES=false", "OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantDisabled: "true",
+		},
+		{
+			name:         "traces enabled with an endpoint still translates",
+			env:          []string{"OTEL_TRACES=true", "OTEL_TRACES_EXPORTER_OTLP_ENDPOINT=collector:4317", "OTEL_TRACES_EXPORTER_OTLP_INSECURE=true"},
+			wantEndpoint: "http://collector:4317",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			endpoint, protocol, disabled := run(tt.env)
+			require.Equal(t, tt.wantEndpoint, endpoint)
+			require.Equal(t, tt.wantProtocol, protocol)
+			require.Equal(t, tt.wantDisabled, disabled)
 		})
 	}
 }
