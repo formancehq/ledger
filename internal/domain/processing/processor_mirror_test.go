@@ -168,6 +168,161 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	require.Equal(t, uint64(43), putBoundaries.GetNextTransactionId())
 }
 
+// mirrorCreatedTxOrder builds a MirrorIngest order for a created transaction
+// carrying the given v2LogId. Shared by the idempotency tests so they exercise
+// the exact wrapper shape (v2LogId on MirrorLogEntry) the guard reads.
+func mirrorCreatedTxOrder(ledger string, v2LogID, txID uint64) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: v2LogID,
+						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+								TransactionId: txID,
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: "users:001",
+									Amount:      commonpb.NewUint256FromUint64(500),
+									Asset:       "USD/2",
+								}},
+							},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+// TestMirrorIngest_ReplayIsNoOp pins the EN-1550 idempotency guard: an ingest
+// whose v2LogId equals the recorded high-water mark (LastMirrorV2LogId) has
+// already been applied, so re-applying it is a deterministic side-effect-free
+// no-op — no postings applied (no volume writes → balances not doubled), no
+// ledger re-touch, no boundary advance, and (nil, nil) returned so ProcessOrders
+// emits no log.
+func TestMirrorIngest_ReplayIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	// v2LogId 7 was already applied: LastMirrorV2LogId == 7.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 7}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	// The guard runs before any mutation: no boundary Put on replay.
+	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("Boundaries().Put must not be called on an idempotent replay")
+	})
+	// No ledger re-touch on replay (guarded before s.Ledgers().Put).
+	ledgersStub := setupLedgersStub(mockStore)
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
+		t.Errorf("Ledgers().Put must not be called on an idempotent replay")
+	})
+	// No posting applied → no volume writes → balances cannot double.
+	volumesStub := setupVolumesStub(mockStore)
+	volumesStub.onPut(func(_ domain.VolumeKey, _ *raftcmdpb.VolumePair) {
+		t.Errorf("Volumes().Put must not be called on an idempotent replay")
+	})
+
+	// Replay v2LogId 7 (already applied).
+	result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 7, 42), mockStore)
+	require.NoError(t, err)
+	require.Nil(t, result, "replayed ingest must produce no log payload")
+}
+
+// TestMirrorIngest_LowerV2LogIdSkipped pins that an OLDER v2LogId arriving after
+// a higher one (e.g. a tampered/rolled-back MirrorCursor makes the worker
+// re-emit past logs) is skipped as a no-op.
+func TestMirrorIngest_LowerV2LogIdSkipped(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 10}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("Boundaries().Put must not be called for a stale (lower) v2LogId")
+	})
+	volumesStub := setupVolumesStub(mockStore)
+	volumesStub.onPut(func(_ domain.VolumeKey, _ *raftcmdpb.VolumePair) {
+		t.Errorf("Volumes().Put must not be called for a stale (lower) v2LogId")
+	})
+
+	// v2LogId 6 is older than the applied high-water mark 10.
+	result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 6, 99), mockStore)
+	require.NoError(t, err)
+	require.Nil(t, result)
+}
+
+// TestMirrorIngest_AdvancesLastMirrorV2LogId pins that a forward ingest applies
+// and records its v2LogId as the new high-water mark on the boundaries it writes.
+func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	// Previously applied up to v2LogId 3; the new entry (4) is strictly greater.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 3}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	var putBoundaries *raftcmdpb.LedgerBoundaries
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { putBoundaries = b })
+
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+	volumes := setupVolumesStub(mockStore)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2"), zeroVol.AsReader(), nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
+
+	result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 4, 42), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.NotNil(t, putBoundaries)
+	require.Equal(t, uint64(4), putBoundaries.GetLastMirrorV2LogId(),
+		"applied ingest must advance the v2LogId high-water mark")
+}
+
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	t.Parallel()
 

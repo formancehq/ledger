@@ -93,17 +93,26 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
 - A cursor that advances **beyond** the highest audited `MirrorIngest.v2LogId`
   makes the worker skip source logs without any audit entry showing the missing
   proposals — silent under-ingestion.
-- A cursor that drops **below** the highest audited `v2LogId` is equally unsafe.
-  `Worker.processBatch` (`internal/application/mirror/worker.go`) reloads the
-  cursor and calls `FetchLogs(cursor, ...)`, which returns source logs strictly
-  *after* the cursor. `TranslateBatch` then emits fresh `MirrorIngest` orders for
-  logs that were already ingested, and `processMirrorCreatedTransaction`
-  (`internal/domain/processing/processor_mirror.go`) reapplies every posting with
-  `force=true`, overwriting the transaction state and re-adding the amounts to the
-  volume pair via `applyPosting`. There is **no deduplication on `v2LogId`** and
-  volume mutation is additive, so a lowered cursor replays already-audited
-  transactions and applies their balance effects a second time — silent
-  double-application.
+- A cursor that drops **below** the highest audited `v2LogId` makes
+  `Worker.processBatch` (`internal/application/mirror/worker.go`) reload the
+  cursor and call `FetchLogs(cursor, ...)`, which returns source logs strictly
+  *after* the cursor. `TranslateBatch` then re-emits `MirrorIngest` orders for
+  logs that were already ingested. **This replay is now idempotent at the FSM
+  level (EN-1550).** `processMirrorIngest`
+  (`internal/domain/processing/processor_mirror.go`) records the highest applied
+  source id in `LedgerBoundaries.last_mirror_v2_log_id` and, *before* applying any
+  posting or mutating any state, skips any entry whose `v2LogId` is `<=` that
+  high-water mark, returning a deterministic no-op `(nil, nil)` — no postings
+  re-forced, no volume mutation, no fresh ledger log (`ProcessOrders` treats the
+  `(nil, nil)` outcome as "no log": no sequence id consumed, no audit-visible
+  `Log`). The boundary is a pure function of applied per-ledger state and v2 log
+  ids are 1-based and strictly increasing per source (`TranslateBatch`), so the
+  guard is FSM-deterministic and needs no new preload/coverage key (it lives
+  inside the already-covered boundaries). Historically (pre-EN-1550) a lowered
+  cursor caused silent **double-application**: postings were reapplied with
+  `force=true` and additive volume mutation with no dedup on `v2LogId`. Only the
+  **behind** direction is closed here; recovering a cursor that is *ahead* of the
+  true source head is worker-side source-head recovery and remains out of scope.
 
 Because it is only correct at one exact value, treat `MirrorCursor` as a
 persisted per-ledger projection (`ZonePerLedger` / `SubPLMirrorCursor`, in the
@@ -137,6 +146,20 @@ it — a cursor value corrupted or tampered before it is proposed takes effect o
 every node identically. Mirror recovery, repair tooling, or a checker pass
 that re-derives the expected cursor from the audited mirror-ingest logs must
 enforce the equality before the stored cursor can be trusted.
+
+`LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
+mark) does **not** add a new tamper vector and needs **no** new checker pass. It
+is derivable from the audited `MirrorIngest` orders — it is exactly the maximum
+applied `v2LogId`, the same quantity the (still-owed) `MirrorCursor` equality
+above re-derives — and it only *gates future application* by turning a replayed
+ingest into a no-op. Tampering it can only make the guard stricter (skip a not-yet
+-applied log, which the pending `MirrorCursor` equality check would already flag
+as under-ingestion) or looser (admit an already-applied `v2LogId`), and the
+looser case cannot double a balance on its own: the double-application it would
+re-enable is precisely what the same-proposal, audit-bound posting effects and
+the `MirrorCursor` equality already govern. It is not independently
+business-authoritative, so it rides on the mirror-cursor coverage rather than
+earning its own `compare*` pass.
 
 ## Readstore and Indexes
 

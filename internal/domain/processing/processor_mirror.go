@@ -27,10 +27,6 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	if info.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
-	// Re-touch ledger info so it enters the Merge buffer and gets propagated
-	// back to Gen0 on commit. Without this, ledger info is evicted after two
-	// cache rotations because mirror proposals bypass the admission preloader.
-	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	boundariesReader, loadErr := loadBoundaries(s, ledger)
 	if loadErr != nil {
@@ -39,14 +35,47 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 
 	boundaries := boundariesReader.Mutate()
 
-	// Stage per-apply context fields for child handlers.
-	ctx.Boundaries = boundaries
-	ctx.LedgerInfo = info
-
 	entry := order.GetEntry()
 	if entry == nil {
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
+
+	// Idempotent replay guard — evaluated BEFORE any mutation (no ledger
+	// re-touch, no cache write) so a replayed ingest is a truly side-effect-free
+	// no-op. The mirror worker resumes from the MirrorCursor projection; if that
+	// cursor is tampered (or rolled back) to a lower value, the worker re-fetches
+	// and re-proposes source logs that were already applied here, force-adding
+	// their postings a second time and doubling balances (flemzord, #1581).
+	// LastMirrorV2LogId is the highest source v2LogId already applied to this
+	// ledger — a pure function of applied per-ledger state. v2 log IDs are
+	// 1-based and strictly increasing per source (see adapter/v2/translator.go:
+	// TranslateBatch), so an entry whose v2LogId is <= the recorded high-water
+	// mark has already been applied and re-applying it must be a deterministic
+	// no-op.
+	//
+	// This is an EXPECTED stale/replayed-ingest case, not an impossible-by-design
+	// branch, so a soft skip (return nil, nil — no log payload, no mutation) is
+	// the correct outcome per invariant #7's expected-vs-impossible distinction;
+	// failing loud (assert.Unreachable) is reserved for branches reachable only
+	// when an invariant is already broken, which replay is not. ProcessOrders
+	// treats the (nil, nil) return as a no-log outcome: no sequence id, no audit
+	// log, no sink absorb.
+	//
+	// First-ingest case: LastMirrorV2LogId defaults to 0, so the first real
+	// v2LogId (>= 1) is strictly greater and applies normally.
+	v2LogID := entry.GetV2LogId()
+	if v2LogID != 0 && v2LogID <= boundaries.GetLastMirrorV2LogId() {
+		return nil, nil
+	}
+
+	// Re-touch ledger info so it enters the Merge buffer and gets propagated
+	// back to Gen0 on commit. Without this, ledger info is evicted after two
+	// cache rotations because mirror proposals bypass the admission preloader.
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
+
+	// Stage per-apply context fields for child handlers.
+	ctx.Boundaries = boundaries
+	ctx.LedgerInfo = info
 
 	var logPayload *commonpb.LedgerLogPayload
 
@@ -93,6 +122,14 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	// Assign per-ledger log ID and advance boundaries
 	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
+	// Advance the idempotent-replay high-water mark. Set once here regardless of
+	// the inner ingest kind, because v2LogId lives on the wrapping MirrorLogEntry
+	// and applies to every kind (CreatedTransaction, SavedMetadata,
+	// DeletedMetadata, RevertedTransaction, FillGap). Guarded by v2LogID != 0 so
+	// an entry that somehow carries no source id never rewinds the mark.
+	if v2LogID != 0 {
+		boundaries.LastMirrorV2LogId = v2LogID
+	}
 	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 
 	return &commonpb.LogPayload{
