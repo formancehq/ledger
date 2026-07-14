@@ -34,7 +34,7 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	opts := ctrl.GetAccountOptions{
-		CollapseColors: r.URL.Query().Get("collapseColors") == "true",
+		CollapseColors: queryParamBool(r, "collapseColors"),
 	}
 
 	account, err := s.backend.GetAccount(r.Context(), ledgerName, address, opts)

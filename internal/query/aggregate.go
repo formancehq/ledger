@@ -159,11 +159,7 @@ func collapseColorBuckets(in map[assetKey]*aggregatedVol) (map[assetKey]*aggrega
 
 func sortAggregatedVolumes(volumes []*commonpb.AggregatedVolume) {
 	sort.Slice(volumes, func(i, j int) bool {
-		if a, b := volumes[i].GetAsset(), volumes[j].GetAsset(); a != b {
-			return a < b
-		}
-
-		return volumes[i].GetColor() < volumes[j].GetColor()
+		return commonpb.LessByAssetColor(volumes[i], volumes[j])
 	})
 }
 

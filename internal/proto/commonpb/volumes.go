@@ -45,19 +45,6 @@ func (*Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
 	schema.Properties.Set("balance", inputProperty)
 }
 
-// NewEmptyVolumes creates new empty volumes.
-func NewEmptyVolumes() *Volumes {
-	return NewVolumesInt64(0, 0)
-}
-
-// NewVolumesInt64 creates new volumes from int64 values.
-func NewVolumesInt64(input, output int64) *Volumes {
-	return &Volumes{
-		Input:  big.NewInt(input).String(),
-		Output: big.NewInt(output).String(),
-	}
-}
-
 // Balance calculates the balance (input - output).
 func (v *Volumes) Balance() *big.Int {
 	if v == nil {
@@ -103,6 +90,25 @@ func (v *Volumes) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// AssetColored is implemented by every volume-bearing message keyed by an
+// (asset, color) tuple. It lets a single comparator order any of them.
+type AssetColored interface {
+	GetAsset() string
+	GetColor() string
+}
+
+// LessByAssetColor reports whether a sorts before b by (asset, color)
+// ascending. It is the single comparator shared by every deterministic
+// volume ordering (VolumeEntry, AccountVolume, AggregatedVolume) so the sort
+// key can never drift between call sites.
+func LessByAssetColor[T AssetColored](a, b T) bool {
+	if x, y := a.GetAsset(), b.GetAsset(); x != y {
+		return x < y
+	}
+
+	return a.GetColor() < b.GetColor()
+}
+
 // SortVolumes orders the inner volumes list by (asset, color) ascending.
 // Stable order is required so JSON / proto output is deterministic across
 // reads and so snapshot tests don't flap.
@@ -111,11 +117,7 @@ func (v *VolumesByAssets) SortVolumes() {
 		return
 	}
 	sort.Slice(v.GetVolumes(), func(i, j int) bool {
-		if a, b := v.GetVolumes()[i].GetAsset(), v.GetVolumes()[j].GetAsset(); a != b {
-			return a < b
-		}
-
-		return v.GetVolumes()[i].GetColor() < v.GetVolumes()[j].GetColor()
+		return LessByAssetColor(v.GetVolumes()[i], v.GetVolumes()[j])
 	})
 }
 

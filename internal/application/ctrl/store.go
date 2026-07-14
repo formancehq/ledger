@@ -72,7 +72,17 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 		color string
 	}
 
-	totals := make(map[key]*commonpb.AccountVolume, len(volEntries))
+	// running holds the accumulating sums as *big.Int so we never round-trip
+	// through decimal strings per row; the final AccountVolume (formatted once)
+	// is built at the end.
+	type running struct {
+		asset  string
+		color  string
+		input  *big.Int
+		output *big.Int
+	}
+
+	totals := make(map[key]*running, len(volEntries))
 
 	for _, entry := range volEntries {
 		var vk domain.VolumeKey
@@ -99,37 +109,35 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 		k := key{asset: vk.Asset, color: bucketColor}
 		acc, ok := totals[k]
 		if !ok {
-			acc = &commonpb.AccountVolume{
-				Asset: vk.Asset,
-				Color: bucketColor,
-				Volumes: &commonpb.VolumesWithBalance{
-					Input:  big.NewInt(0).String(),
-					Output: big.NewInt(0).String(),
-				},
+			acc = &running{
+				asset:  vk.Asset,
+				color:  bucketColor,
+				input:  big.NewInt(0),
+				output: big.NewInt(0),
 			}
 			totals[k] = acc
 		}
 
-		currentIn, _ := new(big.Int).SetString(acc.GetVolumes().GetInput(), 10)
-		currentOut, _ := new(big.Int).SetString(acc.GetVolumes().GetOutput(), 10)
-		acc.Volumes.Input = currentIn.Add(currentIn, input).String()
-		acc.Volumes.Output = currentOut.Add(currentOut, output).String()
+		acc.input.Add(acc.input, input)
+		acc.output.Add(acc.output, output)
 	}
 
 	out := make([]*commonpb.AccountVolume, 0, len(totals))
 	for _, v := range totals {
-		// Compute balance once at the end (after potential color collapse).
-		input, _ := new(big.Int).SetString(v.GetVolumes().GetInput(), 10)
-		output, _ := new(big.Int).SetString(v.GetVolumes().GetOutput(), 10)
-		v.Volumes.Balance = new(big.Int).Sub(input, output).String()
-		out = append(out, v)
+		// Format the accumulated sums once, and compute the balance from the
+		// *big.Int totals (after any color collapse).
+		out = append(out, &commonpb.AccountVolume{
+			Asset: v.asset,
+			Color: v.color,
+			Volumes: &commonpb.VolumesWithBalance{
+				Input:   v.input.String(),
+				Output:  v.output.String(),
+				Balance: new(big.Int).Sub(v.input, v.output).String(),
+			},
+		})
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if a, b := out[i].GetAsset(), out[j].GetAsset(); a != b {
-			return a < b
-		}
-
-		return out[i].GetColor() < out[j].GetColor()
+		return commonpb.LessByAssetColor(out[i], out[j])
 	})
 
 	return out, nil

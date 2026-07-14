@@ -51,7 +51,6 @@ type errCatchAllAssetNotSupported struct{}
 func (errCatchAllAssetNotSupported) Error() string {
 	return "asset catch-all queries (BASE/*) are not yet supported: use the explicit precision (e.g. `send [USD/2 N]` instead of `send [USD N]`)"
 }
-func (errCatchAllAssetNotSupported) Kind() domain.ErrorKind      { return domain.KindValidation }
 func (errCatchAllAssetNotSupported) Reason() string              { return domain.ErrReasonValidation }
 func (errCatchAllAssetNotSupported) Metadata() map[string]string { return nil }
 
