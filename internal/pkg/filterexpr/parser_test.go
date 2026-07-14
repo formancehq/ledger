@@ -16,7 +16,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata string equality", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] == premium")
+		filter, err := Parse("metadata[category] == premium", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -30,7 +30,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata quoted value", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`metadata[name] == "hello world"`)
+		filter, err := Parse(`metadata[name] == "hello world"`, tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -44,7 +44,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata single-quoted value", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[name] == 'hello world'")
+		filter, err := Parse("metadata[name] == 'hello world'", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -57,7 +57,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata boolean true", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[active] == true")
+		filter, err := Parse("metadata[active] == true", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -70,7 +70,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata boolean false", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[active] == false")
+		filter, err := Parse("metadata[active] == false", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -86,7 +86,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata integer", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] == 42")
+		filter, err := Parse("metadata[age] == 42", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -102,7 +102,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata negative integer", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[score] == -5")
+		filter, err := Parse("metadata[score] == -5", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -116,7 +116,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata exists", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] exists")
+		filter, err := Parse("metadata[category] exists", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -128,7 +128,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata not equal desugars to not", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] != premium")
+		filter, err := Parse("metadata[category] != premium", tx)
 		require.NoError(t, err)
 
 		notF := filter.GetNot()
@@ -144,7 +144,7 @@ func TestParse(t *testing.T) {
 	t.Run("address exact", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`address == "users:alice"`)
+		filter, err := Parse(`address == "users:alice"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -155,7 +155,7 @@ func TestParse(t *testing.T) {
 	t.Run("address prefix", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`address ^= "users:"`)
+		filter, err := Parse(`address ^= "users:"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -167,7 +167,7 @@ func TestParse(t *testing.T) {
 		t.Parallel()
 
 		// A `:` is not a bare-Ident char (EN-1547): the prefix must be quoted.
-		filter, err := Parse(`address ^= "users:"`)
+		filter, err := Parse(`address ^= "users:"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -175,14 +175,14 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "users:", am.GetHardcodedPrefix())
 
 		// The bare (unquoted) punctuated form is rejected.
-		_, err = Parse("address ^= users:")
+		_, err = Parse("address ^= users:", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("AND", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[a] == x and metadata[b] == y")
+		filter, err := Parse("metadata[a] == x and metadata[b] == y", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -201,7 +201,7 @@ func TestParse(t *testing.T) {
 	t.Run("OR", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[a] == x or metadata[b] == y")
+		filter, err := Parse("metadata[a] == x or metadata[b] == y", tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -212,7 +212,7 @@ func TestParse(t *testing.T) {
 	t.Run("precedence: and binds tighter than or", func(t *testing.T) {
 		t.Parallel()
 		// "a or b and c" should parse as "a or (b and c)"
-		filter, err := Parse("metadata[a] == x or metadata[b] == y and metadata[c] == z")
+		filter, err := Parse("metadata[a] == x or metadata[b] == y and metadata[c] == z", tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -231,7 +231,7 @@ func TestParse(t *testing.T) {
 	t.Run("grouping overrides precedence", func(t *testing.T) {
 		t.Parallel()
 		// "(a or b) and c" should have AND at top level
-		filter, err := Parse("(metadata[a] == x or metadata[b] == y) and metadata[c] == z")
+		filter, err := Parse("(metadata[a] == x or metadata[b] == y) and metadata[c] == z", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -247,7 +247,7 @@ func TestParse(t *testing.T) {
 	t.Run("NOT", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("not metadata[a] == x")
+		filter, err := Parse("not metadata[a] == x", tx)
 		require.NoError(t, err)
 
 		notF := filter.GetNot()
@@ -258,7 +258,7 @@ func TestParse(t *testing.T) {
 	t.Run("NOT with grouping", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("not (metadata[a] == x or metadata[b] == y)")
+		filter, err := Parse("not (metadata[a] == x or metadata[b] == y)", tx)
 		require.NoError(t, err)
 
 		notF := filter.GetNot()
@@ -271,7 +271,7 @@ func TestParse(t *testing.T) {
 	t.Run("multiple AND operands", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[a] == x and metadata[b] == y and metadata[c] == z")
+		filter, err := Parse("metadata[a] == x and metadata[b] == y and metadata[c] == z", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -282,28 +282,28 @@ func TestParse(t *testing.T) {
 	t.Run("error: empty expression", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("")
+		_, err := Parse("", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("error: missing operator", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("metadata[key]")
+		_, err := Parse("metadata[key]", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("error: missing value", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("metadata[key] ==")
+		_, err := Parse("metadata[key] ==", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("source exact", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`source == "merchants:alice"`)
+		filter, err := Parse(`source == "merchants:alice"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -315,7 +315,7 @@ func TestParse(t *testing.T) {
 	t.Run("source prefix", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`source ^= "merchants:"`)
+		filter, err := Parse(`source ^= "merchants:"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -327,7 +327,7 @@ func TestParse(t *testing.T) {
 	t.Run("destination exact", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`destination == "users:bob"`)
+		filter, err := Parse(`destination == "users:bob"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -339,7 +339,7 @@ func TestParse(t *testing.T) {
 	t.Run("destination prefix", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`destination ^= "users:"`)
+		filter, err := Parse(`destination ^= "users:"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -351,7 +351,7 @@ func TestParse(t *testing.T) {
 	t.Run("source and destination combined", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`source ^= "a:" and destination ^= "b:"`)
+		filter, err := Parse(`source ^= "a:" and destination ^= "b:"`, tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -372,7 +372,7 @@ func TestParse(t *testing.T) {
 	t.Run("address has ANY role by default", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`address == "users:alice"`)
+		filter, err := Parse(`address == "users:alice"`, tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -383,7 +383,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata greater than", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] > 18")
+		filter, err := Parse("metadata[age] > 18", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -400,7 +400,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata greater than or equal", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] >= 18")
+		filter, err := Parse("metadata[age] >= 18", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -417,7 +417,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata less than", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] < 65")
+		filter, err := Parse("metadata[age] < 65", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -434,7 +434,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata less than or equal", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] <= 65")
+		filter, err := Parse("metadata[age] <= 65", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -451,7 +451,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata range combined with AND", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] >= 18 and metadata[age] < 65")
+		filter, err := Parse("metadata[age] >= 18 and metadata[age] < 65", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -478,7 +478,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata negative integer range", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[score] > -10")
+		filter, err := Parse("metadata[score] > -10", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -493,7 +493,7 @@ func TestParse(t *testing.T) {
 	t.Run("error: string range not supported", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse(`metadata[name] > "alice"`)
+		_, err := Parse(`metadata[name] > "alice"`, tx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
@@ -501,7 +501,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata between inclusive range", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[block_height] between 800000 and 800099")
+		filter, err := Parse("metadata[block_height] between 800000 and 800099", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -522,7 +522,7 @@ func TestParse(t *testing.T) {
 
 		// `between X and X` compiles to a single value — same shape as `== X`,
 		// so the downstream PrefixIterator fast path applies.
-		filter, err := Parse("metadata[age] between 42 and 42")
+		filter, err := Parse("metadata[age] between 42 and 42", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -536,7 +536,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata between with parameters", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] between $low and $high")
+		filter, err := Parse("metadata[age] between $low and $high", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -552,7 +552,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata between mixed param and literal", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] between 18 and $max")
+		filter, err := Parse("metadata[age] between 18 and $max", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -568,7 +568,7 @@ func TestParse(t *testing.T) {
 		t.Parallel()
 
 		// The inner `and` belongs to BetweenRange; the outer `and` to AndExpr.
-		filter, err := Parse("metadata[a] between 1 and 10 and metadata[b] == foo")
+		filter, err := Parse("metadata[a] between 1 and 10 and metadata[b] == foo", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -588,7 +588,7 @@ func TestParse(t *testing.T) {
 	t.Run("error: between with reversed bounds", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("metadata[age] between 100 and 10")
+		_, err := Parse("metadata[age] between 100 and 10", tx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "out of order")
 	})
@@ -596,7 +596,7 @@ func TestParse(t *testing.T) {
 	t.Run("error: between with non-integer value", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse(`metadata[name] between "alice" and "bob"`)
+		_, err := Parse(`metadata[name] between "alice" and "bob"`, tx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
@@ -605,7 +605,7 @@ func TestParse(t *testing.T) {
 		t.Parallel()
 
 		// Exercises the param-branch high-side parseIntValue error path.
-		_, err := Parse(`metadata[name] between $lo and "bob"`)
+		_, err := Parse(`metadata[name] between $lo and "bob"`, tx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
@@ -614,7 +614,7 @@ func TestParse(t *testing.T) {
 		t.Parallel()
 
 		// Exercises the param-branch low-side parseIntValue error path.
-		_, err := Parse(`metadata[name] between "alice" and $hi`)
+		_, err := Parse(`metadata[name] between "alice" and $hi`, tx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "range operators only support integer values")
 	})
@@ -622,21 +622,21 @@ func TestParse(t *testing.T) {
 	t.Run("error: unknown keyword", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("foobar == 42")
+		_, err := Parse("foobar == 42", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("error: trailing tokens", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("metadata[key] == val extra")
+		_, err := Parse("metadata[key] == val extra", tx)
 		require.Error(t, err)
 	})
 
 	t.Run("error: unclosed parenthesis", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("(metadata[key] == val")
+		_, err := Parse("(metadata[key] == val", tx)
 		require.Error(t, err)
 	})
 
@@ -645,7 +645,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata string equality", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] == $val")
+		filter, err := Parse("metadata[category] == $val", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -659,7 +659,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata != desugars to not param", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] != $val")
+		filter, err := Parse("metadata[category] != $val", tx)
 		require.NoError(t, err)
 
 		notF := filter.GetNot()
@@ -674,7 +674,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata greater than", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] > $min")
+		filter, err := Parse("metadata[age] > $min", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -689,7 +689,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata greater than or equal", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] >= $min")
+		filter, err := Parse("metadata[age] >= $min", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -703,7 +703,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata less than", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] < $max")
+		filter, err := Parse("metadata[age] < $max", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -718,7 +718,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: metadata less than or equal", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] <= $max")
+		filter, err := Parse("metadata[age] <= $max", tx)
 		require.NoError(t, err)
 
 		fc := filter.GetField()
@@ -732,7 +732,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: address exact", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("address == $addr")
+		filter, err := Parse("address == $addr", tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -744,7 +744,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: address prefix", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("address ^= $prefix")
+		filter, err := Parse("address ^= $prefix", tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -755,7 +755,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: source exact", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("source == $src")
+		filter, err := Parse("source == $src", tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -767,7 +767,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: destination prefix", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("destination ^= $dst")
+		filter, err := Parse("destination ^= $dst", tx)
 		require.NoError(t, err)
 
 		am := filter.GetAddress()
@@ -779,7 +779,7 @@ func TestParse(t *testing.T) {
 	t.Run("param: combined with hardcoded in AND", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[tier] == $tier and metadata[age] >= $min_age")
+		filter, err := Parse("metadata[tier] == $tier and metadata[age] >= $min_age", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -805,7 +805,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in with strings", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`metadata[category] in (premium, gold, silver)`)
+		filter, err := Parse(`metadata[category] in (premium, gold, silver)`, tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -825,7 +825,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in with quoted strings", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`metadata[name] in ("hello world", "foo bar")`)
+		filter, err := Parse(`metadata[name] in ("hello world", "foo bar")`, tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -844,7 +844,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in with integers", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[age] in (18, 25, 30)")
+		filter, err := Parse("metadata[age] in (18, 25, 30)", tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -862,7 +862,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in with single value collapses", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] in (premium)")
+		filter, err := Parse("metadata[category] in (premium)", tx)
 		require.NoError(t, err)
 
 		// Single value: no OrFilter wrapper, direct field condition.
@@ -877,7 +877,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in with params", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] in ($a, $b)")
+		filter, err := Parse("metadata[category] in ($a, $b)", tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -891,7 +891,7 @@ func TestParse(t *testing.T) {
 	t.Run("address in", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`address in ("users:alice", "users:bob")`)
+		filter, err := Parse(`address in ("users:alice", "users:bob")`, tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -911,7 +911,7 @@ func TestParse(t *testing.T) {
 	t.Run("source in", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse(`source in ("bank:main", "bank:secondary")`)
+		filter, err := Parse(`source in ("bank:main", "bank:secondary")`, tx)
 		require.NoError(t, err)
 
 		orF := filter.GetOr()
@@ -927,7 +927,7 @@ func TestParse(t *testing.T) {
 	t.Run("metadata in combined with AND", func(t *testing.T) {
 		t.Parallel()
 
-		filter, err := Parse("metadata[category] in (a, b) and metadata[status] == active")
+		filter, err := Parse("metadata[category] in (a, b) and metadata[status] == active", tx)
 		require.NoError(t, err)
 
 		andF := filter.GetAnd()
@@ -948,7 +948,7 @@ func TestParse(t *testing.T) {
 	t.Run("error: metadata in empty list", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := Parse("metadata[category] in ()")
+		_, err := Parse("metadata[category] in ()", tx)
 		require.Error(t, err)
 	})
 
@@ -961,7 +961,7 @@ func TestParse(t *testing.T) {
 
 		input := strings.Repeat("not ", MaxParseDepth+5) + "metadata[x] == y"
 
-		_, err := Parse(input)
+		_, err := Parse(input, tx)
 		require.ErrorIs(t, err, ErrFilterTooDeep,
 			"deeply-nested `not` chain must trip the depth guard before participle (#341)")
 	})
@@ -972,7 +972,7 @@ func TestParse(t *testing.T) {
 		opens := strings.Repeat("(", MaxParseDepth+5)
 		closes := strings.Repeat(")", MaxParseDepth+5)
 
-		_, err := Parse(opens + "metadata[x] == y" + closes)
+		_, err := Parse(opens+"metadata[x] == y"+closes, tx)
 		require.ErrorIs(t, err, ErrFilterTooDeep,
 			"deeply-nested parens must trip the depth guard before participle (#341)")
 	})
@@ -984,7 +984,7 @@ func TestParse_HasAsset(t *testing.T) {
 	t.Run("bare asset is precision 0", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("has asset USD")
+		f, err := Parse("has asset USD", tx)
 		require.NoError(t, err)
 		c := f.GetAccountHasAsset()
 		require.NotNil(t, c)
@@ -995,7 +995,7 @@ func TestParse_HasAsset(t *testing.T) {
 	t.Run("asset with precision", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("has asset USD/4")
+		f, err := Parse("has asset USD/4", tx)
 		require.NoError(t, err)
 		c := f.GetAccountHasAsset()
 		require.NotNil(t, c)
@@ -1006,7 +1006,7 @@ func TestParse_HasAsset(t *testing.T) {
 	t.Run("combined with metadata", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("has asset USD and metadata[type] == premium")
+		f, err := Parse("has asset USD and metadata[type] == premium", tx)
 		require.NoError(t, err)
 		require.NotNil(t, f.GetAnd())
 		require.Len(t, f.GetAnd().GetFilters(), 2)
@@ -1024,8 +1024,8 @@ func TestParse_HasAsset(t *testing.T) {
 			"has asset USD/abc", "has asset USD/256", "has asset USD/2/3", "has asset USD/",
 			"has asset USD/0", "has asset USD/02", "has asset USD/00",
 		} {
-			_, err := Parse(in)
-			require.Error(t, err, "Parse(%q) should reject the non-canonical precision", in)
+			_, err := Parse(in, tx)
+			require.Error(t, err, "Parse(%q, tx) should reject the non-canonical precision", in)
 		}
 	})
 }
@@ -1039,7 +1039,7 @@ func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
 	t.Run("has is a usable bare address value", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("address == has")
+		f, err := Parse("address == has", tx)
 		require.NoError(t, err)
 		assert.Equal(t, "has", f.GetAddress().GetHardcodedExact())
 	})
@@ -1047,7 +1047,7 @@ func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
 	t.Run("asset is a usable bare metadata value", func(t *testing.T) {
 		t.Parallel()
 
-		f, err := Parse("metadata[k] == asset")
+		f, err := Parse("metadata[k] == asset", tx)
 		require.NoError(t, err)
 		assert.Equal(t, "asset", f.GetField().GetStringCond().GetHardcoded())
 	})
@@ -1056,11 +1056,11 @@ func TestParse_HasAssetKeywordsNotReserved(t *testing.T) {
 		t.Parallel()
 
 		// The `:` makes this not a bare Ident (EN-1547): quote it.
-		f, err := Parse(`address ^= "has:wallet"`)
+		f, err := Parse(`address ^= "has:wallet"`, tx)
 		require.NoError(t, err)
 		assert.Equal(t, "has:wallet", f.GetAddress().GetHardcodedPrefix())
 
-		_, err = Parse("address ^= has:wallet")
+		_, err = Parse("address ^= has:wallet", tx)
 		require.Error(t, err)
 	})
 }

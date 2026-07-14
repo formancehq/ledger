@@ -93,7 +93,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// A gRPC InvalidArgument status is a caller error, not a server fault, and
 	// must not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
 	// shared with the gRPC surface) rejects filters that parse but are not
-	// audit-supported — `not audit[...]`, a non-audit condition, an unknown
+	// audit-supported — `not outcome == failure`, a non-audit condition, an unknown
 	// field — as codes.InvalidArgument; surface that as a 400. Only
 	// InvalidArgument is translated here; other status codes keep the generic
 	// 500 fallthrough deliberately, since no other HTTP handler is expected to

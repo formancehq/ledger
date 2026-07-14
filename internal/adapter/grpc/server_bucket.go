@@ -979,7 +979,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 
 	opts := req.GetOptions()
 
-	// Audit listing is fully under the shared contract: filter (audit[...]
+	// Audit listing is fully under the shared contract: filter (bare audit fields
 	// conditions), reverse, and checkpoint_id are all honored (EN-1241).
 	if err := ValidateListOptions(opts, ListOptionsSupport{Filter: true, Reverse: true, CheckpointID: true}); err != nil {
 		return err

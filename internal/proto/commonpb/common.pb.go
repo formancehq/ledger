@@ -692,8 +692,10 @@ const (
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL         ErrorReason = 61
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW        ErrorReason = 62
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY             ErrorReason = 63
-	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW               ErrorReason = 64
-	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND                ErrorReason = 65
+	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP             ErrorReason = 64
+	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID         ErrorReason = 65
+	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW               ErrorReason = 66
+	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND                ErrorReason = 67
 )
 
 // Enum value maps for ErrorReason.
@@ -763,8 +765,10 @@ var (
 		61: "ERROR_REASON_WRITES_BLOCKED_DISK_FULL",
 		62: "ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW",
 		63: "ERROR_REASON_CHECKPOINT_NOT_READY",
-		64: "ERROR_REASON_AGGREGATE_OVERFLOW",
-		65: "ERROR_REASON_BALANCE_NOT_FOUND",
+		64: "ERROR_REASON_MIRROR_V2_LOG_ID_GAP",
+		65: "ERROR_REASON_MIRROR_V2_LOG_ID_INVALID",
+		66: "ERROR_REASON_AGGREGATE_OVERFLOW",
+		67: "ERROR_REASON_BALANCE_NOT_FOUND",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -831,8 +835,10 @@ var (
 		"ERROR_REASON_WRITES_BLOCKED_DISK_FULL":         61,
 		"ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW":        62,
 		"ERROR_REASON_CHECKPOINT_NOT_READY":             63,
-		"ERROR_REASON_AGGREGATE_OVERFLOW":               64,
-		"ERROR_REASON_BALANCE_NOT_FOUND":                65,
+		"ERROR_REASON_MIRROR_V2_LOG_ID_GAP":             64,
+		"ERROR_REASON_MIRROR_V2_LOG_ID_INVALID":         65,
+		"ERROR_REASON_AGGREGATE_OVERFLOW":               66,
+		"ERROR_REASON_BALANCE_NOT_FOUND":                67,
 	}
 )
 
@@ -1091,8 +1097,10 @@ const (
 	// audit condition validity lives in the same source of truth as the other
 	// targets (EN-1241 / EN-1305 / EN-1339 / EN-1481 move ListAuditEntries onto
 	// the shared ListOptions.filter contract). CompileAuditFilter accepts only
-	// audit[...] leaves combined with and/or — not, and every non-audit
-	// condition, are rejected — which the per-arm annotations below reflect.
+	// audit-condition leaves combined with and/or — not, and every non-audit
+	// condition, are rejected — which the per-arm annotations below reflect. On
+	// the textual DSL these are the bare audit fields (outcome, ledger, seq, …)
+	// resolved against QUERY_TARGET_AUDIT (EN-1549).
 	QueryTarget_QUERY_TARGET_AUDIT QueryTarget = 3
 )
 
@@ -13678,7 +13686,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xc8\x14\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x9a\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13744,9 +13752,11 @@ const file_common_proto_rawDesc = "" +
 	"\x1eERROR_REASON_CLUSTER_UNHEALTHY\x10<\x12)\n" +
 	"%ERROR_REASON_WRITES_BLOCKED_DISK_FULL\x10=\x12*\n" +
 	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>\x12%\n" +
-	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?\x12#\n" +
-	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10@\x12\"\n" +
-	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10A*Q\n" +
+	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?\x12%\n" +
+	"!ERROR_REASON_MIRROR_V2_LOG_ID_GAP\x10@\x12)\n" +
+	"%ERROR_REASON_MIRROR_V2_LOG_ID_INVALID\x10A\x12#\n" +
+	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10B\x12\"\n" +
+	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10C*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

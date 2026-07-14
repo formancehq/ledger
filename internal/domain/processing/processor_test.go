@@ -440,3 +440,62 @@ func TestProcessOrders_OrdersResultEmpty(t *testing.T) {
 	require.Equal(t, uint64(0), response.MinLogSequence)
 	require.Equal(t, uint64(0), response.MaxLogSequence)
 }
+
+// TestProcessOrders_MirrorReplayEmitsNoLog pins the EN-1550 no-log outcome at
+// the batch level: an idempotent mirror replay (v2LogId <= LastMirrorV2LogId)
+// returns (nil, nil) from processMirrorIngest, so ProcessOrders must NOT consume
+// a sequence id, NOT append a degenerate Log{Payload:nil}, and NOT record a
+// CreatedLog — the per-order slot stays nil (skipped by WriteSet.Merge exactly
+// like an idempotency-replay ReferenceSequence). Without the guard, replaying an
+// already-applied source log would re-force its postings and double balances
+// (#1581). The sink is asserted to receive zero Absorb calls.
+func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	// v2LogId 7 already applied.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 7}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil).AnyTimes()
+
+	// A no-op must consume no proposal-level sequence id: IncrementNextSequenceID
+	// is registered with Times(0) so any call fails the test.
+	mockStore.EXPECT().IncrementNextSequenceID().Times(0)
+
+	// A replay of v2LogId 7 (already applied) followed by an even older one (5).
+	orders := []*raftcmdpb.Order{
+		mirrorCreatedTxOrder("mirror-ledger", 7, 42),
+		mirrorCreatedTxOrder("mirror-ledger", 5, 41),
+	}
+
+	sink := &countingSink{}
+	response, err := processor.ProcessOrders(orders, mockFactory(mockStore), sink)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+
+	// Two order slots exist (index alignment preserved) but both are nil — no
+	// log produced for either replay.
+	require.Len(t, response.Logs, 2)
+	require.Nil(t, response.Logs[0].GetCreatedLog())
+	require.Nil(t, response.Logs[1].GetCreatedLog())
+
+	// No CreatedLogs, no sequence range, no sink absorb.
+	require.Empty(t, response.CreatedLogs)
+	require.Equal(t, uint64(0), response.MinLogSequence)
+	require.Equal(t, uint64(0), response.MaxLogSequence)
+	require.Equal(t, 0, sink.count)
+}
+
+// countingSink records how many (order, log) pairs it absorbed so a test can
+// assert a no-log order never reaches the sink.
+type countingSink struct{ count int }
+
+func (s *countingSink) Absorb(_ *raftcmdpb.Order, _ *commonpb.Log) { s.count++ }

@@ -63,7 +63,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	var filter *commonpb.QueryFilter
 	if filterExpr != "" {
-		filter, err = filterexpr.Parse(filterExpr)
+		filter, err = filterexpr.Parse(filterExpr, target)
 		if err != nil {
 			return fmt.Errorf("invalid filter expression: %w", err)
 		}

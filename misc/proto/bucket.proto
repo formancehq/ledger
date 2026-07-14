@@ -803,6 +803,15 @@ enum CheckStoreErrorType {
   // for an order that should have been rejected hard. The skippable_reasons
   // whitelist on the audit-bound Order is the source of truth.
   CHECK_STORE_ERROR_TYPE_INVALID_SKIP = 11;
+  // Emitted when a mirror ledger's stored LedgerBoundaries.last_mirror_v2_log_id
+  // does NOT equal the maximum audited MirrorIngest.v2_log_id for that ledger.
+  // last_mirror_v2_log_id is the idempotent-replay high-water mark (EN-1550): the
+  // FSM enforces a contiguous applied prefix, so at rest the stored value must
+  // equal exactly the max audited v2_log_id. A value ABOVE the audit claims to
+  // have consumed a source v2 log no audit entry recorded (future ingests wrongly
+  // skipped); a value BELOW means the persisted projection lost applied ground —
+  // both are corruption. This is a full invariant-#8 equality check, not a bound.
+  CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH = 12;
 }
 
 message CheckStoreError {
@@ -827,8 +836,8 @@ message CheckStoreProgress {
 message ListAuditEntriesRequest {
   // options carries the whole read contract. Audit has NO dedicated top-level
   // filters: ledger scope and outcome selection are expressed through
-  // options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
-  // failure`), exactly like every other filtered list endpoint.
+  // options.filter with bare audit fields (e.g. `ledger == <name>`,
+  // `outcome == failure`), exactly like every other filtered list endpoint.
   common.ListOptions options = 1;
 }
 

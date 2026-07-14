@@ -1630,7 +1630,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // delegates to ListAuditEntriesFrom bound to the controller's own stores.
 //
 // Audit has no dedicated top-level filters: ledger scope and outcome selection
-// are expressed entirely through filter (audit[ledger], audit[outcome], …).
+// are expressed entirely through filter (bare audit fields: ledger, outcome, …).
 //
 // Ordering: the audit trail is chronological, so the default (reverse=false)
 // iterates ascending by sequence (oldest first) — this is the audit trail's

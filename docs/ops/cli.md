@@ -1000,11 +1000,16 @@ has_asset_cond := "has" "asset" ASSET_BASE ["/" PRECISION]
 A bare `KEY` or `VALUE` is a plain-alphanumeric identifier (`[a-zA-Z_][a-zA-Z0-9_]*`).
 Any key or value that contains a special character — `-`, `:`, `.`, `/`, spaces, etc.
 — **must be quoted** (e.g. `metadata["x-request-id"] == "user:42"`,
-`address ^= "users:"`, `audit[ledger] == "my-ledger"`). The one exception is the
+`address ^= "users:"`, `ledger == "my-ledger"`). The one exception is the
 asset reference in `has asset BASE/PRECISION`, whose `/` is part of the grammar
 (e.g. `has asset USD/2`).
 
-`audit[...]` conditions are only valid on `audit list` (see [audit list](#audit-list) for the field/operator matrix). They are rejected on other list endpoints.
+Bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`,
+`log_seq`, `caller_subject`, `order_type`) are only valid on `audit list` (see
+[audit list](#audit-list) for the field/operator matrix). They are written
+without any prefix and resolved against the audit query target (EN-1549 — this
+replaced the old `audit[...]` namespaced syntax, a breaking change with no
+backward compatibility). They are rejected on other list endpoints.
 
 **Conditions:**
 
@@ -2276,14 +2281,20 @@ ledgerctl audit list [flags]
 
 Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--ledger`. Selecting failures or scoping to a ledger is done through the generic
-`--filter` (e.g. `--filter 'audit[outcome] == failure'`,
-`--filter 'audit[ledger] == main'`), exactly like every other list command.
+`--filter` (e.g. `--filter 'outcome == failure'`,
+`--filter 'ledger == main'`), exactly like every other list command.
 
 Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
 
 **Audit filter grammar (`--filter`):** the audit trail is queried through its
-secondary index, so `--filter` accepts `audit[<field>] <op> <value>` conditions
-combined with `and` / `or`:
+secondary index, so `--filter` accepts bare `<field> <op> <value>` conditions
+combined with `and` / `or`. The field names are written without any prefix and
+are resolved against the audit query target (EN-1549 — this replaced the old
+`audit[<field>]` namespaced syntax, a breaking change with no backward
+compatibility). Because bare `timestamp` and `ledger` otherwise collide with
+the transaction `timestamp` field and the top-level `ledger` condition, these
+fields resolve to the audit condition only on the audit target, which is why
+they are valid on `audit list` alone:
 
 | Field | Type | Operators | Notes |
 |-------|------|-----------|-------|
@@ -2304,10 +2315,10 @@ full-chain scan.
 
 > **Consistency note.** The audit secondary index is maintained by an
 > asynchronous per-node worker, so any *filtered* audit read (including an
-> `audit[ledger]` or `audit[outcome]` filter) is eventually consistent — a
+> `ledger` or `outcome` filter) is eventually consistent — a
 > just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
 > gates the read-side log index, not the audit index. An *unfiltered* read
-> (plain `audit list`, optionally with `--reverse` / `audit[seq]` bounds) reads
+> (plain `audit list`, optionally with `--reverse` / `seq` bounds) reads
 > the audit zone directly and is strongly consistent.
 >
 > **Checkpoint + filter caveat.** A query checkpoint snapshots the audit index
@@ -2339,19 +2350,19 @@ ledgerctl audit list
 ledgerctl audit list --reverse
 
 # Show only failures (via the generic filter — no dedicated flag)
-ledgerctl audit list --filter 'audit[outcome] == failure'
+ledgerctl audit list --filter 'outcome == failure'
 
 # Scope to a ledger (via the generic filter — no dedicated flag)
-ledgerctl audit list --filter 'audit[ledger] == "my-ledger"'
+ledgerctl audit list --filter 'ledger == "my-ledger"'
 
 # Combine outcome and ledger
-ledgerctl audit list --filter 'audit[outcome] == failure and audit[ledger] == main'
+ledgerctl audit list --filter 'outcome == failure and ledger == main'
 
 # Filter by order type
-ledgerctl audit list --filter 'audit[order_type] in (create_transaction, revert_transaction)'
+ledgerctl audit list --filter 'order_type in (create_transaction, revert_transaction)'
 
 # Sequence range
-ledgerctl audit list --filter 'audit[seq] between 1000 and 2000'
+ledgerctl audit list --filter 'seq between 1000 and 2000'
 
 # Read from a query checkpoint instead of the live store
 ledgerctl audit list --checkpoint-id 7
