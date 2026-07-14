@@ -112,6 +112,38 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 	require.Contains(t, derr.Error(), "accounts")
 }
 
+// TestProcessUpdatePreparedQuery_RejectsNilFilter guards against silently erasing
+// a stored prepared query's filter: an update replaces the filter, and a nil
+// filter passes ValidateFilterForTarget (nil == "no filter"), so without an
+// explicit guard `updated.Filter = nil` would persist and drop the query's
+// definition. The FSM must reject a nil filter (and never call Put).
+func TestProcessUpdatePreparedQuery_RejectsNilFilter(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader(), nil)
+
+	pq := setupPreparedQueriesStub(mockStore)
+	pq.onGet(func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+		return (&commonpb.PreparedQuery{
+			Name:   "q1",
+			Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Filter: &commonpb.QueryFilter{},
+		}).AsReader(), nil
+	})
+	pq.onPut(func(domain.PreparedQueryKey, *commonpb.PreparedQuery) {
+		t.Fatal("Put must not be called when the update carries a nil filter")
+	})
+
+	order := &raftcmdpb.UpdatePreparedQueryOrder{Name: "q1"} // Filter left nil
+	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
+	require.NotNil(t, derr, "a nil filter must be rejected, not persisted over the stored filter")
+	require.ErrorIs(t, derr, domain.ErrPreparedQueryFilterRequired)
+}
+
 // TestProcessUpdatePreparedQuery_RejectsNonExecutableStoredTarget covers a
 // legacy escape hatch: CLI/gRPC creation used to accept non-executable targets
 // (e.g. AUDIT) before EN-1504, so such a query can already sit in storage. An

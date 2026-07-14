@@ -19,7 +19,8 @@ import (
 //
 // The whole attribute zone is copied (not just the types a compare pass reads
 // today) so every checker baseline read — compareVolumes / compareMetadata /
-// compareTransactions / compareReferences / compareBoundaries and the
+// compareTransactions / compareReferences / compareBoundaries /
+// compareMirrorV2LogID (its archived floor lives on the Boundary rows) and the
 // skip-order folds (foldBaselineReferences / foldBaselineBoundaries /
 // foldBaselineLedgers) — resolves against real pre-archive state instead of a
 // genesis/empty fallback, and a future compare pass over any attribute needs no

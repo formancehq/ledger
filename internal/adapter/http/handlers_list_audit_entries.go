@@ -20,9 +20,9 @@ import (
 //   - after:    exclusive lower bound on the audit sequence (opaque cursor from
 //     a previous page; a decimal uint64, matching the gRPC cursor)
 //   - reverse:  iterate newest-first when "true"
-//   - filter:   filterexpr DSL restricted to audit[...] conditions, e.g.
-//     `audit[outcome] == failure`, `audit[ledger] == main`,
-//     `audit[order_type] in (create_transaction, revert_transaction)`.
+//   - filter:   filterexpr DSL restricted to bare audit fields, e.g.
+//     `outcome == failure`, `ledger == main`,
+//     `order_type in (create_transaction, revert_transaction)`.
 //
 // This exposes the same audit data and filter representation as the gRPC
 // BucketService.ListAuditEntries surface (EN-1241): it consumes the same

@@ -55,6 +55,22 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 			json:   `{"$match":{"ledger":"main"}}`,
 			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		},
+		{
+			// EN-1544: the textual `date` field and the structured `date` bound both
+			// coerce the same RFC3339 string to a log date condition.
+			name:   "date RFC3339 on logs",
+			text:   `date >= "2023-11-14T22:13:20Z"`,
+			json:   `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			// EN-1544: the textual `timestamp` field and the structured `timestamp`
+			// bound both coerce the same RFC3339 string to a tx timestamp condition.
+			name:   "timestamp RFC3339 on transactions",
+			text:   `timestamp >= "2023-11-14T22:13:20Z"`,
+			json:   `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
 	}
 
 	for _, tc := range cases {
@@ -73,6 +89,102 @@ func TestDecodeDualFormat_Equivalence(t *testing.T) {
 				"text and JSON forms must decode to the same QueryFilter\n text: %v\n json: %v",
 				fromText, fromJSON)
 		})
+	}
+}
+
+// TestDecodeDualFormat_DatePerTarget locks the per-target validity of the EN-1544
+// date/timestamp fields: `date` compiles to a log condition (valid on LOGS only)
+// and `timestamp` to a transaction condition (valid on TRANSACTIONS only). The
+// gate runs on the decoded proto, so it applies to BOTH serializations
+// identically — using the wrong target is a 400 regardless of the form used.
+func TestDecodeDualFormat_DatePerTarget(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		raw     string
+		target  commonpb.QueryTarget
+		wantErr string // empty => must succeed
+	}{
+		{
+			name:   "textual date on logs is valid",
+			raw:    `date >= "2023-11-14T22:13:20Z"`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:   "structured date on logs is valid",
+			raw:    `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		},
+		{
+			name:    "textual date on transactions is rejected",
+			raw:     `date >= "2023-11-14T22:13:20Z"`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			wantErr: "not valid on transactions",
+		},
+		{
+			name:    "structured date on transactions is rejected",
+			raw:     `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			wantErr: "not valid on transactions",
+		},
+		{
+			name:   "textual timestamp on transactions is valid",
+			raw:    `timestamp >= "2023-11-14T22:13:20Z"`,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		},
+		{
+			name:    "textual timestamp on logs is rejected",
+			raw:     `timestamp >= "2023-11-14T22:13:20Z"`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			wantErr: "not valid on logs",
+		},
+		{
+			name:    "structured timestamp on accounts is rejected",
+			raw:     `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`,
+			target:  commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			wantErr: "not valid on accounts",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			filter, err := DecodeDualFormat([]byte(tc.raw), tc.target)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, filter)
+		})
+	}
+}
+
+// TestDecodeDualFormat_DateRejectsPreEpoch locks pre-epoch rejection at the DSL
+// layer for both serializations (EN-1544), consistent with the transport-level
+// rejection (EN-1542).
+func TestDecodeDualFormat_DateRejectsPreEpoch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		raw    string
+		target commonpb.QueryTarget
+	}{
+		{`date >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`{"$gte":{"date":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_LOGS},
+		{`timestamp >= "1969-12-31T00:00:00Z"`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+		{`{"$gte":{"timestamp":"1969-12-31T00:00:00Z"}}`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+	}
+
+	for _, tc := range cases {
+		_, err := DecodeDualFormat([]byte(tc.raw), tc.target)
+		require.Error(t, err, tc.raw)
+		require.Contains(t, err.Error(), "Unix epoch", tc.raw)
 	}
 }
 
@@ -178,7 +290,7 @@ func TestDecodeDualFormat_Malformed(t *testing.T) {
 func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
 	t.Parallel()
 
-	fromText, err := DecodeDualFormat([]byte(`audit[outcome] == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	fromText, err := DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	require.NoError(t, err, "textual audit filter must decode")
 	require.NotNil(t, fromText)
 	require.IsType(t, &commonpb.QueryFilter_Audit{}, fromText.GetFilter())
@@ -190,22 +302,72 @@ func TestDecodeDualFormat_AuditTextOnly(t *testing.T) {
 	require.Error(t, err, "audit has no structured JSON form; a structured filter must not decode to a valid audit condition")
 }
 
+// TestDecodeDualFormat_BareFieldTargetAwareResolution is the core EN-1549 check:
+// the SAME bare field name resolves to a different proto arm depending on the
+// query target. `timestamp` and `ledger` collide between the audit arm and the
+// transaction/ledger arms; the target is what disambiguates them.
+func TestDecodeDualFormat_BareFieldTargetAwareResolution(t *testing.T) {
+	t.Parallel()
+
+	// timestamp: audit arm on AUDIT, transaction builtin arm on TRANSACTIONS.
+	auditTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, auditTs.GetAudit(), "timestamp on AUDIT must resolve to the audit arm")
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditTs.GetAudit().GetField())
+
+	txTs, err := DecodeDualFormat([]byte(`timestamp >= "2023-11-14T22:13:20Z"`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.NoError(t, err)
+	require.NotNil(t, txTs.GetBuiltinUint(), "timestamp on TRANSACTIONS must resolve to the transaction builtin arm")
+
+	// ledger: audit ledger arm on AUDIT, LedgerCondition on LOGS.
+	auditLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, auditLedger.GetAudit(), "ledger on AUDIT must resolve to the audit arm")
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_LEDGER, auditLedger.GetAudit().GetField())
+
+	logLedger, err := DecodeDualFormat([]byte(`ledger == main`), commonpb.QueryTarget_QUERY_TARGET_LOGS)
+	require.NoError(t, err)
+	require.NotNil(t, logLedger.GetLedger(), "ledger on LOGS must resolve to the LedgerCondition arm")
+
+	// An audit-only field name (outcome) has no meaning off the audit target: it
+	// is rejected at parse time on a non-audit target.
+	_, err = DecodeDualFormat([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.Error(t, err, "outcome must not resolve on a non-audit target")
+	require.Contains(t, err.Error(), "unknown field")
+}
+
 // TestDecodeDualFormatStructuralOnly_SkipsTargetGate confirms the update-path
 // variant decodes both forms but does NOT apply the per-target validity gate
 // (the FSM applies it against the stored target).
 func TestDecodeDualFormatStructuralOnly_SkipsTargetGate(t *testing.T) {
 	t.Parallel()
 
-	// `ledger` is invalid on ACCOUNTS, but the structural-only decoder does not
-	// know the target and must accept it (the gate runs later against the stored
-	// target) in both forms.
-	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`))
+	// `ledger` is invalid on ACCOUNTS, but the structural-only decoder skips the
+	// per-target validity gate and must accept it (the gate runs later against the
+	// stored target) in both forms. The target is used only for bare-field
+	// resolution: on ACCOUNTS `ledger` resolves to the LedgerCondition arm,
+	// matching the JSON `$match` form.
+	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromText)
 
-	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`))
+	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromJSON)
 
 	require.True(t, proto.Equal(fromText, fromJSON))
+}
+
+// TestDecodeDualFormatStructuralOnly_AuditTargetResolvesAuditArm confirms the
+// structural-only decoder honours QUERY_TARGET_AUDIT for bare-field resolution
+// (EN-1549) — the ledgerctl audit list path relies on this. A bare audit field
+// resolves to the audit arm and skips the validity gate.
+func TestDecodeDualFormatStructuralOnly_AuditTargetResolvesAuditArm(t *testing.T) {
+	t.Parallel()
+
+	f, err := DecodeDualFormatStructuralOnly([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+	require.NotNil(t, f.GetAudit())
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, f.GetAudit().GetField())
 }

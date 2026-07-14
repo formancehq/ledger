@@ -74,7 +74,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + `audit[...]` filter expression (textual form; audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
 | Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
@@ -412,13 +412,38 @@ non-whitespace byte:
   object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
   is the textual form.
 
-**Audit is text-only.** Audit conditions (`audit[...]`) have no structured JSON
-representation — their field names (`ledger`, `timestamp`, …) collide with the
-transaction/log conditions the JSON DSL already claims (EN-1241) — so the JSON
-codec rejects them. The dual-format decoder still accepts both forms as input on
-the audit endpoint; the textual form is simply the only one that can carry an
-audit condition, so it is the canonical representation for
+**Audit is text-only.** Audit fields are written **bare** (`outcome`, `ledger`,
+`seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`) and
+resolved against the audit query target (EN-1549 — this replaced the old
+`audit[...]` namespaced syntax, a breaking change with no backward
+compatibility). They have no structured JSON representation — bare `timestamp`
+and `ledger` collide with the transaction `timestamp` field and the top-level
+`ledger` condition the JSON DSL already claims (EN-1241), which is why the audit
+resolution is target-aware and audit fields are valid on the audit endpoint only
+— so the JSON codec rejects them. The dual-format decoder still accepts both
+forms as input on the audit endpoint; the textual form is simply the only one
+that can carry an audit condition, so it is the canonical representation for
 `GET /v3/_/audit-entries`.
+
+**Date fields accept RFC3339 or raw microseconds (EN-1544).** The builtin date
+indexes store unsigned Unix microseconds, but their DSL bounds accept **either** an
+RFC3339 timestamp **or** the raw-microsecond form, in both representations:
+
+| Target | Field | Textual | Structured |
+|--------|-------|---------|------------|
+| transactions | `timestamp` (also `insertedAt`, `revertedAt`) | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
+| logs | `date` | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
+| audit | `timestamp` (bare, resolved on the audit target) | `timestamp >= "2023-11-14T22:13:20Z"` | — (audit is text-only) |
+
+The raw form still parses (`timestamp >= 1700000000000000`), so this is purely
+additive. RFC3339 acceptance and pre-epoch rejection are defined once, in the
+shared `commonpb.CoerceDatetimeMicros`, reused by the audit / transactions / logs
+DSL paths and by the transport-level `startDate`/`endDate` convenience params
+(`startDate`/`endDate` remain RFC3339-only). A pre-epoch RFC3339 value (negative
+`UnixMicro`) has no representable unsigned bound and is rejected with `400`. The
+`date` and `timestamp` fields are subject to the same per-target validity gate —
+`date` is valid on logs only, `timestamp` (like `insertedAt`/`revertedAt`) on
+transactions only — enforced identically for both serializations.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
@@ -812,7 +837,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListNumscripts` | List all saved numscripts | ✅ |
 | `Apply(CloseChapter)` | Close the current open chapter | ✅ |
 | `ListChapters` | Stream all chapters | ✅ |
-| `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus an `audit[...]` `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
+| `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
 | `GetLog` | Get a single system log by sequence number | ✅ |

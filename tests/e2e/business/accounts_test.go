@@ -552,7 +552,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts with `between` (inclusive bounds)", func() {
 			// age between 30 and 50 should match bob(35), charlie(50)
-			filter, err := filterexpr.Parse("metadata[age] between 30 and 50")
+			filter, err := filterexpr.Parse("metadata[age] between 30 and 50", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -565,10 +565,10 @@ var _ = Describe("Accounts", Ordered, func() {
 			// `age >= 30 and age < 60` is coalesced into a single bounded
 			// IntCondition; must match the same set as `between 30 and 59`
 			// (bob=35, charlie=50).
-			fromAnd, err := filterexpr.Parse("metadata[age] >= 30 and metadata[age] < 60")
+			fromAnd, err := filterexpr.Parse("metadata[age] >= 30 and metadata[age] < 60", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
-			fromBetween, err := filterexpr.Parse("metadata[age] between 30 and 59")
+			fromBetween, err := filterexpr.Parse("metadata[age] between 30 and 59", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			fromAndAccts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", fromAnd)
@@ -688,7 +688,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts matching any value in the list", func() {
 			// metadata[role] in (admin, viewer) → alice, charlie, dave
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -705,7 +705,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts with single value in list", func() {
 			// metadata[role] in (user) → bob only
-			filter, err := filterexpr.Parse(`metadata[role] in (user)`)
+			filter, err := filterexpr.Parse(`metadata[role] in (user)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -715,7 +715,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty when no values match", func() {
-			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`)
+			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -725,7 +725,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should combine in filter with AND", func() {
 			// metadata[role] in (admin, user) and address ^= "a" → alice only
-			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`)
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -762,7 +762,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should filter accounts by exact address list", func() {
 			// address in ("users:alice", "merchants:shop1") → 2 accounts
-			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`)
+			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
@@ -773,7 +773,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty when no addresses match", func() {
-			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`)
+			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 			Expect(err).To(Succeed())
 
 			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)

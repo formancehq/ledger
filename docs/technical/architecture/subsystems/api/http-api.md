@@ -365,12 +365,18 @@ Query parameters:
 - `pageSize`: max entries (default 100, capped at 1000)
 - `after`: audit sequence to start after (exclusive, opaque cursor)
 - `reverse`: `true` iterates newest-first
-- `filter`: a filter expression restricted to `audit[...]` conditions, using the
-  same grammar as `ledgerctl audit list --filter` (e.g.
-  `audit[outcome] == failure`, `audit[ledger] == main`,
-  `audit[order_type] in (create_transaction, revert_transaction)`). This is the
-  shared `filterexpr` DSL — **not** the JSON `QueryFilter` DSL used by prepared
-  queries, which cannot represent audit conditions. Filtered reads are served by
+- `filter`: a filter expression restricted to bare audit fields (`outcome`,
+  `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`,
+  `order_type`), using the same grammar as `ledgerctl audit list --filter` (e.g.
+  `outcome == failure`, `ledger == main`,
+  `order_type in (create_transaction, revert_transaction)`). The fields are
+  written without any prefix and resolved against the audit query target
+  (EN-1549 — this replaced the old `audit[...]` namespaced syntax, a breaking
+  change with no backward compatibility); bare `timestamp` and `ledger` resolve
+  to the audit condition only on the audit target, which is why audit fields are
+  valid on this endpoint alone. This is the shared `filterexpr` DSL — **not** the
+  JSON `QueryFilter` DSL used by prepared queries, which cannot represent audit
+  conditions. Filtered reads are served by
   the asynchronous audit index; the consistency guarantee matches the gRPC
   surface.
 

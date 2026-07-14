@@ -122,7 +122,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 		Checkpoint: &CheckpointManifest{
 			LastLogSequence:   5,
 			LastAuditSequence: 5,
-			Files:             map[string]int64{"000001.sst": 1},
+			Files:             map[string]CheckpointFile{"000001.sst": {Size: 1, Key: CheckpointFileKey("bucket", "000001.sst", "deadbeef")}},
 		},
 	}
 	body, err := json.Marshal(manifest)
@@ -164,9 +164,14 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 	store := newBackupTestStore(t)
 	writeCorruptColdEntry(t, store, dal.SubColdAudit, 10)
 
-	storage := &recordingStorage{} // empty manifest is fine; we fail before the no-op check
+	// A prior full checkpoint exists so we get past the no-full-checkpoint guard
+	// and actually reach the audit sequence read this test targets.
+	body, err := json.Marshal(&Manifest{Checkpoint: &CheckpointManifest{}})
+	require.NoError(t, err)
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
+	storage := &recordingStorage{manifestBody: body}
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail when the audit sequence read fails")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -189,6 +194,27 @@ func TestRunBackup_AbortsOnCorruptManifest(t *testing.T) {
 	require.Error(t, err, "RunBackup must fail on a corrupt existing manifest")
 }
 
+// TestRunBackup_ProceedsOnLegacyManifest verifies that a full backup does NOT
+// abort when the destination already holds a legacy pre-content-addressing
+// manifest: the full backup overwrites the manifest wholesale and never diffs
+// against it, so retaking a full backup is exactly the documented recovery path
+// out of a legacy manifest. It must proceed and publish a new manifest
+// (addresses the NumaryBot review on PR #1543). This is deliberately different
+// from the corrupt-JSON case above, which stays fatal.
+func TestRunBackup_ProceedsOnLegacyManifest(t *testing.T) {
+	t.Parallel()
+
+	store := newBackupTestStore(t)
+	legacy := []byte(`{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":123}},"exports":null}`)
+	storage := &recordingStorage{manifestBody: legacy}
+
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, "bucket", "test-backup")
+
+	require.NoError(t, err, "RunBackup must proceed past a legacy manifest and replace it")
+	require.True(t, storage.wrote(ManifestKey("bucket")),
+		"RunBackup must publish a fresh manifest, overwriting the legacy one")
+}
+
 // TestRunIncrementalBackup_AbortsOnCorruptManifest is the incremental
 // counterpart for the manifest-error branch.
 func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
@@ -204,9 +230,72 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 		"manifest must not be overwritten when the existing manifest is corrupt")
 }
 
+// TestRunIncrementalBackup_RejectsCheckpointlessManifest is the EN-888
+// restore-safety guard: an incremental backup layered on a manifest with no full
+// checkpoint (a fresh/empty destination, or an export-only manifest) would
+// publish export segments that carry none of the Global-zone persisted config,
+// last-applied index, or timestamp restore needs — an artifact restore cannot
+// turn into a store. RunIncrementalBackup must reject such a manifest with the
+// typed ErrNoFullCheckpoint and publish NO artifact.
+func TestRunIncrementalBackup_RejectsCheckpointlessManifest(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// Something IS exportable — proves the rejection is about the missing
+	// checkpoint, not an empty range.
+	writeSuccessAuditEntryWithItem(t, store, 1)
+
+	// An export-only manifest: Exports present, Checkpoint nil. This is exactly
+	// the checkpoint-less shape (a fresh/empty destination decodes the same way,
+	// with both fields zero).
+	body, err := json.Marshal(&Manifest{
+		Exports: []ExportSegment{{Type: "audit", StartSeq: 1, EndSeq: 1, Key: "some/key"}},
+	})
+	require.NoError(t, err)
+
+	storage := &recordingStorage{manifestBody: body}
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+
+	require.ErrorIs(t, err, ErrNoFullCheckpoint,
+		"RunIncrementalBackup must reject a manifest without a full checkpoint")
+	require.Empty(t, storage.putKeys,
+		"RunIncrementalBackup must publish NO artifact (no manifest, no segment) when there is no full checkpoint")
+}
+
+// TestRunIncrementalBackup_ProceedsOnFullCheckpoint is the positive counterpart:
+// a normal incremental layered on top of a real full checkpoint still exports
+// new entries and republishes the manifest.
+func TestRunIncrementalBackup_ProceedsOnFullCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+	// New entries beyond the checkpoint's LastAuditSequence=0 → range (0,1].
+	writeSuccessAuditEntryWithItem(t, store, 1)
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
+	}))
+
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err, "a normal incremental on top of a full checkpoint must succeed")
+	require.NotNil(t, result)
+	require.EqualValues(t, 1, result.AuditEntriesExported)
+
+	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotNil(t, manifest.Checkpoint, "the full checkpoint must be preserved")
+	require.NotNil(t, findExport(manifest, "audit"), "the new audit segment must be published")
+}
+
 // TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected verifies the unit's
 // core contract: list everything under prefix, delete the keys not in
-// expectedKeys, count only successful deletes.
+// expectedKeys, and return only the successfully deleted keys.
 func TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected(t *testing.T) {
 	t.Parallel()
 
@@ -218,7 +307,7 @@ func TestPruneOrphans_DeletesUnexpectedKeysAndKeepsExpected(t *testing.T) {
 	expected := map[string]struct{}{"p/keep1": {}, "p/keep2": {}}
 
 	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", expected)
-	require.Equal(t, 1, deleted)
+	require.Equal(t, []string{"p/orphan"}, deleted)
 }
 
 // TestPruneOrphans_EmptyExpectedDeletesAll verifies the "wipe-everything"
@@ -235,11 +324,11 @@ func TestPruneOrphans_EmptyExpectedDeletesAll(t *testing.T) {
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
 
 	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
-	require.Equal(t, 3, deleted)
+	require.ElementsMatch(t, []string{"p/a", "p/b", "p/c"}, deleted)
 }
 
 // TestPruneOrphans_ToleratesListError verifies that a ListFiles failure is
-// swallowed (logged elsewhere) and the function returns zero. The caller can
+// swallowed (logged elsewhere) and the function returns no keys. The caller can
 // safely report the backup as Succeeded because the manifest is already
 // committed at this point.
 func TestPruneOrphans_ToleratesListError(t *testing.T) {
@@ -250,12 +339,12 @@ func TestPruneOrphans_ToleratesListError(t *testing.T) {
 		Return(nil, errors.New("s3 timeout"))
 
 	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
-	require.Zero(t, deleted)
+	require.Empty(t, deleted)
 }
 
 // TestPruneOrphans_ContinuesOnIndividualDeleteError verifies that a failure
 // on one DeleteFile does not abort the prune for the remaining orphans. The
-// failed key is excluded from the returned count so the manifest's view of
+// failed key is excluded from the returned keys so the manifest's view of
 // "we cleaned N files" stays accurate.
 func TestPruneOrphans_ContinuesOnIndividualDeleteError(t *testing.T) {
 	t.Parallel()
@@ -268,7 +357,7 @@ func TestPruneOrphans_ContinuesOnIndividualDeleteError(t *testing.T) {
 	storage.EXPECT().DeleteFile(gomock.Any(), "p/c").Return(nil)
 
 	deleted := pruneOrphans(context.Background(), logging.Testing(), storage, "p/", nil)
-	require.Equal(t, 2, deleted)
+	require.Equal(t, []string{"p/a", "p/c"}, deleted)
 }
 
 // TestRunBackup_InvokesPruneForBothPrefixes verifies the wiring: a full
@@ -294,13 +383,177 @@ func TestRunBackup_InvokesPruneForBothPrefixes(t *testing.T) {
 		}).AnyTimes()
 	storage.EXPECT().DeleteFile(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
-	storage.EXPECT().ListFiles(gomock.Any(), CheckpointPrefix(bucketID)).Return(nil, nil)
+	// CheckpointPrefix is listed twice: once for the existence check (step 4)
+	// and once by the post-manifest prune (step 8). ExportPrefix is listed once
+	// by the prune.
+	storage.EXPECT().ListFiles(gomock.Any(), CheckpointPrefix(bucketID)).Return(nil, nil).Times(2)
 	storage.EXPECT().ListFiles(gomock.Any(), ExportPrefix(bucketID)).Return(nil, nil)
 
 	result, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "test-backup")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)
+	require.Zero(t, result.FilesDeleted)
+}
+
+// TestRunBackup_ClassifiesStaleVsOrphanDeletions verifies the FilesDeleted /
+// OrphansDeleted split: a checkpoint object the PREVIOUS manifest referenced
+// that the new backup supersedes is counted as FilesDeleted (ordinary churn),
+// while a data/ object no manifest ever referenced (a leftover from a crashed
+// run) is counted as OrphansDeleted.
+func TestRunBackup_ClassifiesStaleVsOrphanDeletions(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+
+	seed := store.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, store.Flush())
+
+	storage := newInMemoryBackupStorage()
+
+	// First full backup establishes the baseline manifest and its checkpoint
+	// objects under data/.
+	first, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
+	require.NoError(t, err)
+	require.Zero(t, first.FilesDeleted, "first backup supersedes nothing")
+
+	prevManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	prevKeys := checkpointKeySet(prevManifest)
+	require.NotEmpty(t, prevKeys)
+
+	// Inject a true orphan under data/ that no manifest references (as a run
+	// crashing after upload but before manifest commit would leave behind).
+	orphanKey := CheckpointPrefix(bucketID) + "leaked-by-crashed-run.sst"
+	require.NoError(t, storage.PutFile(context.Background(), orphanKey,
+		bytes.NewReader([]byte("garbage")), int64(len("garbage"))))
+
+	// Mutate + compact so the second checkpoint's SST set differs from the first,
+	// leaving some of the previous manifest's checkpoint objects stale.
+	mutate := store.OpenWriteSession()
+	for seq := uint64(2); seq <= 20; seq++ {
+		require.NoError(t, mutate.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+	}
+	require.NoError(t, mutate.Commit())
+	require.NoError(t, store.CompactAll())
+
+	second, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-2")
+	require.NoError(t, err)
+
+	// The injected orphan (never in any manifest) must be classified as an
+	// orphan, never as a stale file.
+	require.GreaterOrEqual(t, second.OrphansDeleted, 1,
+		"the leaked, never-referenced object must count as an orphan")
+
+	// The stale checkpoint objects the previous manifest referenced and the new
+	// one dropped must be counted as FilesDeleted.
+	newManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	newKeys := checkpointKeySet(newManifest)
+
+	expectedStale := 0
+	for k := range prevKeys {
+		if _, stillReferenced := newKeys[k]; !stillReferenced {
+			expectedStale++
+		}
+	}
+
+	require.Positive(t, expectedStale, "test setup must produce at least one superseded checkpoint object")
+	require.Equal(t, expectedStale, second.FilesDeleted,
+		"every superseded previous-manifest object must be counted as FilesDeleted")
+
+	// The injected orphan must be gone, and no orphan should have been
+	// miscounted as a stale file.
+	_, err = storage.GetFile(context.Background(), orphanKey)
+	require.ErrorIs(t, err, ErrFileNotFound, "the orphan must have been pruned")
+}
+
+// TestRunBackup_ClassifiesSupersededExportsAsFiles verifies that when a full
+// backup follows an incremental, the export segments the previous (incremental)
+// manifest referenced — now rolled up into the new checkpoint — are counted as
+// FilesDeleted (ordinary supersede churn), while an export object no manifest
+// ever referenced is counted as OrphansDeleted. Regression: previously every
+// export deletion was miscounted as an orphan.
+func TestRunBackup_ClassifiesSupersededExportsAsFiles(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket"
+
+	store := newBackupTestStore(t)
+
+	seed := store.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, store.Flush())
+
+	storage := newInMemoryBackupStorage()
+
+	// 1. Full backup — baseline checkpoint, no exports.
+	_, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-1")
+	require.NoError(t, err)
+
+	// 2. Add cold entries beyond the checkpoint and run an incremental so the
+	// committed manifest references live export segments under exports/.
+	more := store.OpenWriteSession()
+	for seq := uint64(2); seq <= 10; seq++ {
+		require.NoError(t, more.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+		require.NoError(t, more.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+	}
+	require.NoError(t, more.Commit())
+	require.NoError(t, store.Flush())
+
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
+	require.NoError(t, err)
+
+	incManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	prevExportKeys := exportKeySet(incManifest)
+	require.NotEmpty(t, prevExportKeys, "incremental must have produced export segments")
+	prevCheckpointKeys := checkpointKeySet(incManifest)
+
+	// 3. Inject a true orphan export object no manifest references.
+	orphanExport := ExportPrefix(bucketID) + "leaked-by-crashed-run.seg"
+	require.NoError(t, storage.PutFile(context.Background(), orphanExport,
+		bytes.NewReader([]byte("garbage")), int64(len("garbage"))))
+
+	// 4. Mutate + compact so the new full checkpoint's SST set differs, then run
+	// a full backup that rolls the exports up and prunes everything under exports/.
+	mutate := store.OpenWriteSession()
+	for seq := uint64(11); seq <= 30; seq++ {
+		require.NoError(t, mutate.SetProto(coldLogKey(seq), createLedgerLog(seq, "ledger", uint32(seq))))
+	}
+	require.NoError(t, mutate.Commit())
+	require.NoError(t, store.CompactAll())
+
+	full, err := RunBackup(context.Background(), logging.Testing(), store, storage, bucketID, "bk-3")
+	require.NoError(t, err)
+
+	newManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	newCheckpointKeys := checkpointKeySet(newManifest)
+
+	expectedStaleCheckpoints := 0
+	for k := range prevCheckpointKeys {
+		if _, stillReferenced := newCheckpointKeys[k]; !stillReferenced {
+			expectedStaleCheckpoints++
+		}
+	}
+
+	// Every superseded checkpoint file AND every rolled-up export segment counts
+	// as FilesDeleted; the injected, never-referenced export is the only orphan.
+	require.Equal(t, expectedStaleCheckpoints+len(prevExportKeys), full.FilesDeleted,
+		"superseded checkpoint files and rolled-up export segments must all count as FilesDeleted")
+	require.Equal(t, 1, full.OrphansDeleted,
+		"only the never-referenced injected export must count as an orphan")
+
+	_, err = storage.GetFile(context.Background(), orphanExport)
+	require.ErrorIs(t, err, ErrFileNotFound, "the orphan export must have been pruned")
 }
 
 // inMemoryBackupStorage is a fully-functional in-memory Storage implementation

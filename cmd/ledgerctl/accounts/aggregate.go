@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -64,7 +65,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix)
+	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return err
 	}

@@ -67,17 +67,26 @@ const (
 	// for an order that should have been rejected hard. The skippable_reasons
 	// whitelist on the audit-bound Order is the source of truth.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP CheckStoreErrorType = 11
+	// Emitted when a mirror ledger's stored LedgerBoundaries.last_mirror_v2_log_id
+	// does NOT equal the maximum audited MirrorIngest.v2_log_id for that ledger.
+	// last_mirror_v2_log_id is the idempotent-replay high-water mark (EN-1550): the
+	// FSM enforces a contiguous applied prefix, so at rest the stored value must
+	// equal exactly the max audited v2_log_id. A value ABOVE the audit claims to
+	// have consumed a source v2 log no audit entry recorded (future ingests wrongly
+	// skipped); a value BELOW means the persisted projection lost applied ground —
+	// both are corruption. This is a full invariant-#8 equality check, not a bound.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH CheckStoreErrorType = 12
 	// Emitted when a ledger's stored metadata schema (LedgerInfo.MetadataSchema)
 	// diverges from the field-type declarations the checker re-derived by
 	// replaying CreateLedger.initial_schema + SetMetadataFieldType /
 	// RemovedMetadataFieldType log payloads. The schema is a projection of those
 	// audit-bound orders.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH CheckStoreErrorType = 12
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH CheckStoreErrorType = 13
 	// Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
 	// diverge from the set the checker re-derived by replaying AddAccountType /
 	// RemoveAccountType log payloads. The account-type chart is a projection of
 	// those audit-bound orders.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 13
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH CheckStoreErrorType = 14
 	// Emitted when the audit says a ledger is live (a CreateLedger event with no
 	// later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
 	// archiving) but the store has no live LedgerInfo for it — the entry is either
@@ -85,14 +94,14 @@ const (
 	// compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
 	// so both shapes would otherwise escape every projection check. This is the
 	// reverse of UNKNOWN_LEDGER.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 14
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER CheckStoreErrorType = 15
 	// Emitted when the store holds a live LedgerInfo for a ledger the audit never
 	// created (no CreateLedger event, and — under archiving — not present in the
 	// baseline). Such a row exposes an unaudited ledger through ListLedgers while
 	// carrying no schema/account types the projection passes could otherwise flag.
 	// The audit-derived ledger set is never seeded from the live store, so this
 	// comparison stays honest.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER CheckStoreErrorType = 15
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER CheckStoreErrorType = 16
 	// Emitted when the reference→txID uniqueness index (SubAttrReference)
 	// diverges from the references the checker re-derived by replaying
 	// CreatedTransaction / RevertedTransaction log payloads (baseline-seeded
@@ -100,7 +109,7 @@ const (
 	// reference the audit did assign, or a reference pointing at a different
 	// transaction. The index enforces reference idempotency, so a tampered row
 	// silently changes which duplicates get rejected.
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH CheckStoreErrorType = 16
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH CheckStoreErrorType = 17
 	// Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
 	// re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
 	// from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
@@ -110,7 +119,7 @@ const (
 	// themselves are verified entry-by-entry by their own passes.
 	// EphemeralEvictedCount / TransientUsedCount are informational and excluded
 	// (cf. Index BuildStatus).
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH CheckStoreErrorType = 17
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH CheckStoreErrorType = 18
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -128,12 +137,13 @@ var (
 		9:  "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH",
 		10: "CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH",
 		11: "CHECK_STORE_ERROR_TYPE_INVALID_SKIP",
-		12: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
-		13: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
-		14: "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER",
-		15: "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER",
-		16: "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH",
-		17: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
+		12: "CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH",
+		13: "CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH",
+		14: "CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH",
+		15: "CHECK_STORE_ERROR_TYPE_MISSING_LEDGER",
+		16: "CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER",
+		17: "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH",
+		18: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -148,12 +158,13 @@ var (
 		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
 		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":              10,
 		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                11,
-		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             12,
-		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       13,
-		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              14,
-		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            15,
-		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          16,
-		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           17,
+		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":     12,
+		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             13,
+		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       14,
+		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              15,
+		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            16,
+		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          17,
+		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           18,
 	}
 )
 
@@ -5665,8 +5676,8 @@ type ListAuditEntriesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// options carries the whole read contract. Audit has NO dedicated top-level
 	// filters: ledger scope and outcome selection are expressed through
-	// options.filter (e.g. `audit[ledger] == <name>`, `audit[outcome] ==
-	// failure`), exactly like every other filtered list endpoint.
+	// options.filter with bare audit fields (e.g. `ledger == <name>`,
+	// `outcome == failure`), exactly like every other filtered list endpoint.
 	Options       *commonpb.ListOptions `protobuf:"bytes,1,opt,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -9508,7 +9519,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xc9\x06\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfd\x06\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9522,13 +9533,14 @@ const file_bucket_proto_rawDesc = "" +
 	"+CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH\x10\t\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH\x10\n" +
 	"\x12'\n" +
-	"#CHECK_STORE_ERROR_TYPE_INVALID_SKIP\x10\v\x12*\n" +
-	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\f\x120\n" +
-	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\r\x12)\n" +
-	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\x0e\x12+\n" +
-	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x0f\x12-\n" +
-	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x10\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x11*W\n" +
+	"#CHECK_STORE_ERROR_TYPE_INVALID_SKIP\x10\v\x122\n" +
+	".CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH\x10\f\x12*\n" +
+	"&CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH\x10\r\x120\n" +
+	",CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH\x10\x0e\x12)\n" +
+	"%CHECK_STORE_ERROR_TYPE_MISSING_LEDGER\x10\x0f\x12+\n" +
+	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x10\x12-\n" +
+	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x11\x12,\n" +
+	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x12*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

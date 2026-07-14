@@ -4925,8 +4925,12 @@ type LedgerBoundaries struct {
 	TransientUsedCount      uint64                 `protobuf:"fixed64,8,opt,name=transient_used_count,json=transientUsedCount,proto3" json:"transient_used_count,omitempty"`
 	RevertCount             uint64                 `protobuf:"fixed64,9,opt,name=revert_count,json=revertCount,proto3" json:"revert_count,omitempty"`
 	NumscriptExecutionCount uint64                 `protobuf:"fixed64,10,opt,name=numscript_execution_count,json=numscriptExecutionCount,proto3" json:"numscript_execution_count,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Highest source (v2) log ID already applied to this mirror ledger. Gates
+	// idempotent replay: a MirrorIngest whose v2LogId is <= this value is a
+	// deterministic no-op on the FSM apply path (see processMirrorIngest).
+	LastMirrorV2LogId uint64 `protobuf:"fixed64,11,opt,name=last_mirror_v2_log_id,json=lastMirrorV2LogId,proto3" json:"last_mirror_v2_log_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *LedgerBoundaries) Reset() {
@@ -5025,6 +5029,13 @@ func (x *LedgerBoundaries) GetRevertCount() uint64 {
 func (x *LedgerBoundaries) GetNumscriptExecutionCount() uint64 {
 	if x != nil {
 		return x.NumscriptExecutionCount
+	}
+	return 0
+}
+
+func (x *LedgerBoundaries) GetLastMirrorV2LogId() uint64 {
+	if x != nil {
+		return x.LastMirrorV2LogId
 	}
 	return 0
 }
@@ -6455,7 +6466,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vcreated_log\x18\x01 \x01(\v2\v.common.LogH\x00R\n" +
 	"createdLog\x12/\n" +
 	"\x12reference_sequence\x18\x02 \x01(\x06H\x00R\x11referenceSequenceB\x06\n" +
-	"\x04type\"\xc3\x03\n" +
+	"\x04type\"\xf5\x03\n" +
 	"\x10LedgerBoundaries\x12.\n" +
 	"\x13next_transaction_id\x18\x01 \x01(\x06R\x11nextTransactionId\x12\x1e\n" +
 	"\vnext_log_id\x18\x02 \x01(\x06R\tnextLogId\x12!\n" +
@@ -6467,7 +6478,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x14transient_used_count\x18\b \x01(\x06R\x12transientUsedCount\x12!\n" +
 	"\frevert_count\x18\t \x01(\x06R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\n" +
-	" \x01(\x06R\x17numscriptExecutionCount\"\\\n" +
+	" \x01(\x06R\x17numscriptExecutionCount\x120\n" +
+	"\x15last_mirror_v2_log_id\x18\v \x01(\x06R\x11lastMirrorV2LogId\"\\\n" +
 	"\n" +
 	"VolumePair\x12%\n" +
 	"\x05input\x18\x01 \x01(\v2\x0f.common.Uint256R\x05input\x12'\n" +

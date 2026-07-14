@@ -278,17 +278,21 @@ func GetFilterFlags(cmd *cobra.Command) FilterFlags {
 // a single QueryFilter. Returns nil when both inputs are empty.
 //
 // --filter accepts either the textual filterexpr grammar or the structured v2
-// JSON DSL (EN-1511); the shared dual-format decoder detects the form. The
-// per-target validity gate is left to the server (the CLI does not resolve the
-// target here). The prefix is applied as an AddressMatch_HardcodedPrefix; when
-// --filter is also set, the two are AND-combined.
-func BuildQueryFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error) {
+// JSON DSL (EN-1511); the shared dual-format decoder detects the form. `target`
+// is the query target of the endpoint the command hits — it drives bare-field
+// resolution (EN-1549) so, e.g., `audit list` (target = QUERY_TARGET_AUDIT)
+// resolves bare `outcome`/`ledger`/`timestamp` to the audit arm while the other
+// list commands resolve them to the transaction/log/ledger arms. The per-target
+// validity gate itself is left to the server. The prefix is applied as an
+// AddressMatch_HardcodedPrefix; when --filter is also set, the two are
+// AND-combined.
+func BuildQueryFilter(filterExpr, prefix string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
 	var parsed *commonpb.QueryFilter
 
 	if filterExpr != "" {
 		var err error
 
-		parsed, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr))
+		parsed, err = filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), target)
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter expression: %w", err)
 		}

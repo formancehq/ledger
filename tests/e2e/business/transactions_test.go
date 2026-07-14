@@ -1249,7 +1249,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should filter transactions with `between` (inclusive bounds)", func() {
 			// score between 30 and 50 should match tx2(30), tx3(50)
-			filter, err := filterexpr.Parse("metadata[score] between 30 and 50")
+			filter, err := filterexpr.Parse("metadata[score] between 30 and 50", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1259,7 +1259,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should treat `between X and X` like equality", func() {
 			// score between 50 and 50 should match only tx3
-			filter, err := filterexpr.Parse("metadata[score] between 50 and 50")
+			filter, err := filterexpr.Parse("metadata[score] between 50 and 50", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1269,7 +1269,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 		It("Should return empty when between bounds match nothing", func() {
 			// score between 80 and 100: tx4 is 70, no data in [80,100]
-			filter, err := filterexpr.Parse("metadata[score] between 80 and 100")
+			filter, err := filterexpr.Parse("metadata[score] between 80 and 100", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
@@ -1282,10 +1282,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			// IntCondition by mergeFieldRanges, then compiled as a single
 			// bounded range scan. Must match exactly the same set as
 			// `between 30 and 69` (tx2=30, tx3=50).
-			fromAnd, err := filterexpr.Parse("metadata[score] >= 30 and metadata[score] < 70")
+			fromAnd, err := filterexpr.Parse("metadata[score] >= 30 and metadata[score] < 70", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
-			fromBetween, err := filterexpr.Parse("metadata[score] between 30 and 69")
+			fromBetween, err := filterexpr.Parse("metadata[score] between 30 and 69", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(Succeed())
 
 			fromAndTxs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, fromAnd)
@@ -1303,6 +1303,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			// `score between 40 and 79`, matching tx3(50), tx4(70).
 			filter, err := filterexpr.Parse(
 				"metadata[score] >= 20 and metadata[score] < 80 and metadata[score] >= 40",
+				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			)
 			Expect(err).To(Succeed())
 
@@ -1312,7 +1313,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should reject `between` with reversed bounds at parse time", func() {
-			_, err := filterexpr.Parse("metadata[score] between 100 and 10")
+			_, err := filterexpr.Parse("metadata[score] between 100 and 10", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("out of order"))
 		})

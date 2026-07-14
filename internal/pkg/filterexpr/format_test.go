@@ -33,7 +33,7 @@ func TestFormatAccountHasAsset(t *testing.T) {
 	t.Run("round-trips through Parse", func(t *testing.T) {
 		t.Parallel()
 		for _, in := range []string{"has asset USD", "has asset USD/2"} {
-			f, err := Parse(in)
+			f, err := Parse(in, tx)
 			require.NoError(t, err)
 			assert.Equal(t, in, Format(f), "round-trip for %q", in)
 		}
@@ -266,7 +266,7 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "address == users:alice", Format(f))
+		assert.Equal(t, `address == "users:alice"`, Format(f))
 	})
 
 	t.Run("address prefix", func(t *testing.T) {
@@ -279,7 +279,7 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "address ^= users:", Format(f))
+		assert.Equal(t, `address ^= "users:"`, Format(f))
 	})
 
 	t.Run("source exact", func(t *testing.T) {
@@ -292,7 +292,7 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "source == merchants:alice", Format(f))
+		assert.Equal(t, `source == "merchants:alice"`, Format(f))
 	})
 
 	t.Run("destination prefix", func(t *testing.T) {
@@ -305,7 +305,7 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "destination ^= users:", Format(f))
+		assert.Equal(t, `destination ^= "users:"`, Format(f))
 	})
 
 	t.Run("address param exact", func(t *testing.T) {
@@ -380,7 +380,7 @@ func TestFormat(t *testing.T) {
 				},
 			},
 		}
-		assert.Equal(t, "not address ^= users:", Format(f))
+		assert.Equal(t, `not address ^= "users:"`, Format(f))
 	})
 
 	t.Run("NOT equality sugars to !=", func(t *testing.T) {
@@ -472,12 +472,12 @@ func TestFormatRoundTrip(t *testing.T) {
 		{"metadata int equality", "metadata[age] == 42", ""},
 		{"metadata greater than", "metadata[age] > 18", ""},
 		{"metadata less than or equal", "metadata[age] <= 65", ""},
-		{"address prefix", "address ^= users:", ""},
-		{"source exact", `source == "merchants:alice"`, "source == merchants:alice"},
-		{"destination prefix", `destination ^= "users:"`, "destination ^= users:"},
+		{"address prefix", `address ^= "users:"`, ""},
+		{"source exact", `source == "merchants:alice"`, ""},
+		{"destination prefix", `destination ^= "users:"`, ""},
 		{"AND", "metadata[a] == x and metadata[b] == y", ""},
 		{"OR", "metadata[a] == x or metadata[b] == y", ""},
-		{"NOT address", "not address ^= users:", ""},
+		{"NOT address", `not address ^= "users:"`, ""},
 		{"NOT equality sugars to !=", "metadata[category] != premium", ""},
 		{"param string", "metadata[category] == $val", ""},
 		{"param address", "address == $addr", ""},
@@ -489,13 +489,19 @@ func TestFormatRoundTrip(t *testing.T) {
 		{"between with parameters", "metadata[age] between $low and $high", ""},
 		{"between mixed param/literal", "metadata[age] between 18 and $max", ""},
 		{"AND of ranges round-trips as between", "metadata[age] >= 18 and metadata[age] < 65", "metadata[age] >= 18 and metadata[age] < 65"},
-		{"complex: source and destination", `source ^= "a:" and destination ^= "b:"`, "source ^= a: and destination ^= b:"},
+		{"complex: source and destination", `source ^= "a:" and destination ^= "b:"`, ""},
+		// EN-1549: a bare `ledger` condition on a non-audit target renders back to
+		// the same textual form (previously formatted as "<unknown filter>", which
+		// broke the prepared-query config export/apply round-trip).
+		{"ledger exact", "ledger == main", ""},
+		{"ledger quoted value", `ledger == "my-ledger"`, ""},
+		{"ledger param", "ledger == $name", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			parsed, err := Parse(tt.input)
+			parsed, err := Parse(tt.input, tx)
 			require.NoError(t, err)
 
 			got := Format(parsed)

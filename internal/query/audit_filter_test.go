@@ -157,7 +157,7 @@ func TestCompileAuditFilter_Or_Unions(t *testing.T) {
 func TestCompileAuditFilter_SeqRange_BoundsOnly(t *testing.T) {
 	t.Parallel()
 
-	// audit[seq] between 10 and 20 -> zone bounds, not index-narrowed.
+	// seq between 10 and 20 -> zone bounds, not index-narrowed.
 	seqs, lo, hi, narrowed, err := CompileAuditFilter(&fakeAuditIndex{},
 		auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, new(uint64(10)), new(uint64(20))))
 	require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestCompileAuditFilter_SeqRange_BoundsOnly(t *testing.T) {
 func TestCompileAuditFilter_SeqRange_AndWithIndex(t *testing.T) {
 	t.Parallel()
 
-	// audit[outcome]==failure and audit[seq] >= 3 -> failures {1,3,7} filtered
+	// outcome==failure and seq >= 3 -> failures {1,3,7} filtered
 	// to seq>=3 = {3,7}, with the bound baked into the seq set (window reset to
 	// full) so an enclosing OR cannot lose it.
 	idx := &fakeAuditIndex{byOutcome: map[bool][]uint64{false: {1, 3, 7}}}
@@ -413,7 +413,7 @@ func TestCompileAuditFilter_EmptyAndIsUnconstrained(t *testing.T) {
 func TestCompileAuditFilter_AndOfTwoSeqBounds(t *testing.T) {
 	t.Parallel()
 
-	// audit[seq] >= 5 and audit[seq] <= 20 -> both non-narrowed, bounds intersect
+	// seq >= 5 and seq <= 20 -> both non-narrowed, bounds intersect
 	// to [5,20]; the index is never consulted.
 	filter := &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_And{
@@ -435,7 +435,7 @@ func TestCompileAuditFilter_AndOfTwoSeqBounds(t *testing.T) {
 func TestCompileAuditFilter_OrDoesNotLeakBranchSeqBound(t *testing.T) {
 	t.Parallel()
 
-	// (audit[outcome] == failure and audit[seq] < 10) or audit[ledger] == main
+	// (outcome == failure and seq < 10) or ledger == main
 	// Failures are seqs {3, 12, 20}; the seq<10 bound must keep only {3} from
 	// that branch, then union with ledger==main {50}. Without baking the branch
 	// bound, 12 and 20 would leak in.
@@ -475,7 +475,7 @@ func TestCompileAuditFilter_OrDoesNotLeakBranchSeqBound(t *testing.T) {
 func TestCompileAuditFilter_AndBakesSeqBoundIntoSeqs(t *testing.T) {
 	t.Parallel()
 
-	// audit[outcome] == failure and audit[seq] <= 9 -> {3} (bound baked into seqs,
+	// outcome == failure and seq <= 9 -> {3} (bound baked into seqs,
 	// window reset to full).
 	idx := &fakeAuditIndex{byOutcome: map[bool][]uint64{false: {3, 12, 20}}}
 
