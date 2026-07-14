@@ -22,8 +22,8 @@ Exploratory documentation on advanced features and concepts.
 ### [Advanced Read Queries](./advanced-read-queries.md)
 Design draft for advanced read capabilities: ListAccounts with prefix filtering, AggregateBalances, ListLogs per ledger, ledger stats, point-in-time reads, and transactions-by-account index. Leverages Pebble's sorted key layout for efficient range scans.
 
-### [Unified Hot-Path Apply Simulation RFC](./apply-simulation-rfc.md)
-Investigation spike (EN-1545) proposing a single `simulate(order, StateReader, WriteSink)` interpreter run in two modes (admission dry-run, FSM apply) to eliminate admission's hand-derived shadow of the FSM apply path and the redundant double numscript evaluation. Includes a go/no-go recommendation and a phased migration plan. Depends on EN-1406.
+### [Safe Reuse Between Admission Planning and FSM Apply (RFC)](./apply-simulation-rfc.md)
+Investigation spike (EN-1545), currently **BLOCKED** on EN-1406 / EN-1532 / EN-1288. Neutrally compares bounded options for reducing the divergence between admission's planning pass and the FSM apply path — (A) current design + targeted options, (B) shared typed non-reading helpers, (C) transcript/sidecar with an explicit preflight manifest, (D) a universal `simulate(order, StateReader, WriteSink)` interpreter (evaluated as the **no-go** control). Per the authoritative EN-1545 decision, the universal simulator is not adopted; no-go is an explicitly valid outcome. No single recommendation is asserted pending re-validation once the blocking dependencies settle.
 
 ### [Chart of Accounts](./chart-of-accounts.md)
 RFC for declarative account address validation. Defines a per-ledger chart of accounts with fixed and variable segments, regex constraints, default metadata, and configurable enforcement modes (strict/audit). Replaces the v2 magic JSON format with an idiomatic, protobuf-typeable structure.
