@@ -2,9 +2,12 @@ package check
 
 import (
 	"maps"
+	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -28,7 +31,7 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 
 // collectMirrorV2LogIDEvents runs compareMirrorV2LogID against the store's live
 // boundaries with the given audited-max map and returns only the
-// MIRROR_V2LOGID_AHEAD errors.
+// MIRROR_V2LOGID_MISMATCH errors.
 func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64) []*servicepb.CheckStoreError {
 	t.Helper()
 
@@ -46,7 +49,7 @@ func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attribute
 
 	checker.compareMirrorV2LogID(handle, chainBound, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
-			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD {
+			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH {
 			got = append(got, e.Error)
 		}
 	})
@@ -55,8 +58,8 @@ func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attribute
 }
 
 // TestCompareMirrorV2LogID_AheadFlagged: stored high-water mark strictly above
-// the audited max is the corruption/data-loss direction and must emit exactly
-// one MIRROR_V2LOGID_AHEAD event naming the ledger.
+// the audited max is corruption (claims a v2 log the audit never recorded) and
+// must emit exactly one MIRROR_V2LOGID_MISMATCH event naming the ledger.
 func TestCompareMirrorV2LogID_AheadFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -74,52 +77,158 @@ func TestCompareMirrorV2LogID_AheadFlagged(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, "mirror-ledger", got[0].GetLedger())
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD, got[0].GetErrorType())
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
 }
 
-// TestCompareMirrorV2LogID_AtOrBelowNotFlagged: stored == max and stored < max
-// are both legitimate (self-healing / legacy) and must NOT be flagged.
-func TestCompareMirrorV2LogID_AtOrBelowNotFlagged(t *testing.T) {
+// TestCompareMirrorV2LogID_BehindFlagged: stored high-water mark BELOW the
+// audited max means the persisted projection lost applied ground — under the
+// equality check (no backfill leniency) this is now FLAGGED.
+func TestCompareMirrorV2LogID_BehindFlagged(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
 	attrs := attributes.New()
 
-	// stored == audited max.
-	writeBoundaries(t, store, attrs, "at-max", &raftcmdpb.LedgerBoundaries{
-		NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 7,
-	})
-	// stored < audited max (behind — legitimate, self-healing).
-	writeBoundaries(t, store, attrs, "behind", &raftcmdpb.LedgerBoundaries{
+	writeBoundaries(t, store, attrs, "behind-ledger", &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 3,
 	})
 
-	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"at-max": 7, "behind": 7})
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"behind-ledger": 7})
+
+	require.Len(t, got, 1)
+	require.Equal(t, "behind-ledger", got[0].GetLedger())
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH, got[0].GetErrorType())
+}
+
+// TestCompareMirrorV2LogID_EqualNotFlagged: stored == audited max is the correct
+// at-rest state for a mirror ledger and is not flagged.
+func TestCompareMirrorV2LogID_EqualNotFlagged(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	writeBoundaries(t, store, attrs, "at-max", &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 7,
+	})
+
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"at-max": 7})
 
 	require.Empty(t, got)
 }
 
-// TestCompareMirrorV2LogID_ZeroNotFlagged: a legacy / never-ingested ledger
-// (stored last_mirror_v2_log_id == 0) is never flagged, even with no audited
-// ingests at all (max == 0) — the no-backfill case.
-func TestCompareMirrorV2LogID_ZeroNotFlagged(t *testing.T) {
+// TestCompareMirrorV2LogID_NonMirrorLedgerNotFlagged: a regular (never-mirrored)
+// ledger has stored 0 and no audited MirrorIngest (max 0) → equal → not flagged.
+func TestCompareMirrorV2LogID_NonMirrorLedgerNotFlagged(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
 	attrs := attributes.New()
 
-	writeBoundaries(t, store, attrs, "legacy-ledger", &raftcmdpb.LedgerBoundaries{
+	writeBoundaries(t, store, attrs, "regular-ledger", &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 42, NextLogId: 42, LastMirrorV2LogId: 0,
 	})
 
-	// No entry in the audited-max map for this ledger (max == 0).
+	// No audited MirrorIngest for this ledger (max == 0).
 	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{})
 
 	require.Empty(t, got)
 }
 
-// TestCompareMirrorV2LogID_MultiLedgerIsolation: only the ahead ledger is
-// flagged; a healthy sibling in the same store is untouched.
+// TestCompareMirrorV2LogID_CorruptToZeroFlagged: a mirror ledger with audited
+// ingests whose stored high-water mark was wiped to 0 must be flagged (0 != max).
+func TestCompareMirrorV2LogID_CorruptToZeroFlagged(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	writeBoundaries(t, store, attrs, "wiped-ledger", &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 5, NextLogId: 5, LastMirrorV2LogId: 0,
+	})
+
+	got := collectMirrorV2LogIDEvents(t, store, attrs, map[string]uint64{"wiped-ledger": 4})
+
+	require.Len(t, got, 1)
+	require.Equal(t, "wiped-ledger", got[0].GetLedger())
+}
+
+// TestBaselineBoundaries_SeedArchivedMirrorV2LogID pins Finding 3: the compact
+// baseline snapshot (CreateBaselineSnapshot) now includes Boundary rows, so
+// foldBaselineBoundaries can seed the archived floor for a ledger whose mirror
+// ingests live entirely in an archived chapter — and compareMirrorV2LogID then
+// sees the correct audited max and does NOT false-positive on the live stored
+// value. Before the fix, writeBaselineAttributes omitted Boundary rows, the
+// baseline floor was 0, and a healthy archived-mirror ledger was flagged.
+func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+	attrs := attributes.New()
+
+	// Source store carrying a mirror ledger's boundaries with an applied
+	// high-water mark of 9 (as if all its mirror ingests were archived).
+	src, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = src.Close() })
+
+	batch := src.OpenWriteSession()
+	_, err = attrs.Boundary.Set(batch, domain.LedgerKey{Name: "archived-mirror"}.Bytes(), &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 12,
+		NextLogId:         12,
+		LastMirrorV2LogId: 9,
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	// Build the compact baseline snapshot the way archival does.
+	handle, err := src.NewReadHandle()
+	require.NoError(t, err)
+
+	baselinePath := filepath.Join(t.TempDir(), "baseline")
+	require.NoError(t, attributes.CreateBaselineSnapshot(handle, attrs, baselinePath))
+	require.NoError(t, handle.Close())
+
+	baselineDB, err := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baselineDB.Close() })
+
+	// foldBaselineBoundaries must read the archived last_mirror_v2_log_id (the
+	// Finding 3 fix) — and still seed nextTxID as before (no regression).
+	checker := NewChecker(nil, attrs, "test-cluster", nil, nil, logging.Testing())
+	chainBound := newChainBoundState()
+	require.NoError(t, checker.foldBaselineBoundaries(baselineDB, chainBound))
+
+	require.Equal(t, uint64(9), chainBound.maxMirrorV2LogID["archived-mirror"],
+		"baseline Boundary row must seed the archived mirror v2LogId floor")
+	require.Equal(t, uint64(12), chainBound.nextTxID["archived-mirror"],
+		"baseline NextTransactionId seeding must still work (no regression)")
+
+	// End-to-end: with the archived floor seeded, a live ledger whose stored
+	// high-water mark equals the archived max is NOT flagged.
+	live := createTestStore(t)
+	writeBoundaries(t, live, attrs, "archived-mirror", &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 12, NextLogId: 12, LastMirrorV2LogId: 9,
+	})
+
+	liveHandle, err := live.NewReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = liveHandle.Close() }()
+
+	var got []*servicepb.CheckStoreError
+	checker.compareMirrorV2LogID(liveHandle, chainBound, func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+			got = append(got, e.Error)
+		}
+	})
+
+	require.Empty(t, got, "archived-mirror ledger with stored == archived max must not be flagged")
+}
+
+// TestCompareMirrorV2LogID_MultiLedgerIsolation: only the diverging ledger is
+// flagged; a healthy (equal) sibling in the same store is untouched.
 func TestCompareMirrorV2LogID_MultiLedgerIsolation(t *testing.T) {
 	t.Parallel()
 

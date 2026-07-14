@@ -123,6 +123,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_STORAGE_OPERATION_FAILED,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_STATE_INCONSISTENT,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME,
+		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED:
 		return KindInternal
 	default:

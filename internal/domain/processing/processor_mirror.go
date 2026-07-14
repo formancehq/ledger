@@ -40,32 +40,42 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
-	// Idempotent replay guard — evaluated BEFORE any mutation (no ledger
-	// re-touch, no cache write) so a replayed ingest is a truly side-effect-free
-	// no-op. The mirror worker resumes from the MirrorCursor projection; if that
-	// cursor is tampered (or rolled back) to a lower value, the worker re-fetches
-	// and re-proposes source logs that were already applied here, force-adding
-	// their postings a second time and doubling balances (flemzord, #1581).
-	// LastMirrorV2LogId is the highest source v2LogId already applied to this
-	// ledger — a pure function of applied per-ledger state. v2 log IDs are
-	// 1-based and strictly increasing per source (see adapter/v2/translator.go:
-	// TranslateBatch), so an entry whose v2LogId is <= the recorded high-water
-	// mark has already been applied and re-applying it must be a deterministic
-	// no-op.
+	// Contiguous-applied-prefix guard — evaluated BEFORE any mutation (no ledger
+	// re-touch, no cache write) so a rejected/replayed ingest leaves no side
+	// effect. LastMirrorV2LogId is the highest source v2LogId already applied to
+	// this ledger and, because the worker ingests contiguously (including FillGap
+	// orders for source gaps — see adapter/v2/translator.go: TranslateBatch), it
+	// is a TRUE contiguous prefix: every id in [1, LastMirrorV2LogId] has been
+	// applied. v2 log ids are 1-based and strictly increasing per source. Three
+	// cases against the next contiguous slot (expected = last + 1):
 	//
-	// This is an EXPECTED stale/replayed-ingest case, not an impossible-by-design
-	// branch, so a soft skip (return nil, nil — no log payload, no mutation) is
-	// the correct outcome per invariant #7's expected-vs-impossible distinction;
-	// failing loud (assert.Unreachable) is reserved for branches reachable only
-	// when an invariant is already broken, which replay is not. ProcessOrders
-	// treats the (nil, nil) return as a no-log outcome: no sequence id, no audit
-	// log, no sink absorb.
+	//   - v2LogID <= last  → already applied. EXPECTED replay (a tampered/rolled-
+	//     back MirrorCursor makes the worker re-emit applied logs — flemzord,
+	//     #1581). Idempotent no-op: return (nil, nil), which ProcessOrders treats
+	//     as a no-log outcome (no sequence id, no audit log, no sink absorb). Soft
+	//     skip is correct per invariant #7's expected-vs-impossible distinction.
 	//
-	// First-ingest case: LastMirrorV2LogId defaults to 0, so the first real
-	// v2LogId (>= 1) is strictly greater and applies normally.
+	//   - v2LogID == expected → the next contiguous log. Apply and advance below.
+	//
+	//   - v2LogID > expected → a GAP: the cursor/high-water mark is ahead of the
+	//     applied prefix. Impossible in normal operation (contiguous ingest), so
+	//     it is corruption/tampering. Per invariant #7, fail LOUD on an impossible-
+	//     by-design branch rather than silently applying past the gap (which would
+	//     desync nodes) or skipping it: reject the order with a deterministic
+	//     KindInternal error and mutate nothing. Same input → same rejection on
+	//     every node, so determinism holds.
+	//
+	// First-ingest case: LastMirrorV2LogId defaults to 0, so expected = 1 and the
+	// first real v2LogId (>= 1) applies. The v2LogID != 0 guard keeps a malformed
+	// entry with no source id from being treated as the "expected" first slot.
 	v2LogID := entry.GetV2LogId()
-	if v2LogID != 0 && v2LogID <= boundaries.GetLastMirrorV2LogId() {
+	last := boundaries.GetLastMirrorV2LogId()
+
+	switch {
+	case v2LogID != 0 && v2LogID <= last:
 		return nil, nil
+	case v2LogID != 0 && v2LogID > last+1:
+		return nil, &domain.ErrMirrorV2LogIDGap{Name: ledger, Got: v2LogID, Expected: last + 1}
 	}
 
 	// Re-touch ledger info so it enters the Merge buffer and gets propagated

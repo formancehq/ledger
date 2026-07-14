@@ -1191,6 +1191,7 @@ enum ErrorReason {
   ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
   ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;
   ERROR_REASON_CHECKPOINT_NOT_READY = 63;
+  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 64;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

@@ -97,22 +97,33 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
   `Worker.processBatch` (`internal/application/mirror/worker.go`) reload the
   cursor and call `FetchLogs(cursor, ...)`, which returns source logs strictly
   *after* the cursor. `TranslateBatch` then re-emits `MirrorIngest` orders for
-  logs that were already ingested. **This replay is now idempotent at the FSM
-  level (EN-1550).** `processMirrorIngest`
+  logs that were already ingested. **The FSM now enforces a contiguous applied
+  prefix (EN-1550).** `processMirrorIngest`
   (`internal/domain/processing/processor_mirror.go`) records the highest applied
-  source id in `LedgerBoundaries.last_mirror_v2_log_id` and, *before* applying any
-  posting or mutating any state, skips any entry whose `v2LogId` is `<=` that
-  high-water mark, returning a deterministic no-op `(nil, nil)` — no postings
-  re-forced, no volume mutation, no fresh ledger log (`ProcessOrders` treats the
-  `(nil, nil)` outcome as "no log": no sequence id consumed, no audit-visible
-  `Log`). The boundary is a pure function of applied per-ledger state and v2 log
-  ids are 1-based and strictly increasing per source (`TranslateBatch`), so the
-  guard is FSM-deterministic and needs no new preload/coverage key (it lives
-  inside the already-covered boundaries). Historically (pre-EN-1550) a lowered
-  cursor caused silent **double-application**: postings were reapplied with
-  `force=true` and additive volume mutation with no dedup on `v2LogId`. Only the
-  **behind** direction is closed here; recovering a cursor that is *ahead* of the
-  true source head is worker-side source-head recovery and remains out of scope.
+  source id in `LedgerBoundaries.last_mirror_v2_log_id` — a true contiguous
+  prefix, since the worker ingests contiguously including `FillGap` orders — and,
+  *before* applying any posting or mutating any state, decides three ways against
+  the next slot (`expected = last + 1`):
+  - `v2LogId <= last`: already applied. Idempotent **no-op** — return `(nil, nil)`,
+    which `ProcessOrders` treats as "no log" (no sequence id consumed, no
+    audit-visible `Log`, no sink absorb). Postings are not re-forced, so balances
+    cannot double (pre-EN-1550 this replay caused silent **double-application** via
+    `force=true` additive volume mutation with no dedup on `v2LogId`).
+  - `v2LogId == expected`: the next contiguous log. Apply and advance `last`.
+  - `v2LogId > expected`: a **gap** — the cursor/high-water mark is ahead of the
+    applied prefix. Impossible under contiguous ingestion, so it is
+    corruption/tampering. The FSM **fails loud** (`ErrMirrorV2LogIDGap`,
+    `KindInternal`) and mutates nothing — it never silently applies past the gap
+    (which would desync nodes) or skips it. The rejection is deterministic (same
+    input → same rejection on every node); the worker surfaces it as a repeating
+    apply error rather than corrupting state.
+
+  The guard is a pure function of applied per-ledger state; v2 log ids are 1-based
+  and strictly increasing per source (`TranslateBatch`), so it is FSM-deterministic
+  and needs no new preload/coverage key (it lives inside the already-covered
+  boundaries). Only the **behind** direction is handled here; recovering a cursor
+  that is *ahead* of the true source head is worker-side source-head recovery and
+  remains out of scope.
 
 Because it is only correct at one exact value, treat `MirrorCursor` as a
 persisted per-ledger projection (`ZonePerLedger` / `SubPLMirrorCursor`, in the
@@ -148,28 +159,30 @@ that re-derives the expected cursor from the audited mirror-ingest logs must
 enforce the equality before the stored cursor can be trusted.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
-mark) **is** covered by the checker, as a **bound, not an equality**:
+mark) **is** covered by the checker as a full invariant-#8 **equality** check.
 `compareMirrorV2LogID` (`internal/application/check/checker.go`) verifies, per
-mirror ledger, that the stored `last_mirror_v2_log_id` is `<= max(audited
-MirrorIngest.v2_log_id)` and emits `CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD`
-**only** when the stored value is strictly greater than that audited max. The
-audited max is derived from the live audit chain
+ledger, that the stored `last_mirror_v2_log_id` **equals** `max(audited
+MirrorIngest.v2_log_id)`, emitting `CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH`
+on **any** divergence. Because the FSM enforces a contiguous applied prefix (the
+gap reject above), the persisted high-water mark must be exactly the max audited
+`v2_log_id` at rest — no more, no less:
+- `stored > max`: claims a source v2 log no audit entry recorded (future ingests
+  wrongly skipped).
+- `stored < max`: the projection lost applied ground (an already-applied ingest
+  would be re-applied).
+
+The audited max is derived from the live audit chain
 (`recordMirrorIngestMutations`) layered over a baseline floor
 (`foldBaselineBoundaries` seeds it from the archived
-`LedgerBoundaries.last_mirror_v2_log_id`), so a ledger whose mirror ingests live
-only in an archived chapter is not undercounted.
+`LedgerBoundaries.last_mirror_v2_log_id`, which the compact baseline snapshot now
+carries — `writeBaselineAttributes` includes `Boundary` rows), so a ledger whose
+mirror ingests live only in an archived chapter is not undercounted. A regular
+(never-mirrored) ledger has stored `0` and audited max `0` → equal → not flagged.
 
-The bound is deliberately one-sided. `stored > max` is the corruption/data-loss
-direction: the high-water mark claims to have consumed a source v2 log that no
-audit entry recorded, so future source logs at those ids would be wrongly skipped
-(silent under-ingestion). The **behind / legacy direction is intentionally not
-flagged**: there is no upgrade backfill for existing clusters (pre-GA, no compat
-shim), so a pre-EN-1550 store legitimately carries `last_mirror_v2_log_id == 0`
-or a value below the audited max while the field self-heals forward on the next
-ingest. Strict equality would false-positive on every such store — which is
-exactly why the checker uses a `<=` bound. This bound is the full checker
-obligation for the field; because it is derivable from the audited orders and
-only gates *future* application, there is no separate value-equality pass.
+There is **no** legacy / no-backfill leniency: existing pre-field clusters are
+**unsupported** — we do not ship a compat shim, and a store that predates
+`last_mirror_v2_log_id` would fail this equality (and simply re-mirror), which is
+acceptable pre-GA.
 
 ## Readstore and Indexes
 

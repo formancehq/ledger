@@ -899,28 +899,29 @@ func (c *Checker) compareIndexes(
 	}
 }
 
-// compareMirrorV2LogID bounds each mirror ledger's stored
-// LedgerBoundaries.last_mirror_v2_log_id against the maximum audited
+// compareMirrorV2LogID verifies each ledger's stored
+// LedgerBoundaries.last_mirror_v2_log_id EQUALS the maximum audited
 // MirrorIngest.v2_log_id for that ledger (chainBound.maxMirrorV2LogID, seeded
-// from the baseline floor and layered with the live audit chain).
+// from the baseline floor and layered with the live audit chain). This is a full
+// invariant-#8 equality check, not a one-sided bound.
 //
-// The check is deliberately ONE-SIDED (a bound, not equality): it emits
-// CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD only when the stored value is
-// GREATER than the audited max — the corruption/data-loss direction, where the
-// high-water mark claims to have consumed a source v2 log absent from the audit
-// and would wrongly skip future ingests at those ids. It does NOT flag stored <
-// max or stored == 0: those are the legitimate legacy / no-upgrade-backfill /
-// self-healing states (existing clusters carry no last_mirror_v2_log_id and the
-// field only advances on future ingests). Strict equality would false-positive
-// on every pre-EN-1550 store, which is exactly why this is a bound.
+// Because the FSM enforces a contiguous applied prefix (processMirrorIngest
+// rejects any gap), at rest the persisted high-water mark must be exactly the max
+// audited v2_log_id — no more, no less. Any divergence is corruption and emits
+// CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH:
+//   - stored > max: claims a source v2 log no audit entry recorded (future
+//     ingests wrongly skipped).
+//   - stored < max: the projection lost applied ground (an already-applied ingest
+//     would be re-applied, doubling balances).
 //
-// last_mirror_v2_log_id is itself derivable from the audited MirrorIngest orders
-// (max applied v2_log_id) and only gates FUTURE application, so this bound is the
-// full checker obligation for it — there is no separate value-equality pass.
+// A non-mirror ledger has stored == 0 and audited max == 0 → equal → not flagged.
+// A mirror ledger corrupted to 0 has audited max > 0 → not equal → flagged. There
+// is no legacy/no-backfill leniency: existing pre-field clusters are unsupported
+// (no compat shim).
 func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, callback func(*servicepb.CheckStoreEvent)) {
 	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("failed to create live boundaries iterator: %v", err), 0, "", "", ""))
 
 		return
@@ -939,30 +940,25 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 		}
 
 		stored := entry.Value.GetLastMirrorV2LogId()
-		if stored == 0 {
-			// Never-ingested / legacy ledger: not a mirror ledger, or a
-			// pre-EN-1550 store with no high-water mark. Nothing to bound.
-			continue
-		}
-
 		auditedMax := chainBound.maxMirrorV2LogID[lk.Name]
-		if stored > auditedMax {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
-				fmt.Sprintf("stored last_mirror_v2_log_id %d exceeds max audited MirrorIngest v2_log_id %d for ledger %q: high-water mark is ahead of the audit chain (future source logs at these ids would be wrongly skipped)",
+
+		if stored != auditedMax {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+				fmt.Sprintf("stored last_mirror_v2_log_id %d does not equal max audited MirrorIngest v2_log_id %d for ledger %q: the idempotent-replay high-water mark diverges from the audit chain",
 					stored, auditedMax, lk.Name),
 				0, lk.Name, "", ""))
 		}
 	}
 
 	if err := iter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("closing live boundaries iterator: %v", err), 0, "", "", ""))
 
 		return
 	}
 
 	if err := iter.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_AHEAD,
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("live boundaries iterator error: %v", err), 0, "", "", ""))
 	}
 }

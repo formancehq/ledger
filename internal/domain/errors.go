@@ -221,6 +221,7 @@ const (
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
+	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -754,6 +755,33 @@ func (e *ErrLedgerNotInMirrorMode) Error() string {
 func (*ErrLedgerNotInMirrorMode) Reason() string { return ErrReasonLedgerNotInMirrorMode }
 func (e *ErrLedgerNotInMirrorMode) Metadata() map[string]string {
 	return map[string]string{"name": e.Name}
+}
+
+// ErrMirrorV2LogIDGap — a mirror ingest arrived with a v2LogId beyond the next
+// contiguous slot (Expected) after the applied prefix (LastMirrorV2LogId is
+// Expected-1). The worker ingests contiguously (including FillGap orders), so a
+// gap means the persisted high-water mark or the source cursor is ahead of the
+// applied prefix — corruption/tampering, impossible in normal operation. The FSM
+// rejects the order without mutation rather than silently applying past the gap
+// (which would desync nodes) or skipping it. KindInternal: server-side
+// data-corruption invariant, not a client mistake (invariant #7 fail-loud on an
+// impossible-by-design branch).
+type ErrMirrorV2LogIDGap struct {
+	Name     string
+	Got      uint64
+	Expected uint64
+}
+
+func (e *ErrMirrorV2LogIDGap) Error() string {
+	return fmt.Sprintf("invariant: mirror v2LogId gap on ledger %s: got %d, expected %d", e.Name, e.Got, e.Expected)
+}
+func (*ErrMirrorV2LogIDGap) Reason() string { return ErrReasonMirrorV2LogIDGap }
+func (e *ErrMirrorV2LogIDGap) Metadata() map[string]string {
+	return map[string]string{
+		"name":     e.Name,
+		"got":      strconv.FormatUint(e.Got, 10),
+		"expected": strconv.FormatUint(e.Expected, 10),
+	}
 }
 
 // ErrPreparedQueryAlreadyExists — creating a prepared query that already exists.

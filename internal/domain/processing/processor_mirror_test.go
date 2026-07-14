@@ -22,7 +22,8 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	// Contiguous prefix: v2LogId 5 requires the applied prefix to be at 4.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 4}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
@@ -323,6 +324,52 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 		"applied ingest must advance the v2LogId high-water mark")
 }
 
+// TestMirrorIngest_GapRejected pins the contiguous-prefix invariant: an ingest
+// whose v2LogId is beyond the next contiguous slot (last+1) is a gap — impossible
+// in normal contiguous ingestion, so the FSM fails LOUD (ErrMirrorV2LogIDGap,
+// KindInternal) and mutates nothing rather than silently applying past it.
+func TestMirrorIngest_GapRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	// Applied prefix at 3, so the next contiguous slot is 4; v2LogId 6 is a gap.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 3}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	// No mutation on a gap rejection: no boundary Put, no ledger re-touch, no volume Put.
+	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("Boundaries().Put must not be called on a gap rejection")
+	})
+	ledgersStub := setupLedgersStub(mockStore)
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
+		t.Errorf("Ledgers().Put must not be called on a gap rejection")
+	})
+	volumesStub := setupVolumesStub(mockStore)
+	volumesStub.onPut(func(_ domain.VolumeKey, _ *raftcmdpb.VolumePair) {
+		t.Errorf("Volumes().Put must not be called on a gap rejection")
+	})
+
+	result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 6, 42), mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var gap *domain.ErrMirrorV2LogIDGap
+	require.ErrorAs(t, err, &gap)
+	require.Equal(t, "mirror-ledger", gap.Name)
+	require.Equal(t, uint64(6), gap.Got)
+	require.Equal(t, uint64(4), gap.Expected)
+}
+
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	t.Parallel()
 
@@ -618,7 +665,8 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 		Name: "mirror-ledger",
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
+	// Contiguous prefix: v2LogId 2 requires the applied prefix to be at 1.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1, LastMirrorV2LogId: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
@@ -687,7 +735,8 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 		Name: "mirror-ledger",
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 	}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
+	// Contiguous prefix: v2LogId 2 requires the applied prefix to be at 1.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1, LastMirrorV2LogId: 1}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
