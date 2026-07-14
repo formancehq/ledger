@@ -1,289 +1,271 @@
-# RFC: Unified Hot-Path Apply Simulation
+# RFC: Safe reuse between admission planning and FSM apply
 
-- **Status:** Draft (investigation spike — EN-1545)
-- **Target:** Ledger v3
-- **Audience:** Ledger FSM / admission implementers
-- **Scope:** Collapse admission's hand-derived shadow of the FSM apply path into a single order interpreter, `simulate(order, StateReader, WriteSink)`, run in two modes (admission dry-run, FSM apply) over an abstract state interface.
-- **Depends on:** **EN-1406 / #1560 must land first** (`feat/en-1406-numscript-resolve-deps`). This RFC targets the post-EN-1406 shape: the `numscript.ValueSource` abstraction, the `SafeResolveDependencies` / `SafeRun` panic-recovery wrappers, the apply-time triage block in `processor_transaction_numscript.go`, and the `batchEffects` intra-batch overlay in admission. None of those exist on `release/v3.0` yet.
+- **Status:** Draft — **BLOCKED** investigation spike (EN-1545). This is a v3.1 architecture RFC and a **proof/investigation ticket only**: it must produce evidence and a go/no-go recommendation, and must not change production behavior.
+- **Target:** Ledger v3.1 (explicitly **not** v3.0; not on the v3.0 critical path).
+- **Audience:** Ledger FSM / admission implementers and reviewers.
+- **Question under investigation:** Can admission planning and FSM apply safely reuse more typed logic without weakening the hot-path invariants (#2 determinism, #3 no-Pebble-in-FSM, #6 preload/coverage, #7 loud-on-impossible, #9 coverage gate)? If so, which bounded shape — and at what cost?
 
-> **Note on the Go API:** the interfaces and types below are **illustrative** and **MAY be refined** during implementation. They exist to make the contract concrete and to pin the correctness argument.
+> **This RFC does not recommend the universal simulator.** An earlier draft proposed a single universal `simulate(order, StateReader, WriteSink)` interpreter shared verbatim between admission and FSM apply, and recommended "Go". The deep EN-1545 review (Jira, 2026-07-13) disproved the assumptions that recommendation rested on. This revision demotes the universal simulator to **one option among four (Option D), presented as the control / no-go alternative**, and frames the document as a *neutral comparison* rather than a decision. The authoritative decision on record is: **do not implement the universal model; investigate bounded alternatives for v3.1.**
 
 ---
 
-## 0. Recommendation (read this first)
+## 0. Blocked-on dependencies (read this first)
 
-**Go — but phased and narrowed.** The unified model is viable and worth doing, with two important qualifications that the investigation surfaced:
+This RFC **cannot be finalized or executed** until the following v3.0 boundaries settle, because each one changes a code path the comparison depends on. The RFC must be re-based and every code claim re-validated against the resulting baseline before a recommendation is made — existing line numbers are **not** authoritative.
 
-1. **The abstraction the ticket calls `StateReader` already exists** as `numscript.ValueSource` (`internal/domain/processing/numscript/store.go`), with exactly the two backends the RFC posits: `admissionValueSource` (Pebble snapshot + `batchEffects` overlay) and `scopeValueSource` (coverage-gated cache). What does **not** exist is (a) a *single pass* that produces both the preload set/InputsHash **and** the intra-batch effects — today that is two evaluations, `SafeResolveDependencies` + `SafeRun` — and (b) a generalization of the read/write abstraction to the **non-numscript** order types, whose effects are hand-folded in `admission.go`.
+| Dependency | Why it blocks this RFC |
+|---|---|
+| **EN-1406 / PR #1560** (`ResolveDependencies` API + stale-inputs detection) | Introduces the `numscript.ValueSource` abstraction, `SafeResolveDependencies`/`SafeRun` panic wrappers, the apply-time triage block, the `InputsResolutionHash`, and the intra-batch effects overlay. **None of these exist on `release/v3.0` today** (see §1). The entire "digest / stale-input / preflight" analysis is meaningless until this lands, and must be re-validated against what actually merges — not against the PR-branch shape. |
+| **EN-1532** (preserve CreateTransaction order metadata when merging Numscript output; accepted-order immutability) | Establishes the accepted-order-immutability invariant that any shared-planning or transcript design must preserve, and fixes the Numscript transaction-metadata aliasing bug. The RFC must treat accepted-order immutability as an **input**, not redefine it. |
+| **EN-1288** (Numscript library: immutable semver history, selector resolution incl. `latest`) | Owns preserving the submitted Numscript selector and moving resolution out of the audited business payload. The transcript/sidecar option (C) must preserve EN-1288's audited-selector invariant. |
 
-2. **The biggest win is P1 (collapse the double numscript evaluation), and it is nearly free of correctness risk.** The biggest *risk* is P3 (a single interpreter body shared verbatim between admission and FSM for **all** order types). P3 is where an invariant-#3/#6/#7/#9 mistake would be catastrophic (node desync), and it is the phase most tempting to over-engineer. The recommendation is to **commit to P1 and P2, and gate P3 behind an explicit design review** once P1/P2 have proven the `StateReader`/`WriteSink` seam holds.
+Until these merge (or their final boundaries are otherwise settled), EN-1545 remains **Blocked** and no option below should be selected.
 
-The three top risks and the phased plan are in §8 and §7.
+> **Note on the current baseline.** As of this writing, `release/v3.0` uses `numscript.DiscoverNumscriptDependencies` (`internal/domain/processing/numscript/emulate.go`) — a single `SafeRun` with infinite balances used **only to discover the preload set** (source/destination volumes, written metadata) — and re-runs `SafeRun` against the coverage-gated `Scope` at apply (`processor_transaction_numscript.go`). There is **no** `ResolveDependencies`, **no** `InputsResolutionHash`, **no** stale-input triage, and **no** balance/metadata effects overlay on the baseline; the `bulkOverlay` (`admission/overlay.go`) covers only numscript-library saves and sinks. The post-EN-1406 machinery this RFC reasons about is therefore *prospective*. Every "today" statement below is conditional on EN-1406 landing as designed and must be re-checked at that point.
 
 ---
 
 ## 1. Motivation
 
-Admission re-derives, by hand, a shadow copy of what the FSM apply path does. The shadow is split per order type and spread across files. Two concrete problems follow.
-
-### 1.1 Drift risk — every hand-fold shadows an FSM `process*`
-
-Each admission hand-derivation mirrors an FSM `process*` function. When apply semantics change, the shadow silently diverges, and the failure modes are severe:
+Admission re-derives, by hand, a shadow of what the FSM apply path does. Each hand-derivation mirrors an FSM `process*` function, and when apply semantics change the shadow can silently diverge. The failure modes are severe:
 
 - **wrong preload** → a cache miss on the FSM hot path. Per invariant #6 a cache miss turns an apply read into a silent no-op that desyncs nodes (invariant #7).
-- **wrong intra-batch effects** → a later same-batch order resolves against the wrong predecessor state.
-- **poisoned `InputsHash`** → a spurious `ErrStaleInputsResolution`, which spins the client in a re-admit loop against state that never diverged.
+- **wrong intra-batch effects** (post-EN-1406) → a later same-batch order resolves against the wrong predecessor state.
+- **poisoned stale check** (post-EN-1406) → a spurious `ErrStaleInputsResolution`, spinning the client in a re-admit loop against state that never diverged.
 
-The current shadows (all on `feat/en-1406-numscript-resolve-deps`):
+The intent of this RFC is to evaluate whether DRY reuse can *reduce* this drift surface without *introducing* a worse failure mode (node desync). It is not assumed that any reuse is worth it: **"no-go, keep the current model plus targeted optimizations" is a valid and possibly preferred outcome.**
 
-| Order type | Admission hand-fold | FSM function it shadows |
+### 1.1 The shadows (prospective, post-EN-1406)
+
+Once EN-1406 lands, admission is expected to carry per-order hand-folds that mirror the FSM. This table is a **hypothesis to validate against the merged baseline**, not a description of current `release/v3.0` code:
+
+| Order type | Admission hand-fold (expected post-EN-1406) | FSM function it shadows |
 |---|---|---|
-| CreateTransaction + script | `numscript.DiscoverNumscriptDependencies` (`SafeRun` effects pass) + `effects.mergeDiscovery` (`admission.go`) | `processCreateTransaction` → `processPosting` |
-| CreateTransaction, postings-only | inline balance fold in `resolveScriptsAndEnrichNeeds` (`admission.go:~1493`) | `processCreateTransaction` → `processPosting` |
-| RevertTransaction | inline reversed-delta fold (`admission.go:~1421`) | `processRevertTransaction` |
-| AddMetadata (account target) | `effects.setMetadata` (`admission.go:~1452`) | `processAddMetadata` |
-| DeleteMetadata (account target) | `effects.deleteMetadata` tombstone (`admission.go:~1465`) | `processDeleteMetadata` |
-| Caller account metadata precedence | `foldCallerAccountMetadata`, folded **after** script writes (`numscript_source.go:18`) | `processCreateTransaction` metadata merge (order > script) |
+| CreateTransaction + script | discovery pass (effects) + intra-batch merge | `processCreateTransaction` → `processPosting` |
+| CreateTransaction, postings-only | inline balance fold | `processCreateTransaction` → `processPosting` |
+| RevertTransaction | inline reversed-delta fold | `processRevertTransaction` |
+| AddMetadata (account target) | metadata overlay put | `processAddMetadata` |
+| DeleteMetadata (account target) | metadata overlay tombstone | `processDeleteMetadata` |
+| Caller account metadata precedence | caller metadata folded after script writes | `processCreateTransaction` metadata merge (order > script) |
 
-### 1.2 Redundant work — a script is evaluated twice
+### 1.2 Redundant work — a script may be evaluated twice (prospective)
 
-`DiscoverNumscriptDependencies` runs **two** full evaluations of the same script against the same source:
-
-- `SafeResolveDependencies` → dependency set (accounts/assets/metadata read+written) **and** `InputsHash` (via `RecordingStore`), for the stale check.
-- `SafeRun` → intra-batch effects (`NetBalanceDeltas`, `MetadataWrites`), consumed only by a later same-batch order.
-
-For a single-order batch, the effects pass produces something nobody reads: the batch has no successor order to resolve against. So every single-order script pays 2× for nothing.
+Under EN-1406, discovery is expected to run two evaluations of the same script: `SafeResolveDependencies` (dependency set + `InputsResolutionHash`) and `SafeRun` (intra-batch effects). For a single-order batch the effects pass produces something nobody reads. This is a real, bounded optimization opportunity (Option A) independent of any universal-simulator design.
 
 ---
 
-## 2. The Proposed Model
+## 2. Non-negotiable safety properties
 
-A single interpreter per order type:
+Before comparing designs, translate the repository invariants into falsifiable gates every option must satisfy. An option that cannot demonstrate all of these is a **no-go**.
 
-```
-simulate(order, StateReader, WriteSink) -> outcome
-```
-
-called in two modes over an abstract state interface. Business logic lives once; the two modes differ **only** in the state backend and whether writes commit.
-
-| | Admission (dry-run) | FSM (apply) |
-|---|---|---|
-| `StateReader` | Pebble snapshot + `batchEffects` overlay (`admissionValueSource`) | coverage-gated cache `Scope` (`scopeValueSource`) |
-| `WriteSink` | `batchEffects` overlay (intra-batch, discarded after) | `WriteSet` (committed via Merge) |
-| errors | best-effort (no reject on balance failure — see §4.2) | authoritative |
-| commit | never | yes |
-| by-products | reads → preload set + `InputsHash`; writes → intra-batch effects | none (writes are the real state change) |
-
-The single pass makes the effects a **by-product of the read/resolve pass**, so `SafeRun` (§1.2) disappears: whatever the interpreter writes to the `WriteSink` *is* the effect set, at admission and at apply alike.
+1. **Deterministic FSM at fixed input (#2).** Same order + same visible state → identical outcome and identical write set on every node. No `time.Now()`, no node-local state, no map-iteration order leaking into the write set (cf. EN-1521).
+2. **No Pebble capability in the FSM / hot path (#3).** No FSM-facing interface may expose `dal.Store`, `PebbleGetter`, parent `KeyStore` iteration, or a generic escape hatch. Enforced by construction and by a compile-time/wiring proof.
+3. **Every FSM cache read is coverage-gated (#9).** All reads go through `Scope.GetX(...)`; a read admission never declared must hit the gate.
+4. **Coverage misses remain loud (#6/#7).** A read the preload did not cover surfaces as a loud invariant failure (`ErrCoverageMiss` / equivalent), never a silent no-op, and is never reclassified as retryable stale.
+5. **Admission planning is advisory, not authoritative.** Admission cannot become the business authority; the FSM remains responsible for balance/overflow checks, account types, references, metadata behavior, atomic failure and rollback.
+6. **Atomic per-order and per-batch semantics.** A failed order contributes **no** effects (§4). A first-order failure stops and rolls back the atomic proposal exactly as today.
+7. **Accepted business-order bytes are unchanged** through admission and apply (EN-1532 invariant; EN-1288 audited selector).
+8. **The audit chain remains the source of truth** (invariant #8). Any *new* persisted projection requires checker derivation and comparison — so no option here may add a persisted projection without that pass.
 
 ---
 
-## 3. The `StateReader` and `WriteSink` interfaces
+## 3. The abstraction that may or may not be shared
 
-### 3.1 `StateReader` — the sole read horizon
-
-The read half already exists as `numscript.ValueSource`:
+The ticket's original framing named a `StateReader` (read horizon) and a `WriteSink` (write half). Post-EN-1406, the read half is expected to exist as `numscript.ValueSource`:
 
 ```go
-// internal/domain/processing/numscript/store.go (today, EN-1406)
+// internal/domain/processing/numscript/store.go (EXPECTED post-EN-1406, does not exist today)
 type ValueSource interface {
     Balance(account, asset string) (*big.Int, error)
     Metadata(account, key string) (value string, present bool, err error)
 }
 ```
 
-To serve **all** order types (not just numscript), it must also expose the reads the non-numscript `process*` paths do — transaction state and reference existence, reverted-bitset membership:
+To serve non-numscript order types, a generalized read horizon would additionally expose transaction-state, reference existence and reverted-bitset reads. **Whether this generalization is worth building is exactly what Options B/C/D test.** Two properties are load-bearing for *any* shared read interface:
+
+- **#3 holds iff the shared code reads only through the interface and the FSM backend is cache-only** (no `*dal.Store`, compiler-enforced).
+- **#9 holds iff the FSM backend routes every method through `Scope.GetX(...)`** so `coverage_bits` admit it. A method implemented against a raw `Registry.X.KeyStore()` iterator silently bypasses the gate — this is the single most dangerous mistake any shared-interface option can make (Option D's chief risk).
+
+### 3.1 The write / sink boundary — atomic per order, typed metadata
+
+Any shared write half (Options B, C, D) must satisfy two boundary constraints the original draft got wrong.
+
+**(a) Atomic per-order boundary — a failed order contributes NO effects.** With a *streaming* sink, a CreateTransaction can emit several postings and metadata writes before a later posting fails a balance/overflow check, an account-type validation, or a metadata-key validation (`processCreateTransaction` validates Numscript-produced metadata keys *after* postings are applied — see `processor_transaction_numscript.go`). If those partial writes have already landed in the admission overlay, a later same-batch order resolves against a state the FSM will never produce, and admission's advisory plan diverges from the authoritative outcome. This contradicts safety property #6.
+
+The sink boundary must therefore be **atomic per order**, not streaming-with-partial-retention. Two acceptable shapes:
+
+- **Buffer-and-commit-per-order:** the order's effects accumulate in a per-order staging buffer; they are merged into the batch overlay (admission) / write set (FSM) **only after** the whole order succeeds. On any failure the staging buffer is discarded.
+- **Rollback-on-failure:** the sink supports a savepoint taken before the order and rolled back on failure.
+
+The buffer-and-commit shape is preferred: it matches the FSM's existing `overlay_scope.go` per-order overlay (`orderOverlayScope`), which already stages a single order's writes and rolls back on failure without touching the parent scope. The admission side must adopt the same discipline — a per-order buffer flushed only on success — so the two modes are **structurally identical at the failure boundary**, not merely "best-effort" on one side. Note this is a *stricter* contract than "admission swallows the failure and keeps its delta": admission may still *decline to reject* an order it cannot execute at admission time (a concurrent order may move balances — property #5), but declining to reject is not the same as retaining partial effects. The correct behavior is **decline to reject, and contribute nothing**.
+
+**(b) Typed metadata at the boundary.** A `string` metadata value cannot reproduce current FSM writes. `processAddMetadata` and caller account metadata store `*commonpb.MetadataValue` **verbatim** (`s.AccountMetadata().Put(metaKey, value)` where `value` is a `*commonpb.MetadataValue` from `order.GetMetadata() map[string]*commonpb.MetadataValue`). `MetadataValue` is a oneof with six variants — string, int, uint, datetime, bool, null (`internal/proto/commonpb/common.pb.go`). The `AccountMetadata()` accessor is typed `Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]`. Flattening to `string` at the sink would drop the variant, change the stored bytes, and (via the read-side index hint) change how the value is indexed. The sink metadata operations must therefore carry the typed value:
 
 ```go
-// Illustrative — the generalized read horizon for the unified interpreter.
-type StateReader interface {
-    // Numscript-shaped reads (already ValueSource today).
-    Balance(account, asset string) (*big.Int, error)
-    Metadata(account, key string) (value string, present bool, err error)
-
-    // Reads the non-numscript process* paths need.
-    TransactionState(txID uint64) (*TransactionState, bool, error) // revert source, metadata target
-    ReferenceExists(ref string) (bool, error)                       // create dedup
-    IsReverted(txID uint64) (bool, error)                           // revert guard
-}
-```
-
-**Invariant #3 holds iff the shared interpreter reads only through this interface.** The FSM backend implements every method against the coverage-gated `Scope`; it never touches Pebble. This is the load-bearing property: because the *only* way the shared code can read is `StateReader`, and the FSM's `StateReader` is cache-only, no shared-code change can introduce a Pebble read on the hot path. The compiler enforces it (the FSM backend has no `*dal.Store`).
-
-**Invariant #9 holds because the FSM backend's reads are the coverage-gated `Scope`.** Each `StateReader` method on the FSM side goes through `Scope.GetX(...)`, so the per-order `coverage_bits` admit it. A read the interpreter makes that admission never declared hits `*state.ErrCoverageMiss` — see §4.
-
-### 3.2 `WriteSink` — the write half
-
-Today the two write halves are `batchEffects` (admission) and `WriteSet` (FSM). Generalize:
-
-The write half's **balance primitive is the posting**, because that is what the FSM apply path needs. `applyPosting` requires the full posting — source, destination, asset, amount, and side — to increment the source's `Output` and the destination's `Input` **separately** (materialized volumes) and to run the source balance check. A net-per-volume-key delta cannot carry that: it loses which side moved and the source/destination pairing, so it cannot reconstruct the materialized-volume semantics §3.2 and §4 require. The sink's balance operation is therefore the posting; a net delta is a *projection* admission derives from it, not a sink primitive.
-
-```go
-// Illustrative — the write half of the interpreter.
+// Illustrative — a shared write sink, IF one is built (Options B/C/D).
 type WriteSink interface {
     // Balance mutation is posting-shaped: the FSM needs source/destination,
-    // asset, amount and side to update materialized volumes (source Output++,
-    // destination Input++) and run the source balance check. Admission's
-    // implementation projects this to a net (input−output) delta per volume key
-    // for its intra-batch overlay; the FSM's implementation materializes the two
-    // volume sides. force is threaded so each backend applies the balance-check
-    // policy identically (§8, force question).
+    // asset, amount and side to materialize volumes (source Output++,
+    // destination Input++) and run the source balance check. Admission
+    // projects this to a net (input−output) delta per volume key.
     ApplyPosting(p Posting, force bool) error
 
-    SetMetadata(key domain.MetadataKey, value string)
+    // Metadata carries the typed *commonpb.MetadataValue verbatim — NOT a
+    // flattened string — so the sink reproduces processAddMetadata exactly.
+    SetMetadata(key domain.MetadataKey, value *commonpb.MetadataValue)
     DeleteMetadata(key domain.MetadataKey)
+
     PutTransactionState(txID uint64, state *TransactionState)
     MarkReverted(txID uint64)
     PutReference(ref string, txID uint64)
 }
 
-// Posting is the balance-mutation unit the interpreter emits (already the shape
-// of a numscript-produced posting and of RevertTransaction's reversed postings).
 type Posting struct {
     Source, Destination, Asset string
     Amount                     *big.Int
 }
 ```
 
-- Admission's `WriteSink` = the `batchEffects` overlay. `ApplyPosting` **projects** the posting to a net (input−output) delta per volume key (source `−amount`, destination `+amount`) so a later same-batch `balance()` sees the right number — exactly what `batchEffects.addBalanceDelta` does today, but now driven by the posting rather than being the interpreter's primitive. `SetMetadata` / `DeleteMetadata` accumulate as today. All writes are discarded after the batch. Admission's `ApplyPosting` swallows the balance-check failure (best-effort, §4.2); it still records the delta so downstream orders resolve correctly.
-- FSM's `WriteSink` = the `WriteSet`. `ApplyPosting` materializes both volume sides via the existing `applyPosting` path (source `Output += amount`, destination `Input += amount`) and runs the authoritative source balance check unless `force`. Other writes commit via Merge.
-
-**The asymmetry the posting-shaped sink preserves:** admission needs only *net balance deltas* (input−output) for a later `balance()`; the FSM needs *materialized volumes* (Input and Output separately). Because the interpreter emits **postings** and each backend's `ApplyPosting` decides how to record them, the interpreter stays representation-agnostic, admission keeps its cheap net-delta overlay, and the FSM keeps its exact volume math and balance check — with no information lost at the seam.
+The posting-shaped balance primitive is deliberate: `applyPosting` needs source, destination, asset, amount and side to increment materialized volumes separately and run the source balance check. A net-per-volume-key delta loses which side moved; admission derives that net delta as a *projection*, it is not the sink primitive.
 
 ---
 
-## 4. The coverage gate as the divergence detector
+## 4. The coverage gate as the (only) divergence detector
 
-This is the heart of the correctness argument and the delicate part of the recommendation.
-
-### 4.1 Preload = the simulated path, not all branches
-
-`ResolveDependencies` today explores **all** oneof branches of a script to build the dependency set. The unified model narrows this: it preloads only the branch the single simulation pass actually takes.
-
-This is **narrower**, and it is correct **iff the `InputsHash` pins branch selection**. The argument, confirmed by the EN-1406 independent review:
-
-1. `Run`'s reads are a **subset** of `ResolveDependencies`' reported reads — a single execution touches one branch; branch selection is a pure function of the resolved inputs.
-2. Admission binds those inputs into `InputsHash` via the `RecordingStore` (including metadata *absence*, via the NUL-prefixed absent sentinel — a key that gains a value between admit and apply hashes differently).
-3. At apply, the FSM re-resolves against the coverage-gated `Scope` and compares hashes **before** taking the divergent path (§4.3). If any input shifted, the branch could differ, and the hash mismatch rejects as stale *before* the interpreter can read a key the narrower preload never loaded.
-
-So single-path preload is safe **because** the InputsHash makes any branch-changing input shift a stale rejection, not a silent divergent read.
-
-### 4.2 A divergent apply-time read surfaces LOUD, never silent
-
-The just-merged coverage-miss fix (EN-1406, `processor_transaction_numscript.go`) is what makes single-path preload *safe to get wrong*: if the narrowing is ever incorrect — the apply path reaches a key admission didn't declare — the read does **not** silently no-op (which would desync nodes, invariant #6/#7). It hits the coverage gate and surfaces as `*state.ErrCoverageMiss`, triaged loud:
+For any option that lets the FSM apply path re-run resolution, the coverage gate is what converts a wrong preload into a **loud reject** instead of a silent desync. Post-EN-1406, apply-time resolution is expected to triage four ways:
 
 ```go
-// processor_transaction_numscript.go — apply-time triage (EN-1406)
+// EXPECTED shape post-EN-1406 — validate against the merged code.
 if _, resolveErr := numscript.SafeResolveDependencies(parsed, ctx, vars, recording); resolveErr != nil {
     if numscript.IsPanic(resolveErr) {
-        return nil, resolveErr                 // (1) recovered panic — loud (#7)
+        return nil, resolveErr                 // (1) recovered panic — LOUD (#7)
     }
     if isCoverageContractViolation(resolveErr) {
-        return nil, resolveErr                 // (2) ErrCoverageMiss / ErrInvalidExecutionPlan — loud (#7)
+        return nil, resolveErr                 // (2) coverage miss / invalid plan — LOUD (#7)
     }
     return nil, domain.ErrStaleInputsResolution // (3) genuine input-shift — retryable stale
 }
 if !bytes.Equal(expected, recording.Hash()) {
-    return nil, domain.ErrStaleInputsResolution // hash mismatch — retryable stale
+    return nil, domain.ErrStaleInputsResolution // (4) hash mismatch — retryable stale
 }
 ```
 
-**The unified model must preserve this exact four-way triage** — panic (loud) / coverage-contract violation (loud) / resolve-error input-shift (stale) / hash-mismatch (stale). In the unified model the coverage gate becomes the *divergence detector*: an admission-shadow bug (wrong preload) can no longer cause a silent wrong result — it can only cause a loud `ErrCoverageMiss` reject. That is precisely the property that makes the whole refactor safe: **the FSM's legitimate read horizon is admission's declared key set, and any interpreter change that widens it fails loudly rather than desyncing.**
+The property every option must preserve: **a coverage miss (2) is never reclassified as stale (3)/(4).** Conflating them hides violations of #6/#7/#9. One of the RFC's required experiments is to *remove a declared key and prove the result is a loud coverage/internal error, never stale.*
 
-`isCoverageContractViolation` matches on `domain.Reason` (`ErrReasonCoverageMiss`, `ErrReasonInvalidExecutionPlan`) rather than importing `internal/infra/state` (import cycle). The unified interpreter, living in `internal/domain/processing`, keeps that constraint.
+### 4.1 The digest is NOT a preflight manifest
 
-### 4.3 Hash-check MUST short-circuit before any divergent read
+The original draft claimed the FSM can check the `InputsResolutionHash` **before** any divergent read, so a stale order is rejected before it can touch an un-preloaded key. **This claim is unsound and must not be relied on.** The reasons, from the EN-1406 review:
 
-The apply path checks `expected == recording.Hash()` **before** committing to the resolved branch's writes. In the unified model, the ordering contract is: **re-resolve (recording reads) → compare hash → only then execute writes / take branch-specific reads.** If the hash mismatches, reject stale *before* the interpreter reaches a key the narrower preload might not cover. The RFC's implementation must not let any write or branch-divergent read happen ahead of the hash gate.
+1. **The digest is a hash, not a key manifest.** `InputsResolutionHash` carries the resolution inputs only through a **digest** — it does *not* carry the identities/presence of the keys that produced it. You cannot enumerate "the keys I must preflight" from the digest alone.
+2. **Rebuilding the digest requires re-running resolution.** To compare hashes, the FSM must re-run `ResolveDependencies` against live state to recompute the digest. That rerun is what issues the reads — including, potentially, a *newly-derived, undeclared* key **before** the hash comparison can happen. So "compare hash before any read" is not achievable with a digest: the reads are how the hash is rebuilt.
+3. **The dependency set and the hash-input set are intentionally different.** Upstream `ResolveDependencies` returns a *conservative* read/write set, while a `RecordingStore` hashes only the values actually obtained through store calls. For example, a bounded source's volume may be *declared* a read without its balance being *queried* during resolution. So the digest does not even bind the full declared dependency horizon.
+4. **`Run` is not a conservative-analysis API.** A single successful `Run` exposes the actual effects of one branch, but not a proven conservative read/write horizon; a failed `Run` exposes no usable partial plan. Replacing conservative resolution with actual-path execution would *under-specify* preload coverage.
 
-### 4.4 Determinism (#2)
+**Correct framing:** the digest is a *tamper/shift detector after re-resolution*, not a *before-read gate*. The only mechanism that catches an undeclared read is the **coverage gate**, and it does so *at the moment of the read* (loud), not preflight. Preflight-before-any-read is only achievable with an explicit **typed key manifest** — canonical identities + presence/absence + value encoding of every resolution input — which is precisely what **Option C (transcript/sidecar)** proposes to build and prove. Absent such a manifest, the ordering guarantee the original draft asserted does not hold, and the safety argument must rest on the coverage gate catching the undeclared read loudly, not on a preflight rejection.
 
-`simulate` must be pure/deterministic at fixed inputs: same order + same `StateReader`-visible state → identical outcome and identical write set on every node. The numscript library is already deterministic under fixed inputs; the non-numscript folds (balance deltas, metadata merges, revert reversal) are pure arithmetic and map operations. The one hazard is map-iteration order leaking into the write set — this must be avoided (cf. EN-1521, FSM map-determinism). No `time.Now()`, no node-local state inside `simulate` (revert's `at_effective_date` fallback to the FSM date is passed **in** as a command/context value, not read from the clock inside the interpreter).
+### 4.2 Determinism (#2)
 
----
-
-## 5. Mapping every current hand-fold to the unified model
-
-| Current construct | File (EN-1406) | Where it lives in the unified model | Fate |
-|---|---|---|---|
-| `DiscoverNumscriptDependencies` `SafeResolveDependencies` pass | `numscript/discover.go` | the single `simulate` pass (numscript order), reads recorded → preload + InputsHash | **kept** (becomes the one pass) |
-| `DiscoverNumscriptDependencies` `SafeRun` effects pass | `numscript/discover.go` | **removed** — effects are the `WriteSink` writes of the single pass | **DELETED** |
-| `NetBalanceDeltas` / `MetadataWrites` on `DiscoveryResult` | `numscript/discover.go` | become `WriteSink.ApplyPosting` (net delta is a projection) / `SetMetadata` calls | **DELETED** (as separate result fields) |
-| postings-only inline balance fold | `admission.go:~1493` | `simulate` for CreateTransaction (postings branch) → `WriteSink.ApplyPosting` | **DELETED** (moves into interpreter) |
-| reversed-delta fold | `admission.go:~1421` | `simulate` for RevertTransaction → `WriteSink` (reversed postings) | **DELETED** (moves into interpreter) |
-| `effects.setMetadata` (AddMetadata) | `admission.go:~1452` | `simulate` for AddMetadata → `WriteSink.SetMetadata` | **DELETED** (moves into interpreter) |
-| `effects.deleteMetadata` tombstone (DeleteMetadata) | `admission.go:~1465` | `simulate` for DeleteMetadata → `WriteSink.DeleteMetadata` | **DELETED** (moves into interpreter) |
-| `foldCallerAccountMetadata` (caller > script precedence) | `numscript_source.go:18` | `simulate` for CreateTransaction, caller metadata merged after script writes into `WriteSink` | **DELETED** (moves into interpreter, precedence encoded once) |
-| `batchEffects` overlay | `numscript_source.go` | admission's `WriteSink` **and** the overlay half of admission's `StateReader` | **kept** (renamed to the `WriteSink` impl) |
-| `admissionValueSource` | `numscript_source.go` | admission's `StateReader` | **kept** |
-| `scopeValueSource` | `processor_transaction_numscript.go` | FSM's `StateReader` | **kept** |
-| `WriteSet` (FSM) | `internal/infra/state` | FSM's `WriteSink` | **kept** |
-| apply-time four-way triage | `processor_transaction_numscript.go` | wraps the FSM-mode `simulate` call | **kept** (generalized over order types) |
-
-**Net deletions:** the second numscript evaluation (`SafeRun` in discovery), the `NetBalanceDeltas`/`MetadataWrites` computation in `discover.go`, and all five per-order-type effect folds in `admission.go` + `foldCallerAccountMetadata`. The per-order **preload declaration** (`extractLedgerScopedNeeds`) stays as-is — it is admission's contract (invariant #6) and is *derived from* the simulate reads, not hand-maintained separately once P1/P3 land.
+Any shared body must be pure/deterministic at fixed inputs. The Numscript library is deterministic under fixed inputs; non-numscript folds (balance deltas, metadata merges, revert reversal) are pure arithmetic/map operations. The one hazard is map-iteration order leaking into the write set — must be avoided (cf. EN-1521). Revert's `at_effective_date` fallback must be passed **in** as a command/context value, never read from a clock inside any interpreter.
 
 ---
 
-## 6. Repatriating the precedence / reversal / tombstone semantics
+## 5. Option comparison (the core of this RFC)
 
-These three semantics are hand-folded in `admission.go` today and must move **into** `simulate` so there is exactly one definition:
+Four bounded alternatives, evaluated against the §2 safety properties and cost. The universal simulator is included only as a control.
 
-- **Caller-metadata precedence over `set_account_meta`.** FSM `processCreateTransaction` merges order metadata with precedence over script metadata (order keys win on collision). Admission mirrors this by folding caller metadata *after* script writes. In `simulate`, the CreateTransaction interpreter writes script metadata to the `WriteSink`, then overwrites with caller metadata — one code path, both modes.
-- **Revert reversed-posting deltas.** FSM `processRevertTransaction` applies each original posting reversed (source↔dest swap). Admission mirrors the net delta (source +amount, dest −amount). In `simulate`, the RevertTransaction interpreter reads the original `TransactionState` via `StateReader.TransactionState`, emits reversed postings to the `WriteSink`; the FSM backend materializes volumes, the admission backend folds net deltas.
-- **Delete tombstones.** FSM `processDeleteMetadata` deletes the key; admission records a tombstone so a later same-batch `meta()` resolves absent. In `simulate`, one `WriteSink.DeleteMetadata` call; the admission backend records the tombstone, the FSM backend deletes from the `WriteSet`.
+### Option A — current conservative model + targeted optimizations
 
----
+Keep conservative dependency resolution, the explicit stale hash, and the hand-maintained per-order effects. Apply only narrow, measured optimizations:
 
-## 7. Phased migration plan
+- **Skip the effects-only pass when no later Numscript in the atomic batch can observe predecessor effects.** For a single-order batch, or a batch whose only state-dependent consumer is absent, the effects pass produces nothing anyone reads.
+- **Share a panic boundary** (`SafeRun`-equivalent) between admission and FSM so a user-controlled script or store-triggered upstream panic becomes a deterministic typed error, never an FSM unwind.
 
-The phases are ordered by value-to-risk ratio. **Each phase is independently shippable and independently revertible.**
+**Safety:** trivially preserves every §2 property — nothing is shared into the FSM read horizon that is not already there. **Cost:** best-case win is the skipped second evaluation on batches that cannot observe it; measurable and bounded. **Drift surface:** unchanged (the hand-folds remain). **Verdict:** the safe floor. If no other option clears the safety gates with an acceptable cost, **this is the recommendation.**
 
-### Phase 0 — prerequisite
+### Option B — shared typed planning / effect helpers, authoritative `process*` retained
 
-EN-1406 / #1560 lands on `release/v3.0`. Nothing in this RFC is actionable before that.
+Extract the *typed effect calculation* (posting → materialized-volume delta; caller-metadata precedence; revert reversal; tombstone) into shared helpers, but keep the authoritative `process*` handlers and keep **separate admission and FSM adapters** around them. Admission and FSM both call the shared helper for the arithmetic, but the FSM's own `process*` remains the single point that reads through `Scope` and writes through `WriteSet`.
 
-### Phase 1 — unify numscript discovery into one pass (high value, low risk)
+**Safety:** #3/#9 are preserved because the shared helpers do *not* read state — they operate on values the caller already fetched through its own (coverage-gated for FSM) reader. The helper cannot widen the FSM read horizon because it does no reading. **Cost:** modest; removes the arithmetic-duplication drift without touching the read path. **Risk:** the shared helper must reproduce both the FSM `process*` and the admission fold *byte-for-byte* — requires a differential test (§7). Metadata helpers must carry typed `*commonpb.MetadataValue` (§3.1b). **Verdict:** the most likely "go" if any reuse is justified — it captures most of the DRY benefit while keeping the read/write authority typed and unshared.
 
-Collapse `DiscoverNumscriptDependencies`' two evaluations into one. Introduce a numscript-scoped `WriteSink` and have the *single* `SafeResolveDependencies`/execution pass emit effects to it as a by-product. Remove `SafeRun` from `discover.go`. `admissionValueSource` and `scopeValueSource` become the two `StateReader` backends explicitly (they already are, structurally).
+### Option C — immutable typed execution transcript / sidecar with preflight
 
-- **What's deleted:** the second numscript evaluation; `NetBalanceDeltas`/`MetadataWrites` as separately-computed fields.
-- **Risk:** low. The read/hash pass is unchanged; only the effects derivation moves from a second pass to the first. Guarded by the existing exhaustive numscript e2e coverage (task #50) and the apply-time triage.
-- **Correctness check:** `Run`'s reads ⊆ `ResolveDependencies`' reads (already established), so folding effects into the resolve pass cannot *lose* a preload key.
+Admission emits an **immutable, versioned transcript** alongside the accepted order (without rewriting the order — EN-1532/EN-1288 invariants): canonical identities of every resolution input, presence/absence + deterministic value encoding, expected digest and declared writes, and selected-script/reference evidence. The FSM **preflights** the transcript through the coverage-gated typed `Scope` after preceding same-batch effects and before re-execution: a value/presence mismatch is explicit **stale**; any later undeclared read remains a loud **coverage miss**.
 
-### Phase 2 — absorb revert + metadata folds into `simulate` (medium value, medium risk)
+**Safety:** this is the *only* option that could deliver the "preflight before any divergent read" property §4.1 shows the digest alone cannot — because the transcript carries the **key identities**, not just a digest. **Cost/risk (high):** requires proving (a) an upstream Numscript contract that returns conservative requirements + actual effects + a canonical read transcript without losing partial info on failure (this contract **does not exist today** and may be a hard blocker — do not emulate it in Ledger); (b) a decision on whether the sidecar is ephemeral Raft data, auditable evidence, or a rebuildable projection — each with checker/replay consequences (invariant #8); (c) no proto/persistence change in *this* ticket. **Verdict:** the most powerful and the most expensive; go/no-go hinges on the upstream contract and the persistence classification. Prototype outside production code first.
 
-Move the RevertTransaction, AddMetadata, DeleteMetadata, and caller-metadata-precedence folds out of `admission.go` into per-order `simulate` bodies that both admission and FSM call. These are pure arithmetic/map folds — no numscript, no branching over resolved inputs, so no InputsHash subtlety.
+### Option D — universal `simulate(order, StateReader, WriteSink)` (control / no-go)
 
-- **What's deleted:** the four inline folds in `resolveScriptsAndEnrichNeeds` + `foldCallerAccountMetadata`.
-- **Risk:** medium. The delicate part is ensuring the FSM `process*` and the admission fold, which are currently *separately* correct, are byte-for-byte reproduced by one shared body — especially revert's volume materialization vs net-delta representation (§3.2). Requires a differential test: for a corpus of orders, assert admission's derived effects equal the FSM's committed writes.
+One untyped interpreter body shared verbatim between admission and FSM for all order types, differing only in the state backend and whether writes commit.
 
-### Phase 3 — single interpreter body for all order types, remove hand-derivations from `admission.go` (high value, highest risk)
+**Why it is the control, not the recommendation:**
 
-Fully unify: `admission.go` no longer contains any per-order effect logic; it constructs the admission-mode `StateReader`/`WriteSink`, calls `simulate`, and reads back the preload set + InputsHash + effects. The FSM apply path constructs the FSM-mode backends and calls the same `simulate`.
+- It tends to **recreate `Scope` behind a broader interface**, and the broader the interface the easier it is to smuggle in a raw-cache/Pebble read that bypasses #9 — the single catastrophic mistake (silent node desync).
+- The blast radius covers admission, every mutating order, the FSM hot path, error precedence, atomic-batch rollback, audit identity and cache-coverage invariants simultaneously.
+- Its safety argument leaned on the digest-as-preflight claim that §4.1 disproves, and on admission errors being equivalent to FSM errors, which property #5 rejects.
 
-- **What's deleted:** `resolveScriptsAndEnrichNeeds`' per-order dispatch (reduced to a loop calling `simulate`); the shadow disappears entirely.
-- **Risk:** highest — this is where an invariant-#3/#9 mistake in the shared body would desync nodes. **Gate behind explicit design review.** Do not start P3 until P1+P2 have proven the seam in production.
+**Verdict: no-go** as a v3.0 refactor (risk: critical) and not the preferred v3.1 direction. Retained here so the comparison is explicit about *why* the broad interface loses to B/C.
 
----
+### Summary matrix
 
-## 8. Risks and open questions
-
-### Top 3 risks
-
-1. **A coverage-gated miss must be a loud reject on the simulated path without weakening #6/#7 elsewhere.** The whole safety argument rests on the FSM `StateReader` routing every read through `Scope.GetX` so a divergent read hits `ErrCoverageMiss`. If any `StateReader` method is implemented against a raw `Registry.X.KeyStore()` iterator (invariant #9 violation) — e.g. to make a "convenient" existence check — the gate is bypassed and a wrong preload silently no-ops again. **Mitigation:** the FSM `StateReader` must hold only a `Scope`, never a parent cache handle; enforce by construction (no `*dal.Store`, no `Registry` on the struct) and by review.
-
-2. **Apply must reject on hash mismatch before any divergent read (§4.3).** If the unified interpreter is restructured such that a branch-divergent read or a write happens before the hash gate, a stale order could touch an un-preloaded key (loud `ErrCoverageMiss` in the best case, but the *intent* is a clean stale reject). **Mitigation:** the FSM-mode `simulate` must run in the fixed order re-resolve → hash-compare → execute; encode this as a single wrapper the interpreter cannot reorder.
-
-3. **P2/P3 differential correctness — the shared body must reproduce both the FSM `process*` and the admission fold byte-for-byte.** The two are *separately* correct today; unifying them risks a representation mismatch (net delta vs materialized volume; metadata merge order; revert reversal). **Mitigation:** a differential/property test asserting admission-derived effects equal FSM-committed writes over a broad order corpus, run before P2 and P3 land; treat any divergence as a release blocker.
-
-### Open questions
-
-- **Does every order type genuinely fit one interpreter?** CreateTransaction (postings + script), RevertTransaction, Add/DeleteMetadata all fit the `StateReader`/`WriteSink` shape cleanly (verified against the EN-1406 `process*` functions). System-scoped orders (create/delete ledger, indexes, account types, cluster config) do **not** read/write the balance-metadata-txstate horizon and largely have empty or nil preload needs — they should be **out of scope** for `simulate`; forcing them through it would add a fake `StateReader` for no benefit. The RFC recommends `simulate` cover **ledger-scoped mutating orders only**; system-scoped orders keep their direct `process*` (they have no admission shadow to unify).
-- **What about the `force` flag?** `force` makes numscript see `MaxForceBalance` and skips FSM balance enforcement. It is already threaded through `numscript.NewStore(source, force)` and the FSM apply. In the unified model `force` is a `simulate` parameter, not a `StateReader` concern — the `StateReader` still returns real balances; the interpreter decides whether to enforce. This must be explicit so admission (best-effort, §4.2) and FSM (authoritative) apply `force` identically.
-- **Best-effort vs authoritative error handling (§4.2).** Admission must *not* reject an order because it can't execute against admission-time state (a later concurrent order may move balances); the FSM is authoritative. In the unified model this is a mode flag on `simulate` (`commit bool` / `authoritative bool`): admission swallows balance/runtime failures and contributes no effects for that order; FSM returns the definitive error. The interpreter body is shared; only the error disposition differs. This must be carefully specified so a *panic* or *coverage violation* is **never** swallowed in either mode (those stay loud, §4.2).
+| | A: current + opts | B: shared typed helpers | C: transcript/sidecar | D: universal simulator |
+|---|---|---|---|---|
+| Preserves #3 (no Pebble) | trivially | yes (helpers don't read) | yes (cache-only preflight) | fragile (broad iface) |
+| Preserves #9 (coverage gate) | trivially | yes | yes, + preflight | **at risk** |
+| Coverage-miss stays loud | yes | yes | yes | yes if disciplined |
+| Preflight-before-read possible | n/a | n/a | **yes** (key manifest) | no (digest only, §4.1) |
+| Admission stays advisory (#5) | yes | yes | yes | conflated |
+| Atomic per-order (§3.1a) | yes | yes (per-order buffer) | yes | must be re-proven |
+| Typed metadata (§3.1b) | yes | yes | yes | dropped in original draft |
+| Drift reduction | none | high | high | high |
+| Cost / risk | low / low | modest / medium | high / high | high / **critical** |
+| Upstream Numscript contract needed | no | no | **yes (blocker)** | yes |
 
 ---
 
-## 9. Summary
+## 6. Upstream Numscript contract audit (required before any go)
 
-The unified `simulate(order, StateReader, WriteSink)` model is viable for ledger-scoped mutating orders. The read abstraction already exists (`ValueSource`); the work is (1) collapsing the numscript double-evaluation, (2) moving the revert/metadata/precedence folds into a shared interpreter, and (3) removing admission's per-order shadow. The coverage gate (invariant #9) plus the just-merged loud-triage of a coverage miss turns any narrowing mistake into a loud reject rather than a silent node desync, which is what makes single-path preload safe. **Recommendation: proceed with P1 immediately (after EN-1406 lands), P2 next, and gate P3 behind a design review.** System-scoped orders stay out of scope.
+Options C and D depend on upstream guarantees that must be established, not assumed:
+
+- What does `ResolveDependencies` guarantee for conservative reads/writes, actual store calls, branch traversal, failed execution, panic handling and partial results?
+- What does `Run` expose for actual reads, complete writes and effects on success **and** failure?
+- Can a single upstream call safely return conservative requirements, canonical read evidence **and** actual effects without losing partial information on failure?
+
+If the upstream API cannot provide a required guarantee, that is a **documented blocker** and the recommendation is to *propose an upstream contract*, not to emulate the missing guarantee in Ledger. The current baseline offers only `SafeRun` (actual-path execution with infinite balances for discovery); it is not a conservative-analysis API.
+
+---
+
+## 7. Required experiments (evidence, not assertion)
+
+No option may be selected without reproducible evidence:
+
+- **Differential/property tests** across the pinned Numscript language comparing admission planning vs FSM apply for read sets, effects, error precedence and **unchanged order bytes**.
+- **Mutation tests:** mutate every recorded value and presence bit; prove detection occurs **before** business execution (Option C) or, for A/B, that the stale/coverage classification is correct.
+- **Coverage-miss proof:** remove one declared/manifest key; prove the result is coverage/internal, **never** stale.
+- **Atomic sequences:** postings, scripts, revert, add/delete metadata, caller-metadata precedence, tombstones, insufficient funds, overflow, predecessor failure and rollback — proving a failed order contributes no effects (§3.1a).
+- **Audit/idempotency:** prove submitted order bytes are unchanged through admission and apply (EN-1532/EN-1288).
+- **Cache rotation & pipelining:** exercise generation rotations and concurrent proposal pipelining.
+- **Capability proof:** a compile-time/interface or minimal-wiring test showing a Pebble-backed admission adapter **cannot** be injected into FSM composition.
+- **Benchmarks:** single script, terminal script, multiple independent scripts, state-dependent multi-order batch — admission cost separated from FSM cost; any FSM-latency or proposal-payload growth quantified and justified; compared against Option A's narrow skip-the-effects-pass optimization.
+
+---
+
+## 8. Go / no-go gates
+
+**Go** for a given option only if it proves: dependency completeness or safe preflight before any undeclared read; an exact stale-vs-invariant taxonomy; atomic failure equivalence; accepted-order immutability; deterministic replay; and acceptable, measured cost.
+
+**No-go** if any guarantee relies on a hash without key evidence (§4.1), on actual-path observation as a substitute for conservative coverage, on admission errors becoming authoritative (#5), or on a broad capability interface (#3/#9). **A no-go is a valid outcome** — in that case recommend only the bounded DRY/performance changes justified by measurements (Option A, and possibly B's non-reading helpers).
+
+On current evidence, the ordering of likelihood is roughly **A ≥ B > C ≫ D**, but this must be re-derived against the merged EN-1406/EN-1532/EN-1288 baseline with the experiments above before any option is chosen.
+
+---
+
+## 9. Follow-up (prepare, do not create)
+
+Provide a phased ticket outline with ownership boundaries, dependency ordering, migration/rolling-upgrade questions and test requirements. **Stop for owner review before creating implementation tickets or selecting a final sidecar/wire model.** No production behavior, wire format, persisted state or business semantics change in this ticket.
+
+---
+
+## 10. Summary
+
+The question is whether admission and FSM apply can safely share more typed logic. This RFC compares four bounded options against the repository's non-negotiable invariants. The universal simulator (D) is a **no-go**: its safety argument rested on treating the `InputsResolutionHash` as a preflight manifest (it is only a digest — §4.1), on admission errors being authoritative (they are advisory — #5), and on a flattened-string metadata sink (metadata is typed `*commonpb.MetadataValue` — §3.1b), and its broad interface most easily bypasses the coverage gate. The viable directions are the low-risk floor (A) and non-reading shared helpers (B); the transcript/sidecar (C) is the only design that could deliver true preflight, but hinges on an upstream Numscript contract that does not yet exist. The document remains **Blocked** on EN-1406 / EN-1532 / EN-1288 and must be re-based and re-validated against the merged baseline before any option is selected.
