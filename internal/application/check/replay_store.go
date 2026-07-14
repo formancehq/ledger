@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -22,6 +23,7 @@ const (
 	replayPrefixVolume      = 'V'
 	replayPrefixMetadata    = 'M'
 	replayPrefixTransaction = 'T'
+	replayPrefixReference   = 'R'
 )
 
 // Metadata value encoding in the replay store:
@@ -263,6 +265,26 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
+// SetTransactionReference records an expected reference→txID assignment.
+// References are set-once (admission rejects duplicates), so a plain Set is
+// the whole merge; compareReferences reads these back against the stored
+// SubAttrReference index.
+func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID uint64) error {
+	key := replayKey(replayPrefixReference, domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: reference}.Bytes())
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], txID)
+
+	return s.db.Set(key, buf[:], pebble.NoSync)
+}
+
+// SetDefaultEnforcementMode is a no-op in the checker: the enforcement mode
+// lives on LedgerInfo, not in the checker's attribute merge store. Only the
+// restore replay's writer folds it onto the rebuilt LedgerInfo.
+func (s *replayStore) SetDefaultEnforcementMode(_ string, _ commonpb.ChartEnforcementMode) error {
+	return nil
+}
+
 // setRevertedBy records that a transaction was reverted via merge (no read).
 func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, revertedAt *commonpb.Timestamp) error {
 	key := replayKey(replayPrefixTransaction, canonicalKey)
@@ -317,6 +339,31 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 	copy(buf[1:], metaKey)
 
 	return s.db.Merge(key, buf, pebble.NoSync)
+}
+
+// SetMetadataFieldType / RemoveMetadataFieldType are no-ops here: the schema
+// lives on LedgerInfo, not in this attribute merge store. The checker re-derives
+// the expected schema in the Check() replay loop (as it does for index activity)
+// and verifies it against the stored LedgerInfo in compareSchema.
+func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
+	return nil
+}
+
+func (s *replayStore) RemoveMetadataFieldType(string, commonpb.TargetType, string) error {
+	return nil
+}
+
+// AddAccountType / RemoveAccountType are no-ops here for the same reason as the
+// schema callbacks: account types live on LedgerInfo, not in this attribute merge
+// store. The checker maintains the account-type chart via ReplayLedgerLog's
+// rawLedgerTypes and verifies it against the stored LedgerInfo in
+// compareAccountTypes.
+func (s *replayStore) AddAccountType(string, *commonpb.AccountType) error {
+	return nil
+}
+
+func (s *replayStore) RemoveAccountType(string, string) error {
+	return nil
 }
 
 // newPrefixIter creates a Pebble iterator scoped to a single prefix byte.

@@ -9,24 +9,28 @@ import (
 )
 
 // PrepareForBackup makes a checkpoint portable and restartable on a fresh
-// cluster. It performs four Global-zone resets and does NOT touch the
-// attribute zone.
+// cluster. It resets cluster-local and checkpoint-era zones and does NOT
+// touch the attribute zone.
 //
 // There is no attribute compaction to do: since the raft-index suffix was
 // removed from attribute keys (commit e752437eb), each canonical key holds
 // exactly one Pebble entry that Set overwrites in place, so there are no
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
-// The four resets are:
+// The six resets are:
 //  1. lastAppliedIndex -> 0, so the restored cluster starts fresh without
 //     raft-index conflicts.
 //  2. persisted config (nodeId, clusterId) deleted, so the backup is portable
 //     to any cluster.
-//  3. persisted bloom blocks dropped, so the booting node rebuilds the bloom
+//  3. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
+//     no meaning on the restored cluster.
+//  4. persisted bloom blocks dropped, so the booting node rebuilds the bloom
 //     from a full attribute scan using its own config.
-//  4. persisted Raft peers dropped (EN-1413), so the restored cluster does
+//  5. persisted Raft peers dropped (EN-1413), so the restored cluster does
 //     not dial the source cluster's pods. NewNode reseeds [ZoneGlobal]
 //     [SubGlobPeers] from cfg.Peers + self on the next boot.
+//  6. cache zone (ZoneCache) cleared, so the restored node boots with a cold
+//     cache and re-seeds from the rebuilt attribute zone on first touch.
 //
 // The caller must ensure all in-memory state has been flushed to Pebble before
 // the checkpoint was taken. The backup flow achieves this by running the flush
@@ -96,6 +100,24 @@ func PrepareForBackup(s *dal.Store) error {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("deleting persisted Raft peers: %w", err)
+	}
+
+	// Clear the cache zone (per-entry cache rows + rotation metadata). Same
+	// rationale as the bloom blocks above: these rows predate the logs
+	// RebuildDelta replayed into the attribute zone, so a key modified
+	// post-checkpoint still carries its checkpoint-era value here while the
+	// attribute zone holds the fresh one. RestoreFromStore would load the
+	// stale entries and the FSM would serve them as CacheHits — and
+	// MirrorPreload's existing-entry-wins seeding means even a fresh Pebble
+	// reload cannot displace them.
+	if err := batch.DeleteRange(
+		[]byte{dal.ZoneCache},
+		[]byte{dal.ZoneCache + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting cache zone: %w", err)
 	}
 
 	if err := batch.Commit(); err != nil {
