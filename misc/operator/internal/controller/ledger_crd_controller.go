@@ -26,10 +26,18 @@ import (
 )
 
 const (
-	ledgerFinalizer    = "ledger.formance.com/finalizer"
-	clusterGRPCPort    = 8888
-	ledgerContainer    = "ledger"
-	ledgerExecTimeout  = 5 * time.Second
+	ledgerFinalizer = "ledger.formance.com/finalizer"
+	clusterGRPCPort = 8888
+	ledgerContainer = "ledger"
+	// ledgerExecTimeout bounds a single in-pod ledgerctl invocation. It must
+	// stay strictly larger than ledgerctl's own OpenTelemetry shutdown-flush
+	// budget (otelShutdownTimeout, 5s) plus a normal RPC round-trip: when a
+	// configured OTLP collector is slow or unreachable, the deferred span flush
+	// can spend the full 5s on exit, and a timeout at or below that reintroduces
+	// the opaque "context deadline exceeded" this package works to avoid. The
+	// otelExecPrologue keeps the common (no-collector) case instant; this
+	// ceiling only absorbs the pathological slow-collector tail.
+	ledgerExecTimeout  = 20 * time.Second
 	ledgerRequeueDelay = 15 * time.Second
 
 	conditionEndpointResolved = "EndpointResolved"
