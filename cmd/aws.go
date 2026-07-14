@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
@@ -19,14 +20,14 @@ import (
 )
 
 // roleIAMConnector implements driver.Connector for AWS RDS IAM authentication
-// under an assumed IAM role. A fresh RDS auth token (and, transparently, fresh
-// STS role credentials) is obtained on every Connect call so that neither the
-// 15-minute RDS token window nor the 1-hour STS session window can cause silent
-// authentication failures after a long idle period.
+// under an assumed IAM role. A fresh RDS auth token is obtained on every
+// Connect call. The underlying STS credentials are managed by an
+// aws.CredentialsCache so that AssumeRole is only called when the cached
+// session is about to expire, not on every database connection.
 type roleIAMConnector struct {
 	dsn    string
 	region string
-	creds  stscreds.AssumeRoleProvider
+	creds  aws.CredentialsProvider
 }
 
 // Connect obtains a short-lived RDS authentication token signed with the
@@ -42,7 +43,7 @@ func (c *roleIAMConnector) Connect(ctx context.Context) (driver.Conn, error) {
 		u.Host,
 		c.region,
 		u.URL.User.Username(),
-		&c.creds,
+		c.creds,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("aws: building rds iam auth token for assumed role: %w", err)
@@ -105,12 +106,14 @@ func connectionOptionsFromFlags(flags *pflag.FlagSet, ctx context.Context) (*con
 		return nil, fmt.Errorf("aws: loading base aws config: %w", err)
 	}
 
-	// Wrap the base credentials with an STS AssumeRole provider.
-	// stscreds.AssumeRoleProvider caches the temporary credentials and refreshes
-	// them automatically before they expire, so callers do not need to manage
-	// the STS session lifetime explicitly.
+	// Wrap the base credentials with an STS AssumeRole provider, then cache
+	// the resulting temporary credentials with aws.NewCredentialsCache.
+	// Without the cache, stscreds.AssumeRoleProvider would call STS on every
+	// new physical DB connection, adding latency and risk of STS throttling
+	// under connection churn. The cache reuses credentials until they are
+	// about to expire and only then calls STS to refresh them.
 	stsClient := sts.NewFromConfig(cfg)
-	assumeRoleProvider := stscreds.NewAssumeRoleProvider(stsClient, roleArn)
+	cachedCreds := aws.NewCredentialsCache(stscreds.NewAssumeRoleProvider(stsClient, roleArn))
 
 	postgresURI, _ := flags.GetString(connect.PostgresURIFlag)
 	if postgresURI == "" {
@@ -120,7 +123,7 @@ func connectionOptionsFromFlags(flags *pflag.FlagSet, ctx context.Context) (*con
 	connector := &roleIAMConnector{
 		dsn:    postgresURI,
 		region: cfg.Region,
-		creds:  *assumeRoleProvider,
+		creds:  cachedCreds,
 	}
 
 	maxIdleConns, _ := flags.GetInt(connect.PostgresMaxIdleConnsFlag)
