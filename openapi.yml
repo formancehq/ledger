@@ -356,6 +356,8 @@ paths:
             format: date-time
           description: |
             Filter logs with date >= startDate (inclusive, RFC3339 format).
+            Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
+            dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
         - name: endDate
           in: query
@@ -364,6 +366,8 @@ paths:
             format: date-time
           description: |
             Filter logs with date < endDate (exclusive, RFC3339 format).
+            Must be on or after the Unix epoch (1970-01-01T00:00:00Z); earlier
+            dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
       responses:
@@ -637,8 +641,10 @@ paths:
         Lists transactions for a specific ledger. The default order is
         newest-first (descending transaction id); pass `reverse=true` to
         get oldest-first (ascending). Supports cursor pagination via the
-        `after` query parameter and optional date-range and reference
-        filters. Requires `ledger:TransactionRead` scope.
+        `after` query parameter, an optional date range (`startDate`/`endDate`),
+        and the generic `filter` parameter (e.g. reference selection via
+        `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
+        `ledger:TransactionRead` scope.
 
         This is a live, best-effort read of the current committed state.
         Unlike the gRPC API, it does not accept read-consistency options
@@ -693,11 +699,6 @@ paths:
           description: |
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
-        - name: reference
-          in: query
-          schema:
-            type: string
-          description: Filter by exact-match transaction reference.
         - $ref: '#/components/parameters/ListFilter'
       responses:
         '200':
@@ -767,7 +768,11 @@ paths:
   /v3/{ledgerName}/accounts:
     get:
       summary: List accounts
-      description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination. Requires `ledger:read` scope.
+      description: |
+        Lists accounts in a ledger in alphabetical order with cursor
+        pagination and an optional generic `filter` (e.g. address-prefix
+        selection via `filter=address ^= "users:"`). Requires `ledger:read`
+        scope.
       operationId: listAccounts
       security:
         - BearerAuth: []
@@ -783,15 +788,6 @@ paths:
         - name: after
           in: query
           description: Account address to start after (for cursor pagination, exclusive)
-          schema:
-            type: string
-        - name: prefix
-          in: query
-          description: |
-            Filter accounts whose address starts with this raw byte-level
-            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
-            Matching is not path-segment aware: `acc:1` also matches
-            `acc:10`, `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
         - $ref: '#/components/parameters/ListFilter'
@@ -876,8 +872,9 @@ paths:
           in: query
           description: |
             Filter accounts whose address starts with this raw byte-level
-            prefix. Matching is not path-segment aware (see the note on the
-            `prefix` query parameter of `GET /v3/{ledgerName}/accounts`).
+            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
+            Matching is not path-segment aware: `acc:1` also matches `acc:10`,
+            `acc:11`, etc. Do not use for exact-address lookups.
           schema:
             type: string
         - name: useMaxPrecision
@@ -2863,7 +2860,18 @@ components:
         A condition that is not valid on the endpoint's target (e.g. a
         transaction-only condition on the accounts list) is rejected with 400.
         This generic filter is AND-combined with any convenience parameters the
-        endpoint also exposes (e.g. `reference`, `prefix`, `startDate`/`endDate`).
+        endpoint also exposes (e.g. the transactions `startDate`/`endDate`
+        timestamp range). Selections that used to have dedicated aliases are
+        expressed through this filter: an account address prefix via
+        `filter=address ^= "users:"`, a transaction reference via
+        `filter={"$match":{"reference":"..."}}` (URL-encoded).
+
+        Date fields accept either an RFC3339 timestamp or raw Unix microseconds,
+        in both representations: on transactions `timestamp` / `insertedAt` /
+        `revertedAt` (e.g. textual `filter=timestamp >= "2023-11-14T22:13:20Z"`
+        or structured `filter={"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}`), and
+        on logs `date` (e.g. `filter=date >= "2023-11-14T22:13:20Z"`). An RFC3339
+        value before the Unix epoch (1970-01-01) is rejected with 400.
 
         Note: audit conditions (`audit[...]`) have no structured JSON form and
         must be passed in the textual representation.
@@ -3538,7 +3546,22 @@ components:
         - data
       properties:
         data:
-          $ref: '#/components/schemas/TransactionResponse'
+          type: object
+          required:
+            - transaction
+            - receipt
+          properties:
+            transaction:
+              $ref: '#/components/schemas/TransactionResponse'
+            receipt:
+              type: string
+              description: >-
+                Signed verifiability receipt (JWT) for the transaction, mirroring
+                the gRPC GetTransaction response. Reused from the controller read
+                path — never recomputed at the HTTP layer — so it reflects the
+                same committed state as the returned transaction. Always present;
+                an empty string means the transaction legitimately has no receipt
+                (e.g. a reversal, or a serving node that cannot sign).
 
     GetAccountResponse:
       type: object
@@ -4837,7 +4860,11 @@ components:
         `{"$param": "<name>"}`, resolved at prepared-query execution time. A JSON
         `null` in value position is rejected. uint64 fields
         (`id`, `timestamp`, `insertedAt`, `revertedAt`, `logId`, `date`) are carried
-        as decimal strings to stay lossless above 2^53.
+        as decimal strings to stay lossless above 2^53. The date-semantic fields
+        (`timestamp`, `insertedAt`, `revertedAt`, `date`) additionally accept an
+        RFC3339 timestamp string (e.g. `{"$gte":{"date":"2023-11-14T22:13:20Z"}}`),
+        coerced to the same Unix microseconds as the raw form; a value before the
+        Unix epoch (1970-01-01) is rejected.
       minProperties: 1
       maxProperties: 1
       additionalProperties: true

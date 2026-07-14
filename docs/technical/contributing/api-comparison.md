@@ -94,7 +94,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Close chapter | ✅ | ❌ | Two-step close: CloseChapter → SealChapter |
 | Seal chapter (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
 | List chapters | ✅ | ❌ | gRPC streaming |
-| Transaction receipts (JWT) | ✅ | ❌ | HMAC-SHA256 JWT receipts with chapter ID; available on GetTransaction |
+| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts with chapter ID; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Chapter crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive chapter | ✅ | ❌ | Two-step archive: ArchiveChapter → ConfirmArchiveChapter with cold storage export |
@@ -399,8 +399,15 @@ non-whitespace byte:
 - **Query-string endpoints** (`?filter=`): the value is textual `filterexpr`
   passed verbatim (URL-encoded). To pass the structured form, URL-encode the JSON
   object as the value (`?filter=%7B%22%24match%22%3A…%7D`). The generic `filter`
-  parameter is AND-combined with the endpoint's convenience params (`reference`,
-  `prefix`, `startDate`/`endDate`).
+  parameter is AND-combined with the endpoint's remaining convenience params (the
+  transactions `startDate`/`endDate` timestamp range). It has no dedicated
+  address-prefix or reference aliases: an account address prefix is the textual
+  `filter=address ^= "users:"` (or structured
+  `?filter=%7B%22%24match%22%3A%7B%22address%22%3A%22users%3A%22%7D%7D`, i.e.
+  `{"$match":{"address":"users:"}}` with the trailing `:` marking a prefix
+  match), and a transaction reference is the structured
+  `?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D`
+  (`{"$match":{"reference":"ref-1"}}`) or the textual `filter=reference == "ref-1"`.
 - **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
   object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
   is the textual form.
@@ -412,6 +419,26 @@ codec rejects them. The dual-format decoder still accepts both forms as input on
 the audit endpoint; the textual form is simply the only one that can carry an
 audit condition, so it is the canonical representation for
 `GET /v3/_/audit-entries`.
+
+**Date fields accept RFC3339 or raw microseconds (EN-1544).** The builtin date
+indexes store unsigned Unix microseconds, but their DSL bounds accept **either** an
+RFC3339 timestamp **or** the raw-microsecond form, in both representations:
+
+| Target | Field | Textual | Structured |
+|--------|-------|---------|------------|
+| transactions | `timestamp` (also `insertedAt`, `revertedAt`) | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
+| logs | `date` | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
+| audit | `audit[timestamp]` | `audit[timestamp] >= "2023-11-14T22:13:20Z"` | — (audit is text-only) |
+
+The raw form still parses (`timestamp >= 1700000000000000`), so this is purely
+additive. RFC3339 acceptance and pre-epoch rejection are defined once, in the
+shared `commonpb.CoerceDatetimeMicros`, reused by the audit / transactions / logs
+DSL paths and by the transport-level `startDate`/`endDate` convenience params
+(`startDate`/`endDate` remain RFC3339-only). A pre-epoch RFC3339 value (negative
+`UnixMicro`) has no representable unsigned bound and is rejected with `400`. The
+`date` and `timestamp` fields are subject to the same per-target validity gate —
+`date` is valid on logs only, `timestamp` (like `insertedAt`/`revertedAt`) on
+transactions only — enforced identically for both serializations.
 
 ### 10. Prepared Queries and User-Configurable Indexes
 
@@ -719,7 +746,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
-| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions with cursor pagination + reference/date filters |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |

@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
+	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -583,6 +584,37 @@ func TestConvertToGRPCError_NodeNotReachable(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, codes.Unavailable, st.Code(),
 				"ErrNodeNotReachable must surface as Unavailable, not %v", st.Code())
+		})
+	}
+}
+
+// TestConvertToGRPCError_NoFullCheckpoint pins EN-888: an incremental backup
+// attempted against a destination that has no full checkpoint must surface as
+// codes.FailedPrecondition (run a full backup first), not the opaque
+// codes.Unknown sanitizer. The IncrementalBackup handler wraps the runner error
+// with fmt.Errorf, so the wrapped form must map too.
+func TestConvertToGRPCError_NoFullCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"raw", backup.ErrNoFullCheckpoint},
+		{"wrapped by handler", fmt.Errorf("incremental backup failed: %w", backup.ErrNoFullCheckpoint)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err, testLogger())
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.FailedPrecondition, st.Code(),
+				"ErrNoFullCheckpoint must surface as FailedPrecondition, not %v", st.Code())
+			require.NotContains(t, st.Message(), "correlation ID",
+				"must not fall through to the opaque Unknown sanitizer")
 		})
 	}
 }
