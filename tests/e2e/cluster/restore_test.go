@@ -574,7 +574,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// BOTH incrementals — the full + multiple incrementals chain.
 			erinResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "erin"})
 			Expect(err).To(Succeed())
-			Expect(erinResp.Volumes["USD"].Input).To(Equal("2500"),
+			Expect(erinResp.FindVolume("USD", "").Input).To(Equal("2500"),
 				"transaction written in the second incremental must be restored from the full + multi-incremental chain")
 		})
 
