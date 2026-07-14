@@ -8,6 +8,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # Restore the Nix store from the Namespace cache volume BEFORE installing
+    # Nix, so `nix develop` reuses the dev-shell closure instead of re-fetching
+    # it from cache.nixos.org on every run. Must run before Install Nix.
+    - name: Set up Nix store cache
+      uses: namespacelabs/nscloud-cache-action@58bf6e08898e88803c098e2b522668541cd3b2e3 # v1.6.0
+      with:
+        path: /nix
     - name: Install Nix
       uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
     - name: go env
