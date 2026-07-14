@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: incr-bk
 spec:
-  clusterRef: bk-incr-svc
+  clusterRef: bk-incr-cluster
   destination:
     driver: s3
     s3:

@@ -50,7 +50,7 @@ func TestReconcile_CredentialsDistributesToMatchedClusterNamespaces(t *testing.T
 	nsB := createTestNamespace(t)
 
 	for _, ns := range []string{nsA, nsB} {
-		ls := newCluster("matched-svc", ns)
+		ls := newCluster("matched-cluster", ns)
 		ls.Labels = map[string]string{"tier": "multi"}
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
@@ -164,7 +164,7 @@ func TestReconcile_CredentialsNoTargets(t *testing.T) {
 func TestReconcile_CredentialsMatchesServices(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("matched-svc", ns)
+	ls := newCluster("matched-cluster", ns)
 	ls.Labels = map[string]string{"app": "matched"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -179,7 +179,7 @@ func TestReconcile_CredentialsMatchesServices(t *testing.T) {
 			return false
 		}
 		for _, ms := range credentials.Status.MatchedClusters {
-			if ms.Name == "matched-svc" && ms.Namespace == ns {
+			if ms.Name == "matched-cluster" && ms.Namespace == ns {
 				return true
 			}
 		}
@@ -193,7 +193,7 @@ func TestReconcile_CredentialsOrphanCleanup(t *testing.T) {
 	nsB := createTestNamespace(t)
 
 	for _, ns := range []string{nsA, nsB} {
-		ls := newCluster("cleanup-svc", ns)
+		ls := newCluster("cleanup-cluster", ns)
 		ls.Labels = map[string]string{"tier": "cleanup"}
 		require.NoError(t, k8sClient.Create(ctx, ls))
 	}
@@ -212,7 +212,7 @@ func TestReconcile_CredentialsOrphanCleanup(t *testing.T) {
 
 	// Remove the matching label from the service in nsB so it leaves the selector scope.
 	lsB := &ledgerv1alpha1.Cluster{}
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: nsB, Name: "cleanup-svc"}, lsB))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: nsB, Name: "cleanup-cluster"}, lsB))
 	lsB.Labels = map[string]string{"tier": "elsewhere"}
 	require.NoError(t, k8sClient.Update(ctx, lsB))
 
@@ -229,7 +229,7 @@ func TestReconcile_CredentialsOrphanCleanup(t *testing.T) {
 func TestReconcile_CredentialsSeedSurvivesClusterRecreation(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("survive-svc", ns)
+	ls := newCluster("survive-cluster", ns)
 	ls.Labels = map[string]string{"tier": "survive"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -256,7 +256,7 @@ func TestReconcile_CredentialsSeedSurvivesClusterRecreation(t *testing.T) {
 
 	require.NoError(t, k8sClient.Delete(ctx, ls))
 	requireEventually(t, func() bool {
-		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "survive-svc"}, &ledgerv1alpha1.Cluster{})
+		err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "survive-cluster"}, &ledgerv1alpha1.Cluster{})
 
 		return apierrors.IsNotFound(err)
 	}, "Cluster should be deleted")
@@ -279,7 +279,7 @@ func TestReconcile_CredentialsSeedSurvivesClusterRecreation(t *testing.T) {
 	require.NoError(t, k8sClient.Get(ctx, canonicalKey, canonical), "canonical seed must survive Cluster deletion")
 	assert.Equal(t, initialSeed, string(canonical.Data["seed.hex"]), "canonical seed must not be regenerated")
 
-	lsAgain := newCluster("survive-svc", ns)
+	lsAgain := newCluster("survive-cluster", ns)
 	lsAgain.Labels = map[string]string{"tier": "survive"}
 	require.NoError(t, k8sClient.Create(ctx, lsAgain))
 
@@ -320,7 +320,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Create(ctx, legacyReplica))
 
-	ls := newCluster("legacy-svc", ns)
+	ls := newCluster("legacy-cluster", ns)
 	ls.Labels = map[string]string{"tier": "legacy"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 

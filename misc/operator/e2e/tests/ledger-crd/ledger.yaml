@@ -4,7 +4,7 @@ metadata:
   name: test-ledger
 spec:
   name: my-ledger
-  clusterRef: crd-svc
+  clusterRef: crd-cluster
   indexes:
     transaction:
       - reference

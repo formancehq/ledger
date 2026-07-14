@@ -37,10 +37,10 @@ func TestBackupReconcile_MissingCluster(t *testing.T) {
 func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("bk-svc", ns)
+	ls := newCluster("bk-cluster", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	backup := newBackup("bk-invalid-sched", ns, "bk-svc")
+	backup := newBackup("bk-invalid-sched", ns, "bk-cluster")
 	backup.Spec.Schedule.Full = "not a cron"
 	backup.Spec.Schedule.Incremental = ""
 	require.NoError(t, k8sClient.Create(ctx, backup))
@@ -64,10 +64,10 @@ func TestBackupReconcile_InvalidSchedule(t *testing.T) {
 func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("bk-svc2", ns)
+	ls := newCluster("bk-cluster2", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	backup := newBackup("bk-no-sched", ns, "bk-svc2")
+	backup := newBackup("bk-no-sched", ns, "bk-cluster2")
 	backup.Spec.Schedule.Full = ""
 	backup.Spec.Schedule.Incremental = ""
 	require.NoError(t, k8sClient.Create(ctx, backup))
@@ -87,10 +87,10 @@ func TestBackupReconcile_NoScheduleAllowed(t *testing.T) {
 func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("bk-svc-sched", ns)
+	ls := newCluster("bk-cluster-sched", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	backup := newBackup("bk-sched", ns, "bk-svc-sched")
+	backup := newBackup("bk-sched", ns, "bk-cluster-sched")
 	// "Every minute" so the first tick is due immediately (no prior run).
 	backup.Spec.Schedule.Full = "* * * * *"
 	backup.Spec.Schedule.Incremental = ""
@@ -133,11 +133,11 @@ func TestBackupReconcile_ScheduleCreatesFullRun(t *testing.T) {
 func TestBackupReconcile_RetentionPolicy(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	ls := newCluster("bk-svc-retention", ns)
+	ls := newCluster("bk-cluster-retention", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	limit := int32(2)
-	backup := newBackup("bk-retention", ns, "bk-svc-retention")
+	backup := newBackup("bk-retention", ns, "bk-cluster-retention")
 	backup.Spec.Schedule.Full = ""
 	backup.Spec.Schedule.Incremental = ""
 	backup.Spec.SuccessfulRunsHistoryLimit = &limit

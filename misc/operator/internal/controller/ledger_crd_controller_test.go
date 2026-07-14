@@ -73,7 +73,7 @@ func TestBuildCreateArgs_MirrorMissingSource(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 
 	_, err := r.buildCreateArgs(context.Background(), ledger)
@@ -85,7 +85,7 @@ func TestBuildCreateArgs_MirrorNoHTTPOrPostgres(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{}
 
@@ -102,7 +102,7 @@ func TestBuildCreateArgs_MirrorHTTPBasic(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
@@ -125,7 +125,7 @@ func TestBuildCreateArgs_MirrorHTTPWithOptions(t *testing.T) {
 
 	r := newTestLedgerReconciler()
 	batchSize := int32(500)
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		LedgerName: "source-ledger",
@@ -151,7 +151,7 @@ func TestBuildCreateArgs_MirrorHTTPWithRewriteRules(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
@@ -198,7 +198,7 @@ func TestBuildCreateArgs_MirrorPostgresWithRewriteRules(t *testing.T) {
 	}
 
 	r := newTestLedgerReconciler(secret)
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		RewriteRules: []ledgerv1alpha1.MirrorRewriteRule{
@@ -246,7 +246,7 @@ func TestBuildCreateArgs_MirrorHTTPWithOAuth2(t *testing.T) {
 	}
 
 	r := newTestLedgerReconciler(secret)
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
@@ -282,7 +282,7 @@ func TestBuildCreateArgs_MirrorHTTPOAuth2SecretMissing(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler() // no secrets
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		HTTP: &ledgerv1alpha1.HTTPMirrorSource{
@@ -321,7 +321,7 @@ func TestBuildCreateArgs_MirrorPostgresPassword(t *testing.T) {
 	}
 
 	r := newTestLedgerReconciler(secret)
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -363,7 +363,7 @@ func TestBuildCreateArgs_MirrorPostgresPasswordSpecialChars(t *testing.T) {
 	}
 
 	r := newTestLedgerReconciler(secret)
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -388,7 +388,7 @@ func TestBuildCreateArgs_MirrorPostgresAWSIAMAuth(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -416,7 +416,7 @@ func TestBuildCreateArgs_MirrorPostgresAWSIAMAuthWithAssumeRole(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -446,7 +446,7 @@ func TestBuildCreateArgs_MirrorPostgresMissingAuth(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -465,7 +465,7 @@ func TestBuildCreateArgs_MirrorPostgresBothAuthRejected(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -491,7 +491,7 @@ func TestBuildCreateArgs_MirrorPostgresPasswordSecretMissing(t *testing.T) {
 	t.Parallel()
 
 	r := newTestLedgerReconciler()
-	ledger := newLedger("test", "default", "svc", "ledger1")
+	ledger := newLedger("test", "default", "cluster", "ledger1")
 	ledger.Spec.Mode = "mirror"
 	ledger.Spec.MirrorSource = &ledgerv1alpha1.MirrorSourceSpec{
 		Postgres: &ledgerv1alpha1.PostgresMirrorSource{
@@ -519,7 +519,7 @@ func TestComputeLedgerSpecHash_Deterministic(t *testing.T) {
 
 	spec := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ClusterRef: "svc",
+		ClusterRef: "cluster",
 		Mode:       "normal",
 	}
 	h1 := computeLedgerSpecHash(spec)
@@ -532,12 +532,12 @@ func TestComputeLedgerSpecHash_DifferentMode(t *testing.T) {
 
 	spec1 := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ClusterRef: "svc",
+		ClusterRef: "cluster",
 		Mode:       "normal",
 	}
 	spec2 := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ClusterRef: "svc",
+		ClusterRef: "cluster",
 		Mode:       "mirror",
 	}
 	assert.NotEqual(t, computeLedgerSpecHash(spec1), computeLedgerSpecHash(spec2))
@@ -551,12 +551,12 @@ func TestComputeLedgerSpecHash_IgnoresIndexes(t *testing.T) {
 
 	base := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ClusterRef: "svc",
+		ClusterRef: "cluster",
 		Mode:       "normal",
 	}
 	withIndexes := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ClusterRef: "svc",
+		ClusterRef: "cluster",
 		Mode:       "normal",
 		Indexes: &ledgerv1alpha1.LedgerIndexesSpec{
 			Transaction: []string{"reference", "address"},
