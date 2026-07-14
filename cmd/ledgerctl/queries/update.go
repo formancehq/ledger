@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -51,15 +53,29 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	filterExpr, _ := cmd.Flags().GetString("filter")
 
+	// An update replaces the stored filter, so an empty --filter would decode to a
+	// nil filter and silently erase the prepared query's filter on the server
+	// (ValidateFilterForTarget accepts nil). Require a non-empty filter, matching
+	// the HTTP update handler's guard (handlers_update_prepared_query.go).
+	if filterExpr == "" {
+		return errors.New("--filter is required")
+	}
+
 	// The update carries only the new filter, not the target — the target is
 	// immutable and lives on the stored prepared query (the FSM re-validates the
 	// filter against it). DecodeDualFormatStructuralOnly is the shared "target not
 	// known here" entry point: it resolves bare fields with a non-audit target
 	// (prepared queries are never audit) and defers the per-target validity gate
 	// to the server (EN-1549).
-	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr))
+	filter, err := filterexpr.DecodeDualFormatStructuralOnly([]byte(filterExpr), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		return fmt.Errorf("invalid filter expression: %w", err)
+	}
+
+	// A structurally-valid but conditionless filter (e.g. `""` quoted, whitespace)
+	// also decodes to nil; reject it for the same reason.
+	if filter == nil {
+		return errors.New("--filter must contain at least one condition")
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

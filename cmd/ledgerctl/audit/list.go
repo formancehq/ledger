@@ -93,7 +93,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return errors.New("--expand cannot be combined with --checkpoint-id: audit entry expansion always reads the live store")
 	}
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	if err != nil {
 		return err
 	}

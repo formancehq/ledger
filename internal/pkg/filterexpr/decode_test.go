@@ -342,16 +342,32 @@ func TestDecodeDualFormat_BareFieldTargetAwareResolution(t *testing.T) {
 func TestDecodeDualFormatStructuralOnly_SkipsTargetGate(t *testing.T) {
 	t.Parallel()
 
-	// `ledger` is invalid on ACCOUNTS, but the structural-only decoder does not
-	// know the target and must accept it (the gate runs later against the stored
-	// target) in both forms.
-	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`))
+	// `ledger` is invalid on ACCOUNTS, but the structural-only decoder skips the
+	// per-target validity gate and must accept it (the gate runs later against the
+	// stored target) in both forms. The target is used only for bare-field
+	// resolution: on ACCOUNTS `ledger` resolves to the LedgerCondition arm,
+	// matching the JSON `$match` form.
+	fromText, err := DecodeDualFormatStructuralOnly([]byte(`ledger == "main"`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromText)
 
-	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`))
+	fromJSON, err := DecodeDualFormatStructuralOnly([]byte(`{"$match":{"ledger":"main"}}`), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 	require.NotNil(t, fromJSON)
 
 	require.True(t, proto.Equal(fromText, fromJSON))
+}
+
+// TestDecodeDualFormatStructuralOnly_AuditTargetResolvesAuditArm confirms the
+// structural-only decoder honours QUERY_TARGET_AUDIT for bare-field resolution
+// (EN-1549) — the ledgerctl audit list path relies on this. A bare audit field
+// resolves to the audit arm and skips the validity gate.
+func TestDecodeDualFormatStructuralOnly_AuditTargetResolvesAuditArm(t *testing.T) {
+	t.Parallel()
+
+	f, err := DecodeDualFormatStructuralOnly([]byte(`outcome == failure`), commonpb.QueryTarget_QUERY_TARGET_AUDIT)
+	require.NoError(t, err)
+	require.NotNil(t, f)
+	require.NotNil(t, f.GetAudit())
+	require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, f.GetAudit().GetField())
 }

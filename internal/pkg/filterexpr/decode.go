@@ -72,23 +72,25 @@ func DecodeDualFormat(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryF
 }
 
 // DecodeDualFormatStructuralOnly is DecodeDualFormat without the per-target
-// validity gate. It exists for the prepared-query update path, which does not
-// see the target (the target is immutable and lives on the stored query, so the
-// FSM applies the gate against it — see handlers_update_prepared_query.go). Every
-// other caller MUST use DecodeDualFormat so form and validity are checked in one
-// place.
+// validity gate: it resolves bare fields against target (EN-1549) but leaves the
+// validity check to the server. Two kinds of caller use it:
 //
-// Bare-field resolution still needs a target (EN-1549), and here it is fixed to a
-// non-audit target. This is sound because prepared queries are only ever
-// ACCOUNTS/TRANSACTIONS/LOGS (audit is gRPC-only, never a prepared-query target —
-// see http.preparedQueryTargets), and every non-audit target resolves the bare
-// intrinsic fields identically (`timestamp` → transaction range, `date` → log
-// range, `ledger` → LedgerCondition). Whether the resolved field is actually
-// valid on the query's specific stored target is still enforced downstream by the
-// FSM's ValidateFilterForTarget — this path only picks the proto arm, not the
-// validity.
-func DecodeDualFormatStructuralOnly(raw []byte) (*commonpb.QueryFilter, error) {
-	return decodeDualFormat(raw, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+//   - the prepared-query UPDATE path, which does not see the target (the target
+//     is immutable and lives on the stored query, so the FSM applies the gate
+//     against it — see handlers_update_prepared_query.go). It passes a non-audit
+//     target for resolution, which is sound because prepared queries are only
+//     ever ACCOUNTS/TRANSACTIONS/LOGS (audit is gRPC-only, never a prepared-query
+//     target — see http.preparedQueryTargets) and every non-audit target resolves
+//     the bare intrinsic fields identically (`timestamp` → transaction range,
+//     `date` → log range, `ledger` → LedgerCondition);
+//   - the ledgerctl list commands, which DO know their endpoint's target and pass
+//     it (audit list passes QUERY_TARGET_AUDIT so bare audit fields resolve to the
+//     audit arm) but let the server run the authoritative validity gate.
+//
+// Every server-side list handler MUST use DecodeDualFormat instead, so form and
+// validity are checked in one place.
+func DecodeDualFormatStructuralOnly(raw []byte, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	return decodeDualFormat(raw, target)
 }
 
 // decodeDualFormat performs form detection + parse, without the validity gate.

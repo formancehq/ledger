@@ -296,11 +296,11 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			min := tc.v
+			minMicros := tc.v
 			f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
 				BuiltinUint: &commonpb.BuiltinUintCondition{
 					Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
-					Cond:  &commonpb.UintCondition{Min: &min},
+					Cond:  &commonpb.UintCondition{Min: &minMicros},
 				},
 			}}
 
@@ -318,12 +318,12 @@ func TestFormatDate_RawMicrosOutsideRFC3339Range(t *testing.T) {
 	t.Run("audit timestamp above MaxInt64", func(t *testing.T) {
 		t.Parallel()
 
-		min := uint64(18446744073709551615)
+		minMicros := uint64(18446744073709551615)
 		f := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
 			Audit: &commonpb.AuditCondition{
 				Field: commonpb.AuditField_AUDIT_FIELD_TIMESTAMP,
 				Condition: &commonpb.AuditCondition_UintCond{
-					UintCond: &commonpb.UintCondition{Min: &min},
+					UintCond: &commonpb.UintCondition{Min: &minMicros},
 				},
 			},
 		}}
