@@ -1411,15 +1411,40 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 		ledgerName := ls.GetLedger()
 
+		// Skip parity with the FSM: ProcessOrders drops a skip-tolerant order's
+		// overlay when the sub-processor hits a whitelisted skippable error
+		// (matchOrderSkip), so that order applies NO state change. Admission must
+		// mirror that decision here — a predecessor predicted to skip contributes
+		// nothing to the batch overlay, or a later Numscript's
+		// inputs_resolution_hash would embed the phantom effects of an order the
+		// FSM actually dropped and be rejected STALE_INPUTS_RESOLUTION forever
+		// (EN-1406). The prediction is a pure function of the order plus the
+		// resolved batch state layered over Pebble.
+		skip, err := a.predictOrderSkip(order, ledgerName, effects)
+		if err != nil {
+			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
+		}
+
 		// Every preceding mutating order's effect must be folded into the batch
 		// overlay so a later balance()/meta() resolves against the state the FSM
 		// will see when it reaches that order (EN-1406 P1). Non-CreateTransaction
 		// mutating orders (revert, metadata add/delete) carry no script to
-		// resolve — fold their effects and move on.
+		// resolve — fold their effects and move on. A predecessor that would be
+		// skipped folds nothing (skip parity above).
 		switch applyData := applyPayload.Apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-			// Handled below (script resolution + effect folding).
+			// Handled below (script resolution + effect folding). A predicted
+			// skip short-circuits the whole resolution: the FSM will drop this
+			// order, so it must contribute no effects and needs no resolution
+			// hash (a skipped order's hash is never checked).
+			if skip {
+				continue
+			}
 		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+			if skip {
+				continue
+			}
+
 			// A revert applies each original posting reversed (original
 			// destination becomes source, original source becomes
 			// destination — see processRevertTransaction), so the net balance
@@ -1437,8 +1462,17 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				)
 			}
 
+			// Record the reverted tx so a later same-batch revert of it is
+			// predicted to skip (TRANSACTION_ALREADY_REVERTED), matching the
+			// FSM's mutated reversion bitset.
+			effects.recordReverted(domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()})
+
 			continue
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+			if skip {
+				continue
+			}
+
 			// Only account-targeted metadata is observable by a later meta();
 			// transaction-targeted metadata is not.
 			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
@@ -1452,6 +1486,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 
 			continue
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+			if skip {
+				continue
+			}
+
 			// A preceding account-metadata delete tombstones the key so a
 			// later meta() resolves absent, matching the FSM's post-delete state.
 			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
@@ -1596,6 +1634,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// script metadata"). A later meta() must therefore see the caller value,
 		// not the script value, for the same key.
 		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
+
+		// Record this create's transaction reference (if any) so a later
+		// same-batch create carrying the same reference is predicted to skip
+		// (TRANSACTION_REFERENCE_CONFLICT). We reach here only for a create that
+		// was NOT predicted to skip, so it registers the reference exactly as the
+		// FSM will (processCreateTransaction stores it in TransactionReferences).
+		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+		}
 
 		// For references: preload the resolved content keyed by (ledger, name, version).
 		// The FSM resolves via NumscriptReference from the dual-gen cache.

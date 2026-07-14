@@ -40,9 +40,20 @@ func foldCallerAccountMetadata(effects *batchEffects, ledgerName string, ct *raf
 // account-metadata key (a later order sees an earlier order's write), where a
 // write is either a set (value, present) or a delete tombstone (deleted) so a
 // following meta() resolves absent exactly as the FSM would after the delete.
+//
+// createdReferences and revertedTxs track the intra-batch effects that drive the
+// FSM's skip decisions (matchOrderSkip), so admission predicts them with the
+// same visibility the FSM has when it reaches each order: a reference a
+// preceding order in the same batch registered, and a transaction a preceding
+// revert marked reverted. Only SUCCESSFUL predecessors record here — a
+// predecessor that would itself be skipped contributes nothing (see
+// resolveScriptsAndEnrichNeeds), exactly as the FSM's dropped overlay leaves no
+// reference/reverted marker behind.
 type batchEffects struct {
-	balanceDeltas  map[domain.VolumeKey]*big.Int
-	metadataWrites map[domain.MetadataKey]metadataWrite
+	balanceDeltas     map[domain.VolumeKey]*big.Int
+	metadataWrites    map[domain.MetadataKey]metadataWrite
+	createdReferences map[domain.TransactionReferenceKey]struct{}
+	revertedTxs       map[domain.TransactionKey]struct{}
 }
 
 // metadataWrite records the outcome of a preceding order's account-metadata
@@ -54,9 +65,43 @@ type metadataWrite struct {
 
 func newBatchEffects() *batchEffects {
 	return &batchEffects{
-		balanceDeltas:  make(map[domain.VolumeKey]*big.Int),
-		metadataWrites: make(map[domain.MetadataKey]metadataWrite),
+		balanceDeltas:     make(map[domain.VolumeKey]*big.Int),
+		metadataWrites:    make(map[domain.MetadataKey]metadataWrite),
+		createdReferences: make(map[domain.TransactionReferenceKey]struct{}),
+		revertedTxs:       make(map[domain.TransactionKey]struct{}),
 	}
+}
+
+// recordReference notes that a preceding successful CreateTransaction registered
+// a transaction reference, so a later same-batch create carrying the same
+// reference is predicted to hit TRANSACTION_REFERENCE_CONFLICT — matching the
+// FSM, which sees the reference in its mutated WriteSet.
+func (b *batchEffects) recordReference(key domain.TransactionReferenceKey) {
+	b.createdReferences[key] = struct{}{}
+}
+
+// hasReference reports whether a preceding same-batch order registered the
+// reference.
+func (b *batchEffects) hasReference(key domain.TransactionReferenceKey) bool {
+	_, ok := b.createdReferences[key]
+
+	return ok
+}
+
+// recordReverted notes that a preceding successful RevertTransaction marked a
+// transaction reverted, so a later same-batch revert of the same tx is predicted
+// to hit TRANSACTION_ALREADY_REVERTED — matching the FSM's reverted bitset once
+// the earlier revert applies.
+func (b *batchEffects) recordReverted(key domain.TransactionKey) {
+	b.revertedTxs[key] = struct{}{}
+}
+
+// hasReverted reports whether a preceding same-batch revert already reverted the
+// transaction.
+func (b *batchEffects) hasReverted(key domain.TransactionKey) bool {
+	_, ok := b.revertedTxs[key]
+
+	return ok
 }
 
 // setMetadata records that a preceding order wrote value to an account-metadata
