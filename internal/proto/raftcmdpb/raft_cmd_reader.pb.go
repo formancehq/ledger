@@ -5267,6 +5267,7 @@ type LedgerBoundariesReader interface {
 	GetTransientUsedCount() uint64
 	GetRevertCount() uint64
 	GetNumscriptExecutionCount() uint64
+	GetLastMirrorV2LogId() uint64
 	Mutate() *LedgerBoundaries
 }
 
@@ -5310,6 +5311,10 @@ func (r *ledgerBoundariesReadonly) GetRevertCount() uint64 {
 
 func (r *ledgerBoundariesReadonly) GetNumscriptExecutionCount() uint64 {
 	return (*LedgerBoundaries)(r).GetNumscriptExecutionCount()
+}
+
+func (r *ledgerBoundariesReadonly) GetLastMirrorV2LogId() uint64 {
+	return (*LedgerBoundaries)(r).GetLastMirrorV2LogId()
 }
 
 func (r *ledgerBoundariesReadonly) Mutate() *LedgerBoundaries {

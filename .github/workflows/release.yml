@@ -12,7 +12,7 @@ jobs:
   GoReleaser:
     runs-on: namespace-profile-linux-amd64-4vcpu
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
         with:
           fetch-depth: 0
           dissociate: true

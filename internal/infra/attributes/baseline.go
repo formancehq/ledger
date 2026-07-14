@@ -95,6 +95,16 @@ func writeBaselineAttributes(reader dal.PebbleReader, attrs *Attributes, db *peb
 		return fmt.Errorf("writing baseline transactions: %w", err)
 	}
 
+	// Boundary rows carry the per-ledger LedgerBoundaries — NextTransactionId
+	// (seeds the checker's tx-id counter for archived-history ledgers) and
+	// last_mirror_v2_log_id (the archived floor for the mirror-idempotency
+	// equality check, compareMirrorV2LogID). Without these, a ledger whose
+	// history sits entirely in an archived chapter is invisible to the
+	// baseline fold (foldBaselineBoundaries) and the checker false-positives.
+	if err := writeBaselineAttr(reader, attrs.Boundary, db); err != nil {
+		return fmt.Errorf("writing baseline boundaries: %w", err)
+	}
+
 	return nil
 }
 

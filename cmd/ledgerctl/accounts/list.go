@@ -77,7 +77,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	cns := cmdutil.GetConsistencyFlags(cmd)
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
-	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix)
+	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return err
 	}

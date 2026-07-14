@@ -1199,12 +1199,14 @@ enum ErrorReason {
   ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
   ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;
   ERROR_REASON_CHECKPOINT_NOT_READY = 63;
+  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 64;
+  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 65;
   // ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
   // Numscript dependency resolution read at admission time changed before the
   // FSM applied the transaction, so the preloaded key set may be wrong.
   // Retryable (Kind=Unavailable) — a second admission re-resolves against the
   // new values. See EN-1406.
-  ERROR_REASON_STALE_INPUTS_RESOLUTION = 64;
+  ERROR_REASON_STALE_INPUTS_RESOLUTION = 66;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1580,8 +1582,10 @@ enum QueryTarget {
   // audit condition validity lives in the same source of truth as the other
   // targets (EN-1241 / EN-1305 / EN-1339 / EN-1481 move ListAuditEntries onto
   // the shared ListOptions.filter contract). CompileAuditFilter accepts only
-  // audit[...] leaves combined with and/or — not, and every non-audit
-  // condition, are rejected — which the per-arm annotations below reflect.
+  // audit-condition leaves combined with and/or — not, and every non-audit
+  // condition, are rejected — which the per-arm annotations below reflect. On
+  // the textual DSL these are the bare audit fields (outcome, ledger, seq, …)
+  // resolved against QUERY_TARGET_AUDIT (EN-1549).
   QUERY_TARGET_AUDIT = 3;
 }
 
