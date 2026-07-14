@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: restore-bk
 spec:
-  serviceRef: restore-svc
+  clusterRef: restore-svc
   destination:
     driver: s3
     s3:

@@ -18,7 +18,7 @@ import (
 func TestBackupReconcile_MissingCluster(t *testing.T) {
 	ns := createTestNamespace(t)
 
-	backup := newBackup("bk-missing", ns, "nonexistent-service")
+	backup := newBackup("bk-missing", ns, "nonexistent-cluster")
 	require.NoError(t, k8sClient.Create(ctx, backup))
 
 	requireEventually(t, func() bool {
@@ -231,14 +231,14 @@ func pokeBackup(ns, name string) error {
 }
 
 // newBackup returns a Backup CR with default S3 destination and hourly schedule.
-func newBackup(name, namespace, serviceRef string) *ledgerv1alpha1.Backup {
+func newBackup(name, namespace, clusterRef string) *ledgerv1alpha1.Backup {
 	return &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: ledgerv1alpha1.BackupSpec{
-			ServiceRef: serviceRef,
+			ClusterRef: clusterRef,
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
 				S3: &ledgerv1alpha1.S3Config{

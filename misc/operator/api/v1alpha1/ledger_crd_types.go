@@ -20,10 +20,10 @@ type LedgerCRDSpec struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// ServiceRef is the name of the Cluster in the same namespace
+	// ClusterRef is the name of the Cluster in the same namespace
 	// that provides the gRPC endpoint.
 	// +kubebuilder:validation:Required
-	ServiceRef string `json:"serviceRef"`
+	ClusterRef string `json:"clusterRef"`
 
 	// Mode is the ledger mode: "normal" or "mirror".
 	// A mirror ledger replicates data from a source system in read-only mode.

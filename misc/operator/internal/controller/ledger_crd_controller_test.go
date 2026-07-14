@@ -25,7 +25,7 @@ func newTestLedgerReconciler(objects ...corev1.Secret) *LedgerReconciler {
 	}
 }
 
-func newLedger(name, namespace, serviceRef, ledgerName string) *ledgerv1alpha1.Ledger {
+func newLedger(name, namespace, clusterRef, ledgerName string) *ledgerv1alpha1.Ledger {
 	return &ledgerv1alpha1.Ledger{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -33,7 +33,7 @@ func newLedger(name, namespace, serviceRef, ledgerName string) *ledgerv1alpha1.L
 		},
 		Spec: ledgerv1alpha1.LedgerCRDSpec{
 			Name:       ledgerName,
-			ServiceRef: serviceRef,
+			ClusterRef: clusterRef,
 		},
 	}
 }
@@ -519,7 +519,7 @@ func TestComputeLedgerSpecHash_Deterministic(t *testing.T) {
 
 	spec := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ServiceRef: "svc",
+		ClusterRef: "svc",
 		Mode:       "normal",
 	}
 	h1 := computeLedgerSpecHash(spec)
@@ -532,12 +532,12 @@ func TestComputeLedgerSpecHash_DifferentMode(t *testing.T) {
 
 	spec1 := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ServiceRef: "svc",
+		ClusterRef: "svc",
 		Mode:       "normal",
 	}
 	spec2 := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ServiceRef: "svc",
+		ClusterRef: "svc",
 		Mode:       "mirror",
 	}
 	assert.NotEqual(t, computeLedgerSpecHash(spec1), computeLedgerSpecHash(spec2))
@@ -551,12 +551,12 @@ func TestComputeLedgerSpecHash_IgnoresIndexes(t *testing.T) {
 
 	base := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ServiceRef: "svc",
+		ClusterRef: "svc",
 		Mode:       "normal",
 	}
 	withIndexes := &ledgerv1alpha1.LedgerCRDSpec{
 		Name:       "test",
-		ServiceRef: "svc",
+		ClusterRef: "svc",
 		Mode:       "normal",
 		Indexes: &ledgerv1alpha1.LedgerIndexesSpec{
 			Transaction: []string{"reference", "address"},

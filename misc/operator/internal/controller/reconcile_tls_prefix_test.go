@@ -40,7 +40,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "bk", Namespace: namespace},
 		Spec: ledgerv1alpha1.BackupSpec{
-			ServiceRef: crName,
+			ClusterRef: crName,
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
 				S3:     &ledgerv1alpha1.S3Config{Bucket: "my-bucket", Region: "eu-west-1"},

@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: manual-bk
 spec:
-  serviceRef: bk-manual-svc
+  clusterRef: bk-manual-svc
   destination:
     driver: s3
     s3:

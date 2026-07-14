@@ -119,7 +119,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	// Create ledger via ledgerctl exec.
-	pod0 := podName(ledger.Spec.ServiceRef, 0)
+	pod0 := podName(ledger.Spec.ClusterRef, 0)
 	args, err := r.buildCreateArgs(ctx, &ledger)
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -139,7 +139,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	defer cancel()
 
 	log.Info("creating ledger", "name", ledger.Spec.Name, "mode", ledger.Spec.Mode)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort, args...); err != nil {
+	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort, args...); err != nil {
 		if !isAlreadyExists(err) {
 			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 				Type:               conditionLedgerSynced,
@@ -189,7 +189,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 	}
 
 	// Detect spec drift. The hash excludes indexes, so a mismatch means an
-	// immutable field (name/serviceRef/mode/mirrorSource) changed.
+	// immutable field (name/clusterRef/mode/mirrorSource) changed.
 	currentHash := computeLedgerSpecHash(&ledger.Spec)
 	if ledger.Status.AppliedSpecHash != "" && currentHash != ledger.Status.AppliedSpecHash {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -202,7 +202,7 @@ func (r *LedgerReconciler) reconcileReady(ctx context.Context, ledger *ledgerv1a
 		log.Info("spec drift detected on immutable ledger", "name", ledger.Spec.Name)
 
 		// Do NOT run index reconciliation while an immutable field has drifted:
-		// spec.name / spec.serviceRef may now point at a different ledger or
+		// spec.name / spec.clusterRef may now point at a different ledger or
 		// cluster, so creating/dropping indexes here would mutate the wrong
 		// target. Hold until the drift is resolved by delete + recreate.
 		return ctrl.Result{}, nil
@@ -249,13 +249,13 @@ func (r *LedgerReconciler) reconcilePromotion(ctx context.Context, ledger *ledge
 		return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
 	}
 
-	pod0 := podName(ledger.Spec.ServiceRef, 0)
+	pod0 := podName(ledger.Spec.ClusterRef, 0)
 
 	execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 	defer cancel()
 
 	log.Info("promoting mirror ledger to normal", "name", ledger.Spec.Name)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort,
+	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
 		"ledgers", "promote", ledger.Spec.Name, "--yes"); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionLedgerSynced,
@@ -294,17 +294,17 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 		return ctrl.Result{}, nil
 	}
 
-	grpcPort, err := r.resolveGRPCPort(ctx, ledger.Namespace, ledger.Spec.ServiceRef)
+	grpcPort, err := r.resolveGRPCPort(ctx, ledger.Namespace, ledger.Spec.ClusterRef)
 	if err != nil {
 		log.Error(err, "failed to resolve gRPC endpoint for deletion, continuing cleanup")
 	} else {
-		pod0 := podName(ledger.Spec.ServiceRef, 0)
+		pod0 := podName(ledger.Spec.ClusterRef, 0)
 
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 		defer cancel()
 
 		log.Info("deleting ledger", "name", ledger.Spec.Name)
-		if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ServiceRef, pod0, grpcPort,
+		if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort,
 			"ledgers", "delete", ledger.Spec.Name, "--yes"); err != nil {
 			if !isLedgerNotFound(err) {
 				log.Error(err, "failed to delete ledger (best-effort)")
@@ -324,17 +324,17 @@ func (r *LedgerReconciler) reconcileDelete(ctx context.Context, ledger *ledgerv1
 // Sets the EndpointResolved condition accordingly.
 func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Ledger) (int32, error) {
 	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(ledger.Namespace).Get(
-		ctx, ledger.Spec.ServiceRef, metav1.GetOptions{})
+		ctx, ledger.Spec.ClusterRef, metav1.GetOptions{})
 	if err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
 			Reason:             "ClusterNotFound",
-			Message:            fmt.Sprintf("Cluster %q not found: %v", ledger.Spec.ServiceRef, err),
+			Message:            fmt.Sprintf("Cluster %q not found: %v", ledger.Spec.ClusterRef, err),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ServiceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", ledger.Spec.ClusterRef, err)
 	}
 
 	phase, _, _ := nestedFieldNoCopy(ls.Object, "status", "phase")
@@ -343,11 +343,11 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 			Type:               conditionEndpointResolved,
 			Status:             metav1.ConditionFalse,
 			Reason:             "ClusterNotReady",
-			Message:            fmt.Sprintf("Cluster %q is not Running (phase: %v)", ledger.Spec.ServiceRef, phase),
+			Message:            fmt.Sprintf("Cluster %q is not Running (phase: %v)", ledger.Spec.ClusterRef, phase),
 			ObservedGeneration: ledger.Generation,
 		})
 
-		return 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ServiceRef)
+		return 0, fmt.Errorf("cluster %q is not Running", ledger.Spec.ClusterRef)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")
@@ -552,10 +552,10 @@ func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, s
 }
 
 // resolveGRPCPort reads the gRPC port from the Cluster spec (defaults to 8888).
-func (r *LedgerReconciler) resolveGRPCPort(ctx context.Context, namespace, serviceRef string) (int32, error) {
-	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(namespace).Get(ctx, serviceRef, metav1.GetOptions{})
+func (r *LedgerReconciler) resolveGRPCPort(ctx context.Context, namespace, clusterRef string) (int32, error) {
+	ls, err := r.Dynamic.Resource(clusterGVR).Namespace(namespace).Get(ctx, clusterRef, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("get Cluster %q: %w", serviceRef, err)
+		return 0, fmt.Errorf("get Cluster %q: %w", clusterRef, err)
 	}
 
 	port, found, err := unstructuredNestedInt64(ls.Object, "spec", "config", "grpcPort")

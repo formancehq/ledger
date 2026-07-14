@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: bad-sched
 spec:
-  serviceRef: sched-svc
+  clusterRef: sched-svc
   destination:
     driver: s3
     s3:

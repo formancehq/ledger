@@ -60,7 +60,7 @@ config:
           kind: Ledger
           spec:
             name: ledger0
-            serviceRef: acme-world-to-bank-res-0
+            clusterRef: acme-world-to-bank-res-0
         readyCondition:
           fieldPath: status.phase
           value: Ready

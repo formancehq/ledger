@@ -6,7 +6,7 @@ spec:
   timeouts:
     assert: 30s
   steps:
-    - name: Deploy a Cluster so serviceRef passes
+    - name: Deploy a Cluster so clusterRef passes
       try:
         - apply:
             file: cluster.yaml
