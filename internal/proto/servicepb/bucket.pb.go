@@ -67,6 +67,15 @@ const (
 	// for an order that should have been rejected hard. The skippable_reasons
 	// whitelist on the audit-bound Order is the source of truth.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP CheckStoreErrorType = 11
+	// Emitted when a mirror ledger's stored LedgerBoundaries.last_mirror_v2_log_id
+	// does NOT equal the maximum audited MirrorIngest.v2_log_id for that ledger.
+	// last_mirror_v2_log_id is the idempotent-replay high-water mark (EN-1550): the
+	// FSM enforces a contiguous applied prefix, so at rest the stored value must
+	// equal exactly the max audited v2_log_id. A value ABOVE the audit claims to
+	// have consumed a source v2 log no audit entry recorded (future ingests wrongly
+	// skipped); a value BELOW means the persisted projection lost applied ground —
+	// both are corruption. This is a full invariant-#8 equality check, not a bound.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH CheckStoreErrorType = 12
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -84,6 +93,7 @@ var (
 		9:  "CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH",
 		10: "CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH",
 		11: "CHECK_STORE_ERROR_TYPE_INVALID_SKIP",
+		12: "CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -98,6 +108,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
 		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":              10,
 		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                11,
+		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":     12,
 	}
 )
 
@@ -9452,7 +9463,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xb6\x04\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xea\x04\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9466,7 +9477,8 @@ const file_bucket_proto_rawDesc = "" +
 	"+CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH\x10\t\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH\x10\n" +
 	"\x12'\n" +
-	"#CHECK_STORE_ERROR_TYPE_INVALID_SKIP\x10\v*W\n" +
+	"#CHECK_STORE_ERROR_TYPE_INVALID_SKIP\x10\v\x122\n" +
+	".CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH\x10\f*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
