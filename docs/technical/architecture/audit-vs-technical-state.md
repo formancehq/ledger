@@ -102,8 +102,11 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
   (`internal/domain/processing/processor_mirror.go`) records the highest applied
   source id in `LedgerBoundaries.last_mirror_v2_log_id` — a true contiguous
   prefix, since the worker ingests contiguously including `FillGap` orders — and,
-  *before* applying any posting or mutating any state, decides three ways against
-  the next slot (`expected = last + 1`):
+  *before* applying any posting or mutating any state, first rejects a malformed
+  `v2LogId == 0` (source v2 log ids are 1-based, so 0 is tamper/corruption) with
+  `ErrMirrorV2LogIDInvalid` (`KindInternal`) — it is never applied, since a 0 is
+  never recorded as `last` and a silently-applied 0 would be re-appliable forever.
+  It then decides three ways against the next slot (`expected = last + 1`):
   - `v2LogId <= last`: already applied. Idempotent **no-op** — return `(nil, nil)`,
     which `ProcessOrders` treats as "no log" (no sequence id consumed, no
     audit-visible `Log`, no sink absorb). Postings are not re-forced, so balances

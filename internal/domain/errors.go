@@ -222,6 +222,7 @@ const (
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
 	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
+	ErrReasonMirrorV2LogIDInvalid          = "MIRROR_V2_LOG_ID_INVALID"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -782,6 +783,24 @@ func (e *ErrMirrorV2LogIDGap) Metadata() map[string]string {
 		"got":      strconv.FormatUint(e.Got, 10),
 		"expected": strconv.FormatUint(e.Expected, 10),
 	}
+}
+
+// ErrMirrorV2LogIDInvalid — a mirror ingest carried a v2LogId of 0. Source v2
+// log ids are 1-based, so 0 is malformed/tampered. The FSM rejects it before any
+// mutation rather than applying it: a 0 is never recorded as the high-water mark,
+// so applying it would leave it re-appliable forever (no marker stops the
+// replay). KindInternal: server-side data-corruption invariant, not a client
+// mistake (invariant #7 fail-loud on an impossible-by-design branch).
+type ErrMirrorV2LogIDInvalid struct {
+	Name string
+}
+
+func (e *ErrMirrorV2LogIDInvalid) Error() string {
+	return fmt.Sprintf("invariant: mirror ingest on ledger %s carries invalid v2LogId 0 (source v2 log ids are 1-based)", e.Name)
+}
+func (*ErrMirrorV2LogIDInvalid) Reason() string { return ErrReasonMirrorV2LogIDInvalid }
+func (e *ErrMirrorV2LogIDInvalid) Metadata() map[string]string {
+	return map[string]string{"name": e.Name}
 }
 
 // ErrPreparedQueryAlreadyExists — creating a prepared query that already exists.

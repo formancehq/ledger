@@ -370,6 +370,60 @@ func TestMirrorIngest_GapRejected(t *testing.T) {
 	require.Equal(t, uint64(4), gap.Expected)
 }
 
+// TestMirrorIngest_ZeroV2LogIdRejected pins that a malformed v2LogId == 0 ingest
+// is rejected LOUD before any mutation (ErrMirrorV2LogIDInvalid, KindInternal) —
+// it must NOT fall through to apply-without-advancing (0 is never recorded as the
+// high-water mark, so a silently-applied 0 would be re-appliable forever,
+// flemzord #1587). A second identical zero-id order is rejected identically
+// (the replay path), proving the reject is stateless and deterministic.
+func TestMirrorIngest_ZeroV2LogIdRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 5}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.onGet(func(_ domain.LedgerKey) (raftcmdpb.LedgerBoundariesReader, error) {
+		return boundaries.AsReader(), nil
+	})
+	// No mutation on a zero-id rejection.
+	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("Boundaries().Put must not be called on a zero v2LogId rejection")
+	})
+	ledgersStub := setupLedgersStub(mockStore)
+	ledgersStub.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
+		t.Errorf("Ledgers().Put must not be called on a zero v2LogId rejection")
+	})
+	volumesStub := setupVolumesStub(mockStore)
+	volumesStub.onPut(func(_ domain.VolumeKey, _ *raftcmdpb.VolumePair) {
+		t.Errorf("Volumes().Put must not be called on a zero v2LogId rejection")
+	})
+
+	assertRejected := func() {
+		result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 0, 42), mockStore)
+		require.Error(t, err)
+		require.Nil(t, result)
+
+		var invalid *domain.ErrMirrorV2LogIDInvalid
+		require.ErrorAs(t, err, &invalid)
+		require.Equal(t, "mirror-ledger", invalid.Name)
+	}
+
+	// Both the first and a replayed identical zero-id order are rejected the
+	// same way — the reject is a pure function of the order, mutating nothing.
+	assertRejected()
+	assertRejected()
+}
+
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	t.Parallel()
 

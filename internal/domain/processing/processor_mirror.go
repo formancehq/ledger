@@ -46,8 +46,22 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	// this ledger and, because the worker ingests contiguously (including FillGap
 	// orders for source gaps — see adapter/v2/translator.go: TranslateBatch), it
 	// is a TRUE contiguous prefix: every id in [1, LastMirrorV2LogId] has been
-	// applied. v2 log ids are 1-based and strictly increasing per source. Three
-	// cases against the next contiguous slot (expected = last + 1):
+	// applied. v2 log ids are 1-based and strictly increasing per source.
+	v2LogID := entry.GetV2LogId()
+	last := boundaries.GetLastMirrorV2LogId()
+
+	// v2LogID == 0 is malformed: source v2 log ids are 1-based, so 0 never
+	// occurs in a well-formed ingest. It must be rejected loud BEFORE the
+	// contiguous-prefix switch: it is <= last and == expected only vacuously, and
+	// falling through would apply it WITHOUT advancing the high-water mark (0 is
+	// never recorded as last), leaving it re-appliable forever (flemzord, #1587).
+	// Per invariant #7 this is an impossible-by-design branch → deterministic
+	// KindInternal reject, no mutation.
+	if v2LogID == 0 {
+		return nil, &domain.ErrMirrorV2LogIDInvalid{Name: ledger}
+	}
+
+	// Three cases against the next contiguous slot (expected = last + 1):
 	//
 	//   - v2LogID <= last  → already applied. EXPECTED replay (a tampered/rolled-
 	//     back MirrorCursor makes the worker re-emit applied logs — flemzord,
@@ -66,15 +80,11 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	//     every node, so determinism holds.
 	//
 	// First-ingest case: LastMirrorV2LogId defaults to 0, so expected = 1 and the
-	// first real v2LogId (>= 1) applies. The v2LogID != 0 guard keeps a malformed
-	// entry with no source id from being treated as the "expected" first slot.
-	v2LogID := entry.GetV2LogId()
-	last := boundaries.GetLastMirrorV2LogId()
-
+	// first real v2LogId (>= 1) applies.
 	switch {
-	case v2LogID != 0 && v2LogID <= last:
+	case v2LogID <= last:
 		return nil, nil
-	case v2LogID != 0 && v2LogID > last+1:
+	case v2LogID > last+1:
 		return nil, &domain.ErrMirrorV2LogIDGap{Name: ledger, Got: v2LogID, Expected: last + 1}
 	}
 

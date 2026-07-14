@@ -312,6 +312,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrLedgerInMirrorMode":            &ErrLedgerInMirrorMode{},
 		"ErrLedgerNotInMirrorMode":         &ErrLedgerNotInMirrorMode{},
 		"ErrMirrorV2LogIDGap":              &ErrMirrorV2LogIDGap{},
+		"ErrMirrorV2LogIDInvalid":          &ErrMirrorV2LogIDInvalid{},
 		"ErrPreparedQueryAlreadyExists":    &ErrPreparedQueryAlreadyExists{},
 		"ErrPreparedQueryNotFound":         &ErrPreparedQueryNotFound{},
 		"ErrIndexNotFound":                 &ErrIndexNotFound{},
