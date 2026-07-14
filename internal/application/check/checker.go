@@ -1945,14 +1945,16 @@ type chainBoundState struct {
 	// fire for it: a missing claim/mutation on a live-created ledger is a
 	// forged skip, not an archive limitation (finding 2adbf685cc).
 	ledgerCreationSeenLive map[string]struct{}
-	// maxMirrorV2LogID is the highest audited MirrorIngest.v2_log_id observed
-	// per ledger — from the live audit chain (recordMirrorIngestMutations) plus
-	// a baseline floor (foldBaselineBoundaries seeds it from the archived
-	// LedgerBoundaries.last_mirror_v2_log_id, so ledgers whose mirror ingests
-	// live in an archived chapter are not undercounted). compareMirrorV2LogID
-	// bounds the stored last_mirror_v2_log_id against this max: stored ABOVE it
-	// is corruption/data-loss (EN-1550), stored at-or-below is the legitimate
-	// legacy / self-healing state and is not flagged.
+	// maxMirrorV2LogID is the audit-derived EXPECTED value of
+	// LedgerBoundaries.last_mirror_v2_log_id per ledger: the highest audited
+	// MirrorIngest.v2_log_id, from the live audit chain
+	// (recordMirrorIngestMutations) plus a baseline floor (foldBaselineBoundaries
+	// seeds it from the archived LedgerBoundaries.last_mirror_v2_log_id, so
+	// ledgers whose mirror ingests live in an archived chapter are not
+	// undercounted). compareMirrorV2LogID checks the stored last_mirror_v2_log_id
+	// for EQUALITY against this value and flags ANY divergence (both stored > and
+	// stored <): the FSM enforces a contiguous applied prefix, so at rest the two
+	// must be exactly equal. There is no at-or-below exemption (EN-1550).
 	maxMirrorV2LogID map[string]uint64
 }
 
