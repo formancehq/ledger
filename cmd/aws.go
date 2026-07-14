@@ -11,12 +11,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
-	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/spf13/pflag"
 	"github.com/xo/dburl"
+
+	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
+	"github.com/formancehq/go-libs/v5/pkg/storage/bun/connect"
 )
 
 // roleIAMConnector implements driver.Connector for AWS RDS IAM authentication
