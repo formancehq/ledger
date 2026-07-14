@@ -253,6 +253,24 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			return nil, err
 		}
 
+		// No-log outcome: a processor may deterministically decide the order
+		// produces no fresh ledger log while still succeeding (payload==nil,
+		// err==nil). The only such case today is an idempotent mirror replay
+		// (processMirrorIngest guards on LastMirrorV2LogId), which mutates
+		// nothing and must leave no audit-visible log. Skip the log slot
+		// entirely — do NOT consume a sequence id, absorb into the sink, or
+		// append a degenerate Log{Payload:nil}. The nil slot mirrors the
+		// idempotency-replay ReferenceSequence path and is skipped identically
+		// by WriteSet.Merge (GetCreatedLog()==nil) and checkCloseChapter.
+		//
+		// Any overlay staged by such an order is dropped without Commit(): a
+		// no-log outcome makes no persistent mutation, so there is nothing to
+		// flush. (Mirror ingest declares no skippable_reasons, so no overlay is
+		// created here in practice.)
+		if payload == nil {
+			continue
+		}
+
 		if overlay != nil {
 			if err := overlay.Commit(); err != nil {
 				// Coverage-miss surfaced by a staged Delete (invariant #6):

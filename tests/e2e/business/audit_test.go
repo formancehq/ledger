@@ -126,7 +126,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
-		// Filter by the original ledger via `audit[ledger] == <name>` — should not
+		// Filter by the original ledger via the bare `ledger == <name>` field — should not
 		// include the second ledger's entries. The ledger scope is served by the
 		// async audit index, so poll until it has caught up (Eventually).
 		Eventually(func(g Gomega) {
@@ -486,7 +486,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
-		// audit[ledger] == orderTypeLedger and audit[order_type] == create_transaction
+		// ledger == orderTypeLedger and order_type == create_transaction
 		filter := &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_And{
 				And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
@@ -527,7 +527,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(desc[len(desc)-1].GetSequence()).To(Equal(asc[0].GetSequence()))
 	})
 
-	It("Should honor options.filter for audit[seq] range", func() {
+	It("Should honor options.filter for the bare seq range", func() {
 		all, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 		Expect(len(all)).To(BeNumerically(">=", 3))

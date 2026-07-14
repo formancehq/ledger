@@ -9,10 +9,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// audit is the query target under which the bare audit fields resolve to the
+// AuditCondition arm (EN-1549).
+const audit = commonpb.QueryTarget_QUERY_TARGET_AUDIT
+
 func TestParseAudit_OutcomeEquality(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[outcome] == failure")
+	filter, err := Parse("outcome == failure", audit)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -24,8 +28,9 @@ func TestParseAudit_OutcomeEquality(t *testing.T) {
 func TestParseAudit_LedgerKeyword(t *testing.T) {
 	t.Parallel()
 
-	// "ledger" is a keyword; the audit field key must still parse.
-	filter, err := Parse("audit[ledger] == main")
+	// "ledger" is a keyword; the bare audit field must still resolve on the audit
+	// target (to the audit ledger arm, not the LedgerCondition arm).
+	filter, err := Parse("ledger == main", audit)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -37,7 +42,7 @@ func TestParseAudit_LedgerKeyword(t *testing.T) {
 func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse(`audit[caller_subject] == "svc:payments"`)
+	filter, err := Parse(`caller_subject == "svc:payments"`, audit)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -54,10 +59,10 @@ func TestParseAudit_TimestampRFC3339(t *testing.T) {
 
 	// RFC3339 (quoted) and raw microseconds must both parse to the same bound.
 	for _, in := range []string{
-		`audit[timestamp] >= "2023-11-14T22:13:20Z"`,
-		"audit[timestamp] >= 1700000000000000",
+		`timestamp >= "2023-11-14T22:13:20Z"`,
+		"timestamp >= 1700000000000000",
 	} {
-		filter, err := Parse(in)
+		filter, err := Parse(in, audit)
 		require.NoError(t, err, in)
 
 		ac := filter.GetAudit()
@@ -70,7 +75,7 @@ func TestParseAudit_TimestampRFC3339(t *testing.T) {
 func TestParseAudit_TimestampRejectsPreEpoch(t *testing.T) {
 	t.Parallel()
 
-	_, err := Parse(`audit[timestamp] >= "1969-12-31T00:00:00Z"`)
+	_, err := Parse(`timestamp >= "1969-12-31T00:00:00Z"`, audit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Unix epoch")
 }
@@ -78,7 +83,7 @@ func TestParseAudit_TimestampRejectsPreEpoch(t *testing.T) {
 func TestParseAudit_OrderTypeIn(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[order_type] in (create_transaction, revert_transaction)")
+	filter, err := Parse("order_type in (create_transaction, revert_transaction)", audit)
 	require.NoError(t, err)
 
 	or := filter.GetOr()
@@ -91,7 +96,7 @@ func TestParseAudit_OrderTypeIn(t *testing.T) {
 func TestParseAudit_SeqBetween(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[seq] between 1000 and 2000")
+	filter, err := Parse("seq between 1000 and 2000", audit)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -106,7 +111,7 @@ func TestParseAudit_SeqBetween(t *testing.T) {
 func TestParseAudit_ProposalIDEquality(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[proposal_id] == 42")
+	filter, err := Parse("proposal_id == 42", audit)
 	require.NoError(t, err)
 
 	ac := filter.GetAudit()
@@ -120,7 +125,7 @@ func TestParseAudit_ProposalIDEquality(t *testing.T) {
 func TestParseAudit_TimestampGte(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[timestamp] >= 1700000000000000")
+	filter, err := Parse("timestamp >= 1700000000000000", audit)
 	require.NoError(t, err)
 
 	uc := filter.GetAudit().GetUintCond()
@@ -132,7 +137,7 @@ func TestParseAudit_TimestampGte(t *testing.T) {
 func TestParseAudit_Composition(t *testing.T) {
 	t.Parallel()
 
-	filter, err := Parse("audit[outcome] == failure and audit[ledger] == main")
+	filter, err := Parse("outcome == failure and ledger == main", audit)
 	require.NoError(t, err)
 
 	and := filter.GetAnd()
@@ -145,7 +150,7 @@ func TestParseAudit_Composition(t *testing.T) {
 func TestParseAudit_UnknownField(t *testing.T) {
 	t.Parallel()
 
-	_, err := Parse("audit[bogus] == x")
+	_, err := Parse("bogus == x", audit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown audit field")
 }
@@ -153,7 +158,7 @@ func TestParseAudit_UnknownField(t *testing.T) {
 func TestParseAudit_UintFieldRejectsNonNumeric(t *testing.T) {
 	t.Parallel()
 
-	_, err := Parse("audit[seq] == notanumber")
+	_, err := Parse("seq == notanumber", audit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsigned integer")
 }
@@ -162,32 +167,58 @@ func TestParseAudit_StringFieldRejectsNotEqual(t *testing.T) {
 	t.Parallel()
 
 	// != would require a NOT wrapper that the audit access path cannot serve.
-	_, err := Parse("audit[outcome] != failure")
+	_, err := Parse("outcome != failure", audit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "== and in only")
 }
 
-// TestParseAudit_KeywordAsBareValue guards that introducing the `audit`
-// keyword (and the pre-existing field keywords) does not stop them being used
-// as unquoted right-hand-side values, while structural operators stay reserved.
+// TestParseAudit_AuditFieldsRejectedOffAuditTarget guards that the audit-only
+// field names carry no meaning on a non-audit target: they must be rejected
+// rather than silently resolving to nothing (EN-1549).
+func TestParseAudit_AuditFieldsRejectedOffAuditTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, in := range []string{
+		"outcome == failure",
+		"seq between 1 and 2",
+		"proposal_id == 42",
+		"log_seq == 500",
+		"caller_subject == svc",
+		"order_type == create_transaction",
+	} {
+		for _, target := range []commonpb.QueryTarget{
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		} {
+			_, err := Parse(in, target)
+			require.Error(t, err, "%q must be rejected on %s", in, target)
+			assert.Contains(t, err.Error(), "unknown field", in)
+		}
+	}
+}
+
+// TestParseAudit_KeywordAsBareValue guards that the field keywords can still be
+// used as unquoted right-hand-side values, while structural operators stay
+// reserved. (`audit` is no longer a keyword after EN-1549.)
 func TestParseAudit_KeywordAsBareValue(t *testing.T) {
 	t.Parallel()
 
 	// Reserved "noun" keywords must still parse as bare values.
-	for _, kw := range []string{"audit", "ledger", "source", "destination", "metadata", "address", "exists"} {
-		f, err := Parse("metadata[type] == " + kw)
+	for _, kw := range []string{"ledger", "source", "destination", "metadata", "address", "exists"} {
+		f, err := Parse("metadata[type] == "+kw, audit)
 		require.NoError(t, err, "metadata[type] == %s should parse", kw)
 		assert.Equal(t, kw, f.GetField().GetStringCond().GetHardcoded())
 	}
 
 	// Structural operators must NOT be swallowed as values.
 	for _, op := range []string{"and", "or", "not", "in", "between"} {
-		_, err := Parse("metadata[type] == " + op)
+		_, err := Parse("metadata[type] == "+op, audit)
 		require.Error(t, err, "metadata[type] == %s must not parse (structural keyword)", op)
 	}
 
-	// Composition still works after the value change.
-	f, err := Parse("metadata[a] == audit and metadata[b] == ledger")
+	// `audit` is now an ordinary identifier and parses as a bare value.
+	f, err := Parse("metadata[a] == audit and metadata[b] == ledger", audit)
 	require.NoError(t, err)
 	require.NotNil(t, f.GetAnd())
 	require.Len(t, f.GetAnd().GetFilters(), 2)
@@ -197,18 +228,18 @@ func TestFormatAudit_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	for _, in := range []string{
-		"audit[outcome] == failure",
-		"audit[ledger] == main",
+		"outcome == failure",
+		"ledger == main",
 		// A value with a special char (`:`) must be quoted (EN-1547); Format emits
 		// and Parse reads the quoted form.
-		`audit[caller_subject] == "svc:payments"`,
-		"audit[seq] == 42",
-		"audit[seq] between 1000 and 2000",
-		`audit[timestamp] >= "2023-11-14T22:13:20Z"`,
-		"audit[proposal_id] < 100",
-		"audit[outcome] == failure and audit[ledger] == main",
+		`caller_subject == "svc:payments"`,
+		"seq == 42",
+		"seq between 1000 and 2000",
+		`timestamp >= "2023-11-14T22:13:20Z"`,
+		"proposal_id < 100",
+		"outcome == failure and ledger == main",
 	} {
-		f, err := Parse(in)
+		f, err := Parse(in, audit)
 		require.NoError(t, err, in)
 		assert.Equal(t, in, Format(f), "round-trip for %q", in)
 	}
