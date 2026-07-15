@@ -88,11 +88,20 @@ func RebuildDelta(
 
 	// Seed the reversion bitsets from the checkpoint so delta reverts fold
 	// into (not clobber) the words that already hold pre-checkpoint reverts.
-	seededReversions, err := query.ReadReversions(readHandle)
+	// A malformed row means the checkpoint itself is corrupt — refuse the
+	// rebuild rather than restore a store missing reverted bits.
+	seededReversions, malformedReversions, err := query.ReadReversions(readHandle)
 	if err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("seeding reversion bitsets: %w", err)
+	}
+
+	if len(malformedReversions) > 0 {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("seeding reversion bitsets: %d malformed row(s), first at key %x: %s",
+			len(malformedReversions), malformedReversions[0].Key, malformedReversions[0].Reason)
 	}
 
 	writer.reversions = seededReversions

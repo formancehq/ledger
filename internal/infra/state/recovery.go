@@ -119,9 +119,16 @@ func (r *Recovery) RecoverState() error {
 
 	r.apply.Chapters.SetSchedule(chapterSchedule)
 
-	reversions, err := query.ReadReversions(handle)
+	reversions, malformedReversions, err := query.ReadReversions(handle)
 	if err != nil {
 		return fmt.Errorf("recovering reversions: %w", err)
+	}
+
+	// Only SaveReversionWord produces these rows, so a malformed one means
+	// corruption or tampering. Boot proceeds on the decodable words — the
+	// checker reports malformed rows as integrity events — but never silently.
+	for _, m := range malformedReversions {
+		r.apply.logger.Errorf("malformed reversion row at key %x skipped during recovery: %s", m.Key, m.Reason)
 	}
 
 	r.apply.Registry.Reversions = reversions

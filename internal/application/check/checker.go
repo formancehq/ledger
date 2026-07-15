@@ -665,7 +665,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
 	}
 
@@ -5066,20 +5066,35 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 // chapters, so the comparison is exact equality both ways: a bit the audit
 // set but the store lost re-admits a double revert (double refund) past the
 // gate, and a stored bit the audit never set silently blocks a legitimate
-// revert. Ledgers pending cleanup (or deleted outright) are skipped — their
-// rows legitimately linger until a covering purge, and the gate never reads
-// bitsets of non-live ledgers.
-func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers, pendingCleanupLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
-	stored, err := query.ReadReversions(reader)
+// revert.
+//
+// The comparison is driven purely by audit-derived state (knownLedgers,
+// derived): no persisted marker — pending-cleanup included, since it is
+// itself an unverified projection — may exempt an audit-live ledger from the
+// check. Stored rows for ledgers the audit does not know as live are flagged
+// too: DeleteLedger deletes the rows at apply time on both the live path and
+// the replay, so nothing legitimately lingers. Rows that fail to decode are
+// reported rather than silently narrowing the comparison.
+func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+	stored, malformed, err := query.ReadReversions(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored reversion bitsets: %w", err)
 	}
 
-	for name := range knownLedgers {
-		if _, pending := pendingCleanupLedgers[name]; pending {
-			continue
-		}
+	for _, m := range malformed {
+		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+			fmt.Sprintf("malformed reversion row at key %x: %s", m.Key, m.Reason), "", 0))
+	}
 
+	for name := range stored {
+		if _, live := knownLedgers[name]; !live {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+				fmt.Sprintf("stored reversion rows for non-live ledger %q: DeleteLedger removes them at apply, so they are unaudited leftovers", name),
+				name, 0))
+		}
+	}
+
+	for name := range knownLedgers {
 		var derivedWords, storedWords []uint64
 		if bs := derived[name]; bs != nil {
 			derivedWords = bs.Words()
