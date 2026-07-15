@@ -1044,11 +1044,8 @@ func (w *attributeReplayWriter) MoveVolume(oldKey, newKey []byte) error {
 	return w.DeleteVolume(oldKey)
 }
 
-func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value string) error {
-	mv := &commonpb.MetadataValue{}
-	mv.Type = &commonpb.MetadataValue_StringValue{StringValue: value}
-
-	_, err := w.metadata.Set(w.batch, canonicalKey, mv)
+func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
+	_, err := w.metadata.Set(w.batch, canonicalKey, value)
 
 	return err
 }

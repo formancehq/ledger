@@ -15,7 +15,7 @@ type Writer interface {
 	GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, error)
 	DeleteVolume(canonicalKey []byte) error
 	MoveVolume(oldKey, newKey []byte) error
-	SetMetadata(canonicalKey []byte, value string) error
+	SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error
 	DeleteMetadata(canonicalKey []byte) error
 	MoveMetadata(oldKey, newKey []byte) error
 	CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error
