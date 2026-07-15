@@ -128,16 +128,36 @@ teardown_cluster() {
 	done
 }
 
+# The exec's response can be lost mid-step (network partition, bounded client)
+# while the server-side operation completed, so the download/finalize retries
+# must recognise the FailedPrecondition a repeat then hits as prior success:
+# a repeated download reports "already downloaded"; a repeated finalize
+# reports "no backup downloaded" because finalize consumed the staging — and
+# the download step has already proven the staging existed.
+download_step() {
+	local out
+	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" 2>&1) && return 0
+	case "$out" in *"already downloaded"*) return 0 ;; esac
+	log "download attempt failed: $(printf '%s' "$out" | tail -c 200)"
+	return 1
+}
+
+finalize_step() {
+	local out
+	out=$(exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" 2>&1) && return 0
+	case "$out" in *"no backup downloaded"*) return 0 ;; esac
+	log "finalize attempt failed: $(printf '%s' "$out" | tail -c 200)"
+	return 1
+}
+
 # restore_from_backup -- one attempt at the post-teardown choreography:
 # restore-mode cluster, download + finalize, flip back to the full cluster.
 restore_from_backup() {
 	k apply -f "$RESTORE_SPEC" || { log "applying restore-mode cluster failed"; return 1; }
 	wait_pod_running "$POD_PREFIX-0" || { log "restore-mode pod never ran"; return 1; }
 
-	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" \
-		|| { log "restore download failed"; return 1; }
-	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" \
-		|| { log "restore finalize failed"; return 1; }
+	retry 5 download_step || { log "restore download failed"; return 1; }
+	retry 5 finalize_step || { log "restore finalize failed"; return 1; }
 
 	k apply -f "$NORMAL_SPEC" || { log "applying normal-mode cluster failed"; return 1; }
 	# The restore-mode pod does not roll on its own after the spec flip
