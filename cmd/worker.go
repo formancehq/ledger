@@ -133,7 +133,17 @@ func NewWorkerCommand() *cobra.Command {
 	connect.AddFlags(cmd.Flags())
 	metrics.AddFlags(cmd.Flags())
 	traces.AddFlags(cmd.Flags())
+	// iam.AddFlags registers --aws-region, --aws-access-key-id,
+	// --aws-secret-access-key, --aws-session-token, --aws-profile, and
+	// --aws-role-arn. All flags except --aws-role-arn are consumed by
+	// iam.LoadOptionFromFlags inside connect.ConnectionOptionsFromFlags.
+	// --aws-role-arn is not yet read by iam.LoadOptionFromFlags in go-libs;
+	// passing it has no effect on the credential chain. Full role-assumption
+	// support is tracked for a future go-libs update.
 	iam.AddFlags(cmd.Flags())
+	// Hide --aws-role-arn until go-libs consumes it; exposing a no-op flag
+	// would silently mislead operators configuring RDS IAM role assumption.
+	_ = cmd.Flags().MarkHidden(iam.AWSRoleArnFlag)
 
 	return cmd
 }

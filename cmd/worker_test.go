@@ -59,13 +59,15 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 		require.NotNil(t, f, "--aws-profile flag must be registered on the worker command")
 	})
 
-	// --aws-role-arn is registered by iam.AddFlags. Full role-assumption support
-	// will be implemented in go-libs (iam.LoadOptionFromFlags); for now the flag
-	// is present but not consumed.
-	t.Run("aws-role-arn flag is registered", func(t *testing.T) {
+	// --aws-role-arn is registered by iam.AddFlags but is hidden on the worker
+	// command until iam.LoadOptionFromFlags in go-libs consumes it. Exposing a
+	// no-op flag would silently mislead operators configuring RDS IAM role
+	// assumption. Full support is tracked for a future go-libs update.
+	t.Run("aws-role-arn flag is registered but hidden", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRoleArnFlag)
 		require.NotNil(t, f, "--aws-role-arn flag must be registered on the worker command")
+		assert.True(t, f.Hidden, "--aws-role-arn must be hidden until go-libs consumes it")
 	})
 }
 
