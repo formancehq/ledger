@@ -160,18 +160,22 @@ recording for the worker/recovery side (not the checker):
   logged, purge not yet reached) as the transient case to exclude — not assume
   a deleted ledger keeps a stale cursor forever.
 
-There is deliberately **no** `compare*` pass for `MirrorCursor` in
-`internal/application/check`. Per invariant #8 the checker guards the business
-invariants of the main store against the audit; the cursor is not one of them
-(see the two tamper directions above — the *behind* case is checker-invisible and
-needs functional `v2LogId` idempotency, the *ahead* case is a v2-parity property
-owned by the mirror worker's source-head reconciliation). This is a classification
+There is deliberately **no** `compare*` pass for the `MirrorCursor` *pointer*
+itself in `internal/application/check` — but the correctness-bearing high-water
+mark it tracks, `LedgerBoundaries.last_mirror_v2_log_id`, **is** checker-verified
+by `compareMirrorV2LogID` (EN-1550). Per invariant #8 the checker guards the
+business invariants of the main store against the audit; the cursor pointer is not
+one of them, while the applied-prefix high-water mark is. On the two tamper
+directions above: the *behind* case is **now closed functionally** — EN-1550's
+`v2LogId` idempotency in `processMirrorIngest` makes an already-applied ingest a
+deterministic no-op, so a lowered cursor no longer double-applies. The *ahead*
+case remains a v2-parity property owned by the mirror worker's source-head
+reconciliation (not an audit-vs-store integrity concern). This is a classification
 as technical state, not an unapproved integrity gap: the audit-bound
-`MirrorIngest` orders and the existing volume/transaction passes already secure
-the business truth. Hardening the two tamper directions (ingest idempotency; a
-worker/recovery reconciliation of the cursor against source-head and the highest
-audited `v2LogId`) is tracked as separate functional follow-up, not as a checker
-compare pass.
+`MirrorIngest` orders, the existing volume/transaction passes, and
+`compareMirrorV2LogID` together secure the business truth. The only remaining
+follow-up is a worker/recovery reconciliation of the cursor against the
+source-head for the *ahead* direction — not a checker compare pass.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
 mark) **is** covered by the checker as a full invariant-#8 **equality** check.
@@ -242,7 +246,12 @@ Because Raft replicates the *source* audit/log stream and not the readstore
 bytes, a bit-flip in one replica's index is local and not propagated to the
 others; detecting and repairing it is the index builder's **rebuild-health**
 responsibility (re-derive / verify a READY index against the audit before or
-while it is served), tracked under `EN-1323`.
+while it is served), tracked under `EN-1323`. **This detect/drop/rebuild path is
+not yet wired**: until `EN-1323` lands, a corrupted or tampered READY index is
+served directly with no on-scan fallback and no automatic detection, so treat
+readstore-contents integrity as a current open gap on the peer-store side — the
+"rebuildable cache" classification is what keeps it out of the *main-store*
+checker's scope, not a claim that automated corruption recovery already exists.
 
 This is deliberately **not** folded into `compareIndexes` or any other main-store
 checker pass. The checker's mandate is the authoritative main store; the readstore
