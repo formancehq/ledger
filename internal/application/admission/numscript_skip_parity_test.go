@@ -29,6 +29,37 @@ func scriptOrderWithReference(ledger, plain, reference string, skippable bool) *
 	return order
 }
 
+// postingsOrderWithReference builds a postings-only (no script) CreateTransaction
+// order that carries a transaction reference and (optionally) opts into the
+// TRANSACTION_REFERENCE_CONFLICT skippable reason. Used to guard that the
+// postings-only branch records its reference into the intra-batch overlay just
+// like the scripted branch does.
+func postingsOrderWithReference(ledger, source, destination, asset string, amount uint64, reference string, skippable bool) *raftcmdpb.Order {
+	order := applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
+		Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Reference: reference,
+				Postings: []*commonpb.Posting{
+					{
+						Source:      source,
+						Destination: destination,
+						Amount:      commonpb.NewUint256FromUint64(amount),
+						Asset:       asset,
+					},
+				},
+			},
+		},
+	})
+
+	if skippable {
+		order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		}
+	}
+
+	return order
+}
+
 // revertOrderSkippable builds a revert order opting into the
 // TRANSACTION_ALREADY_REVERTED skippable reason.
 func revertOrderSkippable(ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
@@ -249,6 +280,56 @@ func TestResolveScripts_IntraBatchDuplicateReferenceSkipped(t *testing.T) {
 		"the second create (duplicate reference) is skipped intra-batch — only the first deposit (100) may fold")
 
 	// Sanity: had both deposits folded (200), the hash would differ.
+	storeBoth := createTestStore(t)
+	admissionBoth, _ := createTestAdmission(t, storeBoth)
+	writeVolume(t, admissionBoth, testLedgerName, "ib:src", "USD/2", 200, 0)
+	bothHash := resolveHashFor(t, admissionBoth, []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
+	}, 0)
+	require.NotEqual(t, bothHash, batchHash,
+		"folding both deposits (200) yields a different hash — confirming the second create was suppressed")
+}
+
+// TestResolveScripts_PostingsOnlyReferenceRecordedForIntraBatchSkip pins the
+// NumaryBot blocker: a postings-only (non-scripted) create carrying a reference
+// must record that reference into the intra-batch overlay before continuing, so a
+// later same-batch create with the SAME reference is predicted to skip
+// (TRANSACTION_REFERENCE_CONFLICT) exactly as the FSM will drop it. Before the
+// fix the postings-only branch continued before the reference-recording block, so
+// the duplicate was NOT predicted to skip, its effects were folded as phantom
+// state, and the dependent order's inputs-resolution hash diverged from the FSM —
+// wedging the batch on STALE_INPUTS_RESOLUTION forever.
+func TestResolveScripts_PostingsOnlyReferenceRecordedForIntraBatchSkip(t *testing.T) {
+	t.Parallel()
+
+	// Order 0: POSTINGS-ONLY deposit 100 into ib:src with reference "r".
+	// Order 1: postings-only deposit 100 into ib:src with the SAME reference "r"
+	// + skip opt-in → must be predicted to skip (dropped by the FSM).
+	// Order 2: reads balance(@ib:src) → must resolve to 100 (only order 0), not 200.
+	batch := []*raftcmdpb.Order{
+		postingsOrderWithReference(testLedgerName, "world", "ib:src", "USD/2", 100, "r", true),
+		postingsOrderWithReference(testLedgerName, "world", "ib:src", "USD/2", 100, "r", true),
+		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
+	}
+
+	storeBatch := createTestStore(t)
+	admissionBatch, _ := createTestAdmission(t, storeBatch)
+	batchHash := resolveHashFor(t, admissionBatch, batch, 2)
+	require.NotEmpty(t, batchHash)
+
+	// Reference: order 2 resolved against ib:src = 100 (only the first deposit).
+	storeRef := createTestStore(t)
+	admissionRef, _ := createTestAdmission(t, storeRef)
+	writeVolume(t, admissionRef, testLedgerName, "ib:src", "USD/2", 100, 0)
+	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
+	}, 0)
+
+	require.Equal(t, refHash, batchHash,
+		"the postings-only duplicate-reference create is skipped intra-batch — only the first deposit (100) may fold")
+
+	// Sanity: had both deposits folded (200), the hash would differ — this is the
+	// pre-fix behaviour where the postings-only reference was never recorded.
 	storeBoth := createTestStore(t)
 	admissionBoth, _ := createTestAdmission(t, storeBoth)
 	writeVolume(t, admissionBoth, testLedgerName, "ib:src", "USD/2", 200, 0)

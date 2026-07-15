@@ -1567,6 +1567,17 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// write a later meta() could read.
 			foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
 
+			// Record this create's transaction reference (if any) so a later
+			// same-batch create carrying the same reference is predicted to skip
+			// (TRANSACTION_REFERENCE_CONFLICT). A postings-only create registers
+			// its reference exactly as the FSM will (processCreateTransaction
+			// stores it in TransactionReferences), identically to the scripted
+			// path below — otherwise the later duplicate would be folded as if it
+			// applied, poisoning the inputs-resolution hash with phantom state.
+			if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+				effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+			}
+
 			continue
 		}
 
@@ -1581,6 +1592,21 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			createTx.CreateTransaction.GetForce(),
 		)
 		if err != nil {
+			// Known limitation (EN-1406 follow-up): a retry of an already-frozen
+			// idempotent batch whose inline script *structurally* depends on
+			// read-state that has since changed (e.g. `meta(@cfg,"dest")` used as
+			// a posting account, and that metadata key was deleted after the
+			// original success) fails here instead of replaying the frozen
+			// outcome. Excluding InputsResolutionHash from the idempotency hash
+			// makes the *values* replay-stable, but discovery runs before the
+			// FSM's idempotency dedup, so a hard resolution failure short-circuits
+			// the replay. It is NOT fixed by reading the in-memory IdempotencyStore
+			// here: that map is unlocked and single-threaded on the FSM apply path,
+			// so an admission-side read would data-race with Put. The safe fix is a
+			// leader-side Pebble read (LoadIdempotencyKey) that bypasses discovery
+			// only when a persisted frozen outcome exists, accepting a deterministic
+			// coverage-gate error in the (negligible) TTL-eviction race — tracked as
+			// its own change since it couples admission to the idempotency projection.
 			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
 		}
 
