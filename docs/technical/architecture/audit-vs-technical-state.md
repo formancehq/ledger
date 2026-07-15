@@ -168,14 +168,18 @@ business invariants of the main store against the audit; the cursor pointer is n
 one of them, while the applied-prefix high-water mark is. On the two tamper
 directions above: the *behind* case is **now closed functionally** — EN-1550's
 `v2LogId` idempotency in `processMirrorIngest` makes an already-applied ingest a
-deterministic no-op, so a lowered cursor no longer double-applies. The *ahead*
-case remains a v2-parity property owned by the mirror worker's source-head
-reconciliation (not an audit-vs-store integrity concern). This is a classification
-as technical state, not an unapproved integrity gap: the audit-bound
-`MirrorIngest` orders, the existing volume/transaction passes, and
-`compareMirrorV2LogID` together secure the business truth. The only remaining
-follow-up is a worker/recovery reconciliation of the cursor against the
-source-head for the *ahead* direction — not a checker compare pass.
+deterministic no-op, so a lowered cursor no longer double-applies. The *ahead* case
+is a **current correctness gap**: a cursor advanced (by corruption/tampering)
+beyond the true source head makes the worker fetch no source logs and report
+`FOLLOWING` (cursor ≥ sourceHead), silently under-ingesting v2→v3 with no audit
+entry to catch it — and **no worker/startup safeguard is wired yet**. It is a
+v2-parity property (verifiable only against the worker's tracked source-head, not
+the v3 audit the checker replays), so its home is worker/startup reconciliation
+rather than a checker compare pass — but until that reconciliation lands it
+remains an **open** gap, not a closed one. What *is* secured: the audit-bound
+`MirrorIngest` orders, the volume/transaction passes, and `compareMirrorV2LogID`
+cover everything that actually got ingested; the gap is strictly about source
+logs an advanced cursor causes to be skipped entirely.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
 mark) **is** covered by the checker as a full invariant-#8 **equality** check.
@@ -227,8 +231,8 @@ apply path. Each node's index builder (`internal/application/indexbuilder`)
 populates it **locally** from the replicated log/audit stream, and
 `IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. It is
 therefore a **peer secondary store, out of the main-store checker's scope by
-construction** (invariant #8) — the same category as the `usagestore` counter
-cache. `Check()` opens and walks the main store; it never opens the readstore, so
+construction** (invariant #8) — the same category as the forthcoming
+`usagestore` counter cache (EN-1334). `Check()` opens and walks the main store; it never opens the readstore, so
 `compareIndexes` deliberately verifies only the registry (which lives in the main
 store) and not the inverted-index contents (which do not).
 
