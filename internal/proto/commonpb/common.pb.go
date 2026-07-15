@@ -3122,7 +3122,6 @@ type LogPayload struct {
 	//	*LogPayload_UpdatedPreparedQuery
 	//	*LogPayload_DeletedPreparedQuery
 	//	*LogPayload_SavedNumscript
-	//	*LogPayload_DeletedNumscript
 	//	*LogPayload_CreatedQueryCheckpoint
 	//	*LogPayload_DeletedQueryCheckpoint
 	//	*LogPayload_SetQueryCheckpointSchedule
@@ -3351,15 +3350,6 @@ func (x *LogPayload) GetSavedNumscript() *SavedNumscriptLog {
 	return nil
 }
 
-func (x *LogPayload) GetDeletedNumscript() *DeletedNumscriptLog {
-	if x != nil {
-		if x, ok := x.Type.(*LogPayload_DeletedNumscript); ok {
-			return x.DeletedNumscript
-		}
-	}
-	return nil
-}
-
 func (x *LogPayload) GetCreatedQueryCheckpoint() *CreatedQueryCheckpointLog {
 	if x != nil {
 		if x, ok := x.Type.(*LogPayload_CreatedQueryCheckpoint); ok {
@@ -3498,10 +3488,6 @@ type LogPayload_SavedNumscript struct {
 	SavedNumscript *SavedNumscriptLog `protobuf:"bytes,21,opt,name=saved_numscript,json=savedNumscript,proto3,oneof"`
 }
 
-type LogPayload_DeletedNumscript struct {
-	DeletedNumscript *DeletedNumscriptLog `protobuf:"bytes,22,opt,name=deleted_numscript,json=deletedNumscript,proto3,oneof"`
-}
-
 type LogPayload_CreatedQueryCheckpoint struct {
 	CreatedQueryCheckpoint *CreatedQueryCheckpointLog `protobuf:"bytes,23,opt,name=created_query_checkpoint,json=createdQueryCheckpoint,proto3,oneof"`
 }
@@ -3565,8 +3551,6 @@ func (*LogPayload_UpdatedPreparedQuery) isLogPayload_Type() {}
 func (*LogPayload_DeletedPreparedQuery) isLogPayload_Type() {}
 
 func (*LogPayload_SavedNumscript) isLogPayload_Type() {}
-
-func (*LogPayload_DeletedNumscript) isLogPayload_Type() {}
 
 func (*LogPayload_CreatedQueryCheckpoint) isLogPayload_Type() {}
 
@@ -4599,7 +4583,7 @@ func (x *DeletedLedgerMetadataLog) GetKey() string {
 	return ""
 }
 
-// NumscriptInfo represents a stored numscript with versioning.
+// NumscriptInfo represents a stored, immutable numscript version.
 type NumscriptInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -4676,7 +4660,7 @@ func (x *NumscriptInfo) GetLedger() string {
 	return ""
 }
 
-// SavedNumscriptLog records a numscript being saved to the library.
+// SavedNumscriptLog records a numscript version being saved to the library.
 type SavedNumscriptLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Info          *NumscriptInfo         `protobuf:"bytes,1,opt,name=info,proto3" json:"info,omitempty"`
@@ -4721,29 +4705,29 @@ func (x *SavedNumscriptLog) GetInfo() *NumscriptInfo {
 	return nil
 }
 
-// DeletedNumscriptLog records a numscript being deleted from the library.
-type DeletedNumscriptLog struct {
+// NumscriptVersionEntry describes one stored, immutable version of a numscript.
+type NumscriptVersionEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	CreatedAt     *Timestamp             `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DeletedNumscriptLog) Reset() {
-	*x = DeletedNumscriptLog{}
+func (x *NumscriptVersionEntry) Reset() {
+	*x = NumscriptVersionEntry{}
 	mi := &file_common_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *DeletedNumscriptLog) String() string {
+func (x *NumscriptVersionEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeletedNumscriptLog) ProtoMessage() {}
+func (*NumscriptVersionEntry) ProtoMessage() {}
 
-func (x *DeletedNumscriptLog) ProtoReflect() protoreflect.Message {
+func (x *NumscriptVersionEntry) ProtoReflect() protoreflect.Message {
 	mi := &file_common_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4755,23 +4739,23 @@ func (x *DeletedNumscriptLog) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use DeletedNumscriptLog.ProtoReflect.Descriptor instead.
-func (*DeletedNumscriptLog) Descriptor() ([]byte, []int) {
+// Deprecated: Use NumscriptVersionEntry.ProtoReflect.Descriptor instead.
+func (*NumscriptVersionEntry) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{48}
 }
 
-func (x *DeletedNumscriptLog) GetName() string {
+func (x *NumscriptVersionEntry) GetVersion() string {
 	if x != nil {
-		return x.Name
+		return x.Version
 	}
 	return ""
 }
 
-func (x *DeletedNumscriptLog) GetLedger() string {
+func (x *NumscriptVersionEntry) GetCreatedAt() *Timestamp {
 	if x != nil {
-		return x.Ledger
+		return x.CreatedAt
 	}
-	return ""
+	return nil
 }
 
 // TemplateUsage tracks per-template invocation usage. Persisted as a
@@ -13043,7 +13027,7 @@ const file_common_proto_rawDesc = "" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12\x18\n" +
 	"\areceipt\x18\x06 \x01(\tR\areceipt\x12C\n" +
-	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\xab\x11\n" +
+	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x92\x11\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +
@@ -13066,15 +13050,14 @@ const file_common_proto_rawDesc = "" +
 	"\x16created_prepared_query\x18\x12 \x01(\v2\x1f.common.CreatedPreparedQueryLogH\x00R\x14createdPreparedQuery\x12W\n" +
 	"\x16updated_prepared_query\x18\x13 \x01(\v2\x1f.common.UpdatedPreparedQueryLogH\x00R\x14updatedPreparedQuery\x12W\n" +
 	"\x16deleted_prepared_query\x18\x14 \x01(\v2\x1f.common.DeletedPreparedQueryLogH\x00R\x14deletedPreparedQuery\x12D\n" +
-	"\x0fsaved_numscript\x18\x15 \x01(\v2\x19.common.SavedNumscriptLogH\x00R\x0esavedNumscript\x12J\n" +
-	"\x11deleted_numscript\x18\x16 \x01(\v2\x1b.common.DeletedNumscriptLogH\x00R\x10deletedNumscript\x12]\n" +
+	"\x0fsaved_numscript\x18\x15 \x01(\v2\x19.common.SavedNumscriptLogH\x00R\x0esavedNumscript\x12]\n" +
 	"\x18created_query_checkpoint\x18\x17 \x01(\v2!.common.CreatedQueryCheckpointLogH\x00R\x16createdQueryCheckpoint\x12]\n" +
 	"\x18deleted_query_checkpoint\x18\x18 \x01(\v2!.common.DeletedQueryCheckpointLogH\x00R\x16deletedQueryCheckpoint\x12j\n" +
 	"\x1dset_query_checkpoint_schedule\x18\x19 \x01(\v2%.common.SetQueryCheckpointScheduleLogH\x00R\x1asetQueryCheckpointSchedule\x12t\n" +
 	" delete_query_checkpoint_schedule\x18\x1a \x01(\v2).common.DeletedQueryCheckpointScheduleLogH\x00R\x1ddeleteQueryCheckpointSchedule\x12T\n" +
 	"\x15saved_ledger_metadata\x18\x1b \x01(\v2\x1e.common.SavedLedgerMetadataLogH\x00R\x13savedLedgerMetadata\x12Z\n" +
 	"\x17deleted_ledger_metadata\x18\x1c \x01(\v2 .common.DeletedLedgerMetadataLogH\x00R\x15deletedLedgerMetadataB\x06\n" +
-	"\x04type\"'\n" +
+	"\x04typeJ\x04\b\x16\x10\x17J\x04\b\x1d\x10\x1eR\x11deleted_numscriptR\x12restored_numscript\"'\n" +
 	"\x11PromotedLedgerLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
 	"\x17RegisteredSigningKeyLog\x12\x15\n" +
@@ -13145,19 +13128,20 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"D\n" +
 	"\x18DeletedLedgerMetadataLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xa1\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xb0\x01\n" +
 	"\rNumscriptInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x120\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06ledger\x18\x05 \x01(\tR\x06ledger\">\n" +
+	"\x06ledger\x18\x05 \x01(\tR\x06ledgerJ\x04\b\x06\x10\aR\adeleted\">\n" +
 	"\x11SavedNumscriptLog\x12)\n" +
-	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"A\n" +
-	"\x13DeletedNumscriptLog\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"U\n" +
+	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"q\n" +
+	"\x15NumscriptVersionEntry\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x120\n" +
+	"\n" +
+	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAtJ\x04\b\x03\x10\x04R\x06status\"U\n" +
 	"\rTemplateUsage\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x06R\x05count\x12.\n" +
 	"\tlast_used\x18\x02 \x01(\v2\x11.common.TimestampR\blastUsed\"3\n" +
@@ -13967,7 +13951,7 @@ var file_common_proto_goTypes = []any{
 	(*DeletedLedgerMetadataLog)(nil),                 // 63: common.DeletedLedgerMetadataLog
 	(*NumscriptInfo)(nil),                            // 64: common.NumscriptInfo
 	(*SavedNumscriptLog)(nil),                        // 65: common.SavedNumscriptLog
-	(*DeletedNumscriptLog)(nil),                      // 66: common.DeletedNumscriptLog
+	(*NumscriptVersionEntry)(nil),                    // 66: common.NumscriptVersionEntry
 	(*TemplateUsage)(nil),                            // 67: common.TemplateUsage
 	(*SetQueryCheckpointScheduleLog)(nil),            // 68: common.SetQueryCheckpointScheduleLog
 	(*DeletedQueryCheckpointScheduleLog)(nil),        // 69: common.DeletedQueryCheckpointScheduleLog
@@ -14159,34 +14143,34 @@ var file_common_proto_depIdxs = []int32{
 	60,  // 54: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
 	61,  // 55: common.LogPayload.deleted_prepared_query:type_name -> common.DeletedPreparedQueryLog
 	65,  // 56: common.LogPayload.saved_numscript:type_name -> common.SavedNumscriptLog
-	66,  // 57: common.LogPayload.deleted_numscript:type_name -> common.DeletedNumscriptLog
-	70,  // 58: common.LogPayload.created_query_checkpoint:type_name -> common.CreatedQueryCheckpointLog
-	71,  // 59: common.LogPayload.deleted_query_checkpoint:type_name -> common.DeletedQueryCheckpointLog
-	68,  // 60: common.LogPayload.set_query_checkpoint_schedule:type_name -> common.SetQueryCheckpointScheduleLog
-	69,  // 61: common.LogPayload.delete_query_checkpoint_schedule:type_name -> common.DeletedQueryCheckpointScheduleLog
-	62,  // 62: common.LogPayload.saved_ledger_metadata:type_name -> common.SavedLedgerMetadataLog
-	63,  // 63: common.LogPayload.deleted_ledger_metadata:type_name -> common.DeletedLedgerMetadataLog
-	72,  // 64: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
-	54,  // 65: common.ClusterConfig.bloom_volumes:type_name -> common.BloomTypeConfig
-	54,  // 66: common.ClusterConfig.bloom_metadata:type_name -> common.BloomTypeConfig
-	54,  // 67: common.ClusterConfig.bloom_references:type_name -> common.BloomTypeConfig
-	54,  // 68: common.ClusterConfig.bloom_ledgers:type_name -> common.BloomTypeConfig
-	54,  // 69: common.ClusterConfig.bloom_boundaries:type_name -> common.BloomTypeConfig
-	54,  // 70: common.ClusterConfig.bloom_transactions:type_name -> common.BloomTypeConfig
-	54,  // 71: common.ClusterConfig.bloom_sink_configs:type_name -> common.BloomTypeConfig
-	54,  // 72: common.ClusterConfig.bloom_numscript_versions:type_name -> common.BloomTypeConfig
-	54,  // 73: common.ClusterConfig.bloom_numscript_contents:type_name -> common.BloomTypeConfig
-	6,   // 74: common.ClusterConfig.hash_algorithm:type_name -> common.HashAlgorithm
-	54,  // 75: common.ClusterConfig.bloom_ledger_metadata:type_name -> common.BloomTypeConfig
-	54,  // 76: common.ClusterConfig.bloom_prepared_queries:type_name -> common.BloomTypeConfig
-	54,  // 77: common.ClusterConfig.bloom_indexes:type_name -> common.BloomTypeConfig
-	55,  // 78: common.PersistedClusterState.config:type_name -> common.ClusterConfig
-	164, // 79: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
-	144, // 80: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
-	144, // 81: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	186, // 82: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
-	18,  // 83: common.NumscriptInfo.created_at:type_name -> common.Timestamp
-	64,  // 84: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
+	70,  // 57: common.LogPayload.created_query_checkpoint:type_name -> common.CreatedQueryCheckpointLog
+	71,  // 58: common.LogPayload.deleted_query_checkpoint:type_name -> common.DeletedQueryCheckpointLog
+	68,  // 59: common.LogPayload.set_query_checkpoint_schedule:type_name -> common.SetQueryCheckpointScheduleLog
+	69,  // 60: common.LogPayload.delete_query_checkpoint_schedule:type_name -> common.DeletedQueryCheckpointScheduleLog
+	62,  // 61: common.LogPayload.saved_ledger_metadata:type_name -> common.SavedLedgerMetadataLog
+	63,  // 62: common.LogPayload.deleted_ledger_metadata:type_name -> common.DeletedLedgerMetadataLog
+	72,  // 63: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
+	54,  // 64: common.ClusterConfig.bloom_volumes:type_name -> common.BloomTypeConfig
+	54,  // 65: common.ClusterConfig.bloom_metadata:type_name -> common.BloomTypeConfig
+	54,  // 66: common.ClusterConfig.bloom_references:type_name -> common.BloomTypeConfig
+	54,  // 67: common.ClusterConfig.bloom_ledgers:type_name -> common.BloomTypeConfig
+	54,  // 68: common.ClusterConfig.bloom_boundaries:type_name -> common.BloomTypeConfig
+	54,  // 69: common.ClusterConfig.bloom_transactions:type_name -> common.BloomTypeConfig
+	54,  // 70: common.ClusterConfig.bloom_sink_configs:type_name -> common.BloomTypeConfig
+	54,  // 71: common.ClusterConfig.bloom_numscript_versions:type_name -> common.BloomTypeConfig
+	54,  // 72: common.ClusterConfig.bloom_numscript_contents:type_name -> common.BloomTypeConfig
+	6,   // 73: common.ClusterConfig.hash_algorithm:type_name -> common.HashAlgorithm
+	54,  // 74: common.ClusterConfig.bloom_ledger_metadata:type_name -> common.BloomTypeConfig
+	54,  // 75: common.ClusterConfig.bloom_prepared_queries:type_name -> common.BloomTypeConfig
+	54,  // 76: common.ClusterConfig.bloom_indexes:type_name -> common.BloomTypeConfig
+	55,  // 77: common.PersistedClusterState.config:type_name -> common.ClusterConfig
+	164, // 78: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
+	144, // 79: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
+	144, // 80: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
+	186, // 81: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
+	18,  // 82: common.NumscriptInfo.created_at:type_name -> common.Timestamp
+	64,  // 83: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
+	18,  // 84: common.NumscriptVersionEntry.created_at:type_name -> common.Timestamp
 	18,  // 85: common.TemplateUsage.last_used:type_name -> common.Timestamp
 	75,  // 86: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
 	76,  // 87: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
@@ -14435,7 +14419,6 @@ func file_common_proto_init() {
 		(*LogPayload_UpdatedPreparedQuery)(nil),
 		(*LogPayload_DeletedPreparedQuery)(nil),
 		(*LogPayload_SavedNumscript)(nil),
-		(*LogPayload_DeletedNumscript)(nil),
 		(*LogPayload_CreatedQueryCheckpoint)(nil),
 		(*LogPayload_DeletedQueryCheckpoint)(nil),
 		(*LogPayload_SetQueryCheckpointSchedule)(nil),

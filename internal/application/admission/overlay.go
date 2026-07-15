@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -83,18 +84,32 @@ func newBulkOverlay() *bulkOverlay {
 	}
 }
 
-// recordNumscriptSave records a numscript save in the overlay.
-// Version normalization mirrors the FSM behavior: "" becomes "latest".
+// recordNumscriptSave records an immutable save in the overlay and advances the
+// per-name latest to the greatest semver seen so far in this bulk, mirroring the
+// FSM's max-pointer maintenance.
 func (o *bulkOverlay) recordNumscriptSave(ledger, name, version, content string) {
-	if version == "" {
-		version = "latest"
+	o.numscriptEntries.Put(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}, content)
+
+	nameKey := numscriptNameKey{Ledger: ledger, Name: name}
+	if cur, ok := o.numscriptLatest.Get(nameKey); ok && !greaterSemver(version, cur) {
+		return
 	}
 
-	o.numscriptEntries.Put(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}, content)
-	o.numscriptLatest.Put(numscriptNameKey{Ledger: ledger, Name: name}, version)
+	o.numscriptLatest.Put(nameKey, version)
 }
 
-// recordNumscriptDelete marks a numscript as deleted in the overlay.
-func (o *bulkOverlay) recordNumscriptDelete(ledger, name string) {
-	o.numscriptLatest.Delete(numscriptNameKey{Ledger: ledger, Name: name})
+// greaterSemver reports whether a is a strictly greater full semver than b.
+// A non-semver b (or empty) is treated as smaller so a valid save always wins.
+func greaterSemver(a, b string) bool {
+	av, aerr := semver.Parse(a)
+	bv, berr := semver.Parse(b)
+	if aerr != nil {
+		return false
+	}
+
+	if berr != nil {
+		return true
+	}
+
+	return av.Compare(bv) > 0
 }

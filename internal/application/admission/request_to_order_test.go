@@ -206,21 +206,6 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			},
 		},
 		{
-			name: "delete_numscript",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteNumscript{
-				DeleteNumscript: &servicepb.DeleteNumscriptRequest{Ledger: ledger, Name: "tx"},
-			}},
-			expect: expect{
-				kind:   wrapLedger,
-				ledger: ledger,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					dn := mustLedgerScoped(t, o).GetDeleteNumscript()
-					require.NotNil(t, dn)
-					require.Equal(t, "tx", dn.GetName())
-				},
-			},
-		},
-		{
 			name: "apply/set_metadata_field_type",
 			req: &servicepb.Request{Type: &servicepb.Request_SetMetadataFieldType{
 				SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{

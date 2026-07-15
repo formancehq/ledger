@@ -40,9 +40,7 @@ var (
 	CreateLedgerWithSchemaAction       = actions.CreateLedgerWithSchemaAction
 	SaveTypedAccountMetadataAction     = actions.SaveTypedAccountMetadataAction
 	SaveTypedTransactionMetadataAction = actions.SaveTypedTransactionMetadataAction
-	SaveNumscriptAction                = actions.SaveNumscriptAction
 	SaveNumscriptWithVersionAction     = actions.SaveNumscriptWithVersionAction
-	DeleteNumscriptAction              = actions.DeleteNumscriptAction
 	CreateScriptRefTransactionAction   = actions.CreateScriptRefTransactionAction
 	CreateBuiltinTxIndexAction         = actions.CreateBuiltinTxIndexAction
 	DropBuiltinTxIndexAction           = actions.DropBuiltinTxIndexAction

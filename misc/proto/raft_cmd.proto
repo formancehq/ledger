@@ -87,6 +87,8 @@ message OrderTechnical {
 // their own ledger field.
 message LedgerScopedOrder {
   string ledger = 1;
+  reserved 10, 14;
+  reserved "delete_numscript", "restore_numscript";
   oneof payload {
     LedgerApplyOrder apply = 2;
     CreateLedgerOrder create_ledger = 3;
@@ -96,7 +98,6 @@ message LedgerScopedOrder {
     SaveLedgerMetadataOrder save_ledger_metadata = 7;
     DeleteLedgerMetadataOrder delete_ledger_metadata = 8;
     SaveNumscriptOrder save_numscript = 9;
-    DeleteNumscriptOrder delete_numscript = 10;
     CreatePreparedQueryOrder create_prepared_query = 11;
     UpdatePreparedQueryOrder update_prepared_query = 12;
     DeletePreparedQueryOrder delete_prepared_query = 13;
@@ -190,14 +191,12 @@ message SetChapterScheduleOrder {
 
 message DeleteChapterScheduleOrder {}
 
+// SaveNumscriptOrder appends an immutable version to the library. version must
+// be an explicit full semver.
 message SaveNumscriptOrder {
   string name = 1;
   string content = 2;
   string version = 3;
-}
-
-message DeleteNumscriptOrder {
-  string name = 1;
 }
 
 // CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.

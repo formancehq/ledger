@@ -62,6 +62,8 @@ type testEngine struct {
 	references             map[string]*commonpb.TransactionReferenceValue
 	transactionStates      map[string]*commonpb.TransactionState
 	reversions             map[string]*bitset.Bitset
+	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
+	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
 	currentOpenChapter     *commonpb.Chapter
 	closingChapters        []*commonpb.Chapter
 	nextLedgerID           uint32
@@ -102,6 +104,8 @@ func newTestEngine(t *testing.T) *testEngine {
 		references:          make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates:   make(map[string]*commonpb.TransactionState),
 		reversions:          make(map[string]*bitset.Bitset),
+		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
+		numscriptLatest:     make(map[string]string),
 		nextChapterID:       1,
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
@@ -228,6 +232,19 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	// and are out of main-store checker scope.
 	for name, b := range e.boundaries {
 		_, err := e.attrs.Boundary.Set(batch, domain.LedgerKey{Name: name}.Bytes(), b)
+		require.NoError(e.t, err)
+	}
+
+	// Persist the numscript projections (content + latest pointers) that the
+	// FSM would write via PutNumscript / SetNumscriptLatestVersion. Full
+	// re-persist each commit is idempotent and the maps are tiny in tests.
+	for keyStr, info := range e.numscriptContent {
+		_, err := e.attrs.NumscriptContent.Set(batch, []byte(keyStr), info)
+		require.NoError(e.t, err)
+	}
+
+	for keyStr, version := range e.numscriptLatest {
+		_, err := e.attrs.NumscriptVersion.Set(batch, []byte(keyStr), &commonpb.NumscriptVersionValue{Version: version})
 		require.NoError(e.t, err)
 	}
 
@@ -696,20 +713,37 @@ func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}
 func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
 	return nil, nil
 }
-func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery)         {}
-func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)                       {}
-func (s *scopeImpl) GetNumscriptLatestVersion(_ string, _ string) (string, error) { return "", nil }
-func (s *scopeImpl) NumscriptVersionExists(_ string, _, _ string) (bool, error) {
-	return false, nil
+func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery) {}
+func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)               {}
+func (s *scopeImpl) GetNumscriptLatestVersion(ledger, name string) (string, error) {
+	return s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())], nil
 }
-func (s *scopeImpl) PutNumscript(_ string, _ *commonpb.NumscriptInfo)      {}
-func (s *scopeImpl) DeleteNumscriptLatest(_ string, _ string)              {}
+func (s *scopeImpl) NumscriptVersionExists(ledger, name, version string) (bool, error) {
+	_, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
+
+	return ok, nil
+}
+func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
+	s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: info.GetName(), Version: info.GetVersion()}.Bytes())] = info
+	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: info.GetName()}.Bytes())] = info.GetVersion()
+}
+func (s *scopeImpl) DeleteNumscriptLatest(ledger, name string) {
+	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = ""
+}
+func (s *scopeImpl) SetNumscriptLatestVersion(ledger, name, version string) {
+	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = version
+}
 func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { return 1 }
 func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
 func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
-func (s *scopeImpl) ResolveNumscriptContent(_ string, _, _ string) (commonpb.NumscriptInfoReader, error) {
-	return nil, nil
+func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
+	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
+	if !ok {
+		return nil, nil
+	}
+
+	return info.AsReader(), nil
 }
 
 // Index registry stubs — the check engine doesn't exercise CreateIndex /

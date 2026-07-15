@@ -453,6 +453,18 @@ func (k NumscriptVersionKey) Bytes() []byte {
 	return k.AppendBytes(nil)
 }
 
+func (k *NumscriptVersionKey) Unmarshal(d []byte) error {
+	name, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid numscript version key bytes: %w", err)
+	}
+
+	k.LedgerName = name
+	k.Name = string(rest)
+
+	return nil
+}
+
 // NumscriptEntryKey uniquely identifies a specific numscript version entry scoped to a ledger.
 type NumscriptEntryKey struct {
 	LedgerName string
@@ -471,6 +483,26 @@ func (k NumscriptEntryKey) AppendBytes(dst []byte) []byte {
 
 func (k NumscriptEntryKey) Bytes() []byte {
 	return k.AppendBytes(nil)
+}
+
+func (k *NumscriptEntryKey) Unmarshal(d []byte) error {
+	ledger, rest, err := readLedgerName(d)
+	if err != nil {
+		return fmt.Errorf("invalid numscript entry key bytes: %w", err)
+	}
+
+	// rest is [name][0x00][version]; names are validated printable ASCII, so
+	// the first NUL byte is the name/version separator.
+	before, after, ok := bytes.Cut(rest, []byte{0x00})
+	if !ok {
+		return errors.New("invalid numscript entry key bytes: missing name/version separator")
+	}
+
+	k.LedgerName = ledger
+	k.Name = string(before)
+	k.Version = string(after)
+
+	return nil
 }
 
 const (

@@ -450,6 +450,22 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, ledgerName, afterSequence, p
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockController)(nil).ListLogs), ctx, ledgerName, afterSequence, pageSize, filter)
 }
 
+// ListNumscriptVersions mocks base method.
+func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNumscriptVersions", ctx, ledger, name)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].([]*commonpb.NumscriptVersionEntry)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListNumscriptVersions indicates an expected call of ListNumscriptVersions.
+func (mr *MockControllerMockRecorder) ListNumscriptVersions(ctx, ledger, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscriptVersions", reflect.TypeOf((*MockController)(nil).ListNumscriptVersions), ctx, ledger, name)
+}
+
 // ListNumscripts mocks base method.
 func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()

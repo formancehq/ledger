@@ -1502,6 +1502,33 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	})
 }
 
+func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, req *servicepb.ListNumscriptVersionsRequest) (*servicepb.ListNumscriptVersionsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
+		return nil, err
+	}
+
+	read := req.GetRead()
+
+	if read.GetCheckpointId() == 0 {
+		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
+			return nil, err
+		}
+	}
+
+	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	latest, versions, err := c.ListNumscriptVersions(ctx, req.GetLedger(), req.GetName())
+	if err != nil {
+		return nil, err
+	}
+
+	return &servicepb.ListNumscriptVersionsResponse{LatestVersion: latest, Versions: versions}, nil
+}
+
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return nil, err

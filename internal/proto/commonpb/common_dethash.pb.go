@@ -960,16 +960,6 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0xaa
 		}
-	case *LogPayload_DeletedNumscript:
-		if v.DeletedNumscript != nil {
-			size, _ := v.DeletedNumscript.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xb2
-		}
 	case *LogPayload_CreatedQueryCheckpoint:
 		if v.CreatedQueryCheckpoint != nil {
 			size, _ := v.CreatedQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
@@ -1300,7 +1290,7 @@ func (m *SavedNumscriptLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DeletedNumscriptLog) MarshalDeterministicVT(dAtA []byte) []byte {
+func (m *NumscriptVersionEntry) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

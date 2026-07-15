@@ -18,6 +18,32 @@ func (v Version) String() string {
 	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
+// Compare returns -1 if v < o, +1 if v > o, and 0 if they are equal.
+func (v Version) Compare(o Version) int {
+	switch {
+	case v.Major != o.Major:
+		if v.Major < o.Major {
+			return -1
+		}
+
+		return 1
+	case v.Minor != o.Minor:
+		if v.Minor < o.Minor {
+			return -1
+		}
+
+		return 1
+	case v.Patch != o.Patch:
+		if v.Patch < o.Patch {
+			return -1
+		}
+
+		return 1
+	default:
+		return 0
+	}
+}
+
 // Parse parses a strict "major.minor.patch" version string.
 func Parse(s string) (Version, error) {
 	parts := strings.Split(s, ".")

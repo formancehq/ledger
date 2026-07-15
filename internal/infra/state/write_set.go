@@ -1681,8 +1681,11 @@ func (b *WriteSet) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
 	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: info.GetName(), Version: info.GetVersion()}, info)
 }
 
-func (b *WriteSet) DeleteNumscriptLatest(ledgerName string, name string) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}, &commonpb.NumscriptVersionValue{})
+// SetNumscriptLatestVersion sets the per-name latest pointer. Used by save to
+// keep the pointer at the greatest stored semver when versions are added out
+// of order.
+func (b *WriteSet) SetNumscriptLatestVersion(ledgerName string, name, version string) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}, &commonpb.NumscriptVersionValue{Version: version})
 }
 
 func (b *WriteSet) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {

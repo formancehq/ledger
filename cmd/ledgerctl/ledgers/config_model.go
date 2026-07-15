@@ -781,24 +781,7 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) []DiffA
 		}
 	}
 
-	// Removed
-	for name := range current.Numscripts {
-		if _, exists := desired.Numscripts[name]; !exists {
-			actions = append(actions, DiffAction{
-				Section:     "numscript",
-				Operation:   "remove",
-				Description: fmt.Sprintf("Delete numscript %q", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DeleteNumscript{
-						DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-							Ledger: ledgerName,
-							Name:   name,
-						},
-					},
-				},
-			})
-		}
-	}
+	// Numscripts are immutable and append-only — there is no removal action.
 
 	return actions
 }

@@ -469,8 +469,6 @@ func processLedgerScoped(ls *raftcmdpb.LedgerScopedOrder, ctx *Context) (*common
 		return processDeleteLedgerMetadata(ledger, payload.DeleteLedgerMetadata, ctx)
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
 		return processSaveNumscript(ledger, payload.SaveNumscript, ctx)
-	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		return processDeleteNumscript(ledger, payload.DeleteNumscript, ctx)
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		return processCreatePreparedQuery(ledger, payload.CreatePreparedQuery, ctx)
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:

@@ -589,16 +589,6 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0xda
 		}
-	case *Request_DeleteNumscript:
-		if v.DeleteNumscript != nil {
-			size, _ := v.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xe2
-		}
 	case *Request_AddAccountType:
 		if v.AddAccountType != nil {
 			size, _ := v.AddAccountType.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -1003,17 +993,6 @@ func (m *SaveNumscriptRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *DeleteNumscriptRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *GetNumscriptRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -1026,6 +1005,28 @@ func (m *GetNumscriptRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *ListNumscriptsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *ListNumscriptVersionsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *ListNumscriptVersionsResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

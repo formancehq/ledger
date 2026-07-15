@@ -3998,53 +3998,57 @@ func NewSavedNumscriptLogListReader(s []*SavedNumscriptLog) SavedNumscriptLogLis
 	return savedNumscriptLogListReadonly(s)
 }
 
-// DeletedNumscriptLogReader provides read-only access to DeletedNumscriptLog.
+// NumscriptVersionEntryReader provides read-only access to NumscriptVersionEntry.
 // Call Mutate() to obtain a mutable clone.
-type DeletedNumscriptLogReader interface {
-	GetName() string
-	GetLedger() string
-	Mutate() *DeletedNumscriptLog
+type NumscriptVersionEntryReader interface {
+	GetVersion() string
+	GetCreatedAt() TimestampReader
+	Mutate() *NumscriptVersionEntry
 }
 
-type deletedNumscriptLogReadonly DeletedNumscriptLog
+type numscriptVersionEntryReadonly NumscriptVersionEntry
 
-func (r *deletedNumscriptLogReadonly) GetName() string {
-	return (*DeletedNumscriptLog)(r).GetName()
+func (r *numscriptVersionEntryReadonly) GetVersion() string {
+	return (*NumscriptVersionEntry)(r).GetVersion()
 }
 
-func (r *deletedNumscriptLogReadonly) GetLedger() string {
-	return (*DeletedNumscriptLog)(r).GetLedger()
+func (r *numscriptVersionEntryReadonly) GetCreatedAt() TimestampReader {
+	v := (*NumscriptVersionEntry)(r).GetCreatedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *deletedNumscriptLogReadonly) Mutate() *DeletedNumscriptLog {
-	return (*DeletedNumscriptLog)(r).CloneVT()
+func (r *numscriptVersionEntryReadonly) Mutate() *NumscriptVersionEntry {
+	return (*NumscriptVersionEntry)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this DeletedNumscriptLog.
-func (m *DeletedNumscriptLog) AsReader() DeletedNumscriptLogReader {
+// AsReader returns a read-only view of this NumscriptVersionEntry.
+func (m *NumscriptVersionEntry) AsReader() NumscriptVersionEntryReader {
 	if m == nil {
 		return nil
 	}
-	return (*deletedNumscriptLogReadonly)(m)
+	return (*numscriptVersionEntryReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this DeletedNumscriptLog.
-func (m *DeletedNumscriptLog) Mutate() *DeletedNumscriptLog {
+// Mutate returns a mutable deep clone of this NumscriptVersionEntry.
+func (m *NumscriptVersionEntry) Mutate() *NumscriptVersionEntry {
 	return m.CloneVT()
 }
 
-// DeletedNumscriptLogListReader provides read-only iteration over []*DeletedNumscriptLog.
-type DeletedNumscriptLogListReader interface {
+// NumscriptVersionEntryListReader provides read-only iteration over []*NumscriptVersionEntry.
+type NumscriptVersionEntryListReader interface {
 	Len() int
-	Get(i int) DeletedNumscriptLogReader
-	Range(yield func(int, DeletedNumscriptLogReader) bool)
+	Get(i int) NumscriptVersionEntryReader
+	Range(yield func(int, NumscriptVersionEntryReader) bool)
 }
 
-type deletedNumscriptLogListReadonly []*DeletedNumscriptLog
+type numscriptVersionEntryListReadonly []*NumscriptVersionEntry
 
-func (l deletedNumscriptLogListReadonly) Len() int { return len(l) }
+func (l numscriptVersionEntryListReadonly) Len() int { return len(l) }
 
-func (l deletedNumscriptLogListReadonly) Get(i int) DeletedNumscriptLogReader {
+func (l numscriptVersionEntryListReadonly) Get(i int) NumscriptVersionEntryReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -4052,9 +4056,9 @@ func (l deletedNumscriptLogListReadonly) Get(i int) DeletedNumscriptLogReader {
 	return v.AsReader()
 }
 
-func (l deletedNumscriptLogListReadonly) Range(yield func(int, DeletedNumscriptLogReader) bool) {
+func (l numscriptVersionEntryListReadonly) Range(yield func(int, NumscriptVersionEntryReader) bool) {
 	for i, v := range l {
-		var r DeletedNumscriptLogReader
+		var r NumscriptVersionEntryReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -4064,10 +4068,10 @@ func (l deletedNumscriptLogListReadonly) Range(yield func(int, DeletedNumscriptL
 	}
 }
 
-// NewDeletedNumscriptLogListReader wraps s for read-only iteration. The returned
+// NewNumscriptVersionEntryListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewDeletedNumscriptLogListReader(s []*DeletedNumscriptLog) DeletedNumscriptLogListReader {
-	return deletedNumscriptLogListReadonly(s)
+func NewNumscriptVersionEntryListReader(s []*NumscriptVersionEntry) NumscriptVersionEntryListReader {
+	return numscriptVersionEntryListReadonly(s)
 }
 
 // TemplateUsageReader provides read-only access to TemplateUsage.

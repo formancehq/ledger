@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -61,6 +62,9 @@ func RebuildDelta(
 	numscriptContent := attrs.NumscriptContent
 	numscriptVersion := attrs.NumscriptVersion
 	ledgerMetadata := attrs.LedgerMetadata
+	// Greatest semver seen per (ledger, name) — the write session is not
+	// readable, so track the latest pointer's target in memory during replay.
+	numscriptGreatest := make(map[string]string)
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
@@ -333,9 +337,18 @@ func RebuildDelta(
 					return fmt.Errorf("saving numscript at log %d: %w", seq, err)
 				}
 
+				// The latest pointer is the greatest stored semver; versions may
+				// be saved out of order, so advance it only when the new version
+				// is greater.
 				versionKey := domain.NumscriptVersionKey{LedgerName: nsLedger, Name: info.GetName()}
-				versionVal := &commonpb.NumscriptVersionValue{Version: info.GetVersion()}
-				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), versionVal); err != nil {
+				keyStr := string(versionKey.Bytes())
+				greatest := info.GetVersion()
+				if prev, ok := numscriptGreatest[keyStr]; ok && !numscriptVersionGreater(greatest, prev) {
+					greatest = prev
+				}
+				numscriptGreatest[keyStr] = greatest
+
+				if _, err := numscriptVersion.Set(batch, versionKey.Bytes(), &commonpb.NumscriptVersionValue{Version: greatest}); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving numscript version at log %d: %w", seq, err)
@@ -373,7 +386,6 @@ func RebuildDelta(
 		case *commonpb.LogPayload_ConfirmArchiveChapter:
 		case *commonpb.LogPayload_DeleteChapterSchedule:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
-		case *commonpb.LogPayload_DeletedNumscript:
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:
 		case *commonpb.LogPayload_DeletedQueryCheckpoint:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
@@ -1199,4 +1211,20 @@ func (w *attributeReplayWriter) DeleteTxMetadata(canonicalKey []byte, key string
 	w.pendingTx[string(canonicalKey)] = existing
 
 	return nil
+}
+
+// numscriptVersionGreater reports whether a is a strictly greater full semver
+// than b. A non-semver b is treated as smaller so a valid version always wins.
+func numscriptVersionGreater(a, b string) bool {
+	av, aerr := semver.Parse(a)
+	bv, berr := semver.Parse(b)
+	if aerr != nil {
+		return false
+	}
+
+	if berr != nil {
+		return true
+	}
+
+	return av.Compare(bv) > 0
 }
