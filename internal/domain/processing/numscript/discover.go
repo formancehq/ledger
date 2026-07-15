@@ -103,6 +103,16 @@ func DiscoverNumscriptDependencies(
 	}
 
 	for dep := range resolved.AccountsWrites {
+		// Reject color/scope-qualified WRITE dependencies. The read side already
+		// rejects qualified reads (store.go), but writes are recorded without
+		// touching the Store, so an unbounded colored source or a colored/scoped
+		// destination would otherwise be silently collapsed onto the unqualified
+		// (account, asset) volume — a silent semantic loss, since Ledger volumes
+		// have no color/scope dimension (color is EN-1334, not this PR). Definitive
+		// rejection, matching the read-side contract.
+		if dep.Scope != "" || dep.Color != "" {
+			return nil, domain.ErrColoredBalanceUnsupported
+		}
 		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset)] = struct{}{}
 	}
 
@@ -114,6 +124,12 @@ func DiscoverNumscriptDependencies(
 	}
 
 	for dep := range resolved.MetaWrites {
+		// Reject scope-qualified metadata WRITE dependencies, same rationale as
+		// colored balance writes above — Ledger account metadata has no scope
+		// dimension, so a scoped write would silently collapse onto the unscoped key.
+		if dep.Scope != "" {
+			return nil, domain.ErrColoredBalanceUnsupported
+		}
 		result.WriteMetadata[domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: dep.Account},
 			Key:        dep.Key,

@@ -131,6 +131,16 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	)
 
 	for i, posting := range result.Postings {
+		// Authoritative rejection of color/scope-qualified postings. Ledger
+		// postings have no color/scope dimension (that is EN-1334, not this PR);
+		// building a commonpb.Posting from only source/destination/asset would
+		// silently drop these qualifiers and materialise unqualified volumes — a
+		// silent semantic loss. Reject deterministically so every node produces
+		// the same definitive failure. Mirrors admission's discover-side rejection.
+		if posting.SourceScope != "" || posting.DestinationScope != "" || posting.Color != "" {
+			return nil, domain.ErrColoredBalanceUnsupported
+		}
+
 		if posting.Amount.Sign() < 0 {
 			return nil, &domain.ErrNumscriptRuntime{
 				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
@@ -236,6 +246,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
 		for _, row := range result.AccountsMetadata {
+			// Ledger account metadata has no scope dimension; a scoped write would
+			// silently collapse onto the unscoped key. Reject deterministically,
+			// mirroring the colored-posting and discover-side rejections.
+			if row.Scope != "" {
+				return nil, domain.ErrColoredBalanceUnsupported
+			}
+
 			if err := domain.ValidateMetadataKey(row.Key); err != nil {
 				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
 			}

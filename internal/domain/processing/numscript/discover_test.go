@@ -421,3 +421,21 @@ set_tx_meta("bal", balance(@treasury, USD/2))
 	require.NotEqual(t, result.InputsHash, other.InputsHash,
 		"a changed mid-script-read balance must change the hash")
 }
+
+// TestDiscover_RejectsColoredWrite pins the write-side color/scope rejection: an
+// unbounded colored source (@world is never balance-read, so the read-side Store
+// rejection never fires) still credits the destination in the source's color,
+// producing a colored WRITE dependency. Ledger volumes have no color/scope
+// dimension, so this must be rejected — not silently collapsed onto the
+// unqualified (account, asset) volume.
+func TestDiscover_RejectsColoredWrite(t *testing.T) {
+	t.Parallel()
+
+	cache := NewNumscriptCache(16)
+	script := `send [COIN 10] (
+		source = @world \ "RED"
+		destination = @dest
+	)`
+	_, err := DiscoverNumscriptDependencies(cache, script, nil, "ledger", newFakeSource().build(t), false)
+	require.ErrorIs(t, err, domain.ErrColoredBalanceUnsupported)
+}

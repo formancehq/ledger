@@ -1404,6 +1404,15 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
 	// preserve, so we keep the cheap fail-fast (returns a terminal error).
 	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
+		// A definitive structural rejection (e.g. a color/scope-qualified write,
+		// which Ledger does not support) is NOT a preparation gap: the script uses
+		// an unsupported feature and could never have succeeded, so there is no
+		// frozen outcome to replay. Never forward it — surface the definitive
+		// error so the client sees the real reason instead of a retryable
+		// preload-unavailable that would spin forever.
+		if errors.Is(cause, domain.ErrColoredBalanceUnsupported) {
+			return false, &domain.BusinessError{Err: domain.ErrColoredBalanceUnsupported}
+		}
 		if !hasIdempotencyKey {
 			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
 		}
