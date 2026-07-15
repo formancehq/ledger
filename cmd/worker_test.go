@@ -71,7 +71,22 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 	})
 }
 
-// TestServeCommandHasAWSIAMFlags verifies the serve command also exposes
+// TestWorkerCommandRejectsRoleArnWithIAM verifies that the worker command
+// returns a clear error when --aws-role-arn is combined with
+// --postgres-aws-enable-iam, rather than silently ignoring the ARN.
+func TestWorkerCommandRejectsRoleArnWithIAM(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewWorkerCommand()
+	require.NoError(t, cmd.Flags().Set(connect.PostgresAWSEnableIAMFlag, "true"))
+	require.NoError(t, cmd.Flags().Set(iam.AWSRoleArnFlag, "arn:aws:iam::123456789012:role/MyRole"))
+
+	err := cmd.RunE(cmd, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--"+iam.AWSRoleArnFlag)
+	assert.Contains(t, err.Error(), "not yet supported")
+}
+
 // the same AWS IAM flags for parity (regression guard).
 func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 	t.Parallel()
