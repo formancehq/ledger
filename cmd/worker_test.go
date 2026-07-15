@@ -59,14 +59,13 @@ func TestWorkerCommandHasAWSIAMFlags(t *testing.T) {
 		require.NotNil(t, f, "--aws-profile flag must be registered on the worker command")
 	})
 
-	// --aws-role-arn is now fully supported: connectionOptionsFromFlags wraps
-	// the base AWS credentials with an STS AssumeRole provider when this flag
-	// is set, so the flag must be registered AND visible to operators.
-	t.Run("aws-role-arn flag is registered and visible", func(t *testing.T) {
+	// --aws-role-arn is registered by iam.AddFlags. Full role-assumption support
+	// will be implemented in go-libs (iam.LoadOptionFromFlags); for now the flag
+	// is present but not consumed.
+	t.Run("aws-role-arn flag is registered", func(t *testing.T) {
 		t.Parallel()
 		f := flags.Lookup(iam.AWSRoleArnFlag)
 		require.NotNil(t, f, "--aws-role-arn flag must be registered on the worker command")
-		assert.False(t, f.Hidden, "--aws-role-arn must be visible now that role assumption is implemented")
 	})
 }
 
@@ -101,12 +100,4 @@ func TestServeCommandHasAWSIAMFlags(t *testing.T) {
 		})
 	}
 
-	// --aws-role-arn must be visible: connectionOptionsFromFlags implements role
-	// assumption via STS, so hiding it would mislead operators.
-	t.Run("aws-role-arn is visible on serve", func(t *testing.T) {
-		t.Parallel()
-		f := flags.Lookup(iam.AWSRoleArnFlag)
-		require.NotNil(t, f)
-		assert.False(t, f.Hidden, "--aws-role-arn must be visible now that role assumption is implemented")
-	})
 }

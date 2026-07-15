@@ -94,7 +94,7 @@ func NewWorkerCommand() *cobra.Command {
 		Use:          "worker",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			connectionOptions, err := connectionOptionsFromFlags(cmd.Flags(), cmd.Context())
+			connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 			if err != nil {
 				return err
 			}
