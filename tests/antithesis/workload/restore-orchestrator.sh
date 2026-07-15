@@ -52,10 +52,13 @@ k() { kubectl -n "$NS" "$@"; }
 
 # exec_ledgerctl POD ARGS... -- runs ledgerctl inside a ledger pod with the
 # pod-local server address and cluster credentials (the operator-e2e idiom).
+# Bounded by coreutils timeout rather than ledgerctl's --timeout: not every
+# subcommand defines that flag (restore download does not), and a uniform
+# client-side bound also covers a hung exec stream.
 exec_ledgerctl() {
 	local pod="$1"; shift
 	k exec "$pod" -c ledger -- /bin/sh -c \
-		"./ledgerctl $* --server 127.0.0.1:8888 --insecure --auth-token \"\$CLUSTER_SECRET\" --timeout 120s"
+		"timeout 300 ./ledgerctl $* --server 127.0.0.1:8888 --insecure --auth-token \"\$CLUSTER_SECRET\""
 }
 
 # retry N CMD... -- runs CMD up to N times, 5s apart.
@@ -122,6 +125,14 @@ teardown_cluster() {
 }
 
 do_one_restore() {
+	# Incrementals build on the initial full backup; if that never succeeded
+	# (or a cycle-time check finds it missing), (re)take it here — the driver
+	# is quiesced, so a cycle-time full backup is as valid a base as any.
+	if [ "$FULL_BACKUP_OK" != 1 ]; then
+		retry 3 backup_exec "store backup" || { log "full backup (retry) failed"; return 1; }
+		FULL_BACKUP_OK=1
+	fi
+
 	retry 3 backup_exec "store incremental-backup" || { log "incremental backup failed"; return 1; }
 
 	teardown_cluster || { log "teardown failed"; return 1; }
@@ -148,8 +159,13 @@ wait_ready_replicas "$REPLICAS" 1800 || log "WARNING: cluster not ready at start
 
 retry 10 capture_specs || { log "FATAL: cannot capture cluster spec"; exit 1; }
 
+FULL_BACKUP_OK=0
 log "taking initial full backup"
-retry 5 backup_exec "store backup" || log "WARNING: initial full backup failed; first cycle will retry"
+if retry 5 backup_exec "store backup"; then
+	FULL_BACKUP_OK=1
+else
+	log "WARNING: initial full backup failed; the next cycle retakes it before its incremental"
+fi
 
 log "armed; watching $REQ"
 while true; do
@@ -159,9 +175,13 @@ while true; do
 	if do_one_restore; then
 		printf 'ok\n' > "$RESP"
 	else
-		# Converge back to normal mode so the driver never resumes against a
-		# cluster parked in restore mode; the driver logs the err and continues.
+		# Converge back to normal mode and wait for the cluster to serve
+		# before releasing the driver, so it never resumes against a cluster
+		# parked in restore mode or still forming; the driver logs the err
+		# and continues.
 		k apply -f "$NORMAL_SPEC" 2>/dev/null || true
+		wait_ready_replicas "$REPLICAS" 300 \
+			|| log "WARNING: cluster not back to $REPLICAS ready replicas after failed cycle"
 		printf 'err\n' > "$RESP"
 	fi
 done
