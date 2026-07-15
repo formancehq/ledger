@@ -350,8 +350,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		flightrecorder.Module(flightRecorderCfg),
 		// Provide application module
 		appModule,
-		// Cold storage module (conditional on driver)
-		bootstrap.ColdStorageModule(cfg.ColdStorageConfig.Driver),
+		// Cold storage module (conditional on driver; never in restore mode)
+		bootstrap.ColdStorageModule(cfg.ColdStorageConfig.Driver, cfg.Restore),
 	}
 
 	defer func() {
