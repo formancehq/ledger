@@ -244,8 +244,8 @@ github.com/formancehq/go-libs/v5 v5.7.0 h1:2Z2S3vtOJr45tKpofhPqd0qKrPr6KB/LZZ+Ef
 github.com/formancehq/go-libs/v5 v5.7.0/go.mod h1:+jfCYWJ4Z10NGbhmbfon0hGoLe5pysbVQgePrg8M8W4=
 github.com/formancehq/invariants v0.11.0 h1:AHFBhK7U8Ak/qoJwgaNU+cAb9w61Ba7dwlcrJTkWBE4=
 github.com/formancehq/invariants v0.11.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
-github.com/formancehq/numscript v0.0.25-0.20260710091422-92efd3e3a5ac h1:SpXQ5oivY8vpSc93ZxhUJ8cGe2bSzTn2kn4zl/ALZ8w=
-github.com/formancehq/numscript v0.0.25-0.20260710091422-92efd3e3a5ac/go.mod h1:DUR23FgL3NVEYvjr8KHt5bGFDpcheydwbvs+iTGohAU=
+github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 h1:aroUBKKmWXiQXyU2DBv57s54SXLgTN9tASjSMQZ08lU=
+github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0/go.mod h1:DUR23FgL3NVEYvjr8KHt5bGFDpcheydwbvs+iTGohAU=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/fsnotify/fsnotify v1.5.4 h1:jRbGcIw6P2Meqdwuo0H1p6JVLbL5DHKAKlYndzMwVZI=
