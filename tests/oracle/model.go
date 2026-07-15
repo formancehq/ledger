@@ -218,11 +218,15 @@ func (s LedgerState) Hash(h io.Writer) {
 	hashFieldTypes(h, "TF", s.transactionFieldTypes)
 
 	// The log is already in id order; hash each tx's identity (id, reference,
-	// reverted, timestamp), postings, and metadata. Postings and timestamp belong
-	// in the fingerprint because two commuting unreferenced transactions can reach
-	// identical volumes and metadata under opposite serializations while differing
-	// only in which id holds which postings, or (for at-effective-date reverts) in
-	// the inherited timestamp — distinctions validateTransactionRead checks by id.
+	// reverted, timestamp, revert relationships), postings, and metadata.
+	// Postings and timestamp belong in the fingerprint because two commuting
+	// unreferenced transactions can reach identical volumes and metadata under
+	// opposite serializations while differing only in which id holds which
+	// postings, or (for at-effective-date reverts) in the inherited timestamp —
+	// distinctions validateTransactionRead checks by id. The revert
+	// relationships (revertedBy, revertsTransaction, revertedAt) distinguish
+	// serializations where the same id is reverted by, or reverts, a different
+	// transaction.
 	var amt uint256.Int
 	for _, tx := range s.txs {
 		rev := ""
@@ -232,11 +236,17 @@ func (s LedgerState) Hash(h io.Writer) {
 
 		// A nil timestamp (server-dated, unpredictable) must not collide with any
 		// concrete value: validateTransactionRead skips the check only when nil.
+		// Same for revertedAt.
 		ts := "-"
 		if tx.timestamp != nil {
 			ts = strconv.FormatUint(tx.timestamp.GetData(), 10)
 		}
-		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s|%s\n", tx.id, tx.reference, rev, ts)
+
+		ra := "-"
+		if tx.revertedAt != nil {
+			ra = strconv.FormatUint(tx.revertedAt.GetData(), 10)
+		}
+		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s|%s|%d|%d|%s\n", tx.id, tx.reference, rev, ts, tx.revertedBy, tx.revertsTransaction, ra)
 
 		for _, p := range tx.postings {
 			p.GetAmount().IntoUint256(&amt)
@@ -415,6 +425,15 @@ type txRecord struct {
 	// its own command date, which the model cannot predict, so reads skip the
 	// timestamp check for such records.
 	timestamp *commonpb.Timestamp
+	// Revert relationships, mirroring the server's Transaction fields: on a
+	// reverted original, revertedBy carries the compensating transaction's id
+	// and revertedAt its timestamp (nil when the compensating transaction is
+	// server-dated — unpredictable, so reads skip it, like timestamp); on a
+	// revert transaction, revertsTransaction carries the original's id. Zero
+	// values mean not reverted / not a revert.
+	revertedBy         uint64
+	revertedAt         *commonpb.Timestamp
+	revertsTransaction uint64
 }
 
 // revertEffect is a committed revert's predicted effect: the original
@@ -697,11 +716,6 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		return OrderResult{Reason: reason}
 	}
 
-	// Mark the original reverted (replace, don't mutate), then append the revert
-	// itself as a new unreferenced transaction carrying the reversed postings and
-	// any metadata the revert set.
-	s.txs[id-1] = &txRecord{id: orig.id, reference: orig.reference, postings: orig.postings, metadata: orig.metadata, reverted: true, timestamp: orig.timestamp}
-
 	// A plain revert stamps the server's current date (nil here — unpredictable,
 	// so reads skip it). With at_effective_date the revert inherits the original's
 	// timestamp (processor_revert_transaction.go), which the model knows iff the
@@ -712,7 +726,18 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	}
 
 	revertID := uint64(len(s.txs)) + 1
-	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS})
+
+	// Mark the original reverted (replace, don't mutate), then append the revert
+	// itself as a new unreferenced transaction carrying the reversed postings and
+	// any metadata the revert set. The reverted_at stamped on the original is the
+	// compensating transaction's timestamp (processor_revert_transaction.go).
+	reverted := *orig
+	reverted.reverted = true
+	reverted.revertedBy = revertID
+	reverted.revertedAt = revertTS
+	s.txs[id-1] = &reverted
+
+	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS, revertsTransaction: orig.id})
 
 	return OrderResult{
 		OK:     true,
@@ -843,8 +868,11 @@ func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.Meta
 	meta := make(map[string]*commonpb.MetadataValue, len(old.metadata)+len(md))
 	maps.Copy(meta, old.metadata)
 	maps.Copy(meta, md) // last-writer-wins
-	// Replace (don't mutate) so clones sharing the pointer are unaffected.
-	s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted, timestamp: old.timestamp}
+	// Replace (don't mutate) so clones sharing the pointer are unaffected; a
+	// value copy carries every field, including the revert relationships.
+	updated := *old
+	updated.metadata = meta
+	s.txs[id-1] = &updated
 
 	return OrderResult{OK: true, Meta: &metaEffect{saved: md}}
 }
@@ -877,8 +905,11 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 		meta := make(map[string]*commonpb.MetadataValue, len(old.metadata))
 		maps.Copy(meta, old.metadata)
 		delete(meta, cmd.GetKey())
-		// Replace (don't mutate) so clones sharing the pointer are unaffected.
-		s.txs[id-1] = &txRecord{id: old.id, reference: old.reference, postings: old.postings, metadata: meta, reverted: old.reverted, timestamp: old.timestamp}
+		// Replace (don't mutate) so clones sharing the pointer are unaffected; a
+		// value copy carries every field, including the revert relationships.
+		updated := *old
+		updated.metadata = meta
+		s.txs[id-1] = &updated
 
 		return OrderResult{OK: true}
 	default:

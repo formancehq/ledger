@@ -317,7 +317,8 @@ func (c *Checker) modelTxDump(ledger string, id uint64) string {
 	}
 	sort.Strings(parts)
 
-	return fmt.Sprintf("{ref=%q reverted=%v meta={%s}}", tx.Reference(), tx.Reverted(), strings.Join(parts, ","))
+	return fmt.Sprintf("{ref=%q reverted=%v revBy=%d reverts=%d meta={%s}}",
+		tx.Reference(), tx.Reverted(), tx.RevertedBy(), tx.RevertsTransaction(), strings.Join(parts, ","))
 }
 
 // modelSchemaDump renders the committed model's declared field types per target

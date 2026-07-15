@@ -605,10 +605,25 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 		// so the timestamp is not checked for that record.
 		tsOK := rec.Timestamp() == nil || rec.Timestamp().GetData() == serverTx.GetTimestamp().GetData()
 
+		// reverted_at follows the same convention: nil in the model means the
+		// compensating transaction was server-dated (unpredictable) — but only a
+		// reverted record may carry one at all.
+		var raOK bool
+		switch {
+		case rec.RevertedAt() != nil:
+			raOK = serverTx.GetRevertedAt() != nil && rec.RevertedAt().GetData() == serverTx.GetRevertedAt().GetData()
+		case rec.Reverted():
+			raOK = true
+		default:
+			raOK = serverTx.GetRevertedAt() == nil
+		}
+
 		return rec.Id() == serverTx.GetId() &&
 			rec.Reference() == serverTx.GetReference() &&
 			rec.Reverted() == serverTx.GetReverted() &&
-			tsOK &&
+			rec.RevertedBy() == serverTx.GetRevertedByTransaction() &&
+			rec.RevertsTransaction() == serverTx.GetRevertsTransaction() &&
+			tsOK && raOK &&
 			postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
 			metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
 	}) {
@@ -616,13 +631,15 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 	}
 
 	assert.Unreachable("singleton_driver_model: transaction read outside model", internal.Details{
-		"ledger":     ledger,
-		"id":         id,
-		"found":      found,
-		"serverRef":  serverTx.GetReference(),
-		"serverRev":  serverTx.GetReverted(),
-		"serverMeta": renderMetaMap(serverTx.GetMetadata()),
-		"modelTx":    c.modelTxDump(ledger, id),
+		"ledger":        ledger,
+		"id":            id,
+		"found":         found,
+		"serverRef":     serverTx.GetReference(),
+		"serverRev":     serverTx.GetReverted(),
+		"serverRevBy":   serverTx.GetRevertedByTransaction(),
+		"serverReverts": serverTx.GetRevertsTransaction(),
+		"serverMeta":    renderMetaMap(serverTx.GetMetadata()),
+		"modelTx":       c.modelTxDump(ledger, id),
 	})
 }
 
