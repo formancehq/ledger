@@ -2,6 +2,7 @@ package numscript
 
 import (
 	"context"
+	"encoding/binary"
 	"math/big"
 	"sort"
 
@@ -238,33 +239,39 @@ func (s *RecordingStore) Hash() []byte {
 
 	h := blake3.New()
 
-	balanceKeys := make([]string, 0, len(s.balanceRecords))
-	for k := range s.balanceRecords {
-		balanceKeys = append(balanceKeys, k)
+	// Length-delimited encoding: every field is a uvarint byte-length followed by
+	// its raw bytes, and every section is prefixed by its record count. Plain
+	// `key=value\n` framing was ambiguous — metadata values are arbitrary client
+	// bytes (only NUL is rejected; `=` and `\n` are valid), so a crafted value
+	// could make a *changed* input set serialize to the same stream and evade
+	// stale detection. Length + count prefixes make the encoding injective, so
+	// distinct record sets always hash distinctly.
+	writeField := func(b string) {
+		var lenBuf [binary.MaxVarintLen64]byte
+		n := binary.PutUvarint(lenBuf[:], uint64(len(b)))
+		_, _ = h.Write(lenBuf[:n])
+		_, _ = h.WriteString(b)
 	}
-	sort.Strings(balanceKeys)
+	writeSection := func(label string, records map[string]string) {
+		writeField(label)
+		keys := make([]string, 0, len(records))
+		for k := range records {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 
-	_, _ = h.WriteString("balances\n")
-	for _, k := range balanceKeys {
-		_, _ = h.WriteString(k)
-		_, _ = h.WriteString("=")
-		_, _ = h.WriteString(s.balanceRecords[k])
-		_, _ = h.WriteString("\n")
+		var cntBuf [binary.MaxVarintLen64]byte
+		n := binary.PutUvarint(cntBuf[:], uint64(len(keys)))
+		_, _ = h.Write(cntBuf[:n])
+
+		for _, k := range keys {
+			writeField(k)
+			writeField(records[k])
+		}
 	}
 
-	metadataKeys := make([]string, 0, len(s.metadataRecords))
-	for k := range s.metadataRecords {
-		metadataKeys = append(metadataKeys, k)
-	}
-	sort.Strings(metadataKeys)
-
-	_, _ = h.WriteString("metadata\n")
-	for _, k := range metadataKeys {
-		_, _ = h.WriteString(k)
-		_, _ = h.WriteString("=")
-		_, _ = h.WriteString(s.metadataRecords[k])
-		_, _ = h.WriteString("\n")
-	}
+	writeSection("balances", s.balanceRecords)
+	writeSection("metadata", s.metadataRecords)
 
 	return h.Sum(nil)
 }

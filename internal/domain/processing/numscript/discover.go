@@ -139,6 +139,17 @@ func DiscoverNumscriptDependencies(
 	// accept once earlier same-batch or concurrent orders have moved balances.
 	execResult, execErr := SafeRun(parsed, context.Background(), variablesMap, NewStore(source, force))
 	if execErr != nil {
+		// A recovered numscript-library panic is a "should not happen"
+		// (CLAUDE.md invariant #7) and must surface loudly — exactly like the
+		// SafeResolveDependencies path above and the FSM re-resolution
+		// (processor_transaction_numscript.go). Only genuine runtime failures
+		// (insufficient funds against admission-time state, overflow, …) stay
+		// best-effort here: admission's contract is preload + resolution hash,
+		// and the FSM produces the authoritative outcome.
+		if IsPanic(execErr) {
+			return nil, execErr
+		}
+
 		return result, nil
 	}
 

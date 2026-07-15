@@ -462,3 +462,20 @@ func TestWriteGateErrorsDescribable(t *testing.T) {
 	wrapped := fmt.Errorf("admission: %w", ErrWritesBlockedDiskFull)
 	require.ErrorIs(t, wrapped, ErrWritesBlockedDiskFull)
 }
+
+// TestKindForReason_DeprecatedRetainedReasons pins the replay classification of
+// reasons that are still in the wire enum but no longer carried by any typed
+// domain error. TestEveryDomainErrorImplementsDescribable only iterates typed
+// errors, so once the typed error is deleted nothing else asserts the reason's
+// Kind — yet KindForReason is a persisted-replay invariant (CLAUDE.md #8: the
+// checker re-derives a frozen failure's kind from the chain-bound reason).
+// `//exhaustive:enforce` prevents removing a case, but not silently MOVING it to
+// another Kind* block, which would reclassify every historical frozen failure of
+// that reason on replay/verify. These assertions pin the mapping directly.
+func TestKindForReason_DeprecatedRetainedReasons(t *testing.T) {
+	t.Parallel()
+
+	// Deprecated (no typed error emits it) but retained for replay of frozen
+	// pre-upgrade failures — must stay a definitive validation failure.
+	require.Equal(t, KindValidation, KindForReason(commonpb.ErrorReason_ERROR_REASON_NON_DETERMINISTIC_SCRIPT))
+}

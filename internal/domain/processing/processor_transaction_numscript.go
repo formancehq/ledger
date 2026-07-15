@@ -80,6 +80,20 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// against the same missing declaration — surface it loudly (invariant
 			// #7). Matched by domain Reason so this file need not import
 			// internal/infra/state (which imports processing — import cycle).
+			//
+			// Accepted limitation (EN-1406): when the resolved dependency set is a
+			// function of mutable metadata (e.g. `account $src = meta(@cfg,"acct")`)
+			// and that metadata changed between admission and apply, re-resolution
+			// derives a different account whose balance was never declared, so this
+			// coverage miss is really a stale-input shift that a re-admission would
+			// fix — yet it is classified fatal (KindInternal) rather than retryable
+			// STALE. We keep it fatal on purpose: at the miss point we cannot
+			// cheaply distinguish a value-derived shift (should be retryable) from a
+			// genuine static under-declaration / preload-construction bug (must stay
+			// fatal per invariant #7, else the client spins re-admitting the same
+			// missing declaration). Downgrading only ErrCoverageMiss to stale would
+			// close the value-shift case but risks masking the latter as an infinite
+			// retry loop, so that refinement is deferred to an explicit design call.
 			if isCoverageContractViolation(resolveErr) {
 				return nil, resolveErr
 			}

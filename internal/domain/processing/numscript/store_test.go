@@ -98,3 +98,26 @@ func TestStore_ColoredRejectionIsValidationError(t *testing.T) {
 	require.True(t, errors.As(domain.ErrColoredBalanceUnsupported, &d))
 	require.Equal(t, domain.ErrReasonValidation, d.Reason())
 }
+
+// TestRecordingStore_HashInjectiveOverAmbiguousMetadata pins that the
+// stale-inputs digest is injective even for attacker-controlled metadata values
+// containing the former framing delimiters (`=` / `\n`). Under the old
+// `key=value\n` text encoding, set A (one record whose value embeds the second
+// record) and set B (two records) serialized to the identical byte stream and
+// hashed the same — letting a crafted value evade stale detection. The
+// length-delimited encoding must hash them distinctly.
+func TestRecordingStore_HashInjectiveOverAmbiguousMetadata(t *testing.T) {
+	t.Parallel()
+
+	a := &RecordingStore{
+		balanceRecords:  map[string]string{},
+		metadataRecords: map[string]string{"acct\x00\x00k1": "v\nacct\x00\x00k2=w"},
+	}
+	b := &RecordingStore{
+		balanceRecords:  map[string]string{},
+		metadataRecords: map[string]string{"acct\x00\x00k1": "v", "acct\x00\x00k2": "w"},
+	}
+
+	require.NotEqual(t, a.Hash(), b.Hash(),
+		"distinct metadata record sets that collided under key=value framing must hash distinctly")
+}
