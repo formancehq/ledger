@@ -21,7 +21,7 @@
 # the cluster failing to recover to N voters after a restart.
 #
 # Usage:
-#   ./run_model_test.sh [--nodes N | --cluster] [DURATION_SECONDS]
+#   ./run_model_test.sh [--nodes N | --cluster] [--restore] [DURATION_SECONDS]
 #   NODES=3 ./run_model_test.sh 300
 #
 # Environment:
@@ -30,6 +30,7 @@
 #   GRPC_BASE         base gRPC port; raft = +100, http = +200 per band (default: random)
 #   RESTART_INTERVAL  seconds to soak between restarts, N>1 only; 0 disables restarts (default: 15)
 #   RECOVER_TIMEOUT   seconds to wait for N-voter recovery after a restart, N>1 only (default: 90)
+#   RESTORE_INTERVAL  seconds between backup/restore cycles, --restore only (default: 45)
 #   DEAD_TIME             seconds a killed node stays down, N>1 only (default: 30)
 #   COMPACTION_MARGIN     raft log entries between snapshots; low forces snapshot recovery (default: 200)
 #   MAINTENANCE_INTERVAL  background WAL snapshot + checkpoint cadence (default: 10s)
@@ -51,7 +52,7 @@ while [ $# -gt 0 ]; do
 		--nodes)    NODES="$2"; shift 2 ;;
 		--nodes=*)  NODES="${1#*=}"; shift ;;
 		--restore)  RESTORE=1; shift ;;
-		-h|--help)  sed -n '2,40p' "$0"; exit 0 ;;
+		-h|--help)  sed -n '2,42p' "$0"; exit 0 ;;
 		*)          DURATION="$1"; shift ;;
 	esac
 done
@@ -72,9 +73,22 @@ case "$NODES" in
 esac
 [ "$NODES" -ge 1 ] || { echo "ERROR: --nodes must be >= 1" >&2; exit 2; }
 
-# Single-node iterates fast; a cluster needs longer to see restart cycles.
+# The driver fires the first restore within [interval, 1.5*interval] (jittered,
+# see runRestoreCycle), so a restore run's duration must cover at least one full
+# cycle or the run passes without exercising the restore path at all.
+RESTORE_INTERVAL="${RESTORE_INTERVAL:-45}"
+
+# Single-node iterates fast; a cluster needs longer to see restart cycles; a
+# restore run needs at least one backup/restore cycle (2*interval covers the
+# jittered first fire plus the cycle itself for any interval).
 if [ -z "$DURATION" ]; then
-	if [ "$NODES" -gt 1 ]; then DURATION=120; else DURATION=30; fi
+	if [ "$RESTORE" = 1 ]; then
+		DURATION=$(( RESTORE_INTERVAL * 2 + 30 ))
+	elif [ "$NODES" -gt 1 ]; then
+		DURATION=120
+	else
+		DURATION=30
+	fi
 fi
 
 RESTART_INTERVAL="${RESTART_INTERVAL:-15}"
@@ -125,9 +139,9 @@ LEDGERCTL_BIN="$WORKDIR/ledgerctl"
 DRIVER_PID=""
 RECOVERY_FAILED=0
 DRIVER_EXITED_EARLY=0
+RESTORE_CYCLES=0
 
 # --- Restore cycle (single-node, --restore) -------------------------------
-RESTORE_INTERVAL="${RESTORE_INTERVAL:-45}"
 RESTORE_REQ="$WORKDIR/restore.req"
 RESTORE_RESP="$WORKDIR/restore.resp"
 RESTORED_DATA="$WORKDIR/restored-data"
@@ -208,10 +222,16 @@ do_one_restore() {
 	fi
 
 	kill -9 "${SERVER_PIDS[0]}" 2>/dev/null; wait "${SERVER_PIDS[0]}" 2>/dev/null; SERVER_PIDS[0]=""
+
+	# The relaunched node appends to the same log file; only leadership lines
+	# past this offset count (see wait_leader).
+	local log_offset
+	log_offset=$(wc -c < "${SERVER_LOGS[0]}" 2>/dev/null || echo 0)
+
 	rm -rf "$RESTORED_DATA"
 	if ! "$LEDGERCTL_BIN" store bootstrap --data-dir "$RESTORED_DATA" "${S3_FLAGS[@]}" -y >>"$WORKDIR/restore.log" 2>&1; then
 		log "restore: bootstrap failed; relaunching on original data"
-		start_node 0 rejoin; wait_leader 0
+		start_node 0 rejoin; wait_leader 0 "$log_offset"
 		return 1
 	fi
 
@@ -220,7 +240,7 @@ do_one_restore() {
 	rm -rf "${NODE_DIRS[0]}/data" "${NODE_DIRS[0]}/wal"
 	mv "$RESTORED_DATA" "${NODE_DIRS[0]}/data"
 	start_node 0 bootstrap
-	wait_leader 0 || return 1
+	wait_leader 0 "$log_offset" || return 1
 	log "restore: node back up on restored (RebuildDelta) store"
 }
 
@@ -230,7 +250,12 @@ service_restore_request() {
 	[ "$RESTORE" = 1 ] && [ -f "$RESTORE_REQ" ] || return 0
 	rm -f "$RESTORE_REQ"
 	log "restore: cycle requested"
-	if do_one_restore; then printf 'ok\n' >"$RESTORE_RESP"; else printf 'err\n' >"$RESTORE_RESP"; fi
+	if do_one_restore; then
+		RESTORE_CYCLES=$(( RESTORE_CYCLES + 1 ))
+		printf 'ok\n' >"$RESTORE_RESP"
+	else
+		printf 'err\n' >"$RESTORE_RESP"
+	fi
 }
 
 if [ ! -d "$REPO" ]; then
@@ -269,11 +294,14 @@ start_node() {
 	SERVER_PIDS[$i]=$!
 }
 
-# Wait (bounded) for a node to log leadership; fail if it dies first.
+# Wait (bounded) for a node to log leadership; fail if it dies first. A caller
+# relaunching a node passes the log's current byte size: server logs are
+# appended across boots, so without the offset a leadership line from an
+# earlier boot satisfies the check instantly.
 wait_leader() {
-	local i="$1"
+	local i="$1" offset="${2:-0}"
 	for _ in $(seq 1 60); do
-		if grep -qE "Became leader|became leader at term" "${SERVER_LOGS[$i]}" 2>/dev/null; then return 0; fi
+		if tail -c +"$(( offset + 1 ))" "${SERVER_LOGS[$i]}" 2>/dev/null | grep -qE "Became leader|became leader at term"; then return 0; fi
 		if ! kill -0 "${SERVER_PIDS[$i]}" 2>/dev/null; then
 			echo "ERROR: node $(( i + 1 )) exited during startup:" >&2
 			tail -20 "${SERVER_LOGS[$i]}" >&2
@@ -490,6 +518,7 @@ echo
 echo "================= model test report ================="
 log "topology: $NODES node(s)"
 [ "$NODES" -gt 1 ] && log "restart cycles completed: $cycle"
+[ "$RESTORE" = 1 ] && log "restore cycles completed: $RESTORE_CYCLES"
 
 findings=0
 
@@ -559,6 +588,17 @@ if [ "$DRIVER_EXITED_EARLY" -ne 0 ] && [ "$findings" -eq 0 ]; then
 	echo "DRIVER EXITED EARLY: the model ran for less than the requested ${DURATION}s"
 	echo "  (no assertion or crash recorded -- likely a setup/connection error; driver log:)"
 	tail -20 "$DRIVER_LOG" 2>/dev/null
+	findings=$((findings + 1))
+fi
+
+# 6. --restore ran zero cycles: the restore path was never exercised, so a
+# green run says nothing about RebuildDelta -- that vacuous pass is itself a
+# failure. Skipped when a finding already stopped the run early (fail-fast
+# legitimately preempts the first cycle).
+if [ "$RESTORE" = 1 ] && [ "$RESTORE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; then
+	echo
+	echo "NO RESTORE CYCLES: --restore was requested but no backup/restore cycle completed"
+	echo "  (duration ${DURATION}s vs first cycle within ~$(( RESTORE_INTERVAL * 3 / 2 ))s; increase the duration)"
 	findings=$((findings + 1))
 fi
 
