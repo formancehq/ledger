@@ -63,14 +63,11 @@ FROM debian:trixie
 
 RUN apt-get update && apt-get install -y curl jq
 
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
+
 # kubectl, for the restore-orchestrator sidecar (drives the operator's
 # backup/restore flow from inside the workload pod).
-ARG TARGETARCH
-RUN curl -fsSLo /usr/local/bin/kubectl \
-        "https://dl.k8s.io/release/v1.31.4/bin/linux/${TARGETARCH}/kubectl" \
-    && chmod +x /usr/local/bin/kubectl
-
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
+COPY --from=bitnami/kubectl:1.31.4 /opt/bitnami/kubectl/bin/kubectl /usr/local/bin/kubectl
 
 # Restore-orchestrator sidecar entrypoint — outside /opt/antithesis/test/v1 so
 # the Test Composer never discovers it as a test command.
