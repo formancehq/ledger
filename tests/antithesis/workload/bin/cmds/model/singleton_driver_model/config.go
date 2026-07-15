@@ -65,8 +65,22 @@ var metaValuePool = []string{
 	"200", "-1", "-200", "40000", "5000000000", "030",
 }
 
-// Field types declared by SetMetadataFieldType (string, bool, every
-// signed/unsigned int width), exercising the schema declare/retype apply path.
+// Typed-value pools, used alongside metaValuePool so metadata writes exercise
+// every MetadataValue wire kind, not just strings. The server stores values
+// verbatim (a declared field type is an index hint, not applied on read), so
+// each kind must round-trip unchanged. Small pools keep same-key collisions
+// frequent. Values straddle the sized-int boundaries and include zero, negative,
+// and pre-1970 datetimes.
+var (
+	metaIntPool          = []int64{0, 1, -1, 42, -200, 5000000000}
+	metaUintPool         = []uint64{0, 1, 42, 200, 40000, 5000000000}
+	metaDatetimePool     = []int64{0, 1, -1000000, 1700000000000000} // microseconds since the Unix epoch
+	metaNullOriginalPool = []string{"", "null", "030"}
+)
+
+// Field types declared by SetMetadataFieldType (string, bool, datetime, and
+// every signed/unsigned int width), exercising the schema declare/retype apply
+// path across the full MetadataType set.
 var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_STRING,
 	commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -78,6 +92,7 @@ var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_UINT8,
 	commonpb.MetadataType_METADATA_TYPE_UINT16,
 	commonpb.MetadataType_METADATA_TYPE_UINT32,
+	commonpb.MetadataType_METADATA_TYPE_DATETIME,
 }
 
 // Targets whose metadata schema the model tracks.

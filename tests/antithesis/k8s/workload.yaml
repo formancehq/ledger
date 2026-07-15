@@ -87,6 +87,12 @@ spec:
           value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
+        # Dumps every committed ApplyRequest (base64) for exact deterministic
+        # replay through the oracle (see tests/oracle/cmd/replay). Empty
+        # disables; substituted by generate-manifests.sh from the
+        # MODEL_DUMP_BATCHES env at config-image build.
+        - name: MODEL_DUMP_BATCHES
+          value: "__MODEL_DUMP_BATCHES__"
         # Readiness probe ensures Antithesis waits for the ledger cluster
         # to be reachable before starting the Test Composer.
         readinessProbe:
