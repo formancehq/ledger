@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -930,4 +931,34 @@ func TestRebuildDelta_CountsDoNotBleedAcrossPrefixLedgers(t *testing.T) {
 	require.NotNil(t, boundary)
 	require.Equal(t, uint64(2), boundary.GetVolumeCount(),
 		`"pay" must count only its own rows (world + alice), not "payments" rows too`)
+}
+
+// TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows: DeleteLedger
+// replay must delete the ledger's persisted reversion words — the live path
+// does so at apply time (not at the covering purge), so leaving them would
+// resurrect a deleted ledger's bitset into Registry.Reversions on boot.
+func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
+	t.Parallel()
+
+	writer, _, store := newAttributeReplayWriter(t)
+
+	// Checkpoint-time reversion rows for the ledger about to be deleted.
+	require.NoError(t, state.SaveReversionWord(writer.batch, "doomed", 0, 1<<3))
+	require.NoError(t, state.SaveReversionWord(writer.batch, "doomed", 1, 1<<7))
+
+	writer.ledgerInfos["doomed"] = &commonpb.LedgerInfo{Name: "doomed"}
+	writer.reversions["doomed"] = &bitset.Bitset{}
+
+	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}, 7))
+	require.NoError(t, writer.batch.Commit())
+
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	bs, err := query.ReadReversionBitset(handle, "doomed")
+	require.NoError(t, err)
+	require.Empty(t, bs.Words(), "deleted ledger's reversion rows must not survive the replay")
+	require.Empty(t, writer.reversions["doomed"])
 }

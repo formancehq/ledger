@@ -253,7 +253,7 @@ func SaveReversionWord(b *dal.WriteSession, ledgerName string, wordIndex uint64,
 }
 
 // DeleteReversionsByLedger removes all reversion words for a ledger.
-func deleteReversionsByLedger(b *dal.WriteSession, ledgerName string) error {
+func DeleteReversionsByLedger(b *dal.WriteSession, ledgerName string) error {
 	start := buildLedgerScopedPrefix(dal.ZonePerLedger, dal.SubPLReversions, ledgerName)
 	end := buildLedgerScopedPrefixSuccessor(dal.ZonePerLedger, dal.SubPLReversions, ledgerName)
 

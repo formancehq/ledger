@@ -830,11 +830,16 @@ func (w *attributeReplayWriter) deleteLedger(name string, deletedAt *commonpb.Ti
 
 	delete(w.boundaries, name)
 
-	// The stored reversion rows linger until the covering purge (parity with
-	// the live path), but the in-memory fold must reset so a recreated ledger
-	// starts from an empty bitset.
+	// Unlike the rest of the per-ledger data (deferred to the covering
+	// purge), the live path deletes the reversion rows at DeleteLedger apply
+	// (WriteSet.Merge) — mirror it so the restored store does not resurrect
+	// them into Registry.Reversions on boot.
 	delete(w.reversions, name)
 	delete(w.dirtyReversions, name)
+
+	if err := state.DeleteReversionsByLedger(w.batch, name); err != nil {
+		return fmt.Errorf("deleting reversions for ledger %q: %w", name, err)
+	}
 
 	return state.SavePendingLedgerCleanup(w.batch, name, seq)
 }
