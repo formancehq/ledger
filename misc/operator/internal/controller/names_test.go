@@ -3,7 +3,7 @@ package controller
 import (
 	"testing"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestNameHelpers(t *testing.T) {
