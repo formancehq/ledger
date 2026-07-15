@@ -727,9 +727,6 @@ func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
 	s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: info.GetName(), Version: info.GetVersion()}.Bytes())] = info
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: info.GetName()}.Bytes())] = info.GetVersion()
 }
-func (s *scopeImpl) DeleteNumscriptLatest(ledger, name string) {
-	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = ""
-}
 func (s *scopeImpl) SetNumscriptLatestVersion(ledger, name, version string) {
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())] = version
 }

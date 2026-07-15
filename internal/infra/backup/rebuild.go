@@ -342,6 +342,22 @@ func RebuildDelta(
 				// is greater.
 				versionKey := domain.NumscriptVersionKey{LedgerName: nsLedger, Name: info.GetName()}
 				keyStr := string(versionKey.Bytes())
+				// On an incremental rebuild the checkpoint store may already hold a
+				// greater pointer than this delta's saves; seed from it once per
+				// name so an out-of-order delta save cannot regress the pointer.
+				if _, ok := numscriptGreatest[keyStr]; !ok {
+					existing, err := numscriptVersion.Get(readHandle, versionKey.Bytes())
+					if err != nil {
+						_ = batch.Cancel()
+
+						return fmt.Errorf("reading existing numscript version at log %d: %w", seq, err)
+					}
+
+					if existing != nil {
+						numscriptGreatest[keyStr] = existing.GetVersion()
+					}
+				}
+
 				greatest := info.GetVersion()
 				if prev, ok := numscriptGreatest[keyStr]; ok && !numscriptVersionGreater(greatest, prev) {
 					greatest = prev

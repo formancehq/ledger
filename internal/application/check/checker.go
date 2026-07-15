@@ -377,6 +377,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// post-archive replay applies its delta on top.
 		c.seedExpectedFromBaseline(ctx, baselineDB, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
 
+		// Seed the numscript projections (immutable content + greatest-semver
+		// latest pointer) from the baseline so a post-archive out-of-order save
+		// does not make the checker expect a lower latest than the store holds,
+		// and archived immutable content stays verified.
+		if err := c.foldBaselineNumscripts(baselineDB, expectedNumscriptContent, expectedNumscriptLatest); err != nil {
+			return err
+		}
+
 		// Pre-populate the reversion tracking from the baseline's transaction
 		// states so reversion invariant checks cover pre-archive transactions.
 		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
@@ -1213,6 +1221,12 @@ func (c *Checker) compareNumscripts(
 	_ = contentIter.Close()
 
 	for key := range expectedContent {
+		// A baseline-seeded entry for a ledger mid-purge legitimately lingers
+		// on neither side in lockstep — the stored loop skips it too.
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
 		if _, ok := seenContent[key]; !ok {
 			mismatch(fmt.Sprintf("audit chain expects numscript content %q@%q for ledger %q but the store has no matching entry", key.Name, key.Version, key.LedgerName), key.LedgerName)
 		}
@@ -1279,6 +1293,10 @@ func (c *Checker) compareNumscripts(
 	_ = versionIter.Close()
 
 	for key := range expectedLatest {
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
 		if _, ok := seenLatest[key]; !ok {
 			mismatch(fmt.Sprintf("audit chain expects a numscript latest pointer for %q on ledger %q but the store has no matching entry", key.Name, key.LedgerName), key.LedgerName)
 		}
@@ -3384,6 +3402,85 @@ func (c *Checker) foldBaselineReferences(
 	}
 
 	return true, nil
+}
+
+// foldBaselineNumscripts seeds the expected numscript projections from the
+// boundary-time baseline snapshot: the immutable per-version content entries
+// (SubAttrNumscriptContent) and the per-name latest pointer
+// (SubAttrNumscriptVersion, the greatest stored semver). Under archiving the
+// SavedNumscript logs that produced pre-archive versions are purged, so without
+// this seed the post-archive replay would rebuild the expected state from the
+// delta alone: an out-of-order save (e.g. a delta 1.0.0 on top of an archived
+// 2.0.0) would make the checker expect a lower latest than the store correctly
+// holds — a false NUMSCRIPT_MISMATCH — and an archived immutable content entry
+// would go unverified. The delta replay layers on top with the same
+// greatest-wins rule the FSM uses.
+//
+// baselineDB=nil short-circuits (no archived data).
+func (c *Checker) foldBaselineNumscripts(
+	baselineDB *pebble.DB,
+	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
+	expectedLatest map[domain.NumscriptVersionKey]string,
+) error {
+	if baselineDB == nil {
+		return nil
+	}
+
+	contentIter, err := c.attrs.NumscriptContent.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline numscript content: %w", err)
+	}
+
+	for contentIter.Next() {
+		entry := contentIter.Entry()
+		if entry.Value == nil {
+			continue
+		}
+
+		var key domain.NumscriptEntryKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		expectedContent[key] = entry.Value
+	}
+
+	if err := contentIter.Close(); err != nil {
+		return fmt.Errorf("closing baseline numscript content iterator: %w", err)
+	}
+
+	if err := contentIter.Err(); err != nil {
+		return fmt.Errorf("baseline numscript content iterator error: %w", err)
+	}
+
+	versionIter, err := c.attrs.NumscriptVersion.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline numscript versions: %w", err)
+	}
+
+	for versionIter.Next() {
+		entry := versionIter.Entry()
+		if entry.Value == nil {
+			continue
+		}
+
+		var key domain.NumscriptVersionKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		expectedLatest[key] = entry.Value.GetVersion()
+	}
+
+	if err := versionIter.Close(); err != nil {
+		return fmt.Errorf("closing baseline numscript version iterator: %w", err)
+	}
+
+	if err := versionIter.Err(); err != nil {
+		return fmt.Errorf("baseline numscript version iterator error: %w", err)
+	}
+
+	return nil
 }
 
 // foldBaselineChainState seeds chainBound.reverted / metadata /

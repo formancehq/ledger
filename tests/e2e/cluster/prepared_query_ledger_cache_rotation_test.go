@@ -14,8 +14,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// numscriptTransfer is a minimal but valid Numscript used by the SaveNumscript /
-// DeleteNumscript checks below.
+// numscriptTransfer is a minimal but valid Numscript used by the SaveNumscript
+// check below.
 const numscriptTransfer = `
 	vars {
 		account $from
@@ -142,23 +142,6 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 					Content: numscriptTransfer,
 					Version: "1.0.0",
 					Ledger:  ledgerName,
-				},
-			},
-		}))
-		Expect(err).To(Succeed())
-	})
-
-	It("DeleteNumscript must succeed after the LedgerInfo is evicted from cache", func() {
-		for i := 0; i < barrierCount; i++ {
-			_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
-			Expect(err).To(Succeed())
-		}
-
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeleteNumscript{
-				DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-					Name:   "transfer",
-					Ledger: ledgerName,
 				},
 			},
 		}))

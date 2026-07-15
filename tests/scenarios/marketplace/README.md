@@ -110,9 +110,9 @@ All merchant balances verified at 0.
 - **Transaction reference**: `unique-ref-001` on a deposit; duplicate reference fails
 - **Idempotency key**: `ik-deposit-001` on a deposit; replay with same content succeeds (returns original); different content with same key fails
 
-### Phase 11: DeleteNumscript
+### Phase 11: Numscript versioning
 
-- Save `temp_script`, then delete it
+- Append immutable `temp_script` versions `1.0.0` then `2.0.0`; the latest pointer tracks the greatest
 
 ### Phase 11b: Prepared Queries
 
