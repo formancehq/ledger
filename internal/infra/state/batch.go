@@ -554,7 +554,7 @@ func deleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 
 // SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger name.
 // The value is the sequence number of the DeleteLedger log.
-func savePendingLedgerCleanup(b *dal.WriteSession, ledgerName string, deleteSequence uint64) error {
+func SavePendingLedgerCleanup(b *dal.WriteSession, ledgerName string, deleteSequence uint64) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
 		PutLedgerNameFixed(ledgerName)

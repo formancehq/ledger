@@ -812,6 +812,50 @@ enum CheckStoreErrorType {
   // skipped); a value BELOW means the persisted projection lost applied ground —
   // both are corruption. This is a full invariant-#8 equality check, not a bound.
   CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH = 12;
+  // Emitted when a ledger's stored metadata schema (LedgerInfo.MetadataSchema)
+  // diverges from the field-type declarations the checker re-derived by
+  // replaying CreateLedger.initial_schema + SetMetadataFieldType /
+  // RemovedMetadataFieldType log payloads. The schema is a projection of those
+  // audit-bound orders.
+  CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH = 13;
+  // Emitted when a ledger's stored account types (LedgerInfo.AccountTypes)
+  // diverge from the set the checker re-derived by replaying AddAccountType /
+  // RemoveAccountType log payloads. The account-type chart is a projection of
+  // those audit-bound orders.
+  CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 14;
+  // Emitted when the audit says a ledger is live (a CreateLedger event with no
+  // later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
+  // archiving) but the store has no live LedgerInfo for it — the entry is either
+  // absent or tampered to a soft-deleted tombstone. The stored-ledger loops in
+  // compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
+  // so both shapes would otherwise escape every projection check. This is the
+  // reverse of UNKNOWN_LEDGER.
+  CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 15;
+  // Emitted when the store holds a live LedgerInfo for a ledger the audit never
+  // created (no CreateLedger event, and — under archiving — not present in the
+  // baseline). Such a row exposes an unaudited ledger through ListLedgers while
+  // carrying no schema/account types the projection passes could otherwise flag.
+  // The audit-derived ledger set is never seeded from the live store, so this
+  // comparison stays honest.
+  CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 16;
+  // Emitted when the reference→txID uniqueness index (SubAttrReference)
+  // diverges from the references the checker re-derived by replaying
+  // CreatedTransaction / RevertedTransaction log payloads (baseline-seeded
+  // under archiving): a stored reference the audit never assigned, a missing
+  // reference the audit did assign, or a reference pointing at a different
+  // transaction. The index enforces reference idempotency, so a tampered row
+  // silently changes which duplicates get rejected.
+  CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH = 17;
+  // Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
+  // re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
+  // from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
+  // decoded from the chain-bound AuditItem orders; baseline-seeded under
+  // archiving), and VolumeCount / MetadataCount / ReferenceCount against a
+  // recount of the stored attribute rows those counters summarize — the rows
+  // themselves are verified entry-by-entry by their own passes.
+  // EphemeralEvictedCount / TransientUsedCount are informational and excluded
+  // (cf. Index BuildStatus).
+  CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 18;
 }
 
 message CheckStoreError {

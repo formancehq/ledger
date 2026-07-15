@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestBuildCommand_KeepsOnlyPodIndexLogic(t *testing.T) {
 	t.Parallel()
 
 	ls := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			DataDir: "/data/app",
 		},
@@ -54,7 +54,7 @@ func TestBuildCommand_RestoreFlag(t *testing.T) {
 	t.Parallel()
 
 	ls := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Restore: true,
 			DataDir: "/data/app",
@@ -71,7 +71,7 @@ func TestBuildCommand_BootstrapVsJoin(t *testing.T) {
 	t.Parallel()
 
 	ls := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "default"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			DataDir: "/data/app",
 			WalDir:  "/data/raft",
@@ -88,7 +88,7 @@ func TestBuildCommand_BootstrapVsJoin(t *testing.T) {
 	assert.Contains(t, script, `if [ -f "/data/raft/CLUSTER_JOINED" ]`)
 	assert.Contains(t, script, `elif [ "$POD_INDEX" = "0" ]; then`)
 	assert.Contains(t, script, `CLUSTER_FLAG="--bootstrap"`)
-	assert.Contains(t, script, `CLUSTER_FLAG="--join ledger-test-svc-0.ledger-test-svc-headless.`)
+	assert.Contains(t, script, `CLUSTER_FLAG="--join ledger-test-cluster-0.ledger-test-cluster-headless.`)
 	assert.Contains(t, script, `:7777"`)
 	assert.NotContains(t, script, `:${GRPC_PORT}"`)
 

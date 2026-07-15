@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
 type portForwardFlags struct {

@@ -25,7 +25,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-ri-svc
+                name: ledger-ri-cluster
               status:
                 readyReplicas: 1
 
@@ -33,7 +33,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run marketplace --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -49,7 +49,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl provision run subscription --scale 0.5 --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s
 
@@ -64,9 +64,9 @@ spec:
         - script:
             content: |
               kubectl delete backup ri-bk -n $NAMESPACE --ignore-not-found
-              kubectl delete cluster ri-svc -n $NAMESPACE --wait=true --timeout=60s
-              kubectl wait --for=delete pod/ledger-ri-svc-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
-              kubectl delete pvc wal-ledger-ri-svc-0 data-ledger-ri-svc-0 cold-cache-ledger-ri-svc-0 -n $NAMESPACE --ignore-not-found
+              kubectl delete cluster ri-cluster -n $NAMESPACE --wait=true --timeout=60s
+              kubectl wait --for=delete pod/ledger-ri-cluster-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
+              kubectl delete pvc wal-ledger-ri-cluster-0 data-ledger-ri-cluster-0 cold-cache-ledger-ri-cluster-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
     # Restore from full + incremental backup.
@@ -79,7 +79,7 @@ spec:
               apiVersion: v1
               kind: Pod
               metadata:
-                name: ledger-ri-svc-0
+                name: ledger-ri-cluster-0
               status:
                 phase: Running
 
@@ -87,7 +87,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl restore download \
                   --s3-bucket e2e-restore-incr \
                   --s3-endpoint http://minio.minio.svc.cluster.local:9000 \
@@ -100,7 +100,7 @@ spec:
             timeout: 120s
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl restore finalize --yes \
                   --server 127.0.0.1:8888 \
                   --insecure \
@@ -114,14 +114,14 @@ spec:
         - script:
             content: |
               sleep 5
-              kubectl delete pod ledger-ri-svc-0 -n $NAMESPACE --force --grace-chapter=0
+              kubectl delete pod ledger-ri-cluster-0 -n $NAMESPACE --force --grace-chapter=0
             timeout: 30s
         - assert:
             resource:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-ri-svc
+                name: ledger-ri-cluster
               status:
                 readyReplicas: 1
 
@@ -129,7 +129,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 60s
 
@@ -137,6 +137,6 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-ri-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-ri-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl store check --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"'
             timeout: 120s

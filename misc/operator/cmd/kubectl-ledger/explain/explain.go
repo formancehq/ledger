@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // RESTConfigFunc is a function that returns a Kubernetes REST config.

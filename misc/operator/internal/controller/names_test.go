@@ -3,7 +3,7 @@ package controller
 import (
 	"testing"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestNameHelpers(t *testing.T) {
@@ -79,15 +79,15 @@ func TestBootstrapDNSConsistency(t *testing.T) {
 
 // TestCrossCRDPodNameConsistency guards that the Ledger CRD controller and the
 // Cluster reconciler agree on pod names: the Ledger controller dials
-// podName(ServiceRef, 0) while the Cluster reconciler creates pods via
+// podName(ClusterRef, 0) while the Cluster reconciler creates pods via
 // the same helper. A divergence would cause the dial to target a non-existent
 // pod.
 func TestCrossCRDPodNameConsistency(t *testing.T) {
-	serviceRef := "foo"
+	clusterRef := "foo"
 	// Cluster reconciler names StatefulSet pods via podName.
-	clusterPod0 := podName(serviceRef, 0)
-	// Ledger CRD controller dials the same pod via podName(ServiceRef, 0).
-	ledgerCRDDialTarget := podName(serviceRef, 0)
+	clusterPod0 := podName(clusterRef, 0)
+	// Ledger CRD controller dials the same pod via podName(ClusterRef, 0).
+	ledgerCRDDialTarget := podName(clusterRef, 0)
 	if clusterPod0 != ledgerCRDDialTarget {
 		t.Fatalf("cross-CRD pod-0 mismatch: %q vs %q", clusterPod0, ledgerCRDDialTarget)
 	}

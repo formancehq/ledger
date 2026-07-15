@@ -52,6 +52,11 @@ spec:
           spec:
             description: LedgerCRDSpec defines the desired state of a Ledger.
             properties:
+              clusterRef:
+                description: |-
+                  ClusterRef is the name of the Cluster in the same namespace
+                  that provides the gRPC endpoint.
+                type: string
               indexes:
                 description: |-
                   Indexes declares the account/transaction indexes the operator maintains
@@ -610,14 +615,9 @@ spec:
               name:
                 description: Name is the ledger name to create/delete via gRPC.
                 type: string
-              serviceRef:
-                description: |-
-                  ServiceRef is the name of the Cluster in the same namespace
-                  that provides the gRPC endpoint.
-                type: string
             required:
+            - clusterRef
             - name
-            - serviceRef
             type: object
           status:
             description: LedgerCRDStatus defines the observed state of a Ledger.

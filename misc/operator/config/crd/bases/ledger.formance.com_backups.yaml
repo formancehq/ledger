@@ -17,8 +17,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.serviceRef
-      name: Service
+    - jsonPath: .spec.clusterRef
+      name: Cluster
       type: string
     - jsonPath: .status.phase
       name: Phase
@@ -57,6 +57,9 @@ spec:
           spec:
             description: BackupSpec defines the desired state of a Backup.
             properties:
+              clusterRef:
+                description: ClusterRef is the name of the Cluster in the same namespace.
+                type: string
               destination:
                 description: Destination defines where backups are stored.
                 properties:
@@ -120,9 +123,6 @@ spec:
                       backups (e.g. "0 * * * *" for hourly).
                     type: string
                 type: object
-              serviceRef:
-                description: ServiceRef is the name of the Cluster in the same namespace.
-                type: string
               successfulRunsHistoryLimit:
                 default: 3
                 description: |-
@@ -142,8 +142,8 @@ spec:
                   enough for tens of GB on S3 while still bounding stuck runs.
                 type: string
             required:
+            - clusterRef
             - destination
-            - serviceRef
             type: object
           status:
             description: BackupStatus defines the observed state of a Backup.

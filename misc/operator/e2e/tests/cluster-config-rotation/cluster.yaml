@@ -1,7 +1,7 @@
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
-  name: ccr-svc
+  name: ccr-cluster
 spec:
   replicas: 1
   image:

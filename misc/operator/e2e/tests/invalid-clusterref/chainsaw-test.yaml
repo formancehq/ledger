@@ -1,12 +1,12 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: invalid-serviceref
+  name: invalid-clusterref
 spec:
   timeouts:
     assert: 30s
   steps:
-    - name: Backup with missing service should fail
+    - name: Backup with missing cluster should fail
       try:
         - apply:
             file: backup.yaml

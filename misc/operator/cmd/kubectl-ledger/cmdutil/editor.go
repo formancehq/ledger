@@ -8,7 +8,7 @@ import (
 
 	"github.com/pterm/pterm"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/explain"
 )
 
 // Change represents a single diff entry between original and modified specs.

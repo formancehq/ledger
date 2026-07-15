@@ -1,4 +1,4 @@
-module github.com/formance/ledger/operator
+module github.com/formancehq/ledger/misc/operator
 
 go 1.26.0
 

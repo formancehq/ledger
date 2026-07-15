@@ -2,14 +2,17 @@ package check
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -185,6 +188,41 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		err := state.SaveLedger(batch, info)
 		require.NoError(e.t, err)
 		_, err = e.attrs.Ledger.Set(batch, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
+		require.NoError(e.t, err)
+	}
+
+	// Write references (the real WriteSet persists the uniqueness index rows).
+	for key, ref := range e.references {
+		_, err := e.attrs.References.Set(batch, []byte(key), ref)
+		require.NoError(e.t, err)
+	}
+
+	// Write ledger boundaries with the net key counters the real WriteSet
+	// maintains via updateBoundaryCounters — each counter equals the number
+	// of stored rows under the ledger's canonical prefix.
+	for name, b := range e.boundaries {
+		prefix := string(domain.LedgerScopedPrefix(name))
+		b.VolumeCount, b.MetadataCount, b.ReferenceCount = 0, 0, 0
+
+		for key, vp := range e.volumes {
+			if strings.HasPrefix(key, prefix) && (vp.GetInput() != nil || vp.GetOutput() != nil) {
+				b.VolumeCount++
+			}
+		}
+
+		for key := range e.metadata {
+			if strings.HasPrefix(key, prefix) {
+				b.MetadataCount++
+			}
+		}
+
+		for key := range e.references {
+			if strings.HasPrefix(key, prefix) {
+				b.ReferenceCount++
+			}
+		}
+
+		_, err := e.attrs.Boundary.Set(batch, domain.LedgerKey{Name: name}.Bytes(), b)
 		require.NoError(e.t, err)
 	}
 
@@ -2167,4 +2205,430 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 		events[0].GetError().GetErrorType())
 	require.Contains(t, events[0].GetError().GetMessage(), "surviving a replayed DeleteLedger")
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *dal.Store) {
+	t.Helper()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	if len(ledgers) > 0 {
+		batch := store.OpenWriteSession()
+		for _, info := range ledgers {
+			require.NoError(t, state.SaveLedger(batch, info))
+		}
+		require.NoError(t, batch.Commit())
+	}
+
+	ctx := logging.TestingContext()
+
+	return NewChecker(store, attrs, "test-cluster", nil, nil, logging.FromContext(ctx)), store
+}
+
+func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {
+	return &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{key: {Type: typ}},
+	}
+}
+
+// TestCompareSchema_Identical: the stored schema matches the audit-derived
+// declarations, so the verifier stays silent.
+func TestCompareSchema_Identical(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events, "compareSchema must stay silent on a matching schema")
+}
+
+// TestCompareSchema_MissingFromStored is the restore-bug shape: the audit
+// declares a field type but the stored LedgerInfo carries no schema.
+func TestCompareSchema_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestCompareSchema_ExtraInStored is the tampering shape: the store carries a
+// field type the audit never declared.
+func TestCompareSchema_ExtraInStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		events[0].GetError().GetErrorType())
+}
+
+// TestCompareLedgerPresence_Present: a ledger the audit knows is live has a
+// stored LedgerInfo, so the verifier stays silent.
+func TestCompareLedgerPresence_Present(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
+// TestCompareLedgerPresence_MissingFromStored: the audit knows a live ledger but
+// its LedgerInfo projection was deleted from the store — the tampering the
+// stored-ledger loops in compareSchema / compareAccountTypes would otherwise miss.
+func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}, "L2": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L2", events[0].GetError().GetLedger())
+}
+
+// TestCompareLedgerPresence_PendingCleanupIgnored: a ledger mid-deletion (its
+// LedgerInfo already purged, its DeleteLedger log past the verified range) is
+// still counted live by the audit but must not be flagged.
+func TestCompareLedgerPresence_PendingCleanupIgnored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, nil)
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, map[string]struct{}{"L1": {}},
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
+// TestCompareLedgerPresence_SoftDeletedTreatedAsMissing: the audit knows a live
+// ledger but its stored LedgerInfo is tampered to a soft-deleted tombstone.
+// compareSchema / compareAccountTypes skip tombstones, so the presence check must
+// treat it as missing rather than counting it present.
+func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, DeletedAt: &commonpb.Timestamp{Data: 1_700_000_000_000_000}},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestCompareLedgerPresence_UnauditedStored: the store holds a live LedgerInfo
+// for a ledger the audit never created. Its empty schema/account types match the
+// empty expected values, so only the presence check can surface it.
+func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+		{Name: "ghost", Id: 2},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
+		map[string]struct{}{"L1": {}}, nil,
+		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "ghost", events[0].GetError().GetLedger())
+}
+
+// TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
+// LedgerInfo (so the schema is seeded from the boundary state, not the live
+// store) and that the checker reads it back.
+func TestSeedExpectedFromBaseline(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{
+			Name:           "L1",
+			Id:             1,
+			MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
+			AccountTypes:   map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}},
+		},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	dest, err := store.BaselineSnapshotDir()
+	require.NoError(t, err)
+	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
+	_ = reader.Close()
+
+	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baseline.Close() })
+
+	knownLedgers := map[string]struct{}{}
+	schemas := map[string]*commonpb.MetadataSchema{}
+	rawLedgerTypes := map[string]map[string]*commonpb.AccountType{}
+	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
+	expectedBoundaries := map[string]*raftcmdpb.LedgerBoundaries{}
+	checker.seedExpectedFromBaseline(context.Background(), baseline, knownLedgers, schemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
+
+	require.Contains(t, knownLedgers, "L1", "live baseline ledger should be seeded into knownLedgers")
+	require.Contains(t, schemas, "L1")
+	require.Equal(t,
+		commonpb.MetadataType_METADATA_TYPE_STRING,
+		schemas["L1"].GetAccountFields()["tier"].GetType())
+
+	require.Contains(t, rawLedgerTypes, "L1")
+	require.Equal(t, "assets:*", rawLedgerTypes["L1"]["asset"].GetPattern())
+	require.Contains(t, ledgerAccountTypes, "L1", "compiled account types should be seeded too")
+}
+
+// TestCompareAccountTypes_Identical: stored account types match the audit-derived
+// set, so the verifier stays silent.
+func TestCompareAccountTypes_Identical(t *testing.T) {
+	t.Parallel()
+
+	at := map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: at},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Empty(t, events)
+}
+
+// TestCompareAccountTypes_MissingFromStored: the audit declares an account type
+// the stored LedgerInfo lacks.
+func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestCompareAccountTypes_PatternTampered: the stored account type's pattern
+// diverges from the audit-declared one.
+func TestCompareAccountTypes_PatternTampered(t *testing.T) {
+	t.Parallel()
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		events[0].GetError().GetErrorType())
+}
+
+// TestCompareBoundaries_DetectsTamperedRow: a stored boundary field diverging
+// from the audit-derived expectation must surface as BOUNDARY_MISMATCH.
+func TestCompareBoundaries_DetectsTamperedRow(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ldg"))
+	engine.processAndCommit(createTransactionOrder("ldg", true, newPosting("world", "alice", "USD", 100)))
+
+	key := domain.LedgerKey{Name: "ldg"}.Bytes()
+	b, err := engine.attrs.Boundary.Get(engine.store, key)
+	require.NoError(t, err)
+	require.NotNil(t, b)
+
+	b.NextTransactionId += 7
+
+	batch := engine.store.OpenWriteSession()
+	_, err = engine.attrs.Boundary.Set(batch, key, b)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	var found bool
+	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ldg" {
+			found = true
+		}
+	}
+
+	require.True(t, found, "a tampered NextTransactionId must surface as BOUNDARY_MISMATCH")
+}
+
+// TestCompareBoundaries_DetectsForeignRow: a boundary row for a ledger the
+// audit never created must surface as BOUNDARY_MISMATCH.
+func TestCompareBoundaries_DetectsForeignRow(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ldg"))
+
+	batch := engine.store.OpenWriteSession()
+	_, err := engine.attrs.Boundary.Set(batch, domain.LedgerKey{Name: "ghost"}.Bytes(),
+		&raftcmdpb.LedgerBoundaries{NextTransactionId: 9, NextLogId: 9})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	var found bool
+	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ghost" {
+			found = true
+		}
+	}
+
+	require.True(t, found, "a boundary row without an audit-derived expectation must surface as BOUNDARY_MISMATCH")
+}
+
+// TestCompareReferences_DetectsMissingAndUnaudited: dropping an audited
+// reference row and injecting one the audit never assigned must both surface
+// as REFERENCE_MISMATCH.
+func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ldg"))
+
+	withRef := createTransactionOrder("ldg", true, newPosting("world", "alice", "USD", 100))
+	withRef.GetLedgerScoped().GetApply().GetCreateTransaction().Reference = "ref-1"
+	engine.processAndCommit(withRef)
+
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, engine.attrs.References.Delete(batch,
+		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ref-1"}.Bytes()))
+	_, err := engine.attrs.References.Set(batch,
+		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ghost"}.Bytes(),
+		&commonpb.TransactionReferenceValue{TransactionId: 42})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	var missing, unaudited bool
+	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
+		if e.GetErrorType() != servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH {
+			continue
+		}
+
+		if strings.Contains(e.GetMessage(), `"ref-1"`) {
+			missing = true
+		}
+
+		if strings.Contains(e.GetMessage(), `"ghost"`) {
+			unaudited = true
+		}
+	}
+
+	require.True(t, missing, "a dropped audited reference must surface as REFERENCE_MISMATCH")
+	require.True(t, unaudited, "an injected unaudited reference must surface as REFERENCE_MISMATCH")
 }

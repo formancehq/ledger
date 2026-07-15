@@ -3,7 +3,7 @@ package controller
 import (
 	"strconv"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // resourcePrefix is prepended to the name of every Kubernetes object the

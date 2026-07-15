@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"slices"
 	"strconv"
@@ -245,11 +246,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// State tracked during log replay
 	var (
-		knownLedgers = make(map[string]struct{}) // set of ledger names
+		// Audit-derived set of live ledgers (CreateLedger seen, no later
+		// DeleteLedger), seeded from the baseline under archiving. Verified
+		// against the stored LedgerInfo entries by compareLedgerPresence.
+		knownLedgers = make(map[string]struct{})
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
 		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
-		// Per-ledger account types for ephemeral purge simulation
+		// Per-ledger account types, seeded from the baseline under archiving and
+		// updated as AddAccountType/RemoveAccountType logs replay. Drives the
+		// ephemeral-purge simulation and is verified against the stored
+		// LedgerInfo.AccountTypes in compareAccountTypes.
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 		// Expected SubAttrIndex registry state derived from CreateIndex /
@@ -276,6 +283,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// replay activity is recorded (e.g. CreateIndex was archived, so
 		// neither expectedIndexes nor replayActivity ever held the key).
 		deletedInReplay = make(map[string]struct{})
+		// Expected metadata schema per ledger, derived from
+		// CreateLedger.initial_schema + SetMetadataFieldType /
+		// RemovedMetadataFieldType logs. Compared against the stored
+		// LedgerInfo.MetadataSchema in compareSchema.
+		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
+		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
+		// counters, seeded from the baseline under archiving, advanced per
+		// replayed log, then topped up with the chain-bound audit-order
+		// effects (mirror fill-gap advances, numscript executions). Verified
+		// against the stored rows by compareBoundaries.
+		expectedBoundaries = make(map[string]*raftcmdpb.LedgerBoundaries)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -321,58 +339,34 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ephemeralPurgeBuffer = domainreplay.NewEphemeralPurgeBuffer()
 	}
 
-	// If chapters were archived, pre-populate knownLedgers from Pebble
-	// since the CreateLedger logs have been purged.
+	// Under archiving the baseline is the checker's ONLY source of pre-archive
+	// state — the CreateLedger and declaration logs have been purged — so
+	// knownLedgers, schemas, account types, and reversion tracking are all
+	// seeded from it, never from the live store, keeping every check
+	// independent of the data it verifies. The handle was opened above and is
+	// shared with the audit-hash-chain baseline fold.
 	if hasArchivedChapters {
-		ledgerCursor, err := query.ReadLedgers(ctx, snap)
-		if err != nil {
-			return fmt.Errorf("reading ledgers for archive recovery: %w", err)
+		// Without the baseline there is no independent pre-archive state: the
+		// projection comparisons and the replay's UNKNOWN_LEDGER gate (which needs
+		// knownLedgers) would both run on a partial view, and we refuse to backfill
+		// from the live store. The audit hash chain — the real integrity guarantee
+		// — was already verified above. Expected after a checkpoint-only restore;
+		// warn and skip the entry-by-entry verification.
+		if baselineDB == nil {
+			c.logger.Error("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
+
+			return nil
 		}
 
-		ledgers, err := cursor.Collect(ledgerCursor)
-		if err != nil {
-			return fmt.Errorf("collecting ledgers: %w", err)
-		}
+		// The pre-archive live ledger set, schema, and account types were declared
+		// in now-purged logs; seed them from the boundary-time baseline so the
+		// post-archive replay applies its delta on top.
+		c.seedExpectedFromBaseline(ctx, baselineDB, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
 
-		for _, info := range ledgers {
-			if info.GetDeletedAt() == nil {
-				knownLedgers[info.GetName()] = struct{}{}
-
-				if types := info.GetAccountTypes(); len(types) > 0 {
-					rawLedgerTypes[info.GetName()] = types
-					ledgerAccountTypes[info.GetName()] = accounttype.CompileTypes(types)
-				}
-			}
-		}
-
-		// Pre-populate knownTxIDs from archived transaction states so that
-		// reversion invariant checks work correctly for non-archived logs.
-		txIter, err := c.attrs.Transaction.NewStreamingIter(snap, nil)
-		if err != nil {
-			return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
-		}
-
-		for txIter.Next() {
-			entry := txIter.Entry()
-
-			var tk domain.TransactionKey
-			if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
-				continue // skip unparsable keys
-			}
-
-			trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
-
-			if entry.Value.GetRevertedByTransaction() != 0 {
-				trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
-			}
-		}
-
-		if err := txIter.Close(); err != nil {
-			return fmt.Errorf("closing tx streaming iter: %w", err)
-		}
-
-		if err := txIter.Err(); err != nil {
-			return fmt.Errorf("pre-populating knownTxIDs: %w", err)
+		// Pre-populate the reversion tracking from the baseline's transaction
+		// states so reversion invariant checks cover pre-archive transactions.
+		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
+			return err
 		}
 	}
 
@@ -436,12 +430,23 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			switch payload := log.GetPayload().GetType().(type) {
 			case *commonpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
-					knownLedgers[payload.CreateLedger.GetName()] = struct{}{}
+					name := payload.CreateLedger.GetName()
+					knownLedgers[name] = struct{}{}
+					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
+					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
 			case *commonpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
+					delete(expectedSchemas, name)
+					delete(rawLedgerTypes, name)
+					delete(ledgerAccountTypes, name)
+					// The live apply drops the boundary row at delete time, so
+					// the expectation goes with it — compareBoundaries flags a
+					// surviving stored row as unexpected.
+					delete(expectedBoundaries, name)
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
@@ -472,6 +477,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
+
+						advanceExpectedBoundaries(expectedBoundaries, ledgerName, payload.Apply.GetLog())
 
 						// Index registry derivation: every CreateIndex /
 						// DropIndex / RemovedMetadataFieldType log entry
@@ -505,7 +512,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								delete(expectedIndexes, key)
 								indexReplayActivity[key] = struct{}{}
 							}
+						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+							if l := d.SetMetadataFieldType; l != nil {
+								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
+							}
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+							if l := d.RemovedMetadataFieldType; l != nil {
+								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
+							}
+
 							// processRemoveMetadataFieldType cascades into a
 							// DropIndex when an index was attached to the
 							// removed field; the dropped id rides on the log
@@ -595,18 +610,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// them via EXCLUSION_RECORD_MISMATCH for human review.
 	compareExclusionProjections(stored, excluded, callback)
 
-	// baselineDB was opened earlier (before log iteration) so the
-	// reference-fold pass and the archived-state comparison passes share
-	// the same handle. If archived chapters exist but no baseline is
-	// available, we can't do
-	// entry-by-entry comparison (the replay only covers non-archived logs).
-	// This is expected after a restore. Warn and skip comparison passes.
-	if hasArchivedChapters && baselineDB == nil {
-		c.logger.Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
-
-		return nil
-	}
-
 	// `excluded` was populated incrementally by the replay-time
 	// exclusionCollector. It is the audit-derived ground truth — the
 	// AppliedProposal.TransientVolumes and LedgerLog.PurgedVolumes proto
@@ -632,6 +635,34 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
+
+	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareLedgerPresence(ctx, snap, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareAccountTypes(ctx, snap, rawLedgerTypes, callback); err != nil {
+		return err
+	}
+
+	// Mirror fill-gap advances and numscript execution counts live on the
+	// orders, not the ledger-log stream — fold them in from the chain-bound
+	// AuditItem rows before comparing boundaries (pre-archive effects are
+	// inside the baseline-seeded values; archived audit items are purged).
+	if err := c.collectAuditOrderBoundaryEffects(snap, archiveEndSeq, expectedBoundaries); err != nil {
+		return fmt.Errorf("collecting audit order boundary effects: %w", err)
+	}
+
+	if err := c.compareBoundaries(ctx, snap, expectedBoundaries, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -1263,9 +1294,39 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 	return errorCount
 }
 
+// metaValueDisplay renders a metadata value with its type for check events, so
+// a type-only divergence (bool false vs string "false") is visible in the
+// message.
+func metaValueDisplay(v *commonpb.MetadataValue) string {
+	var kind string
+
+	switch v.GetType().(type) {
+	case *commonpb.MetadataValue_StringValue:
+		kind = "string"
+	case *commonpb.MetadataValue_IntValue:
+		kind = "int"
+	case *commonpb.MetadataValue_UintValue:
+		kind = "uint"
+	case *commonpb.MetadataValue_BoolValue:
+		kind = "bool"
+	case *commonpb.MetadataValue_DatetimeValue:
+		kind = "datetime"
+	case *commonpb.MetadataValue_NullValue:
+		kind = "null"
+	default:
+		kind = "unset"
+	}
+
+	return fmt.Sprintf("%q (%s)", commonpb.MetadataValueToString(v), kind)
+}
+
 // compareMetadata performs a 3-way merge comparison for account metadata.
-// Replay entries encode SET (flag 0x00 + value) or DELETED (flag 0x01).
-// expected = replay override if present, else baseline; compare with live.
+// Replay entries encode SET (flag 0x00 + marshaled MetadataValue) or DELETED
+// (flag 0x01). expected = replay override if present, else baseline; compare
+// with live. Values are compared as typed protos, not string renderings — the
+// FSM stores the order's MetadataValue verbatim, so a live row whose type
+// diverges from the log (bool false vs string "false") is a projection
+// mismatch even when the renderings agree.
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
@@ -1273,7 +1334,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	errorCount := 0
 
 	// Collect live metadata
-	liveMetadata := make(map[string]string)
+	liveMetadata := make(map[string]*commonpb.MetadataValue)
 
 	liveIter, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -1285,7 +1346,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 	for liveIter.Next() {
 		e := liveIter.Entry()
-		liveMetadata[string(e.CanonicalKey)] = commonpb.MetadataValueToString(e.Value)
+		liveMetadata[string(e.CanonicalKey)] = e.Value
 	}
 
 	if err := liveIter.Close(); err != nil {
@@ -1303,7 +1364,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	// Collect baseline metadata (if available)
-	baselineMetadata := make(map[string]string) // key -> string value
+	baselineMetadata := make(map[string]*commonpb.MetadataValue)
 
 	if baselineDB != nil {
 		baselineIter, err := c.attrs.Metadata.NewStreamingIter(baselineDB, nil)
@@ -1316,7 +1377,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 		for baselineIter.Next() {
 			e := baselineIter.Entry()
-			baselineMetadata[string(e.CanonicalKey)] = commonpb.MetadataValueToString(e.Value)
+			baselineMetadata[string(e.CanonicalKey)] = e.Value
 		}
 
 		if err := baselineIter.Close(); err != nil {
@@ -1337,7 +1398,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	// Collect replay metadata state
 	type replayMeta struct {
 		deleted bool
-		value   string // only valid when !deleted
+		value   *commonpb.MetadataValue // only valid when !deleted
 	}
 
 	replayEntries := make(map[string]replayMeta)
@@ -1370,7 +1431,17 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if valBytes[0] == metaFlagDeleted {
 			replayEntries[string(canonicalKey)] = replayMeta{deleted: true}
 		} else {
-			replayEntries[string(canonicalKey)] = replayMeta{value: string(valBytes[1:])}
+			mv := &commonpb.MetadataValue{}
+			if err := mv.UnmarshalVT(valBytes[1:]); err != nil {
+				_ = replayIter.Close()
+
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+					fmt.Sprintf("unmarshaling replay metadata value: %v", err), 0, "", "", ""))
+
+				return 1
+			}
+
+			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
 		}
 	}
 
@@ -1415,7 +1486,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		}
 
 		// Compute expected value
-		var expectedValue string
+		var expectedValue *commonpb.MetadataValue
 		expectedExists := false
 
 		if rm, hasReplay := replayEntries[key]; hasReplay {
@@ -1435,21 +1506,21 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if expectedExists != actualExists {
 			if expectedExists {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-					fmt.Sprintf("metadata missing for %s/%s: expected %q",
-						mk.Account, mk.Key, expectedValue),
+					fmt.Sprintf("metadata missing for %s/%s: expected %s",
+						mk.Account, mk.Key, metaValueDisplay(expectedValue)),
 					0, mk.LedgerName, mk.Account, ""))
 			} else {
 				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-					fmt.Sprintf("unexpected metadata for %s/%s: got %q",
-						mk.Account, mk.Key, actualValue),
+					fmt.Sprintf("unexpected metadata for %s/%s: got %s",
+						mk.Account, mk.Key, metaValueDisplay(actualValue)),
 					0, mk.LedgerName, mk.Account, ""))
 			}
 
 			errorCount++
-		} else if expectedExists && expectedValue != actualValue {
+		} else if expectedExists && !expectedValue.EqualVT(actualValue) {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("metadata mismatch for %s/%s: expected %q, got %q",
-					mk.Account, mk.Key, expectedValue, actualValue),
+				fmt.Sprintf("metadata mismatch for %s/%s: expected %s, got %s",
+					mk.Account, mk.Key, metaValueDisplay(expectedValue), metaValueDisplay(actualValue)),
 				0, mk.LedgerName, mk.Account, ""))
 
 			errorCount++
@@ -4610,6 +4681,351 @@ func verifySealingHash(p *commonpb.Chapter, callback func(*servicepb.CheckStoreE
 			p.GetCloseSequence(), "", "", ""))
 	}
 }
+
+// compareSchema verifies each ledger's stored metadata schema
+// (LedgerInfo.MetadataSchema) against the field-type declarations re-derived
+// from the audit. The schema is a projection of CreateLedger.initial_schema +
+// SetMetadataFieldType / RemovedMetadataFieldType orders; a stored schema that
+// diverges from the replay is tampering or a restore-rebuild gap.
+func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for schema verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for schema verification: %w", err)
+	}
+
+	for _, info := range ledgers {
+		// A soft-deleted ledger's schema is no longer part of the live
+		// projection; its LedgerInfo is retained only as a tombstone.
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		name := info.GetName()
+		if !schemaEqual(expected[name], info.GetMetadataSchema()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+				fmt.Sprintf("ledger %q metadata schema diverges from the audit-derived declarations", name),
+				0, name, "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// seedExpectedFromBaseline loads the boundary-time live ledger set, metadata
+// schema, and account types for each ledger from the already-open baseline
+// checkpoint, so the post-archive replay applies its delta on top. The baseline
+// is the independent (non-live) source the checker needs when the pre-archive
+// declaration and CreateLedger logs have been purged.
+func (c *Checker) seedExpectedFromBaseline(ctx context.Context, baseline *pebble.DB, knownLedgers map[string]struct{}, schemas map[string]*commonpb.MetadataSchema, rawLedgerTypes map[string]map[string]*commonpb.AccountType, ledgerAccountTypes map[string][]accounttype.CompiledType, boundaries map[string]*raftcmdpb.LedgerBoundaries) {
+	ledgerCursor, err := query.ReadLedgers(ctx, baseline)
+	if err != nil {
+		c.logger.Infof("failed to read baseline ledgers for seeding: %v", err)
+
+		return
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		c.logger.Infof("failed to collect baseline ledgers for seeding: %v", err)
+
+		return
+	}
+
+	for _, info := range ledgers {
+		// A soft-deleted baseline ledger is a tombstone, not part of the live
+		// projection; skip it so the post-archive replay doesn't treat it as an
+		// expected live ledger.
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		knownLedgers[info.GetName()] = struct{}{}
+
+		if schema := info.GetMetadataSchema(); schema != nil {
+			schemas[info.GetName()] = schema.CloneVT()
+		}
+
+		seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, info.GetName(), info.GetAccountTypes())
+
+		// The boundary-time LedgerBoundaries carry the pre-archive id fields
+		// and counters; the post-archive replay advances on top. A live
+		// baseline ledger with no boundary row starts at genesis.
+		b, err := c.attrs.Boundary.Get(baseline, domain.LedgerKey{Name: info.GetName()}.Bytes())
+		if err != nil {
+			c.logger.Infof("failed to read baseline boundaries for ledger %q: %v", info.GetName(), err)
+
+			continue
+		}
+
+		if b == nil {
+			b = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+		}
+
+		boundaries[info.GetName()] = b.CloneVT()
+	}
+}
+
+// seedTxTrackingFromBaseline pre-populates the known / reverted transaction-ID
+// bitsets from the baseline's boundary-time transaction states, so reversion
+// invariant checks cover pre-archive transactions whose logs have been purged.
+// Reads the baseline, never the live store.
+func (c *Checker) seedTxTrackingFromBaseline(baseline *pebble.DB, ledgerKnownTxIDs, ledgerRevertedTxIDs map[string]*bitset.Bitset) error {
+	txIter, err := c.attrs.Transaction.NewStreamingIter(baseline, nil)
+	if err != nil {
+		return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
+	}
+
+	for txIter.Next() {
+		entry := txIter.Entry()
+
+		var tk domain.TransactionKey
+		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
+			continue // skip unparsable keys
+		}
+
+		trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
+
+		if entry.Value.GetRevertedByTransaction() != 0 {
+			trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
+		}
+	}
+
+	if err := txIter.Close(); err != nil {
+		return fmt.Errorf("closing tx streaming iter: %w", err)
+	}
+
+	if err := txIter.Err(); err != nil {
+		return fmt.Errorf("pre-populating knownTxIDs: %w", err)
+	}
+
+	return nil
+}
+
+// seedAccountTypes installs a ledger's initial account types into both the raw
+// map (verified against the stored LedgerInfo in compareAccountTypes) and the
+// compiled map (drives the ephemeral-purge simulation). The raw map is copied
+// so the replay's add/remove mutations don't touch the source. Serves the types
+// carried by CreateLedger and the boundary-time types seeded from the baseline.
+func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
+	if len(types) == 0 {
+		return
+	}
+
+	cloned := make(map[string]*commonpb.AccountType, len(types))
+	maps.Copy(cloned, types)
+
+	raw[ledger] = cloned
+	compiled[ledger] = accounttype.CompileTypes(cloned)
+}
+
+// compareAccountTypes verifies each ledger's stored account types
+// (LedgerInfo.AccountTypes) against the set re-derived from the audit
+// (AddAccountType / RemoveAccountType). The logged AccountType is the exact
+// object stored on LedgerInfo (processAddAccountType), so a proto.Equal
+// divergence is tampering or a restore-rebuild gap.
+func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for account-type verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for account-type verification: %w", err)
+	}
+
+	for _, info := range ledgers {
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		name := info.GetName()
+		if !accountTypesEqual(expected[name], info.GetAccountTypes()) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
+				0, name, "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// compareLedgerPresence verifies that the live ledger set in the store matches
+// the audit-derived one in both directions. compareSchema / compareAccountTypes
+// iterate the ledgers Pebble returns and skip tombstones, so neither a LedgerInfo
+// deleted outright / tampered to a tombstone (a ledger with only schema /
+// account-type declarations and no volumes leaves nothing else to compare) nor an
+// unaudited row injected into the store would surface — the projection passes see
+// nothing on one side. knownLedgers is the audit-derived set (replay, or the
+// baseline under archiving), never seeded from the live store, so both checks are
+// honest. This is the store-side counterpart of the replay's UNKNOWN_LEDGER gate.
+func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for presence verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for presence verification: %w", err)
+	}
+
+	// Only a live LedgerInfo counts. A ledger the audit still counts live but
+	// whose stored entry is soft-deleted is tampering, and it cannot false-
+	// positive: a legitimately deleted ledger is absent from knownLedgers
+	// (DeleteLedger replay removes it; the baseline seed skips tombstones).
+	live := make(map[string]struct{}, len(ledgers))
+	for _, info := range ledgers {
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		live[info.GetName()] = struct{}{}
+	}
+
+	// A ledger mid-deletion has had its LedgerInfo purged (or is about to) while
+	// its DeleteLedger log sits past the verified range, so the two sides can
+	// legitimately disagree on it. Not tampering, in either direction.
+
+	// audit says live → the store must hold a live LedgerInfo.
+	for name := range knownLedgers {
+		if _, ok := live[name]; ok {
+			continue
+		}
+
+		if _, ok := pendingCleanup[name]; ok {
+			continue
+		}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+			fmt.Sprintf("ledger %q is live in the audit but its stored LedgerInfo is missing or soft-deleted", name),
+			0, name, "", "",
+		))
+	}
+
+	// store holds a live LedgerInfo → the audit must have created it.
+	for name := range live {
+		if _, ok := knownLedgers[name]; ok {
+			continue
+		}
+
+		if _, ok := pendingCleanup[name]; ok {
+			continue
+		}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+			fmt.Sprintf("ledger %q has a stored LedgerInfo with no CreateLedger in the audit", name),
+			0, name, "", "",
+		))
+	}
+
+	return nil
+}
+
+// accountTypesEqual compares two account-type sets by content, treating a nil
+// map and an empty one as equal.
+func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || !proto.Equal(av, bv) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// setExpectedSchemaField records a field-type declaration on the ledger's
+// expected schema during replay, lazily creating it. Mirrors
+// processSetMetadataFieldType.
+func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
+	schema := schemas[ledger]
+	if schema == nil {
+		schema = &commonpb.MetadataSchema{}
+		schemas[ledger] = schema
+	}
+
+	field := &commonpb.MetadataFieldSchema{Type: typ}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		if schema.AccountFields == nil {
+			schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.AccountFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		if schema.TransactionFields == nil {
+			schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.TransactionFields[key] = field
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		if schema.LedgerFields == nil {
+			schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+		}
+
+		schema.LedgerFields[key] = field
+	}
+}
+
+// removeExpectedSchemaField drops a field-type declaration during replay.
+// Mirrors processRemoveMetadataFieldType.
+func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string) {
+	schema := schemas[ledger]
+	if schema == nil {
+		return
+	}
+
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		delete(schema.GetAccountFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		delete(schema.GetTransactionFields(), key)
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		delete(schema.GetLedgerFields(), key)
+	}
+}
+
+// schemaEqual compares two metadata schemas by field-type content, treating a
+// nil schema and one with no fields as equal (nil vs empty maps must not read
+// as a divergence).
+func schemaEqual(a, b *commonpb.MetadataSchema) bool {
+	return fieldTypesEqual(a.GetAccountFields(), b.GetAccountFields()) &&
+		fieldTypesEqual(a.GetTransactionFields(), b.GetTransactionFields()) &&
+		fieldTypesEqual(a.GetLedgerFields(), b.GetLedgerFields())
+}
+
+func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || av.GetType() != bv.GetType() {
+			return false
+		}
+	}
+
+	return true
+}
+
 func errorEvent(errorType servicepb.CheckStoreErrorType, message string, logSequence uint64, ledger, account, asset string) *servicepb.CheckStoreEvent {
 	return &servicepb.CheckStoreEvent{
 		Type: &servicepb.CheckStoreEvent_Error{
@@ -4703,4 +5119,384 @@ func trackTxID(m map[string]*bitset.Bitset, ledgerName string, txID uint64) {
 	}
 
 	bs.Set(txID)
+}
+
+// advanceExpectedBoundaries mirrors the live apply's boundary advancement for
+// one replayed ledger log: NextLogId past the log id, and — for transaction
+// logs — NextTransactionId past the created id plus the posting / revert
+// counters. Mirror fill-gap advances and numscript counts ride on the order,
+// not the log; collectAuditOrderBoundaryEffects folds those in.
+func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *commonpb.LedgerLog) {
+	b, ok := expected[ledger]
+	if !ok {
+		b = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+		expected[ledger] = b
+	}
+
+	if next := log.GetId() + 1; next > b.GetNextLogId() {
+		b.NextLogId = next
+	}
+
+	var (
+		txID     uint64
+		postings int
+		isRevert bool
+	)
+
+	switch d := log.GetData().GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		tx := d.CreatedTransaction.GetTransaction()
+		if tx == nil {
+			return
+		}
+
+		txID, postings = tx.GetId(), len(tx.GetPostings())
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		revertTx := d.RevertedTransaction.GetRevertTransaction()
+		if revertTx == nil {
+			return
+		}
+
+		txID, postings, isRevert = revertTx.GetId(), len(revertTx.GetPostings()), true
+	default:
+		return
+	}
+
+	if next := txID + 1; next > b.GetNextTransactionId() {
+		b.NextTransactionId = next
+	}
+
+	b.PostingCount += uint64(postings)
+
+	if isRevert {
+		b.RevertCount++
+	}
+}
+
+// collectAuditOrderBoundaryEffects iterates the post-archive AuditItem rows
+// and folds the order-level boundary effects (mirror fill-gap advances,
+// numscript executions) into the expected boundaries — the same fold
+// backup.RebuildDelta performs on restore. Items with log_sequence 0 (failed
+// proposals, idempotent replays) or at/below the archive boundary contribute
+// nothing; effects for ledgers without an expectation (deleted, or flagged
+// UNKNOWN_LEDGER during replay) are skipped.
+func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, archiveEndSeq uint64, expected map[string]*raftcmdpb.LedgerBoundaries) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdAuditItem + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating audit item iter: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading audit item value: %w", err)
+		}
+
+		item := &auditpb.AuditItem{}
+		if err := item.UnmarshalVT(value); err != nil {
+			return fmt.Errorf("unmarshaling audit item %x: %w", iter.Key(), err)
+		}
+
+		if item.GetLogSequence() == 0 || item.GetLogSequence() <= archiveEndSeq {
+			continue
+		}
+
+		effects, err := domainreplay.DecodeOrderEffects(item.GetSerializedOrder())
+		if err != nil {
+			return fmt.Errorf("decoding order from audit item %x: %w", iter.Key(), err)
+		}
+
+		if effects.Ledger == "" {
+			continue
+		}
+
+		b, ok := expected[effects.Ledger]
+		if !ok {
+			continue
+		}
+
+		for _, id := range effects.SkippedTransactionIDs {
+			if next := id + 1; next > b.GetNextTransactionId() {
+				b.NextTransactionId = next
+			}
+		}
+
+		if effects.IsNumscript {
+			b.NumscriptExecutionCount++
+		}
+	}
+
+	return iter.Error()
+}
+
+// countLedgerAttributeKeys counts the stored keys under a ledger's canonical
+// prefix in the attribute zone.
+func countLedgerAttributeKeys[V proto.Message](attr *attributes.Attribute[V], reader dal.PebbleReader, ledger string) (uint64, error) {
+	si, err := attr.NewStreamingIter(reader, domain.LedgerScopedPrefix(ledger))
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = si.Close() }()
+
+	var count uint64
+	for si.Next() {
+		count++
+	}
+
+	return count, si.Err()
+}
+
+// compareBoundaries verifies each ledger's stored LedgerBoundaries against the
+// checker's re-derivation. The id fields and replay-derivable counters
+// (NextTransactionId, NextLogId, PostingCount, RevertCount,
+// NumscriptExecutionCount) come from the replayed logs plus the chain-bound
+// audit-order effects, baseline-seeded under archiving. The net key counters
+// (VolumeCount, MetadataCount, ReferenceCount) are compared against a recount
+// of the stored attribute rows they summarize — the rows themselves are
+// verified entry-by-entry by compareVolumes / compareMetadata /
+// compareReferences, so the verification chain is rows↔audit, counter↔rows.
+// EphemeralEvictedCount / TransientUsedCount are informational and excluded
+// (cf. compareIndexes' BuildStatus exclusion).
+func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*servicepb.CheckStoreEvent)) error {
+	stored := make(map[string]*raftcmdpb.LedgerBoundaries)
+
+	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
+	if err != nil {
+		return fmt.Errorf("creating boundary iter: %w", err)
+	}
+
+	for iter.Next() {
+		entry := iter.Entry()
+
+		var lk domain.LedgerKey
+		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+				fmt.Sprintf("stored boundary row has unparsable key %x: %v", entry.CanonicalKey, err), 0, "", "", ""))
+
+			continue
+		}
+
+		stored[lk.Name] = entry.Value
+	}
+
+	if err := iter.Close(); err != nil {
+		return fmt.Errorf("closing boundary iter: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("boundary iter error: %w", err)
+	}
+
+	for name, exp := range expected {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		st, ok := stored[name]
+		if !ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+				fmt.Sprintf("ledger %q has no stored boundaries (expected nextTransactionId=%d nextLogId=%d)",
+					name, exp.GetNextTransactionId(), exp.GetNextLogId()), 0, name, "", ""))
+
+			continue
+		}
+
+		volumeRows, err := countLedgerAttributeKeys(c.attrs.Volume, reader, name)
+		if err != nil {
+			return fmt.Errorf("counting stored volumes for ledger %q: %w", name, err)
+		}
+
+		metadataRows, err := countLedgerAttributeKeys(c.attrs.Metadata, reader, name)
+		if err != nil {
+			return fmt.Errorf("counting stored metadata for ledger %q: %w", name, err)
+		}
+
+		referenceRows, err := countLedgerAttributeKeys(c.attrs.References, reader, name)
+		if err != nil {
+			return fmt.Errorf("counting stored references for ledger %q: %w", name, err)
+		}
+
+		fields := []struct {
+			field    string
+			expected uint64
+			stored   uint64
+		}{
+			{"nextTransactionId", exp.GetNextTransactionId(), st.GetNextTransactionId()},
+			{"nextLogId", exp.GetNextLogId(), st.GetNextLogId()},
+			{"postingCount", exp.GetPostingCount(), st.GetPostingCount()},
+			{"revertCount", exp.GetRevertCount(), st.GetRevertCount()},
+			{"numscriptExecutionCount", exp.GetNumscriptExecutionCount(), st.GetNumscriptExecutionCount()},
+			{"volumeCount", volumeRows, st.GetVolumeCount()},
+			{"metadataCount", metadataRows, st.GetMetadataCount()},
+			{"referenceCount", referenceRows, st.GetReferenceCount()},
+		}
+
+		for _, f := range fields {
+			if f.expected != f.stored {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+					fmt.Sprintf("ledger %q boundary field %s mismatch: stored %d, expected %d",
+						name, f.field, f.stored, f.expected), 0, name, "", ""))
+			}
+		}
+	}
+
+	// A stored boundary row with no audit-derived expectation belongs to a
+	// ledger the audit deleted (the live apply drops the row at delete time)
+	// or never created.
+	for name := range stored {
+		if _, ok := expected[name]; !ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+				fmt.Sprintf("stored boundaries for ledger %q have no audit-derived expectation (ledger deleted or never created)", name),
+				0, name, "", ""))
+		}
+	}
+
+	return nil
+}
+
+// compareReferences verifies the stored reference→txID uniqueness index
+// (SubAttrReference) against the references re-derived from the replayed
+// CreatedTransaction / RevertedTransaction logs, overlaid on the baseline
+// under archiving. Rows for ledgers outside the audit-derived live set, or
+// whose deferred delete cleanup is still pending, are skipped — those rows
+// legitimately linger until a covering purge runs deleteLedgerData.
+func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+	skipKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
+		var rk domain.TransactionReferenceKey
+		if err := rk.Unmarshal(canonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+				fmt.Sprintf("reference row has unparsable key %x: %v", canonicalKey, err), 0, "", "", ""))
+
+			return rk, true
+		}
+
+		if _, known := knownLedgers[rk.LedgerName]; !known {
+			return rk, true
+		}
+
+		if _, pending := pendingCleanup[rk.LedgerName]; pending {
+			return rk, true
+		}
+
+		return rk, false
+	}
+
+	// expected = baseline overlaid by the replay. References are set-once, so
+	// the overlay never changes a txID — it only adds post-archive entries.
+	expected := make(map[string]uint64)
+
+	if baselineDB != nil {
+		baselineIter, err := c.attrs.References.NewStreamingIter(baselineDB, nil)
+		if err != nil {
+			return fmt.Errorf("creating baseline reference iter: %w", err)
+		}
+
+		for baselineIter.Next() {
+			entry := baselineIter.Entry()
+			expected[string(entry.CanonicalKey)] = entry.Value.GetTransactionId()
+		}
+
+		if err := baselineIter.Close(); err != nil {
+			return fmt.Errorf("closing baseline reference iter: %w", err)
+		}
+
+		if err := baselineIter.Err(); err != nil {
+			return fmt.Errorf("baseline reference iter error: %w", err)
+		}
+	}
+
+	replayIter, err := replay.newPrefixIter(replayPrefixReference)
+	if err != nil {
+		return fmt.Errorf("creating replay reference iter: %w", err)
+	}
+
+	for replayIter.First(); replayIter.Valid(); replayIter.Next() {
+		value, err := replayIter.ValueAndErr()
+		if err != nil {
+			_ = replayIter.Close()
+
+			return fmt.Errorf("reading replay reference: %w", err)
+		}
+
+		if len(value) != 8 {
+			_ = replayIter.Close()
+
+			return fmt.Errorf("replay reference value has %d bytes, want 8", len(value))
+		}
+
+		expected[string(replayIter.Key()[1:])] = binary.BigEndian.Uint64(value)
+	}
+
+	if err := replayIter.Close(); err != nil {
+		return fmt.Errorf("closing replay reference iter: %w", err)
+	}
+
+	stored := make(map[string]uint64)
+
+	liveIter, err := c.attrs.References.NewStreamingIter(reader, nil)
+	if err != nil {
+		return fmt.Errorf("creating stored reference iter: %w", err)
+	}
+
+	for liveIter.Next() {
+		entry := liveIter.Entry()
+		stored[string(entry.CanonicalKey)] = entry.Value.GetTransactionId()
+	}
+
+	if err := liveIter.Close(); err != nil {
+		return fmt.Errorf("closing stored reference iter: %w", err)
+	}
+
+	if err := liveIter.Err(); err != nil {
+		return fmt.Errorf("stored reference iter error: %w", err)
+	}
+
+	for key, expTxID := range expected {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		rk, skip := skipKey([]byte(key))
+		if skip {
+			continue
+		}
+
+		storedTxID, ok := stored[key]
+		if !ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+				fmt.Sprintf("reference %q on ledger %q is missing from the store (audit assigned it to transaction %d)",
+					rk.Reference, rk.LedgerName, expTxID), 0, rk.LedgerName, "", ""))
+
+			continue
+		}
+
+		if storedTxID != expTxID {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+				fmt.Sprintf("reference %q on ledger %q points at transaction %d, audit assigned it to %d",
+					rk.Reference, rk.LedgerName, storedTxID, expTxID), 0, rk.LedgerName, "", ""))
+		}
+	}
+
+	for key, storedTxID := range stored {
+		if _, ok := expected[key]; ok {
+			continue
+		}
+
+		rk, skip := skipKey([]byte(key))
+		if skip {
+			continue
+		}
+
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+			fmt.Sprintf("stored reference %q on ledger %q (transaction %d) was never assigned by the audit",
+				rk.Reference, rk.LedgerName, storedTxID), 0, rk.LedgerName, "", ""))
+	}
+
+	return nil
 }

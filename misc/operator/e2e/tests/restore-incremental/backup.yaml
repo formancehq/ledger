@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: ri-bk
 spec:
-  serviceRef: ri-svc
+  clusterRef: ri-cluster
   destination:
     driver: s3
     s3:

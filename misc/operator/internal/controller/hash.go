@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // computeSpecHash returns a SHA-256 hash of the serialized Cluster spec,

@@ -467,6 +467,19 @@ func CreateLedgerWithSchemaAction(name string, _ map[string]string, schema []*co
 	}
 }
 
+// CreateLedgerWithAccountTypesAction creates a ledger with account types declared
+// at creation time (CreateLedgerRequest.account_types).
+func CreateLedgerWithAccountTypesAction(name string, accountTypes map[string]*commonpb.AccountType) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{
+				Name:         name,
+				AccountTypes: accountTypes,
+			},
+		},
+	}
+}
+
 // SaveTypedAccountMetadataAction creates a request with a typed metadata map (not map[string]string).
 func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[string]*commonpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{

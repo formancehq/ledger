@@ -9,7 +9,7 @@ import (
 	"github.com/pterm/pterm"
 	"sigs.k8s.io/yaml"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // PhaseColor returns a colored string for the given Cluster phase.

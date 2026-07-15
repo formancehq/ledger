@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // This file holds the pure (Kubernetes-free) logic for reconciling a ledger's

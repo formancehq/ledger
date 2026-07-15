@@ -727,7 +727,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	//
 	// executePurge and the deletedLedgers block emit DeleteRange calls
 	// (range tombstones) on ZoneCold and ZonePerLedger, plus a handful of
-	// point writes/deletes (savePendingLedgerCleanup,
+	// point writes/deletes (SavePendingLedgerCleanup,
 	// deletePendingLedgerCleanup, deleteLedgerData). Range tombstones live in
 	// a dedicated skiplist, separate from the point-write skiplist, so they
 	// do not break the monotonicity invariant established in phase 3. The
@@ -758,7 +758,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 			return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
 		}
 
-		if err := savePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
+		if err := SavePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
 			return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
 		}
 

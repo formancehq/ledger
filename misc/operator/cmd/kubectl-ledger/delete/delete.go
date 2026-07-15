@@ -7,7 +7,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
 type deleteFlags struct {
