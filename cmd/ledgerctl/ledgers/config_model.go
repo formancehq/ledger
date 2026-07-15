@@ -269,7 +269,11 @@ func ComputeDiff(ledgerName string, current, desired *EditableConfig) ([]DiffAct
 	}
 	actions = append(actions, pqActions...)
 
-	actions = append(actions, diffNumscripts(ledgerName, current, desired)...)
+	nsActions, err := diffNumscripts(ledgerName, current, desired)
+	if err != nil {
+		return nil, err
+	}
+	actions = append(actions, nsActions...)
 
 	return actions, nil
 }
@@ -744,46 +748,50 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 	return actions, nil
 }
 
-func diffNumscripts(ledgerName string, current, desired *EditableConfig) []DiffAction {
+func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
 	var actions []DiffAction
 
-	// Added or updated
+	// The library is immutable and append-only: a save is only ever a NEW
+	// version. Editing a version's content in place is impossible server-side,
+	// so an edit that keeps the same version is a mistake — catch it here
+	// rather than emitting a save the server rejects with
+	// NUMSCRIPT_VERSION_ALREADY_EXISTS.
 	for name, desiredNS := range desired.Numscripts {
 		currentNS, exists := current.Numscripts[name]
-		if !exists || currentNS.Content != desiredNS.Content || currentNS.Version != desiredNS.Version {
-			op := "add"
-			desc := fmt.Sprintf("Save numscript %q", name)
-			if desiredNS.Version != "" {
-				desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
+
+		if exists && currentNS.Version == desiredNS.Version {
+			if currentNS.Content != desiredNS.Content {
+				return nil, fmt.Errorf("numscript %q: content changed but version %q was not bumped; publish the change under a new semver", name, desiredNS.Version)
 			}
-			if exists {
-				op = "update"
-				desc = fmt.Sprintf("Update numscript %q", name)
-				if desiredNS.Version != "" {
-					desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
-				}
-			}
-			actions = append(actions, DiffAction{
-				Section:     "numscript",
-				Operation:   op,
-				Description: desc,
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_SaveNumscript{
-						SaveNumscript: &servicepb.SaveNumscriptRequest{
-							Ledger:  ledgerName,
-							Name:    name,
-							Content: desiredNS.Content,
-							Version: desiredNS.Version,
-						},
+
+			continue
+		}
+
+		desc := fmt.Sprintf("Save numscript %q", name)
+		if desiredNS.Version != "" {
+			desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
+		}
+
+		actions = append(actions, DiffAction{
+			Section:     "numscript",
+			Operation:   "add",
+			Description: desc,
+			Request: &servicepb.Request{
+				Type: &servicepb.Request_SaveNumscript{
+					SaveNumscript: &servicepb.SaveNumscriptRequest{
+						Ledger:  ledgerName,
+						Name:    name,
+						Content: desiredNS.Content,
+						Version: desiredNS.Version,
 					},
 				},
-			})
-		}
+			},
+		})
 	}
 
 	// Numscripts are immutable and append-only — there is no removal action.
 
-	return actions
+	return actions, nil
 }
 
 func parseEnforcementModeProto(s string) commonpb.ChartEnforcementMode {
