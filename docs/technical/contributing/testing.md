@@ -384,6 +384,26 @@ default. Common tunables (full list in the script header):
 | `MODEL_DUMP_BATCHES` | Log every submitted bulk (`[batch-dump]` lines) for deterministic offline replay through `tests/oracle/cmd/replay`. |
 | `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
+| `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
+
+#### Restore cycles (`--restore`, single node)
+
+`run_model_test.sh --restore` periodically quiesces the driver, takes an
+incremental backup, kills the node, bootstraps a fresh store from the backup
+(running the `RebuildDelta` replay), and relaunches on it — the driver then
+resumes and its ordinary checks validate the rebuilt state. The run fails if
+no cycle completed or any cycle failed. The driver-side knobs are
+`MODEL_RESTORE_INTERVAL` and `MODEL_RESTORE_TIMEOUT` (seconds; the timeout is
+the per-cycle lease after which the driver gives up waiting and resumes).
+
+On Antithesis (k8s template) the same driver rendezvous is serviced by the
+`restore-orchestrator` sidecar in the workload pod
+(`tests/antithesis/workload/restore-orchestrator.sh`), which drives the
+operator through a full disaster-recovery pass: quiesce-point backup, Cluster
+teardown (CR + PVCs), restore-mode round-trip (`ledgerctl restore download` /
+`finalize`), and the flip back to a full cluster. The
+`singleton_driver_model: restore cycle completed` Sometimes assertion in the
+report is the proof the path actually ran.
 
 #### Maintaining the model
 

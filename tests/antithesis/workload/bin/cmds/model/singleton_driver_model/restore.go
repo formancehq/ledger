@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -16,8 +18,9 @@ import (
 // the RebuildDelta replay), and brings a node back up on it. The driver keeps
 // running against the restored node afterward, so its ordinary read/commit
 // checks validate the rebuilt state — no separate comparison. The driver owns
-// only the timing and the quiescence; the environment-specific work lives behind
-// RestoreTrigger (a file rendezvous locally, the k8s client on Antithesis).
+// only the timing and the quiescence; the environment-specific work lives
+// behind the file rendezvous — run_model_test.sh locally, the
+// restore-orchestrator sidecar (driving the operator) on Antithesis k8s.
 
 // awaitResume blocks while a restore cycle has paused dispatch, returning false
 // if ctx ends. Safe to call without holding mu.
@@ -118,6 +121,10 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 		if err != nil {
 			log.Printf("restore cycle: %v (continuing)", err)
 		} else {
+			// The report-visible proof that restore coverage actually ran: a
+			// green run with this never hit exercised nothing (the local
+			// runner's zero-cycles guard, for Antithesis).
+			assert.Sometimes(true, "singleton_driver_model: restore cycle completed", internal.Details{})
 			log.Printf("restore cycle: complete, resumed")
 		}
 	}
@@ -139,7 +146,8 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 		return fmt.Errorf("writing restore request: %w", err)
 	}
 
-	timeout := time.NewTimer(restoreTimeout)
+	cap := restoreTimeout()
+	timeout := time.NewTimer(cap)
 	defer timeout.Stop()
 
 	for {
@@ -156,10 +164,15 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeout.C:
-			return fmt.Errorf("restore timed out after %s", restoreTimeout)
+			return fmt.Errorf("restore timed out after %s", cap)
 		case <-time.After(restorePoll):
 		}
 	}
+}
+
+// restoreTimeout is the per-cycle lease, from MODEL_RESTORE_TIMEOUT seconds.
+func restoreTimeout() time.Duration {
+	return time.Duration(envInt("MODEL_RESTORE_TIMEOUT", defaultRestoreTimeoutSecs)) * time.Second
 }
 
 // selectRestoreTrigger returns the configured trigger, or nil when the restore

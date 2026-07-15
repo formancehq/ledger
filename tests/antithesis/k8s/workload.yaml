@@ -11,14 +11,26 @@ kind: ClusterRole
 metadata:
   name: workload-ledger-updater
 rules:
+# The restore-orchestrator sidecar deletes and re-creates the Cluster (restore
+# mode round-trip), on top of the drivers' rolling updates.
 - apiGroups: ["ledger.formance.com"]
   resources: ["clusters"]
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "list", "watch", "update", "patch", "create", "delete"]
 # Operational drivers (rolling_restart, quorum_recovery) delete pods and
 # observe the StatefulSet they belong to.
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list", "watch", "delete"]
+# The restore-orchestrator sidecar execs ledgerctl inside ledger pods
+# (backup at the quiesce point, restore download/finalize).
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+# The restore teardown deletes the cluster's volume claims so the re-created
+# cluster starts from the restored store, not stale disks.
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "delete"]
 - apiGroups: ["apps"]
   resources: ["statefulsets"]
   verbs: ["get", "list", "watch"]
@@ -93,6 +105,21 @@ spec:
         # MODEL_DUMP_BATCHES env at config-image build.
         - name: MODEL_DUMP_BATCHES
           value: "__MODEL_DUMP_BATCHES__"
+        # Restore-cycle rendezvous with the restore-orchestrator sidecar (only
+        # the model driver writes requests; other templates leave it idle).
+        # The interval and lease are k8s-sized: one cycle is a full cluster
+        # teardown + restore + rejoin, minutes under fault injection.
+        - name: MODEL_RESTORE_REQ
+          value: /var/run/restore/req
+        - name: MODEL_RESTORE_RESP
+          value: /var/run/restore/resp
+        - name: MODEL_RESTORE_INTERVAL
+          value: "180"
+        - name: MODEL_RESTORE_TIMEOUT
+          value: "900"
+        volumeMounts:
+        - name: restore-rendezvous
+          mountPath: /var/run/restore
         # Readiness probe ensures Antithesis waits for the ledger cluster
         # to be reachable before starting the Test Composer.
         readinessProbe:
@@ -106,3 +133,34 @@ spec:
             memory: 128Mi
           limits:
             memory: 512Mi
+      # Services the model driver's restore requests by driving the operator:
+      # quiesce-point backup, cluster teardown, restore-mode round-trip, and
+      # the flip back to normal. See restore-orchestrator.sh.
+      - name: restore-orchestrator
+        image: __REGISTRY__/workload-ledger-v3:__TAG__
+        command: ["/opt/antithesis/restore-orchestrator.sh"]
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CLUSTER_NAME
+          value: ledger
+        - name: CLUSTER_REPLICAS
+          value: "3"
+        - name: MODEL_RESTORE_REQ
+          value: /var/run/restore/req
+        - name: MODEL_RESTORE_RESP
+          value: /var/run/restore/resp
+        volumeMounts:
+        - name: restore-rendezvous
+          mountPath: /var/run/restore
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+      volumes:
+      - name: restore-rendezvous
+        emptyDir: {}

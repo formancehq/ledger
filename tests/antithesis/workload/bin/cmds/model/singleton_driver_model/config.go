@@ -131,12 +131,14 @@ const incomingBuffer = 256
 // Poll cadence while waiting for the driver to fully drain before a backup.
 const quiescePoll = 25 * time.Millisecond
 
-// Poll cadence and hard cap while waiting for the external orchestrator to finish
-// a restore. The cap is a lease: a dead orchestrator cannot park workers forever.
-const (
-	restorePoll    = 200 * time.Millisecond
-	restoreTimeout = 3 * time.Minute
-)
+// Poll cadence while waiting for the external orchestrator to finish a restore.
+const restorePoll = 200 * time.Millisecond
+
+// Default hard cap (seconds) on one restore cycle when MODEL_RESTORE_TIMEOUT is
+// unset. The cap is a lease: a dead orchestrator cannot park workers forever.
+// A k8s restore (cluster teardown, download, rejoin — under fault injection)
+// takes far longer than the local single-node swap, so the environment sets it.
+const defaultRestoreTimeoutSecs = 180
 
 // Base restore-cycle interval (seconds) when MODEL_RESTORE_INTERVAL is unset.
 const defaultRestoreIntervalSecs = 90

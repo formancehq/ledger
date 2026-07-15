@@ -61,9 +61,20 @@ RUN set -e; \
 # Runner
 FROM debian:trixie
 
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y curl jq
+
+# kubectl, for the restore-orchestrator sidecar (drives the operator's
+# backup/restore flow from inside the workload pod).
+ARG TARGETARCH
+RUN curl -fsSLo /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/v1.31.4/bin/linux/${TARGETARCH}/kubectl" \
+    && chmod +x /usr/local/bin/kubectl
 
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
+
+# Restore-orchestrator sidecar entrypoint — outside /opt/antithesis/test/v1 so
+# the Test Composer never discovers it as a test command.
+COPY tests/antithesis/workload/restore-orchestrator.sh /opt/antithesis/restore-orchestrator.sh
 
 COPY --from=compiler /init /init
 ENTRYPOINT ["/init"]
