@@ -7129,8 +7129,8 @@ type MirrorSourceConfig struct {
 	LedgerName string                 `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"` // Source ledger name (common to all source types)
 	// Types that are valid to be assigned to Type:
 	//
-	//	*MirrorSourceConfig_Http
-	//	*MirrorSourceConfig_Postgres
+	//	*MirrorSourceConfig_LedgerV2Http
+	//	*MirrorSourceConfig_LedgerV2Database
 	Type      isMirrorSourceConfig_Type `protobuf_oneof:"type"`
 	BatchSize uint32                    `protobuf:"varint,4,opt,name=batch_size,json=batchSize,proto3" json:"batch_size,omitempty"` // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
 	// Ordered rewrite rules applied to every mirror log entry as v2 logs are
@@ -7185,19 +7185,19 @@ func (x *MirrorSourceConfig) GetType() isMirrorSourceConfig_Type {
 	return nil
 }
 
-func (x *MirrorSourceConfig) GetHttp() *HttpMirrorSourceConfig {
+func (x *MirrorSourceConfig) GetLedgerV2Http() *HttpMirrorSourceConfig {
 	if x != nil {
-		if x, ok := x.Type.(*MirrorSourceConfig_Http); ok {
-			return x.Http
+		if x, ok := x.Type.(*MirrorSourceConfig_LedgerV2Http); ok {
+			return x.LedgerV2Http
 		}
 	}
 	return nil
 }
 
-func (x *MirrorSourceConfig) GetPostgres() *PostgresMirrorSourceConfig {
+func (x *MirrorSourceConfig) GetLedgerV2Database() *PostgresMirrorSourceConfig {
 	if x != nil {
-		if x, ok := x.Type.(*MirrorSourceConfig_Postgres); ok {
-			return x.Postgres
+		if x, ok := x.Type.(*MirrorSourceConfig_LedgerV2Database); ok {
+			return x.LedgerV2Database
 		}
 	}
 	return nil
@@ -7221,17 +7221,17 @@ type isMirrorSourceConfig_Type interface {
 	isMirrorSourceConfig_Type()
 }
 
-type MirrorSourceConfig_Http struct {
-	Http *HttpMirrorSourceConfig `protobuf:"bytes,2,opt,name=http,proto3,oneof"`
+type MirrorSourceConfig_LedgerV2Http struct {
+	LedgerV2Http *HttpMirrorSourceConfig `protobuf:"bytes,2,opt,name=ledger_v2_http,json=ledgerV2Http,proto3,oneof"`
 }
 
-type MirrorSourceConfig_Postgres struct {
-	Postgres *PostgresMirrorSourceConfig `protobuf:"bytes,3,opt,name=postgres,proto3,oneof"`
+type MirrorSourceConfig_LedgerV2Database struct {
+	LedgerV2Database *PostgresMirrorSourceConfig `protobuf:"bytes,3,opt,name=ledger_v2_database,json=ledgerV2Database,proto3,oneof"`
 }
 
-func (*MirrorSourceConfig_Http) isMirrorSourceConfig_Type() {}
+func (*MirrorSourceConfig_LedgerV2Http) isMirrorSourceConfig_Type() {}
 
-func (*MirrorSourceConfig_Postgres) isMirrorSourceConfig_Type() {}
+func (*MirrorSourceConfig_LedgerV2Database) isMirrorSourceConfig_Type() {}
 
 // MirrorRewriteRule transforms a mirror log entry during v2->v3 translation.
 //
@@ -13248,12 +13248,12 @@ const file_common_proto_rawDesc = "" +
 	"\x12ArchivedChapterLog\x12)\n" +
 	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"G\n" +
 	"\x1aConfirmedArchiveChapterLog\x12)\n" +
-	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"\x94\x02\n" +
+	"\achapter\x18\x01 \x01(\v2\x0f.common.ChapterR\achapter\"\xb8\x02\n" +
 	"\x12MirrorSourceConfig\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
-	"ledgerName\x124\n" +
-	"\x04http\x18\x02 \x01(\v2\x1e.common.HttpMirrorSourceConfigH\x00R\x04http\x12@\n" +
-	"\bpostgres\x18\x03 \x01(\v2\".common.PostgresMirrorSourceConfigH\x00R\bpostgres\x12\x1d\n" +
+	"ledgerName\x12F\n" +
+	"\x0eledger_v2_http\x18\x02 \x01(\v2\x1e.common.HttpMirrorSourceConfigH\x00R\fledgerV2Http\x12R\n" +
+	"\x12ledger_v2_database\x18\x03 \x01(\v2\".common.PostgresMirrorSourceConfigH\x00R\x10ledgerV2Database\x12\x1d\n" +
 	"\n" +
 	"batch_size\x18\x04 \x01(\rR\tbatchSize\x12>\n" +
 	"\rrewrite_rules\x18\x05 \x03(\v2\x19.common.MirrorRewriteRuleR\frewriteRulesB\x06\n" +
@@ -14147,8 +14147,8 @@ var file_common_proto_depIdxs = []int32{
 	96,  // 139: common.SealedChapterLog.chapter:type_name -> common.Chapter
 	96,  // 140: common.ArchivedChapterLog.chapter:type_name -> common.Chapter
 	96,  // 141: common.ConfirmedArchiveChapterLog.chapter:type_name -> common.Chapter
-	121, // 142: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
-	123, // 143: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
+	121, // 142: common.MirrorSourceConfig.ledger_v2_http:type_name -> common.HttpMirrorSourceConfig
+	123, // 143: common.MirrorSourceConfig.ledger_v2_database:type_name -> common.PostgresMirrorSourceConfig
 	102, // 144: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
 	103, // 145: common.MirrorRewriteRule.created_transaction:type_name -> common.CreatedTransactionRule
 	104, // 146: common.MirrorRewriteRule.reverted_transaction:type_name -> common.RevertedTransactionRule
@@ -14370,8 +14370,8 @@ func file_common_proto_init() {
 		(*LedgerLogPayload_OrderSkipped)(nil),
 	}
 	file_common_proto_msgTypes[83].OneofWrappers = []any{
-		(*MirrorSourceConfig_Http)(nil),
-		(*MirrorSourceConfig_Postgres)(nil),
+		(*MirrorSourceConfig_LedgerV2Http)(nil),
+		(*MirrorSourceConfig_LedgerV2Database)(nil),
 	}
 	file_common_proto_msgTypes[84].OneofWrappers = []any{
 		(*MirrorRewriteRule_CreatedTransaction)(nil),

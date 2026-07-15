@@ -200,15 +200,15 @@ func (m *Manager) teardown() {
 // todo: add pluggable source factory
 func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
-	case *commonpb.MirrorSourceConfig_Http:
+	case *commonpb.MirrorSourceConfig_LedgerV2Http:
 		var httpClient *http.Client
-		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
+		if cc := s.LedgerV2Http.GetOauth2ClientCredentials(); cc != nil {
 			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.GetClientId(), cc.GetClientSecret(), cc.GetTokenEndpoint(), cc.GetScopes())
 		}
 
-		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
-	case *commonpb.MirrorSourceConfig_Postgres:
-		return v2.NewPostgresSource(context.Background(), s.Postgres, cfg.GetLedgerName())
+		return v2.NewHTTPSource(s.LedgerV2Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
+	case *commonpb.MirrorSourceConfig_LedgerV2Database:
+		return v2.NewPostgresSource(context.Background(), s.LedgerV2Database, cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)
 	}

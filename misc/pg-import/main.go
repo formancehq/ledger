@@ -324,8 +324,8 @@ func createMirrorLedger(
 				MirrorSource: &commonpb.MirrorSourceConfig{
 					LedgerName: sourceLedgerName,
 					BatchSize:  batchSize,
-					Type: &commonpb.MirrorSourceConfig_Postgres{
-						Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Type: &commonpb.MirrorSourceConfig_LedgerV2Database{
+						LedgerV2Database: &commonpb.PostgresMirrorSourceConfig{
 							Dsn: dsn,
 						},
 					},

@@ -832,8 +832,8 @@ enum LedgerMode {
 message MirrorSourceConfig {
   string ledger_name = 1;  // Source ledger name (common to all source types)
   oneof type {
-    HttpMirrorSourceConfig http = 2;
-    PostgresMirrorSourceConfig postgres = 3;
+    HttpMirrorSourceConfig ledger_v2_http = 2;
+    PostgresMirrorSourceConfig ledger_v2_database = 3;
   }
   uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
   // Ordered rewrite rules applied to every mirror log entry as v2 logs are

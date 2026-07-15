@@ -166,59 +166,15 @@ spec:
                       batch (0 = default 100).
                     format: int32
                     type: integer
-                  http:
-                    description: HTTP configures replication via the Ledger v2 HTTP
-                      API.
-                    properties:
-                      baseUrl:
-                        description: BaseURL is the URL of the source Ledger v2 API.
-                        type: string
-                      oauth2:
-                        description: OAuth2 configures OAuth2 client credentials for
-                          authentication.
-                        properties:
-                          clientId:
-                            description: ClientID is the OAuth2 client ID.
-                            type: string
-                          clientSecretFrom:
-                            description: ClientSecretFrom references a Kubernetes
-                              Secret containing the OAuth2 client secret.
-                            properties:
-                              key:
-                                description: Key is the key within the Secret.
-                                type: string
-                              name:
-                                description: Name is the Secret name.
-                                type: string
-                            required:
-                            - key
-                            - name
-                            type: object
-                          scopes:
-                            description: Scopes is the list of OAuth2 scopes to request.
-                            items:
-                              type: string
-                            type: array
-                          tokenEndpoint:
-                            description: TokenEndpoint is the OAuth2 token endpoint
-                              URL.
-                            type: string
-                        required:
-                        - clientId
-                        - clientSecretFrom
-                        - tokenEndpoint
-                        type: object
-                    required:
-                    - baseUrl
-                    type: object
                   ledgerName:
                     description: |-
                       LedgerName is the name of the ledger on the source system.
                       Defaults to the Ledger's spec.name if not set.
                     type: string
-                  postgres:
-                    description: Postgres configures replication via direct PostgreSQL
-                      access.
+                  ledgerV2Database:
+                    description: |-
+                      LedgerV2Database configures replication via direct access to the Ledger v2
+                      PostgreSQL database.
                     properties:
                       awsIamAuth:
                         description: |-
@@ -323,12 +279,57 @@ spec:
                         token travel in cleartext
                       rule: '!has(self.awsIamAuth) || !has(self.sslMode) || self.sslMode
                         in [''require'',''verify-ca'',''verify-full'']'
+                  ledgerV2Http:
+                    description: LedgerV2HTTP configures replication via the Ledger
+                      v2 HTTP API.
+                    properties:
+                      baseUrl:
+                        description: BaseURL is the URL of the source Ledger v2 API.
+                        type: string
+                      oauth2:
+                        description: OAuth2 configures OAuth2 client credentials for
+                          authentication.
+                        properties:
+                          clientId:
+                            description: ClientID is the OAuth2 client ID.
+                            type: string
+                          clientSecretFrom:
+                            description: ClientSecretFrom references a Kubernetes
+                              Secret containing the OAuth2 client secret.
+                            properties:
+                              key:
+                                description: Key is the key within the Secret.
+                                type: string
+                              name:
+                                description: Name is the Secret name.
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                          scopes:
+                            description: Scopes is the list of OAuth2 scopes to request.
+                            items:
+                              type: string
+                            type: array
+                          tokenEndpoint:
+                            description: TokenEndpoint is the OAuth2 token endpoint
+                              URL.
+                            type: string
+                        required:
+                        - clientId
+                        - clientSecretFrom
+                        - tokenEndpoint
+                        type: object
+                    required:
+                    - baseUrl
+                    type: object
                   rewriteRules:
                     description: |-
                       RewriteRules are CEL rewrite rules applied, in order, to every mirror log
                       entry as the mirror translates v2 source logs into v3 orders. Each rule can
                       rename address segments, transform metadata, or drop transactions (see
-                      MirrorRewriteRule). Applies to both HTTP and Postgres sources.
+                      MirrorRewriteRule). Applies to both ledgerV2Http and ledgerV2Database sources.
                     items:
                       description: |-
                         MirrorRewriteRule transforms a mirror log entry during v2→v3 translation.
@@ -603,6 +604,10 @@ spec:
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of ledgerV2Http or ledgerV2Database must be
+                    set
+                  rule: has(self.ledgerV2Http) != has(self.ledgerV2Database)
               mode:
                 default: normal
                 description: |-

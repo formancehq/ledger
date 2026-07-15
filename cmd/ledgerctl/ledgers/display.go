@@ -44,18 +44,18 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	pterm.Printf("  Ledger:  %s\n", src.GetLedgerName())
 
 	switch s := src.GetType().(type) {
-	case *commonpb.MirrorSourceConfig_Http:
-		pterm.Printf("  Type:    HTTP\n")
-		pterm.Printf("  URL:     %s\n", s.Http.GetBaseUrl())
+	case *commonpb.MirrorSourceConfig_LedgerV2Http:
+		pterm.Printf("  Type:    ledgerV2Http\n")
+		pterm.Printf("  URL:     %s\n", s.LedgerV2Http.GetBaseUrl())
 
-		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
+		if cc := s.LedgerV2Http.GetOauth2ClientCredentials(); cc != nil {
 			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.GetClientId(), cc.GetTokenEndpoint())
 		}
-	case *commonpb.MirrorSourceConfig_Postgres:
-		pterm.Printf("  Type:    PostgreSQL\n")
-		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.GetDsn()))
+	case *commonpb.MirrorSourceConfig_LedgerV2Database:
+		pterm.Printf("  Type:    ledgerV2Database\n")
+		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.LedgerV2Database.GetDsn()))
 
-		if iam := s.Postgres.GetAwsIamAuth(); iam != nil {
+		if iam := s.LedgerV2Database.GetAwsIamAuth(); iam != nil {
 			pterm.Printf("  IAM:     AWS RDS IAM auth (region=%s)\n", iam.GetRegion())
 
 			if role := iam.GetAssumeRoleArn(); role != "" {
@@ -195,10 +195,10 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	}
 
 	switch sourceType {
-	case "http", "":
+	case "ledgerV2Http", "":
 		baseURL, _ := cmd.Flags().GetString("mirror-base-url")
 		if baseURL == "" {
-			return 0, nil, errors.New("--mirror-base-url is required for http mirror source")
+			return 0, nil, errors.New("--mirror-base-url is required for ledgerV2Http mirror source")
 		}
 
 		httpCfg := &commonpb.HttpMirrorSourceConfig{
@@ -218,13 +218,13 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			}
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Http{
-			Http: httpCfg,
+		cfg.Type = &commonpb.MirrorSourceConfig_LedgerV2Http{
+			LedgerV2Http: httpCfg,
 		}
-	case "postgres":
+	case "ledgerV2Database":
 		dsn, _ := cmd.Flags().GetString("mirror-dsn")
 		if dsn == "" {
-			return 0, nil, errors.New("--mirror-dsn is required for postgres mirror source")
+			return 0, nil, errors.New("--mirror-dsn is required for ledgerV2Database mirror source")
 		}
 
 		pgCfg := &commonpb.PostgresMirrorSourceConfig{
@@ -252,11 +252,11 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			pgCfg.AwsIamAuth.AssumeRoleArn = assumeRoleArn
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: pgCfg,
+		cfg.Type = &commonpb.MirrorSourceConfig_LedgerV2Database{
+			LedgerV2Database: pgCfg,
 		}
 	default:
-		return 0, nil, fmt.Errorf("invalid mirror source type %q: must be 'http' or 'postgres'", sourceType)
+		return 0, nil, fmt.Errorf("invalid mirror source type %q: must be 'ledgerV2Http' or 'ledgerV2Database'", sourceType)
 	}
 
 	return commonpb.LedgerMode_LEDGER_MODE_MIRROR, cfg, nil

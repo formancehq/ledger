@@ -180,8 +180,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -208,8 +208,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Postgres{
-								Postgres: &commonpb.PostgresMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Database{
+								LedgerV2Database: &commonpb.PostgresMirrorSourceConfig{
 									Dsn: "postgres://user:pass@host:5432/ledger",
 								},
 							},
@@ -239,8 +239,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -314,8 +314,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -375,8 +375,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -472,8 +472,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
 							},
 							RewriteRules: []*commonpb.MirrorRewriteRule{
 								// Scope is set but `match` is an invalid CEL expression:
@@ -510,8 +510,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 								},
 							},
@@ -604,8 +604,8 @@ var _ = Describe("Mirror", Ordered, func() {
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+								LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 									BaseUrl: mockV2.URL(),
 									Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{
 										ClientId:      "test-client-id",

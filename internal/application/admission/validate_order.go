@@ -369,7 +369,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return ErrMirrorRewriteRuleInvalid
 	}
 
-	pg := src.GetPostgres()
+	pg := src.GetLedgerV2Database()
 	if pg == nil {
 		return nil
 	}

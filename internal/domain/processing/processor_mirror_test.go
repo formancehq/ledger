@@ -518,8 +518,8 @@ func TestPromoteLedger_Success(t *testing.T) {
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 		MirrorSource: &commonpb.MirrorSourceConfig{
 			LedgerName: "default",
-			Type: &commonpb.MirrorSourceConfig_Http{
-				Http: &commonpb.HttpMirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_LedgerV2Http{
+				LedgerV2Http: &commonpb.HttpMirrorSourceConfig{
 					BaseUrl: "http://v2:3068",
 				},
 			},

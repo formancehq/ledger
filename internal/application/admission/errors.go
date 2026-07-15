@@ -12,14 +12,14 @@ var (
 	// region is mandatory to sign the SigV4 IAM auth token, and validating it
 	// at admission (rather than only at mirror-worker startup) avoids
 	// persisting a malformed mirror config in the audit chain.
-	ErrMirrorIAMRegionRequired = domain.NewValidationSentinel("mirrorSource.postgres.awsIamAuth.region is required when awsIamAuth is set")
+	ErrMirrorIAMRegionRequired = domain.NewValidationSentinel("mirrorSource.ledgerV2Database.awsIamAuth.region is required when awsIamAuth is set")
 
 	// ErrMirrorIAMRequiresTLS rejects mirror configs that pair AWS RDS IAM
 	// authentication with an sslmode that allows cleartext (disable, allow,
 	// prefer, or unset -- libpq's default "prefer" falls back to non-TLS).
 	// The SigV4 token in cc.Password is a short-lived bearer credential and
 	// must not transit cleartext.
-	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("mirrorSource.postgres: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
+	ErrMirrorIAMRequiresTLS = domain.NewValidationSentinel("mirrorSource.ledgerV2Database: awsIamAuth requires sslmode in {require, verify-ca, verify-full}")
 
 	// ErrMirrorRewriteRuleInvalid rejects a mirror config whose rewriteRules
 	// contain a rule that fails to compile: invalid CEL syntax, a match that is

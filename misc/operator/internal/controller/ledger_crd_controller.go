@@ -405,12 +405,12 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 		}
 
 		switch {
-		case src.HTTP != nil:
-			args = append(args, "--mirror-source-type", "http")
-			args = append(args, "--mirror-base-url", src.HTTP.BaseURL)
+		case src.LedgerV2HTTP != nil:
+			args = append(args, "--mirror-source-type", "ledgerV2Http")
+			args = append(args, "--mirror-base-url", src.LedgerV2HTTP.BaseURL)
 
-			if src.HTTP.OAuth2 != nil {
-				oauth2 := src.HTTP.OAuth2
+			if src.LedgerV2HTTP.OAuth2 != nil {
+				oauth2 := src.LedgerV2HTTP.OAuth2
 				args = append(args, "--mirror-oauth2-client-id", oauth2.ClientID)
 				args = append(args, "--mirror-oauth2-token-endpoint", oauth2.TokenEndpoint)
 
@@ -427,8 +427,8 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 				}
 			}
 
-		case src.Postgres != nil:
-			pgArgs, err := r.buildPostgresMirrorArgs(ctx, ledger.Namespace, src.Postgres)
+		case src.LedgerV2Database != nil:
+			pgArgs, err := r.buildPostgresMirrorArgs(ctx, ledger.Namespace, src.LedgerV2Database)
 			if err != nil {
 				return nil, err
 			}
@@ -436,7 +436,7 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 			args = append(args, pgArgs...)
 
 		default:
-			return nil, errors.New("mirrorSource must specify either http or postgres")
+			return nil, errors.New("mirrorSource must specify either ledgerV2Http or ledgerV2Database")
 		}
 	}
 
@@ -451,11 +451,11 @@ func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1
 // Exactly one of PasswordFrom or AWSIAMAuth must be set.
 func (r *LedgerReconciler) buildPostgresMirrorArgs(ctx context.Context, namespace string, pg *ledgerv1alpha1.PostgresMirrorSource) ([]string, error) {
 	if pg.PasswordFrom == nil && pg.AWSIAMAuth == nil {
-		return nil, errors.New("mirrorSource.postgres: one of passwordFrom or awsIamAuth must be set")
+		return nil, errors.New("mirrorSource.ledgerV2Database: one of passwordFrom or awsIamAuth must be set")
 	}
 
 	if pg.PasswordFrom != nil && pg.AWSIAMAuth != nil {
-		return nil, errors.New("mirrorSource.postgres: passwordFrom and awsIamAuth are mutually exclusive")
+		return nil, errors.New("mirrorSource.ledgerV2Database: passwordFrom and awsIamAuth are mutually exclusive")
 	}
 
 	port := int32(5432)
@@ -488,7 +488,7 @@ func (r *LedgerReconciler) buildPostgresMirrorArgs(ctx context.Context, namespac
 	}
 
 	args := []string{
-		"--mirror-source-type", "postgres",
+		"--mirror-source-type", "ledgerV2Database",
 		"--mirror-dsn", dsn.String(),
 	}
 
