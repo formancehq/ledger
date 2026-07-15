@@ -572,7 +572,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		// coverage_bits lives on OrderTechnical; create it nil-safely (may already
 		// exist from the inputs-resolution-hash pass above) before pointing Build
 		// at the field it fills.
-		if cmdOrders[i].Technical == nil {
+		if cmdOrders[i].GetTechnical() == nil {
 			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
 		}
 		operations[i] = plan.WriteOperation{
@@ -1407,7 +1407,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		if !hasIdempotencyKey {
 			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
 		}
-		if order.Technical == nil {
+		if order.GetTechnical() == nil {
 			order.Technical = &raftcmdpb.OrderTechnical{}
 		}
 		order.Technical.PreloadUnavailable = true
@@ -1676,7 +1676,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// admission and apply). Nil for fully-static scripts (nothing read) —
 			// the FSM then skips the check. Technical is created nil-safely and
 			// shared with the coverage-bits pass (order-independent).
-			if order.Technical == nil {
+			if order.GetTechnical() == nil {
 				order.Technical = &raftcmdpb.OrderTechnical{}
 			}
 			order.Technical.InputsResolutionHash = discovered.InputsHash

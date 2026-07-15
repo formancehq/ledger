@@ -477,5 +477,6 @@ func TestKindForReason_DeprecatedRetainedReasons(t *testing.T) {
 
 	// Deprecated (no typed error emits it) but retained for replay of frozen
 	// pre-upgrade failures — must stay a definitive validation failure.
+	//nolint:staticcheck // deliberately references the deprecated reason to pin its replay classification
 	require.Equal(t, KindValidation, KindForReason(commonpb.ErrorReason_ERROR_REASON_NON_DETERMINISTIC_SCRIPT))
 }

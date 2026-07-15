@@ -382,7 +382,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	for i := range orders {
 		// coverage_bits moved to OrderTechnical; init nil-safely before Build
 		// fills it through the pointer.
-		if cmdOrders[i].Technical == nil {
+		if cmdOrders[i].GetTechnical() == nil {
 			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
 		}
 		operations = append(operations, plan.WriteOperation{

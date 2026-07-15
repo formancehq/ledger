@@ -376,7 +376,7 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
 	// Temporarily nil the technical sub-message, marshal, then restore it.
 	// Avoids a full CloneVT of the order.
-	savedTechnical := order.Technical
+	savedTechnical := order.GetTechnical()
 	order.Technical = nil
 
 	buf = order.MarshalDeterministicVT(buf[:0])
