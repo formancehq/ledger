@@ -82,10 +82,10 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var cluster ledgerv1alpha1.Cluster
 	if err := r.Get(ctx, types.NamespacedName{
-		Name:      backup.Spec.ServiceRef,
+		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ServiceRef, err))
+		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
 	}
 
 	// Forbid concurrency: any sibling already Running blocks this one.

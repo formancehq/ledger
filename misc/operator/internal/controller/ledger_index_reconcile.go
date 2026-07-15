@@ -82,7 +82,7 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 	log := ctrl.LoggerFrom(ctx)
 
 	ns := ledger.Namespace
-	svc := ledger.Spec.ServiceRef
+	svc := ledger.Spec.ClusterRef
 	pod0 := podName(svc, 0)
 	ledgerName := ledger.Spec.Name
 

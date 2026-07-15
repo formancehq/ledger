@@ -62,7 +62,7 @@ spec:
               backupRef:
                 description: |-
                   BackupRef is the name of the parent Backup in the same namespace.
-                  Destination and serviceRef are inherited from the parent.
+                  Destination and clusterRef are inherited from the parent.
                 type: string
               type:
                 default: Full

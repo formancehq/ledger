@@ -1,7 +1,7 @@
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
-  name: my-ledger
+  name: my-cluster
 spec:
   replicas: 3
   image:

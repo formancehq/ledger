@@ -4,7 +4,7 @@ metadata:
   name: test-ledger
 spec:
   name: my-ledger
-  serviceRef: crd-svc
+  clusterRef: crd-cluster
   indexes:
     # "address" removed (must be dropped), "timestamp" added (must be created);
     # "reference", "account-asset" and the metadata index are retained.

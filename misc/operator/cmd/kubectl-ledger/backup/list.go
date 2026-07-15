@@ -55,7 +55,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 }
 
 func renderBackupListTable(backups *ledgerv1alpha1.BackupList) error {
-	header := []string{"NAME", "SERVICE", "PHASE", "LAST FULL", "LAST INCR", "AGE"}
+	header := []string{"NAME", "CLUSTER", "PHASE", "LAST FULL", "LAST INCR", "AGE"}
 
 	rows := make([][]string, 0, len(backups.Items))
 	for i := range backups.Items {
@@ -72,7 +72,7 @@ func renderBackupListTable(backups *ledgerv1alpha1.BackupList) error {
 
 		rows = append(rows, []string{
 			pterm.Cyan(b.Name),
-			b.Spec.ServiceRef,
+			b.Spec.ClusterRef,
 			cmdutil.PhaseColor(string(b.Status.Phase)),
 			lastFull,
 			lastIncr,

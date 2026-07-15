@@ -16,7 +16,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-ing-svc
+                name: ledger-ing-cluster
               status:
                 readyReplicas: 1
 
@@ -28,7 +28,7 @@ spec:
               apiVersion: networking.k8s.io/v1
               kind: Ingress
               metadata:
-                name: ledger-ing-svc
+                name: ledger-ing-cluster
               spec:
                 rules:
                   - host: ledger.e2e.local
@@ -41,7 +41,7 @@ spec:
               apiVersion: networking.k8s.io/v1
               kind: Ingress
               metadata:
-                name: ledger-ing-svc-grpc
+                name: ledger-ing-cluster-grpc
               spec:
                 rules:
                   - host: ledger-grpc.e2e.local
@@ -51,22 +51,22 @@ spec:
       try:
         - script:
             content: |
-              # HTTP ingress should point to ledger-ing-svc service.
-              HTTP_BACKEND=$(kubectl get ingress ledger-ing-svc -n $NAMESPACE \
+              # HTTP ingress should point to ledger-ing-cluster service.
+              HTTP_BACKEND=$(kubectl get ingress ledger-ing-cluster -n $NAMESPACE \
                 -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}')
               echo "HTTP backend: $HTTP_BACKEND"
-              [ "$HTTP_BACKEND" = "ledger-ing-svc" ] || { echo "FAIL: expected ledger-ing-svc backend"; exit 1; }
+              [ "$HTTP_BACKEND" = "ledger-ing-cluster" ] || { echo "FAIL: expected ledger-ing-cluster backend"; exit 1; }
 
-              # gRPC ingress should point to ledger-ing-svc-grpc service.
-              GRPC_BACKEND=$(kubectl get ingress ledger-ing-svc-grpc -n $NAMESPACE \
+              # gRPC ingress should point to ledger-ing-cluster-grpc service.
+              GRPC_BACKEND=$(kubectl get ingress ledger-ing-cluster-grpc -n $NAMESPACE \
                 -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}')
               echo "gRPC backend: $GRPC_BACKEND"
-              [ "$GRPC_BACKEND" = "ledger-ing-svc-grpc" ] || { echo "FAIL: expected ledger-ing-svc-grpc backend"; exit 1; }
+              [ "$GRPC_BACKEND" = "ledger-ing-cluster-grpc" ] || { echo "FAIL: expected ledger-ing-cluster-grpc backend"; exit 1; }
 
               # Both should have ownerReferences to the Cluster.
-              HTTP_OWNER=$(kubectl get ingress ledger-ing-svc -n $NAMESPACE \
+              HTTP_OWNER=$(kubectl get ingress ledger-ing-cluster -n $NAMESPACE \
                 -o jsonpath='{.metadata.ownerReferences[0].kind}')
-              GRPC_OWNER=$(kubectl get ingress ledger-ing-svc-grpc -n $NAMESPACE \
+              GRPC_OWNER=$(kubectl get ingress ledger-ing-cluster-grpc -n $NAMESPACE \
                 -o jsonpath='{.metadata.ownerReferences[0].kind}')
               [ "$HTTP_OWNER" = "Cluster" ] || { echo "FAIL: HTTP ingress missing ownerReference"; exit 1; }
               [ "$GRPC_OWNER" = "Cluster" ] || { echo "FAIL: gRPC ingress missing ownerReference"; exit 1; }
@@ -79,11 +79,11 @@ spec:
       try:
         - script:
             content: |
-              HTTP_EP=$(kubectl get cluster ing-svc -n $NAMESPACE \
+              HTTP_EP=$(kubectl get cluster ing-cluster -n $NAMESPACE \
                 -o jsonpath='{.status.endpoints.http}')
-              GRPC_EP=$(kubectl get cluster ing-svc -n $NAMESPACE \
+              GRPC_EP=$(kubectl get cluster ing-cluster -n $NAMESPACE \
                 -o jsonpath='{.status.endpoints.grpc}')
-              EXTERNAL=$(kubectl get cluster ing-svc -n $NAMESPACE \
+              EXTERNAL=$(kubectl get cluster ing-cluster -n $NAMESPACE \
                 -o jsonpath='{.status.endpoints.external}')
               echo "HTTP endpoint: $HTTP_EP"
               echo "gRPC endpoint: $GRPC_EP"
@@ -108,8 +108,8 @@ spec:
               for i in $(seq 1 20); do
                 HTTP_GONE=true
                 GRPC_GONE=true
-                kubectl get ingress ledger-ing-svc -n $NAMESPACE 2>/dev/null && HTTP_GONE=false
-                kubectl get ingress ledger-ing-svc-grpc -n $NAMESPACE 2>/dev/null && GRPC_GONE=false
+                kubectl get ingress ledger-ing-cluster -n $NAMESPACE 2>/dev/null && HTTP_GONE=false
+                kubectl get ingress ledger-ing-cluster-grpc -n $NAMESPACE 2>/dev/null && GRPC_GONE=false
                 if $HTTP_GONE && $GRPC_GONE; then
                   echo "OK: both Ingress resources deleted"
                   exit 0
@@ -127,10 +127,10 @@ spec:
         - script:
             content: |
               for i in $(seq 1 10); do
-                EXTERNAL=$(kubectl get cluster ing-svc -n $NAMESPACE \
+                EXTERNAL=$(kubectl get cluster ing-cluster -n $NAMESPACE \
                   -o jsonpath='{.status.endpoints.external}')
                 if [ "$EXTERNAL" = "false" ]; then
-                  HTTP_EP=$(kubectl get cluster ing-svc -n $NAMESPACE \
+                  HTTP_EP=$(kubectl get cluster ing-cluster -n $NAMESPACE \
                     -o jsonpath='{.status.endpoints.http}')
                   echo "HTTP endpoint: $HTTP_EP"
                   echo "External: $EXTERNAL"

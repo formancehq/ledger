@@ -1,7 +1,7 @@
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
-  name: sched-svc
+  name: sched-cluster
 spec:
   replicas: 1
   image:

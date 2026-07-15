@@ -58,7 +58,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "blockchains", Namespace: "ledger-v3"},
 		Spec: ledgerv1alpha1.BackupSpec{
-			ServiceRef: "ledger",
+			ClusterRef: "ledger",
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
 				S3:     &ledgerv1alpha1.S3Config{Bucket: "my-bucket", Region: "eu-west-1"},
