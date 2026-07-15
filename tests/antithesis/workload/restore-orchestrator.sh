@@ -128,6 +128,32 @@ teardown_cluster() {
 	done
 }
 
+# restore_from_backup -- one attempt at the post-teardown choreography:
+# restore-mode cluster, download + finalize, flip back to the full cluster.
+restore_from_backup() {
+	k apply -f "$RESTORE_SPEC" || { log "applying restore-mode cluster failed"; return 1; }
+	wait_pod_running "$POD_PREFIX-0" || { log "restore-mode pod never ran"; return 1; }
+
+	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" \
+		|| { log "restore download failed"; return 1; }
+	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" \
+		|| { log "restore finalize failed"; return 1; }
+
+	k apply -f "$NORMAL_SPEC" || { log "applying normal-mode cluster failed"; return 1; }
+	# The restore-mode pod does not roll on its own after the spec flip
+	# (operator e2e does the same bounce).
+	sleep 5
+	k delete pod "$POD_PREFIX-0" --force --grace-period=0 2>/dev/null || true
+	wait_ready_replicas "$REPLICAS" || { log "cluster did not return to $REPLICAS ready replicas"; return 1; }
+}
+
+# do_one_restore has two phases with different failure semantics. Before the
+# teardown a failure leaves the running cluster untouched, so the cycle just
+# reports err and the driver carries on. From the teardown onward the driver's
+# committed state exists ONLY in the backup — releasing the driver against a
+# fresh empty cluster would make every model check diverge — so the restore is
+# retried until it lands, however long that takes (the run's duration bounds
+# it; the driver's lease expiry just parks it on transient retries meanwhile).
 do_one_restore() {
 	# Incrementals build on the initial full backup; if that never succeeded
 	# (or a cycle-time check finds it missing), (re)take it here — the driver
@@ -153,22 +179,23 @@ do_one_restore() {
 		;;
 	esac
 
-	teardown_cluster || { log "teardown failed"; return 1; }
+	# Point of no return: the quiesce-point backup above is verified, so the
+	# data survives whatever happens to the cluster from here.
+	teardown_cluster || log "teardown failed; continuing into restore recovery"
 
-	k apply -f "$RESTORE_SPEC" || { log "applying restore-mode cluster failed"; return 1; }
-	wait_pod_running "$POD_PREFIX-0" || { log "restore-mode pod never ran"; return 1; }
-
-	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore download" "${S3_ARGS[*]}" \
-		|| { log "restore download failed"; return 1; }
-	retry 5 exec_ledgerctl "$POD_PREFIX-0" "restore finalize --yes" \
-		|| { log "restore finalize failed"; return 1; }
-
-	k apply -f "$NORMAL_SPEC" || { log "applying normal-mode cluster failed"; return 1; }
-	# The restore-mode pod does not roll on its own after the spec flip
-	# (operator e2e does the same bounce).
-	sleep 5
-	k delete pod "$POD_PREFIX-0" --force --grace-period=0 2>/dev/null || true
-	wait_ready_replicas "$REPLICAS" || { log "cluster did not return to $REPLICAS ready replicas"; return 1; }
+	local attempt=1
+	until restore_from_backup; do
+		attempt=$(( attempt + 1 ))
+		log "restore attempt failed; the data now lives only in the backup — retrying (attempt $attempt)"
+		# Clear whatever half-state the attempt left so the next one starts clean.
+		k delete cluster "$CLUSTER" --wait=true --timeout=120s 2>/dev/null || true
+		local i
+		for i in $(seq 0 $(( REPLICAS - 1 ))); do
+			k delete pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
+				--ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
+		done
+		sleep 10
+	done
 	log "cluster back up on the restored (RebuildDelta) store"
 }
 
@@ -193,13 +220,10 @@ while true; do
 	if do_one_restore; then
 		printf 'ok\n' > "$RESP"
 	else
-		# Converge back to normal mode and wait for the cluster to serve
-		# before releasing the driver, so it never resumes against a cluster
-		# parked in restore mode or still forming; the driver logs the err
-		# and continues.
-		k apply -f "$NORMAL_SPEC" 2>/dev/null || true
-		wait_ready_replicas "$REPLICAS" 300 \
-			|| log "WARNING: cluster not back to $REPLICAS ready replicas after failed cycle"
+		# Only pre-teardown steps report err (backup / exports guard), and
+		# those leave the running cluster untouched — the driver just logs
+		# the err and continues against it. Post-teardown failures never
+		# reach here: do_one_restore retries the restore until it lands.
 		printf 'err\n' > "$RESP"
 	fi
 done
