@@ -421,6 +421,21 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
 
+	// preload_unavailable: admission couldn't build this order's preload and
+	// forwarded it (idempotency key present) instead of failing fast, so the FSM
+	// arbitrates. We reach here only for a NON-replay — the per-proposal
+	// idempotency dedup runs before ProcessOrders and short-circuits a frozen
+	// outcome, so a replay never reaches this dispatcher. Without a preload the
+	// order MUST NOT execute (its coverage is empty); reject deterministically
+	// with the retryable, non-frozen ErrPreloadUnavailable BEFORE any read, so
+	// the outcome is intentional rather than a coverage-miss against drifted
+	// apply-time state. Not frozen (Kind=Unavailable): a preload-unavailable
+	// retry must never shadow the real outcome of a concurrent same-key proposal.
+	// See EN-1406.
+	if order.GetTechnical().GetPreloadUnavailable() {
+		return nil, domain.ErrPreloadUnavailable
+	}
+
 	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_LedgerScoped:
 		return processLedgerScoped(orderType.LedgerScoped, ctx)

@@ -915,6 +915,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
 | Stale Numscript inputs resolution | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
+| Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |

@@ -123,7 +123,7 @@ func resolveHashFor(t *testing.T, admission *Admission, orders []*raftcmdpb.Orde
 
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, newBulkOverlay(), needs, perOrder))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, newBulkOverlay(), needs, perOrder, false))
 
 	return orders[idx].GetTechnical().GetInputsResolutionHash()
 }
@@ -215,7 +215,7 @@ send [USD/2 5] (source = @world destination = $dst)
 
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder, false))
 
 	// The dependent order's meta() resolved to ib:resolved, so that destination
 	// volume must have been preloaded — proving admission saw order 0's write.
@@ -308,7 +308,7 @@ send [USD/2 5] (source = @world destination = $dst)
 
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder, false))
 
 	// meta() resolved to am:resolved, so that destination volume must have been
 	// discovered — proving admission saw the preceding AddMetadata write.
@@ -345,7 +345,7 @@ send [USD/2 1] (source = @world destination = $dst)
 	}
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), okBatch)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, newBulkOverlay(), needs, perOrder))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, newBulkOverlay(), needs, perOrder, false))
 
 	// A preceding DeleteMetadata tombstones the key: the dependent meta() now
 	// resolves absent and discovery fails.
@@ -361,7 +361,7 @@ send [USD/2 1] (source = @world destination = $dst)
 	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), delBatch)
 	require.NoError(t, err)
 
-	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, newBulkOverlay(), needs, perOrder)
+	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, newBulkOverlay(), needs, perOrder, false)
 	require.Error(t, err, "a preceding same-batch delete must make the dependent meta() resolve absent and fail discovery")
 
 	var businessErr *domain.BusinessError

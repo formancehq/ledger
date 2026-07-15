@@ -261,8 +261,17 @@ type OrderTechnical struct {
 	// ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for postings-only
 	// orders and scripts whose resolution reads nothing. See EN-1406.
 	InputsResolutionHash []byte `protobuf:"bytes,2,opt,name=inputs_resolution_hash,json=inputsResolutionHash,proto3" json:"inputs_resolution_hash,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// preload_unavailable marks an order whose preload set admission could NOT
+	// build (e.g. Numscript dependency discovery failed against current state).
+	// Set only when the batch carries an idempotency key: admission forwards the
+	// order instead of failing fast, so the FSM decides — replay a frozen outcome
+	// if one exists, otherwise reject with ERROR_REASON_PRELOAD_UNAVAILABLE
+	// (retryable, NOT frozen). The FSM MUST NOT execute such an order (its
+	// coverage is empty). See EN-1406. Generic on purpose: any future
+	// "preload could not be built" cause reuses this flag.
+	PreloadUnavailable bool `protobuf:"varint,3,opt,name=preload_unavailable,json=preloadUnavailable,proto3" json:"preload_unavailable,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *OrderTechnical) Reset() {
@@ -307,6 +316,13 @@ func (x *OrderTechnical) GetInputsResolutionHash() []byte {
 		return x.InputsResolutionHash
 	}
 	return nil
+}
+
+func (x *OrderTechnical) GetPreloadUnavailable() bool {
+	if x != nil {
+		return x.PreloadUnavailable
+	}
+	return false
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -6203,10 +6219,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x02 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x03 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x05 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x06\x10\aR\vidempotencyR\tsignatureR\x11skippable_reasons\"k\n" +
+	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x06\x10\aR\vidempotencyR\tsignatureR\x11skippable_reasons\"\x9c\x01\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
-	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\"\xa3\a\n" +
+	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
+	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\"\xa3\a\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +

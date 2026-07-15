@@ -497,6 +497,17 @@ To catch this, the `RecordingStore` records every balance/metadata value the res
 
 The hash covers only values that *determined* the resolution — not every preloaded balance. A plain bounded source is a read *dependency* (it must be preloaded so the apply-path balance check can run) but its value does not change which keys are discovered, so it is not part of the hash. Fully-static scripts read nothing at resolution time and carry no hash; the FSM then skips the check.
 
+### Preload-unavailable forwarding (idempotent-replay safety)
+
+Stale-inputs detection handles the case where discovery *succeeds* but the values later drift. A harder case is when discovery **fails outright** at admission — e.g. a retry of an already-succeeded idempotent batch whose `meta(@cfg,"dest")` account was deleted after the original success, so the script no longer resolves. Failing fast there would return `DEPENDENCY_DISCOVERY_FAILED` to the client instead of replaying the frozen success — because admission runs *before* the FSM's idempotency dedup, and admission's view is pre-consensus and non-sequenced (it can even see a key as absent while the first request is still inflight). Admission is therefore **not authoritative** for the idempotency decision; only the FSM, applying in Raft log order, is.
+
+So discovery failure is treated as a **preparation gap, not a verdict**:
+
+- **Admission** — if the batch carries an idempotency key, admission does *not* fail fast. It marks the order `OrderTechnical.preload_unavailable = true` and forwards it (empty coverage, no `inputs_resolution_hash`). Without a key there is no replay to preserve, so it keeps the cheap fail-fast (`DEPENDENCY_DISCOVERY_FAILED`).
+- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome** and never reaches the order handler. Only a **non-replay** reaches the `processOrder` guard, which — seeing `preload_unavailable` and no preload — rejects **before any execution** with `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`).
+
+That reason is **retryable and deliberately NOT freezable**: a preparation gap is never an authoritative business outcome, and freezing it could let a `preload_unavailable` retry shadow the real outcome of a concurrent same-key proposal (whichever applies first freezes). A non-replay preload-unavailable therefore writes an audit failure (auditable) but is never frozen; the client retries and eventually re-admits successfully or replays the now-frozen outcome. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which is what lets the FSM dedup match and replay.
+
 ### Notes
 
 - **Shared parsing cache**: dependency resolution, the FSM-time stale re-resolution, and real execution all use `cache.GetOrParse(script)`, so a script is parsed once and cached for every path.

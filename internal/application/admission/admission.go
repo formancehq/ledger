@@ -543,7 +543,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
 	stopScripts()
@@ -1394,7 +1394,26 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 //
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage) error {
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage, hasIdempotencyKey bool) error {
+	// forwardOrFail decides what to do when admission cannot build the preload
+	// for an order (discovery/skip-prediction failed against current state). With
+	// an idempotency key present the failure is NOT authoritative — the batch may
+	// be a replay of a frozen outcome, and only the FSM (log-ordered) can decide.
+	// So we mark the order preload_unavailable and forward it: the FSM replays a
+	// frozen outcome if one exists, else rejects with the retryable, non-frozen
+	// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
+	// preserve, so we keep the cheap fail-fast (returns a terminal error).
+	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
+		if !hasIdempotencyKey {
+			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+		}
+		if order.Technical == nil {
+			order.Technical = &raftcmdpb.OrderTechnical{}
+		}
+		order.Technical.PreloadUnavailable = true
+
+		return true, nil
+	}
 	// effects accumulates the state changes of orders already processed in this
 	// atomic batch so each subsequent order resolves against the state the FSM
 	// will see when it reaches that order — pre-batch storage plus predecessors'
@@ -1428,7 +1447,11 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// resolved batch state layered over Pebble.
 		skip, err := a.predictOrderSkip(order, ledgerName, effects)
 		if err != nil {
-			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
+			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+				return ferr
+			} else if forwarded {
+				continue
+			}
 		}
 
 		// Every preceding mutating order's effect must be folded into the batch
@@ -1598,22 +1621,20 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			createTx.CreateTransaction.GetForce(),
 		)
 		if err != nil {
-			// Known limitation (EN-1406 follow-up): a retry of an already-frozen
-			// idempotent batch whose inline script *structurally* depends on
-			// read-state that has since changed (e.g. `meta(@cfg,"dest")` used as
-			// a posting account, and that metadata key was deleted after the
-			// original success) fails here instead of replaying the frozen
-			// outcome. Excluding InputsResolutionHash from the idempotency hash
-			// makes the *values* replay-stable, but discovery runs before the
-			// FSM's idempotency dedup, so a hard resolution failure short-circuits
-			// the replay. It is NOT fixed by reading the in-memory IdempotencyStore
-			// here: that map is unlocked and single-threaded on the FSM apply path,
-			// so an admission-side read would data-race with Put. The safe fix is a
-			// leader-side Pebble read (LoadIdempotencyKey) that bypasses discovery
-			// only when a persisted frozen outcome exists, accepting a deterministic
-			// coverage-gate error in the (negligible) TTL-eviction race — tracked as
-			// its own change since it couples admission to the idempotency projection.
-			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
+			// Discovery couldn't resolve the script against current state (e.g. an
+			// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
+			// the original success). This is a preparation gap, NOT an authoritative
+			// verdict: with an idempotency key the batch may be a replay of a frozen
+			// outcome, and only the FSM (log-ordered) can decide. forwardOrFail marks
+			// the order preload_unavailable and forwards it — the FSM replays the
+			// frozen outcome, or rejects with the retryable, non-frozen
+			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
+			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
+			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+				return ferr
+			} else if forwarded {
+				continue
+			}
 		}
 
 		if discovered != nil {

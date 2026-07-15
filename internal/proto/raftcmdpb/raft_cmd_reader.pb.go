@@ -89,6 +89,7 @@ func NewOrderListReader(s []*Order) OrderListReader { return orderListReadonly(s
 type OrderTechnicalReader interface {
 	GetCoverageBits() []byte
 	GetInputsResolutionHash() []byte
+	GetPreloadUnavailable() bool
 	Mutate() *OrderTechnical
 }
 
@@ -100,6 +101,10 @@ func (r *orderTechnicalReadonly) GetCoverageBits() []byte {
 
 func (r *orderTechnicalReadonly) GetInputsResolutionHash() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetInputsResolutionHash())
+}
+
+func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
+	return (*OrderTechnical)(r).GetPreloadUnavailable()
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {

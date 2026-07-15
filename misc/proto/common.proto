@@ -1207,6 +1207,14 @@ enum ErrorReason {
   // Retryable (Kind=Unavailable) — a second admission re-resolves against the
   // new values. See EN-1406.
   ERROR_REASON_STALE_INPUTS_RESOLUTION = 66;
+  // ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
+  // for an order (e.g. Numscript dependency discovery failed against current
+  // state). When the batch carries an idempotency key, admission forwards the
+  // order to the FSM (marked OrderTechnical.preload_unavailable) instead of
+  // failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
+  // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
+  // a preparation gap, never an authoritative business verdict. See EN-1406.
+  ERROR_REASON_PRELOAD_UNAVAILABLE = 67;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

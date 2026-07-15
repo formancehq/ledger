@@ -710,6 +710,14 @@ const (
 	// Retryable (Kind=Unavailable) — a second admission re-resolves against the
 	// new values. See EN-1406.
 	ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION ErrorReason = 66
+	// ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
+	// for an order (e.g. Numscript dependency discovery failed against current
+	// state). When the batch carries an idempotency key, admission forwards the
+	// order to the FSM (marked OrderTechnical.preload_unavailable) instead of
+	// failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
+	// exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
+	// a preparation gap, never an authoritative business verdict. See EN-1406.
+	ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE ErrorReason = 67
 )
 
 // Enum value maps for ErrorReason.
@@ -782,6 +790,7 @@ var (
 		64: "ERROR_REASON_MIRROR_V2_LOG_ID_GAP",
 		65: "ERROR_REASON_MIRROR_V2_LOG_ID_INVALID",
 		66: "ERROR_REASON_STALE_INPUTS_RESOLUTION",
+		67: "ERROR_REASON_PRELOAD_UNAVAILABLE",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -851,6 +860,7 @@ var (
 		"ERROR_REASON_MIRROR_V2_LOG_ID_GAP":             64,
 		"ERROR_REASON_MIRROR_V2_LOG_ID_INVALID":         65,
 		"ERROR_REASON_STALE_INPUTS_RESOLUTION":          66,
+		"ERROR_REASON_PRELOAD_UNAVAILABLE":              67,
 	}
 )
 
@@ -13531,7 +13541,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xff\x14\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xa5\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13600,7 +13610,8 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?\x12%\n" +
 	"!ERROR_REASON_MIRROR_V2_LOG_ID_GAP\x10@\x12)\n" +
 	"%ERROR_REASON_MIRROR_V2_LOG_ID_INVALID\x10A\x12(\n" +
-	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10B*Q\n" +
+	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10B\x12$\n" +
+	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10C*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

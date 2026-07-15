@@ -70,6 +70,15 @@ message OrderTechnical {
   // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for postings-only
   // orders and scripts whose resolution reads nothing. See EN-1406.
   bytes inputs_resolution_hash = 2;
+  // preload_unavailable marks an order whose preload set admission could NOT
+  // build (e.g. Numscript dependency discovery failed against current state).
+  // Set only when the batch carries an idempotency key: admission forwards the
+  // order instead of failing fast, so the FSM decides — replay a frozen outcome
+  // if one exists, otherwise reject with ERROR_REASON_PRELOAD_UNAVAILABLE
+  // (retryable, NOT frozen). The FSM MUST NOT execute such an order (its
+  // coverage is empty). See EN-1406. Generic on purpose: any future
+  // "preload could not be built" cause reuses this flag.
+  bool preload_unavailable = 3;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
