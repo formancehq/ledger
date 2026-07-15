@@ -79,10 +79,11 @@ BACKUP_OUT=/tmp/last-backup.json
 backup_exec() {
 	local kind="$1" i
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
-		if exec_ledgerctl "$POD_PREFIX-$i" "$kind" "${BACKUP_ARGS[*]}" --json > "$BACKUP_OUT" 2>&1; then
+		if exec_ledgerctl "$POD_PREFIX-$i" "$kind" "${BACKUP_ARGS[*]}" --json \
+			> "$BACKUP_OUT" 2> "$BACKUP_OUT.err"; then
 			return 0
 		fi
-		log "$kind via $POD_PREFIX-$i failed; trying next pod: $(tail -c 300 "$BACKUP_OUT" 2>/dev/null)"
+		log "$kind via $POD_PREFIX-$i failed; trying next pod: $(tail -c 300 "$BACKUP_OUT.err" 2>/dev/null)"
 	done
 	return 1
 }
@@ -190,8 +191,7 @@ do_one_restore() {
 	# backup) would restore without exercising the replay. Fail it rather than
 	# record hollow coverage — the local runner has the same guard.
 	local exports
-	exports=$(grep -o '{.*}' "$BACKUP_OUT" 2>/dev/null | tail -1 \
-		| jq -r '(.segmentsUploaded // 0) + (.logEntriesExported // 0)' 2>/dev/null)
+	exports=$(jq -r '(.segmentsUploaded // 0) + (.logEntriesExported // 0)' "$BACKUP_OUT" 2>/dev/null)
 	case "$exports" in
 	""|0|null)
 		log "incremental produced no exports (RebuildDelta would be a no-op); failing cycle"
