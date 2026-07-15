@@ -30,18 +30,12 @@ message Order {
   // composition and ordering are authenticated. Reserved.
   reserved 4;
   reserved "signature";
-  // coverage_bits is a packed bitset over ExecutionPlan.attributes restricting
-  // which entries this single order may read. Bit i (byteIdx = i/8,
-  // bit-within-byte = i%8, LSB-first) is set iff attributes[i] covers a key
-  // this order may read. The FSM constructs the per-order scope from this
-  // bitset so a key declared by another order in the same batch is not
-  // transparently readable (closes the batch-level vs order-level coverage gap).
-  //
-  // Length = ceil(len(attributes)/8). Empty bytes admit NO plan — every read
-  // surfaces as *ErrCoverageMiss. Proposal-wide scopes (used by the FSM's
-  // ValidateTransientVolumes) go through state.ScopeFactory.NewProposalScope
-  // instead, not through an "empty bits means admit all" convention.
-  bytes coverage_bits = 5;
+  // technical carries admission-derived fields (the coverage gate and the
+  // Numscript inputs-resolution hash) that must ride in the Raft entry for the
+  // FSM apply path but are NOT part of the request's logical identity. hashOrder
+  // excludes this whole sub-message from the idempotency hash in one shot, so
+  // adding a new technical field can never silently break idempotency/replay.
+  OrderTechnical technical = 5;
   // Field 6 previously held `repeated common.ErrorReason skippable_reasons`.
   // The opt-in moved into LedgerApplyOrder because it only makes sense for
   // ledger-apply variants — non-Apply orders (CreateLedger, SystemScoped
@@ -49,6 +43,33 @@ message Order {
   // idempotent skip semantic. See LedgerApplyOrder.skippable_reasons below.
   reserved 6;
   reserved "skippable_reasons";
+}
+
+// OrderTechnical holds admission-derived fields that ride in the Raft entry for
+// the FSM apply path but are excluded from the order's logical identity (the
+// idempotency hash). Keeping them out of the business messages means the
+// idempotency hash is computed over the pure request and cannot silently drift
+// when a new technical field is added.
+message OrderTechnical {
+  // coverage_bits is a packed bitset over ExecutionPlan.attributes restricting
+  // which entries this single order may read. Bit i (byteIdx = i/8,
+  // bit-within-byte = i%8, LSB-first) is set iff attributes[i] covers a key this
+  // order may read. The FSM constructs the per-order scope from this bitset so a
+  // key declared by another order in the same batch is not transparently
+  // readable (closes the batch-level vs order-level coverage gap). Length =
+  // ceil(len(attributes)/8). Empty/absent admits NO plan — every read surfaces
+  // as *ErrCoverageMiss. Proposal-wide scopes (used by the FSM's
+  // ValidateTransientVolumes) go through state.ScopeFactory.NewProposalScope
+  // instead, not through an "empty bits means admit all" convention.
+  bytes coverage_bits = 1;
+  // inputs_resolution_hash binds the balance/metadata values that admission's
+  // Numscript dependency resolution (ResolveDependencies) read to compute the
+  // preload set. The FSM re-resolves against preloaded cache values and
+  // recomputes this hash; a mismatch means the inputs changed between admission
+  // and apply, so the preload set may be wrong and the order is rejected with
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for postings-only
+  // orders and scripts whose resolution reads nothing. See EN-1406.
+  bytes inputs_resolution_hash = 2;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -351,14 +372,8 @@ message CreateTransactionOrder {
   bool force = 7;  // Skip balance checks when true
   bool expand_volumes = 8;  // Include post-commit volumes in response
   NumscriptReference numscript_reference = 9;
-  // inputs_resolution_hash binds the balance/metadata values that admission's
-  // Numscript dependency resolution (ResolveDependencies) read to compute the
-  // preload set. The FSM re-resolves against preloaded cache values and
-  // recomputes this hash; a mismatch means the inputs changed between
-  // admission and apply, so the preload set may be wrong and the order is
-  // rejected with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable). Empty for
-  // postings-only orders and scripts whose resolution reads nothing. See EN-1406.
-  bytes inputs_resolution_hash = 10;
+  // inputs_resolution_hash moved to OrderTechnical.inputs_resolution_hash — it is
+  // an admission-derived technical hint, not part of the transaction's identity.
 }
 
 // NumscriptReference identifies a numscript from the library to use for a transaction.

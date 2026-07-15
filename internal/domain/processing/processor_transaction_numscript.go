@@ -22,6 +22,10 @@ type numscriptPostingProducer struct {
 	cache      *numscript.NumscriptCache
 	ledgerName string
 	assetCache map[string]cachedAssetPrecision
+	// inputsResolutionHash is the admission-derived hash for this order (from
+	// OrderTechnical, staged on Context by the dispatcher) — the baseline the
+	// stale-inputs check re-resolves against. Empty means nothing to check.
+	inputsResolutionHash []byte
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
@@ -40,14 +44,15 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	maps.Copy(vars, script.GetVars())
 
 	// Stale-inputs check: admission bound the balance/metadata values its
-	// dependency resolution read into order.InputsResolutionHash. Re-resolve
+	// dependency resolution read into OrderTechnical.inputs_resolution_hash
+	// (staged on p.inputsResolutionHash by the dispatcher). Re-resolve
 	// here against the coverage-gated Scope (preloaded cache values only — no
 	// Pebble reads, invariant #3) and compare. A mismatch means an input value
 	// changed between admission and apply, so the preloaded key set may be
 	// wrong; reject with the retryable ErrStaleInputsResolution so the client
 	// re-admits against the new values. An empty stored hash means admission's
 	// resolution read nothing to bind (fully static script) — nothing to check.
-	if expected := order.GetInputsResolutionHash(); len(expected) > 0 {
+	if expected := p.inputsResolutionHash; len(expected) > 0 {
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
 		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()))
 

@@ -37,8 +37,8 @@ func TestHashOrders_ExcludesCoverageBits(t *testing.T) {
 	baseHash := HashOrders([]*raftcmdpb.Order{base})
 
 	withCoverage := &raftcmdpb.Order{
-		Type:         base.GetType(),
-		CoverageBits: []byte{0b0101},
+		Type:      base.GetType(),
+		Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b0101}},
 	}
 	require.Equal(t, baseHash, HashOrders([]*raftcmdpb.Order{withCoverage}),
 		"CoverageBits must not change the idempotency hash")
@@ -62,14 +62,14 @@ func TestHashOrders_ExcludesInputsResolutionHash(t *testing.T) {
 						Apply: &raftcmdpb.LedgerApplyOrder{
 							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-									Script:               &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
-									InputsResolutionHash: resolutionHash,
+									Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
 								},
 							},
 						},
 					},
 				},
 			},
+			Technical: &raftcmdpb.OrderTechnical{InputsResolutionHash: resolutionHash},
 		}
 	}
 
@@ -98,7 +98,7 @@ func TestHashOrders_MatchesHashProposal(t *testing.T) {
 					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
 				},
 			},
-			CoverageBits: []byte{0b1},
+			Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b1}},
 		},
 		{
 			Type: &raftcmdpb.Order_LedgerScoped{

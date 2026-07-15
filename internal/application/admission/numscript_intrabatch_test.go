@@ -125,7 +125,7 @@ func resolveHashFor(t *testing.T, admission *Admission, orders []*raftcmdpb.Orde
 	require.NoError(t, err)
 	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, newBulkOverlay(), needs, perOrder))
 
-	return createTxOf(orders[idx]).GetInputsResolutionHash()
+	return orders[idx].GetTechnical().GetInputsResolutionHash()
 }
 
 // TestResolveScripts_IntraBatchBalanceDependency pins EN-1406 P1-1: within one

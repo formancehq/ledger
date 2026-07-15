@@ -569,9 +569,15 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	operations := make([]plan.WriteOperation, len(orders))
 	cmdOrders := cmd.GetOrders()
 	for i := range orders {
+		// coverage_bits lives on OrderTechnical; create it nil-safely (may already
+		// exist from the inputs-resolution-hash pass above) before pointing Build
+		// at the field it fills.
+		if cmdOrders[i].Technical == nil {
+			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
+		}
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			Target:   &cmdOrders[i].CoverageBits,
+			Target:   &cmdOrders[i].Technical.CoverageBits,
 		}
 	}
 
@@ -1643,11 +1649,16 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 				orderNeeds.Add(dal.SubAttrMetadata, canonical)
 			}
 
-			// Bind the resolved inputs to the order. The FSM re-resolves against
-			// preloaded values and rejects with ErrStaleInputsResolution if the
-			// hash differs (inputs changed between admission and apply). Nil for
-			// fully-static scripts (nothing read) — the FSM then skips the check.
-			createTx.CreateTransaction.InputsResolutionHash = discovered.InputsHash
+			// Bind the resolved inputs to the order's technical sub-message. The
+			// FSM re-resolves against preloaded values and rejects with
+			// ErrStaleInputsResolution if the hash differs (inputs changed between
+			// admission and apply). Nil for fully-static scripts (nothing read) —
+			// the FSM then skips the check. Technical is created nil-safely and
+			// shared with the coverage-bits pass (order-independent).
+			if order.Technical == nil {
+				order.Technical = &raftcmdpb.OrderTechnical{}
+			}
+			order.Technical.InputsResolutionHash = discovered.InputsHash
 
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).

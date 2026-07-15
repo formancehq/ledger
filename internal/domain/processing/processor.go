@@ -40,6 +40,11 @@ type RequestProcessor struct {
 type Context struct {
 	// Per-order — set by the dispatcher before calling the handler.
 	Scope Scope
+	// InputsResolutionHash is the admission-derived Numscript inputs hash for
+	// THIS order (from OrderTechnical). It lives on the parent Order, not the
+	// CreateTransactionOrder handlers see, so the dispatcher stages it here for
+	// the stale-inputs check. Empty when the order carries no resolution hash.
+	InputsResolutionHash []byte
 
 	// Per-apply — set by processApply / processMirrorIngest before
 	// dispatching to apply-child handlers; nil/empty otherwise.
@@ -160,7 +165,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	logs := result.Logs
 
 	for i, order := range orders {
-		orderScope, scopeErr := scopeFactory.NewScope(order.GetCoverageBits())
+		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
 			// shipped by admission is structurally inconsistent. Detected
@@ -354,47 +359,29 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 // hashOrder computes a blake3 hash of one order's content, returning the hash
 // and the (grown) marshal buffer to reuse.
 //
-// Two admission-derived fields are excluded so the SAME logical request always
-// hashes identically (idempotency dedup / replay must match across retries):
+// All admission-derived fields live on OrderTechnical, which is excluded so the
+// SAME logical request always hashes identically (idempotency dedup / replay
+// must match across retries). OrderTechnical carries:
 //
-//   - CoverageBits: admission rebuilds it from the proposal-wide ExecutionPlan,
+//   - coverage_bits: admission rebuilds it from the proposal-wide ExecutionPlan,
 //     so the same order in a different batch would otherwise hash differently.
-//   - CreateTransaction.InputsResolutionHash: admission recomputes it by
-//     re-resolving the Numscript against CURRENT balances/metadata, so a retry
-//     of a state-reading script re-resolves at a changed balance and would
-//     otherwise hash differently — turning a legitimate replay into an
-//     IDEMPOTENCY_KEY_CONFLICT (EN-1406 P1-3). It is a preload/staleness hint,
-//     not part of the request's logical identity.
+//   - inputs_resolution_hash: admission recomputes it by re-resolving the
+//     Numscript against CURRENT balances/metadata, so a retry of a state-reading
+//     script re-resolves at a changed balance and would otherwise hash
+//     differently — turning a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT
+//     (EN-1406 P1-3). It is a preload/staleness hint, not logical identity.
+//
+// Because both live under the single OrderTechnical sub-message, excluding it in
+// one shot means a new technical field can never silently break idempotency.
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
-	// Temporarily nil the admission-derived fields, marshal, then restore them.
+	// Temporarily nil the technical sub-message, marshal, then restore it.
 	// Avoids a full CloneVT of the order.
-	savedCoverage := order.GetCoverageBits()
-	order.CoverageBits = nil
-
-	// InputsResolutionHash lives on the nested CreateTransactionOrder. Reach it
-	// only when the order actually carries one; other order shapes are untouched.
-	var (
-		createTx           *raftcmdpb.CreateTransactionOrder
-		savedResolutionHsh []byte
-	)
-	if ls := order.GetLedgerScoped(); ls != nil {
-		if apply, ok := ls.GetPayload().(*raftcmdpb.LedgerScopedOrder_Apply); ok {
-			if ct, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction); ok {
-				createTx = ct.CreateTransaction
-			}
-		}
-	}
-	if createTx != nil {
-		savedResolutionHsh = createTx.GetInputsResolutionHash()
-		createTx.InputsResolutionHash = nil
-	}
+	savedTechnical := order.Technical
+	order.Technical = nil
 
 	buf = order.MarshalDeterministicVT(buf[:0])
 
-	order.CoverageBits = savedCoverage
-	if createTx != nil {
-		createTx.InputsResolutionHash = savedResolutionHsh
-	}
+	order.Technical = savedTechnical
 
 	sum := blake3.Sum256(buf)
 
@@ -426,6 +413,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 // handlers; system-scoped handlers don't receive it.
 func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope = s
+	// Stage this order's admission-derived inputs hash (from OrderTechnical) for
+	// the stale-inputs check in the numscript producer, which only sees the
+	// CreateTransactionOrder.
+	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil

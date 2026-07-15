@@ -380,9 +380,14 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	operations := make([]plan.WriteOperation, 0, len(orders)+1)
 	cmdOrders := cmd.GetOrders()
 	for i := range orders {
+		// coverage_bits moved to OrderTechnical; init nil-safely before Build
+		// fills it through the pointer.
+		if cmdOrders[i].Technical == nil {
+			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
+		}
 		operations = append(operations, plan.WriteOperation{
 			Coverage: perOrder[i],
-			Target:   &cmdOrders[i].CoverageBits,
+			Target:   &cmdOrders[i].Technical.CoverageBits,
 		})
 	}
 

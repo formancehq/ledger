@@ -41,10 +41,10 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.CoverageBits) > 0 {
-		i -= len(m.CoverageBits)
-		copy(dAtA[i:], m.CoverageBits)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
+	if m.Technical != nil {
+		size, _ := m.Technical.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x2a
 	}
@@ -67,6 +67,17 @@ func (m *Order) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		}
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *OrderTechnical) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *LedgerScopedOrder) MarshalDeterministicVT(dAtA []byte) []byte {
@@ -1147,13 +1158,6 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.InputsResolutionHash) > 0 {
-		i -= len(m.InputsResolutionHash)
-		copy(dAtA[i:], m.InputsResolutionHash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.InputsResolutionHash)))
-		i--
-		dAtA[i] = 0x52
 	}
 	if m.NumscriptReference != nil {
 		size, _ := m.NumscriptReference.MarshalToSizedBufferDeterministicVT(dAtA[:i])

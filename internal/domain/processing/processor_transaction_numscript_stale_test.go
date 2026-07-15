@@ -40,14 +40,15 @@ func newNumscriptProducer() *numscriptPostingProducer {
 		cache:      numscript.NewNumscriptCache(16),
 		ledgerName: "test",
 		assetCache: map[string]cachedAssetPrecision{},
+		// A non-empty stored hash arms the stale-inputs re-resolution block.
+		// It now lives on the producer (staged from OrderTechnical by the
+		// dispatcher), not on the CreateTransactionOrder.
+		inputsResolutionHash: []byte("stored-hash-from-admission"),
 	}
 }
 
 func staleOrder() *raftcmdpb.CreateTransactionOrder {
-	return &raftcmdpb.CreateTransactionOrder{
-		// A non-empty stored hash arms the stale-inputs re-resolution block.
-		InputsResolutionHash: []byte("stored-hash-from-admission"),
-	}
+	return &raftcmdpb.CreateTransactionOrder{}
 }
 
 // TestProduce_ChangedValueWithCompletedResolutionIsStale is regression #1: a

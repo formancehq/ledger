@@ -100,7 +100,7 @@ func sealProposal(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 	}
 
 	for _, order := range p.GetOrders() {
-		order.CoverageBits = bits
+		order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
 	}
 
 	for _, tu := range p.GetTechnicalUpdates() {
