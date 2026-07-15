@@ -73,12 +73,16 @@ retry() {
 }
 
 # backup_exec KIND -- runs a backup command against any live ledger pod (the
-# RPC needs a reachable server; retrying across pods covers a dead one).
+# RPC needs a reachable server; retrying across pods covers a dead one). The
+# command's --json output is left in $BACKUP_OUT for callers that inspect it.
+BACKUP_OUT=/tmp/last-backup.json
 backup_exec() {
 	local kind="$1" i
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
-		if exec_ledgerctl "$POD_PREFIX-$i" "$kind" "${BACKUP_ARGS[*]}"; then return 0; fi
-		log "$kind via $POD_PREFIX-$i failed; trying next pod"
+		if exec_ledgerctl "$POD_PREFIX-$i" "$kind" "${BACKUP_ARGS[*]}" --json > "$BACKUP_OUT" 2>&1; then
+			return 0
+		fi
+		log "$kind via $POD_PREFIX-$i failed; trying next pod: $(tail -c 300 "$BACKUP_OUT" 2>/dev/null)"
 	done
 	return 1
 }
@@ -134,6 +138,20 @@ do_one_restore() {
 	fi
 
 	retry 3 backup_exec "store incremental-backup" || { log "incremental backup failed"; return 1; }
+
+	# RebuildDelta only runs when the manifest carries exports; a cycle whose
+	# incremental exported nothing (e.g. taken right after a cycle-time full
+	# backup) would restore without exercising the replay. Fail it rather than
+	# record hollow coverage — the local runner has the same guard.
+	local exports
+	exports=$(grep -o '{.*}' "$BACKUP_OUT" 2>/dev/null | tail -1 \
+		| jq -r '(.segmentsUploaded // 0) + (.logEntriesExported // 0)' 2>/dev/null)
+	case "$exports" in
+	""|0|null)
+		log "incremental produced no exports (RebuildDelta would be a no-op); failing cycle"
+		return 1
+		;;
+	esac
 
 	teardown_cluster || { log "teardown failed"; return 1; }
 
