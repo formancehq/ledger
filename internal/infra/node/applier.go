@@ -2107,5 +2107,5 @@ func (a *Applier) createBaselineSnapshot() error {
 	}
 	defer func() { _ = handle.Close() }()
 
-	return attributes.CreateBaselineSnapshot(handle, a.fsm.Registry.Attrs, destPath)
+	return attributes.CreateBaselineSnapshot(handle, destPath)
 }

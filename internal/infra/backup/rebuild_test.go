@@ -116,6 +116,50 @@ func rebuildTestPosting(source, destination, asset string, amount uint64) *commo
 	}
 }
 
+// auditItem serializes order into an AuditItem the way the FSM persists it,
+// so applyAuditOrderEffects can decode the order back out.
+func auditItem(t *testing.T, logSeq uint64, order *raftcmdpb.Order) *auditpb.AuditItem {
+	t.Helper()
+
+	raw, err := order.MarshalVT()
+	require.NoError(t, err)
+
+	return &auditpb.AuditItem{LogSequence: logSeq, SerializedOrder: raw}
+}
+
+func fillGapOrder(ledger string, v2LogID uint64, skippedIDs ...uint64) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{
+							V2LogId: v2LogID,
+							Data:    &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{SkippedTransactionIds: skippedIDs}},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func createTransactionOrder(ledger string, ct *raftcmdpb.CreateTransactionOrder) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: ct},
+					},
+				},
+			},
+		},
+	}
+}
+
 func auditSuccess(seq, minLogSeq, maxLogSeq uint64) *auditpb.AuditEntry {
 	return &auditpb.AuditEntry{
 		Sequence: seq,
@@ -220,6 +264,443 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.NotNil(t, pair)
 	require.Equal(t, "8", pair.GetInput().ToBigInt().String())
 	require.Equal(t, "5", pair.GetOutput().ToBigInt().String())
+
+	// Boundaries are rebuilt into the attribute zone with reconstructed
+	// counters. Log ids here equal the log sequence (test fixture), so
+	// NextLogId is max(seq)+1 over the four apply logs (seqs 2-5).
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary, "boundaries must be reconstructed into the attribute zone")
+	require.Equal(t, uint64(4), boundary.GetNextTransactionId(), "3 transactions created")
+	require.Equal(t, uint64(6), boundary.GetNextLogId())
+	require.Equal(t, uint64(3), boundary.GetPostingCount(), "one posting per transaction")
+	require.Equal(t, uint64(0), boundary.GetRevertCount())
+	require.Equal(t, uint64(2), boundary.GetVolumeCount(), "orders:1 + world; ephemeral orders:1 kept because input != output")
+	require.Equal(t, uint64(0), boundary.GetMetadataCount())
+}
+
+func TestRebuildDelta_ReconstructsTransactionReference(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+
+	tx := createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 100))
+	tx.GetCreatedTransaction().GetTransaction().Reference = "ref-1"
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", tx)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	ref, err := attrs.References.Get(handle, domain.TransactionReferenceKey{LedgerName: "ledger", Reference: "ref-1"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, ref, "reference index must be reconstructed")
+	require.Equal(t, uint64(1), ref.GetTransactionId())
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), boundary.GetReferenceCount())
+}
+
+func TestRebuildDelta_AdvancesBoundariesForMirrorFillGap(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_FillGap{FillGap: &commonpb.FilledGapLog{OriginalId: 7}},
+	})))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, fillGapOrder("ledger", 7, 5, 9))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(10), boundary.GetNextTransactionId(),
+		"the fill-gap's highest skipped id (9) must advance NextTransactionId to 10; the ids live on the order in AuditItem, not on FilledGapLog")
+	require.Equal(t, uint64(3), boundary.GetNextLogId())
+}
+
+func TestRebuildDelta_CountsNumscriptExecutionsFromAuditOrders(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	for seq := uint64(2); seq <= 4; seq++ {
+		require.NoError(t, batch.SetProto(coldLogKey(seq), applyLedgerLog(seq, "ledger",
+			createdTransactionPayload(seq-1, rebuildTestPosting("world", "alice", "USD", 10)),
+		)))
+	}
+
+	// Inline script and library reference both count; a postings order and a
+	// failed script order (log_sequence 0) do not.
+	scriptOrder := createTransactionOrder("ledger", &raftcmdpb.CreateTransactionOrder{
+		Script: &commonpb.Script{Plain: "send [USD 10] (source = @world destination = @alice)"},
+	})
+	refOrder := createTransactionOrder("ledger", &raftcmdpb.CreateTransactionOrder{
+		NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payout", Version: "1"},
+	})
+	postingsOrder := createTransactionOrder("ledger", &raftcmdpb.CreateTransactionOrder{
+		Postings: []*commonpb.Posting{rebuildTestPosting("world", "alice", "USD", 10)},
+	})
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, scriptOrder)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 3, refOrder)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(3, 0), auditItem(t, 4, postingsOrder)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(4, 0), auditItem(t, 0, scriptOrder)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(2), boundary.GetNumscriptExecutionCount(),
+		"inline script + library reference count; postings and failed orders do not")
+}
+
+func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	strValue := func(s string) *commonpb.MetadataValue {
+		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+		Sequence: 2,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SavedLedgerMetadata{
+				SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+					Ledger:   "ledger",
+					Metadata: map[string]*commonpb.MetadataValue{"env": strValue("prod"), "tier": strValue("gold")},
+				},
+			},
+		},
+	}))
+	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+		Sequence: 3,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeletedLedgerMetadata{
+				DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{Ledger: "ledger", Key: "tier"},
+			},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	env, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "ledger", Key: "env"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, env, "ledger metadata saved after the checkpoint must be rebuilt")
+	require.Equal(t, "prod", env.GetStringValue())
+
+	tier, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "ledger", Key: "tier"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, tier, "ledger metadata deleted after the checkpoint must not resurrect")
+}
+
+func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
+		createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 10)),
+	)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+		Sequence: 3,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteLedger{
+				DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger", DeletedAt: &commonpb.Timestamp{Data: 999}},
+			},
+		},
+	}))
+	// Pre-delete audit activity must not resurrect a boundary row for the
+	// deleted ledger.
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, fillGapOrder("ledger", 7, 42))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, info, "the tombstoned LedgerInfo is kept for deleted-ledger responses")
+	require.Equal(t, uint64(999), info.GetDeletedAt().GetData())
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, boundary, "the boundary row is dropped at delete time, matching the live apply")
+
+	cleanupKey := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
+		PutLedgerNameFixed("ledger").
+		Build()
+	val, closer, err := store.Get(cleanupKey)
+	require.NoError(t, err, "the pending-cleanup marker must be recorded so a covering purge executes the deferred data cleanup")
+	require.Len(t, val, 8)
+	require.NoError(t, closer.Close())
+}
+
+func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name:         "ledger",
+					Id:           1,
+					Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+					MirrorSource: &commonpb.MirrorSourceConfig{},
+				},
+			},
+		},
+	}))
+	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+		Sequence: 2,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_PromoteLedger{
+				PromoteLedger: &commonpb.PromotedLedgerLog{Name: "ledger"},
+			},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode(), "promotion must end mirror mode")
+	require.Nil(t, info.GetMirrorSource(), "promotion must clear the mirror source")
+}
+
+func TestRebuildDelta_ReplaysDefaultEnforcementMode(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
+			UpdatedDefaultEnforcementMode: &commonpb.UpdatedDefaultEnforcementModeLog{
+				EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+			},
+		},
+	})))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+}
+
+// TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog: a post-checkpoint
+// CreateLedger must restore the full LedgerInfo — Id, AccountTypes, and
+// DefaultEnforcementMode — not just Name/Mode/schema.
+func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	createLog := &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name: "ledger",
+					Id:   42,
+					AccountTypes: map[string]*commonpb.AccountType{
+						"orders": {Name: "orders", Pattern: "orders:{id}"},
+					},
+					DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+				},
+			},
+		},
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLog))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
+	require.NoError(t, err)
+	require.Equal(t, uint32(42), info.GetId())
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+	require.Contains(t, info.GetAccountTypes(), "orders")
+	require.Equal(t, "orders:{id}", info.GetAccountTypes()["orders"].GetPattern())
+
+	// The FSM hot path / index builder / preload read LedgerInfo from the
+	// SubAttrLedger attribute projection, not the Global zone — it must carry the
+	// reconstructed info too.
+	attrs := attributes.New()
+	attrInfo, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, attrInfo, "LedgerInfo must be written to the SubAttrLedger attribute, not only the Global zone")
+	require.Equal(t, uint32(42), attrInfo.GetId())
+	require.Contains(t, attrInfo.GetAccountTypes(), "orders")
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, attrInfo.GetDefaultEnforcementMode())
+}
+
+// TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo: an
+// AddAccountType replayed after the checkpoint must fold onto LedgerInfo and
+// persist to both the Global zone and the SubAttrLedger attribute, or the chart
+// change is lost on restore.
+func TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
+		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+	)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// Global zone.
+	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
+	require.NoError(t, err)
+	require.Contains(t, info.GetAccountTypes(), "orders", "post-checkpoint account type must persist to the Global LedgerInfo")
+
+	// SubAttrLedger attribute (what the FSM reads).
+	attrs := attributes.New()
+	attrInfo, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, attrInfo)
+	require.Contains(t, attrInfo.GetAccountTypes(), "orders", "post-checkpoint account type must persist to the SubAttrLedger attribute")
+}
+
+// TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge: account types
+// declared at ledger creation (on the CreateLedger log, not a later
+// AddAccountType) must seed the replay's compiled-type maps, so the
+// ephemeral-purge simulation classifies a matching account and purges it when it
+// nets to zero within a proposal.
+func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	createLog := &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{
+					Name: "ledger",
+					Id:   1,
+					AccountTypes: map[string]*commonpb.AccountType{
+						"orders": {
+							Name:        "orders",
+							Pattern:     "orders:{id}",
+							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLog))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
+		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
+	)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
+		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
+	)))
+	// logs 2-3 form one proposal, so orders:1 nets to zero at the boundary.
+	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 3)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+	pair, err := attrs.Volume.Get(handle, domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Asset:      "USD",
+	}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, pair, "balanced ephemeral account should have been purged")
 }
 
 // newAttributeReplayWriter builds an isolated writer for regression tests of
@@ -230,14 +711,25 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 
 	store := newRebuildTestStore(t)
 	attrs := attributes.New()
+
+	readHandle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = readHandle.Close() })
+
 	writer := &attributeReplayWriter{
 		store:          store,
 		batch:          store.OpenWriteSession(),
 		volume:         attrs.Volume,
 		metadata:       attrs.Metadata,
 		tx:             attrs.Transaction,
+		ledger:         attrs.Ledger,
+		references:     attrs.References,
+		boundary:       attrs.Boundary,
 		pendingVolumes: make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:      make(map[string]*commonpb.TransactionState),
+		ledgerInfos:    make(map[string]*commonpb.LedgerInfo),
+		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
+		readHandle:     readHandle,
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
@@ -260,7 +752,7 @@ func TestAttributeReplayWriter_SetRevertedByPreservesCreatedByLog(t *testing.T) 
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x0042")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 42}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 42,
 		&commonpb.Timestamp{Data: 100},
@@ -293,7 +785,7 @@ func TestAttributeReplayWriter_SaveTxMetadataPreservesCreatedByLog(t *testing.T)
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00043")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 43}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 43,
 		&commonpb.Timestamp{Data: 200},
@@ -324,7 +816,7 @@ func TestAttributeReplayWriter_TwoMetadataUpsertsInSameBatchMerge(t *testing.T) 
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00044")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 44}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 44,
 		&commonpb.Timestamp{Data: 300}, nil, nil, 0,
@@ -351,7 +843,7 @@ func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	key := []byte("ledger\x00tx\x00045")
+	key := domain.TransactionKey{LedgerName: "ledger", ID: 45}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 45,
 		&commonpb.Timestamp{Data: 400},
@@ -371,4 +863,68 @@ func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
 	require.NotNil(t, got)
 	require.NotContains(t, got.GetMetadata(), "env", "same-batch delete must actually remove the key")
 	require.Equal(t, "eu-west", got.GetMetadata()["region"].GetStringValue())
+}
+
+// TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly: a schema op for
+// a ledger that was neither in the checkpoint nor created during replay is an
+// impossible/corrupt log stream, so it must surface loudly rather than silently
+// drop the declaration (invariant 7).
+func TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos = make(map[string]*commonpb.LedgerInfo)
+
+	setErr := writer.SetMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k",
+		commonpb.MetadataType_METADATA_TYPE_STRING)
+	require.ErrorContains(t, setErr, "invariant")
+
+	removeErr := writer.RemoveMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k")
+	require.ErrorContains(t, removeErr, "invariant")
+}
+
+// TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp: removing a field from
+// a known ledger that has no schema is a benign no-op (the field is already
+// absent), not the impossible missing-ledger case.
+func TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos = map[string]*commonpb.LedgerInfo{"ledger": {Name: "ledger"}}
+
+	require.NoError(t, writer.RemoveMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"))
+}
+
+// TestRebuildDelta_CountsDoNotBleedAcrossPrefixLedgers: net counts must scan
+// with the padded ledger prefix — an unpadded prefix also matches every
+// ledger whose name extends it.
+func TestRebuildDelta_CountsDoNotBleedAcrossPrefixLedgers(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "pay", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), createLedgerLog(2, "payments", 2)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "pay",
+		createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 10)),
+	)))
+	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "payments",
+		createdTransactionPayload(1, rebuildTestPosting("world", "bob", "USD", 10)),
+	)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "pay"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(2), boundary.GetVolumeCount(),
+		`"pay" must count only its own rows (world + alice), not "payments" rows too`)
 }
