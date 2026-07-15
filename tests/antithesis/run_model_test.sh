@@ -140,6 +140,7 @@ DRIVER_PID=""
 RECOVERY_FAILED=0
 DRIVER_EXITED_EARLY=0
 RESTORE_CYCLES=0
+RESTORE_FAILED_CYCLES=0
 
 # --- Restore cycle (single-node, --restore) -------------------------------
 RESTORE_REQ="$WORKDIR/restore.req"
@@ -254,6 +255,7 @@ service_restore_request() {
 		RESTORE_CYCLES=$(( RESTORE_CYCLES + 1 ))
 		printf 'ok\n' >"$RESTORE_RESP"
 	else
+		RESTORE_FAILED_CYCLES=$(( RESTORE_FAILED_CYCLES + 1 ))
 		printf 'err\n' >"$RESTORE_RESP"
 	fi
 }
@@ -518,7 +520,7 @@ echo
 echo "================= model test report ================="
 log "topology: $NODES node(s)"
 [ "$NODES" -gt 1 ] && log "restart cycles completed: $cycle"
-[ "$RESTORE" = 1 ] && log "restore cycles completed: $RESTORE_CYCLES"
+[ "$RESTORE" = 1 ] && log "restore cycles completed: $RESTORE_CYCLES ($RESTORE_FAILED_CYCLES failed)"
 
 findings=0
 
@@ -599,6 +601,15 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; t
 	echo
 	echo "NO RESTORE CYCLES: --restore was requested but no backup/restore cycle completed"
 	echo "  (duration ${DURATION}s vs first cycle within ~$(( RESTORE_INTERVAL * 3 / 2 ))s; increase the duration)"
+	findings=$((findings + 1))
+fi
+
+# 7. A restore cycle failed mid-run (backup RPC, no exports, bootstrap, or the
+# post-restore leader wait). The driver resumes so later cycles still run, but
+# a broken restore path is a defect regardless of how many cycles succeeded.
+if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then
+	echo
+	echo "RESTORE CYCLE FAILURES: $RESTORE_FAILED_CYCLES cycle(s) failed (see 'restore:' lines above)"
 	findings=$((findings + 1))
 fi
 
