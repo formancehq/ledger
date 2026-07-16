@@ -8,6 +8,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -130,6 +132,31 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if len(account.GetVolumes()) > 0 {
 		volumesTable := pterm.TableData{
 			{"ASSET", "INPUT", "OUTPUT", "BALANCE"},
+		}
+
+		// With --rescale, currencies that differ only in precision are summed
+		// into a single base-currency row, re-expressed at the requested scale.
+		if rescale := cmdutil.RescaleTarget(cmd); rescale != nil {
+			raw := make(map[string]cmdutil.RawVolume, len(account.GetVolumes()))
+			for asset, vol := range account.GetVolumes() {
+				raw[asset] = cmdutil.RawVolume{Input: vol.GetInput(), Output: vol.GetOutput()}
+			}
+
+			for _, av := range cmdutil.AggregateVolumes(raw) {
+				balanceColor := pterm.Green
+				if av.Balance.Sign() < 0 {
+					balanceColor = pterm.Red
+				}
+
+				volumesTable = append(volumesTable, []string{
+					invariants.FormatAsset(av.Asset, *rescale),
+					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+					balanceColor(cmdutil.RescaleAmount(av.Balance, av.Precision, *rescale)),
+				})
+			}
+
+			return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
 		}
 
 		assets := make([]string, 0, len(account.GetVolumes()))
