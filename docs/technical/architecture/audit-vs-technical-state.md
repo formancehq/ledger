@@ -20,7 +20,7 @@ record, or a read-side projection:
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
-| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection that is trusted between rebuilds and can shape a business-visible result (e.g. readstore inverted indexes while a READY index is authoritative, or persisted bloom blocks reloaded on restart — see below) additionally needs checker coverage, because nothing rebuilds it before it is served. |
+| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection **in the main store** that is trusted between rebuilds and can shape a business-visible result (e.g. persisted bloom blocks reloaded on restart — see below) additionally needs main-store checker coverage, because nothing rebuilds it before it is served. A projection in a *peer* per-replica store (the readstore inverted index) is instead the index builder's rebuild-health concern, out of main-store checker scope — see "Readstore and Indexes" below. |
 
 The boundary is about impact, not package location. A value under a technical
 keyspace can become business-impacting if future code starts using it to decide
@@ -52,7 +52,7 @@ non-deterministic map marshaling). So a value that is corrupted or tampered
 *before* it is proposed takes effect on every node identically, and no cross-node
 comparison — logical or byte-wise — can catch it. Where the sections below
 describe a persisted main-store projection that the checker does not yet verify
-(the mirror cursor, the readstore inverted-index contents, prepared queries,
+(prepared queries,
 persisted bloom blocks on the restart path, and the persisted governance
 projections — signing keys `SubGlobSigningKey`, signing config
 `SubGlobSigningConfig`, and maintenance mode `SubGlobMaintenanceMode`, each read
@@ -86,9 +86,15 @@ is correct: the worker proposes mirror ingest orders and a `MirrorSyncUpdate` in
 the same Raft proposal, and the FSM queues the cursor write through the same
 `WriteSet` so it only advances if the mirrored orders apply successfully.
 
-That atomicity protects normal failures, but it does not by itself prove that the
-stored cursor is still consistent with audited mirror orders after restore,
-manual repair, or future tooling. The cursor is wrong in **both** directions:
+That atomicity is the load-bearing property: because the `MirrorSyncUpdate` rides
+in the *same* proposal as the ingest orders and drains through the *same*
+`WriteSet.Merge` / `batch.Commit()`, the persisted cursor **can never lag or lead
+the ingested data through any normal or crash path** — a crash lands both or
+neither. So through normal operation the stored cursor always equals the highest
+audited `MirrorIngest.v2LogId`, and the only way to move it off that value is to
+tamper the persisted cursor byte directly (after restore, manual repair, or a
+Pebble-level edit). The two tamper directions behave very differently, and
+neither is an *integrity-checker* concern:
 
 - A cursor that advances **beyond** the highest audited `MirrorIngest.v2LogId`
   makes the worker skip source logs without any audit entry showing the missing
@@ -128,11 +134,12 @@ manual repair, or future tooling. The cursor is wrong in **both** directions:
   that is *ahead* of the true source head is worker-side source-head recovery and
   remains out of scope.
 
-Because it is only correct at one exact value, treat `MirrorCursor` as a
-persisted per-ledger projection (`ZonePerLedger` / `SubPLMirrorCursor`, in the
-main Pebble store) that must **equal** the highest audited `MirrorIngest.v2LogId`
-for the target ledger — not merely be less than or equal to it. Explicit edge
-cases:
+`MirrorCursor` is therefore classified as **technical replication state**, not a
+checker business invariant: the ledger's business truth (balances, transactions,
+metadata) is carried by the audit-bound `MirrorIngest` orders and already verified
+by the normal checker passes, independent of the cursor. It lives at
+`ZonePerLedger` / `SubPLMirrorCursor` in the main Pebble store. Edge cases worth
+recording for the worker/recovery side (not the checker):
 
 - **Empty / never-ingested ledger:** the cursor is absent and reads back as `0`
   (`query.ReadMirrorCursor` defaults to `0`, and `processBatch` maps `0` to
@@ -153,13 +160,26 @@ cases:
   logged, purge not yet reached) as the transient case to exclude — not assume
   a deleted ledger keeps a stale cursor forever.
 
-This equality is **not** currently enforced: there is no `compare*` pass for
-`MirrorCursor` in `internal/application/check`, so per invariant #8 this is a
-known integrity gap, not an approved exemption. Raft replication does not close
-it — a cursor value corrupted or tampered before it is proposed takes effect on
-every node identically. Mirror recovery, repair tooling, or a checker pass
-that re-derives the expected cursor from the audited mirror-ingest logs must
-enforce the equality before the stored cursor can be trusted.
+There is deliberately **no** `compare*` pass for the `MirrorCursor` *pointer*
+itself in `internal/application/check` — but the correctness-bearing high-water
+mark it tracks, `LedgerBoundaries.last_mirror_v2_log_id`, **is** checker-verified
+by `compareMirrorV2LogID` (EN-1550). Per invariant #8 the checker guards the
+business invariants of the main store against the audit; the cursor pointer is not
+one of them, while the applied-prefix high-water mark is. On the two tamper
+directions above: the *behind* case is **now closed functionally** — EN-1550's
+`v2LogId` idempotency in `processMirrorIngest` makes an already-applied ingest a
+deterministic no-op, so a lowered cursor no longer double-applies. The *ahead* case
+is a **current correctness gap**: a cursor advanced (by corruption/tampering)
+beyond the true source head makes the worker fetch no source logs and report
+`FOLLOWING` (cursor ≥ sourceHead), silently under-ingesting v2→v3 with no audit
+entry to catch it — and **no worker/startup safeguard is wired yet**. It is a
+v2-parity property (verifiable only against the worker's tracked source-head, not
+the v3 audit the checker replays), so its home is worker/startup reconciliation
+rather than a checker compare pass — but until that reconciliation lands it
+remains an **open** gap, not a closed one. What *is* secured: the audit-bound
+`MirrorIngest` orders, the volume/transaction passes, and `compareMirrorV2LogID`
+cover everything that actually got ingested; the gap is strictly about source
+logs an advanced cursor causes to be skipped entirely.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
 mark) **is** covered by the checker as a full invariant-#8 **equality** check.
@@ -205,36 +225,43 @@ removal can cascade-drop an attached index), and `DeleteLedger` (purges every
 registry presence and identity — **not** the contents of the readstore inverted
 index.
 
-The readstore inverted index is rebuildable in principle, but it is **already
-authoritative for business-visible query results today** — this is a current
-integrity gap, not a future transition. Once the per-replica
-`IndexVersionState.CurrentVersion` for an index is non-zero (READY), the query
-compiler in `internal/query/compile.go` compiles reference, metadata, address,
-asset, timestamp, and related filters **directly** to readstore iterators via
-`requireIndexReady`, with **no fallback** to scanning attributes or replaying the
-audit (`compile.go` even documents "there is no on-scan fallback" for the asset
-builtin). A corrupted or tampered READY index therefore decides which rows an API
-caller gets back, while `compareIndexes` never re-derives those inverted-index
-entries from the audit. Between rebuilds nothing regenerates the index, so the
-rebuild path is not a control here.
+The readstore inverted index is a **separate, per-replica Pebble store** (opened
+independently in `internal/storage/readstore`), **not** written through the FSM
+apply path. Each node's index builder (`internal/application/indexbuilder`)
+populates it **locally** from the replicated log/audit stream, and
+`IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. It is
+therefore a **peer secondary store, out of the main-store checker's scope by
+construction** (invariant #8) — the same category as the forthcoming
+`usagestore` counter cache (EN-1334). `Check()` opens and walks the main store; it never opens the readstore, so
+`compareIndexes` deliberately verifies only the registry (which lives in the main
+store) and not the inverted-index contents (which do not).
 
-This is a tracked gap (see the `compareIndexes` comments referencing the index
-content-verification effort, and `EN-1323` on the version/build-status split).
-Closing it requires the checker to re-derive the readstore inverted-index
-contents from the audited logs, or a rebuild-health mechanism that proves the
-projection matches the audit before a READY index is served.
+Once a per-replica index is READY (`IndexVersionState.CurrentVersion` non-zero)
+the query compiler in `internal/query/compile.go` compiles reference, metadata,
+address, asset, timestamp, and related filters **directly** to readstore
+iterators via `requireIndexReady`, with **no on-scan fallback**. So the index
+decides which rows an API caller gets back — which makes its integrity a real
+concern, but a *per-replica read-model* concern, not a *main-store
+audit-vs-store* one. The integrity contract is the peer-store contract: the
+inverted index is a pure derived projection of the audit chain (the
+cryptographically-verified source of truth), so corruption is repaired by
+dropping and re-indexing from the audit, not by a main-store compare pass.
+Because Raft replicates the *source* audit/log stream and not the readstore
+bytes, a bit-flip in one replica's index is local and not propagated to the
+others; detecting and repairing it is the index builder's **rebuild-health**
+responsibility (re-derive / verify a READY index against the audit before or
+while it is served), tracked under `EN-1323`. **This detect/drop/rebuild path is
+not yet wired**: until `EN-1323` lands, a corrupted or tampered READY index is
+served directly with no on-scan fallback and no automatic detection, so treat
+readstore-contents integrity as a current open gap on the peer-store side — the
+"rebuildable cache" classification is what keeps it out of the *main-store*
+checker's scope, not a claim that automated corruption recovery already exists.
 
-Raft does not help here, but the reason differs from the main-store projections
-above. The readstore is a **separate, per-replica Pebble store** (opened
-independently in `internal/storage/readstore`), not written through the FSM apply
-path at all. It is populated **locally** by each node's index builder
-(`internal/application/indexbuilder`) from the replicated log/audit stream, and
-`IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. Raft
-replicates the *source* audit/log stream, not the readstore bytes, so a bit-flip
-in one replica's readstore is **not** propagated to the others. Consequently Raft
-neither detects nor repairs replica-local index corruption: each replica can
-serve a differently-corrupted (or healthy) index, and only per-replica checker
-or rebuild-health validation can catch it.
+This is deliberately **not** folded into `compareIndexes` or any other main-store
+checker pass. The checker's mandate is the authoritative main store; the readstore
+is a rebuildable peer read-model reached only through its own recovery path.
+Extending audit-derived verification to per-replica index contents belongs to the
+indexbuilder's rebuild-health effort (`EN-1323`), not to invariant #8.
 
 A note on what cross-replica identity actually means for main-store projections,
 so the contrast is precise. Raft plus the deterministic FSM guarantee that every
