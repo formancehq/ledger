@@ -52,7 +52,7 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, appliedIndex); err != nil {
 		_ = batch.Cancel()
 
-		return fmt.Errorf("resetting applied index: %w", err)
+		return fmt.Errorf("pinning applied index: %w", err)
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster.

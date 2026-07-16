@@ -325,7 +325,9 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 
 	stagingDir := s.stagingDir()
 
-	// Reset Global-zone keys so the staged backup is restartable on a fresh cluster.
+	// Prepare Global-zone keys (applied index pinned to the restore-genesis
+	// index, cluster-local state reset) so the staged backup is restartable
+	// on a fresh cluster.
 	s.logger.Infof("Preparing backup for restore compatibility")
 
 	if err := attributes.PrepareForBackup(store); err != nil {

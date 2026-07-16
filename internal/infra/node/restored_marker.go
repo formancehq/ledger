@@ -12,6 +12,10 @@ const restoredMarkerFile = "RESTORED"
 
 // RestoredMarker contains the metadata written by FinalizeRestore.
 type RestoredMarker struct {
+	// LastAppliedIndex is the raft index the restored genesis occupies in the
+	// new log — always >= 1 (PrepareForBackup pins it): bootstrap plants the
+	// WAL snapshot at this index so joiners must sync a checkpoint, and
+	// refuses a marker carrying 0.
 	LastAppliedIndex     uint64 `json:"lastAppliedIndex"`
 	LastAppliedTimestamp uint64 `json:"lastAppliedTimestamp"`
 }

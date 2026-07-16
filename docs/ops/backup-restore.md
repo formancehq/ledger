@@ -381,11 +381,12 @@ ledgerctl restore finalize --yes
 
 Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data:
 
-1. Opens the staging directory read-only to extract `lastAppliedIndex` and `lastAppliedTimestamp`.
-2. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
-3. Creates `{dataDir}/checkpoints/` directory.
-4. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
-5. Removes the staging directory.
+1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index pinned to 1, persisted config/bloom/peers/cache reset).
+2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
+3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
+4. Creates `{dataDir}/checkpoints/` directory.
+5. **Atomically** hard-links the staging directory to `{dataDir}/checkpoints/0` (using a temp directory + `os.Rename` for crash safety).
+6. Removes the staging directory.
 
 On next startup, `ScanLatestCheckpointID()` scans the `checkpoints/` directory for the highest numbered subdirectory to find the active checkpoint.
 
@@ -510,7 +511,7 @@ On startup, the node detects the `RESTORED` marker in `NewNode()`:
      - `nextSequenceID` from the last log sequence
      - `lastAuditHash` and `nextAuditSequenceID` from the last audit entry
    - Creates an FSM snapshot (`fsm.CreateSnapshot()`)
-   - Creates a WAL snapshot at `marker.LastAppliedIndex` with `ConfState{Voters: [nodeID]}` (single-node bootstrap)
+   - Creates a WAL snapshot at `marker.LastAppliedIndex` with `ConfState{Voters: [nodeID]}` (single-node bootstrap); a marker carrying 0 is refused — the snapshot must sit above the log start so joiners are forced through checkpoint sync
    - Removes the RESTORED marker
    - Continues with normal Raft startup
 
