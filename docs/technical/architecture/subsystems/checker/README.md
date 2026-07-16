@@ -13,7 +13,7 @@ Two pages cover what the checker depends on and what it does.
 
 ## Why a dedicated subsystem
 
-The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of scope *by construction* since `Check()` never opens them and they are rebuildable caches; and a primary-store projection is exempt only when it is rebuildable through a real, *wired* rebuild path or is purely informational (cf. `BuildStatus`). This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
+The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope *by construction* since `Check()` never opens them. That carve-out is **not** a claim they are integrity-safe: the readstore's contents are a **current open integrity gap** until its per-replica detect/drop/rebuild is wired (`EN-1323`) — a rebuild-health concern of the index builder, not a main-store checker concern. And a primary-store projection is exempt only when it is rebuildable through a real, *wired* rebuild path or is purely informational (cf. `BuildStatus`). This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
 
 For new persisted state, first classify whether it is business truth, governance
 truth, operational consensus state, or a rebuildable projection using
@@ -36,13 +36,18 @@ the same logical proposal (it does not even guarantee byte-identical serializati
 for map-bearing projections — see
 [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)), so a value
 corrupted or tampered before it is proposed takes effect on every node and no
-cross-node comparison can detect it. Two items formerly listed here are no longer integrity gaps: the **mirror
+cross-node comparison can detect it. Two items formerly listed here are reclassified — but neither is fully closed. The **mirror
 cursor**'s correctness-bearing high-water mark (`LedgerBoundaries.last_mirror_v2_log_id`)
 is now verified by `compareMirrorV2LogID` (EN-1550) — the cursor *pointer* itself
-is technical replication state, not a gap; and the **readstore inverted-index
-contents** are a peer secondary store, out of checker scope *by construction*
-(automated detect/drop/rebuild is tracked under `EN-1323` and is not yet wired —
-see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)).
+is technical replication state, not a gap; however the **advanced-cursor path**
+(a cursor advanced/tampered beyond the source head fetches no source logs and
+reports FOLLOWING, silently under-ingesting v2→v3) remains a **current open
+correctness gap** until worker/startup reconciliation is wired. And the
+**readstore inverted-index contents** are a peer secondary store, out of
+main-store checker scope *by construction* — but that is not a claim they are
+integrity-safe: their contents are a current open integrity gap until per-replica
+detect/drop/rebuild is wired (`EN-1323`, not yet wired) —
+see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md).
 Persisted projections that are genuinely not yet covered — prepared
 queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive
 user-visible results and with no `compare*` pass), persisted bloom blocks on
