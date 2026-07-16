@@ -322,6 +322,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}); err != nil {
+		// Roll the placement back: a checkpoint without its marker would
+		// make the freshness guard refuse a re-run of this command.
+		if rmErr := os.RemoveAll(checkpointPath); rmErr != nil {
+			pterm.Warning.Printfln("Failed to remove checkpoint after marker write failure; delete %s manually before retrying: %v", checkpointPath, rmErr)
+		}
+
 		return err
 	}
 

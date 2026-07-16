@@ -376,6 +376,16 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}); err != nil {
+		// Roll the placement back: a checkpoint without its marker is a
+		// half-state the freshness guards would refuse to retry against
+		// (and the staging handle is already closed, so an in-process
+		// retry cannot re-finalize either). Undone, a restore-mode
+		// restart can run the download + finalize again.
+		if rmErr := os.RemoveAll(checkpointPath); rmErr != nil {
+			s.logger.WithFields(map[string]any{"error": rmErr}).
+				Errorf("Failed to remove checkpoint after marker write failure; delete %s manually before retrying", checkpointPath)
+		}
+
 		return nil, err
 	}
 
