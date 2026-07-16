@@ -838,6 +838,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
+        - name: collapseColors
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            When true, every colored bucket of the same asset is summed
+            into a single AccountVolume entry with color = "". By default
+            each (asset, color) tuple is returned as its own entry.
       responses:
         '200':
           description: Account retrieved successfully
@@ -895,6 +905,15 @@ paths:
           description: Comma-separated list of account prefixes to group volumes by
           schema:
             type: string
+        - name: collapseColors
+          in: query
+          description: |
+            When true, every colored bucket of the same (asset, precision) is
+            summed and the resulting AggregatedVolume entry carries color = "".
+            By default the response is segregated per (asset, color).
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Aggregated volumes retrieved successfully
@@ -3277,7 +3296,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     PostingRequest:
       type: object
@@ -3300,6 +3319,16 @@ components:
         asset:
           type: string
           description: Asset identifier
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: |
+            Optional segregation key for "color of money". The empty string
+            (or omitted field) means the uncolored bucket. Two postings on the
+            same (account, asset) but different colors operate on strictly
+            isolated balances. Color is constrained to `^[A-Z]*$`, capped at
+            32 characters, and is immutable once carried by funds.
 
     Script:
       type: object
@@ -3439,7 +3468,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     RevertTransactionRequestBody:
       type: object
@@ -3460,7 +3489,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     DeleteMetadataRequest:
       type: object
@@ -3549,7 +3578,7 @@ components:
               description: Metadata for accounts involved in the transaction
             postCommitVolumes:
               $ref: '#/components/schemas/PostCommitVolumes'
-              description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+              description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
             chapterId:
               type: integer
               format: uint64
@@ -3662,19 +3691,34 @@ components:
             $ref: '#/components/schemas/MetadataValue'
           description: Account metadata (typed values)
         volumes:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/VolumesWithBalance'
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountVolume'
           description: |
-            Per-asset input/output/balance. The field is defined here so
-            the schema stays stable across future wire changes, but it is
-            not populated on the current v3 wire — `Account.MarshalJSON`
-            drops it. For per-account balances, use a prepared query with
-            type `AGGREGATE_VOLUMES` and an exact-address filter
-            (`address.hardcodedExact`); the aggregated volumes returned by
-            `GET /v3/{ledgerName}/volumes?prefix=…` match by raw byte
-            prefix (`acc:1` matches `acc:10`) and will produce incorrect
-            balances for a single-account lookup.
+            Account volumes listed per (asset, color). Sorted by (asset, color)
+            ascending for stable serialization. The empty color is the
+            uncolored bucket; colored buckets are strictly isolated. Use the
+            `collapseColors=true` query parameter on GET /accounts to sum
+            every colored bucket of the same asset into a single uncolored
+            entry.
+
+    AccountVolume:
+      type: object
+      required:
+        - asset
+        - color
+        - volumes
+      properties:
+        asset:
+          type: string
+          description: Asset identifier (e.g. "USD/2")
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: Color of the bucket. Empty string is the uncolored bucket.
+        volumes:
+          $ref: '#/components/schemas/VolumesWithBalance'
 
     VolumesWithBalance:
       type: object
@@ -3721,11 +3765,12 @@ components:
       type: object
       description: |
         Per-asset aggregated volume as emitted by `GET /v3/{ledgerName}/volumes`.
-        Prepared-query `AGGREGATE_VOLUMES` responses use the same shape
-        conceptually but currently leak the raw protojson encoding (numeric
-        Uint256, no `balance`) — reconciliation tracked in EN-1465 / EN-1469.
+        Prepared-query `AGGREGATE_VOLUMES` responses (under the `aggregateResult`
+        envelope of `ExecutePreparedQueryResponse`) use this exact shape:
+        decimal-string amounts, a computed `balance`, and `color` always present.
       required:
         - asset
+        - color
         - input
         - output
         - balance
@@ -3733,6 +3778,16 @@ components:
         asset:
           type: string
           description: Asset identifier (e.g. "USD/2")
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: |
+            Color of the aggregated bucket. By default the response contains
+            one AggregatedVolume per (asset, color) tuple. With
+            `collapseColors=true`, every colored bucket of the same
+            (asset, precision) is summed and the resulting entry carries
+            color = "".
         input:
           type: string
           description: Total amount received (as big integer string)
@@ -3818,7 +3873,7 @@ components:
           description: The new transaction that reverses the original transaction
         postCommitVolumes:
           $ref: '#/components/schemas/PostCommitVolumes'
-          description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+          description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
         warnings:
           type: array
           items:
@@ -3840,6 +3895,7 @@ components:
         - destination
         - amount
         - asset
+        - color
       properties:
         source:
           type: string
@@ -3851,6 +3907,15 @@ components:
           description: Amount as a big integer
         asset:
           type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: |
+            Segregation key for "color of money". The empty string means the
+            uncolored bucket. Always present on responses (never omitted); two
+            postings on the same (account, asset) but different colors operate
+            on strictly isolated balances.
 
     LedgerClusterStateResponse:
       type: object
@@ -4211,11 +4276,44 @@ components:
 
     PostCommitVolumes:
       type: object
+      description: |
+        Post-commit volumes, keyed by account address. Each account maps to a
+        flat array of per-(asset, color) volume tuples. The wire is a plain
+        `{"addr": [{asset, color, input, output}]}` map — the proto
+        `volumesByAccount` / `volumes` wrappers are flattened away by
+        `PostCommitVolumes.MarshalJSON`. This replaces the pre-color
+        `{"addr": {"asset": Volumes}}` map shape, which can no longer key a
+        bucket uniquely once a color dimension exists.
       additionalProperties:
-        type: object
-        additionalProperties:
-          $ref: '#/components/schemas/Volumes'
-      description: Post-commit volumes grouped by account address, then by asset
+        type: array
+        items:
+          $ref: '#/components/schemas/VolumeEntry'
+
+    VolumeEntry:
+      type: object
+      description: |
+        A single flat post-commit volume tuple for one (asset, color) bucket.
+        Input/output are flattened onto the tuple (not nested under a `volumes`
+        key). The empty color is the uncolored bucket and is always emitted.
+      required:
+        - asset
+        - color
+        - input
+        - output
+      properties:
+        asset:
+          type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: Empty string for the uncolored bucket; always emitted.
+        input:
+          type: string
+          description: big.Int as string.
+        output:
+          type: string
+          description: big.Int as string.
 
     Volumes:
       type: object
@@ -4736,6 +4834,11 @@ components:
 
     NormalizedPosting:
       type: object
+      required:
+        - sourcePattern
+        - destinationPattern
+        - asset
+        - color
       properties:
         sourcePattern:
           type: string
@@ -4743,6 +4846,15 @@ components:
           type: string
         asset:
           type: string
+        color:
+          type: string
+          pattern: '^[A-Z]*$'
+          maxLength: 32
+          description: |
+            Color discriminates postings on the same (source, destination, asset)
+            but different color buckets in the FSM. Always emitted (even empty)
+            so clients can distinguish the uncolored bucket from patterns that
+            differ only by color.
 
     TemporalStats:
       type: object
@@ -5030,14 +5142,50 @@ components:
     ExecutePreparedQueryResponse:
       type: object
       description: |
-        Response wraps either a paged cursor (list-style targets like
-        `LIST_ACCOUNTS`, `LIST_TRANSACTIONS`) or an aggregate result
-        (`AGGREGATE_VOLUMES`). The current wire encoding leaks the raw
-        protobuf oneof shape (Go-cased `Result.Cursor` / `Result.Aggregate`
-        with nested proto field names). Reconciling the wire with a clean
-        top-level `cursor` / `aggregateResult` envelope is tracked in
-        EN-1465; this schema will be finalised together with that fix.
-      additionalProperties: true
+        Result of executing a prepared query. Exactly one field is set,
+        discriminated by the request execution `mode` (see
+        `ExecutePreparedQueryRequest.mode`): `mode=LIST` returns `cursor`,
+        `mode=AGGREGATE_VOLUMES` returns `aggregateResult`. (The query `target`
+        — ACCOUNTS, TRANSACTIONS or LOGS — selects the row type inside the
+        cursor, not which envelope field is set: `accountData`,
+        `transactionData` or `logData` respectively. LOGS is a usable
+        prepared-query target: `query.Execute` hydrates `logData` for it.) Both
+        payloads use the same camelCase encoding as the equivalent non-prepared
+        endpoints
+        (decimal-string amounts, `color` always present on every volume row
+        including the uncolored bucket).
+      properties:
+        cursor:
+          type: object
+          description: |
+            Paged cursor, returned when the request `mode` is `LIST`. The row
+            type follows the query `target`: `accountData` for ACCOUNTS,
+            `transactionData` for TRANSACTIONS, `logData` for LOGS. Rows use the
+            same camelCase shapes as the non-prepared list endpoints.
+          properties:
+            pageSize:
+              type: integer
+            hasMore:
+              type: boolean
+            previous:
+              type: string
+            next:
+              type: string
+            accountData:
+              type: array
+              items:
+                $ref: '#/components/schemas/Account'
+            transactionData:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionResponse'
+            logData:
+              type: array
+              items:
+                type: object
+                description: System log entry (protobuf JSON representation)
+        aggregateResult:
+          $ref: '#/components/schemas/AggregateVolumesData'
 
     HealthResponse:
       type: object

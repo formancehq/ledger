@@ -7,21 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPostCommitVolumes_MarshalJSON_Flat guards against the protojson leak
-// reported on v3.0.0-alpha.7: the wire used to emit
-// `{"volumesByAccount": {"addr": {"volumes": {"asset": ...}}}}` — two proto
-// wrappers deep — while the OpenAPI schema documents a flat
-// `{"addr": {"asset": ...}}` map. The MarshalJSON shim must flatten.
+// volumeEntryJSON is the decoded wire shape of a single post-commit volume
+// tuple: `{asset, color, input, output}` — flat, with the color dimension
+// carried explicitly (empty string = uncolored bucket).
+type volumeEntryJSON struct {
+	Asset  string `json:"asset"`
+	Color  string `json:"color"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+// TestPostCommitVolumes_MarshalJSON_Flat guards the wire contract chosen for
+// the color-of-money model: the wire is a flat
+// `{"addr": [{asset, color, input, output}]}` map — one array of (asset,
+// color) tuples per account. protojson would otherwise emit the raw proto
+// wrappers (`{"volumesByAccount": {"addr": {"volumes": [...]}}}`) two levels
+// deep. This replaces the pre-color EN-1465 `{"addr": {"asset": Volumes}}`
+// map shape, which can no longer key a bucket uniquely once a color dimension
+// exists.
 func TestPostCommitVolumes_MarshalJSON_Flat(t *testing.T) {
 	t.Parallel()
 
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
-			"users:alice": {Volumes: map[string]*Volumes{
-				"USD/2": {Input: "100", Output: "40"},
+			"users:alice": {Volumes: []*VolumeEntry{
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
+				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: "10", Output: "0"}},
 			}},
-			"world": {Volumes: map[string]*Volumes{
-				"USD/2": {Input: "0", Output: "100"},
+			"world": {Volumes: []*VolumeEntry{
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "0", Output: "100"}},
 			}},
 		},
 	}
@@ -29,19 +43,28 @@ func TestPostCommitVolumes_MarshalJSON_Flat(t *testing.T) {
 	data, err := pcv.MarshalJSON()
 	require.NoError(t, err)
 
-	var out map[string]map[string]struct {
-		Input  string `json:"input"`
-		Output string `json:"output"`
-	}
-
+	var out map[string][]volumeEntryJSON
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Len(t, out, 2)
-	require.Equal(t, "100", out["users:alice"]["USD/2"].Input)
-	require.Equal(t, "40", out["users:alice"]["USD/2"].Output)
-	require.Equal(t, "0", out["world"]["USD/2"].Input)
-	require.Equal(t, "100", out["world"]["USD/2"].Output)
 
-	// Confirm the wrapper keys are absent from the wire.
+	require.Len(t, out["users:alice"], 2)
+	// Uncolored bucket.
+	require.Equal(t, "USD/2", out["users:alice"][0].Asset)
+	require.Equal(t, "", out["users:alice"][0].Color)
+	require.Equal(t, "100", out["users:alice"][0].Input)
+	require.Equal(t, "40", out["users:alice"][0].Output)
+	// Colored bucket, distinct from the uncolored one.
+	require.Equal(t, "USD/2", out["users:alice"][1].Asset)
+	require.Equal(t, "GOLD", out["users:alice"][1].Color)
+	require.Equal(t, "10", out["users:alice"][1].Input)
+	require.Equal(t, "0", out["users:alice"][1].Output)
+
+	require.Len(t, out["world"], 1)
+	require.Equal(t, "", out["world"][0].Color)
+	require.Equal(t, "0", out["world"][0].Input)
+	require.Equal(t, "100", out["world"][0].Output)
+
+	// Confirm the proto wrapper keys are absent from the wire.
 	require.NotContains(t, string(data), "volumesByAccount")
 	require.NotContains(t, string(data), `"volumes"`)
 }
@@ -66,8 +89,8 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
-			"volumesByAccount": {Volumes: map[string]*Volumes{
-				"USD/2": {Input: "100", Output: "40"},
+			"volumesByAccount": {Volumes: []*VolumeEntry{
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
 			}},
 		},
 	}
@@ -75,13 +98,11 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	data, err := pcv.MarshalJSON()
 	require.NoError(t, err)
 
-	var out map[string]map[string]struct {
-		Input  string `json:"input"`
-		Output string `json:"output"`
-	}
-
+	var out map[string][]volumeEntryJSON
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Contains(t, out, "volumesByAccount")
-	require.Equal(t, "100", out["volumesByAccount"]["USD/2"].Input)
-	require.Equal(t, "40", out["volumesByAccount"]["USD/2"].Output)
+	require.Len(t, out["volumesByAccount"], 1)
+	require.Equal(t, "USD/2", out["volumesByAccount"][0].Asset)
+	require.Equal(t, "100", out["volumesByAccount"][0].Input)
+	require.Equal(t, "40", out["volumesByAccount"][0].Output)
 }

@@ -145,9 +145,12 @@ This creates a transaction sending funds to `escrow:order-12345`.
 Track the origin of funds using asset coloring:
 
 ```numscript
-// Send specifically colored funds
-send [USD/2#promo 100] (
-  source = @marketing:budget
+#![feature("experimental-asset-colors")]
+
+// Send specifically colored funds: the color qualifies the source bucket.
+// Colors are uppercase (validated against ^[A-Z]*$).
+send [USD/2 100] (
+  source = @marketing:budget \ "PROMO"
   destination = @users:alice
 )
 ```

@@ -469,6 +469,7 @@ type PostingReader interface {
 	GetDestination() string
 	GetAmount() Uint256Reader
 	GetAsset() string
+	GetColor() string
 	Mutate() *Posting
 }
 
@@ -492,6 +493,10 @@ func (r *postingReadonly) GetAmount() Uint256Reader {
 
 func (r *postingReadonly) GetAsset() string {
 	return (*Posting)(r).GetAsset()
+}
+
+func (r *postingReadonly) GetColor() string {
+	return (*Posting)(r).GetColor()
 }
 
 func (r *postingReadonly) Mutate() *Posting {
@@ -959,14 +964,14 @@ func NewVolumesWithBalanceListReader(s []*VolumesWithBalance) VolumesWithBalance
 // VolumesByAssetsReader provides read-only access to VolumesByAssets.
 // Call Mutate() to obtain a mutable clone.
 type VolumesByAssetsReader interface {
-	GetVolumes() VolumesByAssets_VolumesMapReader
+	GetVolumes() VolumeEntryListReader
 	Mutate() *VolumesByAssets
 }
 
 type volumesByAssetsReadonly VolumesByAssets
 
-func (r *volumesByAssetsReadonly) GetVolumes() VolumesByAssets_VolumesMapReader {
-	return volumesByAssets_volumesMapReadonly((*VolumesByAssets)(r).GetVolumes())
+func (r *volumesByAssetsReadonly) GetVolumes() VolumeEntryListReader {
+	return NewVolumeEntryListReader((*VolumesByAssets)(r).GetVolumes())
 }
 
 func (r *volumesByAssetsReadonly) Mutate() *VolumesByAssets {
@@ -1023,35 +1028,85 @@ func NewVolumesByAssetsListReader(s []*VolumesByAssets) VolumesByAssetsListReade
 	return volumesByAssetsListReadonly(s)
 }
 
-// VolumesByAssets_VolumesMapReader provides read-only access to VolumesByAssets.Volumes.
-type VolumesByAssets_VolumesMapReader interface {
-	Len() int
-	Get(k string) (VolumesReader, bool)
-	Range(yield func(string, VolumesReader) bool)
+// VolumeEntryReader provides read-only access to VolumeEntry.
+// Call Mutate() to obtain a mutable clone.
+type VolumeEntryReader interface {
+	GetAsset() string
+	GetColor() string
+	GetVolumes() VolumesReader
+	Mutate() *VolumeEntry
 }
 
-type volumesByAssets_volumesMapReadonly map[string]*Volumes
+type volumeEntryReadonly VolumeEntry
 
-func (m volumesByAssets_volumesMapReadonly) Len() int { return len(m) }
+func (r *volumeEntryReadonly) GetAsset() string {
+	return (*VolumeEntry)(r).GetAsset()
+}
 
-func (m volumesByAssets_volumesMapReadonly) Get(k string) (VolumesReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
+func (r *volumeEntryReadonly) GetColor() string {
+	return (*VolumeEntry)(r).GetColor()
+}
+
+func (r *volumeEntryReadonly) GetVolumes() VolumesReader {
+	v := (*VolumeEntry)(r).GetVolumes()
+	if v == nil {
+		return nil
 	}
-	return v.AsReader(), true
+	return v.AsReader()
 }
 
-func (m volumesByAssets_volumesMapReadonly) Range(yield func(string, VolumesReader) bool) {
-	for k, v := range m {
-		var r VolumesReader
+func (r *volumeEntryReadonly) Mutate() *VolumeEntry {
+	return (*VolumeEntry)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this VolumeEntry.
+func (m *VolumeEntry) AsReader() VolumeEntryReader {
+	if m == nil {
+		return nil
+	}
+	return (*volumeEntryReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this VolumeEntry.
+func (m *VolumeEntry) Mutate() *VolumeEntry {
+	return m.CloneVT()
+}
+
+// VolumeEntryListReader provides read-only iteration over []*VolumeEntry.
+type VolumeEntryListReader interface {
+	Len() int
+	Get(i int) VolumeEntryReader
+	Range(yield func(int, VolumeEntryReader) bool)
+}
+
+type volumeEntryListReadonly []*VolumeEntry
+
+func (l volumeEntryListReadonly) Len() int { return len(l) }
+
+func (l volumeEntryListReadonly) Get(i int) VolumeEntryReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l volumeEntryListReadonly) Range(yield func(int, VolumeEntryReader) bool) {
+	for i, v := range l {
+		var r VolumeEntryReader
 		if v != nil {
 			r = v.AsReader()
 		}
-		if !yield(k, r) {
+		if !yield(i, r) {
 			return
 		}
 	}
+}
+
+// NewVolumeEntryListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewVolumeEntryListReader(s []*VolumeEntry) VolumeEntryListReader {
+	return volumeEntryListReadonly(s)
 }
 
 // PostCommitVolumesReader provides read-only access to PostCommitVolumes.
@@ -1152,6 +1207,87 @@ func (m postCommitVolumes_volumesByAccountMapReadonly) Range(yield func(string, 
 	}
 }
 
+// AccountVolumeReader provides read-only access to AccountVolume.
+// Call Mutate() to obtain a mutable clone.
+type AccountVolumeReader interface {
+	GetAsset() string
+	GetColor() string
+	GetVolumes() VolumesWithBalanceReader
+	Mutate() *AccountVolume
+}
+
+type accountVolumeReadonly AccountVolume
+
+func (r *accountVolumeReadonly) GetAsset() string {
+	return (*AccountVolume)(r).GetAsset()
+}
+
+func (r *accountVolumeReadonly) GetColor() string {
+	return (*AccountVolume)(r).GetColor()
+}
+
+func (r *accountVolumeReadonly) GetVolumes() VolumesWithBalanceReader {
+	v := (*AccountVolume)(r).GetVolumes()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *accountVolumeReadonly) Mutate() *AccountVolume {
+	return (*AccountVolume)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AccountVolume.
+func (m *AccountVolume) AsReader() AccountVolumeReader {
+	if m == nil {
+		return nil
+	}
+	return (*accountVolumeReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AccountVolume.
+func (m *AccountVolume) Mutate() *AccountVolume {
+	return m.CloneVT()
+}
+
+// AccountVolumeListReader provides read-only iteration over []*AccountVolume.
+type AccountVolumeListReader interface {
+	Len() int
+	Get(i int) AccountVolumeReader
+	Range(yield func(int, AccountVolumeReader) bool)
+}
+
+type accountVolumeListReadonly []*AccountVolume
+
+func (l accountVolumeListReadonly) Len() int { return len(l) }
+
+func (l accountVolumeListReadonly) Get(i int) AccountVolumeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l accountVolumeListReadonly) Range(yield func(int, AccountVolumeReader) bool) {
+	for i, v := range l {
+		var r AccountVolumeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAccountVolumeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAccountVolumeListReader(s []*AccountVolume) AccountVolumeListReader {
+	return accountVolumeListReadonly(s)
+}
+
 // AccountReader provides read-only access to Account.
 // Call Mutate() to obtain a mutable clone.
 type AccountReader interface {
@@ -1160,7 +1296,7 @@ type AccountReader interface {
 	GetFirstUsage() TimestampReader
 	GetInsertionDate() TimestampReader
 	GetUpdatedAt() TimestampReader
-	GetVolumes() Account_VolumesMapReader
+	GetVolumes() AccountVolumeListReader
 	Mutate() *Account
 }
 
@@ -1198,8 +1334,8 @@ func (r *accountReadonly) GetUpdatedAt() TimestampReader {
 	return v.AsReader()
 }
 
-func (r *accountReadonly) GetVolumes() Account_VolumesMapReader {
-	return account_volumesMapReadonly((*Account)(r).GetVolumes())
+func (r *accountReadonly) GetVolumes() AccountVolumeListReader {
+	return NewAccountVolumeListReader((*Account)(r).GetVolumes())
 }
 
 func (r *accountReadonly) Mutate() *Account {
@@ -1276,37 +1412,6 @@ func (m account_metadataMapReadonly) Get(k string) (MetadataValueReader, bool) {
 func (m account_metadataMapReadonly) Range(yield func(string, MetadataValueReader) bool) {
 	for k, v := range m {
 		var r MetadataValueReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(k, r) {
-			return
-		}
-	}
-}
-
-// Account_VolumesMapReader provides read-only access to Account.Volumes.
-type Account_VolumesMapReader interface {
-	Len() int
-	Get(k string) (VolumesWithBalanceReader, bool)
-	Range(yield func(string, VolumesWithBalanceReader) bool)
-}
-
-type account_volumesMapReadonly map[string]*VolumesWithBalance
-
-func (m account_volumesMapReadonly) Len() int { return len(m) }
-
-func (m account_volumesMapReadonly) Get(k string) (VolumesWithBalanceReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	return v.AsReader(), true
-}
-
-func (m account_volumesMapReadonly) Range(yield func(string, VolumesWithBalanceReader) bool) {
-	for k, v := range m {
-		var r VolumesWithBalanceReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -5429,6 +5534,7 @@ func NewLedgerLogListReader(s []*LedgerLog) LedgerLogListReader { return ledgerL
 type TouchedVolumeReader interface {
 	GetAccount() string
 	GetAsset() string
+	GetColor() string
 	Mutate() *TouchedVolume
 }
 
@@ -5440,6 +5546,10 @@ func (r *touchedVolumeReadonly) GetAccount() string {
 
 func (r *touchedVolumeReadonly) GetAsset() string {
 	return (*TouchedVolume)(r).GetAsset()
+}
+
+func (r *touchedVolumeReadonly) GetColor() string {
+	return (*TouchedVolume)(r).GetColor()
 }
 
 func (r *touchedVolumeReadonly) Mutate() *TouchedVolume {
@@ -11677,6 +11787,7 @@ type AggregatedVolumeReader interface {
 	GetAsset() string
 	GetInput() Uint256Reader
 	GetOutput() Uint256Reader
+	GetColor() string
 	Mutate() *AggregatedVolume
 }
 
@@ -11700,6 +11811,10 @@ func (r *aggregatedVolumeReadonly) GetOutput() Uint256Reader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *aggregatedVolumeReadonly) GetColor() string {
+	return (*AggregatedVolume)(r).GetColor()
 }
 
 func (r *aggregatedVolumeReadonly) Mutate() *AggregatedVolume {

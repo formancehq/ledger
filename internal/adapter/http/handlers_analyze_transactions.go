@@ -29,6 +29,11 @@ type normalizedPostingJSON struct {
 	SourcePattern      string `json:"sourcePattern"`
 	DestinationPattern string `json:"destinationPattern"`
 	Asset              string `json:"asset"`
+	// Color is always emitted (even when empty) so REST clients can
+	// distinguish patterns that differ only by color bucket. Two flows
+	// with the same (source, destination, asset) but different colors
+	// surface here as distinct rows.
+	Color string `json:"color"`
 }
 
 type temporalStatsJSON struct {
@@ -95,6 +100,7 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
 			SourcePattern:      p.GetSourcePattern(),
 			DestinationPattern: p.GetDestinationPattern(),
 			Asset:              p.GetAsset(),
+			Color:              p.GetColor(),
 		})
 	}
 

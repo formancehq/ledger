@@ -198,10 +198,10 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
 	if order.GetExpandVolumes() {
-		var err domain.Describable
-		postCommitVolumes, err = buildPostCommitVolumes(s, ledger, result.Postings)
-		if err != nil {
-			return nil, err
+		var pcvErr domain.Describable
+		postCommitVolumes, pcvErr = buildPostCommitVolumes(s, ledger, result.Postings)
+		if pcvErr != nil {
+			return nil, pcvErr
 		}
 	}
 
@@ -245,6 +245,10 @@ func validatePostings(postings []*commonpb.Posting) domain.Describable {
 		}
 
 		if err := domain.ValidateAsset(p.GetAsset()); err != nil {
+			return err
+		}
+
+		if err := domain.ValidateColor(p.GetColor()); err != nil {
 			return err
 		}
 	}

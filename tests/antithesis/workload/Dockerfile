@@ -10,13 +10,15 @@ RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-ins
 COPY go.* /src/
 COPY internal /src/internal
 COPY pkg /src/pkg
+COPY tests/oracle /src/tests/oracle
 COPY tests/antithesis/workload/go.* /src/tests/antithesis/workload/
 COPY tests/antithesis/workload/bin /src/tests/antithesis/workload/bin
 COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
 
 # The instrumentor outputs to /instrumented/customer/ and runs go mod tidy there.
 # The replace directive (../../../) resolves to / from that path, so place the root module at /.
-RUN cp /src/go.* / && cp -r /src/internal /internal && cp -r /src/pkg /pkg
+RUN cp /src/go.* / && cp -r /src/internal /internal && cp -r /src/pkg /pkg \
+    && mkdir -p /tests && cp -r /src/tests/oracle /tests/oracle
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload
@@ -57,11 +59,19 @@ RUN set -e; \
         | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
-FROM debian:trixie
+FROM debian:trixie AS runner
 
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y curl jq
 
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
+
+# kubectl, for the restore-orchestrator sidecar (drives the operator's
+# backup/restore flow from inside the workload pod).
+COPY --from=registry.k8s.io/kubectl:v1.31.4 /bin/kubectl /usr/local/bin/kubectl
+
+# Restore-orchestrator sidecar entrypoint — outside /opt/antithesis/test/v1 so
+# the Test Composer never discovers it as a test command.
+COPY tests/antithesis/workload/restore-orchestrator.sh /opt/antithesis/restore-orchestrator.sh
 
 COPY --from=compiler /init /init
 ENTRYPOINT ["/init"]
@@ -74,3 +84,14 @@ ENTRYPOINT ["/init"]
 # own template (model), separate from the rest of the suite (main).
 COPY --from=compiler /cmds/ /opt/antithesis/test/v1/
 COPY --from=compiler /instrumented/symbols/ /symbols
+
+# Sidecar image (build with --target sidecar): any container whose image
+# carries /opt/antithesis/test/v1 is treated by the Composer as another host of
+# those templates, and commands scheduled into the sidecar run without the
+# workload env (LEDGER_GRPC_ADDR, ...). The restore-orchestrator image
+# therefore ships without the test tree.
+FROM runner AS sidecar
+RUN rm -rf /opt/antithesis/test
+
+# Default target: the workload image, test templates included.
+FROM runner AS workload

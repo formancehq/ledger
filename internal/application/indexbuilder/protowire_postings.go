@@ -9,13 +9,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// rawPosting holds the source, destination and asset extracted from a
-// Posting message. The asset is kept so per-asset exclusion lookups against
-// purged/transient volume sets stay precise inside multi-asset accounts.
+// rawPosting holds the source, destination, asset, and color extracted from
+// a Posting message. Asset and color are both kept so per-bucket exclusion
+// lookups against purged/transient volume sets stay precise: two color
+// buckets of the same (account, asset) can have different purge fates and
+// must not be collapsed.
 type rawPosting struct {
 	Source      string
 	Destination string
 	Asset       string
+	Color       string
 }
 
 // parsedLog holds the fields extracted by the protowire fast path.
@@ -323,12 +326,12 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 				return 0, result, errors.New("protowire: invalid bytes for Posting")
 			}
 
-			src, dst, asset, perr := parsePosting(b)
+			src, dst, asset, color, perr := parsePosting(b)
 			if perr != nil {
 				return 0, result, perr
 			}
 
-			result = append(result, rawPosting{Source: src, Destination: dst, Asset: asset})
+			result = append(result, rawPosting{Source: src, Destination: dst, Asset: asset, Color: color})
 			data = data[bn:]
 		case num == 5 && typ == protowire.Fixed64Type:
 			v, vn := protowire.ConsumeFixed64(data)
@@ -351,8 +354,11 @@ func parseTransaction(data []byte, postings []rawPosting) (txID uint64, result [
 	return txID, result, nil
 }
 
-// parseTouchedVolume extracts account (field 1) and asset (field 2) from a
-// commonpb.TouchedVolume sub-message embedded in LedgerLog.purged_volumes.
+// parseTouchedVolume extracts account (field 1), asset (field 2), and color
+// (field 3) from a commonpb.TouchedVolume sub-message embedded in
+// LedgerLog.purged_volumes. Color is part of the volume identity so
+// indexer exclusions don't over-collapse colored buckets sharing
+// (account, asset).
 func parseTouchedVolume(data []byte) (*commonpb.TouchedVolume, error) {
 	out := &commonpb.TouchedVolume{}
 	for len(data) > 0 {
@@ -380,6 +386,14 @@ func parseTouchedVolume(data []byte) (*commonpb.TouchedVolume, error) {
 
 			out.Asset = string(b)
 			data = data[bn:]
+		case num == 3 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(data)
+			if bn < 0 {
+				return nil, errors.New("protowire: invalid bytes for TouchedVolume.color")
+			}
+
+			out.Color = string(b)
+			data = data[bn:]
 		default:
 			n := protowire.ConsumeFieldValue(num, typ, data)
 			if n < 0 {
@@ -393,12 +407,14 @@ func parseTouchedVolume(data []byte) (*commonpb.TouchedVolume, error) {
 	return out, nil
 }
 
-// parsePosting extracts source, destination and asset from Posting bytes.
-func parsePosting(data []byte) (source, destination, asset string, err error) {
+// parsePosting extracts source, destination, asset, and color from Posting
+// bytes. Color (field 5) is part of the volume identity so per-bucket
+// exclusion lookups can distinguish colored buckets sharing (account, asset).
+func parsePosting(data []byte) (source, destination, asset, color string, err error) {
 	for len(data) > 0 {
 		num, typ, n := protowire.ConsumeTag(data)
 		if n < 0 {
-			return "", "", "", errors.New("protowire: invalid tag in Posting")
+			return "", "", "", "", errors.New("protowire: invalid tag in Posting")
 		}
 
 		data = data[n:]
@@ -407,7 +423,7 @@ func parsePosting(data []byte) (source, destination, asset string, err error) {
 		case num == 1 && typ == protowire.BytesType:
 			b, bn := protowire.ConsumeBytes(data)
 			if bn < 0 {
-				return "", "", "", errors.New("protowire: invalid bytes for Posting.source")
+				return "", "", "", "", errors.New("protowire: invalid bytes for Posting.source")
 			}
 
 			source = string(b)
@@ -415,7 +431,7 @@ func parsePosting(data []byte) (source, destination, asset string, err error) {
 		case num == 2 && typ == protowire.BytesType:
 			b, bn := protowire.ConsumeBytes(data)
 			if bn < 0 {
-				return "", "", "", errors.New("protowire: invalid bytes for Posting.destination")
+				return "", "", "", "", errors.New("protowire: invalid bytes for Posting.destination")
 			}
 
 			destination = string(b)
@@ -423,22 +439,30 @@ func parsePosting(data []byte) (source, destination, asset string, err error) {
 		case num == 4 && typ == protowire.BytesType:
 			b, bn := protowire.ConsumeBytes(data)
 			if bn < 0 {
-				return "", "", "", errors.New("protowire: invalid bytes for Posting.asset")
+				return "", "", "", "", errors.New("protowire: invalid bytes for Posting.asset")
 			}
 
 			asset = string(b)
 			data = data[bn:]
+		case num == 5 && typ == protowire.BytesType:
+			b, bn := protowire.ConsumeBytes(data)
+			if bn < 0 {
+				return "", "", "", "", errors.New("protowire: invalid bytes for Posting.color")
+			}
+
+			color = string(b)
+			data = data[bn:]
 		default:
 			n := protowire.ConsumeFieldValue(num, typ, data)
 			if n < 0 {
-				return "", "", "", errors.New("protowire: invalid field in Posting")
+				return "", "", "", "", errors.New("protowire: invalid field in Posting")
 			}
 
 			data = data[n:]
 		}
 	}
 
-	return source, destination, asset, nil
+	return source, destination, asset, color, nil
 }
 
 // scanBytesField scans protobuf fields looking for a length-delimited field

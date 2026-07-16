@@ -357,8 +357,8 @@ func volumesString(acc *commonpb.Account) string {
 	}
 
 	var out strings.Builder
-	for asset, v := range acc.GetVolumes() {
-		fmt.Fprintf(&out, "%s=%s ", asset, v.GetBalance())
+	for _, v := range acc.GetVolumes() {
+		fmt.Fprintf(&out, "%s/%s=%s ", v.GetAsset(), v.GetColor(), v.GetVolumes().GetBalance())
 	}
 
 	return out.String()

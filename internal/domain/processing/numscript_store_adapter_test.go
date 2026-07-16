@@ -2,6 +2,7 @@ package processing
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,7 @@ import (
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -28,17 +30,23 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	}
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD", "EUR"},
+		{Account: "bank", Asset: "USD"},
+		{Account: "bank", Asset: "EUR"},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
 	require.NoError(t, err)
 	require.NotNil(t, balances)
 
-	// In force mode, all balances should be MaxForceBalance
-	require.NotNil(t, balances["bank"]["USD"])
-	require.NotNil(t, balances["bank"]["EUR"])
-	require.Positive(t, balances["bank"]["USD"].Sign())
+	// In force mode, every queried (account, asset, color) tuple is
+	// materialized with MaxForceBalance under the uncolored bucket.
+	usd, ok := findBalance(balances, "bank", "USD", "")
+	require.True(t, ok)
+	require.Positive(t, usd.Sign())
+
+	eur, ok := findBalance(balances, "bank", "EUR", "")
+	require.True(t, ok)
+	require.Positive(t, eur.Sign())
 }
 
 func TestGetBalances_PreloadedVolumes(t *testing.T) {
@@ -54,7 +62,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Input=1000, Output=300, Balance=700
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{
@@ -63,13 +71,15 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD"},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
 	require.NoError(t, err)
 	require.NotNil(t, balances)
-	require.Equal(t, int64(700), balances["bank"]["USD"].Int64())
+	amt, ok := findBalance(balances, "bank", "USD", "")
+	require.True(t, ok)
+	require.Equal(t, int64(700), amt.Int64())
 }
 
 func TestGetBalances_NotPreloaded(t *testing.T) {
@@ -85,13 +95,13 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Volume exists but has no input values (not preloaded)
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD"},
 	}
 
 	_, err := adapter.GetBalances(context.Background(), query)
@@ -100,7 +110,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 }
 
 // TestGetBalances_VolumeNotFound_TreatedAsZero pins the EN-1378 contract:
-// a declared-but-absent volume key (Scope.GetVolume → domain.ErrNotFound)
+// a declared-but-absent volume key (Scope.Volumes().Get → domain.ErrNotFound)
 // is treated as a fresh zero balance by the numscript balance adapter, not
 // as an admission failure. The coverage gate (one layer up) is what catches
 // "admission forgot to declare"; ErrNotFound is the legitimate signal once
@@ -118,18 +128,46 @@ func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 		force:      false,
 	}
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD", Color: ""},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, balances["bank"])
-	require.Equal(t, "0", balances["bank"]["USD"].String())
+	require.Len(t, balances, 1)
+	require.Equal(t, "bank", balances[0].Account)
+	require.Equal(t, "USD", balances[0].Asset)
+	require.Equal(t, "", balances[0].Color)
+	require.Equal(t, "0", balances[0].Amount.String())
+}
+
+// TestGetBalances_CatchAllRejected pins the surface-loudly contract:
+// the numscript runtime emits "BASE/*" when a script references a bare
+// base asset (no precision). Until the in-memory store grows an
+// iterator that lets us enumerate concrete precisions, the adapter must
+// surface the unsupported case rather than miss on a literal "BASE/*"
+// volume key with a confusing ErrBalanceNotPreloaded.
+func TestGetBalances_CatchAllRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	adapter := &numscriptStoreAdapter{
+		store:      NewMockScope(ctrl),
+		ledgerName: "test",
+	}
+
+	query := numscriptlib.BalanceQuery{
+		{Account: "alice", Asset: "USD/*"},
+	}
+
+	_, err := adapter.GetBalances(context.Background(), query)
+	require.ErrorIs(t, err, numscript.ErrCatchAllAssetNotSupported)
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {
@@ -260,4 +298,14 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "25", result["users:001"]["age"])
+}
+
+func findBalance(rows numscriptlib.Balances, account, asset, color string) (*big.Int, bool) {
+	for _, r := range rows {
+		if r.Account == account && r.Asset == asset && r.Color == color {
+			return r.Amount, true
+		}
+	}
+
+	return nil, false
 }

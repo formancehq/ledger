@@ -82,8 +82,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue(), "expected USD volumes on wallet:main")
+				usdVol := account.FindVolume("USD", "")
+				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes on wallet:main")
 				g.Expect(usdVol.GetInput()).To(Equal("100"))
 				g.Expect(usdVol.GetBalance()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -235,8 +235,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 					Address: "staging:a",
 				})
 				g.Expect(err).To(Succeed())
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue())
+				usdVol := account.FindVolume("USD", "")
+				g.Expect(usdVol).NotTo(BeNil())
 				g.Expect(usdVol.GetInput()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
@@ -297,8 +297,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 					Address: "wallet:b",
 				})
 				g.Expect(err).To(Succeed())
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue())
+				usdVol := account.FindVolume("USD", "")
+				g.Expect(usdVol).NotTo(BeNil())
 				g.Expect(usdVol.GetInput()).To(Equal("100"))
 				g.Expect(usdVol.GetBalance()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -397,8 +397,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 					Address: "wallet:y",
 				})
 				g.Expect(err).To(Succeed())
-				usdVol, ok := account.GetVolumes()["USD"]
-				g.Expect(ok).To(BeTrue())
+				usdVol := account.FindVolume("USD", "")
+				g.Expect(usdVol).NotTo(BeNil())
 				g.Expect(usdVol.GetInput()).To(Equal("200"))
 				g.Expect(usdVol.GetBalance()).To(Equal("200"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -447,20 +447,20 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 			// staging:reuse should read {50, 0} — fresh, not cumulative {150, 100}.
 			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
 			Expect(pcv1).To(HaveKey("staging:reuse"))
-			Expect(pcv1["staging:reuse"].Volumes["USD"].Input).To(Equal("50"),
+			Expect(pcv1["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"),
 				"transient input should reflect this batch only, not accumulate across batches")
-			Expect(pcv1["staging:reuse"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv1["staging:reuse"].FindVolume("USD", "").Output).To(Equal("0"))
 
 			// Second transaction's PCV: staging:reuse → wallet:b 50.
 			// staging:reuse now {50, 50} — the per-batch zero-balance — not {150, 150}.
 			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
 			Expect(pcv2).To(HaveKey("staging:reuse"))
-			Expect(pcv2["staging:reuse"].Volumes["USD"].Input).To(Equal("50"))
-			Expect(pcv2["staging:reuse"].Volumes["USD"].Output).To(Equal("50"))
+			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"))
+			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Output).To(Equal("50"))
 
 			// And the wallet sees its fresh +50.
-			Expect(pcv2["wallet:b"].Volumes["USD"].Input).To(Equal("50"))
-			Expect(pcv2["wallet:b"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv2["wallet:b"].FindVolume("USD", "").Input).To(Equal("50"))
+			Expect(pcv2["wallet:b"].FindVolume("USD", "").Output).To(Equal("0"))
 		})
 	})
 })

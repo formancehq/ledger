@@ -754,7 +754,9 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 	}
 	defer cleanup()
 
-	return c.GetAccount(ctx, req.GetLedger(), req.GetAddress())
+	return c.GetAccount(ctx, req.GetLedger(), req.GetAddress(), ctrl.GetAccountOptions{
+		CollapseColors: req.GetCollapseColors(),
+	})
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
@@ -1400,6 +1402,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	result, err := c.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
 		UseMaxPrecision: req.GetUseMaxPrecision(),
 		GroupByPrefixes: req.GetGroupByPrefixes(),
+		CollapseColors:  req.GetCollapseColors(),
 	})
 	impl.emitProfile(ctx, profile)
 

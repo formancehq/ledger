@@ -296,3 +296,105 @@ func TestAnalyzeTransactions_GroupedBySignature(t *testing.T) {
 	assert.Equal(t, uint64(2), resp.GetFlowPatterns()[0].GetTransactionCount())
 	assert.Equal(t, uint64(1), resp.GetFlowPatterns()[1].GetTransactionCount())
 }
+
+// TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents guards the
+// signature format against component-vs-separator confusion. Even if the
+// upstream validators ever loosened to allow `->`, `[`, `|`, or `]` inside
+// account / asset / color components, the NUL-byte separator keeps the
+// signature unambiguous.
+func TestFlowSignaturePart_NoCollisionWithSeparatorsInComponents(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		a, b *servicepb.NormalizedPosting
+	}{
+		{
+			name: "arrow-in-account vs literal arrow",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src->x", DestinationPattern: "dst", Asset: "USD", Color: ""},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "x->dst", Asset: "USD", Color: ""},
+		},
+		{
+			name: "bracket-in-color vs literal",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "A]B"},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD]A", Color: "B"},
+		},
+		{
+			name: "pipe in components",
+			a:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD|X", Color: ""},
+			b:    &servicepb.NormalizedPosting{SourcePattern: "src", DestinationPattern: "dst", Asset: "USD", Color: "X"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotEqual(t, flowSignaturePart(tc.a), flowSignaturePart(tc.b),
+				"signatures must not collide when separators appear inside components")
+		})
+	}
+}
+
+// TestComputeFlowDisplaySignature pins the human-readable public signature: the
+// internal NUL-delimited grouping key must never leak onto FlowPattern.signature.
+// Uncolored flows are byte-for-byte the legacy release/v3.0 form
+// ("source->dest[asset]", no spaces, ";" separator); colored postings extend it
+// with "/color" inside the brackets so uncolored consumers see no change.
+func TestComputeFlowDisplaySignature(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		postings []*servicepb.NormalizedPosting
+		want     string
+	}{
+		{
+			name:     "single uncolored is byte-identical to legacy",
+			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD"}},
+			want:     "world->bank:main[USD]",
+		},
+		{
+			name:     "single colored extends inside the brackets",
+			postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "bank:main", Asset: "USD", Color: "RED"}},
+			want:     "world->bank:main[USD/RED]",
+		},
+		{
+			name: "multi posting sorted and semicolon-joined (no spaces)",
+			postings: []*servicepb.NormalizedPosting{
+				{SourcePattern: "world", DestinationPattern: "bank:fees", Asset: "EUR"},
+				{SourcePattern: "alice", DestinationPattern: "bob", Asset: "USD", Color: "GRANTS"},
+			},
+			want: "alice->bob[USD/GRANTS];world->bank:fees[EUR]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := computeFlowDisplaySignature(tc.postings)
+			require.Equal(t, tc.want, got)
+			require.NotContains(t, got, "\x00", "public signature must not contain the internal NUL separator")
+		})
+	}
+}
+
+// TestAnalyzeTransactions_PublicSignatureIsHumanReadable end-to-ends the wire
+// contract: FlowPattern.signature must be the legacy human-readable form, never
+// the NUL-delimited internal grouping key.
+func TestAnalyzeTransactions_PublicSignatureIsHumanReadable(t *testing.T) {
+	t.Parallel()
+
+	txns := []CompactTransaction{
+		makeCompactTransaction(1000000, []CompactPosting{
+			makeCompactPosting("world", "bank:main", "USD", 100),
+		}),
+	}
+
+	resp := analyzeTransactions(txns, 0)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+	sig := resp.GetFlowPatterns()[0].GetSignature()
+	require.Equal(t, "world->bank:main[USD]", sig)
+	require.NotContains(t, sig, "\x00")
+}

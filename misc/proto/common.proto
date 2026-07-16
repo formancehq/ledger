@@ -62,6 +62,10 @@ message Posting {
   string destination = 2;
   Uint256 amount = 3;
   string asset = 4;
+  // Color of the funds being moved. The empty string is the "uncolored" bucket
+  // and is treated as just another color from a segregation standpoint.
+  // Color values are constrained to ^[A-Z]*$ at admission time.
+  string color = 5;
 }
 
 // Transaction represents a transaction
@@ -104,12 +108,23 @@ message VolumesWithBalance {
   string balance = 3;  // big.Int as string
 }
 
-// VolumesByAssets represents volumes grouped by asset
+// VolumesByAssets is a sorted list of post-commit (asset, color) volume
+// entries for a single account. Sorted by (asset, color) ascending so the
+// serialization is deterministic and stable across reads.
 message VolumesByAssets {
-  map<string, Volumes> volumes = 1;
+  repeated VolumeEntry volumes = 1;
 }
 
-// PostCommitVolumes represents volumes after commit, grouped by account and asset
+// VolumeEntry is one (asset, color) row inside VolumesByAssets. The empty
+// color is the uncolored bucket and is itself just another segregated bucket.
+message VolumeEntry {
+  string asset = 1;
+  string color = 2;
+  Volumes volumes = 3;
+}
+
+// PostCommitVolumes represents volumes after commit, grouped by account.
+// Within each account, entries are flat-listed per (asset, color) tuple.
 message PostCommitVolumes {
   map<string, VolumesByAssets> volumes_by_account = 1;
 }
@@ -118,14 +133,25 @@ message PostCommitVolumes {
 // Account
 // ============================================================================
 
-// Account represents an account in the ledger
+// AccountVolume is one (asset, color) row in Account.volumes.
+message AccountVolume {
+  string asset = 1;
+  string color = 2;
+  VolumesWithBalance volumes = 3;
+}
+
+// Account represents an account in the ledger.
 message Account {
   string address = 1;
   map<string, MetadataValue> metadata = 2;
   Timestamp first_usage = 3;
   Timestamp insertion_date = 4;
   Timestamp updated_at = 5;
-  map<string, VolumesWithBalance> volumes = 6;  // Volumes per asset
+  // Volumes is a sorted list of per (asset, color) entries.
+  // Sorted by (asset, color) ascending for stable serialization.
+  // When the request opts into collapse_colors, the list collapses to one
+  // entry per asset with color = "" and amounts summed across colors.
+  repeated AccountVolume volumes = 6;
 }
 
 // ============================================================================
@@ -669,11 +695,14 @@ message LedgerLog {
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired
-// with an asset. Used in transient/purged volume exclusion sets where the
-// indexer must distinguish per-asset state inside a multi-asset account.
+// with an asset and a color. Used in transient/purged volume exclusion sets
+// where the indexer must distinguish per-(asset, color) state inside a
+// multi-bucket account. The empty color is the uncolored bucket and is itself
+// just another segregated cell.
 message TouchedVolume {
   string account = 1;
   string asset = 2;
+  string color = 3;
 }
 
 message LedgerLogPayload {
@@ -1216,6 +1245,8 @@ enum ErrorReason {
   ERROR_REASON_CHECKPOINT_NOT_READY = 63;
   ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 64;
   ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 65;
+  ERROR_REASON_AGGREGATE_OVERFLOW = 66;
+  ERROR_REASON_BALANCE_NOT_FOUND = 67;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1613,11 +1644,15 @@ message PreparedQuery {
   QueryTarget target = 3;
 }
 
-// AggregatedVolume represents per-asset aggregated input/output volumes.
+// AggregatedVolume represents aggregated input/output volumes for a single
+// (asset, color) bucket. When collapse_colors is requested on the aggregate
+// query, all entries are produced with color = "" and amounts summed across
+// colors.
 message AggregatedVolume {
   string asset = 1;
   Uint256 input = 2;
   Uint256 output = 3;
+  string color = 4;
 }
 
 message AggregateResult {

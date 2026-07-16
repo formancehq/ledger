@@ -1132,15 +1132,17 @@ type storageFault struct {
 	err domain.Describable
 }
 
-// compareVolumeKeys orders volume keys by (Account, Asset, LedgerName). Account
-// and Asset are what the returned error carries; LedgerName is a final
-// tiebreaker giving a total order (map keys are unique on all three, so ties
-// never occur) so the winner is fully defined when two ledgers share an
-// (account, asset).
+// compareVolumeKeys orders volume keys by (Account, Asset, Color, LedgerName).
+// Account and Asset are what the returned error carries; Color segregates the
+// per-bucket balances that share an (account, asset) under color-of-money;
+// LedgerName is the final tiebreaker giving a total order (map keys are unique
+// on all four, so ties never occur) so the winner is fully defined when two
+// ledgers share an (account, asset, color).
 func compareVolumeKeys(a, b domain.VolumeKey) int {
 	return cmp.Or(
 		cmp.Compare(a.Account, b.Account),
 		cmp.Compare(a.Asset, b.Asset),
+		cmp.Compare(a.Color, b.Color),
 		cmp.Compare(a.LedgerName, b.LedgerName),
 	)
 }
@@ -1217,7 +1219,8 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 
 	// A storage/coverage fault means the check could not run correctly for at
 	// least one key, so surface it ahead of any business offender. Pick the
-	// (Account, Asset, LedgerName)-smallest so the choice is deterministic.
+	// (Account, Asset, Color, LedgerName)-smallest so the choice is
+	// deterministic (compareVolumeKeys — same order both call sites use).
 	if len(storageFaults) > 0 {
 		return slices.MinFunc(storageFaults, func(a, b storageFault) int {
 			return compareVolumeKeys(a.key, b.key)
@@ -1229,13 +1232,17 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 	}
 
 	// One error listing every offending account, sorted by (Account, Asset,
-	// LedgerName) and deduplicated to (Account, Asset) granularity — the
-	// identity the error exposes. Sorting only the offenders (usually zero)
-	// keeps the byte-determinism guarantee off the happy path.
+	// Color, LedgerName) and deduplicated to (Account, Asset, Color)
+	// granularity — the identity the error exposes. Color is part of the
+	// identity: two color buckets of the same (account, asset) are distinct
+	// transient cells and must not fuse into one offender (matches the
+	// checker's exclusion set, which keys on Color — checker.go). Sorting
+	// only the offenders (usually zero) keeps the byte-determinism guarantee
+	// off the happy path.
 	slices.SortFunc(offenders, compareVolumeKeys)
 	accounts := make([]domain.AccountAssetKey, 0, len(offenders))
 	for _, key := range offenders {
-		account := domain.AccountAssetKey{Account: key.Account, Asset: key.Asset}
+		account := domain.AccountAssetKey{Account: key.Account, Asset: key.Asset, Color: key.Color}
 		if n := len(accounts); n > 0 && accounts[n-1] == account {
 			continue
 		}
@@ -1721,25 +1728,27 @@ func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
 }
 
-// TransientVolumes returns the unique transient (account, asset) volumes
-// per ledger, collected during Merge from the transient volume partition.
+// TransientVolumes returns the unique transient (account, asset, color)
+// volumes per ledger, collected during Merge from the transient volume
+// partition.
 func (b *WriteSet) TransientVolumes() map[string][]*commonpb.TouchedVolume {
 	return b.transientVolumes
 }
 
-// collectUniqueVolumes extracts unique (account, asset) tuples per ledger
-// from volume updates and emits them as deterministically-ordered
-// commonpb.TouchedVolume slices.
+// collectUniqueVolumes extracts unique (account, asset, color) tuples per
+// ledger from volume updates and emits them as deterministically-ordered
+// commonpb.TouchedVolume slices. Color is part of the identity so two color
+// buckets of the same (account, asset) stay distinct in the audit log.
 func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[string][]*commonpb.TouchedVolume {
-	type accAsset struct{ Account, Asset string }
-	seen := make(map[string]map[accAsset]struct{})
+	type accAssetColor struct{ Account, Asset, Color string }
+	seen := make(map[string]map[accAssetColor]struct{})
 
 	for _, update := range updates {
 		ledgerName := update.Key.LedgerName
-		k := accAsset{Account: update.Key.Account, Asset: update.Key.Asset}
+		k := accAssetColor{Account: update.Key.Account, Asset: update.Key.Asset, Color: update.Key.Color}
 
 		if seen[ledgerName] == nil {
-			seen[ledgerName] = make(map[accAsset]struct{})
+			seen[ledgerName] = make(map[accAssetColor]struct{})
 		}
 
 		seen[ledgerName][k] = struct{}{}
@@ -1747,7 +1756,7 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 
 	result := make(map[string][]*commonpb.TouchedVolume, len(seen))
 	for ledgerName, vols := range seen {
-		list := make([]accAsset, 0, len(vols))
+		list := make([]accAssetColor, 0, len(vols))
 		for k := range vols {
 			list = append(list, k)
 		}
@@ -1756,13 +1765,16 @@ func collectUniqueVolumes(updates []attributes.Update[domain.VolumeKey, *raftcmd
 			if list[a].Account != list[b].Account {
 				return list[a].Account < list[b].Account
 			}
+			if list[a].Asset != list[b].Asset {
+				return list[a].Asset < list[b].Asset
+			}
 
-			return list[a].Asset < list[b].Asset
+			return list[a].Color < list[b].Color
 		})
 
 		out := make([]*commonpb.TouchedVolume, len(list))
 		for i, k := range list {
-			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset}
+			out[i] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
 		}
 
 		result[ledgerName] = out

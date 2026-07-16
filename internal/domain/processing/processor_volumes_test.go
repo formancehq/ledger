@@ -31,7 +31,7 @@ func TestBuildPostCommitVolumes_PropagatesReadError(t *testing.T) {
 
 	sentinel := errors.New("simulated coverage miss")
 	// First pair read is the posting source ("world"); program it to fail.
-	volumes.expectGet(domain.NewVolumeKey("test", "world", "USD"), nil, sentinel)
+	volumes.expectGet(domain.NewVolumeKey("test", "world", "USD", ""), nil, sentinel)
 
 	postings := []*commonpb.Posting{{
 		Source:      "world",
@@ -67,7 +67,7 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 		Input:  commonpb.NewUint256FromUint64(100),
 		Output: commonpb.NewUint256FromUint64(40),
 	}
-	volumes.expectGet(domain.NewVolumeKey("test", "bank", "USD"), sourceVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("test", "bank", "USD", ""), sourceVol.AsReader(), nil)
 
 	postings := []*commonpb.Posting{{
 		Source:      "bank",
@@ -80,11 +80,30 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, result)
 
-	bank := result.GetVolumesByAccount()["bank"].GetVolumes()["USD"]
+	bank := findVolumeEntry(result, "bank", "USD", "")
+	require.NotNil(t, bank)
 	require.Equal(t, "100", bank.GetInput())
 	require.Equal(t, "40", bank.GetOutput())
 
-	users := result.GetVolumesByAccount()["users:001"].GetVolumes()["USD"]
+	users := findVolumeEntry(result, "users:001", "USD", "")
+	require.NotNil(t, users)
 	require.Equal(t, "0", users.GetInput())
 	require.Equal(t, "0", users.GetOutput())
+}
+
+// findVolumeEntry looks up the Volumes for a single (account, asset, color)
+// tuple in the flat per-account VolumeEntry list. Returns nil when absent.
+func findVolumeEntry(pcv *commonpb.PostCommitVolumes, account, asset, color string) *commonpb.Volumes {
+	byAssets, ok := pcv.GetVolumesByAccount()[account]
+	if !ok {
+		return nil
+	}
+
+	for _, e := range byAssets.GetVolumes() {
+		if e.GetAsset() == asset && e.GetColor() == color {
+			return e.GetVolumes()
+		}
+	}
+
+	return nil
 }

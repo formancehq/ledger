@@ -148,7 +148,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		pterm.Println("Postings:")
 
 		postingsTable := pterm.TableData{
-			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
+			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET", "COLOR"},
 		}
 
 		termWidth := pterm.GetTerminalWidth()
@@ -167,7 +167,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 			for line := range maxLines {
 				src, dst := "", ""
-				num, arrow, amount, asset := "", "", "", ""
+				num, arrow, amount, asset, color := "", "", "", "", ""
 
 				if line < len(srcLines) {
 					src = srcLines[line]
@@ -188,10 +188,14 @@ func runGet(cmd *cobra.Command, args []string) error {
 					arrow = "→"
 					amount = posting.GetAmount().Dec()
 					asset = posting.GetAsset()
+					color = posting.GetColor()
+					if color == "" {
+						color = "-"
+					}
 				}
 
 				postingsTable = append(postingsTable, []string{
-					num, src, arrow, dst, amount, asset,
+					num, src, arrow, dst, amount, asset, color,
 				})
 			}
 		}

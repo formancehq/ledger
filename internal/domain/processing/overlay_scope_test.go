@@ -147,7 +147,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 	require.Equal(t, uint64(7), br.GetNextTransactionId())
 
 	// Volume
-	vk := domain.NewVolumeKey("L", "alice", "USD")
+	vk := domain.NewVolumeKey("L", "alice", "USD", "")
 	overlay.Volumes().Put(vk, &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(50),
 		Output: commonpb.NewUint256FromUint64(20),
@@ -277,7 +277,7 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	s.parent.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 
 	lk := domain.LedgerKey{Name: "L"}
-	vk := domain.NewVolumeKey("L", "alice", "USD")
+	vk := domain.NewVolumeKey("L", "alice", "USD", "")
 	mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "k"}
 	lmk := domain.LedgerMetadataKey{LedgerName: "L", Key: "k"}
 	tk := domain.TransactionKey{LedgerName: "L", ID: 1}

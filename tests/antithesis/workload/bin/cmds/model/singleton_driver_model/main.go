@@ -132,9 +132,20 @@ func main() {
 		}()
 	}
 
-	// Workers stop on ctx.Done. Close the processor's channel so it can
-	// drain and exit.
+	var restore sync.WaitGroup
+	if trigger := selectRestoreTrigger(); trigger != nil {
+		restore.Add(1)
+		go func() {
+			defer restore.Done()
+			runRestoreCycle(ctx, checker, trigger, restoreInterval())
+		}()
+		log.Printf("restore cycle enabled (interval ~%s)", restoreInterval())
+	}
+
+	// Workers stop on ctx.Done. Wait for the restore cycle too before closing the
+	// processor's channel, so no cycle touches the checker during teardown.
 	workers.Wait()
+	restore.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -151,6 +162,11 @@ func runWorker(
 		case <-ctx.Done():
 			return
 		default:
+		}
+
+		// Park here while a restore cycle has quiesced the driver.
+		if !c.awaitResume(ctx) {
+			return
 		}
 
 		// 1-in-5: a read this iteration, split across the whole-ledger read
@@ -174,6 +190,12 @@ func runWorker(
 		}
 
 		c.mu.Lock()
+		// A pause committed after the gate opened: back out without dispatching,
+		// so no bulk commits between the drain and the backup.
+		if c.paused {
+			c.mu.Unlock()
+			continue
+		}
 		bulk := generateBulk(c.modelState, c.ledgerNames, c.receiptByRef)
 		if len(bulk.Requests) == 0 {
 			c.mu.Unlock()

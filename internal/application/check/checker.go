@@ -302,13 +302,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// replay consumes — a tampered AppliedProposal.TransientVolumes or
 	// LedgerLog.PurgedVolumes record cannot influence the integrity check.
 	excluded := excludedVolumesSet{}
-	exclusionCollector := func(ledger, account, asset string) {
+	exclusionCollector := func(ledger, account, asset, color string) {
 		set, exists := excluded[ledger]
 		if !exists {
 			set = make(map[domain.AccountAssetKey]struct{})
 			excluded[ledger] = set
 		}
-		set[domain.AccountAssetKey{Account: account, Asset: asset}] = struct{}{}
+		set[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}] = struct{}{}
 	}
 
 	// stored mirrors `excluded` but is built from the Pebble projections
@@ -320,13 +320,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// indirectly relies on, so a tampered cache cannot make a corrupted
 	// state look consistent.
 	stored := excludedVolumesSet{}
-	addStored := func(ledger, account, asset string) {
+	addStored := func(ledger, account, asset, color string) {
 		set, exists := stored[ledger]
 		if !exists {
 			set = make(map[domain.AccountAssetKey]struct{})
 			stored[ledger] = set
 		}
-		set[domain.AccountAssetKey{Account: account, Asset: asset}] = struct{}{}
+		set[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}] = struct{}{}
 	}
 
 	nextProposalEnd, hasProposalEnd, err := proposalBoundaries.Next()
@@ -548,10 +548,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// — the split exists to compact log payloads on
 						// ephemeral-heavy workloads (EN-1422).
 						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset())
+							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 						}
 						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset())
+							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 						}
 					}
 				}
@@ -675,14 +675,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 }
 
 // collectStoredTransientVolumes walks the AppliedProposal stream and feeds
-// every (ledger, account, asset) declared in TransientVolumes into the
-// addStored callback. Paired with the LedgerLog.PurgedVolumes captured
+// every (ledger, account, asset, color) declared in TransientVolumes into
+// the addStored callback. Paired with the LedgerLog.PurgedVolumes captured
 // during the replay loop, this builds the "stored" projection the checker
 // compares against the audit-derived ground truth.
 func (c *Checker) collectStoredTransientVolumes(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	addStored func(ledger, account, asset string),
+	addStored func(ledger, account, asset, color string),
 ) error {
 	proposals, err := query.ReadAppliedProposals(ctx, reader, nil)
 	if err != nil {
@@ -703,7 +703,7 @@ func (c *Checker) collectStoredTransientVolumes(
 
 		for ledgerName, volumeList := range entry.GetTransientVolumes() {
 			for _, v := range volumeList.GetVolumes() {
-				addStored(ledgerName, v.GetAccount(), v.GetAsset())
+				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 			}
 		}
 	}
@@ -1070,7 +1070,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 // index builder and cannot be trusted by the integrity checker.
 type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
 
-func (e excludedVolumesSet) contains(ledgerName, account, asset string) bool {
+func (e excludedVolumesSet) contains(ledgerName, account, asset, color string) bool {
 	if e == nil {
 		return false
 	}
@@ -1080,7 +1080,7 @@ func (e excludedVolumesSet) contains(ledgerName, account, asset string) bool {
 		return false
 	}
 
-	_, has := keys[domain.AccountAssetKey{Account: account, Asset: asset}]
+	_, has := keys[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
 
 	return has
 }
@@ -1238,6 +1238,17 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		var vk domain.VolumeKey
 
 		if err := vk.Unmarshal([]byte(key)); err != nil {
+			// A persisted volume-projection key that no longer unmarshals is a
+			// corruption/tampering signal, not something to skip: silently
+			// continuing would let the malformed row escape verification entirely
+			// (invariant #7 — an impossible-by-design state must fail loudly). Emit
+			// a store error and move on; the key is unparseable, so there is no
+			// (ledger, account, asset) to compute an expectation against.
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("unparseable volume projection key %x: %v", key, err), 0, "", "", ""))
+
+			errorCount++
+
 			continue
 		}
 
@@ -1269,12 +1280,13 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		// Check). That set is derived from the hash-chain-bound audit
 		// trail — NOT from AppliedProposal.TransientVolumes or
 		// LedgerLog.PurgedVolumes, which are unhashed caches and must
-		// stay untrusted here. The exclusion key is (account, asset) so a
-		// multi-asset account whose USD was purged still has its EUR
-		// compared. Do not "align" this code to consult those proto
-		// records — it would reintroduce the tampering vector this
-		// design deliberately removes.
-		if excluded.contains(vk.LedgerName, vk.Account, vk.Asset) {
+		// stay untrusted here. The exclusion key is
+		// (account, asset, color) so a multi-bucket account whose
+		// (USD, RED) was purged still has its (USD, BLUE) compared. Do
+		// not "align" this code to consult those proto records — it
+		// would reintroduce the tampering vector this design
+		// deliberately removes.
+		if excluded.contains(vk.LedgerName, vk.Account, vk.Asset, vk.Color) {
 			continue
 		}
 

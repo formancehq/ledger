@@ -38,13 +38,17 @@ func isNewVolumeUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePa
 	return isVolumePreloadZero(u.Old.Value())
 }
 
-// volumeSetKey is the (ledger, account, asset) tuple used by the per-log
-// intersection helpers below. Mirrors purgedVolumeKey's asset-dimension
-// rationale — a multi-asset account may split across categories.
+// volumeSetKey is the (ledger, account, asset, color) tuple used by the per-log
+// intersection helpers below. Both asset and color dimensions are kept: a
+// multi-bucket account may split across categories per (asset, color) — one
+// (asset, color) bucket may be purged/new while another stays kept, so dropping
+// either dimension would over-attribute a category to orders touching a
+// still-kept bucket.
 type volumeSetKey struct {
 	Ledger  string
 	Account string
 	Asset   string
+	Color   string
 }
 
 // makeNewKeptKeySet builds the set of (ledger, account, asset) tuples that
@@ -62,6 +66,7 @@ func makeNewKeptKeySet(kept []attributes.Update[domain.VolumeKey, *raftcmdpb.Vol
 			Ledger:  kept[i].Key.LedgerName,
 			Account: kept[i].Key.Account,
 			Asset:   kept[i].Key.Asset,
+			Color:   kept[i].Key.Color,
 		}] = struct{}{}
 	}
 
@@ -81,6 +86,7 @@ func splitPurged(purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumeP
 			Ledger:  purged[i].Key.LedgerName,
 			Account: purged[i].Key.Account,
 			Asset:   purged[i].Key.Asset,
+			Color:   purged[i].Key.Color,
 		}
 
 		if isNewVolumeUpdate(purged[i]) {
@@ -94,20 +100,21 @@ func splitPurged(purged []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumeP
 }
 
 // buildTouchedByLog produces, for each order index, the deduplicated list of
-// (account, asset) tuples the order touched that fall in the given set.
+// (account, asset, color) tuples the order touched that fall in the given set.
 // Indexed by order_index; entries for orders with no matching keys are nil.
-// Tuples within an entry are sorted (by account then asset) so the log
+// Tuples within an entry are sorted (by account, asset, then color) so the log
 // payload is deterministic across nodes and runs.
 //
 // This is the generalisation of buildPurgedByLog / buildNewByLog into one
 // helper — the caller supplies the intersection set (draining, ephemeral,
-// or new-kept).
+// or new-kept). The color dimension is preserved so multi-bucket accounts are
+// attributed per (asset, color) bucket rather than collapsed onto the asset.
 func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSetKey]struct{}) [][]*commonpb.TouchedVolume {
 	if len(perOrderVolumeKeys) == 0 || len(set) == 0 {
 		return nil
 	}
 
-	type accAsset struct{ Account, Asset string }
+	type accAssetColor struct{ Account, Asset, Color string }
 
 	out := make([][]*commonpb.TouchedVolume, len(perOrderVolumeKeys))
 	for i, keys := range perOrderVolumeKeys {
@@ -115,19 +122,19 @@ func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSe
 			continue
 		}
 
-		seen := make(map[accAsset]struct{}, len(keys))
+		seen := make(map[accAssetColor]struct{}, len(keys))
 		for _, k := range keys {
-			if _, ok := set[volumeSetKey{Ledger: k.LedgerName, Account: k.Account, Asset: k.Asset}]; !ok {
+			if _, ok := set[volumeSetKey{Ledger: k.LedgerName, Account: k.Account, Asset: k.Asset, Color: k.Color}]; !ok {
 				continue
 			}
-			seen[accAsset{Account: k.Account, Asset: k.Asset}] = struct{}{}
+			seen[accAssetColor{Account: k.Account, Asset: k.Asset, Color: k.Color}] = struct{}{}
 		}
 
 		if len(seen) == 0 {
 			continue
 		}
 
-		ordered := make([]accAsset, 0, len(seen))
+		ordered := make([]accAssetColor, 0, len(seen))
 		for k := range seen {
 			ordered = append(ordered, k)
 		}
@@ -135,13 +142,16 @@ func buildTouchedByLog(perOrderVolumeKeys [][]domain.VolumeKey, set map[volumeSe
 			if ordered[a].Account != ordered[b].Account {
 				return ordered[a].Account < ordered[b].Account
 			}
+			if ordered[a].Asset != ordered[b].Asset {
+				return ordered[a].Asset < ordered[b].Asset
+			}
 
-			return ordered[a].Asset < ordered[b].Asset
+			return ordered[a].Color < ordered[b].Color
 		})
 
 		vols := make([]*commonpb.TouchedVolume, len(ordered))
 		for j, k := range ordered {
-			vols[j] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset}
+			vols[j] = &commonpb.TouchedVolume{Account: k.Account, Asset: k.Asset, Color: k.Color}
 		}
 		out[i] = vols
 	}

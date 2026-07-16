@@ -233,10 +233,14 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		pterm.Println("Revert Postings:")
 
 		postingsTable := pterm.TableData{
-			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
+			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET", "COLOR"},
 		}
 
 		for i, posting := range revertedTx.GetRevertTransaction().GetPostings() {
+			color := posting.GetColor()
+			if color == "" {
+				color = "-"
+			}
 			postingsTable = append(postingsTable, []string{
 				strconv.Itoa(i + 1),
 				posting.GetSource(),
@@ -244,6 +248,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 				posting.GetDestination(),
 				posting.GetAmount().Dec(),
 				posting.GetAsset(),
+				color,
 			})
 		}
 

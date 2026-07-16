@@ -396,9 +396,13 @@ type GetAccountRequest struct {
 	Ledger  string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Address string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"fixed64,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CheckpointId uint64 `protobuf:"fixed64,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	// When true, colored buckets are summed into a single entry per asset
+	// with color = "" in the returned Account.volumes list. By default each
+	// (asset, color) tuple gets its own entry.
+	CollapseColors bool `protobuf:"varint,4,opt,name=collapse_colors,json=collapseColors,proto3" json:"collapse_colors,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetAccountRequest) Reset() {
@@ -450,6 +454,13 @@ func (x *GetAccountRequest) GetCheckpointId() uint64 {
 		return x.CheckpointId
 	}
 	return 0
+}
+
+func (x *GetAccountRequest) GetCollapseColors() bool {
+	if x != nil {
+		return x.CollapseColors
+	}
+	return false
 }
 
 type GetTransactionRequest struct {
@@ -6780,14 +6791,18 @@ func (x *AnalyzeTransactionsResponse) GetTotalReverted() uint64 {
 }
 
 type FlowPattern struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Signature        string                 `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"` // e.g. "users:{id}:main -> bank:fees [USD]"
-	Structure        PostingStructure       `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
-	TransactionCount uint64                 `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
-	Postings         []*NormalizedPosting   `protobuf:"bytes,4,rep,name=postings,proto3" json:"postings,omitempty"`
-	Temporal         *TemporalStats         `protobuf:"bytes,5,opt,name=temporal,proto3" json:"temporal,omitempty"`
-	VolumeStats      []*AssetVolumeStats    `protobuf:"bytes,6,rep,name=volume_stats,json=volumeStats,proto3" json:"volume_stats,omitempty"`
-	MetadataKeys     []string               `protobuf:"bytes,7,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"` // Distinct metadata keys observed
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Human-readable canonical signature, e.g. "users:{id}:main->bank:fees[USD]"
+	// (legacy form, no spaces; multi-posting flows join fragments with ";").
+	// Colored postings append the color inside the brackets: "...[USD/RED]".
+	// The uncolored bucket keeps the bare "[USD]" form, byte-identical to pre-color.
+	Signature        string               `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"`
+	Structure        PostingStructure     `protobuf:"varint,2,opt,name=structure,proto3,enum=ledger.PostingStructure" json:"structure,omitempty"`
+	TransactionCount uint64               `protobuf:"fixed64,3,opt,name=transaction_count,json=transactionCount,proto3" json:"transaction_count,omitempty"`
+	Postings         []*NormalizedPosting `protobuf:"bytes,4,rep,name=postings,proto3" json:"postings,omitempty"`
+	Temporal         *TemporalStats       `protobuf:"bytes,5,opt,name=temporal,proto3" json:"temporal,omitempty"`
+	VolumeStats      []*AssetVolumeStats  `protobuf:"bytes,6,rep,name=volume_stats,json=volumeStats,proto3" json:"volume_stats,omitempty"`
+	MetadataKeys     []string             `protobuf:"bytes,7,rep,name=metadata_keys,json=metadataKeys,proto3" json:"metadata_keys,omitempty"` // Distinct metadata keys observed
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -6876,8 +6891,13 @@ type NormalizedPosting struct {
 	SourcePattern      string                 `protobuf:"bytes,1,opt,name=source_pattern,json=sourcePattern,proto3" json:"source_pattern,omitempty"`                // e.g. "users:{id}:main"
 	DestinationPattern string                 `protobuf:"bytes,2,opt,name=destination_pattern,json=destinationPattern,proto3" json:"destination_pattern,omitempty"` // e.g. "bank:fees"
 	Asset              string                 `protobuf:"bytes,3,opt,name=asset,proto3" json:"asset,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// color discriminates postings on the same (source,destination,asset) but
+	// different color buckets in the FSM. Two flows that share addresses and
+	// asset but differ in color must produce distinct flow signatures so the
+	// analysis endpoint does not silently merge segregated buckets.
+	Color         string `protobuf:"bytes,4,opt,name=color,proto3" json:"color,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NormalizedPosting) Reset() {
@@ -6927,6 +6947,13 @@ func (x *NormalizedPosting) GetDestinationPattern() string {
 func (x *NormalizedPosting) GetAsset() string {
 	if x != nil {
 		return x.Asset
+	}
+	return ""
+}
+
+func (x *NormalizedPosting) GetColor() string {
+	if x != nil {
+		return x.Color
 	}
 	return ""
 }
@@ -8121,9 +8148,13 @@ type AggregateVolumesRequest struct {
 	// to the first matching prefix. Accounts not matching any prefix are excluded.
 	GroupByPrefixes []string `protobuf:"bytes,5,rep,name=group_by_prefixes,json=groupByPrefixes,proto3" json:"group_by_prefixes,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId  uint64 `protobuf:"fixed64,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CheckpointId uint64 `protobuf:"fixed64,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	// When true, amounts in colored buckets are summed into the uncolored bucket
+	// ("" color). Result entries are produced with color = "". By default each
+	// (asset, color) bucket yields its own AggregatedVolume entry.
+	CollapseColors bool `protobuf:"varint,7,opt,name=collapse_colors,json=collapseColors,proto3" json:"collapse_colors,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AggregateVolumesRequest) Reset() {
@@ -8196,6 +8227,13 @@ func (x *AggregateVolumesRequest) GetCheckpointId() uint64 {
 		return x.CheckpointId
 	}
 	return 0
+}
+
+func (x *AggregateVolumesRequest) GetCollapseColors() bool {
+	if x != nil {
+		return x.CollapseColors
+	}
+	return false
 }
 
 // QueryProfile contains execution statistics for a read query.
@@ -8965,11 +9003,12 @@ var File_bucket_proto protoreflect.FileDescriptor
 
 const file_bucket_proto_rawDesc = "" +
 	"\n" +
-	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"j\n" +
+	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\x93\x01\n" +
 	"\x11GetAccountRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"{\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\x12'\n" +
+	"\x0fcollapse_colors\x18\x04 \x01(\bR\x0ecollapseColors\"{\n" +
 	"\x15GetTransactionRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
@@ -9421,11 +9460,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\bpostings\x18\x04 \x03(\v2\x19.ledger.NormalizedPostingR\bpostings\x121\n" +
 	"\btemporal\x18\x05 \x01(\v2\x15.ledger.TemporalStatsR\btemporal\x12;\n" +
 	"\fvolume_stats\x18\x06 \x03(\v2\x18.ledger.AssetVolumeStatsR\vvolumeStats\x12#\n" +
-	"\rmetadata_keys\x18\a \x03(\tR\fmetadataKeys\"\x81\x01\n" +
+	"\rmetadata_keys\x18\a \x03(\tR\fmetadataKeys\"\x97\x01\n" +
 	"\x11NormalizedPosting\x12%\n" +
 	"\x0esource_pattern\x18\x01 \x01(\tR\rsourcePattern\x12/\n" +
 	"\x13destination_pattern\x18\x02 \x01(\tR\x12destinationPattern\x12\x14\n" +
-	"\x05asset\x18\x03 \x01(\tR\x05asset\"\xd6\x01\n" +
+	"\x05asset\x18\x03 \x01(\tR\x05asset\x12\x14\n" +
+	"\x05color\x18\x04 \x01(\tR\x05color\"\xd6\x01\n" +
 	"\rTemporalStats\x120\n" +
 	"\n" +
 	"first_seen\x18\x01 \x01(\v2\x11.common.TimestampR\tfirstSeen\x12.\n" +
@@ -9511,14 +9551,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\fSCOPE_LEDGER\x10\x02\"T\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x85\x02\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xae\x02\n" +
 	"\x17AggregateVolumesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12(\n" +
 	"\x10min_log_sequence\x18\x03 \x01(\x06R\x0eminLogSequence\x12*\n" +
 	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
 	"\x11group_by_prefixes\x18\x05 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
-	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\"\xde\x02\n" +
+	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\x12'\n" +
+	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\xde\x02\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +

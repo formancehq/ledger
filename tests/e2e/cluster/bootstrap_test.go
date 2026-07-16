@@ -345,12 +345,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the correct account balances", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.Volumes["USD"].Input).To(Equal("3000"))
+			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal("3000"))
 
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bankResp.Volumes["USD"].Input).To(Equal("10000"))
-			Expect(bankResp.Volumes["USD"].Output).To(Equal("5000"))
+			Expect(bankResp.FindVolume("USD", "").Input).To(Equal("10000"))
+			Expect(bankResp.FindVolume("USD", "").Output).To(Equal("5000"))
 		})
 
 		It("should have the correct account metadata", func() {
@@ -362,7 +362,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the data added after the first backup (via second full backup)", func() {
 			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
-			Expect(eveResp.Volumes["USD"].Input).To(Equal("500"))
+			Expect(eveResp.FindVolume("USD", "").Input).To(Equal("500"))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
@@ -373,7 +373,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(charlieResp.Volumes["USD"].Input).To(Equal("1000"))
+			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
 		})
 	})
 })

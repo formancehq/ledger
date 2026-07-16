@@ -114,3 +114,38 @@ func TestValidateWrapping_UnwrapsToPrimitive(t *testing.T) {
 	require.ErrorIs(t, ValidateLedgerName(""), invariants.ErrLedgerNameRequired)
 	require.ErrorIs(t, ValidateAsset("lowercase"), invariants.ErrAssetInvalid)
 }
+
+func TestValidateColor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr error
+	}{
+		{name: "empty is the uncolored bucket", input: ""},
+		{name: "single letter", input: "R"},
+		{name: "typical tag", input: "GRANTS"},
+		{name: "max length (32)", input: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		{name: "contains null byte", input: "A\x00B", wantErr: ErrColorInvalid},
+		{name: "lowercase rejected", input: "red", wantErr: ErrColorInvalid},
+		{name: "digit rejected", input: "RED2", wantErr: ErrColorInvalid},
+		{name: "hyphen rejected", input: "R-G", wantErr: ErrColorInvalid},
+		{name: "space rejected", input: "R G", wantErr: ErrColorInvalid},
+		{name: "high byte rejected", input: "RÉD", wantErr: ErrColorInvalid},
+		{name: "over max length (33)", input: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", wantErr: ErrColorTooLong},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateColor(tt.input)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

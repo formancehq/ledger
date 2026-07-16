@@ -781,15 +781,26 @@ func accountMetaMapEqual(a, b map[string]*commonpb.MetadataMap) bool {
 
 // postCommitVolume extracts (input, output) for one cell from a server response,
 // parsing the decimal-string volumes into uint256 — the ledger's native volume
-// type. ok is false when the cell is absent or the values don't parse.
+// type. The workload only ever exercises uncolored postings, so we match the
+// uncolored bucket (color="") explicitly — colored buckets are out of scope
+// for this driver model. ok is false when the cell is absent or the values
+// don't parse.
 func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
 	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
 	if !found {
 		return in, out, false
 	}
 
-	vol, found := byAsset.GetVolumes()[key.Asset]
-	if !found {
+	var vol *commonpb.Volumes
+	for _, entry := range byAsset.GetVolumes() {
+		if entry.GetAsset() == key.Asset && entry.GetColor() == "" {
+			vol = entry.GetVolumes()
+
+			break
+		}
+	}
+
+	if vol == nil {
 		return in, out, false
 	}
 

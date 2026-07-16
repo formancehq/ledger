@@ -11,6 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	clusterpb "github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -279,18 +280,18 @@ func (c *MockBackendExecutePreparedQueryCall) DoAndReturn(f func(context.Context
 }
 
 // GetAccount mocks base method.
-func (m *MockBackend) GetAccount(ctx context.Context, ledgerName, address string) (*commonpb.Account, error) {
+func (m *MockBackend) GetAccount(ctx context.Context, ledgerName, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address)
+	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address, opts)
 	ret0, _ := ret[0].(*commonpb.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAccount indicates an expected call of GetAccount.
-func (mr *MockBackendMockRecorder) GetAccount(ctx, ledgerName, address any) *MockBackendGetAccountCall {
+func (mr *MockBackendMockRecorder) GetAccount(ctx, ledgerName, address, opts any) *MockBackendGetAccountCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockBackend)(nil).GetAccount), ctx, ledgerName, address)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAccount", reflect.TypeOf((*MockBackend)(nil).GetAccount), ctx, ledgerName, address, opts)
 	return &MockBackendGetAccountCall{Call: call}
 }
 
@@ -306,13 +307,13 @@ func (c *MockBackendGetAccountCall) Return(arg0 *commonpb.Account, arg1 error) *
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendGetAccountCall) Do(f func(context.Context, string, string) (*commonpb.Account, error)) *MockBackendGetAccountCall {
+func (c *MockBackendGetAccountCall) Do(f func(context.Context, string, string, ctrl.GetAccountOptions) (*commonpb.Account, error)) *MockBackendGetAccountCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendGetAccountCall) DoAndReturn(f func(context.Context, string, string) (*commonpb.Account, error)) *MockBackendGetAccountCall {
+func (c *MockBackendGetAccountCall) DoAndReturn(f func(context.Context, string, string, ctrl.GetAccountOptions) (*commonpb.Account, error)) *MockBackendGetAccountCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

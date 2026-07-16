@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"math/big"
+	"strings"
 
 	numscriptlib "github.com/formancehq/numscript"
 
@@ -54,18 +55,29 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.Balan
 
 	s.balancesCalled = true
 
-	balances := make(numscriptlib.Balances, len(query))
-	for account, assets := range query {
-		accountBalance := make(numscriptlib.AccountBalance, len(assets))
-
-		balances[account] = accountBalance
-		for _, asset := range assets {
-			s.queriedVolumes[domain.VolumeKey{
-				AccountKey: domain.AccountKey{Account: account},
-				Asset:      asset,
-			}] = struct{}{}
-			accountBalance[asset] = new(big.Int).Set(MaxForceBalance)
+	balances := make(numscriptlib.Balances, 0, len(query))
+	for _, item := range query {
+		// Catch-all asset queries (`BASE/*`) cannot be preloaded: discovery
+		// does not iterate the storage to enumerate every existing precision
+		// flavor of BASE on the account. Bail out with the same error the
+		// apply-time adapter returns so admission rejects the script up
+		// front instead of producing a phantom Need pointing at "BASE/*".
+		if strings.HasSuffix(item.Asset, "/*") {
+			return nil, ErrCatchAllAssetNotSupported
 		}
+
+		s.queriedVolumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{Account: item.Account},
+			Asset:      item.Asset,
+			Color:      item.Color,
+		}] = struct{}{}
+
+		balances = append(balances, numscriptlib.BalanceRow{
+			Account: item.Account,
+			Asset:   item.Asset,
+			Color:   item.Color,
+			Amount:  new(big.Int).Set(MaxForceBalance),
+		})
 	}
 
 	return balances, nil
@@ -141,6 +153,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 			sourceVolumes[domain.VolumeKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: posting.Source},
 				Asset:      posting.Asset,
+				Color:      posting.Color,
 			}] = struct{}{}
 
 			if destinationVolumes == nil {
@@ -150,6 +163,7 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 			destinationVolumes[domain.VolumeKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: posting.Destination},
 				Asset:      posting.Asset,
+				Color:      posting.Color,
 			}] = struct{}{}
 		}
 	}

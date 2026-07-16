@@ -35,7 +35,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "limited-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
 
 			// Try to send more than available without force - should fail
 			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -82,7 +82,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "empty-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(sourceAccount.Volumes["USD"].Balance).To(Equal("-100"))
+			Expect(sourceAccount.FindVolume("USD", "").Balance).To(Equal("-100"))
 
 			// The destination account should have positive balance
 			destAccount, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -90,7 +90,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "zero-dest",
 			})
 			Expect(err).To(Succeed())
-			Expect(destAccount.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(destAccount.FindVolume("USD", "").Balance).To(Equal("100"))
 		})
 
 		It("Should create multiple postings with force=true", func() {
@@ -119,7 +119,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 					Address: tc.addr,
 				})
 				Expect(err).To(Succeed())
-				Expect(account.Volumes[tc.asset].Balance).To(Equal(tc.balance))
+				Expect(account.FindVolume(tc.asset, "").GetBalance()).To(Equal(tc.balance))
 			}
 		})
 
@@ -275,9 +275,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "empty-source",
 			})
 			Expect(err).To(Succeed())
-			Expect(source.Volumes["USD"].Input).To(Equal("0"))
-			Expect(source.Volumes["USD"].Output).To(Equal("500"))
-			Expect(source.Volumes["USD"].Balance).To(Equal("-500"))
+			Expect(source.FindVolume("USD", "").Input).To(Equal("0"))
+			Expect(source.FindVolume("USD", "").Output).To(Equal("500"))
+			Expect(source.FindVolume("USD", "").Balance).To(Equal("-500"))
 
 			// Check target account has positive balance
 			target, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -285,9 +285,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "target",
 			})
 			Expect(err).To(Succeed())
-			Expect(target.Volumes["USD"].Input).To(Equal("500"))
-			Expect(target.Volumes["USD"].Output).To(Equal("0"))
-			Expect(target.Volumes["USD"].Balance).To(Equal("500"))
+			Expect(target.FindVolume("USD", "").Input).To(Equal("500"))
+			Expect(target.FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(target.FindVolume("USD", "").Balance).To(Equal("500"))
 		})
 
 		It("Should allow subsequent force transactions to accumulate debt", func() {
@@ -305,8 +305,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "debt-source",
 			})
 			Expect(err).To(Succeed())
-			Expect(source.Volumes["USD"].Output).To(Equal("300"))
-			Expect(source.Volumes["USD"].Balance).To(Equal("-300"))
+			Expect(source.FindVolume("USD", "").Output).To(Equal("300"))
+			Expect(source.FindVolume("USD", "").Balance).To(Equal("-300"))
 		})
 
 		It("Should allow force transactions to recover from negative balance", func() {
@@ -322,7 +322,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "recovery-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Balance).To(Equal("-500"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("-500"))
 
 			// Fund the account to recover
 			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -336,9 +336,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "recovery-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Input).To(Equal("1000"))
-			Expect(account.Volumes["USD"].Output).To(Equal("500"))
-			Expect(account.Volumes["USD"].Balance).To(Equal("500"))
+			Expect(account.FindVolume("USD", "").Input).To(Equal("1000"))
+			Expect(account.FindVolume("USD", "").Output).To(Equal("500"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("500"))
 		})
 	})
 })

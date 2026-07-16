@@ -108,7 +108,7 @@ func expectVolume(ctx context.Context, client servicepb.BucketServiceClient, led
 	Eventually(func(g Gomega) {
 		account, err := actions.GetAccount(ctx, client, ledger, "bank")
 		g.Expect(err).To(Succeed())
-		g.Expect(account.Volumes["USD"].Input).To(Equal(expectedInput))
+		g.Expect(account.FindVolume("USD", "").Input).To(Equal(expectedInput))
 	}).WithTimeout(30 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 }
 
@@ -118,7 +118,7 @@ func expectVolumeAllNodes(ctx context.Context, servers []*testutil.ServiceWithCl
 		Eventually(func(g Gomega) {
 			account, err := actions.GetAccount(ctx, srv.Client, ledger, "bank")
 			g.Expect(err).To(Succeed())
-			g.Expect(account.Volumes["USD"].Input).To(Equal(expectedInput))
+			g.Expect(account.FindVolume("USD", "").Input).To(Equal(expectedInput))
 		}).
 			WithTimeout(30*time.Second).
 			WithPolling(500*time.Millisecond).

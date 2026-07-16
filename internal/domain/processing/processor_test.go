@@ -173,9 +173,9 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
-	// Volume operations: the LedgerID should be 1 (assigned by CreateLedger).
-	srcKey := domain.NewVolumeKey("myled", "world", "USD")
-	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD")
+	// Volume operations: keyed by ledger name ("myled" — the ledger created above).
+	srcKey := domain.NewVolumeKey("myled", "world", "USD", "")
+	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),

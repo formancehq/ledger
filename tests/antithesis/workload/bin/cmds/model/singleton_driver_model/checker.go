@@ -56,6 +56,11 @@ type Checker struct {
 	// receipt-carried revert path. Populated at commit (captureReceipts) and read
 	// during generation, both under mu.
 	receiptByRef map[string]string
+
+	// paused gates worker dispatch during a restore cycle; resumeCh is closed on
+	// resume so parked workers wake. Both guarded by mu (see restore.go).
+	paused   bool
+	resumeCh chan struct{}
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark

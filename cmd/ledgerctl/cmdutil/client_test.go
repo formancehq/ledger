@@ -24,6 +24,7 @@ func newTLSFlagCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Bool("insecure", false, "")
 	cmd.Flags().String("tls-ca-cert", "", "")
+	cmd.Flags().String("tls-server-name", "", "")
 
 	return cmd
 }
@@ -57,6 +58,43 @@ func TestGetClientTransportCredentials_InsecureOnly(t *testing.T) {
 	require.NotNil(t, creds)
 }
 
+// --tls-server-name only makes sense when TLS is active; pairing it with
+// --insecure is rejected for the same reason as --tls-ca-cert — it catches a
+// stray LEDGERCTL_INSECURE leaking in and silently disabling verification.
+func TestGetClientTransportCredentials_InsecureWithServerNameIsRejected(t *testing.T) {
+	t.Parallel()
+
+	cmd := newTLSFlagCommand()
+	require.NoError(t, cmd.Flags().Set("insecure", "true"))
+	require.NoError(t, cmd.Flags().Set("tls-server-name", "ledger.svc.cluster.local"))
+
+	_, err := GetClientTransportCredentials(cmd)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--insecure and --tls-server-name are mutually exclusive")
+}
+
+// A --tls-server-name without --insecure is the supported case: dial by IP,
+// verify against the cert SANs by name. This is what unblocks ledgerctl from
+// inside a TLS cluster pod, where the operator-issued cert covers the in-cluster
+// DNS names but never 127.0.0.1/localhost.
+func TestGetClientTransportCredentials_TLSWithServerName(t *testing.T) {
+	t.Parallel()
+
+	cmd := newTLSFlagCommand()
+	require.NoError(t, cmd.Flags().Set("tls-server-name", "ledger.svc.cluster.local"))
+
+	creds, err := GetClientTransportCredentials(cmd)
+	require.NoError(t, err)
+	require.NotNil(t, creds)
+
+	// Assert the override actually reached the tls.Config — plain TLS creds are
+	// also non-nil, so only checking creds is not enough to guard the
+	// load-bearing ServerName assignment.
+	cfg, err := buildClientTLSConfig("", "ledger.svc.cluster.local")
+	require.NoError(t, err)
+	require.Equal(t, "ledger.svc.cluster.local", cfg.ServerName)
+}
+
 func TestGetClientTransportCredentials_TLSWithCustomCA(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +107,53 @@ func TestGetClientTransportCredentials_TLSWithCustomCA(t *testing.T) {
 	creds, err := GetClientTransportCredentials(cmd)
 	require.NoError(t, err)
 	require.NotNil(t, creds)
+}
+
+// ValidateTLSFlags is the single source of truth for the mutual-exclusion
+// rules, shared by the connection path and the profile-persistence paths
+// (profile create, auth login). Cover it directly so a persistence caller that
+// forgets to route through it can't quietly regress the guard.
+func TestValidateTLSFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		insecure   bool
+		caCert     string
+		serverName string
+		wantErr    string
+	}{
+		{name: "no flags is valid"},
+		{name: "tls-ca-cert alone is valid", caCert: "/tls/ca.crt"},
+		{name: "tls-server-name alone is valid", serverName: "ledger.svc.cluster.local"},
+		{name: "insecure alone is valid", insecure: true},
+		{
+			name:     "insecure + tls-ca-cert rejected",
+			insecure: true, caCert: "/tls/ca.crt",
+			wantErr: "--insecure and --tls-ca-cert are mutually exclusive",
+		},
+		{
+			name:     "insecure + tls-server-name rejected",
+			insecure: true, serverName: "ledger.svc.cluster.local",
+			wantErr: "--insecure and --tls-server-name are mutually exclusive",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateTLSFlags(tc.insecure, tc.caCert, tc.serverName)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
 }
 
 // writeTestCA generates a self-signed CA cert and returns the PEM bytes.
