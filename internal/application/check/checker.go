@@ -302,12 +302,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
 		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo)
 		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
-		// Keys touched by a replayed numscript log in the verified range. As with
-		// indexReplayActivity, a stored entry missing from the expected maps with
-		// no activity is an archive-orphan candidate (its SavedNumscript may live
-		// in an archived chapter) only when archives exist.
-		numscriptContentActivity = make(map[domain.NumscriptEntryKey]struct{})
-		numscriptLatestActivity  = make(map[domain.NumscriptVersionKey]struct{})
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -505,13 +499,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				if info := payload.SavedNumscript.GetInfo(); info != nil {
 					ck := domain.NumscriptEntryKey{LedgerName: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}
 					expectedNumscriptContent[ck] = info
-					numscriptContentActivity[ck] = struct{}{}
 
 					vk := domain.NumscriptVersionKey{LedgerName: info.GetLedger(), Name: info.GetName()}
 					if cur, ok := expectedNumscriptLatest[vk]; !ok || numscriptVersionGreater(info.GetVersion(), cur) {
 						expectedNumscriptLatest[vk] = info.GetVersion()
 					}
-					numscriptLatestActivity[vk] = struct{}{}
 				}
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
@@ -727,7 +719,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, numscriptContentActivity, numscriptLatestActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
+	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, pendingCleanupLedgers, callback)
 
 	return nil
 }
@@ -1141,16 +1133,16 @@ func numscriptVersionGreater(a, b string) bool {
 // latest pointer (the greatest stored semver). Both are load-bearing for reads,
 // listing, version history, and admission-side reference resolution, so a
 // stored content row with no matching SavedNumscript, an altered content, or a
-// latest pointer that is not the greatest saved semver is tampering. The
-// archive-orphan and deferred-cleanup tolerances mirror compareIndexes.
+// latest pointer that is not the greatest saved semver is tampering. Under
+// archiving the expected state is baseline-seeded (foldBaselineNumscripts), so —
+// unlike compareIndexes — there is no archive-orphan tolerance: a stored row
+// absent from both the baseline and the replay is a surplus/injected row and is
+// flagged. Only the deferred-cleanup tolerance remains.
 func (c *Checker) compareNumscripts(
 	reader dal.PebbleReader,
 	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
 	expectedLatest map[domain.NumscriptVersionKey]string,
-	contentActivity map[domain.NumscriptEntryKey]struct{},
-	latestActivity map[domain.NumscriptVersionKey]struct{},
 	deletedInReplay map[string]struct{},
-	hasArchivedChapters bool,
 	pendingCleanupLedgers map[string]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) {
@@ -1193,12 +1185,6 @@ func (c *Checker) compareNumscripts(
 				mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.Version, key.LedgerName), key.LedgerName)
 
 				continue
-			}
-
-			if hasArchivedChapters {
-				if _, had := contentActivity[key]; !had {
-					continue
-				}
 			}
 
 			mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.Version, key.LedgerName), key.LedgerName)
@@ -1268,12 +1254,6 @@ func (c *Checker) compareNumscripts(
 				mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.LedgerName), key.LedgerName)
 
 				continue
-			}
-
-			if hasArchivedChapters {
-				if _, had := latestActivity[key]; !had {
-					continue
-				}
 			}
 
 			mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.LedgerName), key.LedgerName)
