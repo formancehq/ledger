@@ -308,8 +308,7 @@ func NewNode(
 			// restored genesis. PrepareForBackup guarantees a boundary >= 1;
 			// a 0 here means a marker written by another tool or by hand.
 			if marker.LastAppliedIndex == 0 {
-				return nil, fmt.Errorf(
-					"invariant: RESTORED marker carries lastAppliedIndex 0; the restored genesis must occupy index >= 1 so joiners are forced through checkpoint sync — re-run restore finalize / store bootstrap to regenerate the marker")
+				return nil, errors.New("invariant: RESTORED marker carries lastAppliedIndex 0; the restored genesis must occupy index >= 1 so joiners are forced through checkpoint sync — re-run restore finalize / store bootstrap to regenerate the marker")
 			}
 
 			initialConfState = &raftpb.ConfState{

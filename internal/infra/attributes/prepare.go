@@ -2,6 +2,7 @@ package attributes
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 
@@ -59,7 +60,7 @@ func PrepareForBackup(s *dal.Store) error {
 
 	// Several raft paths compute boundary+1 (first entry, FSM gap check).
 	if genesisBoundary == math.MaxUint64 {
-		return fmt.Errorf("invariant: checkpoint applied index is MaxUint64 — corrupt checkpoint")
+		return errors.New("invariant: checkpoint applied index is MaxUint64 — corrupt checkpoint")
 	}
 
 	if genesisBoundary == 0 {
