@@ -690,8 +690,8 @@ var _ = Describe("Restore", Ordered, func() {
 
 			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
-			Expect(eveResp.Volumes["USD"].Input).To(Equal("1500"))
-			Expect(eveResp.Volumes["USD"].Output).To(Equal("1000"),
+			Expect(eveResp.FindVolume("USD", "").GetInput()).To(Equal("1500"))
+			Expect(eveResp.FindVolume("USD", "").GetOutput()).To(Equal("1000"),
 				"apply must see eve's post-checkpoint drain via a cache-aware restore; a cache-blind restore clobbers output to 0")
 		})
 
@@ -727,7 +727,7 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have the delta ledger's data restored from export segments", func() {
 			founderResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "founder"})
 			Expect(err).To(Succeed())
-			Expect(founderResp.Volumes["USD"].Input).To(Equal("9000"))
+			Expect(founderResp.FindVolume("USD", "").GetInput()).To(Equal("9000"))
 		})
 
 		It("should reconstruct ledger stats for a ledger created after the checkpoint", func() {
@@ -774,7 +774,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			employeeResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: deltaLedger, Address: "employee"})
 			Expect(err).To(Succeed())
-			Expect(employeeResp.Volumes["USD"].Input).To(Equal("1200"))
+			Expect(employeeResp.FindVolume("USD", "").GetInput()).To(Equal("1200"))
 		})
 
 		It("should accept new transactions after restore", func() {
