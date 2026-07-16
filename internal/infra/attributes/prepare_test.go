@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,8 +158,9 @@ func TestPrepareForBackupPreservesAttributesByteForByte(t *testing.T) {
 	require.Equal(t, before, after, "attribute zone must be byte-for-byte identical after PrepareForBackup")
 }
 
-// TestPrepareForBackupResetsGlobalZone asserts the three Global-zone resets:
-// applied index -> 0, persisted config deleted, persisted bloom blocks dropped.
+// TestPrepareForBackupResetsGlobalZone asserts the Global-zone preparation:
+// applied index preserved as the genesis boundary, persisted config deleted,
+// persisted bloom blocks dropped.
 func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	t.Parallel()
 
@@ -186,7 +188,8 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 
 	idx, err := readLastAppliedIndex(s)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), idx, "applied index must be reset to 0")
+	require.Equal(t, uint64(200), idx,
+		"the checkpoint's applied index must be preserved as the genesis boundary — the WAL-snapshot index the restored FSM genesis occupies")
 
 	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted config must be deleted")
@@ -197,6 +200,67 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
+}
+
+// TestPrepareForBackupGenesisCheckpointFallback asserts a checkpoint taken at
+// applied index 0 (genesis full backup, possibly followed by incremental
+// exports) gets the fallback boundary 1: the restored bootstrap must never
+// plant a WAL snapshot at 0 — that is the empty-snapshot shape that lets a
+// learner catch up by log replay onto an empty store.
+func TestPrepareForBackupGenesisCheckpointFallback(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, PrepareForBackup(s))
+
+	idx, err := readLastAppliedIndex(s)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), idx, "a genesis checkpoint must get the fallback boundary 1")
+}
+
+// TestPrepareForBackupRejectsMaxUint64 asserts a checkpoint carrying a
+// MaxUint64 applied index is refused: raft paths compute boundary+1.
+func TestPrepareForBackupRejectsMaxUint64(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, setAppliedIndex(batch, math.MaxUint64))
+	require.NoError(t, batch.Commit())
+
+	err = PrepareForBackup(s)
+	require.ErrorContains(t, err, "MaxUint64")
+}
+
+// TestPrepareForBackupRejectsMalformedAppliedIndex asserts a present but
+// wrong-length applied index fails closed: only genuine absence may take the
+// genesis fallback — silently treating a corrupt value as 0 would rewrite it
+// as boundary 1 and misalign the restored raft genesis.
+func TestPrepareForBackupRejectsMalformedAppliedIndex(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, []byte{0x01, 0x02, 0x03}))
+	require.NoError(t, batch.Commit())
+
+	err = PrepareForBackup(s)
+	require.ErrorContains(t, err, "corrupt checkpoint")
 }
 
 // TestPrepareForBackupClearsCacheZone asserts the cache zone is dropped in
@@ -237,7 +301,8 @@ func TestPrepareForBackupClearsCacheZone(t *testing.T) {
 
 // TestPrepareForBackupRestorableOnFreshCluster runs the full backup->restore
 // pipeline (write -> prepare -> tar -> extract -> reopen) and asserts the
-// attribute values survive and the applied index is 0 on the fresh cluster.
+// attribute values survive and the seeded applied index reaches the fresh
+// cluster as its genesis boundary.
 func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 	t.Parallel()
 
@@ -317,7 +382,8 @@ func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 
 		idx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), idx, "applied index must be 0 on the fresh cluster")
+		require.Equal(t, uint64(5), idx,
+			"the checkpoint's applied index must reach the fresh cluster as its genesis boundary")
 	}()
 }
 

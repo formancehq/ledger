@@ -1,7 +1,10 @@
 package attributes
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"math"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -18,8 +21,9 @@ import (
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
 // The six resets are:
-//  1. lastAppliedIndex -> 0, so the restored cluster starts fresh without
-//     raft-index conflicts.
+//  1. lastAppliedIndex is preserved as the restored genesis boundary — the
+//     raft index the restored FSM genesis occupies in the new log (see
+//     below); a genesis checkpoint (index 0) gets the fallback boundary 1.
 //  2. persisted config (nodeId, clusterId) deleted, so the backup is portable
 //     to any cluster.
 //  3. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
@@ -36,13 +40,60 @@ import (
 // the checkpoint was taken. The backup flow achieves this by running the flush
 // and checkpoint atomically on the Raft loop.
 func PrepareForBackup(s *dal.Store) error {
+	// The checkpoint's applied index becomes the restored genesis boundary:
+	// the RESTORED bootstrap plants its WAL snapshot at this index, so the
+	// new log starts at boundary+1 and raft must route any fresh peer
+	// through the snapshot → checkpoint-sync path. At 0 the snapshot would
+	// be empty and the log would claim completeness from index 1 — a learner
+	// joining before the first post-restore raft snapshot would then be
+	// "caught up" by plain log replay onto an empty store, missing every
+	// restored row — so a genesis checkpoint gets the fallback boundary 1.
+	//
+	// The boundary is a label for the new log's start, NOT the state's
+	// source-cluster provenance: incremental exports are sequence-keyed and
+	// never advance this key, so after a full + incremental restore the
+	// state is newer than the boundary.
+	// Read the raw key: only genuine absence may fall back — a present but
+	// malformed value is a corrupt checkpoint and must fail closed, not be
+	// silently rewritten as the genesis fallback.
+	var genesisBoundary uint64
+
+	switch val, closer, err := s.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}); {
+	case err == nil:
+		if len(val) != 8 {
+			_ = closer.Close()
+
+			return fmt.Errorf("invariant: checkpoint applied index has %d bytes (expected 8) — corrupt checkpoint", len(val))
+		}
+
+		genesisBoundary = binary.BigEndian.Uint64(val)
+		if err := closer.Close(); err != nil {
+			return fmt.Errorf("closing applied index read: %w", err)
+		}
+	case errors.Is(err, pebble.ErrNotFound):
+		// Genesis checkpoint: the key has never been written.
+	default:
+		return fmt.Errorf("reading checkpoint applied index: %w", err)
+	}
+
+	// Several raft paths compute boundary+1 (first entry, FSM gap check).
+	if genesisBoundary == math.MaxUint64 {
+		return errors.New("invariant: checkpoint applied index is MaxUint64 — corrupt checkpoint")
+	}
+
+	if genesisBoundary == 0 {
+		genesisBoundary = 1
+	}
+
 	batch := s.OpenWriteSession()
 
-	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh.
-	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, make([]byte, 8)); err != nil {
+	appliedIndex := make([]byte, 8)
+	binary.BigEndian.PutUint64(appliedIndex, genesisBoundary)
+
+	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, appliedIndex); err != nil {
 		_ = batch.Cancel()
 
-		return fmt.Errorf("resetting applied index: %w", err)
+		return fmt.Errorf("writing genesis boundary: %w", err)
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster.

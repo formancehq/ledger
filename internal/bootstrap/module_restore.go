@@ -15,6 +15,7 @@ import (
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -52,18 +53,21 @@ func RestoreModule() fx.Option {
 			},
 		),
 		fx.Invoke(
-			// Validate that the data directory is fresh (no existing checkpoints)
+			// Validate that the data directory is fresh: no checkpoints, no
+			// live/ database (normal startup prefers it over the restored
+			// checkpoint, silently booting the stale store under the
+			// marker's boundary), no leftover RESTORED marker.
 			func(cfg Config) error {
-				_, hasCheckpoint, err := dal.ScanLatestCheckpointID(cfg.DataDir)
-				if err != nil {
-					return fmt.Errorf("scanning data directory: %w", err)
+				// Marker first: ValidateFreshRestoreTarget's reclaim of a
+				// half-finalized checkpoint is only safe once the marker is
+				// known absent.
+				if marker, err := node.ReadRestoredMarker(cfg.DataDir); err != nil {
+					return fmt.Errorf("checking for RESTORED marker: %w", err)
+				} else if marker != nil {
+					return fmt.Errorf("restore mode requires a fresh data directory: a RESTORED marker already exists in %s", cfg.DataDir)
 				}
 
-				if hasCheckpoint {
-					return fmt.Errorf("restore mode requires a fresh data directory; checkpoints already exist in %s", cfg.DataDir)
-				}
-
-				return nil
+				return dal.ValidateFreshRestoreTarget(cfg.DataDir)
 			},
 			// Register health service on ServiceServer
 			func(serviceServer *grpcadp.ServiceServer) {

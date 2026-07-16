@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -32,6 +33,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -81,9 +83,9 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 
 var _ = Describe("Restore", Ordered, func() {
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
-		raftPort   = grpcPort - 1000
+		httpPort    = testutil.TestSingleHTTPPort
+		grpcPort    = testutil.TestSingleGRPCPort
+		raftPort    = grpcPort - 1000
 		ledgerName  = "restore-ledger"
 		ledger2     = "restore-ledger-2"
 		chartLedger = "restore-chart-ledger"
@@ -532,6 +534,28 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = os.Stat(restoreDataDir + "/checkpoints/0")
 			Expect(err).To(Succeed(), "checkpoint 0 directory should exist")
 		})
+
+		It("should carry the checkpoint's applied index in the marker as the genesis boundary", func() {
+			// The restored bootstrap plants its WAL snapshot at the marker
+			// index, and the FSM gap check requires the first post-restore
+			// entry at exactly boundary+1 — so a marker diverging from the
+			// store, or a boundary of 0/1 here, would either fail Phase 3
+			// outright or silently re-open the learner log-replay hole.
+			data, err := os.ReadFile(restoreDataDir + "/RESTORED")
+			Expect(err).To(Succeed())
+
+			var marker node.RestoredMarker
+			Expect(json.Unmarshal(data, &marker)).To(Succeed())
+
+			manifest, err := readS3Manifest(ctx, s3Client)
+			Expect(err).To(Succeed())
+			Expect(manifest.Checkpoint).NotTo(BeNil())
+
+			Expect(marker.LastAppliedIndex).To(Equal(manifest.Checkpoint.LastAppliedIndex),
+				"marker must preserve the checkpoint's applied index")
+			Expect(marker.LastAppliedIndex).To(BeNumerically(">", 1),
+				"this suite's checkpoint is taken after real traffic, so the preserved boundary must exercise the non-fallback (N > 1) path")
+		})
 	})
 
 	// Phase 3: Restart a normal server on the restored data and verify all data.
@@ -556,6 +580,25 @@ var _ = Describe("Restore", Ordered, func() {
 				Output:    GinkgoWriter,
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
+			// No background raft snapshot may exist when the learner-join spec
+			// below runs: it exercises the window where the leader's log is
+			// the only catch-up source, and a maintenance snapshot would
+			// legitimately force the MsgSnap path and mask a log-replay
+			// regression. The interval override wins over the default (pflag
+			// keeps the last occurrence); the margin blocks the snapshot
+			// trigger outright.
+			instruments = append(instruments,
+				testserver.WithMaintenanceInterval(time.Hour),
+				testserver.WithRaftCompactionMargin(1_000_000),
+			)
+			// A rotation threshold far below the preserved genesis boundary:
+			// admission's CheckCache compares Gen(boundary+1) against the
+			// in-memory generation, and the restored store carries no
+			// persisted generation meta (PrepareForBackup wipes the cache
+			// zone) — the boot-side realignment is what keeps proposals
+			// admissible; without it every write here trips the
+			// CacheUnreachable horizon.
+			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
 
 			server = testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(instruments...),
@@ -786,6 +829,91 @@ var _ = Describe("Restore", Ordered, func() {
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
 			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
+		})
+
+		It("should transfer the restored state to a learner joining before any raft snapshot", func() {
+			// A restored node's FSM genesis is the whole backup, but its raft
+			// log is brand new. Unless bootstrap plants a snapshot above the
+			// log start, the leader catches a fresh learner up by plain log
+			// replay from index 1 — the learner applies the few post-restore
+			// entries onto an EMPTY store and silently misses every restored
+			// row (found by the Antithesis model test as an aggregated volume
+			// imbalance on the joiner). The join must instead be forced
+			// through the snapshot → checkpoint-sync path.
+			const (
+				joinerGRPCPort = grpcPort + 7
+				joinerHTTPPort = httpPort + 7
+				joinerRaftPort = raftPort + 7
+			)
+
+			// Committed on the restored leader only: its replication to the
+			// learner proves the learner finished catching up on the
+			// post-restore log. Its visibility is NOT proof of a correct
+			// join — every proposal ships its cache preload, so entries
+			// re-materialize the rows they touch even on a hollow store.
+			// That masking is exactly why alice below is the real check.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "join-fence", big.NewInt(42), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    2,
+				ClusterID: "test-cluster",
+				HTTPPort:  joinerHTTPPort,
+				RaftPort:  joinerRaftPort,
+				GRPCPort:  joinerGRPCPort,
+				WalDir:    GinkgoT().TempDir(),
+				DataDir:   GinkgoT().TempDir(),
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", raftPort)))
+
+			joiner := testservice.New(cmdserver.NewRunCommand,
+				testservice.WithInstruments(instruments...),
+			)
+			Expect(joiner.Start(ctx)).To(Succeed())
+			DeferCleanup(func() {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = joiner.Stop(stopCtx)
+			})
+
+			joinerClient, _, joinerConn, err := testutil.NewGRPCClient(joinerGRPCPort)
+			Expect(err).To(Succeed())
+			DeferCleanup(func() { _ = joinerConn.Close() })
+
+			// Stale consistency pins every read below to the learner's own
+			// store: linearizable reads on a syncing node transparently fall
+			// back to the leader (readCtrl's leader_fallback), which would
+			// let node 1 answer for the learner and pass this test without
+			// proving anything about the learner's state.
+			staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
+
+			// This converges only once the learner itself applied the fence
+			// entry.
+			Eventually(func(g Gomega) {
+				resp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.GetVolumes()["USD"].GetInput()).To(Equal("42"))
+			}).Within(60*time.Second).ProbeEvery(500*time.Millisecond).Should(Succeed(),
+				"learner never caught up on the post-restore raft log")
+
+			// alice was written only BEFORE the backup, so no post-restore
+			// entry (and no preload) can re-materialize her: she is on the
+			// learner iff the restored store itself was transferred.
+			aliceResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			Expect(err).To(Succeed())
+			Expect(aliceResp.GetVolumes()).To(HaveKey("USD"),
+				"learner caught up by log replay alone: the restored state never reached it")
+			Expect(aliceResp.GetVolumes()["USD"].GetInput()).To(Equal("3000"))
+
+			treasuryResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
+			Expect(err).To(Succeed())
+			Expect(treasuryResp.GetVolumes()).To(HaveKey("EUR"),
+				"ledger untouched since the restore must still reach the learner")
+			Expect(treasuryResp.GetVolumes()["EUR"].GetInput()).To(Equal("50000"))
 		})
 	})
 })

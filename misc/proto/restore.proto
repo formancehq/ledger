@@ -36,7 +36,9 @@ service RestoreService {
   // PreviewRestore returns a summary of the staged backup data.
   rpc PreviewRestore(PreviewRestoreRequest) returns (PreviewRestoreResponse);
 
-  // FinalizeRestore compacts attributes, commits the staged backup as the live data.
+  // FinalizeRestore prepares the staged backup (applied index preserved as the
+  // restore genesis boundary, cluster-local state reset) and commits it as the
+  // live data.
   rpc FinalizeRestore(FinalizeRestoreRequest) returns (FinalizeRestoreResponse);
 }
 
@@ -121,7 +123,7 @@ message ValidateRestoreProgress {
 message PreviewRestoreRequest {}
 
 message PreviewRestoreResponse {
-  fixed64 last_applied_index = 1;      // Last Raft index applied
+  fixed64 last_applied_index = 1;      // Staged checkpoint's applied index, pre-preparation (may be 0 for a genesis checkpoint; finalize preserves it as the restore genesis boundary, 0 falling back to 1)
   fixed64 last_applied_timestamp = 2;  // Last applied timestamp (HLC microseconds)
   fixed64 last_sequence = 3;           // Last log sequence number
   uint32 ledger_count = 4;            // Number of ledgers in the backup

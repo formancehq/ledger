@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -432,8 +433,9 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	}
 
 	// Read cache-level metadata if present. Pre-rotation, this key does not
-	// exist; default to currentGeneration=0.
+	// exist; default to currentGeneration=0 and realign below.
 	currentGen := uint64(0)
+	metaAbsent := false
 
 	metaVal, closer, err := store.Get([]byte{dal.ZoneCache, dal.SubCacheMeta})
 	switch {
@@ -452,8 +454,13 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 
 		currentGen = meta.GetCurrentGeneration()
 	case errors.Is(err, pebble.ErrNotFound):
-		// Pre-rotation: the meta key does not exist yet; currentGeneration
-		// stays 0. Only genuine absence (ErrNotFound) is treated as "no meta".
+		// The meta key is written on rotation, so absence means either a
+		// young store still in generation 0, or a store whose applied index
+		// is real but whose cache zone carries no meta — a restored store
+		// (PrepareForBackup preserves the applied index as the genesis
+		// boundary but wipes the cache zone) or a pre-meta upgrade. The
+		// realignment below disambiguates via the applied index.
+		metaAbsent = true
 	default:
 		// Any other Get/closer failure is a real read error, not absence:
 		// silently defaulting to gen0 would restore the wrong generation
@@ -486,9 +493,24 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 
 	s.registry.Cache.SetCurrentGeneration(currentGen)
 
+	// Absent meta with a non-genesis applied index: realign the generation
+	// to the one the applied index falls into. Leaving it at 0 would make
+	// admission's CheckCache see Gen(appliedIndex+1) as 2+ generations ahead
+	// and reject every proposal as CacheUnreachable — and with admission
+	// refusing all proposals, no apply ever runs CheckRotationNeeded to
+	// catch the generation up.
+	if metaAbsent {
+		appliedIndex, err := query.ReadLastAppliedIndex(reader)
+		if err != nil {
+			return fmt.Errorf("reading applied index for generation realignment: %w", err)
+		}
+
+		s.registry.Cache.RealignGeneration(appliedIndex)
+	}
+
 	s.logger.WithFields(map[string]any{
 		"duration":          time.Since(restoreStart).String(),
-		"currentGeneration": currentGen,
+		"currentGeneration": s.registry.Cache.CurrentGeneration(),
 	}).Infof("Restored cache from Pebble")
 
 	// Restore bloom filters: load persisted blocks from Pebble, then replay
