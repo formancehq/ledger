@@ -1415,6 +1415,20 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// class (validation, parse, not-found, already-exists, conflict,
 		// precondition); only genuinely state-dependent preparation failures fall
 		// through to the idempotency-replay forward below.
+		// A recovered numscript-library panic is a "should not happen" (invariant
+		// #7): it must surface loudly, never be masked as a retryable
+		// preload-unavailable. It is also deterministic (same script → same panic),
+		// so forwarding it would loop forever once an idempotency key is present.
+		// It is KindInternal (so the freezable check below would let it through),
+		// hence the explicit guard here, before that check.
+		if numscript.IsPanic(cause) {
+			var pd domain.Describable
+			if errors.As(cause, &pd) {
+				return false, &domain.BusinessError{Err: pd}
+			}
+
+			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+		}
 		var d domain.Describable
 		if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
 			return false, &domain.BusinessError{Err: d}
