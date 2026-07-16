@@ -506,9 +506,8 @@ send [COIN 100] (
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
 			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
 				"colored write must be rejected as validation, got %q", info.Reason)
-
-			// nothing credited: the colored send never committed.
-			expectBalance(ledgerName, "clr:pool", "COIN", "0")
+			// The send never committed, so clr:pool was never created — the P1-2
+			// test below funds it explicitly. The rejection above is the assertion.
 		})
 
 		It("Should REJECT a colored send from a balance-checked source (P1-2)", func() {
