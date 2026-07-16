@@ -479,11 +479,14 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 		})
 
-		It("Should allow a colored send from an UNbounded source (no balance read)", func() {
-			// world is unbounded, so a colored world source never reads a balance —
-			// nothing to collapse, nothing to double-spend. The destination volume
-			// is a plain (account, asset) volume. This is the only colored-source
-			// shape Ledger can serve soundly.
+		It("Should REJECT a colored send even from an UNbounded source (no color dimension)", func() {
+			// `source = @world \ "RED"` moves RED-colored COIN, so the destination
+			// @clr:pool is *credited* RED COIN. Ledger volumes carry no color
+			// dimension (color lands with EN-1334), so serving that write would
+			// silently collapse the RED credit onto the single COIN volume — a
+			// silent semantic loss. Every color/scope-qualified posting is rejected
+			// uniformly, source or destination, bounded or unbounded, until color
+			// is a first-class volume dimension.
 			script := `
 #![feature("experimental-asset-colors")]
 
@@ -494,18 +497,29 @@ send [COIN 100] (
 `
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
-			if err != nil {
-				if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
-					info.Reason == domain.ErrReasonNumscriptParseError {
-					Skip("experimental-asset-colors not available on this build: " + info.Reason)
-				}
-				Expect(err).To(Succeed())
+			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
+				info.Reason == domain.ErrReasonNumscriptParseError {
+				Skip("experimental-asset-colors not available on this build: " + info.Reason)
 			}
+			Expect(err).To(HaveOccurred())
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
+			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
+				"colored write must be rejected as validation, got %q", info.Reason)
 
-			expectBalance(ledgerName, "clr:pool", "COIN", "100")
+			// nothing credited: the colored send never committed.
+			expectBalance(ledgerName, "clr:pool", "COIN", "0")
 		})
 
 		It("Should REJECT a colored send from a balance-checked source (P1-2)", func() {
+			// Fund clr:pool with plain (uncolored) COIN first — an uncolored send is
+			// always accepted. The colored send above is rejected, so pool starts
+			// empty and we seed it here.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName,
+					"send [COIN 100] (source = @world destination = @clr:pool)", nil, nil)))
+			Expect(err).To(Succeed())
+
 			// Spending a specific color from a funded account reads that color's
 			// balance. Ledger volumes have no color dimension, so this collapses to
 			// the single COIN volume; serving the colored view would let the script
@@ -518,7 +532,7 @@ send [COIN 40] (
   destination = @clr:spent
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if err != nil {
 				if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
