@@ -1,6 +1,7 @@
 package attributes
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -18,8 +19,8 @@ import (
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
 // The six resets are:
-//  1. lastAppliedIndex -> 0, so the restored cluster starts fresh without
-//     raft-index conflicts.
+//  1. lastAppliedIndex -> 1, the index the restored FSM genesis occupies in
+//     the new raft log (see below), fresh of any source-cluster raft index.
 //  2. persisted config (nodeId, clusterId) deleted, so the backup is portable
 //     to any cluster.
 //  3. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
@@ -38,8 +39,17 @@ import (
 func PrepareForBackup(s *dal.Store) error {
 	batch := s.OpenWriteSession()
 
-	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh.
-	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, make([]byte, 8)); err != nil {
+	// Pin lastAppliedIndex to 1: the restored store is the FSM state the new
+	// raft log builds on, and the RESTORED bootstrap plants its WAL snapshot
+	// at this index, so the log starts at 2 and raft must route any fresh
+	// peer through the snapshot → checkpoint-sync path. At 0 the snapshot is
+	// empty and the log claims completeness from index 1 — a learner joining
+	// before the first post-restore raft snapshot is then "caught up" by
+	// plain log replay onto an empty store, missing every restored row.
+	appliedIndex := make([]byte, 8)
+	binary.BigEndian.PutUint64(appliedIndex, 1)
+
+	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, appliedIndex); err != nil {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("resetting applied index: %w", err)

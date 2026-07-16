@@ -158,7 +158,7 @@ func TestPrepareForBackupPreservesAttributesByteForByte(t *testing.T) {
 }
 
 // TestPrepareForBackupResetsGlobalZone asserts the three Global-zone resets:
-// applied index -> 0, persisted config deleted, persisted bloom blocks dropped.
+// applied index -> 1, persisted config deleted, persisted bloom blocks dropped.
 func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	t.Parallel()
 
@@ -186,7 +186,8 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 
 	idx, err := readLastAppliedIndex(s)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), idx, "applied index must be reset to 0")
+	require.Equal(t, uint64(1), idx,
+		"applied index must be pinned to 1 — the WAL-snapshot index the restored FSM genesis occupies")
 
 	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted config must be deleted")
@@ -317,7 +318,8 @@ func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 
 		idx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
-		require.Equal(t, uint64(0), idx, "applied index must be 0 on the fresh cluster")
+		require.Equal(t, uint64(1), idx,
+			"applied index must be 1 on the fresh cluster — the restored genesis' WAL-snapshot index")
 	}()
 }
 

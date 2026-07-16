@@ -284,10 +284,14 @@ func NewNode(
 		}
 
 		if marker != nil {
-			// Restore mode: bootstrap from restored data.
-			// The backup was compacted: all attribute indices are 0 and lastAppliedIndex is 0.
-			// We need to recover the FSM counters (nextLedgerID, nextSequenceID, etc.)
-			// from the Pebble data before creating the WAL snapshot.
+			// Restore mode: bootstrap from restored data. The restored store
+			// carries lastAppliedIndex 1 (PrepareForBackup pins it), so the WAL
+			// snapshot below lands at 1 and the new log starts at 2: raft then
+			// has to route any fresh peer through the snapshot → checkpoint-sync
+			// path instead of "catching it up" by replaying the log onto an
+			// empty store, which would miss the entire restored FSM genesis.
+			// FSM counters (nextLedgerID, nextSequenceID, etc.) are recovered
+			// from Pebble before creating the WAL snapshot.
 			logger.WithFields(map[string]any{
 				"lastAppliedIndex":     marker.LastAppliedIndex,
 				"lastAppliedTimestamp": marker.LastAppliedTimestamp,

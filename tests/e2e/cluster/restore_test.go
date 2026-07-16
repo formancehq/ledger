@@ -787,5 +787,83 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(charlieResp.Volumes["USD"].Input).To(Equal("1000"))
 		})
+
+		It("should transfer the restored state to a learner joining before any raft snapshot", func() {
+			// A restored node's FSM genesis is the whole backup, but its raft
+			// log is brand new. Unless bootstrap plants a snapshot above the
+			// log start, the leader catches a fresh learner up by plain log
+			// replay from index 1 — the learner applies the few post-restore
+			// entries onto an EMPTY store and silently misses every restored
+			// row (found by the Antithesis model test as an aggregated volume
+			// imbalance on the joiner). The join must instead be forced
+			// through the snapshot → checkpoint-sync path.
+			const (
+				joinerGRPCPort = grpcPort + 7
+				joinerHTTPPort = httpPort + 7
+				joinerRaftPort = raftPort + 7
+			)
+
+			// Committed on the restored leader only: its replication to the
+			// learner proves the learner finished catching up on the
+			// post-restore log. Its visibility is NOT proof of a correct
+			// join — every proposal ships its cache preload, so entries
+			// re-materialize the rows they touch even on a hollow store.
+			// That masking is exactly why alice below is the real check.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "join-fence", big.NewInt(42), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    2,
+				ClusterID: "test-cluster",
+				HTTPPort:  joinerHTTPPort,
+				RaftPort:  joinerRaftPort,
+				GRPCPort:  joinerGRPCPort,
+				WalDir:    GinkgoT().TempDir(),
+				DataDir:   GinkgoT().TempDir(),
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", raftPort)))
+
+			joiner := testservice.New(cmdserver.NewRunCommand,
+				testservice.WithInstruments(instruments...),
+			)
+			Expect(joiner.Start(ctx)).To(Succeed())
+			DeferCleanup(func() {
+				stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = joiner.Stop(stopCtx)
+			})
+
+			joinerClient, _, joinerConn, err := testutil.NewGRPCClient(joinerGRPCPort)
+			Expect(err).To(Succeed())
+			DeferCleanup(func() { _ = joinerConn.Close() })
+
+			// Learner reads are node-local (readController), so this converges
+			// only once the learner itself applied the fence entry.
+			Eventually(func(g Gomega) {
+				resp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.GetVolumes()["USD"].GetInput()).To(Equal("42"))
+			}).Within(60*time.Second).ProbeEvery(500*time.Millisecond).Should(Succeed(),
+				"learner never caught up on the post-restore raft log")
+
+			// alice was written only BEFORE the backup, so no post-restore
+			// entry (and no preload) can re-materialize her: she is on the
+			// learner iff the restored store itself was transferred.
+			aliceResp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			Expect(err).To(Succeed())
+			Expect(aliceResp.GetVolumes()).To(HaveKey("USD"),
+				"learner caught up by log replay alone: the restored state never reached it")
+			Expect(aliceResp.GetVolumes()["USD"].GetInput()).To(Equal("3000"))
+
+			treasuryResp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
+			Expect(err).To(Succeed())
+			Expect(treasuryResp.GetVolumes()).To(HaveKey("EUR"),
+				"ledger untouched since the restore must still reach the learner")
+			Expect(treasuryResp.GetVolumes()["EUR"].GetInput()).To(Equal("50000"))
+		})
 	})
 })
