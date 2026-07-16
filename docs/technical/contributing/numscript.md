@@ -470,11 +470,14 @@ The wrapper lives in `internal/domain/processing/numscript/discover.go` (`Discov
 
 `meta()`, `oneof` (all branches), and multiple `send` blocks are all handled by the resolver — none is rejected. `ErrMetaNotSupported` and `ErrNonDeterministicScript` no longer exist.
 
-#### Color/scope-qualified balance reads are rejected
+#### Color/scope-qualified balances are rejected (reads **and** writes)
 
-Ledger volumes and account metadata have **no** color/scope dimension: every color/scope view of `(account, asset)` resolves to the *same* underlying volume, and every scope-qualified metadata read collapses to the same `(account, key)` entry. Rather than silently collapsing a qualified query onto the unqualified key — which would hand the script a full-balance view *per color* and let it spend the same funds once per color — the `Store` (`internal/domain/processing/numscript/store.go`) **rejects** any balance or metadata read that carries a non-empty `Color` or `Scope`, returning `domain.ErrColoredBalanceUnsupported` (a validation sentinel, so admission fails the transaction as a business error before proposing).
+Ledger volumes and account metadata have **no** color/scope dimension: every color/scope view of `(account, asset)` resolves to the *same* underlying volume, and every scope-qualified metadata read collapses to the same `(account, key)` entry. Serving such a qualified view would hand the script a full-balance view *per color* (letting it spend the same funds once per color) on the read side, or silently collapse a colored credit/debit onto the unqualified volume (a silent semantic loss) on the write side. Until Ledger gains a first-class color/scope dimension (EN-1334), **every** color/scope-qualified balance or metadata access is rejected with `domain.ErrColoredBalanceUnsupported` (a validation sentinel — admission fails the transaction as a business error before proposing, and the authoritative FSM path rejects it identically):
 
-The rejection triggers only when a color/scope-qualified read is actually *performed*. An **unbounded colored source** such as `send [COIN *] (source = @world \ "RED" ...)` reads no balance — an unbounded source draws whatever the destination requires without consulting a balance — so it is **not** rejected. Only bounded/capped colored sources and colored `balance()`/`overdraft()` reads, which must consult a per-color balance, hit the guard.
+- **reads** — the `Store` (`internal/domain/processing/numscript/store.go`) rejects any `balance()`/`overdraft()`/`meta()` read carrying a non-empty `Color` or `Scope`;
+- **writes** — `DiscoverNumscriptDependencies` (`discover.go`) rejects any color/scope-qualified `AccountsWrites`/`MetaWrites` dependency, and the FSM posting loop (`processor_transaction_numscript.go`) rejects any colored/scoped posting at apply time.
+
+This is **uniform**: source or destination, bounded or unbounded. In particular an **unbounded colored source** such as `send [COIN 100] (source = @world \ "RED" ...)` is *not* a harmless no-op — it moves RED-colored `COIN`, so the destination is credited a RED volume that would collapse onto the single uncolored `COIN` volume. It is a color/scope-qualified **write** and is rejected like any other, even though `@world` reads no balance. There is no "allowed" colored shape today; the guard is closed until the color/scope dimension lands.
 
 #### Intra-batch effect accumulation
 

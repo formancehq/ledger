@@ -1404,14 +1404,20 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
 	// preserve, so we keep the cheap fail-fast (returns a terminal error).
 	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
-		// A definitive structural rejection (e.g. a color/scope-qualified write,
-		// which Ledger does not support) is NOT a preparation gap: the script uses
-		// an unsupported feature and could never have succeeded, so there is no
-		// frozen outcome to replay. Never forward it — surface the definitive
-		// error so the client sees the real reason instead of a retryable
-		// preload-unavailable that would spin forever.
-		if errors.Is(cause, domain.ErrColoredBalanceUnsupported) {
-			return false, &domain.BusinessError{Err: domain.ErrColoredBalanceUnsupported}
+		// A definitive, deterministic rejection is NOT a preparation gap: the
+		// script could never have succeeded — a parse error, a validation failure,
+		// an unsupported color/scope-qualified write, a missing ledger, and so on —
+		// so there is no frozen outcome to replay and re-running always fails
+		// identically. Surface the real error: never forward it as a retryable
+		// preload-unavailable (which would spin forever, since no retry can
+		// succeed) and never wrap it as the retryable ErrDependencyDiscoveryFailed.
+		// IsFreezableFailure captures exactly this "definitive & deterministic"
+		// class (validation, parse, not-found, already-exists, conflict,
+		// precondition); only genuinely state-dependent preparation failures fall
+		// through to the idempotency-replay forward below.
+		var d domain.Describable
+		if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
+			return false, &domain.BusinessError{Err: d}
 		}
 		if !hasIdempotencyKey {
 			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
