@@ -30,26 +30,80 @@ const (
 
 // GetClientTransportCredentials returns the transport credentials based on CLI flags.
 // If --insecure is set, returns insecure credentials.
-// Otherwise, returns TLS credentials, optionally using a custom CA from --tls-ca-cert.
+// Otherwise, returns TLS credentials, optionally using a custom CA from --tls-ca-cert
+// and a custom verification hostname from --tls-server-name.
 //
-// Setting --insecure together with --tls-ca-cert is rejected: those flags
-// encode conflicting intent (no TLS vs. verify with this CA), and silently
-// preferring one of them — as the older code did — masks env-var leakage like
-// a stray LEDGERCTL_INSECURE=true in a container image (the original cause of
-// the "error reading server preface: EOF" production incident).
+// Setting --insecure together with --tls-ca-cert or --tls-server-name is
+// rejected: those flags encode conflicting intent (no TLS vs. verify with this
+// CA / against this hostname), and silently preferring one of them — as the
+// older code did — masks env-var leakage like a stray LEDGERCTL_INSECURE=true
+// in a container image (the original cause of the "error reading server
+// preface: EOF" production incident).
+//
+// --tls-server-name overrides the hostname the certificate is verified against
+// (SNI + SAN match), decoupling it from the dial address in --server. This is
+// what lets a client dial by IP (e.g. 127.0.0.1:8888 from inside a pod, or a
+// LoadBalancer VIP) while still validating an operator-issued certificate whose
+// SANs only cover the in-cluster DNS names (e.g.
+// <pod>.<cluster>-headless.<ns>.svc.cluster.local), never localhost/127.0.0.1.
 func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCredentials, error) {
 	insecureMode, _ := cmd.Flags().GetBool("insecure")
 	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
+	serverName, _ := cmd.Flags().GetString("tls-server-name")
 
-	if insecureMode && caCertPath != "" {
-		return nil, errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	if err := ValidateTLSFlags(insecureMode, caCertPath, serverName); err != nil {
+		return nil, err
 	}
 
 	if insecureMode {
 		return insecure.NewCredentials(), nil
 	}
 
+	tlsConfig, err := buildClientTLSConfig(caCertPath, serverName)
+	if err != nil {
+		return nil, err
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+// ValidateTLSFlags rejects contradictory TLS flag combinations: --insecure
+// (no TLS at all) cannot be paired with --tls-ca-cert or --tls-server-name,
+// which only make sense when verifying a TLS connection.
+//
+// It is the single source of truth for that rule, shared by the connection path
+// (GetClientTransportCredentials) and the profile-persistence paths (profile
+// create, auth login). Persisting the conflict would store a profile every
+// subsequent TLS-aware command immediately rejects; validating here lets those
+// commands fail fast at write time instead. Mentioning LEDGERCTL_INSECURE keeps
+// the message actionable when --insecure was injected via the environment (a
+// stray container-image default was the original "server preface: EOF" cause).
+func ValidateTLSFlags(insecureMode bool, caCertPath, serverName string) error {
+	if insecureMode && caCertPath != "" {
+		return errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	}
+
+	if insecureMode && serverName != "" {
+		return errors.New("--insecure and --tls-server-name are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	}
+
+	return nil
+}
+
+// buildClientTLSConfig assembles the *tls.Config for a verifying (non-insecure)
+// client connection. Split out from GetClientTransportCredentials so the
+// resulting config is directly assertable in tests: credentials.NewTLS wraps it
+// in an opaque type whose only exported accessor (ProtocolInfo.ServerName) is
+// deprecated, so the config is the sole reliable place to verify ServerName and
+// RootCAs were applied.
+func buildClientTLSConfig(caCertPath, serverName string) (*tls.Config, error) {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	// Override the name verified against the server certificate's SANs, so the
+	// dial address (--server) and the verification identity can differ.
+	if serverName != "" {
+		tlsConfig.ServerName = serverName
+	}
 
 	if caCertPath != "" {
 		caPEM, err := os.ReadFile(caCertPath)
@@ -65,7 +119,7 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 		tlsConfig.RootCAs = certPool
 	}
 
-	return credentials.NewTLS(tlsConfig), nil
+	return tlsConfig, nil
 }
 
 // GetClient creates a gRPC client connection and returns the client.

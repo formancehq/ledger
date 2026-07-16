@@ -1,15 +1,13 @@
 package restore
 
 import (
-	"crypto/tls"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
 
@@ -31,15 +29,15 @@ func NewCommand() *cobra.Command {
 // getRestoreClient creates a gRPC client connection and returns the RestoreService client.
 func getRestoreClient(cmd *cobra.Command) (restorepb.RestoreServiceClient, *grpc.ClientConn, error) {
 	serverAddr, _ := cmd.Flags().GetString("server")
-	insecureMode, _ := cmd.Flags().GetBool("insecure")
 
-	var creds credentials.TransportCredentials
-	if insecureMode {
-		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12,
-		})
+	// Share the root command's credential resolution so restore honors the same
+	// --insecure / --tls-ca-cert / --tls-server-name persistent flags (and their
+	// mutual-exclusion guard) as every other command. The restore server is
+	// commonly dialed from inside a pod, where --tls-server-name is needed to
+	// match a cert whose SANs cover only the in-cluster DNS names.
+	creds, err := cmdutil.GetClientTransportCredentials(cmd)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn, err := grpc.NewClient(serverAddr,
