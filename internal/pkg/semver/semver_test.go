@@ -23,6 +23,11 @@ func TestParse(t *testing.T) {
 		{"1.0.0.0", Version{}, true},
 		{"a.b.c", Version{}, true},
 		{"1..0", Version{}, true},
+		// Non-canonical (leading zeros) must be rejected: the raw string is a
+		// storage key, so "01.0.0" and "1.0.0" would diverge the projection.
+		{"01.0.0", Version{}, true},
+		{"1.00.0", Version{}, true},
+		{"1.0.007", Version{}, true},
 	}
 
 	for _, tc := range tests {
