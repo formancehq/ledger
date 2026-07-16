@@ -3196,8 +3196,11 @@ func (x *CreateTransactionOrder) GetNumscriptReference() *NumscriptReference {
 	return nil
 }
 
-// NumscriptReference identifies a numscript from the library to use for a transaction.
-// The version is resolved by admission (fuzzy → exact) before entering the Raft log.
+// NumscriptReference identifies a numscript from the library to use for a
+// transaction. The version selector — "" / "latest" or an exact full semver
+// (partial selectors are read-only, rejected here) — is carried verbatim into
+// the audited order; admission only plans the reads, and the FSM resolves
+// "latest" to the greatest stored semver at apply.
 type NumscriptReference struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
