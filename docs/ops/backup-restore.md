@@ -524,7 +524,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 
 ```json
 {
-  "lastAppliedIndex": 12345,
+  "lastAppliedIndex": 1,
   "lastAppliedTimestamp": 1700000000000000
 }
 ```

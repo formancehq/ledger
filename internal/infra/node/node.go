@@ -301,6 +301,16 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
+			// A snapshot at 0 is no snapshot: the new log would claim
+			// completeness from index 1 and a fresh learner could be caught
+			// up by plain log replay onto an empty store, missing the whole
+			// restored genesis. PrepareForBackup pins the index to >= 1; a 0
+			// here means a marker written by another tool or by hand.
+			if marker.LastAppliedIndex == 0 {
+				return nil, fmt.Errorf(
+					"invariant: RESTORED marker carries lastAppliedIndex 0; the restored genesis must occupy index >= 1 so joiners are forced through checkpoint sync — re-run restore finalize / store bootstrap to regenerate the marker")
+			}
+
 			initialConfState = &raftpb.ConfState{
 				Voters: []uint64{cfg.NodeID},
 			}

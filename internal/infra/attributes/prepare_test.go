@@ -238,7 +238,7 @@ func TestPrepareForBackupClearsCacheZone(t *testing.T) {
 
 // TestPrepareForBackupRestorableOnFreshCluster runs the full backup->restore
 // pipeline (write -> prepare -> tar -> extract -> reopen) and asserts the
-// attribute values survive and the applied index is 0 on the fresh cluster.
+// attribute values survive and the applied index is pinned to 1 on the fresh cluster.
 func TestPrepareForBackupRestorableOnFreshCluster(t *testing.T) {
 	t.Parallel()
 

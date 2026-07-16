@@ -32,6 +32,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -81,9 +82,9 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 
 var _ = Describe("Restore", Ordered, func() {
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
-		raftPort   = grpcPort - 1000
+		httpPort    = testutil.TestSingleHTTPPort
+		grpcPort    = testutil.TestSingleGRPCPort
+		raftPort    = grpcPort - 1000
 		ledgerName  = "restore-ledger"
 		ledger2     = "restore-ledger-2"
 		chartLedger = "restore-chart-ledger"
@@ -556,6 +557,17 @@ var _ = Describe("Restore", Ordered, func() {
 				Output:    GinkgoWriter,
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
+			// No background raft snapshot may exist when the learner-join spec
+			// below runs: it exercises the window where the leader's log is
+			// the only catch-up source, and a maintenance snapshot would
+			// legitimately force the MsgSnap path and mask a log-replay
+			// regression. The interval override wins over the default (pflag
+			// keeps the last occurrence); the margin blocks the snapshot
+			// trigger outright.
+			instruments = append(instruments,
+				testserver.WithMaintenanceInterval(time.Hour),
+				testserver.WithRaftCompactionMargin(1_000_000),
+			)
 
 			server = testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(instruments...),
@@ -841,10 +853,17 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			DeferCleanup(func() { _ = joinerConn.Close() })
 
-			// Learner reads are node-local (readController), so this converges
-			// only once the learner itself applied the fence entry.
+			// Stale consistency pins every read below to the learner's own
+			// store: linearizable reads on a syncing node transparently fall
+			// back to the leader (readCtrl's leader_fallback), which would
+			// let node 1 answer for the learner and pass this test without
+			// proving anything about the learner's state.
+			staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
+
+			// This converges only once the learner itself applied the fence
+			// entry.
 			Eventually(func(g Gomega) {
-				resp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
+				resp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.GetVolumes()["USD"].GetInput()).To(Equal("42"))
 			}).Within(60*time.Second).ProbeEvery(500*time.Millisecond).Should(Succeed(),
@@ -853,13 +872,13 @@ var _ = Describe("Restore", Ordered, func() {
 			// alice was written only BEFORE the backup, so no post-restore
 			// entry (and no preload) can re-materialize her: she is on the
 			// learner iff the restored store itself was transferred.
-			aliceResp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
+			aliceResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
 			Expect(aliceResp.GetVolumes()).To(HaveKey("USD"),
 				"learner caught up by log replay alone: the restored state never reached it")
 			Expect(aliceResp.GetVolumes()["USD"].GetInput()).To(Equal("3000"))
 
-			treasuryResp, err := joinerClient.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
+			treasuryResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
 			Expect(treasuryResp.GetVolumes()).To(HaveKey("EUR"),
 				"ledger untouched since the restore must still reach the learner")
