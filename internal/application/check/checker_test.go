@@ -197,31 +197,11 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		require.NoError(e.t, err)
 	}
 
-	// Write ledger boundaries with the net key counters the real WriteSet
-	// maintains via updateBoundaryCounters — each counter equals the number
-	// of stored rows under the ledger's canonical prefix.
+	// Write ledger boundaries. The main-store boundary row carries only the id
+	// fields (NextTransactionId / NextLogId) and the mirror high-water; the
+	// per-ledger usage counters moved to the usagestore peer secondary store
+	// and are out of main-store checker scope.
 	for name, b := range e.boundaries {
-		prefix := string(domain.LedgerScopedPrefix(name))
-		b.VolumeCount, b.MetadataCount, b.ReferenceCount = 0, 0, 0
-
-		for key, vp := range e.volumes {
-			if strings.HasPrefix(key, prefix) && (vp.GetInput() != nil || vp.GetOutput() != nil) {
-				b.VolumeCount++
-			}
-		}
-
-		for key := range e.metadata {
-			if strings.HasPrefix(key, prefix) {
-				b.MetadataCount++
-			}
-		}
-
-		for key := range e.references {
-			if strings.HasPrefix(key, prefix) {
-				b.ReferenceCount++
-			}
-		}
-
 		_, err := e.attrs.Boundary.Set(batch, domain.LedgerKey{Name: name}.Bytes(), b)
 		require.NoError(e.t, err)
 	}
