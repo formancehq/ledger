@@ -16,7 +16,7 @@ func TestProcessSetMaintenanceMode_Enable(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().SetMaintenanceMode(true)
@@ -49,7 +49,7 @@ func TestProcessSetMaintenanceMode_Disable(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().SetMaintenanceMode(false)

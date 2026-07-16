@@ -426,6 +426,7 @@ func Module() fx.Option {
 					bloomFilters,
 					cfg.ClusterID,
 					cfg.NumscriptCacheSize,
+					cfg.NumscriptUseVM,
 					membership.WriteConfChange,
 				)
 				if err != nil {

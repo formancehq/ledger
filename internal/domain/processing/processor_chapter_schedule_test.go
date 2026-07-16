@@ -17,7 +17,7 @@ func TestProcessSetChapterSchedule_ValidCron(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
@@ -48,7 +48,7 @@ func TestProcessSetChapterSchedule_InvalidCron(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{
@@ -79,7 +79,7 @@ func TestProcessDeleteChapterSchedule(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	order := &raftcmdpb.Order{

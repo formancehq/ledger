@@ -3805,6 +3805,24 @@ ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --numscript-cache-size 4096 ...
 ```
 
+### Server `--numscript-engine` Flag
+
+Selects the Numscript execution engine used on the FSM apply path.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--numscript-engine` | `interpreter` | Numscript execution engine: `interpreter` (tree-walking) or `vm` (bytecode). Any value other than `vm` selects the interpreter. |
+
+**This is cluster-wide configuration and MUST be identical on every node.** The FSM apply path must be deterministic (see the "FSM must be deterministic" invariant), and the two engines are not yet fully equivalent — the VM does not map `set_tx_meta` / `set_account_meta` output — so a mixed-engine cluster would diverge on metadata-setting scripts. Change it via a full cluster restart, not a rolling update, and only after confirming your workload does not depend on script-set metadata when running on the VM.
+
+```bash
+# Default: tree-walking interpreter
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
+
+# Opt into the bytecode VM (all nodes must set this)
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --numscript-engine vm ...
+```
+
 ### Server `--mirror-max-batch-size` Flag
 
 Server-side cap on the mirror batch size. Each mirror ledger can request a custom batch size via its source config, but the server clamps it to this maximum. This prevents a user from overwhelming the cluster with oversized batches.

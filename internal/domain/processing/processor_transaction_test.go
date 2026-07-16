@@ -19,7 +19,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -98,7 +98,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -148,7 +148,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -211,7 +211,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "nonexistent"}, nil, domain.ErrNotFound)
@@ -266,7 +266,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -328,7 +328,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -396,7 +396,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -464,7 +464,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -524,7 +524,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -565,7 +565,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -610,7 +610,7 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -647,7 +647,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -714,7 +714,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -769,6 +769,71 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.Equal(t, "purchase", metaMap["category"])
 }
 
+// TestProcessCreateTransaction_Numscript_VMEngine pins the numscript-engine
+// flag routing: with the VM engine selected (NewRequestProcessor useVM=true),
+// a numscript transaction runs on the bytecode VM. It also pins the current VM
+// limitation — set_tx_meta output is not mapped by numscript's ExecVm — so the
+// same script that sets metadata under the interpreter produces a transaction
+// with no metadata under the VM, while the posting is still produced.
+func TestProcessCreateTransaction_Numscript_VMEngine(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0, true) // VM engine
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	setupNumscriptVolumeMocks(mockStore)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
+
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Script: &commonpb.Script{
+							Plain: `
+								set_tx_meta("type", "payment")
+								send [USD/2 100] (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+
+	// Posting is produced by the VM.
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
+	require.Equal(t, "world", createdTx.GetTransaction().GetPostings()[0].GetSource())
+	require.Equal(t, "users:alice", createdTx.GetTransaction().GetPostings()[0].GetDestination())
+
+	// VM does not map set_tx_meta output (known limitation): no tx metadata.
+	require.Empty(t, commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata()))
+}
+
 // TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey pins
 // the fix for #322 (second prong): Numscript-produced metadata keys
 // never passed through admission's ValidateMetadataKey, so a script
@@ -782,7 +847,7 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -864,7 +929,7 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			now := &commonpb.Timestamp{Data: 1234567890}
@@ -908,7 +973,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -996,7 +1061,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1059,7 +1124,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1138,7 +1203,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1202,7 +1267,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1266,7 +1331,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -1318,7 +1383,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -1365,7 +1430,7 @@ func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1432,7 +1497,7 @@ func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -1503,7 +1568,7 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}

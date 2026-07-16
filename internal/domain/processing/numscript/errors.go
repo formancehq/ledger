@@ -82,3 +82,32 @@ func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscrip
 
 	return
 }
+
+// SafeExecVM wraps numscript's bytecode VM execution (numscriptlib.ExecVm) with
+// the same deferred recover + error conversion as SafeRun, so the VM path
+// surfaces the same domain.Describable outcomes as the interpreter path. It is
+// generic over the store (like numscriptlib.ExecVm) so the concrete store type
+// is monomorphized rather than dispatched through an interface — this keeps the
+// VM path's per-run cost representative for benchmarking.
+//
+// Caveat: numscript's VM missing-funds error is a distinct type from the
+// interpreter's MissingFundsErr and is not exported at the library root, so it
+// currently maps to ErrNumscriptRuntime rather than ErrInsufficientFunds.
+func SafeExecVM[S numscriptlib.VMStore](
+	ctx context.Context,
+	machine *numscriptlib.Vm,
+	vars *numscriptlib.Vars,
+	store S,
+) (result numscriptlib.ExecutionResult, err domain.Describable) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = numscriptlib.ExecutionResult{}
+			err = &domain.ErrNumscriptRuntime{Detail: fmt.Sprintf("numscript panic: %v", r)}
+		}
+	}()
+
+	result, execErr := numscriptlib.ExecVm(ctx, machine, vars, store)
+	err = convertNumscriptError(execErr)
+
+	return
+}

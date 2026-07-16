@@ -50,7 +50,7 @@ func TestHashOrders_ExcludesCoverageBits(t *testing.T) {
 func TestHashOrders_MatchesHashProposal(t *testing.T) {
 	t.Parallel()
 
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	orders := []*raftcmdpb.Order{
@@ -81,7 +81,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -132,7 +132,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -255,7 +255,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1}
@@ -319,7 +319,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -429,7 +429,7 @@ func TestProcessOrders_OrdersResultEmpty(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	response, err := processor.ProcessOrders(nil, mockFactory(mockStore), noopSink{})
@@ -456,7 +456,7 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	// v2LogId 7 already applied.

@@ -16,7 +16,12 @@ import (
 )
 
 type RequestProcessor struct {
-	numscriptCache     *numscript.NumscriptCache
+	numscriptCache *numscript.NumscriptCache
+	// numscriptUseVM selects the numscript execution engine on the FSM apply
+	// path: true runs the bytecode VM, false the tree-walking interpreter. It
+	// is cluster-wide config (must be identical on every node — see the
+	// determinism note on Context.NumscriptUseVM).
+	numscriptUseVM     bool
 	hashBuf            []byte // reusable buffer for idempotency hash serialization
 	compiledTypesCache map[string][]accounttype.CompiledType
 	assetCache         map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
@@ -53,12 +58,24 @@ type Context struct {
 	NumscriptCache *numscript.NumscriptCache
 	CompiledTypes  map[string][]accounttype.CompiledType
 	AssetCache     map[string]cachedAssetPrecision
+
+	// NumscriptUseVM selects the numscript execution engine: true runs the
+	// bytecode VM (numscriptVMPostingProducer), false the tree-walking
+	// interpreter (numscriptPostingProducer). It is cluster-wide config and
+	// MUST be identical on every node: the FSM apply path must be deterministic
+	// (invariant #2), and the two engines are not yet fully equivalent (the VM
+	// does not map set_tx_meta/set_account_meta output), so a mixed-engine
+	// cluster would diverge on metadata-setting scripts. Change it via a full
+	// cluster restart, not a rolling update.
+	NumscriptUseVM bool
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
 // If meter is nil, a noop meter is used. numscriptCacheSize controls the
 // maximum number of parsed scripts kept in the LRU cache (0 = default 1024).
-func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProcessor, error) {
+// numscriptUseVM selects the numscript execution engine (true = bytecode VM,
+// false = tree-walking interpreter).
+func NewRequestProcessor(m metric.Meter, numscriptCacheSize int, numscriptUseVM bool) (*RequestProcessor, error) {
 	if m == nil {
 		m = noop.Meter{}
 	}
@@ -72,6 +89,7 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 
 	return &RequestProcessor{
 		numscriptCache:     cache,
+		numscriptUseVM:     numscriptUseVM,
 		hashBuf:            make([]byte, 0, 1024),
 		compiledTypesCache: make(map[string][]accounttype.CompiledType),
 		assetCache:         make(map[string]cachedAssetPrecision),
@@ -152,6 +170,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
+		NumscriptUseVM: p.numscriptUseVM,
 	}
 
 	result := &OrdersResult{
@@ -384,6 +403,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
+		NumscriptUseVM: p.numscriptUseVM,
 	}
 
 	return p.processOrder(order, s, ctx)

@@ -128,6 +128,7 @@ func NewRunCommand() *cobra.Command {
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "backup-max-segment-bytes", 0, "Maximum incremental-backup export segment size before splitting into a new segment (0 = use default 4Gi)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
+	runCmd.Flags().String("numscript-engine", "interpreter", "Numscript execution engine on the FSM apply path: 'interpreter' (tree-walking) or 'vm' (bytecode). Must be identical on every node.")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 	runCmd.Flags().Int("max-execution-plan-size", 4096, "Maximum number of AttributePlan entries an ExecutionPlan may carry; admission rejects proposals beyond this (0 = unlimited)")
 
@@ -532,6 +533,10 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.SpoolSegmentMaxBytes = bytesize.Get(cmd, "spool-segment-max-bytes").Int64()
 	cfg.BackupMaxSegmentBytes = bytesize.Get(cmd, "backup-max-segment-bytes").Int64()
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
+	// Numscript execution engine. Only "vm" enables the bytecode VM; any other
+	// value (including the default "interpreter") uses the tree-walking
+	// interpreter. Must match on every node (FSM determinism).
+	cfg.NumscriptUseVM = getString("numscript-engine", "interpreter") == "vm"
 	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 	cfg.MaxExecutionPlanSize = getInt("max-execution-plan-size", 4096)
 

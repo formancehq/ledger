@@ -184,7 +184,7 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, numscriptUseVM bool, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -234,7 +234,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		return nil, fmt.Errorf("creating preload_coverage_miss counter: %w", err)
 	}
 
-	processor, err := processing.NewRequestProcessor(numscriptMeter, numscriptCacheSize)
+	processor, err := processing.NewRequestProcessor(numscriptMeter, numscriptCacheSize, numscriptUseVM)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}

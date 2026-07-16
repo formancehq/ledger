@@ -18,7 +18,7 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	sinkConfig := &commonpb.SinkConfig{
@@ -62,7 +62,7 @@ func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	// No mockStore expectations: validation must short-circuit before any
@@ -100,7 +100,7 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	cfg := &commonpb.SinkConfig{
@@ -133,7 +133,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
@@ -169,7 +169,7 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	existingConfig := &commonpb.SinkConfig{Name: "my-nats-sink"}
@@ -203,7 +203,7 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().GetSinkConfig("my-nats-sink").Return(nil, nil)
