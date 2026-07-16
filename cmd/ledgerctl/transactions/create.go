@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/google/uuid"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
@@ -81,6 +82,8 @@ Examples:
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD"
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --posting "bank,user,500,USD"
   ledgerctl transactions create --ledger my-ledger --script transfer.num --var "amount=1000" --var "asset=USD"
+  ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --count 100
+  ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD" --count 100 --batch-size 10
   ledgerctl transactions create --ledger my-ledger  # Interactive mode`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -95,6 +98,8 @@ Examples:
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
 	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
+	cmd.Flags().Int("count", 1, "Number of times to send the transaction")
+	cmd.Flags().Int("batch-size", 1, "Bundle the transactions into batches of this size (transactions per Apply request)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -359,14 +364,35 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 	expandVolumes, _ := cmd.Flags().GetBool("expand-volumes")
 
-	// Create the transaction
-	ctx, cancel := cmdutil.GetContext(cmd)
-	defer cancel()
+	// Get repetition and batching flags
+	count, _ := cmd.Flags().GetInt("count")
+	batchSize, _ := cmd.Flags().GetInt("batch-size")
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating transaction...")
+	if count < 1 {
+		pterm.Error.Println("--count must be at least 1")
 
-	requests := []*servicepb.Request{
-		{
+		return cmdutil.Displayed(errors.New("--count must be at least 1"))
+	}
+
+	if batchSize < 1 {
+		pterm.Error.Println("--batch-size must be at least 1")
+
+		return cmdutil.Displayed(errors.New("--batch-size must be at least 1"))
+	}
+
+	// A transaction reference must be unique, so it cannot be reused across a
+	// bulk create: the first transaction would commit and every subsequent one
+	// would fail with a reference conflict, leaving a partial result.
+	if reference != "" && count > 1 {
+		pterm.Error.Println("--reference cannot be combined with --count > 1 (references must be unique)")
+
+		return cmdutil.Displayed(errors.New("--reference cannot be combined with --count > 1 (references must be unique)"))
+	}
+
+	// newRequest builds a fresh Apply request for one transaction. It is called
+	// once per transaction so each envelope is signed independently.
+	newRequest := func() *servicepb.Request {
+		return &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledgerName,
@@ -384,53 +410,117 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 					},
 				},
 			},
-		},
+		}
 	}
 
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
-	if err != nil {
-		spinner.Fail("Failed to sign request")
+	// applyBatch sends one Apply request under its own context so the
+	// --timeout applies per request rather than cumulatively across batches.
+	applyBatch := func(applyReq *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+		ctx, cancel := cmdutil.GetContext(cmd)
+		defer cancel()
 
-		return cmdutil.Displayed(err)
+		return client.Apply(ctx, applyReq)
 	}
 
-	resp, err := client.Apply(ctx, applyReq)
-	if err != nil {
-		_ = spinner.Stop()
-
-		return cmdutil.FormatGRPCError("failed to create transaction", err)
+	spinnerText := "Creating transaction..."
+	if count > 1 {
+		spinnerText = fmt.Sprintf("Creating %d transactions...", count)
 	}
 
-	// Verify response signatures if a verification key is configured
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
-		spinner.Fail("Response signature verification failed")
+	spinner, _ := pterm.DefaultSpinner.Start(spinnerText)
 
-		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
+	// Send count transactions, bundling up to batchSize of them per Apply
+	// request. Collect every returned log so callers can inspect each result.
+	var createdTxs []*commonpb.CreatedTransaction
+
+	for sent := 0; sent < count; sent += batchSize {
+		n := batchSize
+		if remaining := count - sent; n > remaining {
+			n = remaining
+		}
+
+		requests := make([]*servicepb.Request, n)
+		for i := range requests {
+			requests[i] = newRequest()
+		}
+
+		// A fresh idempotency key per batch, generated before the (possibly
+		// retried) Apply call: ledgerctl retries UNAVAILABLE up to 50 times, and
+		// gRPC replays the same request bytes on each attempt. The key makes the
+		// server replay an already-committed batch's outcome instead of applying
+		// it a second time — while distinct batches keep distinct keys and each
+		// apply exactly once.
+		applyReq, err := cmdutil.BuildIdempotentApplyRequest(cmd, uuid.NewString(), requests...)
+		if err != nil {
+			spinner.Fail("Failed to sign request")
+
+			return cmdutil.Displayed(err)
+		}
+
+		resp, err := applyBatch(applyReq)
+		if err != nil {
+			_ = spinner.Stop()
+
+			return cmdutil.FormatGRPCError("failed to create transaction", err)
+		}
+
+		// Verify response signatures if a verification key is configured
+		if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+			spinner.Fail("Response signature verification failed")
+
+			return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
+		}
+
+		for _, log := range resp.GetLogs() {
+			applyLog := log.GetPayload().GetApply()
+			if applyLog == nil {
+				spinner.Fail("Unexpected response type")
+
+				return cmdutil.Displayed(errors.New("unexpected response type"))
+			}
+
+			createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
+			if createdTx == nil {
+				spinner.Fail("Unexpected log payload type")
+
+				return cmdutil.Displayed(errors.New("unexpected log payload type"))
+			}
+
+			createdTxs = append(createdTxs, createdTx)
+		}
+
+		if count > 1 {
+			spinner.UpdateText(fmt.Sprintf("Creating %d transactions... %d/%d", count, len(createdTxs), count))
+		}
 	}
 
-	// Extract the created transaction from the response
-	if len(resp.GetLogs()) == 0 {
+	// Extract the created transaction(s) from the response
+	if len(createdTxs) == 0 {
 		spinner.Fail("No response received")
 
 		return cmdutil.Displayed(errors.New("no response received"))
 	}
 
-	log := resp.GetLogs()[0]
+	// Bulk mode: report a summary rather than the full detail of every
+	// transaction, which would be unreadable at scale.
+	if count > 1 {
+		spinner.Success(fmt.Sprintf("Created %d transactions", len(createdTxs)))
 
-	applyLog := log.GetPayload().GetApply()
-	if applyLog == nil {
-		spinner.Fail("Unexpected response type")
+		if handled, err := cmdutil.EncodeStructured(cmd, createdTxs); handled || err != nil {
+			return err
+		}
 
-		return cmdutil.Displayed(errors.New("unexpected response type"))
+		pterm.Println()
+		pterm.Printf("Created %s transactions across %s batch(es) of up to %s.\n",
+			pterm.Cyan(strconv.Itoa(len(createdTxs))),
+			pterm.Cyan(strconv.Itoa((count+batchSize-1)/batchSize)),
+			pterm.Cyan(strconv.Itoa(batchSize)),
+		)
+
+		return nil
 	}
 
-	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
-	if createdTx == nil {
-		spinner.Fail("Unexpected log payload type")
-
-		return cmdutil.Displayed(errors.New("unexpected log payload type"))
-	}
-
+	createdTx := createdTxs[0]
 	tx := createdTx.GetTransaction()
 
 	spinner.Success("Created")

@@ -79,16 +79,27 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 // key is configured on the command flags, unsigned otherwise. Signing the batch
 // authenticates its composition and ordering.
 func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
+	return BuildIdempotentApplyRequest(cmd, "", requests...)
+}
+
+// BuildIdempotentApplyRequest is BuildApplyRequest with a batch-level
+// idempotency key. The key is carried on the ApplyBatch (and therefore covered
+// by the signature when signing is enabled), so the server can deduplicate a
+// batch that a transport retry replays byte-for-byte — notably the gRPC
+// UNAVAILABLE retry policy, which would otherwise re-apply a batch that had
+// already committed before the client observed the failure. Pass a value that
+// is stable across retries of the same batch but unique across distinct batches.
+func BuildIdempotentApplyRequest(cmd *cobra.Command, idempotencyKey string, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err
 	}
 
 	if privKey == nil {
-		return servicepb.UnsignedApplyRequest("", requests...), nil
+		return servicepb.UnsignedApplyRequest(idempotencyKey, requests...), nil
 	}
 
-	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests}, keyID, privKey)
+	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign batch: %w", err)
 	}

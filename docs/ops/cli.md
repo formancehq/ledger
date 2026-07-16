@@ -1368,6 +1368,8 @@ ledgerctl transactions create [flags]
 | `--metadata` | | Metadata key=value pairs |
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
 | `--expand-volumes` | `false` | Include post-commit volumes (per account/asset) in response |
+| `--count` | `1` | Number of times to send the transaction |
+| `--batch-size` | `1` | Bundle the transactions into batches of this size (transactions per Apply request) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -1392,7 +1394,22 @@ ledgerctl transactions create --ledger my-ledger \
 ledgerctl transactions create --ledger my-ledger \
   --posting "empty-account,destination,1000,USD" \
   --force
+
+# Send the same transaction 100 times (one Apply request each)
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,bank,1000,USD" \
+  --count 100
+
+# Send 100 transactions, bundled 10 per Apply request (10 batches)
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,bank,1000,USD" \
+  --count 100 --batch-size 10
 ```
+
+When `--count` is greater than 1 a summary is printed instead of each
+transaction's full detail. The `--json`/`--yaml` output becomes the array of
+created transactions. `--reference` cannot be combined with `--count` greater
+than 1, because transaction references must be unique.
 
 **Creating transactions with Numscript:**
 
