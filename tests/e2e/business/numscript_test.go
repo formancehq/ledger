@@ -682,8 +682,9 @@ send [USD/2 200] (
 					Address: "cm206:wallet",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(account.Volumes).To(HaveKey("USD/2"))
-				g.Expect(account.Volumes["USD/2"].Balance).To(Equal("300"))
+				usdVol := account.FindVolume("USD/2", "")
+				g.Expect(usdVol).NotTo(BeNil())
+				g.Expect(usdVol.GetBalance()).To(Equal("300"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})

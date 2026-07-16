@@ -36,8 +36,9 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 				Address: address,
 			})
 			g.Expect(err).To(Succeed())
-			g.Expect(account.Volumes).To(HaveKey(asset))
-			return account.Volumes[asset].Balance
+			vol := account.FindVolume(asset, "")
+			g.Expect(vol).NotTo(BeNil())
+			return vol.GetBalance()
 		}
 	}
 
