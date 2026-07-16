@@ -47,6 +47,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 		keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil,
 		"test-cluster",
 		0,
+		false,
 		noopConfChangeHandler,
 	)
 	require.NoError(t, err)

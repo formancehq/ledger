@@ -62,13 +62,17 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	}
 
 	// Select the appropriate posting producer. Numscript scripts run on the
-	// bytecode VM (numscriptVMPostingProducer); the tree-walking interpreter
-	// producer (numscriptPostingProducer) is kept for comparison/benchmarks.
+	// engine chosen by cluster config (ctx.NumscriptUseVM): the bytecode VM
+	// (numscriptVMPostingProducer) or the tree-walking interpreter
+	// (numscriptPostingProducer).
 	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
-	if isNumscript {
+	switch {
+	case isNumscript && ctx.NumscriptUseVM:
 		producer = &numscriptVMPostingProducer{cache: ctx.NumscriptCache, ledgerName: ledger}
-	} else {
+	case isNumscript:
+		producer = &numscriptPostingProducer{cache: ctx.NumscriptCache, ledgerName: ledger}
+	default:
 		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
 	}
 

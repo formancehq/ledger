@@ -19,7 +19,7 @@ func TestProcessAddMetadata_NilTarget(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -56,7 +56,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -113,7 +113,7 @@ func TestProcessAddMetadata_TransactionNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}
@@ -155,7 +155,7 @@ func TestProcessDeleteMetadata_NilTarget(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -192,7 +192,7 @@ func TestProcessDeleteMetadata_EmptyKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -233,7 +233,7 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -295,7 +295,7 @@ func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 1}

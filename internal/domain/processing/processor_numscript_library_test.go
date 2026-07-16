@@ -34,7 +34,7 @@ func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			// Validator must short-circuit before any store interaction —
@@ -81,7 +81,7 @@ func TestProcessDeleteNumscript_RejectsInvalidNames(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			order := &raftcmdpb.Order{

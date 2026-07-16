@@ -183,7 +183,11 @@ type Config struct {
 	// backup default (4Gi).
 	BackupMaxSegmentBytes int64
 	NumscriptCacheSize    int
-	MirrorMaxBatchSize    int
+	// NumscriptUseVM selects the numscript execution engine on the FSM apply
+	// path: true runs the bytecode VM, false the tree-walking interpreter.
+	// Cluster-wide config — must be identical on every node (FSM determinism).
+	NumscriptUseVM     bool
+	MirrorMaxBatchSize int
 	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int

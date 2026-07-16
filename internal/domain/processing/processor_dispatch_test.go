@@ -134,7 +134,7 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			// Every ledger-scoped handler eventually hits the store. We make
@@ -324,7 +324,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 				tc.setup(mockStore)
 			}
 
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			order := &raftcmdpb.Order{

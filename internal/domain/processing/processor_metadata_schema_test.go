@@ -19,7 +19,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -77,7 +77,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -127,7 +127,7 @@ func TestProcessSetMetadataFieldType_Ledger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -185,7 +185,7 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -225,7 +225,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -286,7 +286,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -337,7 +337,7 @@ func TestProcessRemoveMetadataFieldType_Ledger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -402,7 +402,7 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}

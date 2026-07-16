@@ -17,7 +17,7 @@ func TestProcessRegisterSigningKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().AddSigningKey("key-001", []byte{0xAB, 0xCD}, "parent-key")
@@ -54,7 +54,7 @@ func TestProcessRevokeSigningKey_NoCascade(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().RemoveSigningKey("key-001")
@@ -89,7 +89,7 @@ func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	// key-001 has children: child-a, child-b
@@ -156,7 +156,7 @@ func TestProcessRegisterSigningKey_RejectsInvalidIDs(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			// Bad IDs short-circuit before any store mutation; no AddSigningKey
@@ -204,7 +204,7 @@ func TestProcessRevokeSigningKey_RejectsInvalidIDs(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
-			processor, err := NewRequestProcessor(nil, 0)
+			processor, err := NewRequestProcessor(nil, 0, false)
 			require.NoError(t, err)
 
 			// No RemoveSigningKey / GetSigningKeyChildren expectations —
@@ -238,7 +238,7 @@ func TestProcessSetSigningConfig(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	mockStore.EXPECT().SetRequireSignatures(true)

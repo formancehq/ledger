@@ -157,7 +157,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
-		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
+		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, false,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)

@@ -18,7 +18,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -84,7 +84,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -211,7 +211,7 @@ func TestMirrorIngest_ReplayIsNoOp(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	// v2LogId 7 was already applied: LastMirrorV2LogId == 7.
@@ -253,7 +253,7 @@ func TestMirrorIngest_LowerV2LogIdSkipped(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 43, NextLogId: 5, LastMirrorV2LogId: 10}
@@ -286,7 +286,7 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -335,7 +335,7 @@ func TestMirrorIngest_GapRejected(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	// Applied prefix at 3, so the next contiguous slot is 4; v2LogId 6 is a gap.
@@ -383,7 +383,7 @@ func TestMirrorIngest_ZeroV2LogIdRejected(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1, LastMirrorV2LogId: 5}
@@ -431,7 +431,7 @@ func TestMirrorIngest_NotMirrorMode(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -473,7 +473,7 @@ func TestMirrorIngest_LedgerNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound)
@@ -510,7 +510,7 @@ func TestPromoteLedger_Success(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -559,7 +559,7 @@ func TestPromoteLedger_NotMirrorMode(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -595,7 +595,7 @@ func TestPromoteLedger_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound)
@@ -638,7 +638,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -712,7 +712,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -782,7 +782,7 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	ledgerInfo := &commonpb.LedgerInfo{
@@ -859,7 +859,7 @@ func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}

@@ -166,6 +166,13 @@ type ClusterSpec struct {
 	// +optional
 	NumscriptCacheSize *int32 `json:"numscriptCacheSize,omitempty"`
 
+	// NumscriptEngine selects the Numscript execution engine on the FSM apply path.
+	// Supported values: "interpreter" (tree-walking, default) or "vm" (bytecode).
+	// Must be identical on every node — the FSM apply path must be deterministic.
+	// +kubebuilder:validation:Enum=interpreter;vm
+	// +optional
+	NumscriptEngine string `json:"numscriptEngine,omitempty"`
+
 	// MirrorMaxBatchSize is the maximum allowed batch size for mirror sync.
 	// +optional
 	MirrorMaxBatchSize *int32 `json:"mirrorMaxBatchSize,omitempty"`

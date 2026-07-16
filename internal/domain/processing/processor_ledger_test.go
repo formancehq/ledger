@@ -19,7 +19,7 @@ func TestProcessCreateLedger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -177,7 +177,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	existingLedger := &commonpb.LedgerInfo{Name: "test-ledger"}
@@ -204,7 +204,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
@@ -239,7 +239,7 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
+	processor, err := NewRequestProcessor(nil, 0, false)
 	require.NoError(t, err)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)

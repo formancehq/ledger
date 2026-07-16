@@ -2242,6 +2242,15 @@ spec:
                   programs to cache (LRU eviction).
                 format: int32
                 type: integer
+              numscriptEngine:
+                description: |-
+                  NumscriptEngine selects the Numscript execution engine on the FSM apply path.
+                  Supported values: "interpreter" (tree-walking, default) or "vm" (bytecode).
+                  Must be identical on every node — the FSM apply path must be deterministic.
+                enum:
+                - interpreter
+                - vm
+                type: string
               pebble:
                 description: Pebble storage engine configuration.
                 properties:
