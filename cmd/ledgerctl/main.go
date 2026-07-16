@@ -197,6 +197,7 @@ var ledgerctlOwnedFlagNames = map[string]struct{}{
 	"server":              {},
 	"insecure":            {},
 	"tls-ca-cert":         {},
+	"tls-server-name":     {},
 	"consistency":         {},
 	"auth-token":          {},
 	"signing-key":         {},
