@@ -772,8 +772,25 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 		// so an omitted/partial/non-canonical version fails the diff with a
 		// clear message rather than a valid-looking plan that only errors at
 		// apply time.
-		if _, err := semver.Parse(desiredNS.Version); err != nil {
+		desiredVersion, err := semver.Parse(desiredNS.Version)
+		if err != nil {
 			return nil, fmt.Errorf("numscript %q: %w (a full canonical semver is required, e.g. 1.0.0)", name, err)
+		}
+
+		// The exported config carries only the greatest version of each script,
+		// and latest is always the greatest stored semver. A desired version at
+		// or below the current greatest can never become latest, so the plan
+		// would never converge (and re-fail with NUMSCRIPT_VERSION_ALREADY_EXISTS
+		// once stored). Require a strictly greater version to advance latest.
+		if exists {
+			currentVersion, err := semver.Parse(currentNS.Version)
+			if err != nil {
+				return nil, fmt.Errorf("numscript %q: stored version %q is not a canonical semver: %w", name, currentNS.Version, err)
+			}
+
+			if desiredVersion.Compare(currentVersion) <= 0 {
+				return nil, fmt.Errorf("numscript %q: desired version %q is not greater than the current greatest %q; publish a higher version to advance latest", name, desiredNS.Version, currentNS.Version)
+			}
 		}
 
 		desc := fmt.Sprintf("Save numscript %q (v%s)", name, desiredNS.Version)
