@@ -3,7 +3,7 @@ kind: Backup
 metadata:
   name: bad-ref
 spec:
-  serviceRef: nonexistent-service
+  clusterRef: nonexistent-cluster
   destination:
     driver: s3
     s3:

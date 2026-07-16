@@ -18,7 +18,7 @@ func TouchedVolumeSet(volumes []*commonpb.TouchedVolume) map[AccountAssetKey]str
 
 	set := make(map[AccountAssetKey]struct{}, len(volumes))
 	for _, v := range volumes {
-		set[AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset()}] = struct{}{}
+		set[AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset(), Color: v.GetColor()}] = struct{}{}
 	}
 
 	return set

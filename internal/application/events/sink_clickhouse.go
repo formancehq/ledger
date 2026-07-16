@@ -36,7 +36,8 @@ const clickhouseTransactionColumns = `JSON(
                 source String,
                 destination String,
                 amount UInt256,
-                asset String
+                asset String,
+                color String
             )),
             metadata Map(String, String),
             reference Nullable(String),

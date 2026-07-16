@@ -162,7 +162,9 @@ type admissionValueSource struct {
 }
 
 func (s *admissionValueSource) Balance(account, asset string) (*big.Int, error) {
-	key := domain.NewVolumeKey(s.ledgerName, account, asset)
+	// #1560 (EN-1406) rejects colored/scoped balances upstream, so dependency
+	// resolution reads only the uncolored bucket ("").
+	key := domain.NewVolumeKey(s.ledgerName, account, asset, "")
 
 	vol, err := s.admission.attrs.Volume.Get(s.admission.store, key.Bytes())
 	if err != nil {

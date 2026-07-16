@@ -73,7 +73,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	store := newScopeStore(mockStore, false)
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Input=1000, Output=300, Balance=700
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{
@@ -97,7 +97,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	store := newScopeStore(mockStore, false)
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Volume exists but has no input values (not preloaded)
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{}).AsReader(), nil)
@@ -121,7 +121,7 @@ func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 	store := newScopeStore(mockStore, false)
 
-	volumeKey := domain.NewVolumeKey("test", "bank", "USD")
+	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 

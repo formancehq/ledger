@@ -4,13 +4,15 @@ import (
 	"context"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // registerInflight reserves a ticket and records the bulk. Must run BEFORE the
 // Apply: the ticket is the dispatch order tryDrain relies on, and the bulk is
 // what the serialization search (candidateBases) folds. Caller holds c.mu.
-func (c *Checker) registerInflight(bulk Bulk) uint64 {
+func (c *Checker) registerInflight(bulk oracle.Bulk) uint64 {
 	t := c.ticketSeq.Add(1)
 	c.inflight[t] = bulk
 

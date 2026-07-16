@@ -22,10 +22,27 @@ func convertNumscriptError(err error) domain.Describable {
 
 	var missingFunds numscriptlib.MissingFundsErr
 	if errors.As(err, &missingFunds) {
+		// Interpreter limitation: numscriptlib.MissingFundsErr carries only
+		// {Asset, Needed, Available, parser.Range} — it exposes neither the
+		// failing account nor the color of the bucket that ran short (see the
+		// pinned numscript's interpreter_error.go / interpreter.go, where the
+		// error is built with s.CurrentAsset only). A single asset can be
+		// sourced from several (account, color) buckets in one script and the
+		// Range points into source text, not a resolved bucket, so the color
+		// cannot be recovered reliably from the error alone. We therefore leave
+		// Color (and Account) empty rather than inventing a value that is not
+		// reliably known — an empty Color here means "unknown", NOT the
+		// uncolored bucket. ColorKnown is left false so ErrInsufficientFunds
+		// omits the color key from its wire metadata, keeping this "unknown"
+		// distinct from a definite hit on the uncolored bucket (color: "").
+		// Surfacing the true color would require the interpreter to attach the
+		// resolved (account, color) to MissingFundsErr upstream, at which point
+		// this path sets the real Color with ColorKnown: true.
 		return &domain.ErrInsufficientFunds{
 			Asset:   missingFunds.Asset,
 			Amount:  missingFunds.Needed.String(),
 			Balance: missingFunds.Available.String(),
+			// ColorKnown intentionally false: color is unresolved on this path.
 		}
 	}
 

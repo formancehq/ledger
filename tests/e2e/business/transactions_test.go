@@ -142,7 +142,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Address).To(Equal("account-with-meta"))
-			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
 		})
 
 		It("Should create multiple transactions sequentially", func() {
@@ -172,14 +172,14 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "seq-account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1.Volumes["USD"].Balance).To(Equal("50")) // 100 - 50
+			Expect(account1.FindVolume("USD", "").Balance).To(Equal("50")) // 100 - 50
 
 			account2, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "seq-account-2",
 			})
 			Expect(err).To(Succeed())
-			Expect(account2.Volumes["USD"].Balance).To(Equal("250")) // 200 + 50
+			Expect(account2.FindVolume("USD", "").Balance).To(Equal("250")) // 200 + 50
 		})
 
 		It("Should create a transaction with multiple postings", func() {
@@ -204,21 +204,21 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountA.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(accountA.FindVolume("USD", "").Balance).To(Equal("100"))
 
 			accountB, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountB.Volumes["USD"].Balance).To(Equal("200"))
+			Expect(accountB.FindVolume("USD", "").Balance).To(Equal("200"))
 
 			accountC, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-c",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountC.Volumes["USD"].Balance).To(Equal("300"))
+			Expect(accountC.FindVolume("USD", "").Balance).To(Equal("300"))
 		})
 
 		It("Should create a transaction with multiple assets", func() {
@@ -238,9 +238,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes).To(HaveLen(3))
-			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
-			Expect(account.Volumes["EUR"].Balance).To(Equal("50"))
-			Expect(account.Volumes["JPY"].Balance).To(Equal("1000"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(account.FindVolume("EUR", "").Balance).To(Equal("50"))
+			Expect(account.FindVolume("JPY", "").Balance).To(Equal("1000"))
 		})
 
 		It("Should create multiple transactions in bulk", func() {
@@ -281,7 +281,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Address).To(Equal("implicit-account"))
-			Expect(account.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
 		})
 
 		It("Should handle large amounts correctly", func() {
@@ -302,7 +302,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "large-amount-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Balance).To(Equal("99999999999999999999999999999"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("99999999999999999999999999999"))
 		})
 	})
 
@@ -369,7 +369,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "recipient",
 			})
 			Expect(err).To(Succeed())
-			Expect(recipient.Volumes["USD"].Balance).To(Equal("1000000"))
+			Expect(recipient.FindVolume("USD", "").Balance).To(Equal("1000000"))
 
 			// World's balance should be negative
 			world, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -377,7 +377,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "world",
 			})
 			Expect(err).To(Succeed())
-			Expect(world.Volumes["USD"].Balance).To(HavePrefix("-"))
+			Expect(world.FindVolume("USD", "").Balance).To(HavePrefix("-"))
 		})
 	})
 
@@ -453,9 +453,9 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "volume-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.Volumes["USD"].Input).To(Equal("1000"))
-			Expect(account.Volumes["USD"].Output).To(Equal("300"))
-			Expect(account.Volumes["USD"].Balance).To(Equal("700"))
+			Expect(account.FindVolume("USD", "").Input).To(Equal("1000"))
+			Expect(account.FindVolume("USD", "").Output).To(Equal("300"))
+			Expect(account.FindVolume("USD", "").Balance).To(Equal("700"))
 		})
 
 		It("Should handle circular transactions correctly", func() {
@@ -486,9 +486,9 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "cycle-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountA.Volumes["USD"].Input).To(Equal("200"))  // from world + cycle-c
-			Expect(accountA.Volumes["USD"].Output).To(Equal("100")) // to cycle-b
-			Expect(accountA.Volumes["USD"].Balance).To(Equal("100"))
+			Expect(accountA.FindVolume("USD", "").Input).To(Equal("200"))  // from world + cycle-c
+			Expect(accountA.FindVolume("USD", "").Output).To(Equal("100")) // to cycle-b
+			Expect(accountA.FindVolume("USD", "").Balance).To(Equal("100"))
 		})
 	})
 
@@ -684,12 +684,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv).To(HaveKey("ev-simple"))
 
 			// world is shared across tests in this Ordered context, so only check presence
-			Expect(pcv["world"].Volumes).To(HaveKey("USD"))
+			Expect(pcv["world"].FindVolume("USD", "")).NotTo(BeNil(), "expected USD entry on world")
 
 			// ev-simple is fresh — exact values are predictable
-			Expect(pcv["ev-simple"].Volumes).To(HaveKey("USD"))
-			Expect(pcv["ev-simple"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev-simple"].Volumes["USD"].Output).To(Equal("0"))
+			evSimple := pcv["ev-simple"].FindVolume("USD", "")
+			Expect(evSimple).NotTo(BeNil(), "expected USD entry on ev-simple")
+			Expect(evSimple.GetInput()).To(Equal("100"))
+			Expect(evSimple.GetOutput()).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple postings", func() {
@@ -704,10 +705,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv).To(HaveKey("ev-multi-a"))
 			Expect(pcv).To(HaveKey("ev-multi-b"))
 
-			Expect(pcv["ev-multi-a"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev-multi-a"].Volumes["USD"].Output).To(Equal("0"))
-			Expect(pcv["ev-multi-b"].Volumes["USD"].Input).To(Equal("200"))
-			Expect(pcv["ev-multi-b"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Input).To(Equal("100"))
+			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Input).To(Equal("200"))
+			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple assets", func() {
@@ -720,13 +721,15 @@ var _ = Describe("Transactions", Ordered, func() {
 			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
 			Expect(pcv).To(HaveKey("ev-multi-asset"))
 
-			vols := pcv["ev-multi-asset"].Volumes
-			Expect(vols).To(HaveKey("USD"))
-			Expect(vols).To(HaveKey("EUR"))
-			Expect(vols["USD"].Input).To(Equal("100"))
-			Expect(vols["USD"].Output).To(Equal("0"))
-			Expect(vols["EUR"].Input).To(Equal("50"))
-			Expect(vols["EUR"].Output).To(Equal("0"))
+			vba := pcv["ev-multi-asset"]
+			usd := vba.FindVolume("USD", "")
+			eur := vba.FindVolume("EUR", "")
+			Expect(usd).NotTo(BeNil(), "expected USD entry on ev-multi-asset")
+			Expect(eur).NotTo(BeNil(), "expected EUR entry on ev-multi-asset")
+			Expect(usd.GetInput()).To(Equal("100"))
+			Expect(usd.GetOutput()).To(Equal("0"))
+			Expect(eur.GetInput()).To(Equal("50"))
+			Expect(eur.GetOutput()).To(Equal("0"))
 		})
 
 		It("Should reflect cumulative volumes across sequential transactions", func() {
@@ -736,8 +739,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv1 := resp1.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv1["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
-			Expect(pcv1["ev-cumul"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
+			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Output).To(Equal("0"))
 
 			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
@@ -745,10 +748,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv2 := resp2.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv2["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
-			Expect(pcv2["ev-cumul"].Volumes["USD"].Output).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Input).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
+			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Output).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Input).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should work with force flag and expandVolumes", func() {
@@ -764,10 +767,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv).To(HaveKey("ev-force-src"))
 			Expect(pcv).To(HaveKey("ev-force-dst"))
 
-			Expect(pcv["ev-force-src"].Volumes["USD"].Input).To(Equal("0"))
-			Expect(pcv["ev-force-src"].Volumes["USD"].Output).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].Volumes["USD"].Input).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-force-src"].FindVolume("USD", "").Input).To(Equal("0"))
+			Expect(pcv["ev-force-src"].FindVolume("USD", "").Output).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Input).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes with Numscript transaction", func() {
@@ -787,8 +790,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			pcv := createdTx.PostCommitVolumes.VolumesByAccount
 			Expect(pcv).To(HaveKey("world"))
 			Expect(pcv).To(HaveKey("user:001"))
-			Expect(pcv["user:001"].Volumes["USD/2"].Input).To(Equal("100"))
-			Expect(pcv["user:001"].Volumes["USD/2"].Output).To(Equal("0"))
+			Expect(pcv["user:001"].FindVolume("USD/2", "").Input).To(Equal("100"))
+			Expect(pcv["user:001"].FindVolume("USD/2", "").Output).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes for each transaction in a bulk request", func() {
@@ -802,10 +805,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(resp.Logs).To(HaveLen(2))
 
 			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv1["ev-bulk-a"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv1["ev-bulk-a"].FindVolume("USD", "").Input).To(Equal("100"))
 
 			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
-			Expect(pcv2["ev-bulk-b"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv2["ev-bulk-b"].FindVolume("USD", "").Input).To(Equal("200"))
 		})
 
 		It("Should allow mixing expandVolumes=true and expandVolumes=false in bulk", func() {

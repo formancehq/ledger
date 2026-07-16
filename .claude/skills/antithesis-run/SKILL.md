@@ -98,13 +98,19 @@ docker build --platform linux/amd64 \
   -t "$ANTITHESIS_REPOSITORY/ledger-operator:$TAG" misc/operator
 docker push "$ANTITHESIS_REPOSITORY/ledger-operator:$TAG"
 
-# 4. Build & push workload.
+# 4. Build & push workload (+ the sidecar variant, which ships without the
+#    test tree so the Composer never schedules test commands into it).
 ( cd tests/antithesis/workload && \
   docker build --platform linux/amd64 \
     --build-arg GOARCH=amd64 --build-arg GOOS=linux \
     -f Dockerfile \
     -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$TAG" ../../.. && \
-  docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$TAG" )
+  docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$TAG" && \
+  docker build --platform linux/amd64 \
+    --build-arg GOARCH=amd64 --build-arg GOOS=linux \
+    -f Dockerfile --target sidecar \
+    -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:$TAG" ../../.. && \
+  docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:$TAG" )
 ```
 
 **Compose mode** — same image build/push, plus the etcd retag:

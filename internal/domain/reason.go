@@ -90,6 +90,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		return KindConflict
 	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW,
+		commonpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW,
+		commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED,
 		commonpb.ErrorReason_ERROR_REASON_NO_CHAPTER_OPEN,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSING,

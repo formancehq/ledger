@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil/flagbind"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil/flagbind"
 )
 
 // NewCommand returns the "update" command.

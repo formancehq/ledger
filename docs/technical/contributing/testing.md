@@ -319,7 +319,9 @@ restart. It catches:
 
 It exercises the chart of accounts, transactions and reverts (with post-commit
 volumes), account/transaction/ledger metadata, the typed-metadata schema, and
-the transient/ephemeral persistence classes.
+the transient/ephemeral persistence classes — and reads them back: account,
+whole-ledger, transaction-by-id, and declared-schema reads are all validated
+against the model.
 
 #### How it works
 
@@ -327,14 +329,21 @@ N workers fan out across a fleet of ledgers, dispatching bulks concurrently;
 the model mirrors the single Raft log (one global re-order buffer, one committed
 state across all ledgers). The pieces:
 
+The forward model is a standalone library under `tests/oracle`; the driver
+under `tests/antithesis/workload/bin/cmds/model/singleton_driver_model/` owns
+the harness around it:
+
 | File | Role |
 |------|------|
-| `model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. |
-| `checker.go` | Harness bookkeeping: the in-flight set, the re-order buffer, and the committed model state. |
-| `processor.go` | One goroutine that re-orders observed responses by log sequence and drains them into the committed state in commit order. |
-| `search.go` | `candidateBases` — enumerates the states the server could legitimately be in. |
-| `validate.go` | The conformance checks for committed bulks, failures, and reads. |
-| `actions.go` / `reads.go` | Random bulk generation; `GetAccount` / `GetLedger` read execution. |
+| `tests/oracle/model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. |
+| `tests/oracle/bulk.go` / `accessors.go` | The `Bulk` submission shape the model consumes; read-only accessors over model state for validators and tools. |
+| `tests/oracle/oracletest/` | Shared helpers for tests that drive the oracle. |
+| `tests/oracle/cmd/replay` | Offline replayer for `MODEL_DUMP_BATCHES` captures (see below). |
+| `checker.go` (driver) | Harness bookkeeping: the in-flight set, the re-order buffer, and the committed model state. |
+| `processor.go` (driver) | One goroutine that re-orders observed responses by log sequence and drains them into the committed state in commit order. |
+| `search.go` (driver) | `candidateBases` — enumerates the states the server could legitimately be in. |
+| `validate.go` (driver) | The conformance checks for committed bulks, failures, and reads. |
+| `actions.go` / `reads.go` (driver) | Random bulk generation; account, whole-ledger, transaction-by-id, and metadata-schema read execution. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -372,13 +381,34 @@ default. Common tunables (full list in the script header):
 | `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. |
 | `MODEL_DEBUG` | Enable driver debug logging. |
 | `MODEL_FAIL_FAST` | Stop on first finding (default); `0` runs the full duration. |
+| `MODEL_DUMP_BATCHES` | Log every submitted bulk (`[batch-dump]` lines) for deterministic offline replay through `tests/oracle/cmd/replay`. |
 | `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
+| `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
+
+#### Restore cycles (`--restore`, single node)
+
+`run_model_test.sh --restore` periodically quiesces the driver, takes an
+incremental backup, kills the node, bootstraps a fresh store from the backup
+(running the `RebuildDelta` replay), and relaunches on it — the driver then
+resumes and its ordinary checks validate the rebuilt state. The run fails if
+no cycle completed or any cycle failed. The driver-side knobs are
+`MODEL_RESTORE_INTERVAL` and `MODEL_RESTORE_TIMEOUT` (seconds; the timeout is
+the per-cycle lease after which the driver gives up waiting and resumes).
+
+On Antithesis (k8s template) the same driver rendezvous is serviced by the
+`restore-orchestrator` sidecar in the workload pod
+(`tests/antithesis/workload/restore-orchestrator.sh`), which drives the
+operator through a full disaster-recovery pass: quiesce-point backup, Cluster
+teardown (CR + PVCs), restore-mode round-trip (`ledgerctl restore download` /
+`finalize`), and the flip back to a full cluster. The
+`singleton_driver_model: restore cycle completed` Sometimes assertion in the
+report is the proof the path actually ran.
 
 #### Maintaining the model
 
-The model in `model.go` is a hand-written mirror of the server's *intended*
-behavior; nothing keeps the two in sync automatically. Treat them as one unit —
+The model in `tests/oracle/model.go` is a hand-written mirror of the server's
+*intended* behavior; nothing keeps the two in sync automatically. Treat them as one unit —
 when a change alters behavior the model relies on, update the model in the same
 change, or the next run will either cry wolf (model stricter than the server) or
 go blind (model more lenient than the server).
@@ -387,11 +417,19 @@ Where to make the matching change:
 
 | Server change | Model change |
 |---|---|
-| New request type or ledger action | Add a `case` to `applyOne` in `model.go` **and** a generator in `actions.go`. |
-| Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `model.go`. |
+| New request type or ledger action | Add a `case` to `applyOne` in `tests/oracle/model.go` **and** a generator in the driver's `actions.go`. |
+| Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `tests/oracle/model.go`. |
 | New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
 | New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
 | New persisted projection or read surface | Add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. |
+
+To diagnose a finding deterministically, capture the run with
+`MODEL_DUMP_BATCHES=1` and feed the dump back through the model offline:
+`go run ./tests/oracle/cmd/replay <dump-file> [target-ledger]` folds the
+committed bulks in log-sequence order (the server's true serialization) and
+prints each touched ledger's final model state; `--submits` additionally
+compares every bulk's model outcome to the server's, valid for single-worker
+runs where dispatch order is the serialization.
 
 The model is built to fail loud on anything it hasn't been taught: `Apply`
 panics on an unmodeled request type or action rather than skipping it — the same

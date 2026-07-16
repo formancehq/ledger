@@ -4,7 +4,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // Checker drives validation against the model: it owns the in-flight/pending
@@ -31,7 +33,7 @@ type Checker struct {
 	// inflight: dispatched bulks whose response hasn't been observed yet, keyed
 	// by ticket (their dispatch order). The value is what the serialization
 	// search (candidateBases) folds.
-	inflight map[uint64]Bulk
+	inflight map[uint64]oracle.Bulk
 
 	// pending: observed successes not yet drained, sorted by minSeq.
 	pending []*pendingObservation
@@ -47,7 +49,18 @@ type Checker struct {
 	// drain in global log-sequence order, so it is always the exact predecessor
 	// of the next bulk to validate, and the base candidateBases folds the
 	// in-flight set onto.
-	modelState GlobalState
+	modelState oracle.GlobalState
+
+	// receiptByRef maps a committed transaction's reference to the signed receipt
+	// the server returned for it, so generateRevert can exercise the
+	// receipt-carried revert path. Populated at commit (captureReceipts) and read
+	// during generation, both under mu.
+	receiptByRef map[string]string
+
+	// paused gates worker dispatch during a restore cycle; resumeCh is closed on
+	// resume so parked workers wake. Both guarded by mu (see restore.go).
+	paused   bool
+	resumeCh chan struct{}
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark
@@ -55,7 +68,7 @@ type Checker struct {
 // outstanding ops were dispatched after this bulk was observed.
 type observation struct {
 	ticket        uint64
-	bulk          Bulk
+	bulk          oracle.Bulk
 	resp          *servicepb.ApplyResponse
 	err           error
 	observeTicket uint64
@@ -68,13 +81,42 @@ type pendingObservation struct {
 	obs    observation
 }
 
-// NewChecker returns an empty checker; caller spawns the processor goroutine.
-func NewChecker(ledgerNames []string) *Checker {
+// NewChecker returns a checker seeded with each ledger's initial metadata schema
+// (declared at creation, see setupLedgers); caller spawns the processor
+// goroutine. The schema is replayed as SetMetadataFieldType orders — the server
+// records the identical declared types at creation (populateInitialSchema), so
+// the model's schema state matches the server's from the first bulk.
+func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
+	modelState := oracle.NewGlobalState()
+	for _, ledger := range ledgerNames {
+		cmds := schemas[ledger]
+		if len(cmds) == 0 {
+			continue
+		}
+
+		reqs := make([]*servicepb.Request, 0, len(cmds))
+		for _, cmd := range cmds {
+			reqs = append(reqs, &servicepb.Request{
+				Type: &servicepb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+						Ledger:     ledger,
+						TargetType: cmd.GetTargetType(),
+						Key:        cmd.GetKey(),
+						Type:       cmd.GetType(),
+					},
+				},
+			})
+		}
+
+		modelState = modelState.Apply(oracle.Bulk{Requests: reqs}).State
+	}
+
 	return &Checker{
-		ledgerNames: ledgerNames,
-		inflight:    map[uint64]Bulk{},
-		reads:       map[uint64]struct{}{},
-		incoming:    make(chan observation, incomingBuffer),
-		modelState:  NewGlobalState(),
+		ledgerNames:  ledgerNames,
+		inflight:     map[uint64]oracle.Bulk{},
+		reads:        map[uint64]struct{}{},
+		incoming:     make(chan observation, incomingBuffer),
+		modelState:   modelState,
+		receiptByRef: map[string]string{},
 	}
 }

@@ -120,11 +120,14 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 
 ### Backup Preparation on Restore
 
-Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It performs three Global-zone resets and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
+Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
 
 1. **Reset lastAppliedIndex**: The Raft applied index is reset to 0, so the restored cluster starts fresh.
 2. **Remove persisted config**: Node and cluster IDs are stripped for portability.
-3. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
+3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
+4. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
+5. **Drop persisted Raft peers**: Cluster membership is local to the source cluster; the booting node reseeds membership from its own config.
+6. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 

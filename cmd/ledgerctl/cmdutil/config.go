@@ -18,6 +18,7 @@ type Profile struct {
 	Server            string `json:"server"`
 	Insecure          bool   `json:"insecure,omitempty"`
 	TLSCaCert         string `json:"tlsCaCert,omitempty"`
+	TLSServerName     string `json:"tlsServerName,omitempty"`
 	SigningKey        string `json:"signingKey,omitempty"`
 	SigningKeyID      string `json:"signingKeyId,omitempty"`
 	ResponseVerifyKey string `json:"responseVerifyKey,omitempty"`
@@ -160,6 +161,8 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 		return ""
 	case "tls-ca-cert":
 		return p.TLSCaCert
+	case "tls-server-name":
+		return p.TLSServerName
 	case "signing-key":
 		return p.SigningKey
 	case "signing-key-id":

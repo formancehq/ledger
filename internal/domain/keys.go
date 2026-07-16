@@ -51,14 +51,20 @@ type AccountKey struct {
 }
 
 // AccountAssetKey identifies a single Pebble volume cell within a ledger by
-// its (account, asset) coordinates. It is the ledger-local subset of
+// its (account, asset, color) coordinates. It is the ledger-local subset of
 // VolumeKey (no LedgerName), used as map key in code that already scopes
 // data per ledger — exclusion sets in the index builder and the integrity
 // checker, transient/purged dedup helpers, etc. Keep this type plain (no
 // derived fields) so it is a value-equal map key.
+//
+// Color is part of the identity: two color buckets of the same (account,
+// asset) are distinct cells that can have different purge/keep fates. The
+// empty color is the uncolored bucket and is itself just another segregated
+// cell.
 type AccountAssetKey struct {
 	Account string
 	Asset   string
+	Color   string
 }
 
 type VolumeKey struct {
@@ -73,11 +79,16 @@ type VolumeKey struct {
 	// or aggregating.
 	AssetBase      string
 	AssetPrecision uint8
+
+	// Color segregates balances within the same (account, asset). The empty
+	// string is the "uncolored" bucket and is the default. Color values are
+	// constrained to ^[A-Z]*$ at admission time (matches numscript's rule).
+	Color string
 }
 
 // NewVolumeKey creates a VolumeKey with pre-parsed AssetBase and AssetPrecision,
 // avoiding re-parsing on every AppendBytes call in the hot path.
-func NewVolumeKey(ledgerName, account, asset string) VolumeKey {
+func NewVolumeKey(ledgerName, account, asset, color string) VolumeKey {
 	base, precision := ParseAssetPrecision(asset)
 
 	return VolumeKey{
@@ -85,11 +96,21 @@ func NewVolumeKey(ledgerName, account, asset string) VolumeKey {
 		Asset:          asset,
 		AssetBase:      base,
 		AssetPrecision: precision,
+		Color:          color,
 	}
 }
 
 // AppendBytes appends the canonical byte representation to dst and returns the
-// extended slice. Format: [ledgerName padded 64B][account][sep][asset_base][precision_byte].
+// extended slice.
+//
+// Format: [ledgerName padded 64B][account]\x00[color]\x00[asset_base][precision_byte].
+//
+// Putting color between account and asset (rather than at the end) preserves
+// prefix-scan semantics: scanning by (ledgerName, account) returns every color,
+// and scanning by (ledgerName, account, color) is a cheap fixed prefix lookup.
+// It also keeps precision as the trailing byte, which matters because precision
+// can legitimately be 0x00 (e.g. "EUR") — putting it last means no separator
+// follows it, so no encoding ambiguity arises.
 func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 	base := bk.AssetBase
 	precision := bk.AssetPrecision
@@ -101,6 +122,8 @@ func (bk VolumeKey) AppendBytes(dst []byte) []byte {
 
 	dst = appendLedgerName(dst, bk.LedgerName)
 	dst = append(dst, bk.Account...)
+	dst = append(dst, dal.CanonicalKeySepVolume)
+	dst = append(dst, bk.Color...)
 	dst = append(dst, dal.CanonicalKeySepVolume)
 	dst = append(dst, base...)
 	dst = append(dst, precision)
@@ -114,6 +137,12 @@ func (bk VolumeKey) Bytes() []byte {
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
+//
+// Layout after the ledger-name block: [account]\x00[color]\x00[asset_base][precision_byte].
+// `account` and `color` are split on their respective \x00 separators (no
+// validator allows \x00 inside either upstream); `asset_base` may itself be
+// empty (e.g. legacy data) but the trailing precision byte MUST be present,
+// so `assetPart` must be at least 1 byte.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
 	name, rest, err := readLedgerName(d)
 	if err != nil {
@@ -122,21 +151,22 @@ func (bk *VolumeKey) Unmarshal(d []byte) error {
 
 	bk.LedgerName = name
 
-	// The remaining bytes are [account][sep_volume=0x00][asset_base][precision_byte].
-	// CanonicalKeySepVolume is 0x00; account and asset_base are byte strings
-	// without embedded zero bytes (validated upstream).
-	before, after, ok := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
+	accountBytes, afterAccount, ok := bytes.Cut(rest, []byte{dal.CanonicalKeySepVolume})
 	if !ok {
-		return errors.New("invalid balance key bytes: missing account/asset separator")
+		return errors.New("invalid balance key bytes: missing account/color separator")
 	}
 
-	bk.Account = string(before)
+	colorBytes, assetPart, ok := bytes.Cut(afterAccount, []byte{dal.CanonicalKeySepVolume})
+	if !ok {
+		return errors.New("invalid balance key bytes: missing color/asset separator")
+	}
 
-	assetPart := after
-	if len(assetPart) < 2 {
+	if len(assetPart) < 1 {
 		return errors.New("invalid balance key bytes: asset part too short")
 	}
 
+	bk.Account = string(accountBytes)
+	bk.Color = string(colorBytes)
 	bk.AssetBase = string(assetPart[:len(assetPart)-1])
 	bk.AssetPrecision = assetPart[len(assetPart)-1]
 	bk.Asset = FormatAsset(bk.AssetBase, bk.AssetPrecision)
@@ -296,6 +326,15 @@ func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
 }
 
 var _ CanonicalBytes = (*TransactionReferenceKey)(nil)
+
+// LedgerScopedPrefix returns the fixed-width canonical prefix shared by every
+// ledger-scoped attribute key (the ledger name padded to
+// dal.LedgerNameFixedSize). Scans over ledger-scoped keys must use this, not
+// the raw name: an unpadded prefix also matches every ledger whose name
+// extends it ("pay" would match "payments").
+func LedgerScopedPrefix(name string) []byte {
+	return appendLedgerName(nil, name)
+}
 
 // LedgerKey identifies a ledger by name. Used as the attribute key for
 // LedgerInfo and Boundaries (keyed by name for name-based lookups).

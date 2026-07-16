@@ -19,7 +19,7 @@ func TestClusterPodName(t *testing.T) {
 	}{
 		{name: "ordinal 0", crName: "foo", ordinal: 0, expected: "ledger-foo-0"},
 		{name: "ordinal 2", crName: "foo", ordinal: 2, expected: "ledger-foo-2"},
-		{name: "name with dashes", crName: "my-svc", ordinal: 1, expected: "ledger-my-svc-1"},
+		{name: "name with dashes", crName: "my-cluster", ordinal: 1, expected: "ledger-my-cluster-1"},
 	}
 
 	for _, tt := range tests {

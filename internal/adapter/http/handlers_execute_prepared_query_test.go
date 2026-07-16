@@ -11,6 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -216,6 +217,128 @@ func TestHandleExecutePreparedQuery_UnknownMode(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	require.Contains(t, w.Body.String(), "BOGUS")
+}
+
+// TestHandleExecutePreparedQuery_AggregateEmitsColor pins that the aggregate
+// variant is serialized under the `aggregateResult` envelope key through the
+// same camelCase DTO as the dedicated /aggregate handler: `color` is always
+// present (including the uncolored bucket, as ""), amounts are decimal strings,
+// and a balance is computed. The previous raw-proto serialization dropped
+// `color` on uncolored rows (json:"color,omitempty") and leaked PascalCase
+// oneof wrapper keys.
+func TestHandleExecutePreparedQuery_AggregateEmitsColor(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			return &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+					Aggregate: &commonpb.AggregateResult{
+						Volumes: []*commonpb.AggregatedVolume{
+							{Asset: "USD", Color: "", Input: commonpb.NewUint256FromUint64(100), Output: commonpb.NewUint256FromUint64(30)},
+							{Asset: "USD", Color: "RED", Input: commonpb.NewUint256FromUint64(50), Output: commonpb.NewUint256FromUint64(0)},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"mode":"AGGREGATE_VOLUMES"}`),
+		map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	resp := decodeResponse[executePreparedQueryResponseJSON](t, w)
+	require.Nil(t, resp.Cursor, "aggregate response must not set the cursor variant")
+	require.NotNil(t, resp.AggregateResult)
+	vols := resp.AggregateResult.Volumes
+	require.Len(t, vols, 2)
+
+	// Uncolored bucket: color present as "" (not omitted), amounts as strings.
+	require.Equal(t, "", vols[0].Color)
+	require.Equal(t, "USD", vols[0].Asset)
+	require.Equal(t, "100", vols[0].Input)
+	require.Equal(t, "30", vols[0].Output)
+	require.Equal(t, "70", vols[0].Balance)
+
+	// Colored bucket carries its color verbatim.
+	require.Equal(t, "RED", vols[1].Color)
+	require.Equal(t, "50", vols[1].Balance)
+
+	// The raw body must be the camelCase `aggregateResult` envelope, carry the
+	// `color` key for the uncolored row, and must NOT leak the PascalCase oneof.
+	body := w.Body.String()
+	require.Contains(t, body, `"aggregateResult"`)
+	require.Contains(t, body, `"color":""`)
+	require.NotContains(t, body, `"Result"`)
+	require.NotContains(t, body, `"Aggregate"`)
+}
+
+// TestHandleExecutePreparedQuery_CursorShapeIsCamelCase pins that the LIST /
+// cursor variant is serialized under the `cursor` envelope key via
+// PreparedQueryCursor.MarshalJSON, not wrapped in the PascalCase Go oneof
+// envelope. The nested account volume row must carry camelCase keys,
+// decimal-string amounts, and `color` present even for the uncolored bucket.
+func TestHandleExecutePreparedQuery_CursorShapeIsCamelCase(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+			return &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+					Cursor: &commonpb.PreparedQueryCursor{
+						PageSize: 15,
+						HasMore:  true,
+						Next:     "nxt",
+						AccountData: []*commonpb.Account{
+							{Address: "alice", Volumes: []*commonpb.AccountVolume{
+								{Asset: "USD", Color: "", Volumes: &commonpb.VolumesWithBalance{Input: "100", Output: "30", Balance: "70"}},
+							}},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+		strings.NewReader(`{"pageSize":15}`),
+		map[string]string{
+			"ledgerName": "ledger1",
+			"queryName":  "my-query",
+		})
+
+	srv.handleExecutePreparedQuery(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	// No PascalCase Go oneof wrapper.
+	require.NotContains(t, body, `"Result"`)
+	require.NotContains(t, body, `"Cursor"`)
+	// camelCase `cursor` envelope key, no `aggregateResult` for this variant.
+	require.Contains(t, body, `"cursor"`)
+	require.NotContains(t, body, `"aggregateResult"`)
+	// camelCase cursor fields.
+	require.Contains(t, body, `"pageSize":15`)
+	require.Contains(t, body, `"hasMore":true`)
+	require.Contains(t, body, `"accountData"`)
+	// color is present on the uncolored account-volume row (not dropped).
+	require.Contains(t, body, `"color":""`)
+	// Amounts are decimal strings, not raw numbers.
+	require.Contains(t, body, `"input":"100"`)
+	require.Contains(t, body, `"balance":"70"`)
 }
 
 func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {

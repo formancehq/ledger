@@ -75,7 +75,7 @@ func (f *sourceSpec) build(t *testing.T) *MockValueSource {
 }
 
 func volKey(account, asset string) domain.VolumeKey {
-	return domain.NewVolumeKey("ledger", account, asset)
+	return domain.NewVolumeKey("ledger", account, asset, "")
 }
 
 func metaKey(account, key string) domain.MetadataKey {

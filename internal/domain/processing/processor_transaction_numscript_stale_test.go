@@ -70,7 +70,7 @@ func TestProduce_ChangedValueWithCompletedResolutionIsStale(t *testing.T) {
 		Input:  commonpb.NewUint256FromUint64(1000),
 		Output: commonpb.NewUint256FromUint64(0),
 	}
-	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2"), walletVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("test", "wallet", "USD/2", ""), walletVol.AsReader(), nil)
 
 	producer := newNumscriptProducer()
 	order := staleOrder()

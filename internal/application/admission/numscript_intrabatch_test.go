@@ -108,7 +108,7 @@ func posting(source, dest, asset string, amount uint64) *commonpb.Posting {
 func writeVolume(t *testing.T, admission *Admission, ledger, account, asset string, input, output uint64) {
 	t.Helper()
 
-	key := domain.NewVolumeKey(ledger, account, asset)
+	key := domain.NewVolumeKey(ledger, account, asset, "")
 	batch := admission.store.OpenWriteSession()
 	_, err := admission.attrs.Volume.Set(batch, key.Bytes(), &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(input),
@@ -219,7 +219,7 @@ send [USD/2 5] (source = @world destination = $dst)
 
 	// The dependent order's meta() resolved to ib:resolved, so that destination
 	// volume must have been preloaded — proving admission saw order 0's write.
-	destKey := domain.NewVolumeKey(testLedgerName, "ib:resolved", "USD/2")
+	destKey := domain.NewVolumeKey(testLedgerName, "ib:resolved", "USD/2", "")
 	require.True(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()),
 		"meta()-resolved destination from an earlier batch order must be discovered")
 }
@@ -312,7 +312,7 @@ send [USD/2 5] (source = @world destination = $dst)
 
 	// meta() resolved to am:resolved, so that destination volume must have been
 	// discovered — proving admission saw the preceding AddMetadata write.
-	destKey := domain.NewVolumeKey(testLedgerName, "am:resolved", "USD/2")
+	destKey := domain.NewVolumeKey(testLedgerName, "am:resolved", "USD/2", "")
 	require.True(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()),
 		"meta()-resolved destination from a preceding AddMetadata order must be discovered")
 }

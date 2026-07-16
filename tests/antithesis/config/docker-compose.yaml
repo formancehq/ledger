@@ -18,6 +18,11 @@ x-ledger-common: &ledger-common
     INSECURE: "true"
     DEBUG: "true"
 
+    # Signed transaction receipts, so the model driver exercises the
+    # receipt-carried revert path (admission verifies the receipt and reverses
+    # its claimed postings, bypassing the store fetch).
+    RECEIPT_SIGNING_KEY: "model-test-receipt-hmac-signing-key"
+
     # Chaos-tuned: lower thresholds to exercise more code paths under fault injection
     SNAPSHOT_THRESHOLD: "200"
     CACHE_ROTATION_THRESHOLD: "50"

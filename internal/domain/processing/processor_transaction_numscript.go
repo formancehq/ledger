@@ -158,15 +158,16 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			Destination: posting.Destination,
 			Amount:      commonpb.NewUint256(&u256Amount),
 			Asset:       posting.Asset,
+			Color:       posting.Color,
 		}
 
 		// Update source output (money going out)
-		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
+		sourceKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset, posting.Color)
 
 		sourceReader, err := readVolumeOrZero(s, sourceKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("source volume %s/%s", posting.Source, posting.Asset),
+				Operation: fmt.Sprintf("source volume %s/%s color=%q", posting.Source, posting.Asset, posting.Color),
 				Cause:     err,
 			}
 		}
@@ -174,6 +175,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeNotMaterialized{
 				Account: posting.Source,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "source",
 			}
 		}
@@ -187,6 +189,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeOverflow{
 				Account: posting.Source,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "output",
 				Amount:  u256Amount.Dec(),
 				Current: scratch.Dec(),
@@ -197,12 +200,12 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		s.Volumes().Put(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
-		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
+		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, posting.Color)
 
 		destReader, err := readVolumeOrZero(s, destKey)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("destination volume %s/%s", posting.Destination, posting.Asset),
+				Operation: fmt.Sprintf("destination volume %s/%s color=%q", posting.Destination, posting.Asset, posting.Color),
 				Cause:     err,
 			}
 		}
@@ -210,6 +213,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeNotMaterialized{
 				Account: posting.Destination,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "destination",
 			}
 		}
@@ -221,6 +225,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			return nil, &domain.ErrVolumeOverflow{
 				Account: posting.Destination,
 				Asset:   posting.Asset,
+				Color:   posting.Color,
 				Side:    "input",
 				Amount:  u256Amount.Dec(),
 				Current: scratch.Dec(),
@@ -349,7 +354,11 @@ type scopeValueSource struct {
 }
 
 func (s *scopeValueSource) Balance(account, asset string) (*big.Int, error) {
-	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
+	// #1560 (EN-1406) resolves dependencies through the upstream
+	// ResolveDependencies API, which is color-agnostic: colored/scoped balances
+	// are rejected earlier (domain.ErrColoredBalanceUnsupported), so every read
+	// here targets the uncolored bucket ("").
+	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset, "")
 
 	vol, err := readVolumeOrZero(s.store, volumeKey)
 	if err != nil {

@@ -26,11 +26,46 @@ These flags are available for all commands:
 | `--server` | `localhost:8888` | gRPC server address |
 | `--insecure` | `false` | Use insecure connection (no TLS) |
 | `--tls-ca-cert` | | Path to CA certificate file (PEM) for server verification |
+| `--tls-server-name` | | Hostname to verify against the server certificate SANs, overriding the `--server` host. Use when dialing by IP or a name the certificate does not cover (env: `LEDGERCTL_TLS_SERVER_NAME`) |
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
 | `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
 | `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
+
+### TLS server name (verifying by name while dialing by IP)
+
+TLS verification matches the hostname in `--server` against the server
+certificate's Subject Alternative Names (SANs). When the two cannot line up, use
+`--tls-server-name` to override the verification hostname independently of the
+dial address.
+
+The common case is running `ledgerctl` **from inside a TLS cluster pod**. The
+operator-issued certificate covers the in-cluster DNS names only
+(`<pod>.<cluster>-headless.<namespace>.svc.cluster.local`,
+`<cluster>.<namespace>.svc.cluster.local`) and deliberately never `localhost`
+or `127.0.0.1`. Dialing the default `localhost:8888` therefore fails with a
+certificate name mismatch. Two ways to fix it:
+
+```bash
+# Option A — dial the in-cluster FQDN directly (matches the cert SANs)
+ledgerctl \
+  --server "$HOSTNAME.ledger-<cluster>-headless.$POD_NAMESPACE.svc.cluster.local:8888" \
+  --tls-ca-cert "$TLS_CA_CERT_FILE" \
+  ledgers list
+
+# Option B — dial by IP/loopback, verify against the cert name
+ledgerctl \
+  --server 127.0.0.1:8888 \
+  --tls-server-name "ledger-<cluster>.<namespace>.svc.cluster.local" \
+  --tls-ca-cert "$TLS_CA_CERT_FILE" \
+  ledgers list
+```
+
+`--tls-server-name` is rejected together with `--insecure` (conflicting intent —
+no TLS vs. verify against this name), matching the `--tls-ca-cert` behavior. It
+can also be pinned in a profile (`tlsServerName`) so it does not have to be
+repeated on every invocation.
 
 ### Read Consistency
 
@@ -1361,7 +1396,7 @@ ledgerctl transactions create [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--posting` | | Posting in format: `source,destination,amount,asset` (can be repeated) |
+| `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
 | `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
 | `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
 | `--reference` | | Transaction reference |
@@ -1392,7 +1427,25 @@ ledgerctl transactions create --ledger my-ledger \
 ledgerctl transactions create --ledger my-ledger \
   --posting "empty-account,destination,1000,USD" \
   --force
+
+# Colored postings (segregated balances per (account, asset, color)).
+# Color must match ^[A-Z]*$. An empty/missing color is the uncolored bucket
+# and is itself segregated from every colored bucket.
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,treasury,1000,USD/2,GRANTS"
+
+# Mixed colored and uncolored postings in a single transaction
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,treasury,500,USD/2" \
+  --posting "world,treasury,500,USD/2,OPS"
 ```
+
+**Inspecting colored balances:**
+
+`ledgerctl accounts get` lists one row per `(asset, color)` tuple. To sum
+every colored bucket of the same asset into a single uncolored entry, pass
+`?collapseColors=true` on the HTTP endpoint (the CLI surfaces the raw,
+segregated view by design).
 
 **Creating transactions with Numscript:**
 
@@ -3026,6 +3079,7 @@ ledgerctl profile create <name> --server <addr> [flags]
 | `--server` | *(required)* | gRPC server address |
 | `--insecure` | `false` | Use insecure connection (no TLS) |
 | `--tls-ca-cert` | | Path to CA certificate file (PEM) |
+| `--tls-server-name` | | Hostname to verify against the server certificate SANs, overriding the `--server` host |
 | `--use` | `false` | Set this profile as the active profile |
 
 **Behavior:**
@@ -3065,7 +3119,7 @@ ledgerctl profile list
 
 ```bash
 ledgerctl profile list
-#    NAME     SERVER                          INSECURE  TLS CA CERT
+#    NAME     SERVER                          INSECURE  TLS CA CERT       TLS SERVER NAME
 # *  prod     ledger.prod.example.com:443
 #    local    localhost:8888                  true
 #    staging  ledger.staging.example.com:443            /path/to/ca.pem

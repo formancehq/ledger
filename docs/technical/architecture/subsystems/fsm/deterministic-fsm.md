@@ -466,7 +466,7 @@ FSM flushes at apply time (batch, no sync):
 
 ### 12.3 Backup preparation (backup only)
 
-There is exactly one entry per canonical key, so there is no attribute compaction. Backup preparation (`PrepareForBackup`) leaves the attribute zone byte-for-byte intact and performs only three Global-zone resets: applied index → 0, persisted config deleted, and persisted bloom blocks dropped.
+There is exactly one entry per canonical key, so there is no attribute compaction. Backup preparation (`PrepareForBackup`) leaves the attribute zone byte-for-byte intact and only resets cluster-local and checkpoint-era state: applied index → 0, persisted config deleted, cluster-transient zone wiped, persisted bloom blocks and Raft peers dropped, and the cache zone cleared (checkpoint-era cache rows predate the replayed delta and would otherwise serve stale CacheHits on the restored node).
 
 ### 12.4 Pebble key layout
 

@@ -25,8 +25,8 @@ func TestProcessCreateTransaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "bank", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "bank", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
 
 	// Source has 1000 input, 0 output -> balance = 1000
 	sourceVolume := &raftcmdpb.VolumePair{
@@ -103,7 +103,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
 
 	// Source has only 50 balance (100 input - 50 output)
 	sourceVolume := &raftcmdpb.VolumePair{
@@ -154,8 +154,8 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
+	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
 
 	// World has negative balance (but "world" bypasses balance check)
 	worldVolume := &raftcmdpb.VolumePair{
@@ -1065,8 +1065,8 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "merchant", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "merchant", "USD", "")
 
 	// Source has only 50 balance (100 input - 50 output) - not enough for 100
 	sourceVolume := &raftcmdpb.VolumePair{
@@ -1144,8 +1144,8 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "users:new", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "merchant", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "users:new", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "merchant", "USD", "")
 
 	// Source has zero balance, force=true skips balance check
 	zeroVol := &raftcmdpb.VolumePair{
@@ -1371,8 +1371,8 @@ func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "users:alice", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "users:alice", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -1438,8 +1438,8 @@ func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
-	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "users:bob", "USD")
+	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "users:bob", "USD", "")
 
 	zeroVol := &raftcmdpb.VolumePair{
 		Input:  commonpb.NewUint256FromUint64(0),
@@ -1519,8 +1519,8 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 		},
 	}
 
-	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD")
-	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD")
+	worldKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
+	destKey := domain.NewVolumeKey("test-ledger", "users:123", "USD", "")
 	zero := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
 
 	metaKey := domain.MetadataKey{

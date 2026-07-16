@@ -79,19 +79,19 @@ Each attribute type has a single entry per canonical key (last-write-wins).
 
 | Sub-prefix | Attribute | Canonical Key Format |
 |------------|-----------|---------------------|
-| `0x01` | Volumes | `[ledgerID BE 4B][account]\x00[asset_base][precision]` |
-| `0x02` | Account Metadata | `[ledgerID BE 4B][account]\x01[key]` |
-| `0x03` | Transaction State | `[ledgerID BE 4B]\x02[txID 8B]` |
+| `0x01` | Volumes | `[ledgerName 64B][account]\x00[color]\x00[asset_base][precision]` |
+| `0x02` | Account Metadata | `[ledgerName 64B][account]\x01[key]` |
+| `0x03` | Transaction State | `[ledgerName 64B]\x02[txID 8B]` |
 | `0x04` | Ledger Info | `[ledger name]` |
 | `0x05` | Boundaries | `[ledger name]` |
-| `0x06` | References | `[ledgerID BE 4B][reference]` |
-| `0x07` | Ledger Metadata | `[ledgerID BE 4B]\x01[key]` |
+| `0x06` | References | `[ledgerName 64B][reference]` |
+| `0x07` | Ledger Metadata | `[ledgerName 64B]\x01[key]` |
 | `0x08` | Sink Configs | `[name]` |
-| `0x09` | Numscript Versions | `[ledgerID BE 4B][name]` |
-| `0x0A` | Numscript Contents | `[ledgerID BE 4B][name]\x00[version]` |
-| `0x0B` | Prepared Queries | `[ledgerID BE 4B][name]` |
+| `0x09` | Numscript Versions | `[ledgerName 64B][name]` |
+| `0x0A` | Numscript Contents | `[ledgerName 64B][name]\x00[version]` |
+| `0x0B` | Prepared Queries | `[ledgerName 64B][name]` |
 
-> **Note:** `LedgerKey` (used for Ledger Info and Boundaries) uses the string-based ledger name, because those entries are looked up by name. All other ledger-scoped keys use the numeric `uint32` ledger ID (big-endian, 4 bytes) for compact encoding and to support future ledger renames without rewriting data.
+> **Note:** All ledger-scoped attribute keys are prefixed by the fixed-width **64-byte, zero-padded ledger name** (`LedgerScopedPrefix`), which gives uniform prefix-scan semantics (e.g. scanning by `(ledgerName, account)` returns every color of a volume). `LedgerKey` (Ledger Info and Boundaries) uses the bare ledger-name string, because those entries are looked up by name. For volumes the color is placed **between** account and asset (`[account]\x00[color]\x00[asset_base]`) so a `(ledgerName, account)` prefix scan still returns all colors of an account.
 
 See [System Attributes](../attributes/attributes.md) and [Attribute Key Hashing](../attributes/key-hashing.md) for the caching model and U128 hash key system.
 
@@ -165,7 +165,7 @@ Singleton keys for system-wide state:
 Volumes use **last-write-wins** semantics with a single entry per canonical key:
 
 ```
-Key:   [0x01][0x01][ledgerID BE 4B][account]\x00[asset_base][precision]
+Key:   [0x01][0x01][ledgerName 64B][account]\x00[color]\x00[asset_base][precision]
 Value: VolumePair protobuf (Input + Output as Uint256)
 ```
 

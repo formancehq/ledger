@@ -99,7 +99,7 @@ func DiscoverNumscriptDependencies(
 	// preload set is a set of volumes to load, and the color is irrelevant to
 	// which Pebble/cache entry is touched.
 	for dep := range resolved.AccountsReads {
-		result.ReadVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset)] = struct{}{}
+		result.ReadVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, "")] = struct{}{}
 	}
 
 	for dep := range resolved.AccountsWrites {
@@ -113,7 +113,7 @@ func DiscoverNumscriptDependencies(
 		if dep.Scope != "" || dep.Color != "" {
 			return nil, domain.ErrColoredBalanceUnsupported
 		}
-		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset)] = struct{}{}
+		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, "")] = struct{}{}
 	}
 
 	for dep := range resolved.MetaReads {
@@ -176,10 +176,10 @@ func DiscoverNumscriptDependencies(
 		}
 		// balance = input − output. Source is debited (balance −amount), the
 		// destination is credited (balance +amount).
-		srcKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset)
+		srcKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset, "")
 		addBalanceDelta(result.NetBalanceDeltas, srcKey, new(big.Int).Neg(posting.Amount))
 
-		dstKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset)
+		dstKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, "")
 		addBalanceDelta(result.NetBalanceDeltas, dstKey, posting.Amount)
 	}
 

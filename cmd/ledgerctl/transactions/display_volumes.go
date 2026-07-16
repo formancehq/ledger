@@ -9,6 +9,8 @@ import (
 )
 
 // renderPostCommitVolumes displays a PostCommitVolumes table in the CLI output.
+// Volumes are listed per (account, asset, color). The "" color is rendered as
+// "-" so the uncolored bucket stands out in the table.
 func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes) error {
 	if len(pcv.GetVolumesByAccount()) == 0 {
 		return nil
@@ -18,33 +20,28 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes) error {
 	pterm.Println("Post-Commit Volumes:")
 
 	table := pterm.TableData{
-		{"ACCOUNT", "ASSET", "INPUT", "OUTPUT"},
+		{"ACCOUNT", "ASSET", "COLOR", "INPUT", "OUTPUT"},
 	}
 
-	// Sort accounts for stable output
 	accounts := make([]string, 0, len(pcv.GetVolumesByAccount()))
 	for account := range pcv.GetVolumesByAccount() {
 		accounts = append(accounts, account)
 	}
-
 	sort.Strings(accounts)
 
 	for _, account := range accounts {
 		vba := pcv.GetVolumesByAccount()[account]
-
-		// Sort assets for stable output
-		assets := make([]string, 0, len(vba.GetVolumes()))
-		for asset := range vba.GetVolumes() {
-			assets = append(assets, asset)
-		}
-
-		sort.Strings(assets)
-
-		for _, asset := range assets {
-			v := vba.GetVolumes()[asset]
+		// VolumesByAssets.Volumes is sorted by (asset, color) server-side.
+		for _, entry := range vba.GetVolumes() {
+			v := entry.GetVolumes()
+			displayColor := entry.GetColor()
+			if displayColor == "" {
+				displayColor = "-"
+			}
 			table = append(table, []string{
 				account,
-				asset,
+				entry.GetAsset(),
+				displayColor,
 				v.GetInput(),
 				v.GetOutput(),
 			})

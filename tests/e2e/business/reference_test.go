@@ -258,7 +258,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 				Address: account,
 			})
 			Expect(err).To(Succeed())
-			Expect(accountResp.GetVolumes()["USD"].GetInput()).To(Equal("72"))
+			Expect(accountResp.FindVolume("USD", "").GetInput()).To(Equal("72"))
 		})
 
 		It("Should reject a skippable_reasons entry that is not in the operation's whitelist", func() {

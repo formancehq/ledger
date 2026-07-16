@@ -75,7 +75,7 @@ func NewCreateCommand() *cobra.Command {
 		Long: `Create a new transaction via gRPC.
 
 Postings can be provided via flag, or use a Numscript file.
-Flag format: --posting "source,destination,amount,asset"
+Flag format: --posting "source,destination,amount,asset[,color]"
 
 Examples:
   ledgerctl transactions create --ledger my-ledger --posting "world,bank,1000,USD"
@@ -88,7 +88,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().StringArray("posting", nil, "Posting in format: source,destination,amount,asset (can be repeated)")
+	cmd.Flags().StringArray("posting", nil, "Posting in format: source,destination,amount,asset[,color] (can be repeated)")
 	cmd.Flags().String("script", "", "Path to a Numscript file (mutually exclusive with --posting)")
 	cmd.Flags().StringArray("var", nil, "Script variable in format: name=value (can be repeated, only with --script)")
 	cmd.Flags().String("reference", "", "Transaction reference")
@@ -460,10 +460,14 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		pterm.Println("Postings:")
 
 		postingsTable := pterm.TableData{
-			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
+			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET", "COLOR"},
 		}
 
 		for i, posting := range tx.GetPostings() {
+			color := posting.GetColor()
+			if color == "" {
+				color = "-"
+			}
 			postingsTable = append(postingsTable, []string{
 				strconv.Itoa(i + 1),
 				posting.GetSource(),
@@ -471,6 +475,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				posting.GetDestination(),
 				posting.GetAmount().Dec(),
 				posting.GetAsset(),
+				color,
 			})
 		}
 
@@ -512,20 +517,28 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// parsePosting parses a posting from string format "source,destination,amount,asset".
+// parsePosting parses a posting from string format
+//   - "source,destination,amount,asset"            (uncolored, 4 fields)
+//   - "source,destination,amount,asset,color"      (colored,   5 fields)
+//
+// The color field is optional. An empty fifth field is treated as no color.
 func parsePosting(s string) (*commonpb.Posting, error) {
 	parts := strings.Split(s, ",")
-	if len(parts) != 4 {
-		return nil, errors.New("expected format: source,destination,amount,asset")
+	if len(parts) != 4 && len(parts) != 5 {
+		return nil, errors.New("expected format: source,destination,amount,asset[,color]")
 	}
 
 	source := strings.TrimSpace(parts[0])
 	destination := strings.TrimSpace(parts[1])
 	amountStr := strings.TrimSpace(parts[2])
 	asset := strings.TrimSpace(parts[3])
+	color := ""
+	if len(parts) == 5 {
+		color = strings.TrimSpace(parts[4])
+	}
 
 	if source == "" || destination == "" || amountStr == "" || asset == "" {
-		return nil, errors.New("all fields are required")
+		return nil, errors.New("source, destination, amount and asset are required")
 	}
 
 	amount, ok := new(big.Int).SetString(amountStr, 10)
@@ -533,7 +546,7 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 		return nil, fmt.Errorf("invalid amount: %s", amountStr)
 	}
 
-	return commonpb.NewPosting(source, destination, asset, amount), nil
+	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
 }
 
 // promptVariable prompts the user for a Numscript variable value based on its type.

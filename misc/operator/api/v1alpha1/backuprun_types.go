@@ -35,7 +35,7 @@ const (
 // BackupRunSpec defines the desired state of a BackupRun.
 type BackupRunSpec struct {
 	// BackupRef is the name of the parent Backup in the same namespace.
-	// Destination and serviceRef are inherited from the parent.
+	// Destination and clusterRef are inherited from the parent.
 	// +kubebuilder:validation:Required
 	BackupRef string `json:"backupRef"`
 

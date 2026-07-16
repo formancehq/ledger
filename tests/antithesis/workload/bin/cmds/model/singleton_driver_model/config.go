@@ -65,8 +65,22 @@ var metaValuePool = []string{
 	"200", "-1", "-200", "40000", "5000000000", "030",
 }
 
-// Field types declared by SetMetadataFieldType (string, bool, every
-// signed/unsigned int width), exercising the schema declare/retype apply path.
+// Typed-value pools, used alongside metaValuePool so metadata writes exercise
+// every MetadataValue wire kind, not just strings. The server stores values
+// verbatim (a declared field type is an index hint, not applied on read), so
+// each kind must round-trip unchanged. Small pools keep same-key collisions
+// frequent. Values straddle the sized-int boundaries and include zero, negative,
+// and pre-1970 datetimes.
+var (
+	metaIntPool          = []int64{0, 1, -1, 42, -200, 5000000000}
+	metaUintPool         = []uint64{0, 1, 42, 200, 40000, 5000000000}
+	metaDatetimePool     = []int64{0, 1, -1000000, 1700000000000000} // microseconds since the Unix epoch
+	metaNullOriginalPool = []string{"", "null", "030"}
+)
+
+// Field types declared by SetMetadataFieldType (string, bool, datetime, and
+// every signed/unsigned int width), exercising the schema declare/retype apply
+// path across the full MetadataType set.
 var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_STRING,
 	commonpb.MetadataType_METADATA_TYPE_INT64,
@@ -78,6 +92,7 @@ var metaTypePool = []commonpb.MetadataType{
 	commonpb.MetadataType_METADATA_TYPE_UINT8,
 	commonpb.MetadataType_METADATA_TYPE_UINT16,
 	commonpb.MetadataType_METADATA_TYPE_UINT32,
+	commonpb.MetadataType_METADATA_TYPE_DATETIME,
 }
 
 // Targets whose metadata schema the model tracks.
@@ -110,3 +125,20 @@ const workerLoopPause = 100 * time.Millisecond
 
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
+
+// --- Restore cycle ------------------------------------------------------
+
+// Poll cadence while waiting for the driver to fully drain before a backup.
+const quiescePoll = 25 * time.Millisecond
+
+// Poll cadence while waiting for the external orchestrator to finish a restore.
+const restorePoll = 200 * time.Millisecond
+
+// Default hard cap (seconds) on one restore cycle when MODEL_RESTORE_TIMEOUT is
+// unset. The cap is a lease: a dead orchestrator cannot park workers forever.
+// A k8s restore (cluster teardown, download, rejoin — under fault injection)
+// takes far longer than the local single-node swap, so the environment sets it.
+const defaultRestoreTimeoutSecs = 180
+
+// Base restore-cycle interval (seconds) when MODEL_RESTORE_INTERVAL is unset.
+const defaultRestoreIntervalSecs = 90

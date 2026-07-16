@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet drives the backup
@@ -40,7 +40,7 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 	backup := &ledgerv1alpha1.Backup{
 		ObjectMeta: metav1.ObjectMeta{Name: "bk", Namespace: namespace},
 		Spec: ledgerv1alpha1.BackupSpec{
-			ServiceRef: crName,
+			ClusterRef: crName,
 			Destination: ledgerv1alpha1.BackupDestination{
 				Driver: "s3",
 				S3:     &ledgerv1alpha1.S3Config{Bucket: "my-bucket", Region: "eu-west-1"},

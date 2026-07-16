@@ -5,9 +5,13 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 )
 
 // handleGetAccount handles GET /{ledgerName}/accounts/{address} to retrieve an account.
+// The optional ?collapseColors=true query param sums every colored bucket of
+// the same asset into a single entry with color="" in the response.
 func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
@@ -29,7 +33,11 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	account, err := s.backend.GetAccount(r.Context(), ledgerName, address)
+	opts := ctrl.GetAccountOptions{
+		CollapseColors: queryParamBool(r, "collapseColors"),
+	}
+
+	account, err := s.backend.GetAccount(r.Context(), ledgerName, address, opts)
 	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"ledger":  ledgerName,

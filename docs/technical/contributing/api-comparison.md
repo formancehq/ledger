@@ -144,11 +144,35 @@ This document compares the POC's API with the original Formance ledger API and d
 
 **Numscript Experimental Features (available, require `#![feature(...)]` opt-in):**
 - ✅ Account interpolation (dynamic addresses like `@escrow:$order_id`)
-- ✅ Asset colors (fund origin tracking)
+- ✅ Asset colors — promoted to first-class posting field. Postings carry
+  `color: string` and balances are strictly segregated per
+  `(account, asset, color)`. The empty color is the uncolored bucket and
+  is itself segregated from every colored bucket. Color values match
+  `^[A-Z]*$` and are immutable once carried by funds. See "Color of money
+  semantics" below.
 - ✅ `get_amount()` / `get_asset()` functions
 - ✅ Mid-script function calls (balance queries during execution)
 - ✅ `oneof` selector (conditional routing)
 - ✅ `overdraft()` function (dynamic overdraft calculation)
+
+**Color of money semantics (new in this POC):**
+- `Posting.color` is exposed on every read/write path. Direct postings
+  accept the new field as the optional fifth component of the
+  `--posting source,destination,amount,asset[,color]` syntax on
+  `ledgerctl transactions create`.
+- `Account.volumes` is a deterministic sorted list of
+  `{asset, color, volumes}` entries. The HTTP query parameter
+  `?collapseColors=true` on `GET /{ledger}/accounts/{address}` sums every
+  colored bucket of the same asset into a single entry under `color: ""`.
+- `AggregatedVolume.color` is set on every entry returned by
+  `GET /{ledger}/volumes`. The same `?collapseColors=true` flag collapses
+  the result to one entry per `(asset, precision)`.
+- The double-entry invariant holds per `(asset, color)` bucket: each
+  segregated bucket is its own conservation universe.
+- Numscript `source = @acc \ "RED"` produces a `Posting` with
+  `Color = "RED"` and only draws from the matching bucket. Spending more
+  than the bucket holds returns `ErrInsufficientFunds` even when other
+  colored or uncolored buckets have plenty.
 
 See [Numscript Guide](./numscript.md) for complete documentation.
 

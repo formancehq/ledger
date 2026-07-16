@@ -165,6 +165,15 @@ func TestSubcommandLocalFlagsIgnoreBareEnv(t *testing.T) {
 			bareEnv: "SIGNING_KEY",
 		},
 		{
+			// tls-server-name is owned: profile create redeclares it locally, so a
+			// stray bare TLS_SERVER_NAME must not populate --tls-server-name and
+			// get persisted into the profile — only LEDGERCTL_TLS_SERVER_NAME may.
+			name:    "profile create --tls-server-name ignores bare TLS_SERVER_NAME",
+			path:    []string{"profile", "create"},
+			flag:    "tls-server-name",
+			bareEnv: "TLS_SERVER_NAME",
+		},
+		{
 			name:    "auth generate-token --signing-key ignores bare SIGNING_KEY",
 			path:    []string{"auth", "generate-token"},
 			flag:    "signing-key",

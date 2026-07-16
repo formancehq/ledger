@@ -161,16 +161,23 @@ func IsFreezableFailure(k ErrorKind) bool {
 // rename an existing constant. Each constant appears in exactly one
 // Reason() implementation below.
 const (
-	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
-	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
-	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionReferenceNotFound  = "TRANSACTION_REFERENCE_NOT_FOUND"
-	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
-	ErrReasonVolumeOverflow                = "VOLUME_OVERFLOW"
+	ErrReasonLedgerAlreadyExists          = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound               = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                = "LEDGER_DELETED"
+	ErrReasonIdempotencyKeyConflict       = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionReferenceNotFound = "TRANSACTION_REFERENCE_NOT_FOUND"
+	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
+	ErrReasonVolumeOverflow               = "VOLUME_OVERFLOW"
+	// ErrReasonAggregateOverflow is the wire constant for the read-side
+	// aggregator overflow. The error type itself (query.ErrAggregateOverflow)
+	// lives in internal/query — it is a query-only outcome, not FSM-emitted —
+	// but the reason string and its KindForReason classification are the
+	// shared wire contract and stay here.
+	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
+	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
@@ -464,6 +471,11 @@ var (
 	ErrSigningKeyIDRequired    = NewValidationSentinel("signing key id is required")
 	ErrSigningKeyIDInvalidChar = NewValidationSentinel("signing key id must contain only printable ASCII (0x20–0x7E)")
 	ErrSigningKeyIDTooLong     = NewValidationSentinel("signing key id exceeds maximum length of 256 bytes")
+	// Color sentinels stay local: color is a ledger-internal posting
+	// dimension label, not part of the Formance-wide invariants in
+	// github.com/formancehq/invariants. See ValidateColor in validation.go.
+	ErrColorInvalid = NewValidationSentinel("color must match ^[A-Z]*$ (uppercase letters only)")
+	ErrColorTooLong = NewValidationSentinel("color exceeds maximum length of 32 bytes")
 	// ErrLedgerNameRequired moved to validation.go; it wraps the
 	// github.com/formancehq/invariants sentinel.
 )
@@ -608,23 +620,68 @@ func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
 
-// ErrInsufficientFunds — source account does not have enough balance.
+// ErrInsufficientFunds is returned when a source account does not have enough
+// balance in the requested (asset, color) bucket. The empty color is the
+// uncolored bucket and is segregated from any colored bucket of the same
+// (account, asset).
+//
+// ColorKnown disambiguates the two meanings of an empty Color on the wire. The
+// direct-posting path resolves the exact source bucket, so an empty Color there
+// is the genuine uncolored bucket (ColorKnown=true). The Numscript path cannot:
+// numscriptlib.MissingFundsErr carries only {Asset, Needed, Available, Range}
+// and never the resolved (account, color), so a colored spend surfaces here
+// with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
+// Metadata() therefore omits the color key entirely when the color is unknown,
+// so a client never mistakes an unresolved Numscript failure for a definite
+// hit on the uncolored bucket. When a future numscript bump attaches the
+// resolved bucket to MissingFundsErr, the conversion path can set the real
+// Color with ColorKnown=true and this ambiguity disappears.
 type ErrInsufficientFunds struct {
-	Account string
-	Asset   string
-	Amount  string // requested amount (decimal string)
-	Balance string // available balance (decimal string)
+	Account    string
+	Asset      string
+	Color      string
+	ColorKnown bool   // false only on the Numscript path where Color is unresolved
+	Amount     string // requested amount (decimal string)
+	Balance    string // available balance (decimal string)
 }
 
 func (e *ErrInsufficientFunds) Error() string {
+	if !e.ColorKnown {
+		return fmt.Sprintf(
+			"insufficient funds on account %q for asset %s (color unresolved): needed %s, available %s",
+			e.Account, e.Asset, e.Amount, e.Balance,
+		)
+	}
+
+	if e.Color == "" {
+		return fmt.Sprintf(
+			"insufficient funds on account %q for asset %s: needed %s, available %s",
+			e.Account, e.Asset, e.Amount, e.Balance,
+		)
+	}
+
 	return fmt.Sprintf(
-		"insufficient funds on account %q for asset %s: needed %s, available %s",
-		e.Account, e.Asset, e.Amount, e.Balance,
+		"insufficient funds on account %q for asset %s color %q: needed %s, available %s",
+		e.Account, e.Asset, e.Color, e.Amount, e.Balance,
 	)
 }
 func (*ErrInsufficientFunds) Reason() string { return ErrReasonInsufficientFunds }
 func (e *ErrInsufficientFunds) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
+	m := map[string]string{
+		"account": e.Account,
+		"asset":   e.Asset,
+		"amount":  e.Amount,
+		"balance": e.Balance,
+	}
+	// Only publish color when the failing bucket is actually resolved. On the
+	// Numscript path Color is unknown (see the type doc) — emitting an empty
+	// string there would be read as a definite hit on the uncolored bucket, so
+	// we omit the key entirely and let clients treat its absence as "unknown".
+	if e.ColorKnown {
+		m["color"] = e.Color
+	}
+
+	return m
 }
 
 // ErrVolumeOverflow — a posting would push an account's volume past 2^256.
@@ -636,6 +693,7 @@ func (e *ErrInsufficientFunds) Metadata() map[string]string {
 type ErrVolumeOverflow struct {
 	Account string
 	Asset   string
+	Color   string
 	Side    string // "input" or "output"
 	Amount  string // requested amount (decimal string)
 	Current string // current volume on that side (decimal string)
@@ -643,8 +701,8 @@ type ErrVolumeOverflow struct {
 
 func (e *ErrVolumeOverflow) Error() string {
 	return fmt.Sprintf(
-		"%s volume overflow on account %q for asset %s: current=%s + amount=%s exceeds 2^256",
-		e.Side, e.Account, e.Asset, e.Current, e.Amount,
+		"%s volume overflow on account %q for asset %s color=%q: current=%s + amount=%s exceeds 2^256",
+		e.Side, e.Account, e.Asset, e.Color, e.Current, e.Amount,
 	)
 }
 func (*ErrVolumeOverflow) Reason() string { return ErrReasonVolumeOverflow }
@@ -652,10 +710,25 @@ func (e *ErrVolumeOverflow) Metadata() map[string]string {
 	return map[string]string{
 		"account": e.Account,
 		"asset":   e.Asset,
+		"color":   e.Color,
 		"side":    e.Side,
 		"amount":  e.Amount,
 		"current": e.Current,
 	}
+}
+
+// ErrBalanceNotFound — balance for a source account cannot be determined.
+type ErrBalanceNotFound struct {
+	Account string
+	Asset   string
+}
+
+func (e *ErrBalanceNotFound) Error() string {
+	return fmt.Sprintf("balance not found for account %q asset %q", e.Account, e.Asset)
+}
+func (*ErrBalanceNotFound) Reason() string { return ErrReasonBalanceNotFound }
+func (e *ErrBalanceNotFound) Metadata() map[string]string {
+	return map[string]string{"account": e.Account, "asset": e.Asset}
 }
 
 // ErrSinkAlreadyExists — adding a sink that already exists.
@@ -1125,22 +1198,27 @@ func (e *ErrDependencyDiscoveryFailed) Metadata() map[string]string {
 	return map[string]string{"details": e.Error()}
 }
 
-// ErrBalanceNotPreloaded — a balance the script reads was not preloaded into
-// the cache by admission. A transient server-side gap (e.g. the boot-time
-// bloom-populate window, #318), not a caller-satisfiable precondition: a retry
-// re-runs preload and can succeed — hence KindUnavailable, and never frozen as
-// an idempotency outcome.
+// ErrBalanceNotPreloaded — a balance the script reads (account, asset, color)
+// was not preloaded into the cache by admission. A transient server-side gap
+// (e.g. the boot-time bloom-populate window, #318), not a caller-satisfiable
+// precondition: a retry re-runs preload and can succeed — hence
+// KindUnavailable, and never frozen as an idempotency outcome.
 type ErrBalanceNotPreloaded struct {
 	Account string
 	Asset   string
+	Color   string
 }
 
 func (e *ErrBalanceNotPreloaded) Error() string {
-	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+	if e.Color == "" {
+		return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+	}
+
+	return fmt.Sprintf("balance not preloaded for account %q asset %q color %q", e.Account, e.Asset, e.Color)
 }
 func (*ErrBalanceNotPreloaded) Reason() string { return ErrReasonBalanceNotPreloaded }
 func (e *ErrBalanceNotPreloaded) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset}
+	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color}
 }
 
 // ErrTransientAccountNonZero — one or more transient accounts held a non-zero
@@ -1162,12 +1240,18 @@ func (e *ErrTransientAccountNonZero) Metadata() map[string]string {
 }
 
 // joinedAccounts renders the offenders as a deterministic, comma-separated
-// "account/asset" list. The slice is pre-sorted by the producer, so the output
-// is stable; a nil slice yields "".
+// list. Each entry is "account/asset" for the uncolored bucket and
+// "account/asset/color" when the offending cell carries a color, so two color
+// buckets of the same (account, asset) render distinctly. The slice is
+// pre-sorted by the producer, so the output is stable; a nil slice yields "".
 func (e *ErrTransientAccountNonZero) joinedAccounts() string {
 	parts := make([]string, len(e.Accounts))
 	for i, a := range e.Accounts {
-		parts[i] = a.Account + "/" + a.Asset
+		if a.Color == "" {
+			parts[i] = a.Account + "/" + a.Asset
+		} else {
+			parts[i] = a.Account + "/" + a.Asset + "/" + a.Color
+		}
 	}
 
 	return strings.Join(parts, ", ")
@@ -1332,22 +1416,23 @@ func (e *ErrNumscriptRuntime) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
 }
 
-// ErrVolumeNotMaterialized — a posting references a (Account, Asset) pair
-// whose Input/Output volumes have not been fully fetched into the FSM's
+// ErrVolumeNotMaterialized — a posting references an (Account, Asset, Color)
+// tuple whose Input/Output volumes have not been fully fetched into the FSM's
 // working set. KindInternal: indicates a preloading miss the admission
 // layer should have caught; reaching this branch is a server bug.
 type ErrVolumeNotMaterialized struct {
 	Account string
 	Asset   string
+	Color   string
 	Side    string // "source" or "destination"
 }
 
 func (e *ErrVolumeNotMaterialized) Error() string {
-	return fmt.Sprintf("%s volume %s/%s not fully materialized", e.Side, e.Account, e.Asset)
+	return fmt.Sprintf("%s volume %s/%s color=%q not fully materialized", e.Side, e.Account, e.Asset, e.Color)
 }
 func (*ErrVolumeNotMaterialized) Reason() string { return ErrReasonVolumeNotMaterialized }
 func (e *ErrVolumeNotMaterialized) Metadata() map[string]string {
-	return map[string]string{"account": e.Account, "asset": e.Asset, "side": e.Side}
+	return map[string]string{"account": e.Account, "asset": e.Asset, "color": e.Color, "side": e.Side}
 }
 
 // ErrMetadataKeyValidation wraps another Describable to add the metadata-key

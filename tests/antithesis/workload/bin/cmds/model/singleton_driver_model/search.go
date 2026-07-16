@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 // candidateBases enumerates the distinct committed states the server could be in
@@ -34,12 +36,12 @@ import (
 // serialized state. pendingIndex and remaining-inflight are folded in because a
 // state reachable with different continuations (e.g. a duplicate-effect in-flight
 // bulk landing on the same state as a pending one) must be explored under each.
-func (c *Checker) candidateBases(maxTicket uint64, visit func(GlobalState) bool) {
+func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState) bool) {
 	// Only operations dispatched no later than maxTicket (the observation's
 	// high-water) can precede it; one dispatched after the observation's response
 	// cannot have committed before it, so folding it would invent a state the
 	// server was never in and could explain away a real divergence.
-	pending := make([]Bulk, 0, len(c.pending))
+	pending := make([]oracle.Bulk, 0, len(c.pending))
 	for _, pe := range c.pending {
 		// pending is minSeq-ordered, so an entry dispatched after the observation
 		// committed after it — and so did every later (higher-minSeq) entry.
@@ -49,7 +51,7 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(GlobalState) bool)
 		pending = append(pending, pe.obs.bulk)
 	}
 
-	inflight := make([]Bulk, 0, len(c.inflight))
+	inflight := make([]oracle.Bulk, 0, len(c.inflight))
 	for t, b := range c.inflight {
 		if t <= maxTicket {
 			inflight = append(inflight, b)
@@ -63,9 +65,9 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(GlobalState) bool)
 
 	seen := map[[sha256.Size]byte]bool{}
 	hasher := sha256.New()
-	key := func(base GlobalState, pIdx int, rem []int) [sha256.Size]byte {
+	key := func(base oracle.GlobalState, pIdx int, rem []int) [sha256.Size]byte {
 		hasher.Reset()
-		base.hash(hasher)
+		base.Hash(hasher)
 		fmt.Fprintf(hasher, "#%d#%v", pIdx, rem)
 
 		var k [sha256.Size]byte
@@ -73,9 +75,9 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(GlobalState) bool)
 		return k
 	}
 
-	var rec func(base GlobalState, pIdx int, rem []int) bool
+	var rec func(base oracle.GlobalState, pIdx int, rem []int) bool
 
-	rec = func(base GlobalState, pIdx int, rem []int) bool {
+	rec = func(base oracle.GlobalState, pIdx int, rem []int) bool {
 		k := key(base, pIdx, rem)
 		if seen[k] {
 			return false

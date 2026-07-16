@@ -87,14 +87,18 @@ type nodeProvideResult struct {
 	FreshStart walFreshStart
 }
 
-// coldStorageModule conditionally provides ColdStorage, ColdReader, and Archiver
-// when cold storage is enabled (driver != "none"). When disabled, these components
-// are not added to the fx graph and archiving is rejected at the admission layer.
 // ColdStorageModule conditionally provides ColdStorage, ColdReader, and Archiver
 // when cold storage is enabled (driver != "none"). When disabled, these components
 // are not added to the fx graph and archiving is rejected at the admission layer.
-func ColdStorageModule(coldStorageDriver string) fx.Option {
-	if coldStorageDriver == "none" {
+//
+// Restore mode never gets the module: the Archiver consumes the runtime graph
+// (*dal.Store, *state.Machine, ctrl.Admission, *node.Node) that RestoreModule
+// deliberately does not provide — including it makes the whole fx graph
+// unbuildable and the server exits at boot. A restoring server has no use for
+// it either: it neither archives nor reads cold data, and backup downloads
+// carry their own storage configuration per request.
+func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
+	if coldStorageDriver == "none" || restore {
 		return fx.Options()
 	}
 

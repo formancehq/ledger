@@ -600,7 +600,7 @@ func (b *Builder) indexCreatedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
 			indexAny, indexSource, indexDestination, excludedVolumes,
 		); err != nil {
 			return err
@@ -726,7 +726,7 @@ func (b *Builder) indexRevertedTransaction(
 		b.accounts[posting.GetDestination()] = struct{}{}
 
 		if err := b.indexPostingAddressMappings(
-			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(),
+			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
 			indexAny, indexSource, indexDestination, excludedVolumes,
 		); err != nil {
 			return err
@@ -800,14 +800,15 @@ func (b *Builder) indexPostingAddressMappings(
 	source string,
 	destination string,
 	asset string,
+	color string,
 	indexAny bool,
 	indexSource bool,
 	indexDestination bool,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
-	sourceExcluded := isExcluded(excludedVolumes, source, asset)
-	destinationExcluded := isExcluded(excludedVolumes, destination, asset)
+	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
+	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -1235,16 +1236,17 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	return ""
 }
 
-// isExcluded returns true if the (account, asset) tuple is in the excluded
-// set (transient or purged ephemeral). Both dimensions matter — a multi-asset
-// account may have one asset purged while another stays kept, and we must
-// not over-skip mappings for the kept asset.
-func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset string) bool {
+// isExcluded returns true if the (account, asset, color) tuple is in the
+// excluded set (transient or purged ephemeral). All three dimensions matter
+// — a multi-bucket account may have one (asset, color) purged while another
+// color of the same asset stays kept, and we must not over-skip mappings for
+// the kept bucket.
+func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset, color string) bool {
 	if excluded == nil {
 		return false
 	}
 
-	_, ok := excluded[domain.AccountAssetKey{Account: account, Asset: asset}]
+	_, ok := excluded[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
 
 	return ok
 }

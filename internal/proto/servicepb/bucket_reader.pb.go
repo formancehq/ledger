@@ -15,6 +15,7 @@ type GetAccountRequestReader interface {
 	GetLedger() string
 	GetAddress() string
 	GetCheckpointId() uint64
+	GetCollapseColors() bool
 	Mutate() *GetAccountRequest
 }
 
@@ -30,6 +31,10 @@ func (r *getAccountRequestReadonly) GetAddress() string {
 
 func (r *getAccountRequestReadonly) GetCheckpointId() uint64 {
 	return (*GetAccountRequest)(r).GetCheckpointId()
+}
+
+func (r *getAccountRequestReadonly) GetCollapseColors() bool {
+	return (*GetAccountRequest)(r).GetCollapseColors()
 }
 
 func (r *getAccountRequestReadonly) Mutate() *GetAccountRequest {
@@ -7729,6 +7734,7 @@ type NormalizedPostingReader interface {
 	GetSourcePattern() string
 	GetDestinationPattern() string
 	GetAsset() string
+	GetColor() string
 	Mutate() *NormalizedPosting
 }
 
@@ -7744,6 +7750,10 @@ func (r *normalizedPostingReadonly) GetDestinationPattern() string {
 
 func (r *normalizedPostingReadonly) GetAsset() string {
 	return (*NormalizedPosting)(r).GetAsset()
+}
+
+func (r *normalizedPostingReadonly) GetColor() string {
+	return (*NormalizedPosting)(r).GetColor()
 }
 
 func (r *normalizedPostingReadonly) Mutate() *NormalizedPosting {
@@ -9344,6 +9354,7 @@ type AggregateVolumesRequestReader interface {
 	GetUseMaxPrecision() bool
 	GetGroupByPrefixes() []string
 	GetCheckpointId() uint64
+	GetCollapseColors() bool
 	Mutate() *AggregateVolumesRequest
 }
 
@@ -9375,6 +9386,10 @@ func (r *aggregateVolumesRequestReadonly) GetGroupByPrefixes() []string {
 
 func (r *aggregateVolumesRequestReadonly) GetCheckpointId() uint64 {
 	return (*AggregateVolumesRequest)(r).GetCheckpointId()
+}
+
+func (r *aggregateVolumesRequestReadonly) GetCollapseColors() bool {
+	return (*AggregateVolumesRequest)(r).GetCollapseColors()
 }
 
 func (r *aggregateVolumesRequestReadonly) Mutate() *AggregateVolumesRequest {

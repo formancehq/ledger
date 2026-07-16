@@ -3,19 +3,19 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/backup"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/create"
-	credentialscmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/credentials"
-	deletecmd "github.com/formance/ledger/operator/cmd/kubectl-ledger/delete"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/get"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/list"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/logs"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/portforward"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/restart"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/scale"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/update"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/backup"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/create"
+	credentialscmd "github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/credentials"
+	deletecmd "github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/delete"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/explain"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/get"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/list"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/logs"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/portforward"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/restart"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/scale"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/update"
 )
 
 func newRootCommand() *cobra.Command {

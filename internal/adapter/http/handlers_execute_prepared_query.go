@@ -102,7 +102,36 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		writeProfileHeader(w, profile)
 	}
 
-	writeJSONResponse(w, http.StatusOK, resp)
+	// Serialize into a clean, discriminated camelCase envelope instead of the
+	// raw proto. ExecutePreparedQueryResponse has no MarshalJSON, so writing it
+	// raw leaks the Go oneof shape as PascalCase `{"Result":{"Cursor":…}}` /
+	// `{"Result":{"Aggregate":…}}`, violating the camelCase JSON invariant. The
+	// envelope keeps the variant discriminator (`cursor` vs `aggregateResult`)
+	// — the shape EN-1465 tracks — and reuses the existing correct marshalers:
+	//   - aggregateResult goes through the same camelCase DTO the dedicated
+	//     /aggregate handler uses (toAggregateVolumesJSON), which always emits
+	//     `color` even for the uncolored bucket (the raw proto AggregatedVolume
+	//     tag is `json:"color,omitempty"` and would otherwise drop it);
+	//   - cursor uses the hand-written PreparedQueryCursor.MarshalJSON whose
+	//     nested Account/Transaction marshalers already emit camelCase,
+	//     decimal-string amounts, and `color` on every volume row.
+	envelope := executePreparedQueryResponseJSON{}
+	switch result := resp.GetResult().(type) {
+	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
+		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
+	case *servicepb.ExecutePreparedQueryResponse_Cursor:
+		envelope.Cursor = result.Cursor
+	}
+
+	writeJSONResponse(w, http.StatusOK, envelope)
+}
+
+// executePreparedQueryResponseJSON is the clean camelCase envelope for the
+// prepared-query result oneof: exactly one of cursor / aggregateResult is set
+// (both omitempty), replacing the leaked PascalCase proto oneof shape.
+type executePreparedQueryResponseJSON struct {
+	Cursor          *commonpb.PreparedQueryCursor `json:"cursor,omitempty"`
+	AggregateResult *aggregateVolumesResponseJSON `json:"aggregateResult,omitempty"`
 }
 
 // convertJSONParameters converts raw JSON values into typed ParameterValue messages.

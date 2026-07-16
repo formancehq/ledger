@@ -15,10 +15,14 @@ type CompactAccount struct {
 }
 
 // CompactPosting holds only the fields needed for transaction analysis.
+// Color is part of the posting identity for analysis purposes: two flows
+// that share (source, destination, asset) but differ in color are two
+// different segregated buckets and must produce distinct signatures.
 type CompactPosting struct {
 	Source      string
 	Destination string
 	Asset       string
+	Color       string
 	Amount      *big.Int
 }
 
@@ -39,6 +43,7 @@ func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
 			Source:      p.GetSource(),
 			Destination: p.GetDestination(),
 			Asset:       p.GetAsset(),
+			Color:       p.GetColor(),
 			Amount:      p.GetAmount().ToBigInt(),
 		}
 	}

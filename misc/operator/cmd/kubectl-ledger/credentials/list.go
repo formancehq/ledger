@@ -9,8 +9,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
 func newListCommand(opts *cmdutil.Options) *cobra.Command {
