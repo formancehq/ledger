@@ -591,6 +591,14 @@ var _ = Describe("Restore", Ordered, func() {
 				testserver.WithMaintenanceInterval(time.Hour),
 				testserver.WithRaftCompactionMargin(1_000_000),
 			)
+			// A rotation threshold far below the preserved genesis boundary:
+			// admission's CheckCache compares Gen(boundary+1) against the
+			// in-memory generation, and the restored store carries no
+			// persisted generation meta (PrepareForBackup wipes the cache
+			// zone) — the boot-side realignment is what keeps proposals
+			// admissible; without it every write here trips the
+			// CacheUnreachable horizon.
+			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
 
 			server = testservice.New(cmdserver.NewRunCommand,
 				testservice.WithInstruments(instruments...),
