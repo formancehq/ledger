@@ -52,7 +52,9 @@ type RestoreServiceClient interface {
 	ValidateRestore(ctx context.Context, in *ValidateRestoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ValidateRestoreEvent], error)
 	// PreviewRestore returns a summary of the staged backup data.
 	PreviewRestore(ctx context.Context, in *PreviewRestoreRequest, opts ...grpc.CallOption) (*PreviewRestoreResponse, error)
-	// FinalizeRestore compacts attributes, commits the staged backup as the live data.
+	// FinalizeRestore prepares the staged backup (applied index preserved as the
+	// restore genesis boundary, cluster-local state reset) and commits it as the
+	// live data.
 	FinalizeRestore(ctx context.Context, in *FinalizeRestoreRequest, opts ...grpc.CallOption) (*FinalizeRestoreResponse, error)
 }
 
@@ -158,7 +160,9 @@ type RestoreServiceServer interface {
 	ValidateRestore(*ValidateRestoreRequest, grpc.ServerStreamingServer[ValidateRestoreEvent]) error
 	// PreviewRestore returns a summary of the staged backup data.
 	PreviewRestore(context.Context, *PreviewRestoreRequest) (*PreviewRestoreResponse, error)
-	// FinalizeRestore compacts attributes, commits the staged backup as the live data.
+	// FinalizeRestore prepares the staged backup (applied index preserved as the
+	// restore genesis boundary, cluster-local state reset) and commits it as the
+	// live data.
 	FinalizeRestore(context.Context, *FinalizeRestoreRequest) (*FinalizeRestoreResponse, error)
 	mustEmbedUnimplementedRestoreServiceServer()
 }

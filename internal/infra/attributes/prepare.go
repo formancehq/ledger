@@ -53,8 +53,26 @@ func PrepareForBackup(s *dal.Store) error {
 	// source-cluster provenance: incremental exports are sequence-keyed and
 	// never advance this key, so after a full + incremental restore the
 	// state is newer than the boundary.
-	genesisBoundary, err := dal.ReadUint64(s, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, 0)
-	if err != nil {
+	// Read the raw key: only genuine absence may fall back — a present but
+	// malformed value is a corrupt checkpoint and must fail closed, not be
+	// silently rewritten as the genesis fallback.
+	var genesisBoundary uint64
+
+	switch val, closer, err := s.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}); {
+	case err == nil:
+		if len(val) != 8 {
+			_ = closer.Close()
+
+			return fmt.Errorf("invariant: checkpoint applied index has %d bytes (expected 8) — corrupt checkpoint", len(val))
+		}
+
+		genesisBoundary = binary.BigEndian.Uint64(val)
+		if err := closer.Close(); err != nil {
+			return fmt.Errorf("closing applied index read: %w", err)
+		}
+	case errors.Is(err, pebble.ErrNotFound):
+		// Genesis checkpoint: the key has never been written.
+	default:
 		return fmt.Errorf("reading checkpoint applied index: %w", err)
 	}
 

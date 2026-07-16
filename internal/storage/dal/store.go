@@ -94,6 +94,32 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 	return latestID, found, nil
 }
 
+// ValidateFreshRestoreTarget reports whether dataDir is safe to restore into.
+// A restore stages a checkpoint and a RESTORED marker; the next boot aligns
+// the new raft log's WAL snapshot with the store the marker describes. Normal
+// startup prefers an existing live/ database over checkpoints, so restoring
+// into a dir that already carries one (or leftovers of an in-flight
+// RestoreCheckpoint) would boot the STALE store under the marker's boundary —
+// a silent store/marker misalignment. Checkpoints are rejected for the same
+// reason; the caller separately rejects a pre-existing RESTORED marker.
+func ValidateFreshRestoreTarget(dataDir string) error {
+	if _, hasCheckpoint, err := ScanLatestCheckpointID(dataDir); err != nil {
+		return fmt.Errorf("scanning data directory: %w", err)
+	} else if hasCheckpoint {
+		return fmt.Errorf("restore requires a fresh data directory: checkpoints already exist in %s", dataDir)
+	}
+
+	for _, dir := range []string{liveDir, liveStagingDir, liveDiscardDir} {
+		if _, err := os.Stat(filepath.Join(dataDir, dir)); err == nil {
+			return fmt.Errorf("restore requires a fresh data directory: %s/ already exists in %s", dir, dataDir)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("checking %s directory: %w", dir, err)
+		}
+	}
+
+	return nil
+}
+
 // Store is a Pebble implementation of dal.Store
 // It stores balances and account metadata.
 type Store struct {

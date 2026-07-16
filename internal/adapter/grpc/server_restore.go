@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -355,22 +354,6 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	s.closeStagingStore()
 	s.mu.Unlock()
 
-	// Write RESTORED marker
-	marker := node.RestoredMarker{
-		LastAppliedIndex:     lastAppliedIndex,
-		LastAppliedTimestamp: lastAppliedTimestamp,
-	}
-
-	markerData, err := json.Marshal(marker)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling restored marker: %w", err)
-	}
-
-	markerPath := filepath.Join(s.dataDir, "RESTORED")
-	if err := os.WriteFile(markerPath, markerData, 0o644); err != nil {
-		return nil, fmt.Errorf("writing restored marker: %w", err)
-	}
-
 	// Move staging to checkpoint 0
 	checkpointsDir := filepath.Join(s.dataDir, "checkpoints")
 	if err := os.MkdirAll(checkpointsDir, 0o755); err != nil {
@@ -384,6 +367,16 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 
 	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return nil, fmt.Errorf("hard linking staging to checkpoint: %w", err)
+	}
+
+	// The marker is the restore's commit point, so it goes in only after the
+	// checkpoint is in place: bootstrap plants the raft genesis snapshot at
+	// the marker's boundary, which only describes THIS checkpoint's store.
+	if err := node.WriteRestoredMarker(s.dataDir, node.RestoredMarker{
+		LastAppliedIndex:     lastAppliedIndex,
+		LastAppliedTimestamp: lastAppliedTimestamp,
+	}); err != nil {
+		return nil, err
 	}
 
 	// Remove staging directory

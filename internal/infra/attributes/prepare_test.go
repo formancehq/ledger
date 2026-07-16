@@ -242,6 +242,27 @@ func TestPrepareForBackupRejectsMaxUint64(t *testing.T) {
 	require.ErrorContains(t, err, "MaxUint64")
 }
 
+// TestPrepareForBackupRejectsMalformedAppliedIndex asserts a present but
+// wrong-length applied index fails closed: only genuine absence may take the
+// genesis fallback — silently treating a corrupt value as 0 would rewrite it
+// as boundary 1 and misalign the restored raft genesis.
+func TestPrepareForBackupRejectsMalformedAppliedIndex(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, []byte{0x01, 0x02, 0x03}))
+	require.NoError(t, batch.Commit())
+
+	err = PrepareForBackup(s)
+	require.ErrorContains(t, err, "corrupt checkpoint")
+}
+
 // TestPrepareForBackupClearsCacheZone asserts the cache zone is dropped in
 // full: per-entry rows in both generation slots, per-generation rotation
 // metadata, and the global snapshot meta. Checkpoint-era cache rows predate

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -309,6 +310,13 @@ func NewNode(
 			// a 0 here means a marker written by another tool or by hand.
 			if marker.LastAppliedIndex == 0 {
 				return nil, errors.New("invariant: RESTORED marker carries lastAppliedIndex 0; the restored genesis must occupy index >= 1 so joiners are forced through checkpoint sync — re-run restore finalize / store bootstrap to regenerate the marker")
+			}
+
+			// Raft paths compute boundary+1 (WAL FirstIndex, FSM gap check),
+			// which would wrap. PrepareForBackup refuses this at finalize;
+			// here it means a hand-written or corrupt marker.
+			if marker.LastAppliedIndex == math.MaxUint64 {
+				return nil, errors.New("invariant: RESTORED marker carries lastAppliedIndex MaxUint64 — corrupt marker; re-run restore finalize / store bootstrap to regenerate it")
 			}
 
 			initialConfState = &raftpb.ConfState{

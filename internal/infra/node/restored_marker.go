@@ -45,6 +45,31 @@ func ReadRestoredMarker(dataDir string) (*RestoredMarker, error) {
 	return &marker, nil
 }
 
+// WriteRestoredMarker atomically writes the RESTORED marker (temp file +
+// rename) to the data directory. Callers must place the restored checkpoint
+// BEFORE writing the marker: the marker is the commit point of the restore —
+// a marker observed without its checkpoint would make bootstrap plant the
+// restore WAL snapshot over whatever store the next boot opens.
+func WriteRestoredMarker(dataDir string, marker RestoredMarker) error {
+	data, err := json.Marshal(marker)
+	if err != nil {
+		return fmt.Errorf("marshaling restored marker: %w", err)
+	}
+
+	tmpPath := filepath.Join(dataDir, restoredMarkerFile+".tmp")
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing restored marker temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, filepath.Join(dataDir, restoredMarkerFile)); err != nil {
+		_ = os.Remove(tmpPath)
+
+		return fmt.Errorf("renaming restored marker into place: %w", err)
+	}
+
+	return nil
+}
+
 // RemoveRestoredMarker removes the RESTORED marker file from the data directory.
 func RemoveRestoredMarker(dataDir string) error {
 	markerPath := filepath.Join(dataDir, restoredMarkerFile)
