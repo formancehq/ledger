@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -532,6 +533,28 @@ var _ = Describe("Restore", Ordered, func() {
 
 			_, err = os.Stat(restoreDataDir + "/checkpoints/0")
 			Expect(err).To(Succeed(), "checkpoint 0 directory should exist")
+		})
+
+		It("should carry the checkpoint's applied index in the marker as the genesis boundary", func() {
+			// The restored bootstrap plants its WAL snapshot at the marker
+			// index, and the FSM gap check requires the first post-restore
+			// entry at exactly boundary+1 — so a marker diverging from the
+			// store, or a boundary of 0/1 here, would either fail Phase 3
+			// outright or silently re-open the learner log-replay hole.
+			data, err := os.ReadFile(restoreDataDir + "/RESTORED")
+			Expect(err).To(Succeed())
+
+			var marker node.RestoredMarker
+			Expect(json.Unmarshal(data, &marker)).To(Succeed())
+
+			manifest, err := readS3Manifest(ctx, s3Client)
+			Expect(err).To(Succeed())
+			Expect(manifest.Checkpoint).NotTo(BeNil())
+
+			Expect(marker.LastAppliedIndex).To(Equal(manifest.Checkpoint.LastAppliedIndex),
+				"marker must preserve the checkpoint's applied index")
+			Expect(marker.LastAppliedIndex).To(BeNumerically(">", 1),
+				"this suite's checkpoint is taken after real traffic, so the preserved boundary must exercise the non-fallback (N > 1) path")
 		})
 	})
 

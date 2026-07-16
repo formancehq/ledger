@@ -285,9 +285,10 @@ func NewNode(
 
 		if marker != nil {
 			// Restore mode: bootstrap from restored data. The restored store
-			// carries lastAppliedIndex 1 (PrepareForBackup pins it), so the WAL
-			// snapshot below lands at 1 and the new log starts at 2: raft then
-			// has to route any fresh peer through the snapshot → checkpoint-sync
+			// carries the genesis boundary PrepareForBackup established (the
+			// checkpoint's applied index, >= 1), so the WAL snapshot below
+			// lands there and the new log starts just above it: raft then has
+			// to route any fresh peer through the snapshot → checkpoint-sync
 			// path instead of "catching it up" by replaying the log onto an
 			// empty store, which would miss the entire restored FSM genesis.
 			// FSM counters (nextLedgerID, nextSequenceID, etc.) are recovered
@@ -304,8 +305,8 @@ func NewNode(
 			// A snapshot at 0 is no snapshot: the new log would claim
 			// completeness from index 1 and a fresh learner could be caught
 			// up by plain log replay onto an empty store, missing the whole
-			// restored genesis. PrepareForBackup pins the index to >= 1; a 0
-			// here means a marker written by another tool or by hand.
+			// restored genesis. PrepareForBackup guarantees a boundary >= 1;
+			// a 0 here means a marker written by another tool or by hand.
 			if marker.LastAppliedIndex == 0 {
 				return nil, fmt.Errorf(
 					"invariant: RESTORED marker carries lastAppliedIndex 0; the restored genesis must occupy index >= 1 so joiners are forced through checkpoint sync — re-run restore finalize / store bootstrap to regenerate the marker")

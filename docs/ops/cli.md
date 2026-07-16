@@ -2147,7 +2147,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
-7. Prepares attributes for backup (Global-zone resets): pins the applied index to 1 (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
+7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
 9. Cleans up the staging directory
 

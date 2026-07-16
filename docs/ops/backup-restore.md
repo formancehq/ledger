@@ -122,7 +122,7 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 
 Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
 
-1. **Pin lastAppliedIndex to 1**: The restored store is the FSM state the new Raft log builds on; the restored bootstrap plants its WAL snapshot at this index, so the new log starts at 2 and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). Source-cluster Raft indices are discarded either way.
+1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
 2. **Remove persisted config**: Node and cluster IDs are stripped for portability.
 3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
 4. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
@@ -142,7 +142,7 @@ The backup is a complete Pebble database that contains:
 | Per-Ledger | `0x03` | Per-ledger data |
 | Cold | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
 | Idempotency | `0x05` | Idempotency keys |
-| Global | `0x06` | Last applied index (pinned to 1 on restore), last applied timestamp, signing keys, signing config, chapters, sink configs, sink cursors, sink statuses |
+| Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, chapters, sink configs, sink cursors, sink statuses |
 
 > **Note**: If chapters have been archived before the backup, the archived logs and audit entries are no longer in the backup (they have been purged to cold storage). Attributes remain.
 
@@ -381,7 +381,7 @@ ledgerctl restore finalize --yes
 
 Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data:
 
-1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index pinned to 1, persisted config/bloom/peers/cache reset).
+1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
 3. Writes the **RESTORED marker** JSON file to `{dataDir}/RESTORED`.
 4. Creates `{dataDir}/checkpoints/` directory.
@@ -465,7 +465,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
-7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index pinned to 1 — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
+7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
 8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
 9. **Cleanup**: Removes the staging directory.
 
@@ -525,12 +525,12 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 
 ```json
 {
-  "lastAppliedIndex": 1,
+  "lastAppliedIndex": 8500,
   "lastAppliedTimestamp": 1700000000000000
 }
 ```
 
-- `lastAppliedIndex`: The Raft index the restored state occupies in the new log (pinned to 1 during backup preparation, so this is always 1 in practice); the restored bootstrap creates its WAL snapshot at this index.
+- `lastAppliedIndex`: The Raft index the restored genesis occupies in the new log — the checkpoint's applied index preserved by backup preparation (1 for a genesis checkpoint, never 0). The restored bootstrap creates its WAL snapshot at this index. A boundary label only: after a full + incremental restore the restored state is newer than this index.
 - `lastAppliedTimestamp`: The HLC timestamp (microseconds) of the last applied entry.
 
 **File**: `internal/infra/node/restored_marker.go`
@@ -543,7 +543,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 |-----------|-----------|
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
-| **Self-contained on restore** | During restore finalize, the applied index is pinned to 1 and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. No dependency on the original cluster's Raft indices. |
+| **Self-contained on restore** | During restore finalize, the applied index is preserved as the genesis boundary and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. The new log's index space starts at the boundary; nothing depends on the original cluster's later Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
 | **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
