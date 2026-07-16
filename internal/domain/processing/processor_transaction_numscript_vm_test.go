@@ -43,6 +43,43 @@ func TestNumscriptVMProducer_SimpleSend(t *testing.T) {
 	require.Equal(t, int64(10), result.Postings[0].GetAmount().ToBigInt().Int64())
 }
 
+// TestNumscriptVMProducer_ReusesVMAcrossCalls guards the cached-machine
+// optimization: two transactions run through the same producer/cache reuse the
+// memoized *Vm, and numscript's runstate.Reset must clear the prior run's
+// postings so the second result is not polluted by the first.
+func TestNumscriptVMProducer_ReusesVMAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	setupNumscriptVolumeMocks(mockStore)
+
+	producer := &numscriptVMPostingProducer{
+		cache:      numscript.NewNumscriptCache(16),
+		ledgerName: "test-ledger",
+	}
+
+	script := &commonpb.Script{Plain: `
+		send [USD/2 10] (
+			source = @world
+			destination = @users:alice
+		)
+	`}
+
+	first, derr := producer.produce(mockStore, "test-ledger", &raftcmdpb.CreateTransactionOrder{}, script)
+	require.Nil(t, derr)
+	require.Len(t, first.Postings, 1)
+
+	// Second run reuses the memoized VM — must not accumulate the first run's postings.
+	second, derr := producer.produce(mockStore, "test-ledger", &raftcmdpb.CreateTransactionOrder{}, script)
+	require.Nil(t, derr)
+	require.Len(t, second.Postings, 1)
+	require.Equal(t, int64(10), second.Postings[0].GetAmount().ToBigInt().Int64())
+	require.Equal(t, "users:alice", second.Postings[0].GetDestination())
+}
+
 // TestNumscriptVMProducer_MatchesInterpreter pins that the VM producer yields
 // the same postings as the tree-walking interpreter producer for the same
 // script and store state (here an allotment split from @world).

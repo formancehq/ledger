@@ -36,17 +36,21 @@ type lruEntry struct {
 
 // parsedScript wraps a parsed Numscript program with any parsing errors, plus
 // lazily-populated bytecode-compilation artifacts (the VM execution path). The
-// compiled program and vars encoder are only produced on the first
-// GetOrCompile call for a given script and memoized for reuse, mirroring how
-// the parsed AST is memoized for the interpreter path.
+// vars encoder and the machine are only produced on the first GetOrCompileVM
+// call for a given script and memoized for reuse, mirroring how the parsed AST
+// is memoized for the interpreter path.
 type parsedScript struct {
 	program numscriptlib.ParseResult
 	err     domain.Describable
 
 	compiledDone bool
 	encoder      numscriptlib.VarsEncoder
-	compiled     numscriptlib.CompiledProgram
 	compiledErr  domain.Describable
+	// vm is a reusable machine bound to the compiled program (nil when
+	// compilation failed). It holds mutable per-run register banks + runstate
+	// that numscriptlib.ExecVm resets on every call, so it may be reused across
+	// executions — but MUST NOT be executed concurrently (see GetOrCompileVM).
+	vm *numscriptlib.Vm
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -140,39 +144,53 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 	return parsed, parseErr
 }
 
-// GetOrCompile returns the bytecode-compiled program and vars encoder for a
-// script, compiling (and memoizing) on the first call. Compilation subsumes
-// parsing, so a parse error is surfaced here too. Compilation happens outside
-// the write lock; the result is stored on the shared cache entry so subsequent
-// VM runs of the same script skip compilation — the fair steady-state
-// comparison against the interpreter path, whose parse is already cached.
-func (c *NumscriptCache) GetOrCompile(script string) (numscriptlib.VarsEncoder, numscriptlib.CompiledProgram, domain.Describable) {
+// GetOrCompileVM returns the vars encoder and a reusable bytecode VM for a
+// script, compiling the program and building the machine once and memoizing
+// both. Compilation subsumes parsing, so a parse error is surfaced here too.
+// The compile + VM build happen outside the write lock; the result is stored on
+// the shared cache entry so subsequent runs of the same script skip both.
+//
+// The returned *Vm is SHARED and holds mutable per-run state (register banks +
+// runstate); numscriptlib.ExecVm resets it on every call, so it may be reused
+// across executions but MUST NOT be executed concurrently. In the ledger this
+// is safe because numscript VM execution only happens on the single-threaded
+// FSM apply path — admission dependency discovery uses the interpreter, not the
+// VM. Reuse avoids reallocating the machine's register banks
+// ([256]big.Int/big.Rat/monetary/string — the dominant per-transaction
+// allocation) on every call.
+func (c *NumscriptCache) GetOrCompileVM(script string) (numscriptlib.VarsEncoder, *numscriptlib.Vm, domain.Describable) {
 	// Ensure the script is parsed and cached first; a parse failure is terminal.
 	parsed, parseErr := c.GetOrParse(script)
 	if parseErr != nil {
-		return numscriptlib.VarsEncoder{}, numscriptlib.CompiledProgram{}, parseErr
+		return numscriptlib.VarsEncoder{}, nil, parseErr
 	}
 
 	hash := HashScript(script)
 
-	// Fast path: compiled artifacts already memoized on the entry.
+	// Fast path: encoder + machine already memoized on the entry.
 	c.mu.RLock()
 	if elem, ok := c.cache[hash]; ok {
 		if entry, _ := elem.Value.(*lruEntry); entry.script.compiledDone {
-			enc, prog, cErr := entry.script.encoder, entry.script.compiled, entry.script.compiledErr
+			enc, machine, cErr := entry.script.encoder, entry.script.vm, entry.script.compiledErr
 			c.mu.RUnlock()
 
-			return enc, prog, cErr
+			return enc, machine, cErr
 		}
 	}
 	c.mu.RUnlock()
 
-	// Compile outside the lock — this is the expensive operation.
+	// Compile + build the machine outside the lock — the expensive operations.
 	enc, prog, err := parsed.Compile()
 
-	var compileErr domain.Describable
+	var (
+		compileErr domain.Describable
+		machine    *numscriptlib.Vm
+	)
+
 	if err != nil {
 		compileErr = &domain.ErrNumscriptParse{Details: err.Error()}
+	} else {
+		machine = numscriptlib.NewVm(prog)
 	}
 
 	// Store the artifacts on the shared entry (if it still exists).
@@ -183,16 +201,16 @@ func (c *NumscriptCache) GetOrCompile(script string) (numscriptlib.VarsEncoder, 
 		entry, _ := elem.Value.(*lruEntry)
 		if !entry.script.compiledDone {
 			entry.script.encoder = enc
-			entry.script.compiled = prog
 			entry.script.compiledErr = compileErr
+			entry.script.vm = machine
 			entry.script.compiledDone = true
 		}
 
-		return entry.script.encoder, entry.script.compiled, entry.script.compiledErr
+		return entry.script.encoder, entry.script.vm, entry.script.compiledErr
 	}
 
 	// The entry was evicted between parse and compile; return the fresh result.
-	return enc, prog, compileErr
+	return enc, machine, compileErr
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.

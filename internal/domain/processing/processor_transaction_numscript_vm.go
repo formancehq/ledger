@@ -4,8 +4,6 @@ import (
 	"context"
 	"math/big"
 
-	numscriptlib "github.com/formancehq/numscript"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -38,8 +36,10 @@ func (s *numscriptVMStoreAdapter) GetMetadata(_ context.Context, account, key st
 // compiled program on numscript's register VM, as an alternative to the
 // tree-walking interpreter (numscriptPostingProducer). It is a drop-in
 // postingProducer: the two share applyNumscriptResult for the posting→volume
-// conversion, so only the execution engine differs. Compilation is memoized in
-// the NumscriptCache (GetOrCompile), mirroring the interpreter's memoized parse.
+// conversion, so only the execution engine differs. Both the compiled program
+// and its reusable VM are memoized in the NumscriptCache (GetOrCompileVM),
+// mirroring the interpreter's memoized parse — reusing the machine avoids
+// reallocating its register banks on every transaction.
 type numscriptVMPostingProducer struct {
 	cache      *numscript.NumscriptCache
 	ledgerName string
@@ -50,8 +50,11 @@ func (p *numscriptVMPostingProducer) produce(s Scope, ledgerName string, order *
 		return nil, domain.ErrScriptRequired
 	}
 
-	// Compile the script (memoized in the cache) into bytecode + a vars encoder.
-	encoder, program, err := p.cache.GetOrCompile(script.GetPlain())
+	// Compile the script and get its reusable machine (both memoized in the
+	// cache). The machine is shared and must not be executed concurrently; that
+	// holds here because numscript runs only on the single-threaded FSM apply
+	// path (see NumscriptCache.GetOrCompileVM).
+	encoder, machine, err := p.cache.GetOrCompileVM(script.GetPlain())
 	if err != nil {
 		return nil, err
 	}
@@ -69,10 +72,6 @@ func (p *numscriptVMPostingProducer) produce(s Scope, ledgerName string, order *
 		ledgerName: ledgerName,
 		force:      order.GetForce(),
 	}
-
-	// A fresh Vm per call: its register banks hold mutable per-run state and are
-	// not safe to share across concurrent executions.
-	machine := numscriptlib.NewVm(program)
 
 	result, runErr := numscript.SafeExecVM(context.Background(), machine, &vars, storeAdapter)
 	if runErr != nil {
