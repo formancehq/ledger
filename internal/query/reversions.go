@@ -12,9 +12,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+// MalformedReversionRow describes a SubPLReversions row whose key or value
+// does not decode as a reversion word. The runtime readers skip such rows;
+// they are reported so the checker can surface them as integrity events
+// instead of silently narrowing the comparison, and so recovery can log them.
+type MalformedReversionRow struct {
+	Key    []byte
+	Reason string
+}
+
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
 // Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
-func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) {
+// Rows that do not decode are skipped and returned in the malformed slice.
+func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []MalformedReversionRow, error) {
 	lowerBound := []byte{dal.ZonePerLedger, dal.SubPLReversions}
 	upperBound := []byte{dal.ZonePerLedger, dal.SubPLReversions + 1}
 
@@ -23,17 +33,24 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) 
 		UpperBound: upperBound,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating reversions iterator: %w", err)
+		return nil, nil, fmt.Errorf("creating reversions iterator: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
 	result := make(map[string]*bitset.Bitset)
 
+	var malformed []MalformedReversionRow
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		// Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes].
 		if len(key) < 2+dal.LedgerNameFixedSize+8 {
+			malformed = append(malformed, MalformedReversionRow{
+				Key:    append([]byte(nil), key...),
+				Reason: "key shorter than the reversion word layout",
+			})
+
 			continue
 		}
 
@@ -49,10 +66,15 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) 
 
 		val, err := iter.ValueAndErr()
 		if err != nil {
-			return nil, fmt.Errorf("reading reversion word for ledger %q: %w", ledgerName, err)
+			return nil, nil, fmt.Errorf("reading reversion word for ledger %q: %w", ledgerName, err)
 		}
 
 		if len(val) < 8 {
+			malformed = append(malformed, MalformedReversionRow{
+				Key:    append([]byte(nil), key...),
+				Reason: "value shorter than a bitset word",
+			})
+
 			continue
 		}
 
@@ -67,7 +89,11 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, error) 
 		bs.SetWord(wordIndex, word)
 	}
 
-	return result, nil
+	if err := iter.Error(); err != nil {
+		return nil, nil, fmt.Errorf("iterating reversions: %w", err)
+	}
+
+	return result, malformed, nil
 }
 
 // ReadReversionBitset loads a single ledger's reversion bitset from Pebble.
@@ -110,6 +136,10 @@ func ReadReversionBitset(reader dal.PebbleReader, ledgerName string) (*bitset.Bi
 		}
 
 		bs.SetWord(wordIndex, binary.LittleEndian.Uint64(val))
+	}
+
+	if err := iter.Error(); err != nil {
+		return nil, fmt.Errorf("iterating reversions for ledger %q: %w", ledgerName, err)
 	}
 
 	return bs, nil

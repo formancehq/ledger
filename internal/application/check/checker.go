@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"math/big"
+	"math/bits"
 	"slices"
 	"strconv"
 	"time"
@@ -661,6 +662,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
 	}
 
@@ -5063,6 +5068,83 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 			},
 		},
 	}
+}
+
+// compareReversions verifies the persisted reversion bitsets
+// (ZonePerLedger/SubPLReversions) — the projection the FSM's already-reverted
+// gate reads — against the reverted-transaction set derived from the audit:
+// baseline tx-row markers (seedTxTrackingFromBaseline) plus the replayed
+// RevertedTransaction logs. That derivation is complete across archived
+// chapters, so the comparison is exact equality both ways: a bit the audit
+// set but the store lost re-admits a double revert (double refund) past the
+// gate, and a stored bit the audit never set silently blocks a legitimate
+// revert.
+//
+// The comparison is driven purely by audit-derived state (knownLedgers,
+// derived): no persisted marker — pending-cleanup included, since it is
+// itself an unverified projection — may exempt an audit-live ledger from the
+// check. Stored rows for ledgers the audit does not know as live are flagged
+// too: DeleteLedger deletes the rows at apply time on both the live path and
+// the replay, so nothing legitimately lingers. Rows that fail to decode are
+// reported rather than silently narrowing the comparison.
+func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+	stored, malformed, err := query.ReadReversions(reader)
+	if err != nil {
+		return fmt.Errorf("reading stored reversion bitsets: %w", err)
+	}
+
+	for _, m := range malformed {
+		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+			fmt.Sprintf("malformed reversion row at key %x: %s", m.Key, m.Reason), "", 0))
+	}
+
+	for name := range stored {
+		if _, live := knownLedgers[name]; !live {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+				fmt.Sprintf("stored reversion rows for non-live ledger %q: DeleteLedger removes them at apply, so they are unaudited leftovers", name),
+				name, 0))
+		}
+	}
+
+	for name := range knownLedgers {
+		var derivedWords, storedWords []uint64
+		if bs := derived[name]; bs != nil {
+			derivedWords = bs.Words()
+		}
+
+		if bs := stored[name]; bs != nil {
+			storedWords = bs.Words()
+		}
+
+		words := max(len(derivedWords), len(storedWords))
+		for i := range words {
+			var d, s uint64
+			if i < len(derivedWords) {
+				d = derivedWords[i]
+			}
+
+			if i < len(storedWords) {
+				s = storedWords[i]
+			}
+
+			for diff := d ^ s; diff != 0; diff &= diff - 1 {
+				bit := bits.TrailingZeros64(diff)
+				txID := uint64(i)*64 + uint64(bit)
+
+				if d&(1<<bit) != 0 {
+					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+						fmt.Sprintf("reversion bit missing for tx %d in ledger %q: the audit reverts it but the stored bitset does not — the already-reverted gate would re-admit a double revert", txID, name),
+						name, txID))
+				} else {
+					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+						fmt.Sprintf("unaudited reversion bit for tx %d in ledger %q: the stored bitset marks it reverted but no audit-backed revert exists", txID, name),
+						name, txID))
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // checkReversionInvariants tracks transaction IDs and validates reversion invariants
