@@ -59,7 +59,7 @@ RUN set -e; \
         | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
-FROM debian:trixie
+FROM debian:trixie AS runner
 
 RUN apt-get update && apt-get install -y curl jq
 
@@ -84,3 +84,14 @@ ENTRYPOINT ["/init"]
 # own template (model), separate from the rest of the suite (main).
 COPY --from=compiler /cmds/ /opt/antithesis/test/v1/
 COPY --from=compiler /instrumented/symbols/ /symbols
+
+# Sidecar image (build with --target sidecar): any container whose image
+# carries /opt/antithesis/test/v1 is treated by the Composer as another host of
+# those templates, and commands scheduled into the sidecar run without the
+# workload env (LEDGER_GRPC_ADDR, ...). The restore-orchestrator image
+# therefore ships without the test tree.
+FROM runner AS sidecar
+RUN rm -rf /opt/antithesis/test
+
+# Default target: the workload image, test templates included.
+FROM runner AS workload

@@ -135,9 +135,12 @@ spec:
             memory: 512Mi
       # Services the model driver's restore requests by driving the operator:
       # quiesce-point backup, cluster teardown, restore-mode round-trip, and
-      # the flip back to normal. See restore-orchestrator.sh.
+      # the flip back to normal. See restore-orchestrator.sh. The sidecar image
+      # variant carries no /opt/antithesis/test tree, so the Composer never
+      # schedules test commands into this container (they would run without
+      # the workload env above).
       - name: restore-orchestrator
-        image: __REGISTRY__/workload-ledger-v3:__TAG__
+        image: __REGISTRY__/workload-ledger-v3-sidecar:__TAG__
         command: ["/opt/antithesis/restore-orchestrator.sh"]
         env:
         - name: NAMESPACE
