@@ -54,18 +54,20 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.Balan
 
 	s.balancesCalled = true
 
-	balances := make(numscriptlib.Balances, len(query))
-	for account, assets := range query {
-		accountBalance := make(numscriptlib.AccountBalance, len(assets))
+	balances := make(numscriptlib.Balances, 0, len(query))
+	for _, item := range query {
+		s.queriedVolumes[domain.VolumeKey{
+			AccountKey: domain.AccountKey{Account: item.Account},
+			Asset:      item.Asset,
+		}] = struct{}{}
 
-		balances[account] = accountBalance
-		for _, asset := range assets {
-			s.queriedVolumes[domain.VolumeKey{
-				AccountKey: domain.AccountKey{Account: account},
-				Asset:      asset,
-			}] = struct{}{}
-			accountBalance[asset] = new(big.Int).Set(MaxForceBalance)
-		}
+		balances = append(balances, numscriptlib.BalanceRow{
+			Account: item.Account,
+			Asset:   item.Asset,
+			Color:   item.Color,
+			Scope:   item.Scope,
+			Amount:  new(big.Int).Set(MaxForceBalance),
+		})
 	}
 
 	return balances, nil
@@ -158,13 +160,11 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	var writtenMetadata map[domain.MetadataKey]struct{}
 	if len(execResult.AccountsMetadata) > 0 {
 		writtenMetadata = make(map[domain.MetadataKey]struct{})
-		for account, acctMeta := range execResult.AccountsMetadata {
-			for key := range acctMeta {
-				writtenMetadata[domain.MetadataKey{
-					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
-					Key:        key,
-				}] = struct{}{}
-			}
+		for _, row := range execResult.AccountsMetadata {
+			writtenMetadata[domain.MetadataKey{
+				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: row.Account},
+				Key:        row.Key,
+			}] = struct{}{}
 		}
 	}
 

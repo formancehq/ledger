@@ -2,6 +2,7 @@ package processing
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -20,7 +21,6 @@ import (
 type numscriptPostingProducer struct {
 	cache      *numscript.NumscriptCache
 	ledgerName string
-	assetCache map[string]cachedAssetPrecision
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
@@ -55,6 +55,15 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		return nil, err
 	}
 
+	return applyNumscriptResult(s, ledgerName, result)
+}
+
+// applyNumscriptResult converts a numscript execution result into ledger
+// postings, updating the coverage-gated volume buffer, and collects the
+// script-set transaction / account metadata. It is shared by the tree-walking
+// interpreter producer and the bytecode VM producer: both return the same
+// numscriptlib.ExecutionResult, so the posting→volume application is identical.
+func applyNumscriptResult(s Scope, ledgerName string, result numscriptlib.ExecutionResult) (*produceResult, domain.Describable) {
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
 
@@ -166,23 +175,30 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// never pass through admission's ValidateMetadataKey, so an empty or
 	// NUL-bearing key from a Numscript program would otherwise corrupt
 	// read-index entries (#322).
+	//
+	// numscript now returns set account metadata as a flat list of rows
+	// (SetAccountMetadataRow) carrying a typed Value; we group them back per
+	// account and stringify the value for storage.
 	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
-		for account, meta := range result.AccountsMetadata {
-			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
-			for key, value := range meta {
-				if err := domain.ValidateMetadataKey(key); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-				if err := domain.ValidateMetadataString(value); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-
-				mdMap[key] = commonpb.NewStringValue(value)
+		for _, row := range result.AccountsMetadata {
+			if err := domain.ValidateMetadataKey(row.Key); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
 			}
 
-			accountsMeta[account] = mdMap
+			value := numscriptMetaValueToString(row.Value)
+			if err := domain.ValidateMetadataString(value); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
+			}
+
+			mdMap := accountsMeta[row.Account]
+			if mdMap == nil {
+				mdMap = make(map[string]*commonpb.MetadataValue)
+				accountsMeta[row.Account] = mdMap
+			}
+
+			mdMap[row.Key] = commonpb.NewStringValue(value)
 		}
 	}
 
@@ -195,7 +211,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			stringValue := value.String()
+			stringValue := numscriptMetaValueToString(value)
 			if err := domain.ValidateMetadataString(stringValue); err != nil {
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
@@ -211,7 +227,100 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	}, nil
 }
 
-// numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
+// numscriptMetaValueToString renders a script-set metadata Value as the raw
+// string the ledger stores. numscript's Value.String() wraps plain strings in
+// quotes (its canonical source form, e.g. `"savings"`), which would break the
+// ledger's verbatim metadata contract — so string values are unwrapped to their
+// raw content via numscript's own tagged-JSON serialization. All other value
+// types (number, monetary, portion, asset, account) render unquoted through
+// String() and are passed through unchanged.
+func numscriptMetaValueToString(v numscriptlib.Value) string {
+	// Value.MarshalJSON always succeeds for the closed set of numscript value
+	// types; on the impossible marshal/unmarshal failure fall back to String().
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return v.String()
+	}
+
+	var tagged struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &tagged); err != nil {
+		return v.String()
+	}
+
+	if tagged.Type == "string" {
+		return tagged.Value
+	}
+
+	return v.String()
+}
+
+// numscriptBalance computes an account's numscript-visible balance
+// (Input - Output) for one asset from the coverage-gated Scope. Force mode
+// short-circuits to an effectively-infinite balance so balance checks are
+// bypassed. A declared-but-absent volume (readVolumeOrZero → zero pair) is a
+// fresh zero balance; a volume present but not materialized is a preload
+// contract violation. Shared by the interpreter batch adapter and the VM
+// single-lookup adapter.
+func numscriptBalance(s Scope, ledgerName, account, asset string, force bool) (*big.Int, error) {
+	if force {
+		return new(big.Int).Set(numscript.MaxForceBalance), nil
+	}
+
+	vol, err := readVolumeOrZero(s, domain.NewVolumeKey(ledgerName, account, asset))
+	if err != nil {
+		return nil, err
+	}
+
+	if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
+		return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
+	}
+
+	var inputVal, outputVal uint256.Int
+	vol.GetInput().IntoUint256(&inputVal)
+	vol.GetOutput().IntoUint256(&outputVal)
+
+	// balance escapes to numscript (which uses *big.Int), so heap-allocate.
+	return new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()), nil
+}
+
+// numscriptAccountMetadata reads a single account-metadata value for numscript
+// meta() resolution. It returns the verbatim client write (declared_type is an
+// index hint only and MUST NOT influence script behaviour — coercing e.g. "030"
+// under a UINT64 declaration to "30" would break the lossless contract and let
+// a retype silently change transaction outcomes). Not-found and empty values
+// resolve to (,"", false). Shared by the interpreter batch adapter and the VM
+// single-lookup adapter.
+func numscriptAccountMetadata(s Scope, ledgerName, account, key string) (string, bool, error) {
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{
+			LedgerName: ledgerName,
+			Account:    account,
+		},
+		Key: key,
+	}
+
+	valueReader, err := s.AccountMetadata().Get(metaKey)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return "", false, err
+	}
+
+	if valueReader == nil {
+		return "", false, nil
+	}
+
+	str := commonpb.MetadataValueToString(valueReader.Mutate())
+	if str == "" {
+		return "", false, nil
+	}
+
+	return str, true, nil
+}
+
+// numscriptStoreAdapter adapts the coverage-gated Scope to the numscript
+// interpreter Store interface (batched balance / metadata queries).
 type numscriptStoreAdapter struct {
 	store      Scope
 	ledgerName string
@@ -219,80 +328,47 @@ type numscriptStoreAdapter struct {
 }
 
 func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
-	balances := make(numscriptlib.Balances)
+	balances := make(numscriptlib.Balances, 0, len(query))
 
-	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
-
-	for account, assets := range query {
-		accountBalance := make(numscriptlib.AccountBalance)
-		balances[account] = accountBalance
-
-		for _, asset := range assets {
-			// When force mode is enabled, return unlimited balance for all accounts
-			// This bypasses all balance checks in Numscript execution
-			if s.force {
-				accountBalance[asset] = new(big.Int).Set(numscript.MaxForceBalance)
-
-				continue
-			}
-
-			volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset)
-
-			vol, err := readVolumeOrZero(s.store, volumeKey)
-			if err != nil {
-				return nil, err
-			}
-
-			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
-				return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
-			}
-
-			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-			vol.GetInput().IntoUint256(&inputVal)
-			vol.GetOutput().IntoUint256(&outputVal)
-
-			// balance escapes into the map, so it must be heap-allocated
-			// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
-			balance := new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig())
-			accountBalance[asset] = balance
+	for _, item := range query {
+		balance, err := numscriptBalance(s.store, s.ledgerName, item.Account, item.Asset, s.force)
+		if err != nil {
+			return nil, err
 		}
+
+		// Echo back the query's color/scope so numscript can match the row to
+		// the (account, asset, color, scope) slot it asked for.
+		balances = append(balances, numscriptlib.BalanceRow{
+			Account: item.Account,
+			Asset:   item.Asset,
+			Color:   item.Color,
+			Scope:   item.Scope,
+			Amount:  balance,
+		})
 	}
 
 	return balances, nil
 }
 
 func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
-	result := make(numscriptlib.AccountsMetadata)
+	var result numscriptlib.AccountsMetadata
 
-	for account, keys := range query {
-		accountMeta := make(numscriptlib.AccountMetadata)
-		result[account] = accountMeta
-
-		for _, key := range keys {
-			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{
-					LedgerName: s.ledgerName,
-					Account:    account,
-				},
-				Key: key,
-			}
-
-			valueReader, err := s.store.AccountMetadata().Get(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+	for _, item := range query {
+		for _, key := range item.Keys {
+			value, ok, err := numscriptAccountMetadata(s.store, s.ledgerName, item.Account, key)
+			if err != nil {
 				return nil, err
 			}
-
-			if valueReader != nil {
-				// Numscript sees the verbatim client write — declared_type is
-				// an index hint only and MUST NOT influence script behaviour.
-				// A previous version coerced "030" under a UINT64 declaration
-				// to "30" here, which broke the lossless contract and let a
-				// retype silently change transaction outcomes.
-				str := commonpb.MetadataValueToString(valueReader.Mutate())
-				if str != "" {
-					accountMeta[key] = str
-				}
+			if !ok {
+				continue
 			}
+
+			result = append(result, numscriptlib.AccountMetadataRow{
+				Account: item.Account,
+				Key:     key,
+				Value:   value,
+				Scope:   item.Scope,
+			})
 		}
 	}
 

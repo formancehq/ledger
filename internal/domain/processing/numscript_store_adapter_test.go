@@ -14,6 +14,30 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// findBalance locates the (account, asset) row in the slice-based numscript
+// balance result.
+func findBalance(balances numscriptlib.Balances, account, asset string) (*numscriptlib.BalanceRow, bool) {
+	for i := range balances {
+		if balances[i].Account == account && balances[i].Asset == asset {
+			return &balances[i], true
+		}
+	}
+
+	return nil, false
+}
+
+// findMeta locates the (account, key) row in the slice-based numscript account
+// metadata result.
+func findMeta(rows numscriptlib.AccountsMetadata, account, key string) (string, bool) {
+	for _, row := range rows {
+		if row.Account == account && row.Key == key {
+			return row.Value, true
+		}
+	}
+
+	return "", false
+}
+
 func TestGetBalances_ForceMode(t *testing.T) {
 	t.Parallel()
 
@@ -28,7 +52,8 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	}
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD", "EUR"},
+		{Account: "bank", Asset: "USD"},
+		{Account: "bank", Asset: "EUR"},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
@@ -36,9 +61,12 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	require.NotNil(t, balances)
 
 	// In force mode, all balances should be MaxForceBalance
-	require.NotNil(t, balances["bank"]["USD"])
-	require.NotNil(t, balances["bank"]["EUR"])
-	require.Positive(t, balances["bank"]["USD"].Sign())
+	usd, ok := findBalance(balances, "bank", "USD")
+	require.True(t, ok)
+	eur, ok := findBalance(balances, "bank", "EUR")
+	require.True(t, ok)
+	require.Positive(t, usd.Amount.Sign())
+	require.Positive(t, eur.Amount.Sign())
 }
 
 func TestGetBalances_PreloadedVolumes(t *testing.T) {
@@ -63,13 +91,16 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD"},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
 	require.NoError(t, err)
 	require.NotNil(t, balances)
-	require.Equal(t, int64(700), balances["bank"]["USD"].Int64())
+
+	usd, ok := findBalance(balances, "bank", "USD")
+	require.True(t, ok)
+	require.Equal(t, int64(700), usd.Amount.Int64())
 }
 
 func TestGetBalances_NotPreloaded(t *testing.T) {
@@ -91,7 +122,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{}).AsReader(), nil)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD"},
 	}
 
 	_, err := adapter.GetBalances(context.Background(), query)
@@ -123,13 +154,15 @@ func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
+		{Account: "bank", Asset: "USD"},
 	}
 
 	balances, err := adapter.GetBalances(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, balances["bank"])
-	require.Equal(t, "0", balances["bank"]["USD"].String())
+
+	usd, ok := findBalance(balances, "bank", "USD")
+	require.True(t, ok)
+	require.Equal(t, "0", usd.Amount.String())
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {
@@ -153,13 +186,16 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active"), nil)
 
 	query := numscriptlib.MetadataQuery{
-		"users:001": {"status"},
+		{Account: "users:001", Keys: []string{"status"}},
 	}
 
 	result, err := adapter.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "active", result["users:001"]["status"])
+
+	value, ok := findMeta(result, "users:001", "status")
+	require.True(t, ok)
+	require.Equal(t, "active", value)
 }
 
 func TestGetAccountsMetadata_NotFound(t *testing.T) {
@@ -183,14 +219,15 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	expectGetAccountMetadata(mockStore, metaKey, nil, domain.ErrNotFound)
 
 	query := numscriptlib.MetadataQuery{
-		"users:001": {"status"},
+		{Account: "users:001", Keys: []string{"status"}},
 	}
 
 	result, err := adapter.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	// Key not found, should have empty metadata
-	require.Empty(t, result["users:001"])
+
+	// Key not found, should produce no row.
+	_, ok := findMeta(result, "users:001", "status")
+	require.False(t, ok)
 }
 
 // TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType pins that
@@ -222,13 +259,15 @@ func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030"), nil)
 
 	query := numscriptlib.MetadataQuery{
-		"users:001": {"age"},
+		{Account: "users:001", Keys: []string{"age"}},
 	}
 
 	result, err := adapter.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "030", result["users:001"]["age"],
+
+	value, ok := findMeta(result, "users:001", "age")
+	require.True(t, ok)
+	require.Equal(t, "030", value,
 		"declared_type must not influence the value Numscript sees")
 }
 
@@ -253,11 +292,13 @@ func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
 	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("25"), nil)
 
 	query := numscriptlib.MetadataQuery{
-		"users:001": {"age"},
+		{Account: "users:001", Keys: []string{"age"}},
 	}
 
 	result, err := adapter.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "25", result["users:001"]["age"])
+
+	value, ok := findMeta(result, "users:001", "age")
+	require.True(t, ok)
+	require.Equal(t, "25", value)
 }
