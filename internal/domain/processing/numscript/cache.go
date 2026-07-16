@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/zeebo/blake3"
+	"github.com/zeebo/xxh3"
 	"go.opentelemetry.io/otel/metric"
 
 	numscriptlib "github.com/formancehq/numscript"
@@ -20,7 +20,7 @@ import (
 // write-locking on the hot path.
 type NumscriptCache struct {
 	mu      sync.RWMutex
-	cache   map[[32]byte]*list.Element
+	cache   map[[16]byte]*list.Element
 	order   *list.List
 	maxSize int
 
@@ -30,7 +30,7 @@ type NumscriptCache struct {
 
 // lruEntry holds the cache key and value for an LRU list element.
 type lruEntry struct {
-	hash   [32]byte
+	hash   [16]byte
 	script parsedScript
 }
 
@@ -61,23 +61,19 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 	}
 
 	return &NumscriptCache{
-		cache:   make(map[[32]byte]*list.Element, maxSize),
+		cache:   make(map[[16]byte]*list.Element, maxSize),
 		order:   list.New(),
 		maxSize: maxSize,
 	}
 }
 
-// hashScript computes the blake3 hash of the script content.
-// Lock-free: allocates a hasher per call (blake3.New is cheap).
-func HashScript(script string) [32]byte {
-	h := blake3.New()
-	_, _ = h.WriteString(script)
-
-	var result [32]byte
-
-	h.Sum(result[:0])
-
-	return result
+// HashScript computes the xxh3 128-bit hash of the script content, used as the
+// cache key. xxh3 is a fast non-cryptographic hash; the cache key needs no
+// cryptographic collision resistance (the audit hash chain lives elsewhere),
+// and 128 bits makes accidental collisions negligible. Lock-free and
+// allocation-free.
+func HashScript(script string) [16]byte {
+	return xxh3.HashString128(script).Bytes()
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
