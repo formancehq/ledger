@@ -24,7 +24,7 @@ require (
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/formancehq/go-libs/v5 v5.7.0
 	github.com/formancehq/invariants v0.11.0
-	github.com/formancehq/numscript v0.0.25-0.20260715134913-bf5bbb9658c8
+	github.com/formancehq/numscript v0.0.25-0.20260716123501-ec9561f35a95
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-jose/go-jose/v4 v4.1.4
