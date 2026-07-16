@@ -3252,7 +3252,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     PostingRequest:
       type: object
@@ -3424,7 +3424,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     RevertTransactionRequestBody:
       type: object
@@ -3445,7 +3445,7 @@ components:
         expandVolumes:
           type: boolean
           default: false
-          description: When true, include post-commit volumes (per account/asset) in the response
+          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     DeleteMetadataRequest:
       type: object

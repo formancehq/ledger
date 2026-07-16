@@ -1231,6 +1231,17 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		var vk domain.VolumeKey
 
 		if err := vk.Unmarshal([]byte(key)); err != nil {
+			// A persisted volume-projection key that no longer unmarshals is a
+			// corruption/tampering signal, not something to skip: silently
+			// continuing would let the malformed row escape verification entirely
+			// (invariant #7 — an impossible-by-design state must fail loudly). Emit
+			// a store error and move on; the key is unparseable, so there is no
+			// (ledger, account, asset) to compute an expectation against.
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("unparseable volume projection key %x: %v", key, err), 0, "", "", ""))
+
+			errorCount++
+
 			continue
 		}
 
