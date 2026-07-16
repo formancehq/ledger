@@ -417,4 +417,49 @@ var _ = Context("Ledger revert transactions API tests", func() {
 			})
 		})
 	})
+	When("reverting two different transactions with the same idempotency key", func() {
+		// Regression: RevertTransaction carries an idempotency key, so reusing it
+		// with a different input must be a 400 VALIDATION, not a 500 — the endpoint
+		// used to route this through the non-write common error handler.
+		var (
+			txA, txB *operations.V2CreateTransactionResponse
+			err      error
+		)
+		create := func(specContext SpecContext, destination string) *operations.V2CreateTransactionResponse {
+			res, cErr := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+				Ledger: "default",
+				V2PostTransaction: components.V2PostTransaction{
+					Metadata: map[string]string{},
+					Postings: []components.V2Posting{{
+						Amount:      big.NewInt(100),
+						Asset:       "USD",
+						Source:      "world",
+						Destination: destination,
+					}},
+				},
+			})
+			Expect(cErr).ToNot(HaveOccurred())
+			return res
+		}
+		BeforeEach(func(specContext SpecContext) {
+			txA = create(specContext, "alice")
+			txB = create(specContext, "bob")
+		})
+		It("should reject the second revert with VALIDATION, not INTERNAL", func(specContext SpecContext) {
+			client := Wait(specContext, DeferClient(testServer))
+			_, err = client.Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
+				Ledger:         "default",
+				ID:             txA.V2CreateTransactionResponse.Data.ID,
+				IdempotencyKey: pointer.For("reuse-key"),
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			_, err = client.Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
+				Ledger:         "default",
+				ID:             txB.V2CreateTransactionResponse.Data.ID,
+				IdempotencyKey: pointer.For("reuse-key"),
+			})
+			Expect(err).To(HaveErrorCode(string(components.V2ErrorsEnumValidation)))
+		})
+	})
 })
