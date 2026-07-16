@@ -812,7 +812,15 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 		})
 	}
 
-	// Numscripts are immutable and append-only — there is no removal action.
+	// The library is append-only: a script present in the store but dropped
+	// from the desired config cannot be removed, so the desired state is
+	// unreachable. Fail loudly rather than silently reporting "already up to
+	// date" (the other config sections emit a remove action here).
+	for name := range current.Numscripts {
+		if _, ok := desired.Numscripts[name]; !ok {
+			return nil, fmt.Errorf("numscript %q exists in the ledger but is absent from the desired config; the append-only library does not support removal", name)
+		}
+	}
 
 	return actions, nil
 }
