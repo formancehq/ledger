@@ -234,8 +234,11 @@ fi
 
 log "armed; watching $REQ"
 while true; do
-	if [ ! -f "$REQ" ]; then sleep 1; continue; fi
-	rm -f "$REQ" "$RESP"
+	# Atomic claim: the driver withdraws an expired request with a rename of
+	# its own, so exactly one side wins — a request the driver has withdrawn
+	# (it is no longer quiesced) can never start a cycle here.
+	if ! mv "$REQ" "$REQ.claimed" 2>/dev/null; then sleep 1; continue; fi
+	rm -f "$REQ.claimed" "$RESP"
 	log "restore cycle requested"
 	if do_one_restore; then
 		printf 'ok\n' > "$RESP"

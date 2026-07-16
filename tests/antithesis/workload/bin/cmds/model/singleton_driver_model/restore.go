@@ -162,12 +162,33 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
+			t.withdraw()
 			return ctx.Err()
 		case <-timeout.C:
-			return fmt.Errorf("restore timed out after %s", cap)
+			if t.withdraw() {
+				return fmt.Errorf("restore timed out after %s (request never claimed)", cap)
+			}
+			// The orchestrator claimed the request and is mid-cycle — possibly
+			// past the teardown, where the driver's state exists only in the
+			// backup. Resuming unquiesced would cut commits the restore then
+			// erases, poisoning every model check, so keep waiting.
+			log.Printf("restore cycle: lease %s expired but the request is claimed; waiting for the orchestrator", cap)
+			timeout.Reset(cap)
 		case <-time.After(restorePoll):
 		}
 	}
+}
+
+// withdraw atomically takes the request back, returning false if the
+// orchestrator claimed it first (its claim is a rename too, so exactly one
+// side wins). A withdrawn request can never trigger a cycle later, when the
+// driver is no longer quiesced.
+func (t *fileTrigger) withdraw() bool {
+	if os.Rename(t.reqPath, t.reqPath+".expired") != nil {
+		return false
+	}
+	_ = os.Remove(t.reqPath + ".expired")
+	return true
 }
 
 // restoreTimeout is the per-cycle lease, from MODEL_RESTORE_TIMEOUT seconds.

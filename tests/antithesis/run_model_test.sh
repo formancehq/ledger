@@ -248,8 +248,11 @@ do_one_restore() {
 # service_restore_request handles one pending request, if any. Runs in the main
 # shell (not a subshell) so start_node's SERVER_PIDS update is visible to cleanup.
 service_restore_request() {
-	[ "$RESTORE" = 1 ] && [ -f "$RESTORE_REQ" ] || return 0
-	rm -f "$RESTORE_REQ"
+	[ "$RESTORE" = 1 ] || return 0
+	# Atomic claim, mirroring the driver's withdraw-by-rename on lease expiry:
+	# exactly one side gets the request.
+	mv "$RESTORE_REQ" "$RESTORE_REQ.claimed" 2>/dev/null || return 0
+	rm -f "$RESTORE_REQ.claimed"
 	log "restore: cycle requested"
 	if do_one_restore; then
 		RESTORE_CYCLES=$(( RESTORE_CYCLES + 1 ))
