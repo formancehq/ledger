@@ -76,3 +76,25 @@ spec:
     value: minioadmin
   - name: AWS_SECRET_ACCESS_KEY
     value: minioadmin
+---
+# The ledger image is referenced only by the Cluster CR's spec.image fields,
+# which the Antithesis environment builder does not scan — it mirrors images
+# from pod templates. This no-op Job carries the image in a pod template so it
+# is baked into the hermetic environment for the operator's pods to use.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ledger-image-preload
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: preload
+        image: __REGISTRY__/__IMAGE_NAME__:__TAG__
+        command: ["/bin/true"]
+        resources:
+          requests:
+            cpu: 1m
+            memory: 8Mi

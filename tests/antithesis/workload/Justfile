@@ -6,6 +6,8 @@ tag := 'antithesis'
 # where the Antithesis composer should focus on a specific subset.
 build include='':
 	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux --build-arg INCLUDED_DRIVERS={{quote(include)}} -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}" ../../../
+	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux --build-arg INCLUDED_DRIVERS={{quote(include)}} -f Dockerfile --target sidecar --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:{{tag}}" ../../../
 
 push include='': (build include)
 	docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}"
+	docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:{{tag}}"
