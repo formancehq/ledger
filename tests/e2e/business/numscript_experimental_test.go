@@ -896,11 +896,14 @@ send [USD/2 25] (source = @world destination = $dst)
 		})
 	})
 
-	// EN-1406 P1-2: Ledger volumes carry no color/scope dimension, so a script
-	// that reads a color-qualified balance must be rejected — serving each color
-	// view the full balance would let one script spend the same funds once per
-	// color and drive the volume negative with no overdraft clause (double-spend).
-	Context("colored balance reads are rejected (P1-2)", Ordered, func() {
+	// EN-1406 / color-of-money (P1-2 revisited): color is now a first-class volume
+	// dimension (volumes are keyed by (account, asset, color)), so a colored source
+	// draws ONLY from its own segregated bucket. The old double-spend concern —
+	// serving each color the full balance of one shared volume — is prevented by
+	// construction, no rejection needed: funding the uncolored bucket does not make
+	// colored spends possible, and distinct colors never share funds. A colored
+	// spend against an empty bucket fails with INSUFFICIENT_FUNDS.
+	Context("colored spends draw only from their own bucket (P1-2 segregation)", Ordered, func() {
 		const ledgerName = "nsx-color-reject"
 
 		BeforeAll(func() {
@@ -908,10 +911,11 @@ send [USD/2 25] (source = @world destination = $dst)
 			Expect(err).To(Succeed())
 		})
 
-		It("Should reject a script that spends the same volume across two colors", func() {
-			// Fund the source with a plain COIN 100. The script tries to spend 80
-			// RED + 80 BLUE from it. Both colored views collapse to the one COIN
-			// volume, so allowing this would overspend to -60. Must be rejected.
+		It("Should not let a colored source draw from the uncolored bucket", func() {
+			// Fund the source's UNCOLORED COIN bucket with 100. The script tries to
+			// spend 80 RED + 80 BLUE. Neither colored bucket holds anything — the
+			// funds are uncolored — so the transaction fails with INSUFFICIENT_FUNDS:
+			// the colored views do NOT collapse onto the uncolored volume.
 			fund(ledgerName, "clr:src", "COIN 100")
 
 			script := `
@@ -932,10 +936,11 @@ send [COIN 80] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
-				"colored balance reads must be rejected as a validation error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonInsufficientFunds),
+				"a colored spend against an empty bucket must fail with insufficient funds, got %q", info.Reason)
 
-			// The source must be untouched — nothing committed.
+			// The uncolored bucket must be untouched — nothing committed, and the
+			// colored spend never reached the uncolored funds.
 			expectBalance(ledgerName, "clr:src", "COIN", "100")
 		})
 	})
