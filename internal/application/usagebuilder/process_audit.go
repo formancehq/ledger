@@ -466,6 +466,16 @@ func (b *Builder) dispatchCreateTransaction(
 
 	applyVolumeAnnotations(ledger, ann, state, entry)
 
+	// A skipped CreateTransaction produces an OrderSkipped log, not a
+	// CreatedTransaction, so readLog reports no real transaction. Such an order
+	// committed nothing: it must contribute no reference / numscript-execution /
+	// template-usage counters (all derived from the raw order below). Posting and
+	// volume counters above come from the produced log and are already naturally
+	// zero for a skip.
+	if !ann.isCreatedTx {
+		return nil
+	}
+
 	if order.GetReference() != "" {
 		state.addCounter(ledger, usagestore.CounterReference, 1)
 	}
@@ -505,11 +515,17 @@ func (b *Builder) dispatchRevertTransaction(
 	state *batchState,
 	entry *entryVolumeState,
 ) error {
-	state.addCounter(ledger, usagestore.CounterRevert, 1)
-
 	ann, err := b.readLog(ctx, handle, logSeq)
 	if err != nil {
 		return err
+	}
+
+	// A skipped RevertTransaction produces an OrderSkipped log; only a produced
+	// RevertedTransaction is a successful revert. Gate the revert counter on it so
+	// a skipped revert does not inflate the count. (Posting/volume counters below
+	// come from the produced log and are already zero for a skip.)
+	if ann.isRevertedTx {
+		state.addCounter(ledger, usagestore.CounterRevert, 1)
 	}
 
 	if ann.postings > 0 {
@@ -534,6 +550,12 @@ type logVolumeAnnotations struct {
 	newKept     []*commonpb.TouchedVolume // new + kept
 	ephemeral   []*commonpb.TouchedVolume // new + purged (pure ephemeral)
 	txTimestamp *commonpb.Timestamp       // Transaction.Timestamp on Created/Reverted logs
+
+	// Kind of the produced log. Both false when the order was skipped
+	// (OrderSkipped) or produced no transaction — the order committed nothing,
+	// so it must not contribute success-scoped usage counters.
+	isCreatedTx  bool
+	isRevertedTx bool
 }
 
 // readLog fetches the log at logSeq and returns its posting count plus the
@@ -580,10 +602,12 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 		tx := p.CreatedTransaction.GetTransaction()
 		result.postings = len(tx.GetPostings())
 		result.txTimestamp = tx.GetTimestamp()
+		result.isCreatedTx = true
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		tx := p.RevertedTransaction.GetRevertTransaction()
 		result.postings = len(tx.GetPostings())
 		result.txTimestamp = tx.GetTimestamp()
+		result.isRevertedTx = true
 	}
 
 	return result, nil

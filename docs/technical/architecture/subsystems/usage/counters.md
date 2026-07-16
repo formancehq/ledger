@@ -1,6 +1,8 @@
 # Counters and Storage Schema
 
-This page documents the projections the usagebuilder materialises: what each counter counts, how the FSM plumbs the source data through the log payload, how the counters are keyed in the usagestore, and how the checker verifies them.
+This page documents the projections the usagebuilder materialises: what each counter counts, how the FSM plumbs the source data through the log payload, and how the counters are keyed in the usagestore.
+
+These counters live in the **usagestore**, a peer secondary store. Per the checker-scope framing (CLAUDE.md invariant #8), a peer secondary store is out of the **main-store checker's** scope *by construction* — `Check()` never opens the usagestore — so the checker does **not** verify these counters. Their integrity is a per-replica rebuild-health concern (rebuildable from the audit on demand), not a main-store invariant-#8 projection.
 
 For the pipeline that populates these keys, see [usagebuilder.md](usagebuilder.md).
 
@@ -11,9 +13,9 @@ Every counter is keyed by `(ledger, counter_id)` in the usagestore (`internal/st
 | ID | Name | Source | Delta per event |
 |----|------|--------|-----------------|
 | `0x01` | `CounterPosting` | `Transaction.Postings` (`CreatedTransaction`) + `RevertTransaction.Postings` (`RevertedTransaction`) | `+len(Postings)` per applicable log |
-| `0x02` | `CounterRevert` | `RevertTransactionOrder` unmarshalled from `AuditItem.SerializedOrder` (covers both direct and mirror-ingested reverts) | `+1` per order |
-| `0x03` | `CounterNumscriptExecution` | `CreateTransactionOrder` with a non-empty `Script.Plain` or a non-nil `NumscriptReference` | `+1` per order |
-| `0x04` | `CounterReference` | `CreateTransactionOrder.Reference != ""` | `+1` per order |
+| `0x02` | `CounterRevert` | `RevertTransactionOrder` unmarshalled from `AuditItem.SerializedOrder` (covers both direct and mirror-ingested reverts) | `+1` per **successful** revert (gated on the produced log being a `RevertedTransaction`; a skipped order — `OrderSkipped` log — counts nothing) |
+| `0x03` | `CounterNumscriptExecution` | `CreateTransactionOrder` with a non-empty `Script.Plain` or a non-nil `NumscriptReference` | `+1` per **successful** order (gated on a produced `CreatedTransaction`; skips count nothing) |
+| `0x04` | `CounterReference` | `CreateTransactionOrder.Reference != ""` | `+1` per **successful** order (gated on a produced `CreatedTransaction`; skips count nothing) |
 | `0x05` | `CounterEphemeralEvicted` | `len(LedgerLog.EphemeralVolumes)` per log — the pure-ephemeral tuples (new + purged same log) | `+len(EphemeralVolumes)` |
 | `0x06` | `CounterTransientUsed` | `len(AppliedProposal.TransientVolumes[ledger].Volumes)` — batch-level, keyed by audit sequence | `+len(TransientVolumes[ledger])` per proposal |
 | `0x07` | `CounterVolume` | `len(LedgerLog.NewKeptVolumes) − len(LedgerLog.PurgedVolumes)` per log | net change in live volume-key cardinality |
