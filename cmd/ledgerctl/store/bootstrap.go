@@ -60,18 +60,20 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		yes, _      = cmd.Flags().GetBool("yes")
 	)
 
-	// Ensure the data directory is fresh: no checkpoints, no live/ database
-	// (normal startup prefers it over the restored checkpoint, silently
-	// booting the stale store under the marker's boundary), no leftover
-	// RESTORED marker.
-	if err := dal.ValidateFreshRestoreTarget(dataDir); err != nil {
-		return err
-	}
-
+	// Ensure the data directory is fresh: no RESTORED marker, no live/
+	// database, no checkpoints (normal startup prefers live/ over the
+	// restored checkpoint, silently booting the stale store under the
+	// marker's boundary). Marker first: ValidateFreshRestoreTarget's reclaim
+	// of a half-finalized checkpoint is only safe once the marker is known
+	// absent.
 	if marker, err := node.ReadRestoredMarker(dataDir); err != nil {
 		return fmt.Errorf("checking for RESTORED marker: %w", err)
 	} else if marker != nil {
 		return fmt.Errorf("data directory %s already contains a RESTORED marker; refusing to overwrite", dataDir)
+	}
+
+	if err := dal.ValidateFreshRestoreTarget(dataDir); err != nil {
+		return err
 	}
 
 	storageCfg, err := cmdutil.BackupStorageConfigFromFlags(cmd)

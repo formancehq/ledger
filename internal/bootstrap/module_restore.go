@@ -58,17 +58,16 @@ func RestoreModule() fx.Option {
 			// checkpoint, silently booting the stale store under the
 			// marker's boundary), no leftover RESTORED marker.
 			func(cfg Config) error {
-				if err := dal.ValidateFreshRestoreTarget(cfg.DataDir); err != nil {
-					return err
-				}
-
+				// Marker first: ValidateFreshRestoreTarget's reclaim of a
+				// half-finalized checkpoint is only safe once the marker is
+				// known absent.
 				if marker, err := node.ReadRestoredMarker(cfg.DataDir); err != nil {
 					return fmt.Errorf("checking for RESTORED marker: %w", err)
 				} else if marker != nil {
 					return fmt.Errorf("restore mode requires a fresh data directory: a RESTORED marker already exists in %s", cfg.DataDir)
 				}
 
-				return nil
+				return dal.ValidateFreshRestoreTarget(cfg.DataDir)
 			},
 			// Register health service on ServiceServer
 			func(serviceServer *grpcadp.ServiceServer) {

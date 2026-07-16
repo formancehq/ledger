@@ -36,6 +36,39 @@ func TestValidateFreshRestoreTarget(t *testing.T) {
 		require.ErrorContains(t, dal.ValidateFreshRestoreTarget(dir), "checkpoints already exist")
 	})
 
+	t.Run("orphaned checkpoint 0 is reclaimed", func(t *testing.T) {
+		// checkpoints/0 with no live database (and the caller having verified
+		// no RESTORED marker) is a finalize that died between checkpoint
+		// placement and the marker — the restore must be retryable, not
+		// permanently refused.
+		t.Parallel()
+
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoints", "0"), 0o755))
+		require.NoError(t, dal.ValidateFreshRestoreTarget(dir))
+
+		_, err := os.Stat(filepath.Join(dir, "checkpoints"))
+		require.True(t, os.IsNotExist(err), "the orphaned checkpoint must be reclaimed")
+	})
+
+	t.Run("checkpoint 0 alongside higher checkpoints is refused", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoints", "0"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoints", "5"), 0o755))
+		require.ErrorContains(t, dal.ValidateFreshRestoreTarget(dir), "checkpoints already exist")
+	})
+
+	t.Run("checkpoint 0 next to live is refused", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "checkpoints", "0"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "live"), 0o755))
+		require.ErrorContains(t, dal.ValidateFreshRestoreTarget(dir), "live/ already exists")
+	})
+
 	for _, stale := range []string{"live", "live.staging", "live.discard"} {
 		t.Run("existing "+stale+" is refused", func(t *testing.T) {
 			t.Parallel()
