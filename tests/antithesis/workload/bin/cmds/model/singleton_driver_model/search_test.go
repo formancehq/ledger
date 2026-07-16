@@ -7,12 +7,17 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func collectBases(c *Checker) []GlobalState {
-	var out []GlobalState
+func bulkOf(reqs ...*servicepb.Request) oracle.Bulk { return oracle.Bulk{Requests: reqs} }
+
+func collectBases(c *Checker) []oracle.GlobalState {
+	var out []oracle.GlobalState
 	// ^uint64(0): no high-water bound — fold every in-flight/pending bulk.
-	c.candidateBases(^uint64(0), func(b GlobalState) bool {
+	c.candidateBases(^uint64(0), func(b oracle.GlobalState) bool {
 		out = append(out, b)
 
 		return false
@@ -27,12 +32,12 @@ func collectBases(c *Checker) []GlobalState {
 func TestCandidateBases_BoundsInflightByMaxTicket(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
-	c.inflight[5] = bulkOf(addTypeReq("T"))
+	c := NewChecker([]string{"L"}, nil)
+	c.inflight[5] = bulkOf(oracletest.AddTypeReq("T"))
 
-	collect := func(maxTicket uint64) []GlobalState {
-		var out []GlobalState
-		c.candidateBases(maxTicket, func(b GlobalState) bool {
+	collect := func(maxTicket uint64) []oracle.GlobalState {
+		var out []oracle.GlobalState
+		c.candidateBases(maxTicket, func(b oracle.GlobalState) bool {
 			out = append(out, b)
 
 			return false
@@ -52,16 +57,16 @@ func TestCandidateBases_BoundsInflightByMaxTicket(t *testing.T) {
 func TestCandidateBases_TruncatesPendingByMaxTicket(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
+	c := NewChecker([]string{"L"}, nil)
 	c.pending = []*pendingObservation{
-		{minSeq: 1, obs: observation{bulk: bulkOf(addTypeReq("A")), ticket: 2}},
-		{minSeq: 2, obs: observation{bulk: bulkOf(addTypeReq("B")), ticket: 6}},
+		{minSeq: 1, obs: observation{bulk: bulkOf(oracletest.AddTypeReq("A")), ticket: 2}},
+		{minSeq: 2, obs: observation{bulk: bulkOf(oracletest.AddTypeReq("B")), ticket: 6}},
 	}
 
-	var bases []GlobalState
+	var bases []oracle.GlobalState
 	// maxTicket 4: P1 (ticket 2) folds, P2 (ticket 6) is excluded — states are
 	// modelState and modelState+P1, never +P1+P2.
-	c.candidateBases(4, func(b GlobalState) bool {
+	c.candidateBases(4, func(b oracle.GlobalState) bool {
 		bases = append(bases, b)
 
 		return false
@@ -72,8 +77,8 @@ func TestCandidateBases_TruncatesPendingByMaxTicket(t *testing.T) {
 func TestCandidateBases_FoldsInflight(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
-	c.inflight[1] = bulkOf(addTypeReq("T"))
+	c := NewChecker([]string{"L"}, nil)
+	c.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 
 	// modelState (empty) and the state with the in-flight add folded in.
 	require.Len(t, collectBases(c), 2)
@@ -88,16 +93,16 @@ func TestCandidateBases_FoldsInflight(t *testing.T) {
 func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 	t.Parallel()
 
-	c := NewChecker([]string{"L"})
-	p1 := bulkOf(addTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
-	p2 := bulkOf(txReq("world", "a:1", "USD", 5), txReq("a:1", "world", "USD", 5))
+	c := NewChecker([]string{"L"}, nil)
+	p1 := bulkOf(oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))
+	p2 := bulkOf(oracletest.TxReq("world", "a:1", "USD", 5), oracletest.TxReq("a:1", "world", "USD", 5))
 	c.pending = []*pendingObservation{
 		{minSeq: 1, obs: observation{bulk: p1}},
 		{minSeq: 3, obs: observation{bulk: p2}},
 	}
 
 	for _, b := range collectBases(c) {
-		_, present := b.ledger("L").volumes[VolumeKey{Address: "a:1", Asset: "USD"}]
+		_, present := b.Ledger("L").Volumes()[oracle.VolumeKey{Address: "a:1", Asset: "USD"}]
 		require.False(t, present, "a:1 must be absent in every candidate base (reordered prefix is illegal)")
 	}
 }
@@ -109,9 +114,9 @@ func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	t.Parallel()
 
-	alreadyExistsExplained := func(bases []GlobalState) bool {
+	alreadyExistsExplained := func(bases []oracle.GlobalState) bool {
 		for _, b := range bases {
-			res := b.Apply(bulkOf(addTypeReq("T")))
+			res := b.Apply(bulkOf(oracletest.AddTypeReq("T")))
 			if !res.OK && res.Reason == domain.ErrReasonAccountTypeAlreadyExists {
 				return true
 			}
@@ -121,10 +126,10 @@ func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	}
 
 	// No concurrent add -> AlreadyExists is not explainable (would be a finding).
-	require.False(t, alreadyExistsExplained(collectBases(NewChecker([]string{"L"}))))
+	require.False(t, alreadyExistsExplained(collectBases(NewChecker([]string{"L"}, nil))))
 
 	// Concurrent in-flight add of T -> AlreadyExists is explainable.
-	withAdd := NewChecker([]string{"L"})
-	withAdd.inflight[1] = bulkOf(addTypeReq("T"))
+	withAdd := NewChecker([]string{"L"}, nil)
+	withAdd.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 	require.True(t, alreadyExistsExplained(collectBases(withAdd)))
 }

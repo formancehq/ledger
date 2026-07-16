@@ -18,7 +18,7 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	// Create Cluster first so the credentials has a namespace to distribute into.
-	ls := newCluster("authcm-svc", ns)
+	ls := newCluster("authcm-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authcm"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -39,7 +39,7 @@ func TestReconcile_AuthKeysConfigMap(t *testing.T) {
 
 	// Wait for the auth-keys ConfigMap to appear.
 	cm := &corev1.ConfigMap{}
-	cmKey := types.NamespacedName{Namespace: ns, Name: "ledger-authcm-svc-auth-keys"}
+	cmKey := types.NamespacedName{Namespace: ns, Name: "ledger-authcm-cluster-auth-keys"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, cmKey, cm) == nil
 	}, "auth-keys ConfigMap should be created")
@@ -65,7 +65,7 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	// Create Cluster first so the credentials has a namespace to distribute into.
-	ls := newCluster("authsts-svc", ns)
+	ls := newCluster("authsts-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authsts"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -87,12 +87,12 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	// Wait for the StatefulSet to appear.
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authsts-svc", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authsts-cluster", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	// Wait for the auth-keys volume to be present (may need a re-reconciliation).
 	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authsts-svc", Namespace: ns}, sts); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authsts-cluster", Namespace: ns}, sts); err != nil {
 			return false
 		}
 		for _, v := range sts.Spec.Template.Spec.Volumes {
@@ -125,18 +125,18 @@ func TestReconcile_NoAgentsNoConfigMap(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	// Create Cluster without matching credentials.
-	ls := newCluster("no-credentials-svc", ns)
+	ls := newCluster("no-credentials-cluster", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Wait for StatefulSet to confirm reconciliation ran.
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-no-credentials-svc", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-no-credentials-cluster", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	// Verify no auth-keys ConfigMap.
 	cm := &corev1.ConfigMap{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "ledger-no-credentials-svc-auth-keys"}, cm)
+	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "ledger-no-credentials-cluster-auth-keys"}, cm)
 	assert.True(t, apierrors.IsNotFound(err), "auth-keys ConfigMap should not exist when no credentials match")
 
 	// Verify no auth-keys volume in the StatefulSet.
@@ -153,7 +153,7 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	ns := createTestNamespace(t)
 
 	// Create Cluster first so the credentials has a namespace to distribute into.
-	ls := newCluster("authhash-svc", ns)
+	ls := newCluster("authhash-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authhash"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -175,7 +175,7 @@ func TestReconcile_AuthKeysHashAnnotation(t *testing.T) {
 	// Wait for the StatefulSet with auth-keys hash annotation.
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authhash-svc", Namespace: ns}, sts); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-authhash-cluster", Namespace: ns}, sts); err != nil {
 			return false
 		}
 		_, ok := sts.Spec.Template.Annotations[annotationAuthKeysHash]

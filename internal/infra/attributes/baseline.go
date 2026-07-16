@@ -6,26 +6,35 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// CreateBaselineSnapshot iterates all computed attribute values (volumes,
-// metadata, transactions) from the source reader and writes them into a
-// compact Pebble DB at destPath. Only the final value per canonical key is
-// stored at raft index 0 — no history, no logs, no system keys.
+// CreateBaselineSnapshot copies the entire attribute zone (every attribute
+// type, final value per canonical key) from the source reader into a compact
+// Pebble DB at destPath. No history, no logs. It also copies the LedgerInfo
+// entries from the Global zone (query.ReadLedgers reads them from there) so the
+// checker can verify the schema / account-type / presence projections against
+// this boundary-time baseline rather than the live store.
+//
+// The whole attribute zone is copied (not just the types a compare pass reads
+// today) so every checker baseline read — compareVolumes / compareMetadata /
+// compareTransactions / compareReferences / compareBoundaries /
+// compareMirrorV2LogID (its archived floor lives on the Boundary rows) and the
+// skip-order folds (foldBaselineReferences / foldBaselineBoundaries /
+// foldBaselineLedgers) — resolves against real pre-archive state instead of a
+// genesis/empty fallback, and a future compare pass over any attribute needs no
+// change here.
 //
 // The result is orders of magnitude smaller than a full Pebble checkpoint
-// because it contains only the seal-hash domain (attributes zone), not the
-// entire store. This is critical for archived chapters: the whole point of
-// archiving is to reclaim disk space, so a full checkpoint would be
-// counter-productive.
+// because it contains only the attributes zone plus LedgerInfo, not the entire
+// store. This is critical for archived chapters: the whole point of archiving
+// is to reclaim disk space, so a full checkpoint would be counter-productive.
 //
 // The write uses atomic rename: data is written to a temporary directory
 // first, then renamed to destPath. This eliminates TOCTOU races with
 // concurrent readers (the checker).
-func CreateBaselineSnapshot(reader dal.PebbleReader, attrs *Attributes, destPath string) error {
+func CreateBaselineSnapshot(reader dal.PebbleReader, destPath string) error {
 	// Write to a temporary sibling directory, then atomic rename.
 	tmpPath := destPath + fmt.Sprintf(".tmp-%d-%d", os.Getpid(), time.Now().UnixNano())
 
@@ -51,7 +60,7 @@ func CreateBaselineSnapshot(reader dal.PebbleReader, attrs *Attributes, destPath
 	}
 
 	// Write all computed attribute values into the baseline DB.
-	if err := writeBaselineAttributes(reader, attrs, db); err != nil {
+	if err := writeBaselineAttributes(reader, db); err != nil {
 		_ = db.Close()
 
 		return err
@@ -79,78 +88,49 @@ func CreateBaselineSnapshot(reader dal.PebbleReader, attrs *Attributes, destPath
 	return nil
 }
 
-// writeBaselineAttributes iterates each attribute type from the source reader
-// and writes the computed (last-value-per-key) entries into the baseline DB
-// at raft index 0 using the standard attribute key layout.
-func writeBaselineAttributes(reader dal.PebbleReader, attrs *Attributes, db *pebble.DB) error {
-	if err := writeBaselineAttr(reader, attrs.Volume, db); err != nil {
-		return fmt.Errorf("writing baseline volumes: %w", err)
+// writeBaselineAttributes copies the whole attribute zone verbatim from the
+// source reader into the baseline DB, then the Global-zone LedgerInfo entries.
+func writeBaselineAttributes(reader dal.PebbleReader, db *pebble.DB) error {
+	if err := copyBaselineRange(reader, db, []byte{dal.ZoneAttributes}, []byte{dal.ZoneAttributes + 1}); err != nil {
+		return fmt.Errorf("writing baseline attributes: %w", err)
 	}
 
-	if err := writeBaselineAttr(reader, attrs.Metadata, db); err != nil {
-		return fmt.Errorf("writing baseline metadata: %w", err)
-	}
-
-	if err := writeBaselineAttr(reader, attrs.Transaction, db); err != nil {
-		return fmt.Errorf("writing baseline transactions: %w", err)
-	}
-
-	// Boundary rows carry the per-ledger LedgerBoundaries — NextTransactionId
-	// (seeds the checker's tx-id counter for archived-history ledgers) and
-	// last_mirror_v2_log_id (the archived floor for the mirror-idempotency
-	// equality check, compareMirrorV2LogID). Without these, a ledger whose
-	// history sits entirely in an archived chapter is invisible to the
-	// baseline fold (foldBaselineBoundaries) and the checker false-positives.
-	if err := writeBaselineAttr(reader, attrs.Boundary, db); err != nil {
-		return fmt.Errorf("writing baseline boundaries: %w", err)
+	if err := copyBaselineLedgers(reader, db); err != nil {
+		return fmt.Errorf("writing baseline ledgers: %w", err)
 	}
 
 	return nil
 }
 
-// writeBaselineAttr writes all computed entries for a single attribute type.
-func writeBaselineAttr[V interface {
-	~*E
-	proto.Message
-	MarshalVT() ([]byte, error)
-}, E any](reader dal.PebbleReader, attr *Attribute[V], db *pebble.DB) error {
-	si, err := attr.NewStreamingIter(reader, nil)
+// copyBaselineRange copies every [lower, upper) key/value verbatim from the
+// source reader into the baseline DB, preserving the exact key layout.
+func copyBaselineRange(reader dal.PebbleReader, db *pebble.DB, lower, upper []byte) error {
+	iter, err := dal.NewBoundedIter(reader, lower, upper)
 	if err != nil {
-		return err
+		return fmt.Errorf("iterating range [% x, % x): %w", lower, upper, err)
 	}
 
-	defer func() { _ = si.Close() }()
+	defer func() { _ = iter.Close() }()
 
-	// Pre-allocate a key buffer for writing entries.
-	var keyBuf []byte
-
-	for si.Next() {
-		e := si.Entry()
-
-		data, marshalErr := e.Value.MarshalVT()
-		if marshalErr != nil {
-			return fmt.Errorf("marshaling value: %w", marshalErr)
-		}
-
-		// Build Pebble key: [KeyPrefixAttributes][attrType][canonicalKey]
-		pLen := 2 + len(e.CanonicalKey) // 1 prefix + 1 attrType + N canonical
-
-		if len(keyBuf) < pLen {
-			keyBuf = make([]byte, pLen)
-		}
-
-		keyBuf[0] = dal.ZoneAttributes
-		keyBuf[1] = attr.prefix
-		copy(keyBuf[2:], e.CanonicalKey)
-
-		if err := db.Set(keyBuf[:pLen], data, pebble.NoSync); err != nil {
-			return fmt.Errorf("writing entry: %w", err)
+	for iter.First(); iter.Valid(); iter.Next() {
+		// Pebble copies key and value on Set, so the iterator's transient slices
+		// are safe to pass.
+		if err := db.Set(iter.Key(), iter.Value(), pebble.NoSync); err != nil {
+			return fmt.Errorf("writing baseline entry: %w", err)
 		}
 	}
 
-	if si.Err() != nil {
-		return si.Err()
-	}
+	return iter.Error()
+}
 
-	return nil
+// copyBaselineLedgers copies the LedgerInfo entries (zone ZoneGlobal /
+// SubGlobLedgerInfo) verbatim into the baseline DB, preserving the exact key
+// layout so query.ReadLedgers reads them back identically. LedgerInfo also
+// lives in the attribute zone (SubAttrLedger) which the range copy above
+// already carries; this Global copy is what the checker's ReadLedgers path
+// reads.
+func copyBaselineLedgers(reader dal.PebbleReader, db *pebble.DB) error {
+	return copyBaselineRange(reader, db,
+		[]byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo},
+		[]byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo + 1})
 }

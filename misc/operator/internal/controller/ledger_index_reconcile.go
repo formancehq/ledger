@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // handleIndexReconcile runs index reconciliation for a Ready ledger and folds
@@ -82,7 +82,7 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 	log := ctrl.LoggerFrom(ctx)
 
 	ns := ledger.Namespace
-	svc := ledger.Spec.ServiceRef
+	svc := ledger.Spec.ClusterRef
 	pod0 := podName(svc, 0)
 	ledgerName := ledger.Spec.Name
 

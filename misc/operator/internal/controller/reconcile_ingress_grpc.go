@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // reconcileIngressGrpc manages the gRPC Ingress resource.

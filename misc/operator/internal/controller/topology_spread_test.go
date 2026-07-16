@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestBuildTopologySpreadConstraints_DefaultsLabelSelector(t *testing.T) {

@@ -14,9 +14,10 @@
 //
 // Layout:
 //
-//   - model.go: LedgerState (per-ledger sub-state) + GlobalState + the pure
-//     forward Apply that predicts the server's outcome for a bulk — the model. A
-//     bulk may span ledgers; Apply is atomic across them.
+//   - the model itself is the oracle package (tests/oracle): LedgerState
+//     (per-ledger sub-state) + GlobalState + the pure forward Apply that predicts
+//     the server's outcome for a bulk. A bulk may span ledgers; Apply is atomic
+//     across them. This driver imports it as `oracle`.
 //   - checker.go: Checker — the harness bookkeeping (in-flight/pending re-order
 //     buffer, modelState).
 //   - processor.go: one goroutine; re-orders observed responses by log sequence
@@ -44,7 +45,10 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -93,11 +97,19 @@ func main() {
 	runID := fmt.Sprintf("%016x", internal.Rand().Uint64())
 	names := ledgerNames(runID, numLedgers)
 
-	if !setupLedgers(ctx, client, names) {
+	// Each ledger is created with a small, random initial metadata schema; the
+	// checker seeds the same declarations so the model's schema state matches
+	// the server's from the first bulk.
+	schemas := make(map[string][]*commonpb.SetMetadataFieldTypeCommand, len(names))
+	for _, name := range names {
+		schemas[name] = initialSchema()
+	}
+
+	if !setupLedgers(ctx, client, names, schemas) {
 		return
 	}
 
-	checker := NewChecker(names)
+	checker := NewChecker(names, schemas)
 
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
@@ -141,14 +153,20 @@ func runWorker(
 		default:
 		}
 
-		// 1-in-5: a read this iteration — 1-in-3 of those a whole-ledger read
-		// (chart + ledger metadata), the rest a single-account read. Reads
-		// validate against the in-flight bulk set, exercising cross-node freshness
-		// without needing quiescence.
+		// 1-in-5: a read this iteration, split across the whole-ledger read
+		// (chart + ledger metadata), a single-account read, a transaction read
+		// (id + postings + reverted + metadata), and a metadata-schema read
+		// (declared field types). Reads validate against the in-flight bulk set,
+		// exercising cross-node freshness without needing quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
+			case 0:
 				runLedgerRead(ctx, client, c)
-			} else {
+			case 1:
+				runTransactionRead(ctx, client, c)
+			case 2:
+				runSchemaRead(ctx, client, c)
+			default:
 				runRead(ctx, client, c)
 			}
 			time.Sleep(workerLoopPause)
@@ -156,7 +174,7 @@ func runWorker(
 		}
 
 		c.mu.Lock()
-		bulk := generateBulk(c.modelState, c.ledgerNames)
+		bulk := generateBulk(c.modelState, c.ledgerNames, c.receiptByRef)
 		if len(bulk.Requests) == 0 {
 			c.mu.Unlock()
 			continue
@@ -164,7 +182,10 @@ func runWorker(
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 
-		resp, err := client.Apply(ctx, bulk.ApplyRequest())
+		req := applyRequest(bulk)
+		resp, err := client.Apply(ctx, req)
+
+		dumpBatch(ticket, req, resp, err)
 
 		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
 		// the drain gate compares outstanding tickets against it (see tryDrain).
@@ -192,6 +213,26 @@ func runWorker(
 
 		time.Sleep(workerLoopPause)
 	}
+}
+
+// initialSchema generates a small, random metadata schema declared at ledger
+// creation via CreateLedger's initial_schema: 0-3 field types across targets,
+// keys, and types from the same pools the runtime schema ops use. NewChecker
+// seeds the same declarations so the model's schema state matches the server's
+// from the start. Declaring a type creates no index (populateInitialSchema only
+// records the schema), so a later remove drops nothing.
+func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
+	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
+	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
+	for i := 0; i < n; i++ {
+		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
+			TargetType: random.RandomChoice(metaTargetPool),
+			Key:        metaKey(),
+			Type:       random.RandomChoice(metaTypePool),
+		})
+	}
+
+	return cmds
 }
 
 // Per-run fleet names: model-<runID>-0, model-<runID>-1, ... PrefixModel
@@ -227,9 +268,9 @@ func envInt(key string, def int) int {
 // missing ledger, so it asserts Unreachable. Shutdown (ctx cancelled) is teardown,
 // not a finding. Returns false to stop the run; the chart is left empty for
 // workers to fill.
-func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string) bool {
+func setupLedgers(ctx context.Context, client servicepb.BucketServiceClient, names []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) bool {
 	for _, name := range names {
-		err := internal.CreateLedger(ctx, client, name)
+		err := internal.CreateLedger(ctx, client, name, schemas[name]...)
 		if err == nil {
 			continue
 		}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/explain"
 )
 
 // SchemaFunc returns the explain fields to use for --set completion.

@@ -3,7 +3,7 @@ package backup
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
 // NewCommand returns the "backup" parent command.

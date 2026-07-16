@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-crd-svc
+                name: ledger-crd-cluster
               status:
                 readyReplicas: 1
 
@@ -36,7 +36,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
                 | grep my-ledger
             timeout: 30s
@@ -53,7 +53,7 @@ spec:
                 (conditions[?type == 'IndexesSynced'])[0].status: "True"
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               echo "$OUTPUT"
               # Builtins + account asset + metadata field must all be present.
@@ -78,7 +78,7 @@ spec:
                 (conditions[?type == 'IndexesSynced'])[0].status: "True"
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               echo "$OUTPUT"
               echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_TIMESTAMP  || { echo "FAIL: timestamp index not created"; exit 1; }
@@ -101,7 +101,7 @@ spec:
       try:
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-svc-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               if echo "$OUTPUT" | grep -q my-ledger; then
                 echo "FAIL: ledger my-ledger still exists after deletion"

@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns,verbs=get;list;watch;create;update;patch;delete
@@ -82,10 +82,10 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var cluster ledgerv1alpha1.Cluster
 	if err := r.Get(ctx, types.NamespacedName{
-		Name:      backup.Spec.ServiceRef,
+		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ServiceRef, err))
+		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
 	}
 
 	// Forbid concurrency: any sibling already Running blocks this one.

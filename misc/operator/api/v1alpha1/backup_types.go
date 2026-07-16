@@ -55,9 +55,9 @@ type BackupSchedule struct {
 
 // BackupSpec defines the desired state of a Backup.
 type BackupSpec struct {
-	// ServiceRef is the name of the Cluster in the same namespace.
+	// ClusterRef is the name of the Cluster in the same namespace.
 	// +kubebuilder:validation:Required
-	ServiceRef string `json:"serviceRef"`
+	ClusterRef string `json:"clusterRef"`
 
 	// Destination defines where backups are stored.
 	// +kubebuilder:validation:Required
@@ -206,7 +206,7 @@ type BackupStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=bk
-// +kubebuilder:printcolumn:name="Service",type=string,JSONPath=`.spec.serviceRef`
+// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Last Full",type=date,JSONPath=`.status.lastFullBackup.time`
 // +kubebuilder:printcolumn:name="Last Incremental",type=date,JSONPath=`.status.lastIncrementalBackup.time`

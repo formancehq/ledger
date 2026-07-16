@@ -193,7 +193,7 @@ func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
 	require.NoError(t, err)
 
 	baselinePath := filepath.Join(t.TempDir(), "baseline")
-	require.NoError(t, attributes.CreateBaselineSnapshot(handle, attrs, baselinePath))
+	require.NoError(t, attributes.CreateBaselineSnapshot(handle, baselinePath))
 	require.NoError(t, handle.Close())
 
 	baselineDB, err := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})

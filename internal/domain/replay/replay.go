@@ -36,6 +36,10 @@ func ReplayLedgerLog(
 
 			types[at.GetName()] = at
 			ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+
+			if err := w.AddAccountType(ledger, at); err != nil {
+				return fmt.Errorf("replaying added account type: %w", err)
+			}
 		}
 
 	case *commonpb.LedgerLogPayload_RemovedAccountType:
@@ -43,6 +47,10 @@ func ReplayLedgerLog(
 			if types := rawLedgerTypes[ledger]; types != nil {
 				delete(types, p.RemovedAccountType.GetName())
 				ledgerAccountTypes[ledger] = accounttype.CompileTypes(types)
+			}
+
+			if err := w.RemoveAccountType(ledger, p.RemovedAccountType.GetName()); err != nil {
+				return fmt.Errorf("replaying removed account type: %w", err)
 			}
 		}
 
@@ -66,6 +74,12 @@ func ReplayLedgerLog(
 			return fmt.Errorf("putting tx state for created tx %d: %w", tx.GetId(), err)
 		}
 
+		if ref := tx.GetReference(); ref != "" {
+			if err := w.SetTransactionReference(ledger, ref, tx.GetId()); err != nil {
+				return fmt.Errorf("putting reference for created tx %d: %w", tx.GetId(), err)
+			}
+		}
+
 		for account, metadataMap := range p.CreatedTransaction.GetAccountMetadata() {
 			if metadataMap != nil {
 				for key, value := range metadataMap.GetValues() {
@@ -78,7 +92,7 @@ func ReplayLedgerLog(
 					}
 
 					if value != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
+						if err := w.SetMetadata(mk.Bytes(), value); err != nil {
 							return fmt.Errorf("setting account metadata: %w", err)
 						}
 					}
@@ -114,6 +128,12 @@ func ReplayLedgerLog(
 			return fmt.Errorf("putting tx state for revert tx %d: %w", revertTx.GetId(), err)
 		}
 
+		if ref := revertTx.GetReference(); ref != "" {
+			if err := w.SetTransactionReference(ledger, ref, revertTx.GetId()); err != nil {
+				return fmt.Errorf("putting reference for revert tx %d: %w", revertTx.GetId(), err)
+			}
+		}
+
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		if p.SavedMetadata == nil || p.SavedMetadata.GetTarget() == nil {
 			return nil
@@ -132,7 +152,7 @@ func ReplayLedgerLog(
 					}
 
 					if value != nil {
-						if err := w.SetMetadata(mk.Bytes(), commonpb.MetadataValueToString(value)); err != nil {
+						if err := w.SetMetadata(mk.Bytes(), value); err != nil {
 							return fmt.Errorf("setting metadata: %w", err)
 						}
 					}
@@ -175,17 +195,33 @@ func ReplayLedgerLog(
 		}
 
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		// Schema operations — no state to track
+		if l := p.SetMetadataFieldType; l != nil {
+			if err := w.SetMetadataFieldType(ledger, l.GetTargetType(), l.GetKey(), l.GetType()); err != nil {
+				return fmt.Errorf("replaying set metadata field type: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
-		// Schema operations — no state to track
+		if l := p.RemovedMetadataFieldType; l != nil {
+			if err := w.RemoveMetadataFieldType(ledger, l.GetTargetType(), l.GetKey()); err != nil {
+				return fmt.Errorf("replaying removed metadata field type: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_FillGap:
-		// No state to track
+		// The log carries only the original v2 id; the skipped transaction
+		// ids live on the MirrorFillGap order, which the restore rebuild
+		// folds in from AuditItem.serialized_order (applyAuditOrderEffects).
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_DropIndex:
 		// Index operations — no state to track
 	case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
-		// No state to track
+		if p.UpdatedDefaultEnforcementMode == nil {
+			return nil
+		}
+
+		if err := w.SetDefaultEnforcementMode(ledger, p.UpdatedDefaultEnforcementMode.GetEnforcementMode()); err != nil {
+			return fmt.Errorf("replaying default enforcement mode: %w", err)
+		}
 	}
 
 	return nil

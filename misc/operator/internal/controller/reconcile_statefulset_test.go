@@ -8,7 +8,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
 func TestBuildStatefulSetSpec_ExplicitRollingUpdate(t *testing.T) {

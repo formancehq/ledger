@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
-	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +21,12 @@ import (
 
 const (
 	OTLPExporter = "otlp"
+
+	// logTimeLayout is the timestamp layout for console/JSON log lines. It pins
+	// the fractional part to exactly 3 digits (milliseconds) with a fixed width,
+	// unlike time.RFC3339Nano which emits up to 9 digits and trims trailing
+	// zeros (producing variable-length, microsecond-precision timestamps).
+	logTimeLayout = "2006-01-02T15:04:05.000Z07:00"
 )
 
 type ModuleConfig struct {
@@ -105,12 +110,12 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 
 	if cfg.FormatJSON {
 		encoderCfg := zap.NewProductionEncoderConfig()
-		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(logTimeLayout)
 		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
 		encoder = zapcore.NewJSONEncoder(encoderCfg)
 	} else {
 		encoderCfg := zap.NewDevelopmentEncoderConfig()
-		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(logTimeLayout)
 		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
 		encoder = zapcore.NewConsoleEncoder(encoderCfg)
 	}

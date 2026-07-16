@@ -199,6 +199,42 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
 }
 
+// TestPrepareForBackupClearsCacheZone asserts the cache zone is dropped in
+// full: per-entry rows in both generation slots, per-generation rotation
+// metadata, and the global snapshot meta. Checkpoint-era cache rows predate
+// the delta RebuildDelta replays into the attribute zone; leaving any of
+// them behind would let the restored FSM serve stale values as CacheHits.
+func TestPrepareForBackupClearsCacheZone(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	logger := logging.FromContext(logging.TestingContext())
+	s, err := dal.OpenDirect(tmpDir, logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	u128 := make([]byte, 16)
+	cacheKeys := [][]byte{
+		append([]byte{dal.ZoneCache, 0x00, dal.SubAttrVolume}, u128...),
+		append([]byte{dal.ZoneCache, 0x01, dal.SubAttrLedger}, u128...),
+		{dal.ZoneCache, 0x00, dal.SubCacheGenMeta},
+		{dal.ZoneCache, dal.SubCacheMeta},
+	}
+
+	batch := s.OpenWriteSession()
+	for _, k := range cacheKeys {
+		require.NoError(t, batch.SetBytes(k, []byte("checkpoint-era")))
+	}
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, PrepareForBackup(s))
+
+	for _, k := range cacheKeys {
+		_, _, err := s.Get(k)
+		require.ErrorIsf(t, err, pebble.ErrNotFound, "cache-zone key % x must be dropped", k)
+	}
+}
+
 // TestPrepareForBackupRestorableOnFreshCluster runs the full backup->restore
 // pipeline (write -> prepare -> tar -> extract -> reopen) and asserts the
 // attribute values survive and the applied index is 0 on the fresh cluster.

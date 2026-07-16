@@ -10,10 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	ledgerv1alpha1 "github.com/formance/ledger/operator/api/v1alpha1"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/cmdutil/flagbind"
-	"github.com/formance/ledger/operator/cmd/kubectl-ledger/explain"
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/cmdutil/flagbind"
+	"github.com/formancehq/ledger/misc/operator/cmd/kubectl-ledger/explain"
 )
 
 func newCreateCommand(opts *cmdutil.Options) *cobra.Command {
