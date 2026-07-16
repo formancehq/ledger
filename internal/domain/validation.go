@@ -366,7 +366,7 @@ func ValidateAsset(asset string) Describable {
 
 // ValidateColor checks that a posting Color tag is safe for use in the
 // canonical volume key encoding. The Color value is embedded raw between
-// two 0x00 separators in `[ledgerID][account]\x00[color]\x00[asset_base][precision]`
+// two 0x00 separators in `[ledgerName 64B][account]\x00[color]\x00[asset_base][precision]`
 // so any byte that aliases the separator or shifts the parser is a key-collision
 // vector: two distinct (account, asset, color) tuples could fuse onto a single
 // Pebble row and silently merge balances — the same class of bug as
