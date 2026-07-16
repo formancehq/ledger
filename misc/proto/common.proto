@@ -1186,15 +1186,11 @@ enum ErrorReason {
   ERROR_REASON_CHECKPOINT_ID_REQUIRED = 56;
   ERROR_REASON_NUMSCRIPT_RUNTIME = 57;
   ERROR_REASON_VOLUME_NOT_MATERIALIZED = 58;
-  // DEPRECATED: ERROR_REASON_NON_DETERMINISTIC_SCRIPT is no longer emitted since
-  // Numscript dependency discovery switched from emulation to the upstream
-  // ResolveDependencies API (EN-1406) — multi-balance / multi-send scripts are
-  // no longer rejected as non-deterministic. The enum value is RETAINED (never
-  // removed/reserved) because ErrorReason values are persisted in AuditFailure /
-  // IdempotencyFailure; a stored 59 must still decode to this name so
-  // KindForReason keeps classifying it as KindValidation on replay. Do not reuse
-  // the number and do not emit this reason.
-  ERROR_REASON_NON_DETERMINISTIC_SCRIPT = 59 [deprecated = true];
+  // 59 was ERROR_REASON_NON_DETERMINISTIC_SCRIPT, dropped with the emulation→
+  // ResolveDependencies switch (EN-1406). Pre-GA, no persisted values to replay,
+  // so it is removed outright; reserved to prevent silent reuse of the number.
+  reserved 59;
+  reserved "ERROR_REASON_NON_DETERMINISTIC_SCRIPT";
   ERROR_REASON_CLUSTER_UNHEALTHY = 60;
   ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
   ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;

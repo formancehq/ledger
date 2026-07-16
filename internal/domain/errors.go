@@ -222,7 +222,6 @@ const (
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonStaleInputsResolution         = "STALE_INPUTS_RESOLUTION"
 	ErrReasonPreloadUnavailable            = "PRELOAD_UNAVAILABLE"
-	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
 	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
 	ErrReasonMirrorV2LogIDInvalid          = "MIRROR_V2_LOG_ID_INVALID"
 
