@@ -3534,7 +3534,7 @@ components:
               description: Metadata for accounts involved in the transaction
             postCommitVolumes:
               $ref: '#/components/schemas/PostCommitVolumes'
-              description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+              description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
             chapterId:
               type: integer
               format: uint64
@@ -3829,7 +3829,7 @@ components:
           description: The new transaction that reverses the original transaction
         postCommitVolumes:
           $ref: '#/components/schemas/PostCommitVolumes'
-          description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+          description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
         warnings:
           type: array
           items:
@@ -5075,12 +5075,12 @@ components:
         discriminated by the request execution `mode` (see
         `ExecutePreparedQueryRequest.mode`): `mode=LIST` returns `cursor`,
         `mode=AGGREGATE_VOLUMES` returns `aggregateResult`. (The query `target`
-        — ACCOUNTS or TRANSACTIONS — selects the row type inside the
-        cursor, not which envelope field is set. LOGS is not a prepared-query
-        cursor row type: `query.Execute` hydrates only account/transaction data,
-        so a LOGS-target query executes to an empty cursor and the REST create
-        handler rejects it.) Both payloads use the same
-        camelCase encoding as the equivalent non-prepared endpoints
+        — ACCOUNTS, TRANSACTIONS or LOGS — selects the row type inside the
+        cursor, not which envelope field is set: `accountData`,
+        `transactionData` or `logData` respectively. LOGS is a usable
+        prepared-query target: `query.Execute` hydrates `logData` for it.) Both
+        payloads use the same camelCase encoding as the equivalent non-prepared
+        endpoints
         (decimal-string amounts, `color` always present on every volume row
         including the uncolored bucket).
       properties:
@@ -5089,8 +5089,8 @@ components:
           description: |
             Paged cursor, returned when the request `mode` is `LIST`. The row
             type follows the query `target`: `accountData` for ACCOUNTS,
-            `transactionData` for TRANSACTIONS. Rows use the same camelCase
-            shapes as the non-prepared list endpoints.
+            `transactionData` for TRANSACTIONS, `logData` for LOGS. Rows use the
+            same camelCase shapes as the non-prepared list endpoints.
           properties:
             pageSize:
               type: integer
@@ -5108,6 +5108,11 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/TransactionResponse'
+            logData:
+              type: array
+              items:
+                type: object
+                description: System log entry (protobuf JSON representation)
         aggregateResult:
           $ref: '#/components/schemas/AggregateVolumesData'
 
