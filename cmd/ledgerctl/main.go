@@ -109,6 +109,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: LEDGERCTL_SERVER)")
 	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS) (env: LEDGERCTL_INSECURE)")
 	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification (env: LEDGERCTL_TLS_CA_CERT)")
+	rootCmd.PersistentFlags().String("tls-server-name", "", "Hostname to verify against the server certificate SANs, overriding the --server host (use when dialing by IP or a name not covered by the cert, e.g. from inside a TLS cluster pod) (env: LEDGERCTL_TLS_SERVER_NAME)")
 
 	// Add persistent flags for request signing.
 	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) (env: LEDGERCTL_SIGNING_KEY)")

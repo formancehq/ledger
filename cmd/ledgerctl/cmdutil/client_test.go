@@ -24,6 +24,7 @@ func newTLSFlagCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().Bool("insecure", false, "")
 	cmd.Flags().String("tls-ca-cert", "", "")
+	cmd.Flags().String("tls-server-name", "", "")
 
 	return cmd
 }
@@ -51,6 +52,36 @@ func TestGetClientTransportCredentials_InsecureOnly(t *testing.T) {
 
 	cmd := newTLSFlagCommand()
 	require.NoError(t, cmd.Flags().Set("insecure", "true"))
+
+	creds, err := GetClientTransportCredentials(cmd)
+	require.NoError(t, err)
+	require.NotNil(t, creds)
+}
+
+// --tls-server-name only makes sense when TLS is active; pairing it with
+// --insecure is rejected for the same reason as --tls-ca-cert — it catches a
+// stray LEDGERCTL_INSECURE leaking in and silently disabling verification.
+func TestGetClientTransportCredentials_InsecureWithServerNameIsRejected(t *testing.T) {
+	t.Parallel()
+
+	cmd := newTLSFlagCommand()
+	require.NoError(t, cmd.Flags().Set("insecure", "true"))
+	require.NoError(t, cmd.Flags().Set("tls-server-name", "ledger.svc.cluster.local"))
+
+	_, err := GetClientTransportCredentials(cmd)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--insecure and --tls-server-name are mutually exclusive")
+}
+
+// A --tls-server-name without --insecure is the supported case: dial by IP,
+// verify against the cert SANs by name. This is what unblocks ledgerctl from
+// inside a TLS cluster pod, where the operator-issued cert covers the in-cluster
+// DNS names but never 127.0.0.1/localhost.
+func TestGetClientTransportCredentials_TLSWithServerName(t *testing.T) {
+	t.Parallel()
+
+	cmd := newTLSFlagCommand()
+	require.NoError(t, cmd.Flags().Set("tls-server-name", "ledger.svc.cluster.local"))
 
 	creds, err := GetClientTransportCredentials(cmd)
 	require.NoError(t, err)

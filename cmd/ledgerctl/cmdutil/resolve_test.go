@@ -18,6 +18,7 @@ func newConnCmd() *cobra.Command {
 	cmd.Flags().String("server", "localhost:8888", "")
 	cmd.Flags().Bool("insecure", false, "")
 	cmd.Flags().String("tls-ca-cert", "", "")
+	cmd.Flags().String("tls-server-name", "", "")
 	cmd.Flags().String("consistency", "", "")
 	cmd.Flags().String("auth-token", "", "")
 	cmd.Flags().String("signing-key", "", "")
@@ -61,6 +62,30 @@ func TestResolveConnectionFlagsAppliesActiveProfile(t *testing.T) {
 
 	insecure, _ := cmd.Flags().GetBool("insecure")
 	require.True(t, insecure, "insecure must come from the active profile")
+}
+
+// TestResolveConnectionFlagsAppliesServerName asserts the profile's
+// tlsServerName reaches the --tls-server-name flag through the shared resolver,
+// so a profile can pin the verification hostname without repeating it on every
+// invocation.
+func TestResolveConnectionFlagsAppliesServerName(t *testing.T) {
+	isolateConfigDir(t)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+	t.Setenv("LEDGERCTL_TLS_SERVER_NAME", "")
+
+	require.NoError(t, SaveConfig(Config{
+		Profiles: map[string]Profile{
+			"prod": {Server: "10.0.0.5:8888", TLSServerName: "ledger.svc.cluster.local"},
+		},
+	}))
+
+	cmd := newConnCmd()
+	require.NoError(t, cmd.Flags().Set("profile", "prod"))
+
+	require.NoError(t, ResolveConnectionFlags(cmd))
+
+	serverName, _ := cmd.Flags().GetString("tls-server-name")
+	require.Equal(t, "ledger.svc.cluster.local", serverName, "tls-server-name must come from the active profile")
 }
 
 // TestResolveConnectionFlagsExplicitFlagWins guards the precedence: an explicit

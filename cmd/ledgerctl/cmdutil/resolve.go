@@ -56,6 +56,7 @@ func ResolveConnectionFlags(cmd *cobra.Command) error {
 	resolveFlag(cmd, "server", "LEDGERCTL_SERVER", ProfileFlagValue(p, "server"))
 	resolveFlag(cmd, "insecure", "LEDGERCTL_INSECURE", ProfileFlagValue(p, "insecure"))
 	resolveFlag(cmd, "tls-ca-cert", "LEDGERCTL_TLS_CA_CERT", ProfileFlagValue(p, "tls-ca-cert"))
+	resolveFlag(cmd, "tls-server-name", "LEDGERCTL_TLS_SERVER_NAME", ProfileFlagValue(p, "tls-server-name"))
 	resolveFlag(cmd, "consistency", "LEDGERCTL_CONSISTENCY", "")
 	resolveFlag(cmd, "auth-token", "LEDGERCTL_AUTH_TOKEN", "")
 	resolveFlag(cmd, "signing-key", "LEDGERCTL_SIGNING_KEY", ProfileFlagValue(p, "signing-key"))

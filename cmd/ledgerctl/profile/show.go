@@ -66,6 +66,11 @@ func runShow(cmd *cobra.Command, args []string) error {
 		tlsCaCert = p.TLSCaCert
 	}
 
+	tlsServerName := "(none)"
+	if p.TLSServerName != "" {
+		tlsServerName = p.TLSServerName
+	}
+
 	kr := cmdutil.GetKeyring(cmd)
 
 	authStatus := pterm.Yellow("no token stored")
@@ -93,6 +98,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 		{"Server", p.Server},
 		{"Insecure", insecure},
 		{"TLS CA Cert", tlsCaCert},
+		{"TLS Server Name", tlsServerName},
 		{"Signing Key", signingKey},
 		{"Signing Key ID", signingKeyID},
 		{"Response Verify Key", responseVerifyKey},

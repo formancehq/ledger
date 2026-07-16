@@ -26,6 +26,7 @@ Use --use to activate it immediately even when other profiles already exist.`,
 	cmd.Flags().String("server", "", "gRPC server address (required)")
 	cmd.Flags().Bool("insecure", false, "Use insecure connection (no TLS)")
 	cmd.Flags().String("tls-ca-cert", "", "Path to CA certificate file (PEM)")
+	cmd.Flags().String("tls-server-name", "", "Hostname to verify against the server certificate SANs, overriding the --server host")
 	cmd.Flags().String("signing-key", "", "Path to Ed25519 private key file for request signing")
 	cmd.Flags().String("signing-key-id", "", "Key ID for request signatures")
 	cmd.Flags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures")
@@ -52,6 +53,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	server, _ := cmd.Flags().GetString("server")
 	insecure, _ := cmd.Flags().GetBool("insecure")
 	tlsCaCert, _ := cmd.Flags().GetString("tls-ca-cert")
+	tlsServerName, _ := cmd.Flags().GetString("tls-server-name")
 	signingKey, _ := cmd.Flags().GetString("signing-key")
 	signingKeyID, _ := cmd.Flags().GetString("signing-key-id")
 	responseVerifyKey, _ := cmd.Flags().GetString("response-verify-key")
@@ -61,6 +63,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		Server:            server,
 		Insecure:          insecure,
 		TLSCaCert:         tlsCaCert,
+		TLSServerName:     tlsServerName,
 		SigningKey:        signingKey,
 		SigningKeyID:      signingKeyID,
 		ResponseVerifyKey: responseVerifyKey,

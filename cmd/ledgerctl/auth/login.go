@@ -172,6 +172,7 @@ func syncProfile(cmd *cobra.Command, server string) error {
 
 	insecure, _ := cmd.Flags().GetBool("insecure")
 	tlsCaCert, _ := cmd.Flags().GetString("tls-ca-cert")
+	tlsServerName, _ := cmd.Flags().GetString("tls-server-name")
 	signingKey, _ := cmd.Flags().GetString("signing-key")
 	responseVerifyKey, _ := cmd.Flags().GetString("response-verify-key")
 
@@ -190,6 +191,7 @@ func syncProfile(cmd *cobra.Command, server string) error {
 		Server:            server,
 		Insecure:          insecure,
 		TLSCaCert:         tlsCaCert,
+		TLSServerName:     tlsServerName,
 		SigningKey:        signingKey,
 		SigningKeyID:      signingKeyID,
 		ResponseVerifyKey: responseVerifyKey,
