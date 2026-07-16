@@ -187,6 +187,14 @@ func syncProfile(cmd *cobra.Command, server string) error {
 		signingKeyID, _ = cmd.Flags().GetString("key-id")
 	}
 
+	// Reject contradictory TLS flags before bootstrapping the profile — this
+	// path persists without opening a connection, so GetClientTransportCredentials'
+	// guard never runs; without this check we'd store a profile every subsequent
+	// command immediately rejects. --insecure may arrive via LEDGERCTL_INSECURE.
+	if err := cmdutil.ValidateTLSFlags(insecure, tlsCaCert, tlsServerName); err != nil {
+		return err
+	}
+
 	cfg.Profiles[profileName] = cmdutil.Profile{
 		Server:            server,
 		Insecure:          insecure,

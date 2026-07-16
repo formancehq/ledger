@@ -51,12 +51,8 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 	caCertPath, _ := cmd.Flags().GetString("tls-ca-cert")
 	serverName, _ := cmd.Flags().GetString("tls-server-name")
 
-	if insecureMode && caCertPath != "" {
-		return nil, errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
-	}
-
-	if insecureMode && serverName != "" {
-		return nil, errors.New("--insecure and --tls-server-name are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	if err := ValidateTLSFlags(insecureMode, caCertPath, serverName); err != nil {
+		return nil, err
 	}
 
 	if insecureMode {
@@ -69,6 +65,29 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 	}
 
 	return credentials.NewTLS(tlsConfig), nil
+}
+
+// ValidateTLSFlags rejects contradictory TLS flag combinations: --insecure
+// (no TLS at all) cannot be paired with --tls-ca-cert or --tls-server-name,
+// which only make sense when verifying a TLS connection.
+//
+// It is the single source of truth for that rule, shared by the connection path
+// (GetClientTransportCredentials) and the profile-persistence paths (profile
+// create, auth login). Persisting the conflict would store a profile every
+// subsequent TLS-aware command immediately rejects; validating here lets those
+// commands fail fast at write time instead. Mentioning LEDGERCTL_INSECURE keeps
+// the message actionable when --insecure was injected via the environment (a
+// stray container-image default was the original "server preface: EOF" cause).
+func ValidateTLSFlags(insecureMode bool, caCertPath, serverName string) error {
+	if insecureMode && caCertPath != "" {
+		return errors.New("--insecure and --tls-ca-cert are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	}
+
+	if insecureMode && serverName != "" {
+		return errors.New("--insecure and --tls-server-name are mutually exclusive (--insecure may also come from the LEDGERCTL_INSECURE env var; unset it to use TLS)")
+	}
+
+	return nil
 }
 
 // buildClientTLSConfig assembles the *tls.Config for a verifying (non-insecure)

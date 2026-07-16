@@ -109,6 +109,53 @@ func TestGetClientTransportCredentials_TLSWithCustomCA(t *testing.T) {
 	require.NotNil(t, creds)
 }
 
+// ValidateTLSFlags is the single source of truth for the mutual-exclusion
+// rules, shared by the connection path and the profile-persistence paths
+// (profile create, auth login). Cover it directly so a persistence caller that
+// forgets to route through it can't quietly regress the guard.
+func TestValidateTLSFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		insecure   bool
+		caCert     string
+		serverName string
+		wantErr    string
+	}{
+		{name: "no flags is valid"},
+		{name: "tls-ca-cert alone is valid", caCert: "/tls/ca.crt"},
+		{name: "tls-server-name alone is valid", serverName: "ledger.svc.cluster.local"},
+		{name: "insecure alone is valid", insecure: true},
+		{
+			name:     "insecure + tls-ca-cert rejected",
+			insecure: true, caCert: "/tls/ca.crt",
+			wantErr: "--insecure and --tls-ca-cert are mutually exclusive",
+		},
+		{
+			name:     "insecure + tls-server-name rejected",
+			insecure: true, serverName: "ledger.svc.cluster.local",
+			wantErr: "--insecure and --tls-server-name are mutually exclusive",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := ValidateTLSFlags(tc.insecure, tc.caCert, tc.serverName)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
 // writeTestCA generates a self-signed CA cert and returns the PEM bytes.
 // The cert is only used to exercise the AppendCertsFromPEM path — no
 // connection is opened in the unit test.

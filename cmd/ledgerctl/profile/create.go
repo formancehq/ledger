@@ -59,6 +59,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	responseVerifyKey, _ := cmd.Flags().GetString("response-verify-key")
 	useFlag, _ := cmd.Flags().GetBool("use")
 
+	// Reject contradictory TLS flags before persisting, so we never store a
+	// profile that every subsequent TLS-aware command would immediately reject.
+	if err := cmdutil.ValidateTLSFlags(insecure, tlsCaCert, tlsServerName); err != nil {
+		return err
+	}
+
 	p := cmdutil.Profile{
 		Server:            server,
 		Insecure:          insecure,
