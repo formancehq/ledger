@@ -117,8 +117,12 @@ capture_specs() {
 	jq '.spec.restore = true | .spec.replicas = 1' "$NORMAL_SPEC" > "$RESTORE_SPEC"
 }
 
+# teardown_cluster is idempotent and succeeds only once the CR, pods, and
+# volume claims are verifiably gone — callers retry it until then. A lingering
+# claim would hand the re-created pod its old store back, silently voiding the
+# RebuildDelta coverage the cycle claims.
 teardown_cluster() {
-	k delete cluster "$CLUSTER" --wait=true --timeout=120s || return 1
+	k delete cluster "$CLUSTER" --ignore-not-found --wait=true --timeout=120s || return 1
 	local i
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
 		k wait --for=delete "pod/$POD_PREFIX-$i" --timeout=120s 2>/dev/null || true
@@ -126,6 +130,10 @@ teardown_cluster() {
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
 		k delete pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
 			--ignore-not-found --wait=true --timeout=120s || return 1
+	done
+	for i in $(seq 0 $(( REPLICAS - 1 ))); do
+		[ -z "$(k get pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
+			--ignore-not-found -o name 2>/dev/null)" ] || return 1
 	done
 }
 
@@ -200,20 +208,22 @@ do_one_restore() {
 	esac
 
 	# Point of no return: the quiesce-point backup above is verified, so the
-	# data survives whatever happens to the cluster from here.
-	teardown_cluster || log "teardown failed; continuing into restore recovery"
-
+	# data survives whatever happens to the cluster from here. The restore is
+	# only entered on a verified-complete teardown — booting the restore-mode
+	# pod with any old storage left would serve stale data as "restored".
 	local attempt=1
+	until teardown_cluster; do
+		attempt=$(( attempt + 1 ))
+		log "teardown incomplete; retrying until the old store is verifiably gone (attempt $attempt)"
+		sleep 10
+	done
+
+	attempt=1
 	until restore_from_backup; do
 		attempt=$(( attempt + 1 ))
 		log "restore attempt failed; the data now lives only in the backup — retrying (attempt $attempt)"
 		# Clear whatever half-state the attempt left so the next one starts clean.
-		k delete cluster "$CLUSTER" --wait=true --timeout=120s 2>/dev/null || true
-		local i
-		for i in $(seq 0 $(( REPLICAS - 1 ))); do
-			k delete pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
-				--ignore-not-found --wait=true --timeout=120s 2>/dev/null || true
-		done
+		until teardown_cluster; do sleep 10; done
 		sleep 10
 	done
 	log "cluster back up on the restored (RebuildDelta) store"
