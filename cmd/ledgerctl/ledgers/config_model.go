@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -767,10 +768,15 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 			continue
 		}
 
-		desc := fmt.Sprintf("Save numscript %q", name)
-		if desiredNS.Version != "" {
-			desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
+		// The server requires an explicit full canonical semver; validate here
+		// so an omitted/partial/non-canonical version fails the diff with a
+		// clear message rather than a valid-looking plan that only errors at
+		// apply time.
+		if _, err := semver.Parse(desiredNS.Version); err != nil {
+			return nil, fmt.Errorf("numscript %q: %w (a full canonical semver is required, e.g. 1.0.0)", name, err)
 		}
+
+		desc := fmt.Sprintf("Save numscript %q (v%s)", name, desiredNS.Version)
 
 		actions = append(actions, DiffAction{
 			Section:     "numscript",
