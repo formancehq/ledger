@@ -161,10 +161,12 @@ type admissionValueSource struct {
 	effects    *batchEffects
 }
 
-func (s *admissionValueSource) Balance(account, asset string) (*big.Int, error) {
-	// #1560 (EN-1406) rejects colored/scoped balances upstream, so dependency
-	// resolution reads only the uncolored bucket ("").
-	key := domain.NewVolumeKey(s.ledgerName, account, asset, "")
+func (s *admissionValueSource) Balance(account, asset, color string) (*big.Int, error) {
+	// #1560 (EN-1406) threads color: a colored balance read resolves its own
+	// segregated (account, asset, color) volume bucket (scope-qualified reads are
+	// still rejected upstream via domain.ErrScopedBalanceUnsupported). The
+	// batch-effects lookup below is keyed by the same colored VolumeKey.
+	key := domain.NewVolumeKey(s.ledgerName, account, asset, color)
 
 	vol, err := s.admission.attrs.Volume.Get(s.admission.store, key.Bytes())
 	if err != nil {

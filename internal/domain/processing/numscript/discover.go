@@ -14,12 +14,13 @@ import (
 // Numscript script via the upstream ResolveDependencies API, plus the
 // stale-inputs hash binding the balance/metadata values that resolution read.
 //
-// ReadVolumes are (account, asset) balances the script's resolution consulted
-// (bounded sources, capped/allotment amounts, balance()/overdraft() in vars or
-// selectors). WriteVolumes are (account, asset) pairs the script credits or
-// debits (sources — including unbounded ones — and destinations). A key can be
-// in both. Admission preloads the union so the FSM apply path can read/mutate
-// every touched volume from cache.
+// ReadVolumes are (account, asset, color) balances the script's resolution
+// consulted (bounded sources, capped/allotment amounts, balance()/overdraft() in
+// vars or selectors). WriteVolumes are (account, asset, color) keys the script
+// credits or debits (sources — including unbounded ones — and destinations); a
+// colored posting resolves its own segregated bucket. A key can be in both.
+// Admission preloads the union so the FSM apply path can read/mutate every
+// touched volume from cache.
 //
 // ReadMetadata are (account, key) metadata entries meta() consulted;
 // WriteMetadata are entries set_account_meta writes. Only reads must be
@@ -36,8 +37,9 @@ import (
 // order against pre-batch storage PLUS the accumulated effects of the orders
 // ahead of it — otherwise a balance()/meta() that depends on an earlier order
 // hashes stale and is rejected forever. NetBalanceDeltas is keyed by
-// (ledger, account, asset) and holds (input−output) deltas — the same quantity
-// balance() returns. MetadataWrites holds the raw values set_account_meta wrote.
+// (ledger, account, asset, color) and holds (input−output) deltas — the same
+// quantity balance() returns for that color bucket. MetadataWrites holds the raw
+// values set_account_meta wrote.
 type DiscoveryResult struct {
 	ReadVolumes   map[domain.VolumeKey]struct{}
 	WriteVolumes  map[domain.VolumeKey]struct{}
@@ -93,27 +95,25 @@ func DiscoverNumscriptDependencies(
 		InputsHash:    recording.Hash(),
 	}
 
-	// Ledger volumes are keyed by (ledger, account, asset) only — color and
-	// scope are not modelled, so distinct-color dependencies on the same
-	// (account, asset) collapse to the same preload key. That is correct: the
-	// preload set is a set of volumes to load, and the color is irrelevant to
-	// which Pebble/cache entry is touched.
+	// Ledger volumes are keyed by (ledger, account, asset, color): color IS a
+	// volume dimension, so a colored read dependency preloads its own segregated
+	// bucket. Scope is not modelled — but a scope-qualified read is already
+	// rejected by the Store during SafeResolveDependencies above, so no extra
+	// guard is needed here.
 	for dep := range resolved.AccountsReads {
-		result.ReadVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, "")] = struct{}{}
+		result.ReadVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, dep.Color)] = struct{}{}
 	}
 
 	for dep := range resolved.AccountsWrites {
-		// Reject color/scope-qualified WRITE dependencies. The read side already
-		// rejects qualified reads (store.go), but writes are recorded without
-		// touching the Store, so an unbounded colored source or a colored/scoped
-		// destination would otherwise be silently collapsed onto the unqualified
-		// (account, asset) volume — a silent semantic loss, since Ledger volumes
-		// have no color/scope dimension (color is EN-1334, not this PR). Definitive
-		// rejection, matching the read-side contract.
-		if dep.Scope != "" || dep.Color != "" {
-			return nil, domain.ErrColoredBalanceUnsupported
+		// Reject scope-qualified WRITE dependencies. Writes are recorded without
+		// touching the Store, so a scoped destination would otherwise be silently
+		// collapsed onto the unscoped (account, asset) volume — a silent semantic
+		// loss, since Ledger account volumes have no scope dimension. Color is
+		// modelled, so a colored write preloads its own segregated bucket.
+		if dep.Scope != "" {
+			return nil, domain.ErrScopedBalanceUnsupported
 		}
-		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, "")] = struct{}{}
+		result.WriteVolumes[domain.NewVolumeKey(ledgerName, dep.Account, dep.Asset, dep.Color)] = struct{}{}
 	}
 
 	for dep := range resolved.MetaReads {
@@ -125,10 +125,10 @@ func DiscoverNumscriptDependencies(
 
 	for dep := range resolved.MetaWrites {
 		// Reject scope-qualified metadata WRITE dependencies, same rationale as
-		// colored balance writes above — Ledger account metadata has no scope
+		// scoped balance writes above — Ledger account metadata has no scope
 		// dimension, so a scoped write would silently collapse onto the unscoped key.
 		if dep.Scope != "" {
-			return nil, domain.ErrColoredBalanceUnsupported
+			return nil, domain.ErrScopedBalanceUnsupported
 		}
 		result.WriteMetadata[domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: dep.Account},
@@ -175,11 +175,12 @@ func DiscoverNumscriptDependencies(
 			continue
 		}
 		// balance = input − output. Source is debited (balance −amount), the
-		// destination is credited (balance +amount).
-		srcKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset, "")
+		// destination is credited (balance +amount). Color IS modelled, so the
+		// delta lands on the posting's segregated (account, asset, color) bucket.
+		srcKey := domain.NewVolumeKey(ledgerName, posting.Source, posting.Asset, posting.Color)
 		addBalanceDelta(result.NetBalanceDeltas, srcKey, new(big.Int).Neg(posting.Amount))
 
-		dstKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, "")
+		dstKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, posting.Color)
 		addBalanceDelta(result.NetBalanceDeltas, dstKey, posting.Amount)
 	}
 

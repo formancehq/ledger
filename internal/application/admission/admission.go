@@ -1413,7 +1413,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
 		// A definitive, deterministic rejection is NOT a preparation gap: the
 		// script could never have succeeded — a parse error, a validation failure,
-		// an unsupported color/scope-qualified write, a missing ledger, and so on —
+		// an unsupported scope-qualified write, a missing ledger, and so on —
 		// so there is no frozen outcome to replay and re-running always fails
 		// identically. Surface the real error: never forward it as a retryable
 		// preload-unavailable (which would spin forever, since no retry can
@@ -1677,9 +1677,10 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// Volume reads and writes both need preloading: the FSM apply path
 			// reads every touched source balance and mutates both source and
 			// destination volumes. The union is preloaded so every read/mutate
-			// resolves from cache. #1560 (EN-1406) rejects colored/scoped
-			// balances upstream, so every discovered key targets the uncolored
-			// bucket (key.Color == "").
+			// resolves from cache. #1560 (EN-1406) threads color: a discovered key
+			// may carry a non-empty key.Color, so preloading passes it through to
+			// the segregated (account, asset, color) bucket. Scope-qualified
+			// balances are still rejected upstream.
 			for key := range discovered.ReadVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)

@@ -443,15 +443,16 @@ var (
 	ErrNumscriptNameRequired    = NewValidationSentinel("numscript name is required")
 	ErrNumscriptNameInvalidChar = NewValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
 	ErrNumscriptNameTooLong     = NewValidationSentinel("numscript name exceeds maximum length of 256 bytes")
-	// ErrColoredBalanceUnsupported rejects a Numscript that reads a color- or
-	// scope-qualified balance. Ledger volumes are keyed by (ledger, account,
-	// asset) only — they carry no color/scope dimension — so distinct color/scope
-	// views of the same account+asset all collapse to ONE underlying volume.
-	// Serving each qualified view its own full balance lets a single script spend
-	// the same funds once per color and drive the volume negative with no
-	// overdraft clause (EN-1406 P1-2 double-spend). Rejecting keeps the balance a
-	// script sees consistent with the single volume the FSM will mutate.
-	ErrColoredBalanceUnsupported = NewValidationSentinel("numscript: color/scope-qualified balances are not supported (ledger volumes are keyed by account and asset only)")
+	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
+	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
+	// keyed by (ledger, account, asset, color), so colored reads/writes resolve
+	// their own segregated bucket. Scope, however, is a distinct Numscript concept
+	// the ledger does not model: a scope-qualified view of an account+asset would
+	// collapse onto the single volume, so serving each scope its own full balance
+	// would let a script spend the same funds once per scope (double-spend).
+	// Rejecting keeps the balance a script sees consistent with the volume the FSM
+	// will mutate.
+	ErrScopedBalanceUnsupported = NewValidationSentinel("numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.

@@ -48,7 +48,7 @@ func TestCoverageMissSurvivesNumscriptLibrary(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	source := numscriptmock.NewMockValueSource(ctrl)
-	source.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, miss)
+	source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil, miss)
 	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
 
 	store := numscript.NewStore(source, false)

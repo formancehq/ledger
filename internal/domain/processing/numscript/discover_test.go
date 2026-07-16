@@ -18,7 +18,7 @@ import (
 // repo's "no hand-rolled fakes" convention while retaining the stub ergonomics
 // the value-driven tests need.
 type sourceSpec struct {
-	balances map[string]*big.Int // "account\x00asset" -> balance
+	balances map[string]*big.Int // "account\x00asset\x00color" -> balance
 	metadata map[string]string   // "account\x00key" -> value
 	present  map[string]struct{} // keys treated as present (for absent vs empty)
 }
@@ -31,8 +31,15 @@ func newFakeSource() *sourceSpec {
 	}
 }
 
+// withBalance declares the uncolored (color "") bucket balance.
 func (f *sourceSpec) withBalance(account, asset string, amount int64) *sourceSpec {
-	f.balances[account+"\x00"+asset] = big.NewInt(amount)
+	return f.withColoredBalance(account, asset, "", amount)
+}
+
+// withColoredBalance declares a segregated (account, asset, color) bucket
+// balance; color IS a volume dimension.
+func (f *sourceSpec) withColoredBalance(account, asset, color string, amount int64) *sourceSpec {
+	f.balances[account+"\x00"+asset+"\x00"+color] = big.NewInt(amount)
 
 	return f
 }
@@ -53,9 +60,9 @@ func (f *sourceSpec) build(t *testing.T) *MockValueSource {
 	ctrl := gomock.NewController(t)
 	mock := NewMockValueSource(ctrl)
 
-	mock.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(account, asset string) (*big.Int, error) {
-			if b, ok := f.balances[account+"\x00"+asset]; ok {
+	mock.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(account, asset, color string) (*big.Int, error) {
+			if b, ok := f.balances[account+"\x00"+asset+"\x00"+color]; ok {
 				return new(big.Int).Set(b), nil
 			}
 
@@ -76,6 +83,10 @@ func (f *sourceSpec) build(t *testing.T) *MockValueSource {
 
 func volKey(account, asset string) domain.VolumeKey {
 	return domain.NewVolumeKey("ledger", account, asset, "")
+}
+
+func coloredVolKey(account, asset, color string) domain.VolumeKey {
+	return domain.NewVolumeKey("ledger", account, asset, color)
 }
 
 func metaKey(account, key string) domain.MetadataKey {
@@ -422,13 +433,12 @@ set_tx_meta("bal", balance(@treasury, USD/2))
 		"a changed mid-script-read balance must change the hash")
 }
 
-// TestDiscover_RejectsColoredWrite pins the write-side color/scope rejection: an
-// unbounded colored source (@world is never balance-read, so the read-side Store
-// rejection never fires) still credits the destination in the source's color,
-// producing a colored WRITE dependency. Ledger volumes have no color/scope
-// dimension, so this must be rejected — not silently collapsed onto the
-// unqualified (account, asset) volume.
-func TestDiscover_RejectsColoredWrite(t *testing.T) {
+// TestDiscover_ServesColoredWrite pins the write-side color threading: an
+// unbounded colored source (@world is never balance-read) credits the
+// destination in the source's color, producing a colored WRITE dependency.
+// Color IS a volume dimension, so the write must be discovered on the segregated
+// (account, asset, color) bucket — not collapsed onto the uncolored volume.
+func TestDiscover_ServesColoredWrite(t *testing.T) {
 	t.Parallel()
 
 	cache := NewNumscriptCache(16)
@@ -436,6 +446,32 @@ func TestDiscover_RejectsColoredWrite(t *testing.T) {
 		source = @world \ "RED"
 		destination = @dest
 	)`
-	_, err := DiscoverNumscriptDependencies(cache, script, nil, "ledger", newFakeSource().build(t), false)
-	require.ErrorIs(t, err, domain.ErrColoredBalanceUnsupported)
+	result, err := DiscoverNumscriptDependencies(cache, script, nil, "ledger", newFakeSource().build(t), false)
+	require.NoError(t, err)
+	require.Contains(t, result.WriteVolumes, coloredVolKey("world", "COIN", "RED"),
+		"the unbounded colored source is a colored write")
+	require.Contains(t, result.WriteVolumes, coloredVolKey("dest", "COIN", "RED"),
+		"the destination is credited in the source's color")
+	require.NotContains(t, result.WriteVolumes, volKey("dest", "COIN"),
+		"the colored credit must not collapse onto the uncolored bucket")
+}
+
+// TestDiscover_ServesColoredRead pins the read-side color threading: a bounded
+// colored source reads its own segregated (account, asset, color) bucket, so the
+// colored read dependency is discovered and the value is hashed as a bound input.
+func TestDiscover_ServesColoredRead(t *testing.T) {
+	t.Parallel()
+
+	cache := NewNumscriptCache(16)
+	script := `send [COIN 10] (
+		source = @wallet \ "RED"
+		destination = @dest
+	)`
+	source := newFakeSource().withColoredBalance("wallet", "COIN", "RED", 100)
+	result, err := DiscoverNumscriptDependencies(cache, script, nil, "ledger", source.build(t), false)
+	require.NoError(t, err)
+	require.Contains(t, result.ReadVolumes, coloredVolKey("wallet", "COIN", "RED"),
+		"a bounded colored source reads its own color bucket")
+	require.Contains(t, result.WriteVolumes, coloredVolKey("wallet", "COIN", "RED"))
+	require.Contains(t, result.WriteVolumes, coloredVolKey("dest", "COIN", "RED"))
 }

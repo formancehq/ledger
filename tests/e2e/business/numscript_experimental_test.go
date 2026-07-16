@@ -480,14 +480,12 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 		})
 
-		It("Should REJECT a colored send even from an UNbounded source (no color dimension)", func() {
+		It("Should serve a colored send from an UNbounded source (color is a volume dimension)", func() {
 			// `source = @world \ "RED"` moves RED-colored COIN, so the destination
-			// @clr:pool is *credited* RED COIN. Ledger volumes carry no color
-			// dimension (color lands with EN-1334), so serving that write would
-			// silently collapse the RED credit onto the single COIN volume — a
-			// silent semantic loss. Every color/scope-qualified posting is rejected
-			// uniformly, source or destination, bounded or unbounded, until color
-			// is a first-class volume dimension.
+			// @clr:pool is *credited* RED COIN. Color IS a first-class volume
+			// dimension (volumes are keyed by (account, asset, color)), so the RED
+			// credit lands on @clr:pool's own RED bucket, segregated from any
+			// uncolored funds. The emitted posting carries the color end to end.
 			script := `
 #![feature("experimental-asset-colors")]
 
@@ -496,34 +494,40 @@ send [COIN 100] (
   destination = @clr:pool
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
 				info.Reason == domain.ErrReasonNumscriptParseError {
 				Skip("experimental-asset-colors not available on this build: " + info.Reason)
 			}
-			Expect(err).To(HaveOccurred())
-			info := actions.ExtractGRPCErrorInfo(err)
-			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
-				"colored write must be rejected as validation, got %q", info.Reason)
-			// The send never committed, so clr:pool was never created — the P1-2
-			// test below funds it explicitly. The rejection above is the assertion.
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].GetColor()).To(Equal("RED"),
+				"the color on the unbounded source must propagate to the emitted posting")
+			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64()).To(Equal(int64(100)))
+
+			Eventually(func(g Gomega) {
+				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "clr:pool",
+				})
+				g.Expect(err).To(Succeed())
+				// The RED credit lands on the segregated RED bucket only.
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("100"))
+				g.Expect(pool.FindVolume("COIN", "")).To(BeNil(),
+					"the colored credit must not collapse onto the uncolored bucket")
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should REJECT a colored send from a balance-checked source (P1-2)", func() {
-			// Fund clr:pool with plain (uncolored) COIN first — an uncolored send is
-			// always accepted. The colored send above is rejected, so pool starts
-			// empty and we seed it here.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
-				actions.CreateScriptTransactionAction(ledgerName,
-					"send [COIN 100] (source = @world destination = @clr:pool)", nil, nil)))
-			Expect(err).To(Succeed())
-
-			// Spending a specific color from a funded account reads that color's
-			// balance. Ledger volumes have no color dimension, so this collapses to
-			// the single COIN volume; serving the colored view would let the script
-			// overspend. It must be rejected rather than silently double-counting.
+		It("Should draw a colored balance from the matching color bucket (P1-2)", func() {
+			// clr:pool was funded with 100 RED COIN by the test above. Drawing a
+			// specific color from a funded account reads exactly that color's
+			// segregated bucket — no collapse, no double-counting: the RED draw
+			// consumes RED funds and the RED balance shrinks accordingly.
 			script := `
 #![feature("experimental-asset-colors")]
 
@@ -532,22 +536,68 @@ send [COIN 40] (
   destination = @clr:spent
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
-			if err != nil {
-				if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
-					info.Reason == domain.ErrReasonNumscriptParseError {
-					Skip("experimental-asset-colors not available on this build: " + info.Reason)
-				}
+			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
+				info.Reason == domain.ErrReasonNumscriptParseError {
+				Skip("experimental-asset-colors not available on this build: " + info.Reason)
 			}
-			Expect(err).To(HaveOccurred())
-			info := actions.ExtractGRPCErrorInfo(err)
-			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
-				"colored balance read must be rejected as validation, got %q", info.Reason)
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(1))
 
-			// pool untouched.
-			expectBalance(ledgerName, "clr:pool", "COIN", "100")
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].GetColor()).To(Equal("RED"))
+
+			Eventually(func(g Gomega) {
+				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "clr:pool",
+				})
+				g.Expect(err).To(Succeed())
+				// RED drained by 40 (100 - 40 = 60).
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+
+				spent, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "clr:spent",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(spent.FindVolume("COIN", "RED").GetBalance()).To(Equal("40"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should REJECT a colored draw when the color bucket is underfunded", func() {
+			// clr:pool has 60 RED remaining. A RED draw of 1000 must fail with
+			// insufficient funds against the RED bucket — it must NOT fall back to
+			// any uncolored balance.
+			script := `
+#![feature("experimental-asset-colors")]
+
+send [COIN 1000] (
+  source = @clr:pool \ "RED"
+  destination = @clr:spent
+)
+`
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
+				info.Reason == domain.ErrReasonNumscriptParseError {
+				Skip("experimental-asset-colors not available on this build: " + info.Reason)
+			}
+			Expect(err).To(HaveOccurred(),
+				"a colored draw must not be satisfied beyond the color bucket's balance")
+
+			// pool RED untouched.
+			Eventually(func(g Gomega) {
+				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "clr:pool",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

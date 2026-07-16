@@ -48,7 +48,7 @@ func TestSafeResolveDependencies_DescribableSurvivesLibrary(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	source := NewMockValueSource(ctrl)
-	source.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, sentinel)
+	source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil, sentinel)
 	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
 
 	store := NewStore(source, false)
@@ -82,8 +82,8 @@ func TestSafeResolveDependencies_RecoversPanic(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	source := NewMockValueSource(ctrl)
-	source.EXPECT().Balance(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(string, string) (*big.Int, error) {
+	source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(string, string, string) (*big.Int, error) {
 			panic("boom: numscript store panic")
 		})
 	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)

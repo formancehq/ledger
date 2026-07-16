@@ -49,7 +49,7 @@ func convertNumscriptError(err error) domain.Describable {
 	// errors.As walks the chain in case a caller has already wrapped the
 	// numscript-library error in a Describable. This also unwraps
 	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
-	// error — so a rejected colored read (domain.ErrColoredBalanceUnsupported)
+	// error — so a rejected scoped read (domain.ErrScopedBalanceUnsupported)
 	// surfaces here as the validation sentinel it already is.
 	var d domain.Describable
 	if errors.As(err, &d) {

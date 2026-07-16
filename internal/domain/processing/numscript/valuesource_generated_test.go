@@ -39,18 +39,18 @@ func (m *MockValueSource) EXPECT() *MockValueSourceMockRecorder {
 }
 
 // Balance mocks base method.
-func (m *MockValueSource) Balance(account, asset string) (*big.Int, error) {
+func (m *MockValueSource) Balance(account, asset, color string) (*big.Int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Balance", account, asset)
+	ret := m.ctrl.Call(m, "Balance", account, asset, color)
 	ret0, _ := ret[0].(*big.Int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Balance indicates an expected call of Balance.
-func (mr *MockValueSourceMockRecorder) Balance(account, asset any) *MockValueSourceBalanceCall {
+func (mr *MockValueSourceMockRecorder) Balance(account, asset, color any) *MockValueSourceBalanceCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Balance", reflect.TypeOf((*MockValueSource)(nil).Balance), account, asset)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Balance", reflect.TypeOf((*MockValueSource)(nil).Balance), account, asset, color)
 	return &MockValueSourceBalanceCall{Call: call}
 }
 
@@ -66,13 +66,13 @@ func (c *MockValueSourceBalanceCall) Return(arg0 *big.Int, arg1 error) *MockValu
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockValueSourceBalanceCall) Do(f func(string, string) (*big.Int, error)) *MockValueSourceBalanceCall {
+func (c *MockValueSourceBalanceCall) Do(f func(string, string, string) (*big.Int, error)) *MockValueSourceBalanceCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockValueSourceBalanceCall) DoAndReturn(f func(string, string) (*big.Int, error)) *MockValueSourceBalanceCall {
+func (c *MockValueSourceBalanceCall) DoAndReturn(f func(string, string, string) (*big.Int, error)) *MockValueSourceBalanceCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

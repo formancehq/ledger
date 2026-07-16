@@ -131,14 +131,15 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	)
 
 	for i, posting := range result.Postings {
-		// Authoritative rejection of color/scope-qualified postings. Ledger
-		// postings have no color/scope dimension (that is EN-1334, not this PR);
-		// building a commonpb.Posting from only source/destination/asset would
-		// silently drop these qualifiers and materialise unqualified volumes — a
-		// silent semantic loss. Reject deterministically so every node produces
-		// the same definitive failure. Mirrors admission's discover-side rejection.
-		if posting.SourceScope != "" || posting.DestinationScope != "" || posting.Color != "" {
-			return nil, domain.ErrColoredBalanceUnsupported
+		// Authoritative rejection of scope-qualified postings. Color IS modelled —
+		// posting.Color flows into the commonpb.Posting and NewVolumeKey below, so
+		// a colored posting materialises its own segregated volume bucket. Scope is
+		// NOT modelled: building a commonpb.Posting would silently drop the scope
+		// qualifier and collapse onto the unscoped volume — a silent semantic loss.
+		// Reject deterministically so every node produces the same definitive
+		// failure. Mirrors admission's discover-side rejection.
+		if posting.SourceScope != "" || posting.DestinationScope != "" {
+			return nil, domain.ErrScopedBalanceUnsupported
 		}
 
 		if posting.Amount.Sign() < 0 {
@@ -253,9 +254,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		for _, row := range result.AccountsMetadata {
 			// Ledger account metadata has no scope dimension; a scoped write would
 			// silently collapse onto the unscoped key. Reject deterministically,
-			// mirroring the colored-posting and discover-side rejections.
+			// mirroring the posting and discover-side scope rejections.
 			if row.Scope != "" {
-				return nil, domain.ErrColoredBalanceUnsupported
+				return nil, domain.ErrScopedBalanceUnsupported
 			}
 
 			if err := domain.ValidateMetadataKey(row.Key); err != nil {
@@ -353,12 +354,13 @@ type scopeValueSource struct {
 	ledgerName string
 }
 
-func (s *scopeValueSource) Balance(account, asset string) (*big.Int, error) {
+func (s *scopeValueSource) Balance(account, asset, color string) (*big.Int, error) {
 	// #1560 (EN-1406) resolves dependencies through the upstream
-	// ResolveDependencies API, which is color-agnostic: colored/scoped balances
-	// are rejected earlier (domain.ErrColoredBalanceUnsupported), so every read
-	// here targets the uncolored bucket ("").
-	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset, "")
+	// ResolveDependencies API, which threads color: a colored balance read
+	// resolves its own segregated (account, asset, color) bucket through the
+	// coverage-gated Scope (scope-qualified reads are still rejected earlier via
+	// domain.ErrScopedBalanceUnsupported).
+	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset, color)
 
 	vol, err := readVolumeOrZero(s.store, volumeKey)
 	if err != nil {

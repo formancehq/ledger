@@ -22,8 +22,8 @@ var MaxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -destination=numscriptmock/valuesource_generated.go -typed -package=numscriptmock . ValueSource
 
 // ValueSource is the minimal read surface the Numscript dependency resolver and
-// the force-free execution path need: a per-(account, asset) balance and a
-// per-(account, key) metadata value. It abstracts over where the values come
+// the force-free execution path need: a per-(account, asset, color) balance and
+// a per-(account, key) metadata value. It abstracts over where the values come
 // from so the same numscript.Store adapter serves both:
 //
 //   - admission time: values read from a Pebble snapshot;
@@ -31,11 +31,12 @@ var MaxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
 //     touches Pebble (invariant #3) and only admits keys admission declared in
 //     the preload set (invariant #9).
 //
-// Balance returns the (Input - Output) balance for (account, asset); a fresh
-// account with no volume must return a zero balance, not an error. Metadata
-// returns the verbatim stored value and whether it was present.
+// Balance returns the (Input - Output) balance for (account, asset, color); the
+// color selects the segregated volume bucket (empty color is its own bucket). A
+// fresh account with no volume must return a zero balance, not an error.
+// Metadata returns the verbatim stored value and whether it was present.
 type ValueSource interface {
-	Balance(account, asset string) (*big.Int, error)
+	Balance(account, asset, color string) (*big.Int, error)
 	Metadata(account, key string) (value string, present bool, err error)
 }
 
@@ -44,12 +45,15 @@ type ValueSource interface {
 // batched, slice-shaped queries; this translates each row through the
 // ValueSource.
 //
-// Colors and scopes are not modelled by Ledger volumes/metadata, so the
-// Color/Scope fields of the query are echoed back on the returned rows (so the
-// interpreter's key matching lines up) but do not participate in the lookup.
+// Color IS modelled by Ledger volumes: the query's Color selects a segregated
+// (account, asset, color) bucket and is threaded into the lookup, then echoed
+// back on the returned row so the interpreter's key matching lines up. Scope is
+// NOT modelled (a distinct Numscript concept) — a scope-qualified query is
+// rejected outright. Account metadata has no color dimension, only scope (also
+// rejected).
 //
 // When force is set, GetBalances short-circuits to MaxForceBalance for every
-// queried (account, asset), bypassing balance checks — this mirrors the
+// queried (account, asset, color), bypassing balance checks — this mirrors the
 // transaction's force flag on the execution path.
 type Store struct {
 	source ValueSource
@@ -65,21 +69,20 @@ func NewStore(source ValueSource, force bool) *Store {
 func (s *Store) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
 	out := make(numscriptlib.Balances, 0, len(query))
 	for _, item := range query {
-		// Ledger volumes have no color/scope dimension: every color/scope view of
-		// (account, asset) resolves to the SAME underlying volume. Answering a
-		// qualified query would hand the caller a full-balance view per color and
-		// let one script spend the same funds once per color (EN-1406 P1-2). The
-		// lookup already ignores Color/Scope, so reject the query outright rather
-		// than silently serving an unsound, double-counted view.
-		if item.Color != "" || item.Scope != "" {
-			return nil, domain.ErrColoredBalanceUnsupported
+		// Color IS a volume dimension: the query's Color resolves its own
+		// segregated (account, asset, color) bucket, threaded into the lookup
+		// below. Scope is NOT modelled — a scope view of (account, asset) would
+		// collapse onto the single volume and let one script spend the same funds
+		// once per scope (EN-1406 P1-2), so reject a scope-qualified query outright.
+		if item.Scope != "" {
+			return nil, domain.ErrScopedBalanceUnsupported
 		}
 
 		var balance *big.Int
 		if s.force {
 			balance = new(big.Int).Set(MaxForceBalance)
 		} else {
-			b, err := s.source.Balance(item.Account, item.Asset)
+			b, err := s.source.Balance(item.Account, item.Asset, item.Color)
 			if err != nil {
 				return nil, err
 			}
@@ -107,11 +110,11 @@ func (s *Store) GetAccountsMetadata(_ context.Context, query numscriptlib.Metada
 	var out numscriptlib.AccountsMetadata
 	for _, item := range query {
 		// Ledger account metadata is keyed by (ledger, account, key) with no scope
-		// dimension, so a scope-qualified metadata read would collapse to the same
-		// entry as the unscoped one — reject it for the same reason as colored
-		// balances (EN-1406 P1-2).
+		// dimension (and no color dimension), so a scope-qualified metadata read
+		// would collapse to the same entry as the unscoped one — reject it, the
+		// same reason scope-qualified balances are rejected (EN-1406 P1-2).
 		if item.Scope != "" {
-			return nil, domain.ErrColoredBalanceUnsupported
+			return nil, domain.ErrScopedBalanceUnsupported
 		}
 
 		for _, key := range item.Keys {
