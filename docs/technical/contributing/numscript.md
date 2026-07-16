@@ -537,4 +537,3 @@ Cache metrics are exposed via OpenTelemetry:
 - [CLI Reference](../../ops/cli.md) - CLI usage and examples
 - [Numscript Examples](../../../misc/numscript/examples/README.md) - Ready-to-use example scripts
 - [API Comparison](./api-comparison.md) - Feature parity with original ledger
-- [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) - RFC for static input declaration

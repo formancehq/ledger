@@ -12,9 +12,11 @@ Current system limitations based on ID types: maximum ledgers, transactions, and
 
 ### [Numscript RFCs](./numscript/)
 Draft RFCs for Numscript evolution:
-- [Static Inputs RFC](./numscript/numscript-static-inputs-rfc.md) — Static input declaration contract
 - [WASM Compilation RFC](./numscript/numscript-wasm-compilation-rfc.md) — WASM compilation pipeline
 - [Typed Metadata RFC](./numscript/numscript-typed-metadata-rfc.md) — Typed metadata integration
+
+Dependency resolution (formerly the "Static Inputs RFC") is now implemented — see
+[Numscript → Volume Preloading (Dependency Resolution)](../technical/contributing/numscript.md#volume-preloading-dependency-resolution).
 
 ### [Advanced Concepts](./advanced-concepts.md)
 Exploratory documentation on advanced features and concepts.
