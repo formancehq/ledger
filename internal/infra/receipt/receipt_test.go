@@ -1,6 +1,7 @@
 package receipt
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -210,4 +211,66 @@ func TestSignWithNilTimestamp(t *testing.T) {
 	claims, err := signer.Verify(token)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), claims.ChapterID)
+}
+
+// TestSignBindsColor pins the receipt-vs-color contract: two postings
+// identical in (source, destination, asset, amount) but differing in
+// Color must produce distinct signatures, and the verified claims must
+// expose the Color so the revert path can target the correct bucket.
+func TestSignBindsColor(t *testing.T) {
+	t.Parallel()
+
+	signer := NewSigner([]byte("test-secret-key-for-color-binding!!"))
+
+	makePosting := func(color string) *commonpb.Posting {
+		return &commonpb.Posting{
+			Source:      "alice",
+			Destination: "bob",
+			Amount:      commonpb.NewUint256FromUint64(100),
+			Asset:       "USD/2",
+			Color:       color,
+		}
+	}
+
+	grantsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("GRANTS")}, nil, 0)
+	require.NoError(t, err)
+
+	opsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("OPS")}, nil, 0)
+	require.NoError(t, err)
+
+	require.NotEqual(t, grantsTok, opsTok,
+		"two postings differing only by Color must produce distinct signed receipts")
+
+	grantsClaims, err := signer.Verify(grantsTok)
+	require.NoError(t, err)
+	require.Len(t, grantsClaims.Postings, 1)
+	require.Equal(t, "GRANTS", grantsClaims.Postings[0].Color)
+
+	// ClaimsToPostings must round-trip the color so the revert path can
+	// target the same bucket the original transaction touched.
+	roundTripped := ClaimsToPostings(grantsClaims.Postings)
+	require.Len(t, roundTripped, 1)
+	require.Equal(t, "GRANTS", roundTripped[0].GetColor())
+}
+
+// TestPostingClaim_AlwaysEmitsColor pins the receipt-JSON contract: the
+// uncolored bucket must surface as `color:""` in the signed JWT claim,
+// not be dropped via omitempty. Matches the contract enforced on
+// commonpb.Posting, sinkPosting, and AccountVolume — keeps the v3
+// uncolored claim distinguishable from a pre-color claim shape.
+func TestPostingClaim_AlwaysEmitsColor(t *testing.T) {
+	t.Parallel()
+
+	claim := PostingClaim{
+		Source:      "world",
+		Destination: "users:alice",
+		Amount:      "100",
+		Asset:       "USD/2",
+		// Color intentionally left empty — uncolored bucket.
+	}
+
+	data, err := json.Marshal(claim)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"color":""`,
+		`uncolored receipt claims must surface "color":"" — receipt JWTs bind the (account, asset, color) identity, so the empty bucket cannot be omitted`)
 }

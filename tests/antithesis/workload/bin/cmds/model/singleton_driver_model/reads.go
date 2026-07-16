@@ -125,14 +125,16 @@ func pickCell(g oracle.GlobalState) (ledger, addr, asset string, ok bool) {
 }
 
 // accountAssetVolumes extracts (input, output) for one asset from a GetAccount
-// response. found=false when the asset entry is missing.
+// response. The workload only ever exercises uncolored postings, so we look
+// up the uncolored bucket (color="") explicitly — colored buckets are out of
+// scope for this driver model. found=false when the bucket is missing.
 func accountAssetVolumes(acct *commonpb.Account, asset string) (in, out uint256.Int, found bool) {
 	if acct == nil {
 		return in, out, false
 	}
 
-	v, ok := acct.GetVolumes()[asset]
-	if !ok {
+	v := acct.FindVolume(asset, "")
+	if v == nil {
 		return in, out, false
 	}
 

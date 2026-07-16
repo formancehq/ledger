@@ -1,9 +1,12 @@
 package numscript
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -291,4 +294,23 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.ErrorIs(t, err, ErrMetaNotSupported)
 		require.Nil(t, result)
 	})
+}
+
+// TestDiscoveryStore_RejectsCatchAllAsset pins the surface-loudly contract on
+// the discovery side. When the numscript runtime asks for "BASE/*" — a query
+// it emits to enumerate precision flavors — the ledger has no iteration
+// capability to expand it, and pretending the catch-all is a literal asset
+// would produce a phantom Need pointing at "BASE/*" that the FSM apply path
+// could never satisfy.
+func TestDiscoveryStore_RejectsCatchAllAsset(t *testing.T) {
+	t.Parallel()
+
+	store := &discoveryStore{
+		queriedVolumes: make(map[domain.VolumeKey]struct{}),
+	}
+
+	_, err := store.GetBalances(context.Background(), numscriptlib.BalanceQuery{
+		{Account: "alice", Asset: "USD/*"},
+	})
+	require.ErrorIs(t, err, ErrCatchAllAssetNotSupported)
 }

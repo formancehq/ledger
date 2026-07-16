@@ -100,6 +100,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	{
 		type jsonVolume struct {
 			Asset   string `json:"asset"`
+			Color   string `json:"color"`
 			Input   string `json:"input"`
 			Output  string `json:"output"`
 			Balance string `json:"balance"`
@@ -113,6 +114,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 			balance := new(big.Int).Sub(input, output)
 			volumes = append(volumes, jsonVolume{
 				Asset:   vol.GetAsset(),
+				Color:   vol.GetColor(),
 				Input:   input.String(),
 				Output:  output.String(),
 				Balance: balance.String(),
@@ -131,7 +133,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	}
 
 	tableData := pterm.TableData{
-		{"ASSET", "INPUT", "OUTPUT", "BALANCE"},
+		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}
 
 	for _, vol := range result.GetVolumes() {
@@ -140,6 +142,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		balance := new(big.Int).Sub(input, output)
 		tableData = append(tableData, []string{
 			vol.GetAsset(),
+			vol.GetColor(),
 			input.String(),
 			output.String(),
 			formatBalance(balance),

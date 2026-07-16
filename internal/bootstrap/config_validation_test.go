@@ -161,12 +161,33 @@ func TestValidateOrPersistConfig_SchemaVersionBackfill(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Boot with current code should backfill to version 1 and succeed.
 	cfg := Config{
 		RaftConfig: node.NodeConfig{NodeID: 1},
 		ClusterID:  "test",
 	}
 	err := ValidateOrPersistConfig(store, cfg, logger, false)
+
+	if CurrentStorageSchemaVersion > 1 {
+		// A pre-versioning store is a v1 store. Once the binary requires a
+		// newer schema, that store must be rejected as too-old (never
+		// silently upgraded) — but the version-0 → version-1 backfill must
+		// still have been persisted first.
+		require.Error(t, err)
+
+		var schemaErr *SchemaVersionError
+		require.ErrorAs(t, err, &schemaErr)
+		require.False(t, schemaErr.Downgrade)
+		require.Equal(t, uint32(1), schemaErr.Persisted)
+		require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
+
+		persisted, err := LoadPersistedConfig(store)
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), persisted.GetStorageSchemaVersion())
+
+		return
+	}
+
+	// Version 1 == current: backfill to version 1 and succeed.
 	require.NoError(t, err)
 
 	persisted, err := LoadPersistedConfig(store)

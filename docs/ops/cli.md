@@ -1396,7 +1396,7 @@ ledgerctl transactions create [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--posting` | | Posting in format: `source,destination,amount,asset` (can be repeated) |
+| `--posting` | | Posting in format: `source,destination,amount,asset[,color]` (can be repeated) |
 | `--script` | | Path to a Numscript file (mutually exclusive with `--posting`) |
 | `--var` | | Script variable in format: `name=value` (can be repeated, only with `--script`) |
 | `--reference` | | Transaction reference |
@@ -1427,7 +1427,25 @@ ledgerctl transactions create --ledger my-ledger \
 ledgerctl transactions create --ledger my-ledger \
   --posting "empty-account,destination,1000,USD" \
   --force
+
+# Colored postings (segregated balances per (account, asset, color)).
+# Color must match ^[A-Z]*$. An empty/missing color is the uncolored bucket
+# and is itself segregated from every colored bucket.
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,treasury,1000,USD/2,GRANTS"
+
+# Mixed colored and uncolored postings in a single transaction
+ledgerctl transactions create --ledger my-ledger \
+  --posting "world,treasury,500,USD/2" \
+  --posting "world,treasury,500,USD/2,OPS"
 ```
+
+**Inspecting colored balances:**
+
+`ledgerctl accounts get` lists one row per `(asset, color)` tuple. To sum
+every colored bucket of the same asset into a single uncolored entry, pass
+`?collapseColors=true` on the HTTP endpoint (the CLI surfaces the raw,
+segregated view by design).
 
 **Creating transactions with Numscript:**
 

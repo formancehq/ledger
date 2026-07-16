@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -533,8 +534,8 @@ func TestHandleGetAccount_GetAccountError(t *testing.T) {
 		func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
 			return &commonpb.LedgerInfo{Name: "ledger1"}, nil
 		}).AnyTimes()
-	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ string, _ string) (*commonpb.Account, error) {
+	backend.EXPECT().GetAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ string, _ ctrl.GetAccountOptions) (*commonpb.Account, error) {
 			return nil, errors.New("storage error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

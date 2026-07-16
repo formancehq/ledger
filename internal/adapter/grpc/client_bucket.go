@@ -96,10 +96,11 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 	return NewUpstreamPeekCursor(stream), nil
 }
 
-func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
 	return g.client.GetAccount(ctx, &servicepb.GetAccountRequest{
-		Ledger:  ledgerName,
-		Address: address,
+		Ledger:         ledgerName,
+		Address:        address,
+		CollapseColors: opts.CollapseColors,
 	})
 }
 
@@ -383,6 +384,7 @@ func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName stri
 		Ledger:          ledgerName,
 		Filter:          filter,
 		UseMaxPrecision: opts.UseMaxPrecision,
+		CollapseColors:  opts.CollapseColors,
 		GroupByPrefixes: opts.GroupByPrefixes,
 	})
 }

@@ -323,9 +323,14 @@ func WithExpandVolumes(req *servicepb.Request) *servicepb.Request {
 	return req
 }
 
-// NewPosting creates a new posting protobuf message.
+// NewPosting creates a new uncolored posting protobuf message.
 func NewPosting(source, destination string, amount *big.Int, asset string) *commonpb.Posting {
 	return commonpb.NewPosting(source, destination, asset, amount)
+}
+
+// NewColoredPosting creates a new posting with an explicit color.
+func NewColoredPosting(source, destination string, amount *big.Int, asset, color string) *commonpb.Posting {
+	return commonpb.NewColoredPosting(source, destination, asset, color, amount)
 }
 
 // RegisterSigningKeyAction creates a RegisterSigningKey request.

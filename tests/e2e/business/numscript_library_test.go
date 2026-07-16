@@ -450,8 +450,8 @@ send $amount (
 					Address: "users:alice",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(account.Volumes).To(HaveKey("USD/2"))
-				g.Expect(account.Volumes["USD/2"].Balance).To(Equal("1000"))
+				g.Expect(account.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on account")
+				g.Expect(account.FindVolume("USD/2", "").Balance).To(Equal("1000"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
