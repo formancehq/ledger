@@ -311,8 +311,8 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(0),
 	}
 	volumes := setupVolumesStub(mockStore)
-	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2"), zeroVol.AsReader(), nil)
-	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2"), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol.AsReader(), nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2", ""), zeroVol.AsReader(), nil)
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: 42}, nil)
 
 	result, err := processor.ProcessOrder(mirrorCreatedTxOrder("mirror-ledger", 4, 42), mockStore)
