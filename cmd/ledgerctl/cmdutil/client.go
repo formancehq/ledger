@@ -63,6 +63,21 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 		return insecure.NewCredentials(), nil
 	}
 
+	tlsConfig, err := buildClientTLSConfig(caCertPath, serverName)
+	if err != nil {
+		return nil, err
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+// buildClientTLSConfig assembles the *tls.Config for a verifying (non-insecure)
+// client connection. Split out from GetClientTransportCredentials so the
+// resulting config is directly assertable in tests: credentials.NewTLS wraps it
+// in an opaque type whose only exported accessor (ProtocolInfo.ServerName) is
+// deprecated, so the config is the sole reliable place to verify ServerName and
+// RootCAs were applied.
+func buildClientTLSConfig(caCertPath, serverName string) (*tls.Config, error) {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 
 	// Override the name verified against the server certificate's SANs, so the
@@ -85,7 +100,7 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 		tlsConfig.RootCAs = certPool
 	}
 
-	return credentials.NewTLS(tlsConfig), nil
+	return tlsConfig, nil
 }
 
 // GetClient creates a gRPC client connection and returns the client.

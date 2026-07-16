@@ -41,7 +41,7 @@ func runList(_ *cobra.Command, _ []string) error {
 
 	sort.Strings(names)
 
-	data := pterm.TableData{{"", "NAME", "SERVER", "INSECURE", "TLS CA CERT"}}
+	data := pterm.TableData{{"", "NAME", "SERVER", "INSECURE", "TLS CA CERT", "TLS SERVER NAME"}}
 
 	for _, name := range names {
 		p := cfg.Profiles[name]
@@ -56,7 +56,7 @@ func runList(_ *cobra.Command, _ []string) error {
 			insecure = "true"
 		}
 
-		data = append(data, []string{marker, name, p.Server, insecure, p.TLSCaCert})
+		data = append(data, []string{marker, name, p.Server, insecure, p.TLSCaCert, p.TLSServerName})
 	}
 
 	return pterm.DefaultTable.WithHasHeader().WithData(data).Render()

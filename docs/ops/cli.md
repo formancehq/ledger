@@ -3075,7 +3075,7 @@ ledgerctl profile list
 
 ```bash
 ledgerctl profile list
-#    NAME     SERVER                          INSECURE  TLS CA CERT
+#    NAME     SERVER                          INSECURE  TLS CA CERT       TLS SERVER NAME
 # *  prod     ledger.prod.example.com:443
 #    local    localhost:8888                  true
 #    staging  ledger.staging.example.com:443            /path/to/ca.pem

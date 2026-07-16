@@ -86,6 +86,13 @@ func TestGetClientTransportCredentials_TLSWithServerName(t *testing.T) {
 	creds, err := GetClientTransportCredentials(cmd)
 	require.NoError(t, err)
 	require.NotNil(t, creds)
+
+	// Assert the override actually reached the tls.Config — plain TLS creds are
+	// also non-nil, so only checking creds is not enough to guard the
+	// load-bearing ServerName assignment.
+	cfg, err := buildClientTLSConfig("", "ledger.svc.cluster.local")
+	require.NoError(t, err)
+	require.Equal(t, "ledger.svc.cluster.local", cfg.ServerName)
 }
 
 func TestGetClientTransportCredentials_TLSWithCustomCA(t *testing.T) {
