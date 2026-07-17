@@ -482,13 +482,6 @@ func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
 	}
 }
 
-// RebuildAll replays all system logs from scratch (starting at sequence 0),
-// rebuilding the entire read index. This is intended for offline use
-// (CLI backfill). Returns the last processed log sequence.
-func (b *Builder) RebuildAll() (uint64, error) {
-	return b.processLogs(context.Background(), 0, time.Time{})
-}
-
 // indexLogEntry dispatches a single log entry to the appropriate index handler.
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
