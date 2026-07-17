@@ -169,10 +169,15 @@ restore_from_backup() {
 	retry 5 finalize_step || { log "restore finalize failed"; return 1; }
 
 	k apply -f "$NORMAL_SPEC" || { log "applying normal-mode cluster failed"; return 1; }
-	# The restore-mode pod does not roll on its own after the spec flip
-	# (operator e2e does the same bounce).
+	# The restore-mode pod does not roll on its own after the spec flip, so it
+	# is bounced here. Graceful delete only: it keeps the pod object (and the
+	# StatefulSet from creating the replacement) until the old container has
+	# actually exited — a force delete drops the object immediately while the
+	# kubelet is still killing the container, and the replacement then boots
+	# into the old process's live Pebble lock ("resource temporarily
+	# unavailable", exit 1) and gets flagged as an unexpected container exit.
 	sleep 5
-	k delete pod "$POD_PREFIX-0" --force --grace-period=0 2>/dev/null || true
+	k delete pod "$POD_PREFIX-0" --wait=true --timeout=120s 2>/dev/null || true
 	wait_ready_replicas "$REPLICAS" || { log "cluster did not return to $REPLICAS ready replicas"; return 1; }
 }
 
