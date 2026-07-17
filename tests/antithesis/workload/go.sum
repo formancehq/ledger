@@ -103,8 +103,8 @@ github.com/formancehq/go-libs/v5 v5.7.0 h1:2Z2S3vtOJr45tKpofhPqd0qKrPr6KB/LZZ+Ef
 github.com/formancehq/go-libs/v5 v5.7.0/go.mod h1:+jfCYWJ4Z10NGbhmbfon0hGoLe5pysbVQgePrg8M8W4=
 github.com/formancehq/invariants v0.11.0 h1:AHFBhK7U8Ak/qoJwgaNU+cAb9w61Ba7dwlcrJTkWBE4=
 github.com/formancehq/invariants v0.11.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
-github.com/formancehq/numscript v0.0.25-0.20260615131322-cbc11e844233 h1:uRt0sq1nV+emELMBtKvgHhb0aERyioLl7v9rJwINhWw=
-github.com/formancehq/numscript v0.0.25-0.20260615131322-cbc11e844233/go.mod h1:DUR23FgL3NVEYvjr8KHt5bGFDpcheydwbvs+iTGohAU=
+github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 h1:aroUBKKmWXiQXyU2DBv57s54SXLgTN9tASjSMQZ08lU=
+github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0/go.mod h1:DUR23FgL3NVEYvjr8KHt5bGFDpcheydwbvs+iTGohAU=
 github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=
 github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/getsentry/sentry-go v0.43.0 h1:XbXLpFicpo8HmBDaInk7dum18G9KSLcjZiyUKS+hLW4=

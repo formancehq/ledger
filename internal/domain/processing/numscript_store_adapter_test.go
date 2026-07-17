@@ -2,7 +2,6 @@ package processing
 
 import (
 	"context"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +15,33 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// rowFor returns the (account, asset) balance row from a Balances slice.
+func rowFor(t *testing.T, balances numscriptlib.Balances, account, asset string) numscriptlib.BalanceRow {
+	t.Helper()
+	for _, row := range balances {
+		if row.Account == account && row.Asset == asset {
+			return row
+		}
+	}
+	t.Fatalf("no balance row for %s/%s", account, asset)
+
+	return numscriptlib.BalanceRow{}
+}
+
+func metaValue(metas numscriptlib.AccountsMetadata, account, key string) (string, bool) {
+	for _, row := range metas {
+		if row.Account == account && row.Key == key {
+			return row.Value, true
+		}
+	}
+
+	return "", false
+}
+
+func newScopeStore(mockStore *MockScope, force bool) *numscript.Store {
+	return numscript.NewStore(&scopeValueSource{store: mockStore, ledgerName: "test"}, force)
+}
+
 func TestGetBalances_ForceMode(t *testing.T) {
 	t.Parallel()
 
@@ -23,30 +49,19 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      true,
-	}
+	store := newScopeStore(mockStore, true)
 
 	query := numscriptlib.BalanceQuery{
 		{Account: "bank", Asset: "USD"},
 		{Account: "bank", Asset: "EUR"},
 	}
 
-	balances, err := adapter.GetBalances(context.Background(), query)
+	balances, err := store.GetBalances(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, balances)
 
-	// In force mode, every queried (account, asset, color) tuple is
-	// materialized with MaxForceBalance under the uncolored bucket.
-	usd, ok := findBalance(balances, "bank", "USD", "")
-	require.True(t, ok)
-	require.Positive(t, usd.Sign())
-
-	eur, ok := findBalance(balances, "bank", "EUR", "")
-	require.True(t, ok)
-	require.Positive(t, eur.Sign())
+	// In force mode, all balances should be MaxForceBalance (no store reads).
+	require.Positive(t, rowFor(t, balances, "bank", "USD").Amount.Sign())
+	require.Positive(t, rowFor(t, balances, "bank", "EUR").Amount.Sign())
 }
 
 func TestGetBalances_PreloadedVolumes(t *testing.T) {
@@ -56,11 +71,7 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
@@ -70,16 +81,11 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 		Output: commonpb.NewUint256FromUint64(300),
 	}).AsReader(), nil)
 
-	query := numscriptlib.BalanceQuery{
-		{Account: "bank", Asset: "USD"},
-	}
+	query := numscriptlib.BalanceQuery{{Account: "bank", Asset: "USD"}}
 
-	balances, err := adapter.GetBalances(context.Background(), query)
+	balances, err := store.GetBalances(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, balances)
-	amt, ok := findBalance(balances, "bank", "USD", "")
-	require.True(t, ok)
-	require.Equal(t, int64(700), amt.Int64())
+	require.Equal(t, int64(700), rowFor(t, balances, "bank", "USD").Amount.Int64())
 }
 
 func TestGetBalances_NotPreloaded(t *testing.T) {
@@ -89,32 +95,23 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	// Volume exists but has no input values (not preloaded)
 	expectGetVolume(mockStore, volumeKey, (&raftcmdpb.VolumePair{}).AsReader(), nil)
 
-	query := numscriptlib.BalanceQuery{
-		{Account: "bank", Asset: "USD"},
-	}
+	query := numscriptlib.BalanceQuery{{Account: "bank", Asset: "USD"}}
 
-	_, err := adapter.GetBalances(context.Background(), query)
+	_, err := store.GetBalances(context.Background(), query)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not preloaded")
 }
 
 // TestGetBalances_VolumeNotFound_TreatedAsZero pins the EN-1378 contract:
-// a declared-but-absent volume key (Scope.Volumes().Get → domain.ErrNotFound)
-// is treated as a fresh zero balance by the numscript balance adapter, not
-// as an admission failure. The coverage gate (one layer up) is what catches
-// "admission forgot to declare"; ErrNotFound is the legitimate signal once
-// admission has stopped injecting zero-VolumePair AttributeValue plans.
+// a declared-but-absent volume key (Scope.GetVolume → domain.ErrNotFound)
+// is treated as a fresh zero balance, not as an admission failure.
 func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 	t.Parallel()
 
@@ -122,52 +119,17 @@ func TestGetBalances_VolumeNotFound_TreatedAsZero(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	volumeKey := domain.NewVolumeKey("test", "bank", "USD", "")
 
 	expectGetVolume(mockStore, volumeKey, nil, domain.ErrNotFound)
 
-	query := numscriptlib.BalanceQuery{
-		{Account: "bank", Asset: "USD", Color: ""},
-	}
+	query := numscriptlib.BalanceQuery{{Account: "bank", Asset: "USD"}}
 
-	balances, err := adapter.GetBalances(context.Background(), query)
+	balances, err := store.GetBalances(context.Background(), query)
 	require.NoError(t, err)
-	require.Len(t, balances, 1)
-	require.Equal(t, "bank", balances[0].Account)
-	require.Equal(t, "USD", balances[0].Asset)
-	require.Equal(t, "", balances[0].Color)
-	require.Equal(t, "0", balances[0].Amount.String())
-}
-
-// TestGetBalances_CatchAllRejected pins the surface-loudly contract:
-// the numscript runtime emits "BASE/*" when a script references a bare
-// base asset (no precision). Until the in-memory store grows an
-// iterator that lets us enumerate concrete precisions, the adapter must
-// surface the unsupported case rather than miss on a literal "BASE/*"
-// volume key with a confusing ErrBalanceNotPreloaded.
-func TestGetBalances_CatchAllRejected(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	adapter := &numscriptStoreAdapter{
-		store:      NewMockScope(ctrl),
-		ledgerName: "test",
-	}
-
-	query := numscriptlib.BalanceQuery{
-		{Account: "alice", Asset: "USD/*"},
-	}
-
-	_, err := adapter.GetBalances(context.Background(), query)
-	require.ErrorIs(t, err, numscript.ErrCatchAllAssetNotSupported)
+	require.Equal(t, "0", rowFor(t, balances, "bank", "USD").Amount.String())
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {
@@ -177,11 +139,7 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	metaKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
@@ -190,14 +148,45 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 
 	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("active"), nil)
 
-	query := numscriptlib.MetadataQuery{
-		"users:001": {"status"},
+	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"status"}}}
+
+	result, err := store.GetAccountsMetadata(context.Background(), query)
+	require.NoError(t, err)
+	value, ok := metaValue(result, "users:001", "status")
+	require.True(t, ok)
+	require.Equal(t, "active", value)
+}
+
+// TestGetAccountsMetadata_PresentEmptyString pins the fix for the empty-string
+// presence bug: a stored StringValue("") is a valid, PRESENT metadata value.
+// MetadataValueToString returns "" for both a present empty string and an
+// absent/nil value, so presence must be driven by nil-ness alone — never by
+// str=="". A present empty string must surface as a row (present) with value "",
+// otherwise a valid meta() read of an empty string resolves as absent and the
+// resolution hash embeds the wrong (absent) sentinel.
+func TestGetAccountsMetadata_PresentEmptyString(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	store := newScopeStore(mockStore, false)
+
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
+		Key:        "note",
 	}
 
-	result, err := adapter.GetAccountsMetadata(context.Background(), query)
+	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue(""), nil)
+
+	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"note"}}}
+
+	result, err := store.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "active", result["users:001"]["status"])
+	value, ok := metaValue(result, "users:001", "note")
+	require.True(t, ok, "a present empty-string metadata value must be reported as present")
+	require.Equal(t, "", value)
 }
 
 func TestGetAccountsMetadata_NotFound(t *testing.T) {
@@ -207,11 +196,7 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	metaKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
@@ -220,22 +205,16 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 
 	expectGetAccountMetadata(mockStore, metaKey, nil, domain.ErrNotFound)
 
-	query := numscriptlib.MetadataQuery{
-		"users:001": {"status"},
-	}
+	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"status"}}}
 
-	result, err := adapter.GetAccountsMetadata(context.Background(), query)
+	result, err := store.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	// Key not found, should have empty metadata
-	require.Empty(t, result["users:001"])
+	_, ok := metaValue(result, "users:001", "status")
+	require.False(t, ok, "absent metadata must not appear in the result")
 }
 
 // TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType pins that
-// Numscript sees the raw client bytes regardless of the field's declared
-// type. Coercing the value for the script (e.g. STRING "030" under a
-// UINT64 declaration → "30") would let a retype silently change
-// transaction outcomes, breaking the lossless contract.
+// Numscript sees the raw client bytes regardless of the field's declared type.
 func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 	t.Parallel()
 
@@ -243,69 +222,20 @@ func TestGetAccountsMetadata_PreservesVerbatimAcrossDeclaredType(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
+	store := newScopeStore(mockStore, false)
 
 	metaKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
 		Key:        "age",
 	}
 
-	// "030" stored verbatim; even if a declared UINT64 type existed on
-	// this field, the adapter must not project it through commonpb's
-	// converter — Numscript must observe "030".
 	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("030"), nil)
 
-	query := numscriptlib.MetadataQuery{
-		"users:001": {"age"},
-	}
+	query := numscriptlib.MetadataQuery{{Account: "users:001", Keys: []string{"age"}}}
 
-	result, err := adapter.GetAccountsMetadata(context.Background(), query)
+	result, err := store.GetAccountsMetadata(context.Background(), query)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "030", result["users:001"]["age"],
-		"declared_type must not influence the value Numscript sees")
-}
-
-func TestGetAccountsMetadata_NoSchemaLedger(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	adapter := &numscriptStoreAdapter{
-		store:      mockStore,
-		ledgerName: "test",
-		force:      false,
-	}
-
-	metaKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:001"},
-		Key:        "age",
-	}
-
-	expectGetAccountMetadata(mockStore, metaKey, commonpb.NewStringValue("25"), nil)
-
-	query := numscriptlib.MetadataQuery{
-		"users:001": {"age"},
-	}
-
-	result, err := adapter.GetAccountsMetadata(context.Background(), query)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "25", result["users:001"]["age"])
-}
-
-func findBalance(rows numscriptlib.Balances, account, asset, color string) (*big.Int, bool) {
-	for _, r := range rows {
-		if r.Account == account && r.Asset == asset && r.Color == color {
-			return r.Amount, true
-		}
-	}
-
-	return nil, false
+	value, ok := metaValue(result, "users:001", "age")
+	require.True(t, ok)
+	require.Equal(t, "030", value, "declared_type must not influence the value Numscript sees")
 }

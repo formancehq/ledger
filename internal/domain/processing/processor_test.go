@@ -37,11 +37,124 @@ func TestHashOrders_ExcludesCoverageBits(t *testing.T) {
 	baseHash := HashOrders([]*raftcmdpb.Order{base})
 
 	withCoverage := &raftcmdpb.Order{
-		Type:         base.GetType(),
-		CoverageBits: []byte{0b0101},
+		Type:      base.GetType(),
+		Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b0101}},
 	}
 	require.Equal(t, baseHash, HashOrders([]*raftcmdpb.Order{withCoverage}),
 		"CoverageBits must not change the idempotency hash")
+}
+
+// TestHashOrders_ExcludesInputsResolutionHash pins EN-1406 P1-3: the
+// per-CreateTransaction inputs_resolution_hash is admission-derived (admission
+// re-resolves the Numscript against CURRENT balances/metadata each time), so a
+// retry of the SAME state-reading request re-resolves at a changed balance and
+// carries a different hash. It MUST be excluded from the idempotency hash, or a
+// legitimate replay would be rejected as IDEMPOTENCY_KEY_CONFLICT.
+func TestHashOrders_ExcludesInputsResolutionHash(t *testing.T) {
+	t.Parallel()
+
+	makeOrder := func(resolutionHash []byte) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+								},
+							},
+						},
+					},
+				},
+			},
+			Technical: &raftcmdpb.OrderTechnical{InputsResolutionHash: resolutionHash},
+		}
+	}
+
+	base := HashOrders([]*raftcmdpb.Order{makeOrder(nil)})
+
+	require.Equal(t, base, HashOrders([]*raftcmdpb.Order{makeOrder([]byte{0xde, 0xad})}),
+		"a resolution hash must not change the idempotency hash")
+	require.Equal(t, base, HashOrders([]*raftcmdpb.Order{makeOrder([]byte{0xbe, 0xef, 0x01})}),
+		"a DIFFERENT resolution hash (retry re-resolved at a changed balance) must still hash identically")
+}
+
+// TestHashOrders_ExcludesPreloadUnavailable pins that the preload_unavailable
+// marker (OrderTechnical) is excluded from the idempotency hash: a retry that
+// admission forwards marked (discovery failed) MUST hash identically to the
+// original unmarked request, or the FSM dedup could never match and replay.
+func TestHashOrders_ExcludesPreloadUnavailable(t *testing.T) {
+	t.Parallel()
+
+	base := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{Plain: "send [USD/2 10] (source = @a destination = @b)"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	baseHash := HashOrders([]*raftcmdpb.Order{base})
+
+	marked := &raftcmdpb.Order{
+		Type:      base.GetType(),
+		Technical: &raftcmdpb.OrderTechnical{PreloadUnavailable: true},
+	}
+	require.Equal(t, baseHash, HashOrders([]*raftcmdpb.Order{marked}),
+		"preload_unavailable must not change the idempotency hash")
+}
+
+// TestProcessOrder_PreloadUnavailableRejected pins the FSM guard: an order that
+// admission forwarded with preload_unavailable (idempotency key present, preload
+// could not be built) is rejected deterministically with the retryable,
+// non-frozen ErrPreloadUnavailable BEFORE any execution — never applied. Replays
+// never reach here (the per-proposal dedup short-circuits before ProcessOrders).
+func TestProcessOrder_PreloadUnavailableRejected(t *testing.T) {
+	t.Parallel()
+
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	// No scope method is expected: the guard returns before any read.
+	scope := NewMockScope(ctrl)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "L",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{
+						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+								Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Technical: &raftcmdpb.OrderTechnical{PreloadUnavailable: true},
+	}
+
+	payload, derr := processor.ProcessOrder(order, scope)
+	require.Nil(t, payload)
+	require.NotNil(t, derr)
+	require.ErrorIs(t, derr, domain.ErrPreloadUnavailable)
+	require.Equal(t, domain.ErrReasonPreloadUnavailable, derr.Reason())
+	require.Equal(t, domain.KindUnavailable, domain.Kind(derr),
+		"preload_unavailable is retryable and must never be frozen")
 }
 
 // TestHashOrders_MatchesHashProposal pins the equivalence the integrity checker
@@ -61,7 +174,7 @@ func TestHashOrders_MatchesHashProposal(t *testing.T) {
 					Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{}},
 				},
 			},
-			CoverageBits: []byte{0b1},
+			Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b1}},
 		},
 		{
 			Type: &raftcmdpb.Order_LedgerScoped{

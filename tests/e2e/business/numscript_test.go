@@ -563,11 +563,23 @@ send $amount (
 		})
 	})
 
-	// meta() is not supported — scripts must use static account references.
-	Context("When using Numscript with meta() calls", func() {
-		It("Should reject scripts that use meta() to resolve variables", func() {
-			ledgerName := "numscript-meta-rejected"
+	// EN-1406: dependency discovery now uses the upstream ResolveDependencies
+	// API instead of emulation. meta() is supported, oneof branches are fully
+	// explored, and balance-derived / multi-send scripts are no longer rejected.
+	Context("When using Numscript with meta() calls (EN-1406)", Ordered, func() {
+		var ledgerName = "numscript-meta-supported"
+
+		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should resolve a var origin via meta() and send to the resolved account", func() {
+			// Seed the routing account's metadata that meta() will read.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.SaveAccountMetadataAction(ledgerName, "routing:orders", map[string]string{
+					"destination": "orders:fulfilled",
+				})))
 			Expect(err).To(Succeed())
 
 			script := `
@@ -581,11 +593,99 @@ send $amount (
   destination = $dest
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"amount": "USD/2 5000",
 			}, nil)))
-			Expect(err).To(HaveOccurred())
-			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx).NotTo(BeNil())
+			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
+			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("orders:fulfilled"))
+		})
+	})
+
+	// CM-209 regression: a script with a bounded overdraft AND a
+	// balance-checked source causes more than one balance read. The old
+	// emulation rejected this as NON_DETERMINISTIC_SCRIPT; ResolveDependencies
+	// handles it.
+	Context("When a script reads multiple balances (CM-209)", Ordered, func() {
+		var ledgerName = "numscript-cm209"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+
+			// Fund two accounts so both are balance-checked sources.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 1000] (source = @world destination = @cm209:a)`, nil, nil)))
+			Expect(err).To(Succeed())
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 1000] (source = @world destination = @cm209:b)`, nil, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should accept a script with an overdraft source and a balance-checked source", func() {
+			script := `
+send [USD/2 300] (
+  source = {
+    @cm209:a allowing overdraft up to [USD/2 100]
+    @cm209:b
+  }
+  destination = @cm209:sink
+)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
+		})
+	})
+
+	// CM-206 regression: a source whose posting depends on a non-zero current
+	// balance must have its source volume preloaded. Under emulation (infinite
+	// balances) the source volume could be missed, causing a coverage/preload
+	// failure at apply. ResolveDependencies records the read, so admission
+	// preloads it.
+	Context("When a source depends on its current balance (CM-206)", Ordered, func() {
+		var ledgerName = "numscript-cm206"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 500] (source = @world destination = @cm206:wallet)`, nil, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should preload the source volume for a balance-derived send", func() {
+			// Cap the send by the source's balance: this reads the balance.
+			script := `
+send [USD/2 200] (
+  source = @cm206:wallet
+  destination = @cm206:out
+)
+`
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			Expect(err).To(Succeed())
+			Expect(resp).NotTo(BeNil())
+			Expect(resp.Logs).To(HaveLen(1))
+
+			Eventually(func(g Gomega) {
+				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "cm206:wallet",
+				})
+				g.Expect(err).To(Succeed())
+				usdVol := account.FindVolume("USD/2", "")
+				g.Expect(usdVol).NotTo(BeNil())
+				g.Expect(usdVol.GetBalance()).To(Equal("300"))
+			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

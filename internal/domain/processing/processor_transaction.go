@@ -65,7 +65,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	var producer postingProducer
 	isNumscript := script != nil && script.GetPlain() != ""
 	if isNumscript {
-		producer = &numscriptPostingProducer{cache: ctx.NumscriptCache, ledgerName: ledger, assetCache: ctx.AssetCache}
+		producer = &numscriptPostingProducer{cache: ctx.NumscriptCache, ledgerName: ledger, assetCache: ctx.AssetCache, inputsResolutionHash: ctx.InputsResolutionHash}
 	} else {
 		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
 	}

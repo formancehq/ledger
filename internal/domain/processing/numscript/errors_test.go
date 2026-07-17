@@ -8,11 +8,122 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
+
+// balanceReadingScript reads a balance DURING dependency resolution via
+// balance() in a var origin, so the store's GetBalances is consulted (a plain
+// bounded source only records the dependency; its balance is not read at
+// resolution time).
+const balanceReadingScript = `
+	vars { monetary $amt = balance(@wallet, USD/2) }
+	send $amt (source = @wallet destination = @out)
+`
+
+// TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
+// domain.Describable returned by the store is NOT stringified/lost passing
+// through numscriptlib.ResolveDependencies: errors.As reaches the concrete type
+// and the Reason survives. This is what lets the FSM apply path recognise a
+// coverage-contract violation and surface it loudly (invariant #7) instead of
+// masking it as retryable stale.
+//
+// A real *state.ErrCoverageMiss cannot be constructed here (importing
+// internal/infra/state forms a cycle: state → processing → processing/numscript);
+// TestCoverageMissSurvivesNumscriptLibrary in internal/infra/state proves the
+// same round-trip with the concrete *state.ErrCoverageMiss.
+func TestSafeResolveDependencies_DescribableSurvivesLibrary(t *testing.T) {
+	t.Parallel()
+
+	parsed := numscriptlib.Parse(balanceReadingScript)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	// *domain.ErrInvalidExecutionPlan is a coverage-contract Describable owned by
+	// the domain package (no import cycle), standing in for the store-returned
+	// typed error. The generated MockValueSource returns it from Balance.
+	sentinel := &domain.ErrInvalidExecutionPlan{Reason_: "undeclared key"}
+
+	ctrl := gomock.NewController(t)
+	source := NewMockValueSource(ctrl)
+	source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil, sentinel)
+	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
+
+	store := NewStore(source, false)
+
+	_, err := SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
+	require.NotNil(t, err)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid,
+		"a typed Describable must survive the numscript library error path (errors.As)")
+	require.False(t, IsPanic(err))
+	require.Equal(t, domain.ErrReasonInvalidExecutionPlan, err.Reason())
+}
+
+// TestSafeResolveDependencies_RecoversPanic proves the finding-#1 fix: a panic
+// raised while resolving dependencies (here injected at the ValueSource layer,
+// reachable on the FSM apply path and at admission) is recovered and returned as
+// a domain.Describable ErrNumscriptRuntime, never escaping the wrapper. An
+// escaped panic on the Raft apply loop would crash the node / diverge the
+// cluster (invariant #7).
+//
+// The panic is injected through the generated MockValueSource (its Balance
+// DoAndReturn panics), fed through numscript.NewStore, rather than hand-rolling
+// a numscriptlib.Store double — this exercises the same recover path while
+// honouring the repo's "no hand-rolled fakes" convention.
+func TestSafeResolveDependencies_RecoversPanic(t *testing.T) {
+	t.Parallel()
+
+	parsed := numscriptlib.Parse(balanceReadingScript)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	ctrl := gomock.NewController(t)
+	source := NewMockValueSource(ctrl)
+	source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(string, string, string) (*big.Int, error) {
+			panic("boom: numscript store panic")
+		})
+	source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
+
+	store := NewStore(source, false)
+
+	var recovered domain.Describable
+	require.NotPanics(t, func() {
+		_, recovered = SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
+	})
+
+	require.NotNil(t, recovered)
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, recovered, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "numscript panic:")
+
+	require.True(t, IsPanic(recovered),
+		"a recovered panic must be identifiable so the FSM apply path surfaces it loudly instead of masking it as stale")
+}
+
+// TestSafeResolveDependencies_NormalErrorIsNotPanic guards the discriminator the
+// FSM apply path relies on: a genuine (non-panic) resolution error must NOT be
+// flagged as a panic, so it can still be softened to ErrStaleInputsResolution.
+func TestSafeResolveDependencies_NormalErrorIsNotPanic(t *testing.T) {
+	t.Parallel()
+
+	// An undefined variable used as an account origin fails resolution with a
+	// normal library error (no panic, no store read).
+	parsed := numscriptlib.Parse(`
+		vars { account $missing }
+		send [USD/2 100] (source = $missing destination = @out)
+	`)
+	require.Empty(t, parsed.GetParsingErrors())
+
+	_, err := SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, numscriptlib.StaticStore{})
+	require.NotNil(t, err)
+	require.False(t, IsPanic(err),
+		"a normal resolution error must not be flagged as a panic — the apply path still maps it to stale")
+}
 
 func TestErrNumscriptParse_Error(t *testing.T) {
 	t.Parallel()
@@ -20,14 +131,6 @@ func TestErrNumscriptParse_Error(t *testing.T) {
 	err := &domain.ErrNumscriptParse{Details: "unexpected token"}
 	require.Contains(t, err.Error(), "numscript parse error")
 	require.Contains(t, err.Error(), "unexpected token")
-}
-
-func TestErrNonDeterministicScript_Error(t *testing.T) {
-	t.Parallel()
-
-	err := &ErrNonDeterministicScript{Method: "GetBalances"}
-	require.Contains(t, err.Error(), "non-deterministic script")
-	require.Contains(t, err.Error(), "GetBalances")
 }
 
 func TestConvertNumscriptError_MissingFunds(t *testing.T) {

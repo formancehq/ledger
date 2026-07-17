@@ -931,7 +931,6 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
-| Non-deterministic script | `INVALID_ARGUMENT` | `NON_DETERMINISTIC_SCRIPT` | `method` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
 | Numscript invalid version | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` | `version` |
 | Numscript version already exists | `ALREADY_EXISTS` | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | `name`, `version` |
@@ -939,6 +938,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
+| Stale Numscript inputs resolution | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
+| Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |

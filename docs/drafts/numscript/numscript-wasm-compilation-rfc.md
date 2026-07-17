@@ -68,7 +68,7 @@ AnalyzeResult:
   error: AnalyzeError[]
 ```
 
-See [Static Inputs RFC](./numscript-static-inputs-rfc.md) for the `Requirements` contract.
+See [Static Inputs RFC](../../technical/contributing/numscript.md#volume-preloading-dependency-resolution) for the `Requirements` contract.
 
 ---
 
@@ -283,7 +283,7 @@ WASM linear memory:
 
 ### 7.4 Prerequisite
 
-This model requires the [Static Inputs RFC](./numscript-static-inputs-rfc.md): the `Requirements` object declares **all** state that will be read, so the host knows what to collect and inject before execution. The host is free to source this data from any backing store — volumes, a database, an in-memory map, or even hardcoded test fixtures.
+This model requires the [Static Inputs RFC](../../technical/contributing/numscript.md#volume-preloading-dependency-resolution): the `Requirements` object declares **all** state that will be read, so the host knows what to collect and inject before execution. The host is free to source this data from any backing store — volumes, a database, an in-memory map, or even hardcoded test fixtures.
 
 ---
 
@@ -565,7 +565,7 @@ No parsing, no variable validation, no host callbacks.
 
 ## 18. Relation to Other RFCs
 
-- **[Static Inputs RFC](./numscript-static-inputs-rfc.md)** — Defines the `Requirements` contract. This RFC extends it: Requirements are computed at admission and used to preload state that is injected into WASM memory.
+- **[Static Inputs RFC](../../technical/contributing/numscript.md#volume-preloading-dependency-resolution)** — Defines the `Requirements` contract. This RFC extends it: Requirements are computed at admission and used to preload state that is injected into WASM memory.
 - **Request Signing** — The `signed_payload` envelope pattern is orthogonal. The compiled artifact replaces the script source in the Raft command, but signing still covers the original request.
 
 ---

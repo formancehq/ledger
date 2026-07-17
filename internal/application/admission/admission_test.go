@@ -845,7 +845,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		overlay := newBulkOverlay()
 		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
 		// Both source and destination volumes are preloaded from numscript
 		require.Equal(t, 2, needs.Count(dal.SubAttrVolume), "numscript emulation should discover all volumes")
@@ -897,7 +897,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		overlay := newBulkOverlay()
 		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
 		require.Equal(t, 2, needs.Count(dal.SubAttrVolume), "force=true should still extract numscript volumes")
@@ -959,7 +959,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
-		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds))
+		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
 		require.True(t, needs.Has(dal.SubAttrVolume, domain.VolumeKey{
 			AccountKey: domain.AccountKey{LedgerName: "test-ledger", Account: "users:alice"},
@@ -1000,14 +1000,18 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
 		require.ErrorAs(t, err, &businessErr)
 
+		// A parse error is definitive (deterministic KindValidation): it surfaces
+		// as the real ErrNumscriptParse, NOT wrapped as the retryable
+		// ErrDependencyDiscoveryFailed — no retry could ever make it parse, so
+		// forwarding/retry semantics would spin forever.
 		var discoveryErr *domain.ErrDependencyDiscoveryFailed
-		require.ErrorAs(t, err, &discoveryErr)
+		require.NotErrorAs(t, err, &discoveryErr)
 
 		var parseErr *domain.ErrNumscriptParse
 		require.ErrorAs(t, err, &parseErr)
@@ -1051,7 +1055,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
 		require.NoError(t, err)
 
-		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds)
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
 		require.Error(t, err)
 
 		var businessErr *domain.BusinessError
@@ -1063,6 +1067,98 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		var runtimeErr *domain.ErrNumscriptRuntime
 		require.ErrorAs(t, err, &runtimeErr)
 		require.Zero(t, needs.Count(dal.SubAttrVolume))
+	})
+
+	t.Run("forwards discovery failure (marks preload_unavailable) when an idempotency key is present", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		// Same emulation-failing script as above (undeclared $amount), but this
+		// batch carries an idempotency key → admission must NOT fail fast; it
+		// marks the order preload_unavailable and forwards it so the FSM can
+		// replay a frozen outcome or reject with the retryable reason.
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: testLedgerName,
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `
+										vars {
+											monetary $amount
+										}
+										send $amount (
+											source = @world
+											destination = @users:alice
+										)
+									`,
+									},
+								},
+							},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		overlay := newBulkOverlay()
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		// hasIdempotencyKey = true → forward instead of fail-fast.
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true)
+		require.NoError(t, err)
+		require.True(t, orders[0].GetTechnical().GetPreloadUnavailable(),
+			"a forwarded order must be marked preload_unavailable for the FSM guard")
+	})
+
+	t.Run("does NOT forward a definitive parse error even when an idempotency key is present", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		// A parse error is definitive and deterministic: no retry can make it
+		// parse, so there is no frozen outcome to replay. Even WITH an idempotency
+		// key it must surface the real terminal error, NOT be forwarded as a
+		// retryable preload_unavailable (which would spin forever). Regression for
+		// the terminal-classification review finding.
+		orders := []*raftcmdpb.Order{
+			{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: testLedgerName,
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+									Script: &commonpb.Script{
+										Plain: `send [USD/2 invalid] ( source = @world destination = @users:alice )`,
+									},
+								},
+							},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		overlay := newBulkOverlay()
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+
+		// hasIdempotencyKey = true, but the cause is definitive → terminal.
+		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, true)
+		require.Error(t, err)
+
+		var parseErr *domain.ErrNumscriptParse
+		require.ErrorAs(t, err, &parseErr, "definitive parse error must surface, not be forwarded")
+		require.False(t, orders[0].GetTechnical().GetPreloadUnavailable(),
+			"a definitive error must NOT be marked preload_unavailable")
 	})
 
 	t.Run("falls back to postings when script has explicit postings", func(t *testing.T) {

@@ -397,6 +397,8 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"errAuditDisabled":          errAuditDisabled{},
 		"errMaintenanceMode":        errMaintenanceMode{},
 		"errStaleProposal":          errStaleProposal{},
+		"errStaleInputsResolution":  errStaleInputsResolution{},
+		"errPreloadUnavailable":     errPreloadUnavailable{},
 		"errNoChapterOpen":          errNoChapterOpen{},
 		"errWritesBlockedDiskFull":  errWritesBlockedDiskFull{},
 		"errWritesBlockedClockSkew": errWritesBlockedClockSkew{},

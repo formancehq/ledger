@@ -227,7 +227,8 @@ const (
 	ErrReasonCheckpointNotReady            = "CHECKPOINT_NOT_READY"
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
-	ErrReasonNonDeterministicScript        = "NON_DETERMINISTIC_SCRIPT"
+	ErrReasonStaleInputsResolution         = "STALE_INPUTS_RESOLUTION"
+	ErrReasonPreloadUnavailable            = "PRELOAD_UNAVAILABLE"
 	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
 	ErrReasonMirrorV2LogIDInvalid          = "MIRROR_V2_LOG_ID_INVALID"
 
@@ -354,6 +355,41 @@ func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
 
+// ErrStaleInputsResolution — the balance/metadata values that admission's
+// Numscript dependency resolution read to compute the preload set changed
+// before the FSM applied the transaction. The preloaded key set may therefore
+// be wrong, so the order is rejected. Retryable (Kind=Unavailable): a second
+// admission re-resolves against the new values and re-preloads. See EN-1406.
+type errStaleInputsResolution struct{}
+
+func (errStaleInputsResolution) Error() string {
+	return "numscript inputs resolution is stale: balances or metadata changed between admission and apply; retry"
+}
+func (errStaleInputsResolution) Reason() string              { return ErrReasonStaleInputsResolution }
+func (errStaleInputsResolution) Metadata() map[string]string { return nil }
+
+var ErrStaleInputsResolution Describable = errStaleInputsResolution{}
+
+// ErrPreloadUnavailable — admission could not build the preload set for an order
+// (e.g. Numscript dependency discovery failed against current state). When the
+// batch carries an idempotency key, admission forwards the order to the FSM
+// (marked OrderTechnical.preload_unavailable) rather than failing fast, so the
+// FSM can replay a frozen outcome. If none exists the FSM emits this error.
+// Retryable (Kind=Unavailable) and deliberately NOT freezable: it is a
+// preparation gap, not an authoritative business verdict — freezing it could let
+// a preload-unavailable retry shadow the real outcome of a concurrent same-key
+// proposal. A retry re-admits (and re-resolves) or replays the now-frozen
+// outcome. See EN-1406.
+type errPreloadUnavailable struct{}
+
+func (errPreloadUnavailable) Error() string {
+	return "preload unavailable: admission could not build the preload for this order; retry"
+}
+func (errPreloadUnavailable) Reason() string              { return ErrReasonPreloadUnavailable }
+func (errPreloadUnavailable) Metadata() map[string]string { return nil }
+
+var ErrPreloadUnavailable Describable = errPreloadUnavailable{}
+
 // ErrWritesBlockedDiskFull is returned by the write gate when disk usage is at
 // or above the configured block threshold. Maps to gRPC ResourceExhausted / HTTP 429.
 type errWritesBlockedDiskFull struct{}
@@ -407,6 +443,16 @@ var (
 	ErrNumscriptNameRequired    = NewValidationSentinel("numscript name is required")
 	ErrNumscriptNameInvalidChar = NewValidationSentinel("numscript name must contain only printable ASCII (0x20–0x7E)")
 	ErrNumscriptNameTooLong     = NewValidationSentinel("numscript name exceeds maximum length of 256 bytes")
+	// ErrScopedBalanceUnsupported rejects a Numscript that reads or writes a
+	// scope-qualified balance or metadata. Color IS modelled — Ledger volumes are
+	// keyed by (ledger, account, asset, color), so colored reads/writes resolve
+	// their own segregated bucket. Scope, however, is a distinct Numscript concept
+	// the ledger does not model: a scope-qualified view of an account+asset would
+	// collapse onto the single volume, so serving each scope its own full balance
+	// would let a script spend the same funds once per scope (double-spend).
+	// Rejecting keeps the balance a script sees consistent with the volume the FSM
+	// will mutate.
+	ErrScopedBalanceUnsupported = NewValidationSentinel("numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
