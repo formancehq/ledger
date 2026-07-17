@@ -9,16 +9,23 @@ ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
   --bootstrap \
+  --tls-mode required \
+  --tls-cert-file /etc/ledger/tls.crt \
+  --tls-key-file /etc/ledger/tls.key \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger
 ```
 
+> `--auth-enabled` requires TLS (`--tls-mode` set to `optional` or `required`);
+> the server refuses to start with `--tls-mode=disabled` so bearer tokens are
+> never sent in plaintext. See [Configuration Invariants](#configuration-invariants).
+
 ## CLI Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires TLS (`--tls-mode` `optional` or `required`) — rejected with `--tls-mode=disabled` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
@@ -59,6 +66,13 @@ The server enforces the following rules at startup:
 - `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
   `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
+- `--auth-enabled` requires TLS (`--tls-mode` set to `optional` or `required`).
+  Over a plaintext transport the bearer JWT/Ed25519 tokens would be sent in the
+  clear and could be intercepted and replayed by an on-path attacker, so the
+  combination `--tls-mode=disabled --auth-enabled` is rejected at startup. This
+  mirrors the `--cluster-secret` rule, which likewise requires TLS. There is no
+  opt-out; terminate TLS on the ledger process itself even when an ingress or
+  service mesh also terminates TLS upstream.
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
@@ -82,6 +96,7 @@ The writes-only configuration is:
 
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-anonymous-scopes "*:read"
 ```
 

@@ -204,36 +204,55 @@ func TestValidateAuthConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		auth    AuthFlagConfig
+		tlsMode TLSMode
 		wantErr string
 	}{
 		{
-			name:    "auth enabled with issuer",
+			name:    "auth enabled with issuer over TLS required",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeRequired,
 			wantErr: "",
 		},
 		{
-			name:    "auth enabled with ed25519 keys file",
+			name:    "auth enabled with issuer over TLS optional",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeOptional,
+			wantErr: "",
+		},
+		{
+			name:    "auth enabled with ed25519 keys file over TLS",
 			auth:    AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
+			tlsMode: TLSModeRequired,
 			wantErr: "",
 		},
 		{
-			name:    "auth enabled with both issuer and ed25519",
+			name:    "auth enabled with both issuer and ed25519 over TLS",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
+			tlsMode: TLSModeRequired,
 			wantErr: "",
+		},
+		{
+			name:    "auth enabled with credentials but TLS disabled",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeDisabled,
+			wantErr: "--auth-enabled requires TLS",
 		},
 		{
 			name:    "auth enabled without credentials",
 			auth:    AuthFlagConfig{Enabled: true},
-			wantErr: "--auth-enabled requires",
+			tlsMode: TLSModeRequired,
+			wantErr: "--auth-enabled requires either",
 		},
 		{
 			name:    "auth disabled no flags",
 			auth:    AuthFlagConfig{},
+			tlsMode: TLSModeDisabled,
 			wantErr: "",
 		},
 		{
 			name:    "auth disabled with issuer set",
 			auth:    AuthFlagConfig{Enabled: false, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeDisabled,
 			wantErr: "--auth-issuer",
 		},
 	}
@@ -244,6 +263,12 @@ func TestValidateAuthConfig(t *testing.T) {
 
 			cfg := validBaseConfig()
 			cfg.AuthConfig = tt.auth
+			cfg.TLSConfig.Mode = tt.tlsMode
+			if tt.tlsMode.AllowsTLS() {
+				// Provide cert/key so the TLS-config validation doesn't trip first.
+				cfg.TLSConfig.CertFile = "/tmp/fake.crt"
+				cfg.TLSConfig.KeyFile = "/tmp/fake.key"
+			}
 
 			err := cfg.Validate()
 			if tt.wantErr == "" {

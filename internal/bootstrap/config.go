@@ -336,6 +336,13 @@ func (c Config) validateAuthConfig() error {
 			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
 		}
 
+		// Reject auth without TLS — bearer JWT/Ed25519 tokens would travel in
+		// plaintext over the external gRPC API. Mirrors the --cluster-secret rule
+		// in Validate() so both bearer credentials are protected symmetrically.
+		if c.TLSConfig.Mode == TLSModeDisabled {
+			return errors.New("--auth-enabled requires TLS (set --tls-mode to optional or required and provide --tls-cert-file / --tls-key-file); bearer tokens would be sent in plaintext otherwise")
+		}
+
 		return nil
 	}
 
