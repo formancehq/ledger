@@ -3423,6 +3423,16 @@ func (c *Checker) foldBaselineNumscripts(
 		}
 
 		expectedContent[key] = entry.Value
+
+		// Derive the latest pointer from the content rows — the greatest stored
+		// semver — rather than trusting the baseline's stored pointer, which
+		// could itself have drifted before the archive boundary. Mirrors the
+		// live FSM, which always advances latest to the greatest content; the
+		// delta replay then advances it further with the same greatest-wins rule.
+		vk := domain.NumscriptVersionKey{LedgerName: key.LedgerName, Name: key.Name}
+		if cur, ok := expectedLatest[vk]; !ok || numscriptVersionGreater(key.Version, cur) {
+			expectedLatest[vk] = key.Version
+		}
 	}
 
 	if err := contentIter.Close(); err != nil {
@@ -3431,33 +3441,6 @@ func (c *Checker) foldBaselineNumscripts(
 
 	if err := contentIter.Err(); err != nil {
 		return fmt.Errorf("baseline numscript content iterator error: %w", err)
-	}
-
-	versionIter, err := c.attrs.NumscriptVersion.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline numscript versions: %w", err)
-	}
-
-	for versionIter.Next() {
-		entry := versionIter.Entry()
-		if entry.Value == nil {
-			continue
-		}
-
-		var key domain.NumscriptVersionKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		expectedLatest[key] = entry.Value.GetVersion()
-	}
-
-	if err := versionIter.Close(); err != nil {
-		return fmt.Errorf("closing baseline numscript version iterator: %w", err)
-	}
-
-	if err := versionIter.Err(); err != nil {
-		return fmt.Errorf("baseline numscript version iterator error: %w", err)
 	}
 
 	return nil
