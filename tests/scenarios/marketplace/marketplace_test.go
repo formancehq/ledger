@@ -189,8 +189,8 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		require.NotEmpty(t, tx.GetPostings(), "purchase transaction should have postings")
 	})
 
-	// --- Phase 3b: WithTimestamp + WithExpandVolumes ---
-	t.Run("TimestampAndExpandVolumes", func(t *testing.T) {
+	// --- Phase 3b: WithTimestamp + post-commit volumes ---
+	t.Run("TimestampAndPostCommitVolumes", func(t *testing.T) {
 		// Antidated transactions: create 2 transactions with past timestamps
 		// Use platform:payouts as destination to avoid interfering with tracked customer balances.
 		pastTime1 := time.Now().Add(-24 * time.Hour)
@@ -214,22 +214,21 @@ func TestMarketplaceLifecycle(t *testing.T) {
 			),
 		)
 
-		// WithExpandVolumes: verify the response contains volumes
+		// Post-commit volumes ride on every transaction; verify the response carries them.
 		expandResp := scenariotest.ApplyActions(t, ctx, client,
-			actions.WithExpandVolumes(
-				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-					actions.NewPosting("world", "platform:payouts", big.NewInt(50), "USD/2"),
-				}, nil),
-			),
+			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.NewPosting("world", "platform:payouts", big.NewInt(50), "USD/2"),
+			}, nil),
 		)
 
-		// The response should contain the log with expanded volumes
+		// The response should contain the log with the transaction's post-commit volumes.
 		require.NotEmpty(t, expandResp.Logs, "expected at least one log entry")
 		applyLog := expandResp.Logs[0].Payload.GetApply()
 		require.NotNil(t, applyLog, "expected apply log payload")
 		tx := applyLog.Log.Data.GetCreatedTransaction()
 		require.NotNil(t, tx, "expected created transaction in log")
-		require.NotEmpty(t, tx.PostCommitVolumes, "WithExpandVolumes should populate post-commit volumes")
+		require.NotEmpty(t, tx.GetTransaction().GetPostCommitVolumes().GetVolumesByAccount(),
+			"every transaction should carry post-commit volumes")
 	})
 
 	// --- Phase 4: Reverts (10 random-ish purchases) ---

@@ -479,6 +479,21 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
+						// Verify the transaction's post-commit volume snapshot
+						// against the replay state NOW: ReplayLedgerLog has applied
+						// this entry's postings but the buffered ephemeral purge only
+						// flushes at the proposal boundary below, so the replay holds
+						// the exact pre-purge state the FSM captured. The buffered
+						// path is active whenever any transaction exists (every apply
+						// has a successful audit entry → a proposal boundary → a
+						// non-nil buffer); the guard keeps the single-log inline-purge
+						// fallback (post-purge state) from producing false mismatches.
+						if ephemeralPurgeBuffer != nil {
+							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, callback); err != nil {
+								return fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
+							}
+						}
+
 						advanceExpectedBoundaries(expectedBoundaries, ledgerName, payload.Apply.GetLog())
 
 						// Index registry derivation: every CreateIndex /
@@ -1746,6 +1761,127 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	return errorCount
+}
+
+// compareTransactionPostCommitVolumes verifies the immutable post-commit
+// volume snapshot stored on a created or reverted Transaction (invariant #8:
+// the Transaction is a projection of the audited order, so the checker must
+// re-derive it). The FSM captures the snapshot right after the transaction's
+// postings apply and BEFORE the proposal's ephemeral purge, which is exactly
+// the replay state at this call site (the buffered purge has not yet flushed).
+//
+// The snapshot must hold exactly one row per unique (account, asset, color)
+// tuple the postings touch, each equal to the replayed volume. A missing,
+// extra, duplicated, unparsable, or divergent row is tampering (or an FSM
+// projection bug) and emits CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH. Returns a
+// non-nil error only on a replay-store read failure (checker infrastructure
+// fault), which the caller surfaces as fatal.
+func compareTransactionPostCommitVolumes(
+	ledgerName string,
+	seq uint64,
+	data *commonpb.LedgerLogPayload,
+	replay *replayStore,
+	callback func(*servicepb.CheckStoreEvent),
+) error {
+	var tx *commonpb.Transaction
+
+	switch p := data.GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		tx = p.CreatedTransaction.GetTransaction()
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		tx = p.RevertedTransaction.GetRevertTransaction()
+	default:
+		return nil
+	}
+
+	if tx == nil {
+		return nil
+	}
+
+	type tupleKey struct{ account, asset, color string }
+
+	emit := func(account, asset, color, msg string) {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("tx %d: post-commit volume %s for %s/%s/color=%q", tx.GetId(), msg, account, asset, color),
+			seq, ledgerName, account, asset))
+	}
+
+	// Index the stored snapshot, flagging duplicate rows for the same tuple.
+	storedByTuple := make(map[tupleKey]*commonpb.Volumes)
+
+	for account, byAssets := range tx.GetPostCommitVolumes().GetVolumesByAccount() {
+		for _, entry := range byAssets.GetVolumes() {
+			k := tupleKey{account: account, asset: entry.GetAsset(), color: entry.GetColor()}
+			if _, dup := storedByTuple[k]; dup {
+				emit(k.account, k.asset, k.color, "has a duplicate row")
+
+				continue
+			}
+
+			storedByTuple[k] = entry.GetVolumes()
+		}
+	}
+
+	// Every touched tuple must be present and equal to the replayed volume.
+	expected := make(map[tupleKey]struct{})
+
+	for _, posting := range tx.GetPostings() {
+		for _, account := range []string{posting.GetSource(), posting.GetDestination()} {
+			k := tupleKey{account: account, asset: posting.GetAsset(), color: posting.GetColor()}
+			if _, seen := expected[k]; seen {
+				continue
+			}
+
+			expected[k] = struct{}{}
+
+			pair, err := replay.GetVolume(domain.NewVolumeKey(ledgerName, account, posting.GetAsset(), posting.GetColor()).Bytes())
+			if err != nil {
+				return fmt.Errorf("reading replay volume for post-commit check tx %d: %w", tx.GetId(), err)
+			}
+
+			// A missing replay entry is the zero volume, matching the FSM's
+			// readVolumeOrZero when it built the snapshot.
+			wantInput := big.NewInt(0)
+			wantOutput := big.NewInt(0)
+
+			if pair != nil {
+				wantInput = pair.GetInput().ToBigInt()
+				wantOutput = pair.GetOutput().ToBigInt()
+			}
+
+			stored, ok := storedByTuple[k]
+			if !ok {
+				emit(k.account, k.asset, k.color, "is missing")
+
+				continue
+			}
+
+			gotInput, iok := new(big.Int).SetString(stored.GetInput(), 10)
+			gotOutput, ook := new(big.Int).SetString(stored.GetOutput(), 10)
+
+			if !iok || !ook {
+				emit(k.account, k.asset, k.color,
+					fmt.Sprintf("has unparsable amounts (input=%q output=%q)", stored.GetInput(), stored.GetOutput()))
+
+				continue
+			}
+
+			if gotInput.Cmp(wantInput) != 0 || gotOutput.Cmp(wantOutput) != 0 {
+				emit(k.account, k.asset, k.color,
+					fmt.Sprintf("mismatch: stored(input=%s output=%s) != replay(input=%s output=%s)",
+						gotInput, gotOutput, wantInput, wantOutput))
+			}
+		}
+	}
+
+	// Any stored row not touched by the postings is an extra tuple.
+	for k := range storedByTuple {
+		if _, ok := expected[k]; !ok {
+			emit(k.account, k.asset, k.color, "is unexpected (not touched by the transaction)")
+		}
+	}
+
+	return nil
 }
 
 // verifyAuditHashChain iterates all non-archived audit entries, recomputes

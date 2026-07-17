@@ -3775,7 +3775,6 @@ type CreateTransactionPayloadReader interface {
 	GetMetadata() CreateTransactionPayload_MetadataMapReader
 	GetAccountMetadata() CreateTransactionPayload_AccountMetadataMapReader
 	GetForce() bool
-	GetExpandVolumes() bool
 	GetScriptReference() ScriptReferenceReader
 	Mutate() *CreateTransactionPayload
 }
@@ -3816,10 +3815,6 @@ func (r *createTransactionPayloadReadonly) GetAccountMetadata() CreateTransactio
 
 func (r *createTransactionPayloadReadonly) GetForce() bool {
 	return (*CreateTransactionPayload)(r).GetForce()
-}
-
-func (r *createTransactionPayloadReadonly) GetExpandVolumes() bool {
-	return (*CreateTransactionPayload)(r).GetExpandVolumes()
 }
 
 func (r *createTransactionPayloadReadonly) GetScriptReference() ScriptReferenceReader {
@@ -3954,7 +3949,6 @@ type RevertTransactionPayloadReader interface {
 	GetAtEffectiveDate() bool
 	GetMetadata() RevertTransactionPayload_MetadataMapReader
 	GetReceipt() string
-	GetExpandVolumes() bool
 	Mutate() *RevertTransactionPayload
 }
 
@@ -3978,10 +3972,6 @@ func (r *revertTransactionPayloadReadonly) GetMetadata() RevertTransactionPayloa
 
 func (r *revertTransactionPayloadReadonly) GetReceipt() string {
 	return (*RevertTransactionPayload)(r).GetReceipt()
-}
-
-func (r *revertTransactionPayloadReadonly) GetExpandVolumes() bool {
-	return (*RevertTransactionPayload)(r).GetExpandVolumes()
 }
 
 func (r *revertTransactionPayloadReadonly) Mutate() *RevertTransactionPayload {

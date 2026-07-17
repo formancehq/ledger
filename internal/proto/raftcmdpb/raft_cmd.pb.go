@@ -3154,9 +3154,8 @@ type CreateTransactionOrder struct {
 	Reference          string                             `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
 	Metadata           map[string]*commonpb.MetadataValue `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	AccountMetadata    map[string]*commonpb.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Force              bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"`                                      // Skip balance checks when true
-	ExpandVolumes      bool                               `protobuf:"varint,8,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"` // Include post-commit volumes in response
-	NumscriptReference *NumscriptReference                `protobuf:"bytes,9,opt,name=numscript_reference,json=numscriptReference,proto3" json:"numscript_reference,omitempty"`
+	Force              bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"` // Skip balance checks when true
+	NumscriptReference *NumscriptReference                `protobuf:"bytes,8,opt,name=numscript_reference,json=numscriptReference,proto3" json:"numscript_reference,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -3236,13 +3235,6 @@ func (x *CreateTransactionOrder) GetAccountMetadata() map[string]*commonpb.Metad
 func (x *CreateTransactionOrder) GetForce() bool {
 	if x != nil {
 		return x.Force
-	}
-	return false
-}
-
-func (x *CreateTransactionOrder) GetExpandVolumes() bool {
-	if x != nil {
-		return x.ExpandVolumes
 	}
 	return false
 }
@@ -3375,7 +3367,6 @@ type RevertTransactionOrder struct {
 	AtEffectiveDate  bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata         map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	OriginalPostings []*commonpb.Posting                `protobuf:"bytes,5,rep,name=original_postings,json=originalPostings,proto3" json:"original_postings,omitempty"`
-	ExpandVolumes    bool                               `protobuf:"varint,6,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"` // Include post-commit volumes in response
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -3443,13 +3434,6 @@ func (x *RevertTransactionOrder) GetOriginalPostings() []*commonpb.Posting {
 		return x.OriginalPostings
 	}
 	return nil
-}
-
-func (x *RevertTransactionOrder) GetExpandVolumes() bool {
-	if x != nil {
-		return x.ExpandVolumes
-	}
-	return false
 }
 
 type DeleteMetadataOrder struct {
@@ -6340,7 +6324,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x1cRemoveMetadataFieldTypeOrder\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x97\x05\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xf0\x04\n" +
 	"\x16CreateTransactionOrder\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -6348,9 +6332,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\treference\x18\x04 \x01(\tR\treference\x12F\n" +
 	"\bmetadata\x18\x05 \x03(\v2*.raft.CreateTransactionOrder.MetadataEntryR\bmetadata\x12\\\n" +
 	"\x10account_metadata\x18\x06 \x03(\v21.raft.CreateTransactionOrder.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
-	"\x05force\x18\a \x01(\bR\x05force\x12%\n" +
-	"\x0eexpand_volumes\x18\b \x01(\bR\rexpandVolumes\x12I\n" +
-	"\x13numscript_reference\x18\t \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x1aR\n" +
+	"\x05force\x18\a \x01(\bR\x05force\x12I\n" +
+	"\x13numscript_reference\x18\b \x01(\v2\x18.raft.NumscriptReferenceR\x12numscriptReference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
@@ -6369,14 +6352,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x03(\v2%.raft.SaveMetadataOrder.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x82\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xdb\x02\n" +
 	"\x16RevertTransactionOrder\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12F\n" +
 	"\bmetadata\x18\x04 \x03(\v2*.raft.RevertTransactionOrder.MetadataEntryR\bmetadata\x12<\n" +
-	"\x11original_postings\x18\x05 \x03(\v2\x0f.common.PostingR\x10originalPostings\x12%\n" +
-	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\x1aR\n" +
+	"\x11original_postings\x18\x05 \x03(\v2\x0f.common.PostingR\x10originalPostings\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"O\n" +

@@ -262,17 +262,26 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		chapterID = p.GetId()
 	}
 
+	// Post-commit volumes are part of every persisted transaction, mirrored
+	// ones included: compute them from the volume state after the mirrored
+	// postings applied.
+	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, ct.GetPostings())
+	if pcvErr != nil {
+		return nil, pcvErr
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{
-					Postings:   ct.GetPostings(),
-					Metadata:   ct.GetMetadata(),
-					Timestamp:  timestamp,
-					Reference:  ct.GetReference(),
-					Id:         txID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:          ct.GetPostings(),
+					Metadata:          ct.GetMetadata(),
+					Timestamp:         timestamp,
+					Reference:         ct.GetReference(),
+					Id:                txID,
+					InsertedAt:        s.GetDate().Mutate(),
+					UpdatedAt:         s.GetDate().Mutate(),
+					PostCommitVolumes: postCommitVolumes,
 				},
 				AccountMetadata: accountMetadata,
 				ChapterId:       chapterID,
@@ -434,6 +443,14 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 		RevertsTransaction: rt.GetRevertedTransactionId(),
 	})
 
+	// Post-commit volumes are part of every persisted transaction, mirrored
+	// reverts included: compute them from the volume state after the reverse
+	// postings applied.
+	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, rt.GetReversePostings())
+	if pcvErr != nil {
+		return nil, pcvErr
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
@@ -446,6 +463,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 					InsertedAt:         s.GetDate().Mutate(),
 					UpdatedAt:          s.GetDate().Mutate(),
 					RevertsTransaction: rt.GetRevertedTransactionId(),
+					PostCommitVolumes:  postCommitVolumes,
 				},
 			},
 		},

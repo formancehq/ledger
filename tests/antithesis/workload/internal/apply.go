@@ -30,7 +30,7 @@ func CheckCreatedTransaction(resp *servicepb.ApplyResponse, details Details) *co
 		return nil
 	}
 
-	CheckPostCommitVolumes(ct.PostCommitVolumes, details)
+	CheckPostCommitVolumes(ct.GetTransaction().GetPostCommitVolumes(), details)
 
 	return ct
 }

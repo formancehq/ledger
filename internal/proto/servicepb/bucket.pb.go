@@ -3610,8 +3610,7 @@ type CreateTransactionPayload struct {
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	AccountMetadata map[string]*commonpb.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Force           bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"`
-	ExpandVolumes   bool                               `protobuf:"varint,8,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"`
-	ScriptReference *ScriptReference                   `protobuf:"bytes,9,opt,name=script_reference,json=scriptReference,proto3" json:"script_reference,omitempty"`
+	ScriptReference *ScriptReference                   `protobuf:"bytes,8,opt,name=script_reference,json=scriptReference,proto3" json:"script_reference,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3695,13 +3694,6 @@ func (x *CreateTransactionPayload) GetForce() bool {
 	return false
 }
 
-func (x *CreateTransactionPayload) GetExpandVolumes() bool {
-	if x != nil {
-		return x.ExpandVolumes
-	}
-	return false
-}
-
 func (x *CreateTransactionPayload) GetScriptReference() *ScriptReference {
 	if x != nil {
 		return x.ScriptReference
@@ -3717,7 +3709,6 @@ type RevertTransactionPayload struct {
 	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Receipt         string                             `protobuf:"bytes,5,opt,name=receipt,proto3" json:"receipt,omitempty"`
-	ExpandVolumes   bool                               `protobuf:"varint,6,opt,name=expand_volumes,json=expandVolumes,proto3" json:"expand_volumes,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3785,13 +3776,6 @@ func (x *RevertTransactionPayload) GetReceipt() string {
 		return x.Receipt
 	}
 	return ""
-}
-
-func (x *RevertTransactionPayload) GetExpandVolumes() bool {
-	if x != nil {
-		return x.ExpandVolumes
-	}
-	return false
 }
 
 // LedgerAction represents a single ledger action.
@@ -9204,7 +9188,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x13ResponseSigningInfo\x12\x1d\n" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x15\n" +
-	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\x9a\x05\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"\xf3\x04\n" +
 	"\x18CreateTransactionPayload\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12&\n" +
 	"\x06script\x18\x02 \x01(\v2\x0e.common.ScriptR\x06script\x12/\n" +
@@ -9212,22 +9196,20 @@ const file_bucket_proto_rawDesc = "" +
 	"\treference\x18\x04 \x01(\tR\treference\x12J\n" +
 	"\bmetadata\x18\x05 \x03(\v2..ledger.CreateTransactionPayload.MetadataEntryR\bmetadata\x12`\n" +
 	"\x10account_metadata\x18\x06 \x03(\v25.ledger.CreateTransactionPayload.AccountMetadataEntryR\x0faccountMetadata\x12\x14\n" +
-	"\x05force\x18\a \x01(\bR\x05force\x12%\n" +
-	"\x0eexpand_volumes\x18\b \x01(\bR\rexpandVolumes\x12B\n" +
-	"\x10script_reference\x18\t \x01(\v2\x17.ledger.ScriptReferenceR\x0fscriptReference\x1aR\n" +
+	"\x05force\x18\a \x01(\bR\x05force\x12B\n" +
+	"\x10script_reference\x18\b \x01(\v2\x17.ledger.ScriptReferenceR\x0fscriptReference\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\x81\x03\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xda\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12J\n" +
 	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x12\x18\n" +
-	"\areceipt\x18\x05 \x01(\tR\areceipt\x12%\n" +
-	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\x1aR\n" +
+	"\areceipt\x18\x05 \x01(\tR\areceipt\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\a\x10\bR\x15transaction_reference\"\xf7\x04\n" +

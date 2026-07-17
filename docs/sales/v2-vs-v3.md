@@ -230,26 +230,25 @@ v3 uses **Pebble**, an LSM-tree storage engine optimized for high-throughput wor
 
 ---
 
-## 9. Simplified API (Pre/Post Commit Volumes Removed)
+## 9. Simplified API (Pre-Commit / Effective Volumes Removed)
 
 ### v2 Problem
 
-v2 transaction responses included pre- and post-commit volume calculations for every affected account, adding four extra nested objects to every response.
+v2 transaction responses included pre- and post-commit volume calculations (regular and effective) for every affected account, adding four extra nested objects to every response.
 
 **Issues**:
-- **Performance overhead**: Required additional reads to compute volumes
-- **Complexity**: Complicated the response structure
-- **Raft incompatibility**: Volumes computed at apply time, not propose time
+- **Performance overhead**: Recomputed volumes from current balances on read
+- **Complexity**: Four volume variants complicated the response structure
 
 ### v3 Solution
 
-v3 **removes pre/post commit volumes** from transaction creation responses. The response contains only the transaction itself. Volumes are available via dedicated read endpoints when needed.
+v3 keeps a single `postCommitVolumes` field and **removes** `preCommitVolumes`, `postCommitEffectiveVolumes`, and `preCommitEffectiveVolumes`. Post-commit volumes are computed once, deterministically, inside the FSM at apply time and stored on the transaction as an immutable historical snapshot — so every read (create, revert, get, list, prepared-query) returns the same value without recomputation.
 
 **Benefits**:
-- Simpler, faster transaction creation
-- No extra database reads during writes
-- Cleaner API
-- Volumes available via dedicated read endpoints if needed
+- One volume variant instead of four — cleaner API
+- Snapshot is captured once and never recomputed from current balances
+- Deterministic apply-time computation is Raft-safe
+- Pre-commit and effective volumes remain available via dedicated read endpoints if needed
 
 ---
 
@@ -382,7 +381,7 @@ See [Architecture Overview](../technical/architecture-overview.md) for implement
 When migrating from v2 to v3, consider:
 
 1. **Data Migration**: Export logs from v2 and import to v3 (import/export feature planned)
-2. **API Changes**: Update clients to handle removed `preCommitVolumes`/`postCommitVolumes` fields
+2. **API Changes**: Update clients to handle removed `preCommitVolumes` and effective-volume fields (`postCommitVolumes` is retained on every transaction)
 3. **Infrastructure**: Remove PostgreSQL from your infrastructure
 4. **Cluster Setup**: Configure Raft cluster (odd number of nodes for quorum)
 5. **Storage Selection**: Choose appropriate storage backend for your workload

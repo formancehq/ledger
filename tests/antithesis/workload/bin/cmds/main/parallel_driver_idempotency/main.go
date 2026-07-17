@@ -22,7 +22,6 @@ func main() {
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings:      postings,
 							Force:         true,
-							ExpandVolumes: true,
 						},
 					}},
 				},

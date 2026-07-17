@@ -203,13 +203,6 @@ func rollRevert() bool {
 	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) == 0
 }
 
-// expandVolumes reports whether a transaction requests post-commit volumes on
-// its response (~9/10). When false the server omits them and the checker skips
-// the volume comparison for that order (crossCheckCommit).
-func expandVolumes() bool {
-	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) != 0
-}
-
 // Picks Add vs Remove.
 func generateChartOp(ledger string) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -292,7 +285,6 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 		Postings:      postings,
 		Reference:     txRef(),
 		Force:         force,
-		ExpandVolumes: expandVolumes(),
 	}
 
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -352,7 +344,7 @@ func generateRejectedTransaction(ledger string, ls oracle.LedgerState) *servicep
 // emptyTransaction carries no postings and no script, so admission rejects it as
 // having no content source (VALIDATION).
 func emptyTransaction(ledger string) *servicepb.Request {
-	return applyCreate(ledger, &servicepb.CreateTransactionPayload{ExpandVolumes: expandVolumes()})
+	return applyCreate(ledger, &servicepb.CreateTransactionPayload{})
 }
 
 // duplicateReferenceTransaction reuses a committed reference; the FSM rejects it
@@ -367,7 +359,6 @@ func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servic
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
 		Postings:      []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
 		Reference:     ref,
-		ExpandVolumes: expandVolumes(),
 	})
 }
 
@@ -383,7 +374,6 @@ func overflowTransaction(ledger string) *servicepb.Request {
 			commonpb.NewPosting("world", dst, assets[0], half),
 			commonpb.NewPosting("world", dst, assets[0], half),
 		},
-		ExpandVolumes: expandVolumes(),
 	})
 }
 
@@ -437,7 +427,6 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 								commonpb.NewPosting(src, dest, asset, amount),
 							},
 							Force:         force,
-							ExpandVolumes: expandVolumes(),
 						},
 					},
 				},
@@ -500,7 +489,6 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 								commonpb.NewPosting(srcKey.Address, "world", srcKey.Asset, balance.ToBig()),
 							},
 							Force:         true,
-							ExpandVolumes: expandVolumes(),
 						},
 					},
 				},
@@ -751,10 +739,10 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 // (or been purged of) the funds — so it also exercises the revert path's
 // INSUFFICIENT_FUNDS rejection. The server validates account types before
 // the floor on reverts, so the oracle does the same (see applyRevert).
-// expand_volumes returns post-commit volumes for validation. Targeting any
-// committed reference exercises both the success path and the
-// TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a prior
-// revert committed).
+// Post-commit volumes are returned unconditionally on the transaction for
+// validation. Targeting any committed reference exercises both the success path
+// and the TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a
+// prior revert committed).
 func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]string) *servicepb.Request {
 	ref := pickTxRef(ls)
 	if ref == "" {
@@ -767,7 +755,6 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 		// ~half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
 		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
-		ExpandVolumes:   expandVolumes(),
 	}
 
 	// ~half the reverts with a captured receipt carry it, exercising admission's

@@ -33,7 +33,7 @@ import (
 // - Reverts with force=true and force=false
 // - Revert of already-reverted transaction (double revert error)
 // - Zero-amount edge cases
-// - ExpandVolumes on transaction creation
+// - Post-commit volumes on every transaction (create and revert)
 // - Transaction with metadata and subsequent metadata updates/deletes
 // - Account type enforcement in STRICT and AUDIT modes
 //
@@ -248,13 +248,14 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		)
 		require.Error(t, err, "double revert should fail")
 
-		// Revert with ExpandVolumes
+		// Revert; the compensating transaction carries post-commit volumes.
 		if len(itemPurchases) >= 3 {
 			p3 := &itemPurchases[2]
 			action := actions.RevertTransactionAction(ledger, p3.txID, false, false, nil)
-			actions.WithExpandVolumes(action)
 			resp := scenariotest.ApplyActions(t, ctx, client, action)
-			require.NotEmpty(t, resp.Logs, "revert with expand volumes should return logs")
+			require.NotEmpty(t, resp.Logs, "revert should return logs")
+			revertTx := resp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction().GetRevertTransaction()
+			require.NotNil(t, revertTx.GetPostCommitVolumes(), "revert response must carry post-commit volumes")
 			playerCoins[p3.player].Add(playerCoins[p3.player], big.NewInt(p3.coins))
 			shopCoins.Sub(shopCoins, big.NewInt(p3.coins))
 			p3.reverted = true

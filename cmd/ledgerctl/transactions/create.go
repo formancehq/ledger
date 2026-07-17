@@ -94,7 +94,6 @@ Examples:
 	cmd.Flags().String("reference", "", "Transaction reference")
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
-	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -355,9 +354,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Get metadata (optional)
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
 
-	// Get force and expand-volumes flags
+	// Get force flag
 	force, _ := cmd.Flags().GetBool("force")
-	expandVolumes, _ := cmd.Flags().GetBool("expand-volumes")
 
 	// Create the transaction
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -373,12 +371,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:      postings,
-								Script:        script,
-								Reference:     reference,
-								Metadata:      commonpb.MetadataFromGoMap(metadata),
-								Force:         force,
-								ExpandVolumes: expandVolumes,
+								Postings:  postings,
+								Script:    script,
+								Reference: reference,
+								Metadata:  commonpb.MetadataFromGoMap(metadata),
+								Force:     force,
 							},
 						},
 					},
@@ -506,9 +503,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Display post-commit volumes
-	if createdTx.GetPostCommitVolumes() != nil {
-		err := renderPostCommitVolumes(createdTx.GetPostCommitVolumes())
+	// Display post-commit volumes (carried on the created transaction)
+	if pcv := createdTx.GetTransaction().GetPostCommitVolumes(); pcv != nil {
+		err := renderPostCommitVolumes(pcv)
 		if err != nil {
 			return err
 		}

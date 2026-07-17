@@ -34,7 +34,6 @@ func randomPostingsRequest(ledger string) *servicepb.Request {
 						Postings:      internal.RandomPostings(),
 						Metadata:      commonpb.MetadataFromGoMap(internal.RandomMetadata()),
 						Force:         true,
-						ExpandVolumes: true,
 					},
 				}},
 			},
@@ -69,7 +68,6 @@ func randomNumscriptRequest(ledger string) *servicepb.Request {
 							Vars: vars,
 						},
 						Force:         true,
-						ExpandVolumes: true,
 					},
 				}},
 			},
@@ -142,7 +140,7 @@ func createRandomBulkTransactions(ctx context.Context, client servicepb.BucketSe
 		return
 	}
 	checkReadAfterWrite(ctx, client, ledger, createdTx)
-	internal.CheckPostCommitVolumes(createdTx.PostCommitVolumes, internal.Details{"ledger": ledger})
+	internal.CheckPostCommitVolumes(createdTx.GetTransaction().GetPostCommitVolumes(), internal.Details{"ledger": ledger})
 }
 
 func checkReadAfterWrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, createdTx *commonpb.CreatedTransaction) {

@@ -309,20 +309,6 @@ func WithTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
 	return req
 }
 
-// WithExpandVolumes sets the ExpandVolumes flag on a create or revert transaction request.
-func WithExpandVolumes(req *servicepb.Request) *servicepb.Request {
-	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		switch d := reqType.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_CreateTransaction:
-			d.CreateTransaction.ExpandVolumes = true
-		case *servicepb.LedgerAction_RevertTransaction:
-			d.RevertTransaction.ExpandVolumes = true
-		}
-	}
-
-	return req
-}
-
 // NewPosting creates a new uncolored posting protobuf message.
 func NewPosting(source, destination string, amount *big.Int, asset string) *commonpb.Posting {
 	return commonpb.NewPosting(source, destination, asset, amount)

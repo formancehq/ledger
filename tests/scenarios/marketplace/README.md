@@ -61,10 +61,10 @@ customer:{id}  --[$amount]--> merchant:{id}  (97%)
 - **Cold-account read** every 20 transactions (cache eviction exercise)
 - **GetTransaction** on first purchase to verify structure
 
-### Phase 3b: WithTimestamp + WithExpandVolumes
+### Phase 3b: WithTimestamp + post-commit volumes
 
 - 2 **antidated transactions** (`@world` -> `platform:payouts`) with past timestamps (-24h, -48h)
-- 1 transaction with **ExpandVolumes** flag: response includes `PostCommitVolumes`
+- asserts every transaction response carries `PostCommitVolumes` on the transaction
 
 ### Phase 4: Reverts (10 Apply calls)
 

@@ -433,19 +433,20 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 		It("Should report fresh PCV (not cumulative) on the second batch", func() {
 			// Batch 2: same staging:reuse, balanced again with a different amount.
-			// expandVolumes on both postings so we can read the PCV from the response.
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithExpandVolumes(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			// Post-commit volumes ride on every transaction, so we read them back
+			// from the response directly.
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "staging:reuse", big.NewInt(50), "USD"),
-			}, nil)),
-				actions.WithExpandVolumes(actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			}, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("staging:reuse", "wallet:b", big.NewInt(50), "USD"),
-				}, nil, nil))))
+				}, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
 
 			// First transaction's PCV: world → staging:reuse 50.
 			// staging:reuse should read {50, 0} — fresh, not cumulative {150, 100}.
-			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes().GetVolumesByAccount()
 			Expect(pcv1).To(HaveKey("staging:reuse"))
 			Expect(pcv1["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"),
 				"transient input should reflect this batch only, not accumulate across batches")
@@ -453,7 +454,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// Second transaction's PCV: staging:reuse → wallet:b 50.
 			// staging:reuse now {50, 50} — the per-batch zero-balance — not {150, 150}.
-			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes().GetVolumesByAccount()
 			Expect(pcv2).To(HaveKey("staging:reuse"))
 			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"))
 			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Output).To(Equal("50"))

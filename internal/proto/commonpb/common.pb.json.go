@@ -275,31 +275,31 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 
 // Note: Log.MarshalJSON is already implemented in log.go
 
-// MarshalJSON implements json.Marshaler for CreatedTransaction.
+// MarshalJSON implements json.Marshaler for CreatedTransaction. Post-commit
+// volumes ride on the embedded Transaction, so they surface via the
+// "transaction" field rather than as a sibling here.
 func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Transaction       *Transaction              `json:"transaction,omitempty"`
-		AccountMetadata   map[string]map[string]any `json:"accountMetadata,omitempty"`
-		ChapterID         uint64                    `json:"chapterId,omitempty"`
-		PostCommitVolumes *PostCommitVolumes        `json:"postCommitVolumes,omitempty"`
+		Transaction     *Transaction              `json:"transaction,omitempty"`
+		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
+		ChapterID       uint64                    `json:"chapterId,omitempty"`
 	}{
-		Transaction:       x.GetTransaction(),
-		AccountMetadata:   AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		ChapterID:         x.GetChapterId(),
-		PostCommitVolumes: x.GetPostCommitVolumes(),
+		Transaction:     x.GetTransaction(),
+		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		ChapterID:       x.GetChapterId(),
 	})
 }
 
-// MarshalJSON implements json.Marshaler for RevertedTransaction.
+// MarshalJSON implements json.Marshaler for RevertedTransaction. Post-commit
+// volumes ride on the embedded revert Transaction, so they surface via the
+// "revertTransaction" field rather than as a sibling here.
 func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		RevertedTransactionID uint64             `json:"revertedTransactionId,omitempty"`
-		RevertTransaction     *Transaction       `json:"revertTransaction,omitempty"`
-		PostCommitVolumes     *PostCommitVolumes `json:"postCommitVolumes,omitempty"`
+		RevertedTransactionID uint64       `json:"revertedTransactionId,omitempty"`
+		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
 	}{
 		RevertedTransactionID: x.GetRevertedTransactionId(),
 		RevertTransaction:     x.GetRevertTransaction(),
-		PostCommitVolumes:     x.GetPostCommitVolumes(),
 	})
 }
 

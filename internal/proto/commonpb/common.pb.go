@@ -1770,8 +1770,12 @@ type Transaction struct {
 	RevertedByTransaction uint64 `protobuf:"fixed64,10,opt,name=reverted_by_transaction,json=revertedByTransaction,proto3" json:"reverted_by_transaction,omitempty"`
 	// Id of the original transaction this transaction reverts. 0 = not a revert.
 	RevertsTransaction uint64 `protobuf:"fixed64,11,opt,name=reverts_transaction,json=revertsTransaction,proto3" json:"reverts_transaction,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Post-commit volumes for every (account, asset, color) tuple touched by
+	// this transaction, captured at the transaction's sequence. Immutable
+	// historical snapshot: never recomputed from current balances.
+	PostCommitVolumes *PostCommitVolumes `protobuf:"bytes,12,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Transaction) Reset() {
@@ -1879,6 +1883,13 @@ func (x *Transaction) GetRevertsTransaction() uint64 {
 		return x.RevertsTransaction
 	}
 	return 0
+}
+
+func (x *Transaction) GetPostCommitVolumes() *PostCommitVolumes {
+	if x != nil {
+		return x.PostCommitVolumes
+	}
+	return nil
 }
 
 type Script struct {
@@ -6560,13 +6571,12 @@ func (x *FilledGapLog) GetOriginalId() uint64 {
 }
 
 type CreatedTransaction struct {
-	state             protoimpl.MessageState  `protogen:"open.v1"`
-	Transaction       *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata   map[string]*MetadataMap `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ChapterId         uint64                  `protobuf:"fixed64,3,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`                         // Chapter that was OPEN when this transaction was created
-	PostCommitVolumes *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state           protoimpl.MessageState  `protogen:"open.v1"`
+	Transaction     *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata map[string]*MetadataMap `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ChapterId       uint64                  `protobuf:"fixed64,3,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"` // Chapter that was OPEN when this transaction was created
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CreatedTransaction) Reset() {
@@ -6620,18 +6630,10 @@ func (x *CreatedTransaction) GetChapterId() uint64 {
 	return 0
 }
 
-func (x *CreatedTransaction) GetPostCommitVolumes() *PostCommitVolumes {
-	if x != nil {
-		return x.PostCommitVolumes
-	}
-	return nil
-}
-
 type RevertedTransaction struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	RevertedTransactionId uint64                 `protobuf:"fixed64,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
 	RevertTransaction     *Transaction           `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
-	PostCommitVolumes     *PostCommitVolumes     `protobuf:"bytes,3,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -6676,13 +6678,6 @@ func (x *RevertedTransaction) GetRevertedTransactionId() uint64 {
 func (x *RevertedTransaction) GetRevertTransaction() *Transaction {
 	if x != nil {
 		return x.RevertTransaction
-	}
-	return nil
-}
-
-func (x *RevertedTransaction) GetPostCommitVolumes() *PostCommitVolumes {
-	if x != nil {
-		return x.PostCommitVolumes
 	}
 	return nil
 }
@@ -12925,7 +12920,7 @@ const file_common_proto_rawDesc = "" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12'\n" +
 	"\x06amount\x18\x03 \x01(\v2\x0f.common.Uint256R\x06amount\x12\x14\n" +
 	"\x05asset\x18\x04 \x01(\tR\x05asset\x12\x14\n" +
-	"\x05color\x18\x05 \x01(\tR\x05color\"\xcb\x04\n" +
+	"\x05color\x18\x05 \x01(\tR\x05color\"\x96\x05\n" +
 	"\vTransaction\x12+\n" +
 	"\bpostings\x18\x01 \x03(\v2\x0f.common.PostingR\bpostings\x12=\n" +
 	"\bmetadata\x18\x02 \x03(\v2!.common.Transaction.MetadataEntryR\bmetadata\x12/\n" +
@@ -12941,7 +12936,8 @@ const file_common_proto_rawDesc = "" +
 	"revertedAt\x126\n" +
 	"\x17reverted_by_transaction\x18\n" +
 	" \x01(\x06R\x15revertedByTransaction\x12/\n" +
-	"\x13reverts_transaction\x18\v \x01(\x06R\x12revertsTransaction\x1aR\n" +
+	"\x13reverts_transaction\x18\v \x01(\x06R\x12revertsTransaction\x12I\n" +
+	"\x13post_commit_volumes\x18\f \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xa8\x01\n" +
@@ -13288,20 +13284,18 @@ const file_common_proto_rawDesc = "" +
 	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"/\n" +
 	"\fFilledGapLog\x12\x1f\n" +
 	"\voriginal_id\x18\x01 \x01(\x06R\n" +
-	"originalId\"\xea\x02\n" +
+	"originalId\"\x9f\x02\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x03 \x01(\x06R\tchapterId\x12I\n" +
-	"\x13post_commit_volumes\x18\x04 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x1aW\n" +
+	"chapter_id\x18\x03 \x01(\x06R\tchapterId\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xdc\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\x91\x01\n" +
 	"\x13RevertedTransaction\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x06R\x15revertedTransactionId\x12B\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\x12I\n" +
-	"\x13post_commit_volumes\x18\x03 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\"\xcc\x01\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\"\xcc\x01\n" +
 	"\rSavedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12?\n" +
 	"\bmetadata\x18\x02 \x03(\v2#.common.SavedMetadata.MetadataEntryR\bmetadata\x1aR\n" +
@@ -14111,278 +14105,277 @@ var file_common_proto_depIdxs = []int32{
 	18,  // 6: common.Transaction.inserted_at:type_name -> common.Timestamp
 	18,  // 7: common.Transaction.updated_at:type_name -> common.Timestamp
 	18,  // 8: common.Transaction.reverted_at:type_name -> common.Timestamp
-	180, // 9: common.Script.vars:type_name -> common.Script.VarsEntry
-	30,  // 10: common.VolumesByAssets.volumes:type_name -> common.VolumeEntry
-	27,  // 11: common.VolumeEntry.volumes:type_name -> common.Volumes
-	181, // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
-	28,  // 13: common.AccountVolume.volumes:type_name -> common.VolumesWithBalance
-	182, // 14: common.Account.metadata:type_name -> common.Account.MetadataEntry
-	18,  // 15: common.Account.first_usage:type_name -> common.Timestamp
-	18,  // 16: common.Account.insertion_date:type_name -> common.Timestamp
-	18,  // 17: common.Account.updated_at:type_name -> common.Timestamp
-	32,  // 18: common.Account.volumes:type_name -> common.AccountVolume
-	34,  // 19: common.Target.account:type_name -> common.TargetAccount
-	1,   // 20: common.MetadataFieldSchema.type:type_name -> common.MetadataType
-	183, // 21: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	184, // 22: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
-	185, // 23: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
-	0,   // 24: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
-	1,   // 25: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
-	0,   // 26: common.MetadataIndexID.target:type_name -> common.TargetType
-	3,   // 27: common.IndexID.tx_builtin:type_name -> common.TransactionBuiltinIndex
-	5,   // 28: common.IndexID.log_builtin:type_name -> common.LogBuiltinIndex
-	4,   // 29: common.IndexID.account_builtin:type_name -> common.AccountBuiltinIndex
-	39,  // 30: common.IndexID.metadata:type_name -> common.MetadataIndexID
-	40,  // 31: common.Index.id:type_name -> common.IndexID
-	2,   // 32: common.Index.build_status:type_name -> common.IndexBuildStatus
-	18,  // 33: common.Index.created_at:type_name -> common.Timestamp
-	18,  // 34: common.Index.last_built_at:type_name -> common.Timestamp
-	45,  // 35: common.Log.payload:type_name -> common.LogPayload
-	197, // 36: common.Log.response_signature:type_name -> signature.SignedLog
-	81,  // 37: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
-	82,  // 38: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
-	83,  // 39: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
-	47,  // 40: common.LogPayload.register_signing_key:type_name -> common.RegisteredSigningKeyLog
-	48,  // 41: common.LogPayload.revoke_signing_key:type_name -> common.RevokedSigningKeyLog
-	50,  // 42: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
-	51,  // 43: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
-	52,  // 44: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
-	98,  // 45: common.LogPayload.close_chapter:type_name -> common.ClosedChapterLog
-	99,  // 46: common.LogPayload.seal_chapter:type_name -> common.SealedChapterLog
-	100, // 47: common.LogPayload.archive_chapter:type_name -> common.ArchivedChapterLog
-	101, // 48: common.LogPayload.confirm_archive_chapter:type_name -> common.ConfirmedArchiveChapterLog
-	53,  // 49: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
-	57,  // 50: common.LogPayload.set_chapter_schedule:type_name -> common.SetChapterScheduleLog
-	58,  // 51: common.LogPayload.delete_chapter_schedule:type_name -> common.DeletedChapterScheduleLog
-	46,  // 52: common.LogPayload.promote_ledger:type_name -> common.PromotedLedgerLog
-	59,  // 53: common.LogPayload.created_prepared_query:type_name -> common.CreatedPreparedQueryLog
-	60,  // 54: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
-	61,  // 55: common.LogPayload.deleted_prepared_query:type_name -> common.DeletedPreparedQueryLog
-	65,  // 56: common.LogPayload.saved_numscript:type_name -> common.SavedNumscriptLog
-	66,  // 57: common.LogPayload.deleted_numscript:type_name -> common.DeletedNumscriptLog
-	70,  // 58: common.LogPayload.created_query_checkpoint:type_name -> common.CreatedQueryCheckpointLog
-	71,  // 59: common.LogPayload.deleted_query_checkpoint:type_name -> common.DeletedQueryCheckpointLog
-	68,  // 60: common.LogPayload.set_query_checkpoint_schedule:type_name -> common.SetQueryCheckpointScheduleLog
-	69,  // 61: common.LogPayload.delete_query_checkpoint_schedule:type_name -> common.DeletedQueryCheckpointScheduleLog
-	62,  // 62: common.LogPayload.saved_ledger_metadata:type_name -> common.SavedLedgerMetadataLog
-	63,  // 63: common.LogPayload.deleted_ledger_metadata:type_name -> common.DeletedLedgerMetadataLog
-	72,  // 64: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
-	54,  // 65: common.ClusterConfig.bloom_volumes:type_name -> common.BloomTypeConfig
-	54,  // 66: common.ClusterConfig.bloom_metadata:type_name -> common.BloomTypeConfig
-	54,  // 67: common.ClusterConfig.bloom_references:type_name -> common.BloomTypeConfig
-	54,  // 68: common.ClusterConfig.bloom_ledgers:type_name -> common.BloomTypeConfig
-	54,  // 69: common.ClusterConfig.bloom_boundaries:type_name -> common.BloomTypeConfig
-	54,  // 70: common.ClusterConfig.bloom_transactions:type_name -> common.BloomTypeConfig
-	54,  // 71: common.ClusterConfig.bloom_sink_configs:type_name -> common.BloomTypeConfig
-	54,  // 72: common.ClusterConfig.bloom_numscript_versions:type_name -> common.BloomTypeConfig
-	54,  // 73: common.ClusterConfig.bloom_numscript_contents:type_name -> common.BloomTypeConfig
-	6,   // 74: common.ClusterConfig.hash_algorithm:type_name -> common.HashAlgorithm
-	54,  // 75: common.ClusterConfig.bloom_ledger_metadata:type_name -> common.BloomTypeConfig
-	54,  // 76: common.ClusterConfig.bloom_prepared_queries:type_name -> common.BloomTypeConfig
-	54,  // 77: common.ClusterConfig.bloom_indexes:type_name -> common.BloomTypeConfig
-	55,  // 78: common.PersistedClusterState.config:type_name -> common.ClusterConfig
-	164, // 79: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
-	144, // 80: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
-	144, // 81: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	186, // 82: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
-	18,  // 83: common.NumscriptInfo.created_at:type_name -> common.Timestamp
-	64,  // 84: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
-	18,  // 85: common.TemplateUsage.last_used:type_name -> common.Timestamp
-	75,  // 86: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
-	76,  // 87: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
-	77,  // 88: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
-	78,  // 89: common.SinkConfig.http:type_name -> common.HttpSinkConfig
-	79,  // 90: common.SinkConfig.databricks:type_name -> common.DatabricksSinkConfig
-	7,   // 91: common.SinkConfig.event_types:type_name -> common.EventType
-	74,  // 92: common.SinkStatus.error:type_name -> common.SinkError
-	18,  // 93: common.SinkError.occurred_at:type_name -> common.Timestamp
-	80,  // 94: common.DatabricksSinkConfig.oauth_m2m:type_name -> common.DatabricksOAuthM2M
-	18,  // 95: common.CreatedLedgerLog.created_at:type_name -> common.Timestamp
-	37,  // 96: common.CreatedLedgerLog.metadata_schema:type_name -> common.MetadataSchema
-	9,   // 97: common.CreatedLedgerLog.mode:type_name -> common.LedgerMode
-	102, // 98: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
-	187, // 99: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
-	12,  // 100: common.CreatedLedgerLog.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	18,  // 101: common.DeletedLedgerLog.deleted_at:type_name -> common.Timestamp
-	84,  // 102: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
-	86,  // 103: common.LedgerLog.data:type_name -> common.LedgerLogPayload
-	18,  // 104: common.LedgerLog.date:type_name -> common.Timestamp
-	85,  // 105: common.LedgerLog.purged_volumes:type_name -> common.TouchedVolume
-	85,  // 106: common.LedgerLog.new_kept_volumes:type_name -> common.TouchedVolume
-	85,  // 107: common.LedgerLog.ephemeral_volumes:type_name -> common.TouchedVolume
-	91,  // 108: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
-	92,  // 109: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
-	93,  // 110: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
-	94,  // 111: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
-	95,  // 112: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
-	96,  // 113: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
-	90,  // 114: common.LedgerLogPayload.fill_gap:type_name -> common.FilledGapLog
-	88,  // 115: common.LedgerLogPayload.create_index:type_name -> common.CreatedIndexLog
-	89,  // 116: common.LedgerLogPayload.drop_index:type_name -> common.DroppedIndexLog
-	141, // 117: common.LedgerLogPayload.added_account_type:type_name -> common.AddedAccountTypeLog
-	142, // 118: common.LedgerLogPayload.removed_account_type:type_name -> common.RemovedAccountTypeLog
-	143, // 119: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
-	87,  // 120: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
-	11,  // 121: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
-	188, // 122: common.OrderSkippedLog.context:type_name -> common.OrderSkippedLog.ContextEntry
-	40,  // 123: common.CreatedIndexLog.id:type_name -> common.IndexID
-	40,  // 124: common.DroppedIndexLog.id:type_name -> common.IndexID
-	25,  // 125: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	189, // 126: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
-	31,  // 127: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	31,  // 9: common.Transaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	180, // 10: common.Script.vars:type_name -> common.Script.VarsEntry
+	30,  // 11: common.VolumesByAssets.volumes:type_name -> common.VolumeEntry
+	27,  // 12: common.VolumeEntry.volumes:type_name -> common.Volumes
+	181, // 13: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	28,  // 14: common.AccountVolume.volumes:type_name -> common.VolumesWithBalance
+	182, // 15: common.Account.metadata:type_name -> common.Account.MetadataEntry
+	18,  // 16: common.Account.first_usage:type_name -> common.Timestamp
+	18,  // 17: common.Account.insertion_date:type_name -> common.Timestamp
+	18,  // 18: common.Account.updated_at:type_name -> common.Timestamp
+	32,  // 19: common.Account.volumes:type_name -> common.AccountVolume
+	34,  // 20: common.Target.account:type_name -> common.TargetAccount
+	1,   // 21: common.MetadataFieldSchema.type:type_name -> common.MetadataType
+	183, // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	184, // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	185, // 24: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
+	0,   // 25: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
+	1,   // 26: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
+	0,   // 27: common.MetadataIndexID.target:type_name -> common.TargetType
+	3,   // 28: common.IndexID.tx_builtin:type_name -> common.TransactionBuiltinIndex
+	5,   // 29: common.IndexID.log_builtin:type_name -> common.LogBuiltinIndex
+	4,   // 30: common.IndexID.account_builtin:type_name -> common.AccountBuiltinIndex
+	39,  // 31: common.IndexID.metadata:type_name -> common.MetadataIndexID
+	40,  // 32: common.Index.id:type_name -> common.IndexID
+	2,   // 33: common.Index.build_status:type_name -> common.IndexBuildStatus
+	18,  // 34: common.Index.created_at:type_name -> common.Timestamp
+	18,  // 35: common.Index.last_built_at:type_name -> common.Timestamp
+	45,  // 36: common.Log.payload:type_name -> common.LogPayload
+	197, // 37: common.Log.response_signature:type_name -> signature.SignedLog
+	81,  // 38: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
+	82,  // 39: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
+	83,  // 40: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
+	47,  // 41: common.LogPayload.register_signing_key:type_name -> common.RegisteredSigningKeyLog
+	48,  // 42: common.LogPayload.revoke_signing_key:type_name -> common.RevokedSigningKeyLog
+	50,  // 43: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
+	51,  // 44: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
+	52,  // 45: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
+	98,  // 46: common.LogPayload.close_chapter:type_name -> common.ClosedChapterLog
+	99,  // 47: common.LogPayload.seal_chapter:type_name -> common.SealedChapterLog
+	100, // 48: common.LogPayload.archive_chapter:type_name -> common.ArchivedChapterLog
+	101, // 49: common.LogPayload.confirm_archive_chapter:type_name -> common.ConfirmedArchiveChapterLog
+	53,  // 50: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
+	57,  // 51: common.LogPayload.set_chapter_schedule:type_name -> common.SetChapterScheduleLog
+	58,  // 52: common.LogPayload.delete_chapter_schedule:type_name -> common.DeletedChapterScheduleLog
+	46,  // 53: common.LogPayload.promote_ledger:type_name -> common.PromotedLedgerLog
+	59,  // 54: common.LogPayload.created_prepared_query:type_name -> common.CreatedPreparedQueryLog
+	60,  // 55: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
+	61,  // 56: common.LogPayload.deleted_prepared_query:type_name -> common.DeletedPreparedQueryLog
+	65,  // 57: common.LogPayload.saved_numscript:type_name -> common.SavedNumscriptLog
+	66,  // 58: common.LogPayload.deleted_numscript:type_name -> common.DeletedNumscriptLog
+	70,  // 59: common.LogPayload.created_query_checkpoint:type_name -> common.CreatedQueryCheckpointLog
+	71,  // 60: common.LogPayload.deleted_query_checkpoint:type_name -> common.DeletedQueryCheckpointLog
+	68,  // 61: common.LogPayload.set_query_checkpoint_schedule:type_name -> common.SetQueryCheckpointScheduleLog
+	69,  // 62: common.LogPayload.delete_query_checkpoint_schedule:type_name -> common.DeletedQueryCheckpointScheduleLog
+	62,  // 63: common.LogPayload.saved_ledger_metadata:type_name -> common.SavedLedgerMetadataLog
+	63,  // 64: common.LogPayload.deleted_ledger_metadata:type_name -> common.DeletedLedgerMetadataLog
+	72,  // 65: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
+	54,  // 66: common.ClusterConfig.bloom_volumes:type_name -> common.BloomTypeConfig
+	54,  // 67: common.ClusterConfig.bloom_metadata:type_name -> common.BloomTypeConfig
+	54,  // 68: common.ClusterConfig.bloom_references:type_name -> common.BloomTypeConfig
+	54,  // 69: common.ClusterConfig.bloom_ledgers:type_name -> common.BloomTypeConfig
+	54,  // 70: common.ClusterConfig.bloom_boundaries:type_name -> common.BloomTypeConfig
+	54,  // 71: common.ClusterConfig.bloom_transactions:type_name -> common.BloomTypeConfig
+	54,  // 72: common.ClusterConfig.bloom_sink_configs:type_name -> common.BloomTypeConfig
+	54,  // 73: common.ClusterConfig.bloom_numscript_versions:type_name -> common.BloomTypeConfig
+	54,  // 74: common.ClusterConfig.bloom_numscript_contents:type_name -> common.BloomTypeConfig
+	6,   // 75: common.ClusterConfig.hash_algorithm:type_name -> common.HashAlgorithm
+	54,  // 76: common.ClusterConfig.bloom_ledger_metadata:type_name -> common.BloomTypeConfig
+	54,  // 77: common.ClusterConfig.bloom_prepared_queries:type_name -> common.BloomTypeConfig
+	54,  // 78: common.ClusterConfig.bloom_indexes:type_name -> common.BloomTypeConfig
+	55,  // 79: common.PersistedClusterState.config:type_name -> common.ClusterConfig
+	164, // 80: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
+	144, // 81: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
+	144, // 82: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
+	186, // 83: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
+	18,  // 84: common.NumscriptInfo.created_at:type_name -> common.Timestamp
+	64,  // 85: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
+	18,  // 86: common.TemplateUsage.last_used:type_name -> common.Timestamp
+	75,  // 87: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
+	76,  // 88: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
+	77,  // 89: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
+	78,  // 90: common.SinkConfig.http:type_name -> common.HttpSinkConfig
+	79,  // 91: common.SinkConfig.databricks:type_name -> common.DatabricksSinkConfig
+	7,   // 92: common.SinkConfig.event_types:type_name -> common.EventType
+	74,  // 93: common.SinkStatus.error:type_name -> common.SinkError
+	18,  // 94: common.SinkError.occurred_at:type_name -> common.Timestamp
+	80,  // 95: common.DatabricksSinkConfig.oauth_m2m:type_name -> common.DatabricksOAuthM2M
+	18,  // 96: common.CreatedLedgerLog.created_at:type_name -> common.Timestamp
+	37,  // 97: common.CreatedLedgerLog.metadata_schema:type_name -> common.MetadataSchema
+	9,   // 98: common.CreatedLedgerLog.mode:type_name -> common.LedgerMode
+	102, // 99: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
+	187, // 100: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
+	12,  // 101: common.CreatedLedgerLog.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	18,  // 102: common.DeletedLedgerLog.deleted_at:type_name -> common.Timestamp
+	84,  // 103: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
+	86,  // 104: common.LedgerLog.data:type_name -> common.LedgerLogPayload
+	18,  // 105: common.LedgerLog.date:type_name -> common.Timestamp
+	85,  // 106: common.LedgerLog.purged_volumes:type_name -> common.TouchedVolume
+	85,  // 107: common.LedgerLog.new_kept_volumes:type_name -> common.TouchedVolume
+	85,  // 108: common.LedgerLog.ephemeral_volumes:type_name -> common.TouchedVolume
+	91,  // 109: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
+	92,  // 110: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
+	93,  // 111: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
+	94,  // 112: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
+	95,  // 113: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
+	96,  // 114: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
+	90,  // 115: common.LedgerLogPayload.fill_gap:type_name -> common.FilledGapLog
+	88,  // 116: common.LedgerLogPayload.create_index:type_name -> common.CreatedIndexLog
+	89,  // 117: common.LedgerLogPayload.drop_index:type_name -> common.DroppedIndexLog
+	141, // 118: common.LedgerLogPayload.added_account_type:type_name -> common.AddedAccountTypeLog
+	142, // 119: common.LedgerLogPayload.removed_account_type:type_name -> common.RemovedAccountTypeLog
+	143, // 120: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
+	87,  // 121: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
+	11,  // 122: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
+	188, // 123: common.OrderSkippedLog.context:type_name -> common.OrderSkippedLog.ContextEntry
+	40,  // 124: common.CreatedIndexLog.id:type_name -> common.IndexID
+	40,  // 125: common.DroppedIndexLog.id:type_name -> common.IndexID
+	25,  // 126: common.CreatedTransaction.transaction:type_name -> common.Transaction
+	189, // 127: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	25,  // 128: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	31,  // 129: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	35,  // 130: common.SavedMetadata.target:type_name -> common.Target
-	190, // 131: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
-	35,  // 132: common.DeletedMetadata.target:type_name -> common.Target
-	0,   // 133: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	1,   // 134: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
-	0,   // 135: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	40,  // 136: common.RemovedMetadataFieldTypeLog.dropped_index:type_name -> common.IndexID
-	18,  // 137: common.Chapter.start:type_name -> common.Timestamp
-	18,  // 138: common.Chapter.end:type_name -> common.Timestamp
-	8,   // 139: common.Chapter.status:type_name -> common.ChapterStatus
-	97,  // 140: common.ClosedChapterLog.closed_chapter:type_name -> common.Chapter
-	97,  // 141: common.ClosedChapterLog.new_chapter:type_name -> common.Chapter
-	97,  // 142: common.SealedChapterLog.chapter:type_name -> common.Chapter
-	97,  // 143: common.ArchivedChapterLog.chapter:type_name -> common.Chapter
-	97,  // 144: common.ConfirmedArchiveChapterLog.chapter:type_name -> common.Chapter
-	122, // 145: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
-	124, // 146: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
-	103, // 147: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
-	104, // 148: common.MirrorRewriteRule.created_transaction:type_name -> common.CreatedTransactionRule
-	105, // 149: common.MirrorRewriteRule.reverted_transaction:type_name -> common.RevertedTransactionRule
-	106, // 150: common.MirrorRewriteRule.saved_metadata:type_name -> common.SavedMetadataRule
-	107, // 151: common.MirrorRewriteRule.deleted_metadata:type_name -> common.DeletedMetadataRule
-	108, // 152: common.MirrorRewriteRule.any_variant:type_name -> common.AnyVariantRule
-	109, // 153: common.CreatedTransactionRule.actions:type_name -> common.CreatedTransactionAction
-	110, // 154: common.RevertedTransactionRule.actions:type_name -> common.RevertedTransactionAction
-	111, // 155: common.SavedMetadataRule.actions:type_name -> common.SavedMetadataAction
-	112, // 156: common.DeletedMetadataRule.actions:type_name -> common.DeletedMetadataAction
-	113, // 157: common.AnyVariantRule.actions:type_name -> common.AnyVariantAction
-	114, // 158: common.CreatedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
-	115, // 159: common.CreatedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
-	116, // 160: common.CreatedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	117, // 161: common.CreatedTransactionAction.set_account_metadata:type_name -> common.SetAccountMetadataAction
-	118, // 162: common.CreatedTransactionAction.delete_account_metadata:type_name -> common.DeleteAccountMetadataAction
-	119, // 163: common.CreatedTransactionAction.set_account_metadata_from_address:type_name -> common.SetAccountMetadataFromAddressAction
-	121, // 164: common.CreatedTransactionAction.drop:type_name -> common.DropAction
-	114, // 165: common.RevertedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
-	115, // 166: common.RevertedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
-	116, // 167: common.RevertedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	121, // 168: common.RevertedTransactionAction.drop:type_name -> common.DropAction
-	114, // 169: common.SavedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
-	115, // 170: common.SavedMetadataAction.set_metadata:type_name -> common.SetMetadataAction
-	116, // 171: common.SavedMetadataAction.delete_metadata:type_name -> common.DeleteMetadataAction
-	121, // 172: common.SavedMetadataAction.drop:type_name -> common.DropAction
-	114, // 173: common.DeletedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
-	121, // 174: common.DeletedMetadataAction.drop:type_name -> common.DropAction
-	114, // 175: common.AnyVariantAction.rewrite_address:type_name -> common.RewriteAddressAction
-	121, // 176: common.AnyVariantAction.drop:type_name -> common.DropAction
-	120, // 177: common.SetAccountMetadataFromAddressAction.replacements:type_name -> common.SetAccountMetadataFromAddressReplacement
-	123, // 178: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
-	125, // 179: common.PostgresMirrorSourceConfig.aws_iam_auth:type_name -> common.PostgresAwsIamAuth
-	18,  // 180: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
-	10,  // 181: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
-	126, // 182: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
-	18,  // 183: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	18,  // 184: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	37,  // 185: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
-	9,   // 186: common.LedgerInfo.mode:type_name -> common.LedgerMode
-	102, // 187: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
-	127, // 188: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	191, // 189: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
-	12,  // 190: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	192, // 191: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
-	35,  // 192: common.SaveMetadataCommand.target:type_name -> common.Target
-	193, // 193: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
-	35,  // 194: common.DeleteMetadataCommand.target:type_name -> common.Target
-	194, // 195: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
-	18,  // 196: common.TransactionState.timestamp:type_name -> common.Timestamp
-	24,  // 197: common.TransactionState.postings:type_name -> common.Posting
-	18,  // 198: common.TransactionState.reverted_at:type_name -> common.Timestamp
-	133, // 199: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
-	11,  // 200: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	195, // 201: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
-	137, // 202: common.SegmentType.uuid:type_name -> common.UUIDConstraint
-	138, // 203: common.SegmentType.uint64:type_name -> common.Uint64Constraint
-	139, // 204: common.SegmentType.bytes:type_name -> common.BytesConstraint
-	13,  // 205: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	196, // 206: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
-	140, // 207: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
-	12,  // 208: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	157, // 209: common.QueryFilter.field:type_name -> common.FieldCondition
-	163, // 210: common.QueryFilter.address:type_name -> common.AddressMatch
-	153, // 211: common.QueryFilter.and:type_name -> common.AndFilter
-	154, // 212: common.QueryFilter.or:type_name -> common.OrFilter
-	155, // 213: common.QueryFilter.not:type_name -> common.NotFilter
-	145, // 214: common.QueryFilter.reference:type_name -> common.ReferenceCondition
-	150, // 215: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
-	148, // 216: common.QueryFilter.ledger:type_name -> common.LedgerCondition
-	149, // 217: common.QueryFilter.log_id:type_name -> common.LogIdCondition
-	151, // 218: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
-	152, // 219: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
-	146, // 220: common.QueryFilter.reverted:type_name -> common.RevertedCondition
-	147, // 221: common.QueryFilter.audit:type_name -> common.AuditCondition
-	158, // 222: common.ReferenceCondition.cond:type_name -> common.StringCondition
-	14,  // 223: common.AuditCondition.field:type_name -> common.AuditField
-	158, // 224: common.AuditCondition.string_cond:type_name -> common.StringCondition
-	160, // 225: common.AuditCondition.uint_cond:type_name -> common.UintCondition
-	158, // 226: common.LedgerCondition.cond:type_name -> common.StringCondition
-	160, // 227: common.LogIdCondition.cond:type_name -> common.UintCondition
-	3,   // 228: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
-	160, // 229: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
-	5,   // 230: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
-	160, // 231: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
-	144, // 232: common.AndFilter.filters:type_name -> common.QueryFilter
-	144, // 233: common.OrFilter.filters:type_name -> common.QueryFilter
-	144, // 234: common.NotFilter.filter:type_name -> common.QueryFilter
-	156, // 235: common.FieldCondition.field:type_name -> common.FieldRef
-	158, // 236: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	159, // 237: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	160, // 238: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	161, // 239: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	162, // 240: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	15,  // 241: common.AddressMatch.role:type_name -> common.AddressRole
-	144, // 242: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	16,  // 243: common.PreparedQuery.target:type_name -> common.QueryTarget
-	23,  // 244: common.AggregatedVolume.input:type_name -> common.Uint256
-	23,  // 245: common.AggregatedVolume.output:type_name -> common.Uint256
-	165, // 246: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	167, // 247: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
-	165, // 248: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
-	33,  // 249: common.PreparedQueryCursor.account_data:type_name -> common.Account
-	25,  // 250: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
-	44,  // 251: common.PreparedQueryCursor.log_data:type_name -> common.Log
-	171, // 252: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
-	173, // 253: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	174, // 254: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	176, // 255: common.ListOptions.read:type_name -> common.ReadOptions
-	144, // 256: common.ListOptions.filter:type_name -> common.QueryFilter
-	20,  // 257: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	20,  // 258: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	29,  // 259: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	20,  // 260: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	36,  // 261: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	36,  // 262: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	36,  // 263: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	20,  // 264: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	140, // 265: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 266: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	20,  // 267: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	140, // 268: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	20,  // 269: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	20,  // 270: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	20,  // 271: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	136, // 272: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	198, // 273: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	198, // 274: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	16,  // 275: common.allowed_query_targets:type_name -> common.QueryTarget
-	276, // [276:276] is the sub-list for method output_type
-	276, // [276:276] is the sub-list for method input_type
-	275, // [275:276] is the sub-list for extension type_name
-	273, // [273:275] is the sub-list for extension extendee
-	0,   // [0:273] is the sub-list for field type_name
+	35,  // 129: common.SavedMetadata.target:type_name -> common.Target
+	190, // 130: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
+	35,  // 131: common.DeletedMetadata.target:type_name -> common.Target
+	0,   // 132: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	1,   // 133: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
+	0,   // 134: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	40,  // 135: common.RemovedMetadataFieldTypeLog.dropped_index:type_name -> common.IndexID
+	18,  // 136: common.Chapter.start:type_name -> common.Timestamp
+	18,  // 137: common.Chapter.end:type_name -> common.Timestamp
+	8,   // 138: common.Chapter.status:type_name -> common.ChapterStatus
+	97,  // 139: common.ClosedChapterLog.closed_chapter:type_name -> common.Chapter
+	97,  // 140: common.ClosedChapterLog.new_chapter:type_name -> common.Chapter
+	97,  // 141: common.SealedChapterLog.chapter:type_name -> common.Chapter
+	97,  // 142: common.ArchivedChapterLog.chapter:type_name -> common.Chapter
+	97,  // 143: common.ConfirmedArchiveChapterLog.chapter:type_name -> common.Chapter
+	122, // 144: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
+	124, // 145: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
+	103, // 146: common.MirrorSourceConfig.rewrite_rules:type_name -> common.MirrorRewriteRule
+	104, // 147: common.MirrorRewriteRule.created_transaction:type_name -> common.CreatedTransactionRule
+	105, // 148: common.MirrorRewriteRule.reverted_transaction:type_name -> common.RevertedTransactionRule
+	106, // 149: common.MirrorRewriteRule.saved_metadata:type_name -> common.SavedMetadataRule
+	107, // 150: common.MirrorRewriteRule.deleted_metadata:type_name -> common.DeletedMetadataRule
+	108, // 151: common.MirrorRewriteRule.any_variant:type_name -> common.AnyVariantRule
+	109, // 152: common.CreatedTransactionRule.actions:type_name -> common.CreatedTransactionAction
+	110, // 153: common.RevertedTransactionRule.actions:type_name -> common.RevertedTransactionAction
+	111, // 154: common.SavedMetadataRule.actions:type_name -> common.SavedMetadataAction
+	112, // 155: common.DeletedMetadataRule.actions:type_name -> common.DeletedMetadataAction
+	113, // 156: common.AnyVariantRule.actions:type_name -> common.AnyVariantAction
+	114, // 157: common.CreatedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
+	115, // 158: common.CreatedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
+	116, // 159: common.CreatedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	117, // 160: common.CreatedTransactionAction.set_account_metadata:type_name -> common.SetAccountMetadataAction
+	118, // 161: common.CreatedTransactionAction.delete_account_metadata:type_name -> common.DeleteAccountMetadataAction
+	119, // 162: common.CreatedTransactionAction.set_account_metadata_from_address:type_name -> common.SetAccountMetadataFromAddressAction
+	121, // 163: common.CreatedTransactionAction.drop:type_name -> common.DropAction
+	114, // 164: common.RevertedTransactionAction.rewrite_address:type_name -> common.RewriteAddressAction
+	115, // 165: common.RevertedTransactionAction.set_metadata:type_name -> common.SetMetadataAction
+	116, // 166: common.RevertedTransactionAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	121, // 167: common.RevertedTransactionAction.drop:type_name -> common.DropAction
+	114, // 168: common.SavedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
+	115, // 169: common.SavedMetadataAction.set_metadata:type_name -> common.SetMetadataAction
+	116, // 170: common.SavedMetadataAction.delete_metadata:type_name -> common.DeleteMetadataAction
+	121, // 171: common.SavedMetadataAction.drop:type_name -> common.DropAction
+	114, // 172: common.DeletedMetadataAction.rewrite_address:type_name -> common.RewriteAddressAction
+	121, // 173: common.DeletedMetadataAction.drop:type_name -> common.DropAction
+	114, // 174: common.AnyVariantAction.rewrite_address:type_name -> common.RewriteAddressAction
+	121, // 175: common.AnyVariantAction.drop:type_name -> common.DropAction
+	120, // 176: common.SetAccountMetadataFromAddressAction.replacements:type_name -> common.SetAccountMetadataFromAddressReplacement
+	123, // 177: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
+	125, // 178: common.PostgresMirrorSourceConfig.aws_iam_auth:type_name -> common.PostgresAwsIamAuth
+	18,  // 179: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
+	10,  // 180: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
+	126, // 181: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
+	18,  // 182: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	18,  // 183: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	37,  // 184: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
+	9,   // 185: common.LedgerInfo.mode:type_name -> common.LedgerMode
+	102, // 186: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
+	127, // 187: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
+	191, // 188: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
+	12,  // 189: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
+	192, // 190: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
+	35,  // 191: common.SaveMetadataCommand.target:type_name -> common.Target
+	193, // 192: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
+	35,  // 193: common.DeleteMetadataCommand.target:type_name -> common.Target
+	194, // 194: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
+	18,  // 195: common.TransactionState.timestamp:type_name -> common.Timestamp
+	24,  // 196: common.TransactionState.postings:type_name -> common.Posting
+	18,  // 197: common.TransactionState.reverted_at:type_name -> common.Timestamp
+	133, // 198: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
+	11,  // 199: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
+	195, // 200: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
+	137, // 201: common.SegmentType.uuid:type_name -> common.UUIDConstraint
+	138, // 202: common.SegmentType.uint64:type_name -> common.Uint64Constraint
+	139, // 203: common.SegmentType.bytes:type_name -> common.BytesConstraint
+	13,  // 204: common.AccountType.persistence:type_name -> common.AccountTypePersistence
+	196, // 205: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	140, // 206: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
+	12,  // 207: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	157, // 208: common.QueryFilter.field:type_name -> common.FieldCondition
+	163, // 209: common.QueryFilter.address:type_name -> common.AddressMatch
+	153, // 210: common.QueryFilter.and:type_name -> common.AndFilter
+	154, // 211: common.QueryFilter.or:type_name -> common.OrFilter
+	155, // 212: common.QueryFilter.not:type_name -> common.NotFilter
+	145, // 213: common.QueryFilter.reference:type_name -> common.ReferenceCondition
+	150, // 214: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
+	148, // 215: common.QueryFilter.ledger:type_name -> common.LedgerCondition
+	149, // 216: common.QueryFilter.log_id:type_name -> common.LogIdCondition
+	151, // 217: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
+	152, // 218: common.QueryFilter.account_has_asset:type_name -> common.AccountHasAssetCondition
+	146, // 219: common.QueryFilter.reverted:type_name -> common.RevertedCondition
+	147, // 220: common.QueryFilter.audit:type_name -> common.AuditCondition
+	158, // 221: common.ReferenceCondition.cond:type_name -> common.StringCondition
+	14,  // 222: common.AuditCondition.field:type_name -> common.AuditField
+	158, // 223: common.AuditCondition.string_cond:type_name -> common.StringCondition
+	160, // 224: common.AuditCondition.uint_cond:type_name -> common.UintCondition
+	158, // 225: common.LedgerCondition.cond:type_name -> common.StringCondition
+	160, // 226: common.LogIdCondition.cond:type_name -> common.UintCondition
+	3,   // 227: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
+	160, // 228: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
+	5,   // 229: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
+	160, // 230: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
+	144, // 231: common.AndFilter.filters:type_name -> common.QueryFilter
+	144, // 232: common.OrFilter.filters:type_name -> common.QueryFilter
+	144, // 233: common.NotFilter.filter:type_name -> common.QueryFilter
+	156, // 234: common.FieldCondition.field:type_name -> common.FieldRef
+	158, // 235: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	159, // 236: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	160, // 237: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	161, // 238: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	162, // 239: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	15,  // 240: common.AddressMatch.role:type_name -> common.AddressRole
+	144, // 241: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	16,  // 242: common.PreparedQuery.target:type_name -> common.QueryTarget
+	23,  // 243: common.AggregatedVolume.input:type_name -> common.Uint256
+	23,  // 244: common.AggregatedVolume.output:type_name -> common.Uint256
+	165, // 245: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	167, // 246: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
+	165, // 247: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
+	33,  // 248: common.PreparedQueryCursor.account_data:type_name -> common.Account
+	25,  // 249: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
+	44,  // 250: common.PreparedQueryCursor.log_data:type_name -> common.Log
+	171, // 251: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
+	173, // 252: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	174, // 253: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	176, // 254: common.ListOptions.read:type_name -> common.ReadOptions
+	144, // 255: common.ListOptions.filter:type_name -> common.QueryFilter
+	20,  // 256: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	20,  // 257: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	29,  // 258: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	20,  // 259: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	36,  // 260: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	36,  // 261: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	36,  // 262: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	20,  // 263: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	140, // 264: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 265: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	20,  // 266: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	140, // 267: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	20,  // 268: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	20,  // 269: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	20,  // 270: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	136, // 271: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	198, // 272: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	198, // 273: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	16,  // 274: common.allowed_query_targets:type_name -> common.QueryTarget
+	275, // [275:275] is the sub-list for method output_type
+	275, // [275:275] is the sub-list for method input_type
+	274, // [274:275] is the sub-list for extension type_name
+	272, // [272:274] is the sub-list for extension extendee
+	0,   // [0:272] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

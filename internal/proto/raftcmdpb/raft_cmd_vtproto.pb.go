@@ -1314,7 +1314,6 @@ func (m *CreateTransactionOrder) CloneVT() *CreateTransactionOrder {
 	r.Timestamp = m.Timestamp.CloneVT()
 	r.Reference = m.Reference
 	r.Force = m.Force
-	r.ExpandVolumes = m.ExpandVolumes
 	r.NumscriptReference = m.NumscriptReference.CloneVT()
 	if rhs := m.Postings; rhs != nil {
 		tmpContainer := make([]*commonpb.Posting, len(rhs))
@@ -1405,7 +1404,6 @@ func (m *RevertTransactionOrder) CloneVT() *RevertTransactionOrder {
 	r.TransactionId = m.TransactionId
 	r.Force = m.Force
 	r.AtEffectiveDate = m.AtEffectiveDate
-	r.ExpandVolumes = m.ExpandVolumes
 	if rhs := m.Metadata; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.MetadataValue, len(rhs))
 		for k, v := range rhs {
@@ -4732,9 +4730,6 @@ func (this *CreateTransactionOrder) EqualVT(that *CreateTransactionOrder) bool {
 	if this.Force != that.Force {
 		return false
 	}
-	if this.ExpandVolumes != that.ExpandVolumes {
-		return false
-	}
 	if !this.NumscriptReference.EqualVT(that.NumscriptReference) {
 		return false
 	}
@@ -4872,9 +4867,6 @@ func (this *RevertTransactionOrder) EqualVT(that *RevertTransactionOrder) bool {
 				return false
 			}
 		}
-	}
-	if this.ExpandVolumes != that.ExpandVolumes {
-		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -9450,17 +9442,7 @@ func (m *CreateTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
-	}
-	if m.ExpandVolumes {
-		i--
-		if m.ExpandVolumes {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x40
+		dAtA[i] = 0x42
 	}
 	if m.Force {
 		i--
@@ -9718,16 +9700,6 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ExpandVolumes {
-		i--
-		if m.ExpandVolumes {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
 	}
 	if len(m.OriginalPostings) > 0 {
 		for iNdEx := len(m.OriginalPostings) - 1; iNdEx >= 0; iNdEx-- {
@@ -13770,9 +13742,6 @@ func (m *CreateTransactionOrder) SizeVT() (n int) {
 	if m.Force {
 		n += 2
 	}
-	if m.ExpandVolumes {
-		n += 2
-	}
 	if m.NumscriptReference != nil {
 		l = m.NumscriptReference.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -13867,9 +13836,6 @@ func (m *RevertTransactionOrder) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
-	}
-	if m.ExpandVolumes {
-		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -21865,26 +21831,6 @@ func (m *CreateTransactionOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Force = bool(v != 0)
 		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpandVolumes", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.ExpandVolumes = bool(v != 0)
-		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NumscriptReference", wireType)
 			}
@@ -22642,26 +22588,6 @@ func (m *RevertTransactionOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExpandVolumes", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.ExpandVolumes = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

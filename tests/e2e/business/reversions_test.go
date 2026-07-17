@@ -478,17 +478,27 @@ var _ = Describe("Reversions", Ordered, func() {
 		})
 	})
 
-	Context("When reverting transactions with expandVolumes", Ordered, func() {
-		var ledgerName = "revert-expand-volumes-ledger"
+	Context("When reverting transactions (post-commit volumes)", Ordered, func() {
+		var ledgerName = "revert-post-commit-volumes-ledger"
+
+		// revertPCV returns the post-commit volume snapshot carried on the
+		// compensating transaction. It is part of every reversion, so never nil.
+		revertPCV := func(resp *servicepb.ApplyResponse) map[string]*commonpb.VolumesByAssets {
+			revertedTx := resp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
+			Expect(revertedTx.GetRevertTransaction().GetPostCommitVolumes()).NotTo(BeNil(),
+				"every compensating transaction must carry post-commit volumes")
+
+			return revertedTx.GetRevertTransaction().GetPostCommitVolumes().GetVolumesByAccount()
+		}
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
-		It("Should not include postCommitVolumes on revert when expandVolumes is false", func() {
+		It("Should include postCommitVolumes on the compensating transaction", func() {
 			createResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "ev-rv-no-expand", big.NewInt(100), "USD"),
+				actions.NewPosting("world", "ev-rv-expand", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -497,31 +507,41 @@ var _ = Describe("Reversions", Ordered, func() {
 			revertResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
 			Expect(err).To(Succeed())
 
-			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
-			Expect(revertedTx.PostCommitVolumes).To(BeNil())
-		})
-
-		It("Should include postCommitVolumes on revert when expandVolumes is true", func() {
-			createResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "ev-rv-expand", big.NewInt(100), "USD"),
-			}, nil, nil)))
-			Expect(err).To(Succeed())
-
-			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
-
-			revertResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithExpandVolumes(actions.RevertTransactionAction(ledgerName, txID, false, false, nil))))
-			Expect(err).To(Succeed())
-
-			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
-			Expect(revertedTx.PostCommitVolumes).NotTo(BeNil())
-
-			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
+			pcv := revertPCV(revertResp)
 			// After revert: ev-rv-expand sent 100 back to world -> input=100, output=100
 			Expect(pcv).To(HaveKey("ev-rv-expand"))
 			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Input).To(Equal("100"))
 			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Output).To(Equal("100"))
 
 			Expect(pcv).To(HaveKey("world"))
+		})
+
+		It("Should leave the original transaction's creation-time snapshot untouched after revert", func() {
+			createResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "ev-rv-original", big.NewInt(250), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
+			Expect(err).To(Succeed())
+
+			// Reading the original after it is reverted must still return its
+			// creation-time snapshot (input=250, output=0), NOT the current
+			// (post-revert, output=250) balance.
+			Eventually(func(g Gomega) {
+				got, err := actions.GetTransaction(sharedCtx, sharedClient, ledgerName, txID)
+				g.Expect(err).To(Succeed())
+				tx := got.GetTransaction()
+				g.Expect(tx.GetReverted()).To(BeTrue())
+				g.Expect(tx.GetPostCommitVolumes()).NotTo(BeNil())
+
+				original := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-rv-original"].FindVolume("USD", "")
+				g.Expect(original).NotTo(BeNil())
+				g.Expect(original.GetInput()).To(Equal("250"))
+				g.Expect(original.GetOutput()).To(Equal("0"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should include correct postCommitVolumes on force revert with spent funds", func() {
@@ -539,14 +559,11 @@ var _ = Describe("Reversions", Ordered, func() {
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
-			// Force revert with expandVolumes
-			revertResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.WithExpandVolumes(actions.RevertTransactionAction(ledgerName, txID, true, false, nil))))
+			// Force revert.
+			revertResp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, true, false, nil)))
 			Expect(err).To(Succeed())
 
-			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
-			Expect(revertedTx.PostCommitVolumes).NotTo(BeNil())
-
-			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
+			pcv := revertPCV(revertResp)
 			// ev-rv-force: input=100 (original), output=200 (100 spent + 100 reverted)
 			Expect(pcv).To(HaveKey("ev-rv-force"))
 			Expect(pcv["ev-rv-force"].FindVolume("USD", "").Input).To(Equal("100"))

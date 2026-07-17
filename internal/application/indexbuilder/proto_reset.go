@@ -104,7 +104,6 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	}
 
 	ct.ChapterId = 0
-	ct.PostCommitVolumes = nil
 	clear(ct.GetAccountMetadata())
 
 	resetTransaction(ct.GetTransaction())
@@ -116,7 +115,6 @@ func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
 	}
 
 	rt.RevertedTransactionId = 0
-	rt.PostCommitVolumes = nil
 
 	resetTransaction(rt.GetRevertTransaction())
 }
@@ -134,6 +132,7 @@ func resetTransaction(txn *commonpb.Transaction) {
 	txn.Metadata = nil
 	txn.UpdatedAt = nil
 	txn.RevertedAt = nil
+	txn.PostCommitVolumes = nil
 	// Preserve txn.Timestamp and txn.InsertedAt (always present).
 }
 

@@ -1223,17 +1223,7 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
-	}
-	if m.ExpandVolumes {
-		i--
-		if m.ExpandVolumes {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x40
+		dAtA[i] = 0x42
 	}
 	if m.Force {
 		i--
@@ -1352,16 +1342,6 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ExpandVolumes {
-		i--
-		if m.ExpandVolumes {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
 	}
 	if len(m.Receipt) > 0 {
 		i -= len(m.Receipt)

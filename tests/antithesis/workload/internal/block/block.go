@@ -165,5 +165,5 @@ func CheckPostCommitVolumes(resp *servicepb.ApplyResponse, details internal.Deta
 	if ct == nil {
 		return
 	}
-	internal.CheckPostCommitVolumes(ct.PostCommitVolumes, details)
+	internal.CheckPostCommitVolumes(ct.GetTransaction().GetPostCommitVolumes(), details)
 }
