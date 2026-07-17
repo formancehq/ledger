@@ -55,7 +55,7 @@ func (b metadataFieldTypeBody) toProto() (*commonpb.SetMetadataFieldTypeCommand,
 // mirrorSourceBody holds the mirror source configuration.
 type mirrorSourceBody struct {
 	LedgerName          string   `json:"ledgerName"`
-	Type                string   `json:"type"`                          // "http" (default) or "postgres"
+	Type                string   `json:"type"`                          // "ledgerV2Http" (default) or "ledgerV2Database"
 	BaseURL             string   `json:"baseUrl,omitempty"`             // HTTP source
 	OAuth2ClientID      string   `json:"oauth2ClientId,omitempty"`      // HTTP source OAuth2
 	OAuth2ClientSecret  string   `json:"oauth2ClientSecret,omitempty"`  // HTTP source OAuth2
@@ -192,7 +192,7 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 	}
 
 	switch body.Type {
-	case "http", "":
+	case "ledgerV2Http", "":
 		httpCfg := &commonpb.HttpMirrorSourceConfig{
 			BaseUrl: body.BaseURL,
 		}
@@ -205,12 +205,12 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 			}
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Http{
-			Http: httpCfg,
+		cfg.Type = &commonpb.MirrorSourceConfig_LedgerV2Http{
+			LedgerV2Http: httpCfg,
 		}
-	case "postgres":
-		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: &commonpb.PostgresMirrorSourceConfig{
+	case "ledgerV2Database":
+		cfg.Type = &commonpb.MirrorSourceConfig_LedgerV2Database{
+			LedgerV2Database: &commonpb.PostgresMirrorSourceConfig{
 				Dsn: body.DSN,
 			},
 		}

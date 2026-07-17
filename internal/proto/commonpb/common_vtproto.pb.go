@@ -2329,21 +2329,21 @@ func (m *MirrorSourceConfig) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *MirrorSourceConfig_Http) CloneVT() isMirrorSourceConfig_Type {
+func (m *MirrorSourceConfig_LedgerV2Http) CloneVT() isMirrorSourceConfig_Type {
 	if m == nil {
-		return (*MirrorSourceConfig_Http)(nil)
+		return (*MirrorSourceConfig_LedgerV2Http)(nil)
 	}
-	r := new(MirrorSourceConfig_Http)
-	r.Http = m.Http.CloneVT()
+	r := new(MirrorSourceConfig_LedgerV2Http)
+	r.LedgerV2Http = m.LedgerV2Http.CloneVT()
 	return r
 }
 
-func (m *MirrorSourceConfig_Postgres) CloneVT() isMirrorSourceConfig_Type {
+func (m *MirrorSourceConfig_LedgerV2Database) CloneVT() isMirrorSourceConfig_Type {
 	if m == nil {
-		return (*MirrorSourceConfig_Postgres)(nil)
+		return (*MirrorSourceConfig_LedgerV2Database)(nil)
 	}
-	r := new(MirrorSourceConfig_Postgres)
-	r.Postgres = m.Postgres.CloneVT()
+	r := new(MirrorSourceConfig_LedgerV2Database)
+	r.LedgerV2Database = m.LedgerV2Database.CloneVT()
 	return r
 }
 
@@ -8371,8 +8371,8 @@ func (this *MirrorSourceConfig) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *MirrorSourceConfig_Http) EqualVT(thatIface isMirrorSourceConfig_Type) bool {
-	that, ok := thatIface.(*MirrorSourceConfig_Http)
+func (this *MirrorSourceConfig_LedgerV2Http) EqualVT(thatIface isMirrorSourceConfig_Type) bool {
+	that, ok := thatIface.(*MirrorSourceConfig_LedgerV2Http)
 	if !ok {
 		return false
 	}
@@ -8382,7 +8382,7 @@ func (this *MirrorSourceConfig_Http) EqualVT(thatIface isMirrorSourceConfig_Type
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.Http, that.Http; p != q {
+	if p, q := this.LedgerV2Http, that.LedgerV2Http; p != q {
 		if p == nil {
 			p = &HttpMirrorSourceConfig{}
 		}
@@ -8396,8 +8396,8 @@ func (this *MirrorSourceConfig_Http) EqualVT(thatIface isMirrorSourceConfig_Type
 	return true
 }
 
-func (this *MirrorSourceConfig_Postgres) EqualVT(thatIface isMirrorSourceConfig_Type) bool {
-	that, ok := thatIface.(*MirrorSourceConfig_Postgres)
+func (this *MirrorSourceConfig_LedgerV2Database) EqualVT(thatIface isMirrorSourceConfig_Type) bool {
+	that, ok := thatIface.(*MirrorSourceConfig_LedgerV2Database)
 	if !ok {
 		return false
 	}
@@ -8407,7 +8407,7 @@ func (this *MirrorSourceConfig_Postgres) EqualVT(thatIface isMirrorSourceConfig_
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.Postgres, that.Postgres; p != q {
+	if p, q := this.LedgerV2Database, that.LedgerV2Database; p != q {
 		if p == nil {
 			p = &PostgresMirrorSourceConfig{}
 		}
@@ -17987,15 +17987,15 @@ func (m *MirrorSourceConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *MirrorSourceConfig_Http) MarshalToVT(dAtA []byte) (int, error) {
+func (m *MirrorSourceConfig_LedgerV2Http) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *MirrorSourceConfig_Http) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *MirrorSourceConfig_LedgerV2Http) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.Http != nil {
-		size, err := m.Http.MarshalToSizedBufferVT(dAtA[:i])
+	if m.LedgerV2Http != nil {
+		size, err := m.LedgerV2Http.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -18006,15 +18006,15 @@ func (m *MirrorSourceConfig_Http) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MirrorSourceConfig_Postgres) MarshalToVT(dAtA []byte) (int, error) {
+func (m *MirrorSourceConfig_LedgerV2Database) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *MirrorSourceConfig_Postgres) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *MirrorSourceConfig_LedgerV2Database) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.Postgres != nil {
-		size, err := m.Postgres.MarshalToSizedBufferVT(dAtA[:i])
+	if m.LedgerV2Database != nil {
+		size, err := m.LedgerV2Database.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -25697,26 +25697,26 @@ func (m *MirrorSourceConfig) SizeVT() (n int) {
 	return n
 }
 
-func (m *MirrorSourceConfig_Http) SizeVT() (n int) {
+func (m *MirrorSourceConfig_LedgerV2Http) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Http != nil {
-		l = m.Http.SizeVT()
+	if m.LedgerV2Http != nil {
+		l = m.LedgerV2Http.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
-func (m *MirrorSourceConfig_Postgres) SizeVT() (n int) {
+func (m *MirrorSourceConfig_LedgerV2Database) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Postgres != nil {
-		l = m.Postgres.SizeVT()
+	if m.LedgerV2Database != nil {
+		l = m.LedgerV2Database.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -42050,7 +42050,7 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Http", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LedgerV2Http", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -42077,8 +42077,8 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*MirrorSourceConfig_Http); ok {
-				if err := oneof.Http.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*MirrorSourceConfig_LedgerV2Http); ok {
+				if err := oneof.LedgerV2Http.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
@@ -42086,12 +42086,12 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &MirrorSourceConfig_Http{Http: v}
+				m.Type = &MirrorSourceConfig_LedgerV2Http{LedgerV2Http: v}
 			}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Postgres", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LedgerV2Database", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -42118,8 +42118,8 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*MirrorSourceConfig_Postgres); ok {
-				if err := oneof.Postgres.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*MirrorSourceConfig_LedgerV2Database); ok {
+				if err := oneof.LedgerV2Database.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
@@ -42127,7 +42127,7 @@ func (m *MirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &MirrorSourceConfig_Postgres{Postgres: v}
+				m.Type = &MirrorSourceConfig_LedgerV2Database{LedgerV2Database: v}
 			}
 			iNdEx = postIndex
 		case 4:

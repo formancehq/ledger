@@ -106,20 +106,24 @@ type MetadataIndexSpec struct {
 	Type string `json:"type"`
 }
 
-// MirrorSourceSpec configures the source for mirror replication.
+// MirrorSourceSpec configures the source for mirror replication. Exactly one
+// source type (ledgerV2Http or ledgerV2Database) must be set.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.ledgerV2Http) != has(self.ledgerV2Database)",message="exactly one of ledgerV2Http or ledgerV2Database must be set"
 type MirrorSourceSpec struct {
 	// LedgerName is the name of the ledger on the source system.
 	// Defaults to the Ledger's spec.name if not set.
 	// +optional
 	LedgerName string `json:"ledgerName,omitempty"`
 
-	// HTTP configures replication via the Ledger v2 HTTP API.
+	// LedgerV2HTTP configures replication via the Ledger v2 HTTP API.
 	// +optional
-	HTTP *HTTPMirrorSource `json:"http,omitempty"`
+	LedgerV2HTTP *HTTPMirrorSource `json:"ledgerV2Http,omitempty"`
 
-	// Postgres configures replication via direct PostgreSQL access.
+	// LedgerV2Database configures replication via direct access to the Ledger v2
+	// PostgreSQL database.
 	// +optional
-	Postgres *PostgresMirrorSource `json:"postgres,omitempty"`
+	LedgerV2Database *PostgresMirrorSource `json:"ledgerV2Database,omitempty"`
 
 	// BatchSize is the max number of log entries per replication batch (0 = default 100).
 	// +optional
@@ -128,7 +132,7 @@ type MirrorSourceSpec struct {
 	// RewriteRules are CEL rewrite rules applied, in order, to every mirror log
 	// entry as the mirror translates v2 source logs into v3 orders. Each rule can
 	// rename address segments, transform metadata, or drop transactions (see
-	// MirrorRewriteRule). Applies to both HTTP and Postgres sources.
+	// MirrorRewriteRule). Applies to both ledgerV2Http and ledgerV2Database sources.
 	// +optional
 	RewriteRules []MirrorRewriteRule `json:"rewriteRules,omitempty"`
 }

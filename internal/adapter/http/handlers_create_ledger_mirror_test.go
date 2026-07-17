@@ -38,7 +38,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"ledgerV2Http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-ledger", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-ledger",
@@ -55,7 +55,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	require.NotNil(t, createReq.GetMirrorSource())
 	require.Equal(t, "default", createReq.GetMirrorSource().GetLedgerName())
 
-	httpCfg := createReq.GetMirrorSource().GetHttp()
+	httpCfg := createReq.GetMirrorSource().GetLedgerV2Http()
 	require.NotNil(t, httpCfg)
 	require.Equal(t, "http://v2:3068", httpCfg.GetBaseUrl())
 	require.NotNil(t, httpCfg.GetOauth2ClientCredentials())
@@ -88,7 +88,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"postgres","dsn":"postgres://user:pass@host:5432/ledger"}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"ledgerV2Database","dsn":"postgres://user:pass@host:5432/ledger"}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-pg", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-pg",
@@ -103,7 +103,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	createReq := capturedReq.GetCreateLedger()
 	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 
-	pgCfg := createReq.GetMirrorSource().GetPostgres()
+	pgCfg := createReq.GetMirrorSource().GetLedgerV2Database()
 	require.NotNil(t, pgCfg)
 	require.Equal(t, "postgres://user:pass@host:5432/ledger", pgCfg.GetDsn())
 }
@@ -141,7 +141,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 	srv.handleCreateLedger(w, r)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	require.NotNil(t, capturedReq.GetCreateLedger().GetMirrorSource().GetHttp())
+	require.NotNil(t, capturedReq.GetCreateLedger().GetMirrorSource().GetLedgerV2Http())
 }
 
 func TestHandleCreateLedger_MirrorModeUnsupportedType(t *testing.T) {
@@ -166,7 +166,7 @@ func TestMirrorSourceToProto_HTTP(t *testing.T) {
 
 	body := &mirrorSourceBody{
 		LedgerName:          "src-ledger",
-		Type:                "http",
+		Type:                "ledgerV2Http",
 		BaseURL:             "http://localhost:3068",
 		OAuth2ClientID:      "my-client-id",
 		OAuth2ClientSecret:  "my-client-secret",
@@ -178,7 +178,7 @@ func TestMirrorSourceToProto_HTTP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "src-ledger", cfg.GetLedgerName())
 
-	httpCfg := cfg.GetHttp()
+	httpCfg := cfg.GetLedgerV2Http()
 	require.NotNil(t, httpCfg)
 	require.Equal(t, "http://localhost:3068", httpCfg.GetBaseUrl())
 	require.NotNil(t, httpCfg.GetOauth2ClientCredentials())
@@ -193,7 +193,7 @@ func TestMirrorSourceToProto_Postgres(t *testing.T) {
 
 	body := &mirrorSourceBody{
 		LedgerName: "src-ledger",
-		Type:       "postgres",
+		Type:       "ledgerV2Database",
 		DSN:        "postgres://user:pass@host/db",
 	}
 
@@ -201,7 +201,7 @@ func TestMirrorSourceToProto_Postgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "src-ledger", cfg.GetLedgerName())
 
-	pgCfg := cfg.GetPostgres()
+	pgCfg := cfg.GetLedgerV2Database()
 	require.NotNil(t, pgCfg)
 	require.Equal(t, "postgres://user:pass@host/db", pgCfg.GetDsn())
 }
@@ -211,14 +211,14 @@ func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 
 	body := &mirrorSourceBody{
 		LedgerName: "src-ledger",
-		Type:       "", // defaults to "http"
+		Type:       "", // defaults to "ledgerV2Http"
 		BaseURL:    "http://localhost:3068",
 	}
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
 
-	httpCfg := cfg.GetHttp()
+	httpCfg := cfg.GetLedgerV2Http()
 	require.NotNil(t, httpCfg)
 	require.Nil(t, httpCfg.GetOauth2ClientCredentials())
 }
@@ -228,7 +228,7 @@ func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
 
 	body := &mirrorSourceBody{
 		LedgerName: "src-ledger",
-		Type:       "http",
+		Type:       "ledgerV2Http",
 		BaseURL:    "http://localhost:3068",
 		RewriteRules: []stdjson.RawMessage{
 			stdjson.RawMessage(`{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}`),
@@ -274,7 +274,7 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","rewriteRules":[{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}]}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"ledgerV2Http","baseUrl":"http://v2:3068","rewriteRules":[{"anyVariant":{"actions":[{"rewriteAddress":{"pattern":":worker:\\d+","replacement":""}}]}}]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-rw", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-rw",

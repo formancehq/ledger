@@ -271,15 +271,15 @@ ledgerctl ledgers create [flags]
 | `--metadata` | | Metadata key=value pairs |
 | `--schema` | | Metadata schema in `target:key:type` format (repeatable) |
 | `--mode` | `normal` | Ledger mode: `normal` or `mirror` |
-| `--mirror-source-type` | `http` | Mirror source type: `http` or `postgres` |
+| `--mirror-source-type` | `ledgerV2Http` | Mirror source type: `ledgerV2Http` or `ledgerV2Database` |
 | `--mirror-ledger-name` | | Source ledger name in the v2 system (defaults to ledger name) |
-| `--mirror-base-url` | | Base URL of the v2 API (required for `http` source) |
-| `--mirror-oauth2-client-id` | | OAuth2 client ID for the v2 API (for `http` source) |
-| `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `http` source) |
-| `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
-| `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
-| `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
-| `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `postgres` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
+| `--mirror-base-url` | | Base URL of the v2 API (required for `ledgerV2Http` source) |
+| `--mirror-oauth2-client-id` | | OAuth2 client ID for the v2 API (for `ledgerV2Http` source) |
+| `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `ledgerV2Http` source) |
+| `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `ledgerV2Http` source) |
+| `--mirror-oauth2-scopes` | | OAuth2 scopes (for `ledgerV2Http` source, repeatable) |
+| `--mirror-dsn` | | PostgreSQL DSN (required for `ledgerV2Database` source) |
+| `--mirror-aws-iam-region` | | When set, enables AWS RDS IAM authentication for the `ledgerV2Database` source. Credentials are taken from the ambient AWS chain (IRSA, instance profile, env vars, profile). |
 | `--mirror-aws-iam-assume-role-arn` | | Optional STS role ARN to assume before minting the RDS IAM token (cross-account / multi-tenant mirrors). Requires `--mirror-aws-iam-region`. |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--mirror-rewrite-file` | | Path to a YAML/JSON file with CEL rewrite rules (`[{match, cel, stop}]`) applied to every mirror log entry during translation |
@@ -317,7 +317,7 @@ ledgerctl ledgers create --name my-mirror \
 # Create a mirror ledger from a PostgreSQL v2 source
 ledgerctl ledgers create --name my-mirror \
   --mode mirror \
-  --mirror-source-type postgres \
+  --mirror-source-type ledgerV2Database \
   --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
 
 # Create a mirror ledger with CEL rewrite rules (rewrite.yaml holds
@@ -330,7 +330,7 @@ ledgerctl ledgers create --name my-mirror \
 # Create a mirror ledger from an AWS RDS v2 source using IAM authentication
 ledgerctl ledgers create --name my-mirror \
   --mode mirror \
-  --mirror-source-type postgres \
+  --mirror-source-type ledgerV2Database \
   --mirror-dsn "postgres://iam-user@db.region.rds.amazonaws.com:5432/ledger?sslmode=require" \
   --mirror-aws-iam-region eu-west-1
 

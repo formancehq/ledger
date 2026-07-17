@@ -3134,8 +3134,8 @@ components:
             - NORMAL
             - MIRROR
           description: Ledger mode (NORMAL or MIRROR)
-        mirror_source:
-          $ref: '#/components/schemas/MirrorSourceConfig'
+        mirrorSource:
+          $ref: '#/components/schemas/MirrorSourceConfigResponse'
         mirror_sync_progress:
           $ref: '#/components/schemas/MirrorSyncProgress'
         account_types:
@@ -4284,6 +4284,74 @@ components:
           type: string
           description: Total amount sent (as big integer string)
 
+    MirrorSourceConfigResponse:
+      type: object
+      description: >-
+        Mirror source configuration as returned in responses (e.g. LedgerInfo from
+        GET /v3/{ledgerName}). Unlike the flat request body (MirrorSourceConfig),
+        the source type is a nested oneof: exactly one of `ledgerV2Http` or
+        `ledgerV2Database` is present.
+      properties:
+        ledgerName:
+          type: string
+          description: Name of the source ledger in the v2 system
+        ledgerV2Http:
+          $ref: '#/components/schemas/HttpMirrorSourceConfig'
+        ledgerV2Database:
+          $ref: '#/components/schemas/PostgresMirrorSourceConfig'
+        batchSize:
+          type: integer
+          description: Max logs per batch (0 = server default)
+        rewriteRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MirrorRewriteRule'
+          description: Mirror rewrite rules applied during v2→v3 translation.
+
+    HttpMirrorSourceConfig:
+      type: object
+      description: Ledger v2 HTTP API source (nested under ledgerV2Http in responses).
+      properties:
+        baseUrl:
+          type: string
+          description: Base URL of the v2 API
+        oauth2ClientCredentials:
+          $ref: '#/components/schemas/OAuth2ClientCredentials'
+
+    OAuth2ClientCredentials:
+      type: object
+      description: OAuth2 client-credentials configuration for a ledgerV2Http source.
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+        tokenEndpoint:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+
+    PostgresMirrorSourceConfig:
+      type: object
+      description: Ledger v2 PostgreSQL source (nested under ledgerV2Database in responses).
+      properties:
+        dsn:
+          type: string
+          description: PostgreSQL connection string
+        awsIamAuth:
+          $ref: '#/components/schemas/PostgresAwsIamAuth'
+
+    PostgresAwsIamAuth:
+      type: object
+      description: AWS RDS IAM authentication for a ledgerV2Database source.
+      properties:
+        region:
+          type: string
+        assumeRoleArn:
+          type: string
+
     MirrorSourceConfig:
       type: object
       description: Configuration for the mirror source (required when mode is MIRROR)
@@ -4296,10 +4364,10 @@ components:
         type:
           type: string
           enum:
-            - http
-            - postgres
-          default: http
-          description: Source type (defaults to "http" if omitted)
+            - ledgerV2Http
+            - ledgerV2Database
+          default: ledgerV2Http
+          description: Source type (defaults to "ledgerV2Http" if omitted)
         baseUrl:
           type: string
           description: Base URL of the v2 API (required for HTTP source)

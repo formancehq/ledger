@@ -117,8 +117,8 @@ message CreateLedgerOrder {
 message MirrorSourceConfig {
   string ledger_name = 1;
   oneof type {
-    HttpMirrorSourceConfig     http     = 2;
-    PostgresMirrorSourceConfig postgres = 3;
+    HttpMirrorSourceConfig     ledger_v2_http     = 2;
+    PostgresMirrorSourceConfig ledger_v2_database = 3;
   }
   uint32 batch_size = 4;
   reserved 5;  // was address_rewrite_rules (regex); replaced by rewrite_rules
