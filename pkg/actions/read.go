@@ -313,6 +313,17 @@ func GetLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, l
 	})
 }
 
+// GetTemplateUsage retrieves the invocation counter and last-used timestamp
+// for a Numscript template. The usagebuilder folds the counter asynchronously,
+// so callers asserting on a freshly-invoked template must poll (Gomega
+// Eventually / require.Eventually) rather than assume immediate visibility.
+func GetTemplateUsage(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) (*commonpb.TemplateUsage, error) {
+	return client.GetTemplateUsage(ctx, &servicepb.GetTemplateUsageRequest{
+		Ledger: ledger,
+		Name:   name,
+	})
+}
+
 // GetNumscript retrieves a numscript by name and optional version ("" = latest).
 func GetNumscript(ctx context.Context, client servicepb.BucketServiceClient, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
 	return client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
