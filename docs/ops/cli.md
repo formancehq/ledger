@@ -2224,40 +2224,6 @@ ledgerctl store bootstrap --driver azure --azure-account-name myaccount --azure-
 
 ---
 
-### store rebuild-indexes
-
-Rebuild the Pebble read indexes from system logs. This is a purely offline operation — no server needed. Use this after restoring from a backup or when the read index becomes corrupted or out of date.
-
-```bash
-ledgerctl store rebuild-indexes --data-dir /path/to/data [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--data-dir` | | Pebble data directory (required) |
-| `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
-
-**Behavior:**
-
-1. Opens the Pebble data directory in read-only mode
-2. Opens or creates the Pebble read index database
-3. Replays all system logs from scratch, rebuilding inverted indexes for metadata, account/transaction existence, and account-to-transaction mappings
-4. Reports the last processed log sequence on completion
-
-**Example:**
-
-```bash
-# Rebuild with default read index location
-ledgerctl store rebuild-indexes --data-dir ./data
-
-# Rebuild to a custom read index directory
-ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-indexes
-```
-
----
-
 ### store rebuild-audit-index
 
 Rebuild the Pebble audit secondary index from the Audit zone. This is a purely offline operation — no server needed. Use this after corruption or a restore when the audit index is missing or out of date.
@@ -4076,7 +4042,7 @@ ledger run --read-index-cache-size 128Mi [other flags...]
 
 The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the read index may lag behind the latest Raft commits).
 
-After restoring from a backup, use `ledgerctl store rebuild-indexes` to backfill the index from existing data.
+Offline read-index rebuild is not available in Ledger v3.0. A generic projection-rebuild mechanism is planned for a later release.
 
 ---
 
