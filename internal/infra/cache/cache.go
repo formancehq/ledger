@@ -413,6 +413,28 @@ func (c *Cache) ResetWithThreshold(threshold, raftIndex uint64) {
 	}
 }
 
+// RealignGeneration aligns currentGeneration and BaseIndex to the generation
+// raftIndex falls into under the current threshold, without touching cache
+// data or the epoch. For use when no persisted generation meta exists but the
+// store's applied index is not at genesis — a restored store (PrepareForBackup
+// wipes the cache zone while preserving the applied index as the genesis
+// boundary), or a pre-meta store after an upgrade. In both, "meta absent"
+// does NOT imply generation 0: leaving 0 makes admission's CheckCache observe
+// Gen(appliedIndex+1) as 2+ generations ahead and reject every proposal as
+// CacheUnreachable — and no apply ever runs to rotate the generation forward.
+func (c *Cache) RealignGeneration(raftIndex uint64) {
+	threshold := c.generationThreshold.Load()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Forward only: g == 0 needs no realignment (and genEndIndex(g-1) would
+	// underflow), and moving a generation backward is never correct.
+	if g := Gen(raftIndex, threshold); g > c.currentGeneration.Load() {
+		c.rotateLocked(genEndIndex(g-1, threshold), g)
+	}
+}
+
 // clearLocked clears all cache data without incrementing the epoch.
 func (c *Cache) clearLocked() {
 	for _, ac := range c.caches {

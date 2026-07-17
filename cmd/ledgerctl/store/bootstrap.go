@@ -3,7 +3,6 @@ package store
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -61,14 +60,20 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		yes, _      = cmd.Flags().GetBool("yes")
 	)
 
-	// Ensure data directory is fresh (no existing checkpoints).
-	_, hasCheckpoint, err := dal.ScanLatestCheckpointID(dataDir)
-	if err != nil {
-		return fmt.Errorf("scanning data directory: %w", err)
+	// Ensure the data directory is fresh: no RESTORED marker, no live/
+	// database, no checkpoints (normal startup prefers live/ over the
+	// restored checkpoint, silently booting the stale store under the
+	// marker's boundary). Marker first: ValidateFreshRestoreTarget's reclaim
+	// of a half-finalized checkpoint is only safe once the marker is known
+	// absent.
+	if marker, err := node.ReadRestoredMarker(dataDir); err != nil {
+		return fmt.Errorf("checking for RESTORED marker: %w", err)
+	} else if marker != nil {
+		return fmt.Errorf("data directory %s already contains a RESTORED marker; refusing to overwrite", dataDir)
 	}
 
-	if hasCheckpoint {
-		return fmt.Errorf("data directory %s already contains checkpoints; refusing to overwrite", dataDir)
+	if err := dal.ValidateFreshRestoreTarget(dataDir); err != nil {
+		return err
 	}
 
 	storageCfg, err := cmdutil.BackupStorageConfigFromFlags(cmd)
@@ -313,20 +318,19 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
 
-	// Write RESTORED marker
-	marker := node.RestoredMarker{
+	// The marker is the restore's commit point — written only after the
+	// checkpoint is in place, atomically.
+	if err := node.WriteRestoredMarker(dataDir, node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
-	}
+	}); err != nil {
+		// Roll the placement back: a checkpoint without its marker would
+		// make the freshness guard refuse a re-run of this command.
+		if rmErr := os.RemoveAll(checkpointPath); rmErr != nil {
+			pterm.Warning.Printfln("Failed to remove checkpoint after marker write failure; delete %s manually before retrying: %v", checkpointPath, rmErr)
+		}
 
-	markerData, err := json.Marshal(marker)
-	if err != nil {
-		return fmt.Errorf("marshaling restored marker: %w", err)
-	}
-
-	markerPath := filepath.Join(dataDir, "RESTORED")
-	if err := os.WriteFile(markerPath, markerData, 0o644); err != nil {
-		return fmt.Errorf("writing restored marker: %w", err)
+		return err
 	}
 
 	// Remove staging directory

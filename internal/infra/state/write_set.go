@@ -585,7 +585,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// SubPLReversions (0x01)
 	for _, dw := range dirtyWords {
 		word := b.fsm.Registry.Reversions[dw.ledgerName].Word(dw.wordIndex)
-		if err := saveReversionWord(batch, dw.ledgerName, dw.wordIndex, word); err != nil {
+		if err := SaveReversionWord(batch, dw.ledgerName, dw.wordIndex, word); err != nil {
 			return fmt.Errorf("saving reversion word for %q: %w", dw.ledgerName, err)
 		}
 	}
@@ -811,7 +811,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
 		delete(b.fsm.Registry.Reversions, ledgerName)
 
-		if err := deleteReversionsByLedger(batch, ledgerName); err != nil {
+		if err := DeleteReversionsByLedger(batch, ledgerName); err != nil {
 			return fmt.Errorf("deleting reversions for %q: %w", ledgerName, err)
 		}
 	}

@@ -661,7 +661,7 @@ func (*PreviewRestoreRequest) Descriptor() ([]byte, []int) {
 
 type PreviewRestoreResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	LastAppliedIndex     uint64                 `protobuf:"fixed64,1,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`             // Last Raft index applied
+	LastAppliedIndex     uint64                 `protobuf:"fixed64,1,opt,name=last_applied_index,json=lastAppliedIndex,proto3" json:"last_applied_index,omitempty"`             // Staged checkpoint's applied index, pre-preparation (may be 0 for a genesis checkpoint; finalize preserves it as the restore genesis boundary, 0 falling back to 1)
 	LastAppliedTimestamp uint64                 `protobuf:"fixed64,2,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // Last applied timestamp (HLC microseconds)
 	LastSequence         uint64                 `protobuf:"fixed64,3,opt,name=last_sequence,json=lastSequence,proto3" json:"last_sequence,omitempty"`                           // Last log sequence number
 	LedgerCount          uint32                 `protobuf:"varint,4,opt,name=ledger_count,json=ledgerCount,proto3" json:"ledger_count,omitempty"`                               // Number of ledgers in the backup

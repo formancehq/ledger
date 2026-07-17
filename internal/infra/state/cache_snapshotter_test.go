@@ -64,7 +64,7 @@ func persistToStore(s *CacheSnapshotter, sessions dal.WriteSessionFactory) error
 
 	for ledger, bs := range s.registry.Reversions {
 		for i := range bs.WordCount() {
-			if err := saveReversionWord(batch, ledger, i, bs.Word(i)); err != nil {
+			if err := SaveReversionWord(batch, ledger, i, bs.Word(i)); err != nil {
 				return fmt.Errorf("saving reversion word for %q: %w", ledger, err)
 			}
 		}
@@ -294,6 +294,34 @@ func TestCacheSnapshotter_RestoreFromEmptyStore(t *testing.T) {
 
 	// RestoreFromStore on an empty Pebble should succeed silently
 	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+}
+
+// TestCacheSnapshotter_RestoreRealignsGenerationWhenMetaAbsent pins the
+// restored-store boot: PrepareForBackup preserves the applied index as the
+// genesis boundary but wipes the cache zone, so RestoreFromStore finds no
+// generation meta while the applied index sits far past generation 0. The
+// restore must realign the in-memory generation to that horizon — left at 0,
+// admission's CheckCache would see Gen(appliedIndex+1) as 2+ generations
+// ahead and classify proposals as CacheUnreachable until the first applied
+// entry (the election no-op) rotates the generation forward.
+func TestCacheSnapshotter_RestoreRealignsGenerationWhenMetaAbsent(t *testing.T) {
+	t.Parallel()
+
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, nil)
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, SetAppliedIndex(batch, 5000))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+
+	// The harness threshold is 1000 (newTestCacheSnapshotter): Gen(5000) = 4,
+	// whose canonical boundary is genEndIndex(3) = 4000.
+	require.Equal(t, uint64(4), registry.Cache.CurrentGeneration(),
+		"generation must realign to the preserved applied horizon")
+	require.Equal(t, uint64(4000), registry.Cache.BaseIndex.Gen0,
+		"gen0 base must sit at the canonical boundary of the realigned generation")
+	require.Equal(t, uint64(0), registry.Cache.BaseIndex.Gen1)
 }
 
 func TestCacheSnapshotter_PersistAndRestoreWithBloomFilters(t *testing.T) {

@@ -96,12 +96,12 @@ Value: "production"
 
 Track whether a transaction has been reverted using an **in-memory bitset** (`ReversionBitset`).
 
-Unlike other attributes, reversions are **not** stored as Pebble attributes under zone `0x01`. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted. Reversion words are persisted to Pebble under zone `0x03` (Per-Ledger) with key format `[0x03][0x01][ledgerID BE 4B][wordIndex BE 8 bytes]` via the `SaveReversionWord` function in `internal/infra/state/batch.go`.
+Unlike other attributes, reversions are **not** stored as Pebble attributes under zone `0x01`. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted. Reversion words are persisted to Pebble under zone `0x03` (Per-Ledger) with key format `[0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes]` via the `SaveReversionWord` function in `internal/infra/state/batch.go`.
 
 | Property | Description |
 |----------|-------------|
-| **In-memory** | `map[uint32]*bitset.Bitset` -- one bitset per ledger (from `internal/pkg/bitset/bitset.go`) |
-| **Pebble persistence** | Per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`), key: `[0x03][0x01][ledgerID BE 4B][wordIndex BE 8]`, value: `[uint64 LE 8]` |
+| **In-memory** | `map[string]*bitset.Bitset` -- one bitset per ledger, keyed by ledger name (from `internal/pkg/bitset/bitset.go`) |
+| **Pebble persistence** | Per-word in zone `0x03` (`ZonePerLedger` + `SubPLReversions`), key: `[0x03][0x01][ledgerName padded 64B][wordIndex BE 8]`, value: `[uint64 LE 8]` |
 | **Lookup** | O(1) -- `words[txID/64] & (1 << (txID%64))` |
 | **Memory** | 1 bit per transaction (vs ~82 bytes per entry with the old KeyStore approach) |
 | **Restore** | Reconstructed from Pebble via `ReadReversions` (`internal/query/reversions.go`) on startup or snapshot restore |

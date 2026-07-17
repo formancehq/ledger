@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -60,6 +61,7 @@ type testEngine struct {
 	idempotency            map[string]*commonpb.IdempotencyKeyValue
 	references             map[string]*commonpb.TransactionReferenceValue
 	transactionStates      map[string]*commonpb.TransactionState
+	reversions             map[string]*bitset.Bitset
 	currentOpenChapter     *commonpb.Chapter
 	closingChapters        []*commonpb.Chapter
 	nextLedgerID           uint32
@@ -99,6 +101,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
 		references:          make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates:   make(map[string]*commonpb.TransactionState),
+		reversions:          make(map[string]*bitset.Bitset),
 		nextChapterID:       1,
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
@@ -181,6 +184,28 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		txState := e.transactionStates[keyStr]
 		_, err := e.attrs.Transaction.Set(batch, []byte(keyStr), txState)
 		require.NoError(e.t, err)
+	}
+
+	// Fold this proposal's reversions into the engine bitsets and persist the
+	// touched words, like WriteSet's dirty-word flush.
+	for keyStr, isReverted := range store.reverted {
+		if !isReverted {
+			continue
+		}
+
+		var tk domain.TransactionKey
+		require.NoError(e.t, tk.Unmarshal([]byte(keyStr)))
+
+		bs := e.reversions[tk.LedgerName]
+		if bs == nil {
+			bs = &bitset.Bitset{}
+			e.reversions[tk.LedgerName] = bs
+		}
+
+		bs.Set(tk.ID)
+
+		wordIndex := tk.ID / 64
+		require.NoError(e.t, state.SaveReversionWord(batch, tk.LedgerName, wordIndex, bs.Word(wordIndex)))
 	}
 
 	// Write ledger info
@@ -349,7 +374,8 @@ type scopeImpl struct {
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
 	modifiedTxStates map[string]struct{}
-	// In-memory reverted status (bitset-like, not persisted to Pebble)
+	// Reversions marked by this proposal; folded into the engine's per-ledger
+	// bitsets and persisted as reversion words at commit, like WriteSet does.
 	reverted map[string]bool
 }
 
@@ -539,7 +565,15 @@ func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Ind
 }
 
 func (s *scopeImpl) GetReverted(key domain.TransactionKey) (bool, error) {
-	return s.reverted[string(key.Bytes())], nil
+	if s.reverted[string(key.Bytes())] {
+		return true, nil
+	}
+
+	if bs := s.engine.reversions[key.LedgerName]; bs != nil {
+		return bs.Test(key.ID), nil
+	}
+
+	return false, nil
 }
 
 func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
