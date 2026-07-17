@@ -540,11 +540,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, hasArchivedChapters, baselineReferencesAvailable, baselineChainStateAvailable, callback)
 
-						// Accumulate the LedgerLog.PurgedVolumes side of the
-						// stored projection while we have the log in hand;
-						// AppliedProposal.TransientVolumes is added in a
-						// single pass below.
+						// Accumulate the LedgerLog eviction lists (draining
+						// = PurgedVolumes, pure ephemeral = EphemeralVolumes)
+						// into the stored projection while we have the log
+						// in hand; AppliedProposal.TransientVolumes is added
+						// in a single pass below. Both eviction lists share
+						// the same "excluded from normal state" semantics
+						// — the split exists to compact log payloads on
+						// ephemeral-heavy workloads (EN-1422).
 						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
+							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+						}
+						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
 							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 						}
 					}
@@ -5216,9 +5223,11 @@ func trackTxID(m map[string]*bitset.Bitset, ledgerName string, txID uint64) {
 
 // advanceExpectedBoundaries mirrors the live apply's boundary advancement for
 // one replayed ledger log: NextLogId past the log id, and — for transaction
-// logs — NextTransactionId past the created id plus the posting / revert
-// counters. Mirror fill-gap advances and numscript counts ride on the order,
-// not the log; collectAuditOrderBoundaryEffects folds those in.
+// logs — NextTransactionId past the created id. Mirror fill-gap advances ride
+// on the order, not the log; collectAuditOrderBoundaryEffects folds those in.
+// The per-ledger usage counters (posting / revert / numscript / volume /
+// metadata / reference) live in the usagestore peer secondary store and are
+// out of main-store checker scope, so they are not advanced here.
 func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *commonpb.LedgerLog) {
 	b, ok := expected[ledger]
 	if !ok {
@@ -5230,11 +5239,7 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 		b.NextLogId = next
 	}
 
-	var (
-		txID     uint64
-		postings int
-		isRevert bool
-	)
+	var txID uint64
 
 	switch d := log.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
@@ -5243,14 +5248,14 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 			return
 		}
 
-		txID, postings = tx.GetId(), len(tx.GetPostings())
+		txID = tx.GetId()
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		revertTx := d.RevertedTransaction.GetRevertTransaction()
 		if revertTx == nil {
 			return
 		}
 
-		txID, postings, isRevert = revertTx.GetId(), len(revertTx.GetPostings()), true
+		txID = revertTx.GetId()
 	default:
 		return
 	}
@@ -5258,21 +5263,15 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 	if next := txID + 1; next > b.GetNextTransactionId() {
 		b.NextTransactionId = next
 	}
-
-	b.PostingCount += uint64(postings)
-
-	if isRevert {
-		b.RevertCount++
-	}
 }
 
 // collectAuditOrderBoundaryEffects iterates the post-archive AuditItem rows
-// and folds the order-level boundary effects (mirror fill-gap advances,
-// numscript executions) into the expected boundaries — the same fold
-// backup.RebuildDelta performs on restore. Items with log_sequence 0 (failed
-// proposals, idempotent replays) or at/below the archive boundary contribute
-// nothing; effects for ledgers without an expectation (deleted, or flagged
-// UNKNOWN_LEDGER during replay) are skipped.
+// and folds the order-level boundary effects (mirror fill-gap advances) into
+// the expected boundaries — the same fold backup.RebuildDelta performs on
+// restore. Items with log_sequence 0 (failed proposals, idempotent replays) or
+// at/below the archive boundary contribute nothing; effects for ledgers
+// without an expectation (deleted, or flagged UNKNOWN_LEDGER during replay)
+// are skipped.
 func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, archiveEndSeq uint64, expected map[string]*raftcmdpb.LedgerBoundaries) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
@@ -5318,44 +5317,21 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, arch
 				b.NextTransactionId = next
 			}
 		}
-
-		if effects.IsNumscript {
-			b.NumscriptExecutionCount++
-		}
 	}
 
 	return iter.Error()
 }
 
-// countLedgerAttributeKeys counts the stored keys under a ledger's canonical
-// prefix in the attribute zone.
-func countLedgerAttributeKeys[V proto.Message](attr *attributes.Attribute[V], reader dal.PebbleReader, ledger string) (uint64, error) {
-	si, err := attr.NewStreamingIter(reader, domain.LedgerScopedPrefix(ledger))
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() { _ = si.Close() }()
-
-	var count uint64
-	for si.Next() {
-		count++
-	}
-
-	return count, si.Err()
-}
-
 // compareBoundaries verifies each ledger's stored LedgerBoundaries against the
-// checker's re-derivation. The id fields and replay-derivable counters
-// (NextTransactionId, NextLogId, PostingCount, RevertCount,
-// NumscriptExecutionCount) come from the replayed logs plus the chain-bound
-// audit-order effects, baseline-seeded under archiving. The net key counters
-// (VolumeCount, MetadataCount, ReferenceCount) are compared against a recount
-// of the stored attribute rows they summarize — the rows themselves are
-// verified entry-by-entry by compareVolumes / compareMetadata /
-// compareReferences, so the verification chain is rows↔audit, counter↔rows.
-// EphemeralEvictedCount / TransientUsedCount are informational and excluded
-// (cf. compareIndexes' BuildStatus exclusion).
+// checker's re-derivation. Only the id fields (NextTransactionId, NextLogId)
+// are verified here — they come from the replayed logs plus the chain-bound
+// audit-order effects, baseline-seeded under archiving; the mirror high-water
+// (last_mirror_v2_log_id) is verified separately by compareMirrorV2LogID. The
+// per-ledger usage counters (PostingCount, RevertCount,
+// NumscriptExecutionCount, VolumeCount, MetadataCount, ReferenceCount) no
+// longer live on LedgerBoundaries — they moved to the usagestore peer
+// secondary store and are out of main-store checker scope by construction
+// (their integrity is a peer-store rebuild-health concern, not invariant #8).
 func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*servicepb.CheckStoreEvent)) error {
 	stored := make(map[string]*raftcmdpb.LedgerBoundaries)
 
@@ -5400,21 +5376,6 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 			continue
 		}
 
-		volumeRows, err := countLedgerAttributeKeys(c.attrs.Volume, reader, name)
-		if err != nil {
-			return fmt.Errorf("counting stored volumes for ledger %q: %w", name, err)
-		}
-
-		metadataRows, err := countLedgerAttributeKeys(c.attrs.Metadata, reader, name)
-		if err != nil {
-			return fmt.Errorf("counting stored metadata for ledger %q: %w", name, err)
-		}
-
-		referenceRows, err := countLedgerAttributeKeys(c.attrs.References, reader, name)
-		if err != nil {
-			return fmt.Errorf("counting stored references for ledger %q: %w", name, err)
-		}
-
 		fields := []struct {
 			field    string
 			expected uint64
@@ -5422,12 +5383,6 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 		}{
 			{"nextTransactionId", exp.GetNextTransactionId(), st.GetNextTransactionId()},
 			{"nextLogId", exp.GetNextLogId(), st.GetNextLogId()},
-			{"postingCount", exp.GetPostingCount(), st.GetPostingCount()},
-			{"revertCount", exp.GetRevertCount(), st.GetRevertCount()},
-			{"numscriptExecutionCount", exp.GetNumscriptExecutionCount(), st.GetNumscriptExecutionCount()},
-			{"volumeCount", volumeRows, st.GetVolumeCount()},
-			{"metadataCount", metadataRows, st.GetMetadataCount()},
-			{"referenceCount", referenceRows, st.GetReferenceCount()},
 		}
 
 		for _, f := range fields {

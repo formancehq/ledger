@@ -443,20 +443,20 @@ func TestBuildPurgedByLog_KeepsAssetDimension(t *testing.T) {
 	account := "ephemeral:multi"
 
 	// purged set contains only (account, USD) — the EUR cell is kept.
-	purged := map[purgedVolumeKey]struct{}{
+	purged := map[volumeSetKey]struct{}{
 		{Ledger: ledger, Account: account, Asset: "USD"}: {},
 	}
 
-	// Order 0 touches (account, EUR) — must NOT appear in purgedByLog.
-	// Order 1 touches (account, USD) — must appear in purgedByLog[1].
+	// Order 0 touches (account, EUR) — must NOT appear in the output.
+	// Order 1 touches (account, USD) — must appear in out[1].
 	perOrderVolumeKeys := [][]domain.VolumeKey{
 		{{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Asset: "EUR"}},
 		{{AccountKey: domain.AccountKey{LedgerName: ledger, Account: account}, Asset: "USD"}},
 	}
 
-	out := buildPurgedByLog(perOrderVolumeKeys, purged)
+	out := buildTouchedByLog(perOrderVolumeKeys, purged)
 	require.Len(t, out, 2)
-	require.Empty(t, out[0], "order touching only kept assets must not be flagged purged")
+	require.Empty(t, out[0], "order touching only kept assets must not appear in the touched set")
 	require.Len(t, out[1], 1)
 	require.Equal(t, account, out[1][0].GetAccount())
 	require.Equal(t, "USD", out[1][0].GetAsset())

@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
-	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -431,19 +430,10 @@ func RebuildDelta(
 		return fmt.Errorf("applying audit order effects to boundaries: %w", err)
 	}
 
-	// Net attribute counts (VolumeCount, MetadataCount, ReferenceCount) are
-	// read from the committed 0xF1 state, so this runs after the attribute
-	// commit. The boundaries themselves are then written in their own batch.
-	countHandle, err := store.NewDirectReadHandle()
-	if err != nil {
-		return fmt.Errorf("opening read handle for boundary counts: %w", err)
-	}
-	defer func() { _ = countHandle.Close() }()
-
-	if err := writer.countNetAttributes(countHandle); err != nil {
-		return fmt.Errorf("counting net attributes for boundaries: %w", err)
-	}
-
+	// The rebuilt boundaries (NextTransactionId / NextLogId / mirror
+	// high-water) are written in their own batch after the attribute commit.
+	// The per-ledger usage counters live in the usagestore peer secondary
+	// store and are rebuilt there, so they are not derived or written here.
 	writer.batch = store.OpenWriteSession()
 
 	if err := writer.flushBoundaries(); err != nil {
@@ -718,10 +708,10 @@ type attributeReplayWriter struct {
 
 	// LedgerBoundaries per touched ledger. The apply path preloads boundaries
 	// from the SubAttrBoundary attribute, which the log replay does not write
-	// per-entry: NextTransactionId / NextLogId and the per-transaction counters
-	// accumulate here, seeded from the checkpoint on first touch via
-	// readHandle, and are flushed in their own batch after the attribute
-	// commit (net counts are derived from the committed 0xF1 state).
+	// per-entry: NextTransactionId / NextLogId accumulate here, seeded from the
+	// checkpoint on first touch via readHandle, and are flushed in their own
+	// batch after the attribute commit. The per-ledger usage counters live in
+	// the usagestore peer secondary store, not here.
 	boundaries map[string]*raftcmdpb.LedgerBoundaries
 	readHandle dal.PebbleReader
 
@@ -738,14 +728,13 @@ type attributeReplayWriter struct {
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
 // stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
-// keeps only the original v2 id) and NumscriptExecutionCount (CreatedTransaction
-// logs record the resulting postings, not the content source). Both live on the
-// order itself, which AuditItem.serialized_order preserves — bound into the
-// audit hash chain and shipped by the incremental export's auditItem segments.
+// keeps only the original v2 id). These live on the order itself, which
+// AuditItem.serialized_order preserves — bound into the audit hash chain and
+// shipped by the incremental export's auditItem segments.
 //
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
-// nothing. See replay.OrderEffects for why script detection is exact.
+// nothing.
 func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, fromLogSeq, fromAuditSeq uint64) error {
 	lower := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
@@ -805,10 +794,6 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			if next := id + 1; next > b.GetNextTransactionId() {
 				b.NextTransactionId = next
 			}
-		}
-
-		if effects.IsNumscript {
-			b.NumscriptExecutionCount++
 		}
 	}
 
@@ -924,11 +909,12 @@ func (w *attributeReplayWriter) advanceLogID(ledgerName string, logID uint64) er
 	return nil
 }
 
-// recordTransactionBoundary advances a ledger's boundaries for one created
-// transaction: NextTransactionId past its id, PostingCount by its postings, and
-// RevertCount when it reverts another (revert reversals carry revertsTransaction
-// and flow through CreateTransaction like any other tx).
-func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, postingCount int, revertsTransaction uint64) error {
+// recordTransactionBoundary advances a ledger's NextTransactionId past a created
+// transaction's id (revert reversals carry revertsTransaction and flow through
+// CreateTransaction like any other tx). The per-ledger usage counters
+// (PostingCount, RevertCount) live in the usagestore peer secondary store and
+// are rebuilt there, so they are not advanced here.
+func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte) error {
 	var tk domain.TransactionKey
 	if err := tk.Unmarshal(canonicalKey); err != nil {
 		return fmt.Errorf("parsing transaction key for boundaries: %w", err)
@@ -943,68 +929,7 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte, p
 		b.NextTransactionId = next
 	}
 
-	b.PostingCount += uint64(postingCount)
-
-	if revertsTransaction != 0 {
-		b.RevertCount++
-	}
-
 	return nil
-}
-
-// countNetAttributes sets VolumeCount, MetadataCount and ReferenceCount for
-// every touched ledger to the number of persisted keys in the committed 0xF1
-// state. These are net (last-value) counts, so counting the final keys is
-// exact: ephemeral and transient volumes have already been purged, matching the
-// live counters.
-//
-// NextTransactionId, NextLogId, PostingCount, RevertCount accumulate during
-// the log replay; NumscriptExecutionCount and the mirror fill-gap advances come
-// from applyAuditOrderEffects. EphemeralEvictedCount / TransientUsedCount are
-// carried from the checkpoint unchanged.
-func (w *attributeReplayWriter) countNetAttributes(reader dal.PebbleReader) error {
-	for name, b := range w.boundaries {
-		prefix := domain.LedgerScopedPrefix(name)
-
-		volumeCount, err := countAttributeKeys(w.volume, reader, prefix)
-		if err != nil {
-			return fmt.Errorf("counting volumes for ledger %q: %w", name, err)
-		}
-
-		metadataCount, err := countAttributeKeys(w.metadata, reader, prefix)
-		if err != nil {
-			return fmt.Errorf("counting metadata for ledger %q: %w", name, err)
-		}
-
-		referenceCount, err := countAttributeKeys(w.references, reader, prefix)
-		if err != nil {
-			return fmt.Errorf("counting references for ledger %q: %w", name, err)
-		}
-
-		b.VolumeCount = volumeCount
-		b.MetadataCount = metadataCount
-		b.ReferenceCount = referenceCount
-	}
-
-	return nil
-}
-
-// countAttributeKeys counts the persisted keys under a canonical prefix (the
-// fixed-width ledger name) in the 0xF1 attribute zone.
-func countAttributeKeys[V proto.Message](attr *attributes.Attribute[V], reader dal.PebbleReader, prefix []byte) (uint64, error) {
-	si, err := attr.NewStreamingIter(reader, prefix)
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() { _ = si.Close() }()
-
-	var count uint64
-	for si.Next() {
-		count++
-	}
-
-	return count, si.Err()
 }
 
 // flushReversions writes the reversion bitset words of every ledger the
@@ -1160,7 +1085,7 @@ func (w *attributeReplayWriter) getTx(canonicalKey []byte) (*commonpb.Transactio
 }
 
 func (w *attributeReplayWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
-	if err := w.recordTransactionBoundary(canonicalKey, len(postings), revertsTransaction); err != nil {
+	if err := w.recordTransactionBoundary(canonicalKey); err != nil {
 		return err
 	}
 

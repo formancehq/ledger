@@ -730,14 +730,19 @@ message CreatedLogOrReference {
 message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
-  fixed64 volume_count = 3;
-  fixed64 metadata_count = 4;
-  fixed64 reference_count = 5;
-  fixed64 posting_count = 6;
-  fixed64 ephemeral_evicted_count = 7;
-  fixed64 transient_used_count = 8;
-  fixed64 revert_count = 9;
-  fixed64 numscript_execution_count = 10;
+
+  // Fields 3-10 held per-ledger counters (volume_count, metadata_count,
+  // reference_count, posting_count, ephemeral_evicted_count,
+  // transient_used_count, revert_count, numscript_execution_count) that
+  // migrated to the usagestore projection (EN-1420 / EN-1422). They are
+  // reserved — never reuse these tags: the vtprotobuf unmarshaller retains
+  // unknown-field bytes and re-emits them on MarshalVT, so an old persisted
+  // Pebble record carrying e.g. volume_count at tag 3 would be mis-decoded
+  // as whatever new field claimed tag 3.
+  reserved 3, 4, 5, 6, 7, 8, 9, 10;
+  reserved "volume_count", "metadata_count", "reference_count",
+           "posting_count", "ephemeral_evicted_count", "transient_used_count",
+           "revert_count", "numscript_execution_count";
   // Highest source (v2) log ID already applied to this mirror ledger. Gates
   // idempotent replay: a MirrorIngest whose v2LogId is <= this value is a
   // deterministic no-op on the FSM apply path (see processMirrorIngest).

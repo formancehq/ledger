@@ -114,7 +114,8 @@ func newReceiptTestController(t *testing.T, store *dal.Store, attrs *attributes.
 	logger := logging.FromContext(logging.TestingContext())
 	meter := noop.NewMeterProvider().Meter("test")
 
-	return NewDefaultController(nil, store, logger, attrs, nil, nil, signer, meter)
+	// args: admission, store, logger, attrs, readStore, usageStore, coldReader, receiptSigner, meter
+	return NewDefaultController(nil, store, logger, attrs, nil, nil, nil, signer, meter)
 }
 
 // GetTransaction on the local path must return a NON-EMPTY receipt when a signer

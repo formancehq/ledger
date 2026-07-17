@@ -79,6 +79,13 @@ type Controller interface {
 	GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error)
 	ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error)
 
+	// GetTemplateUsage returns the invocation counter and last-used timestamp
+	// for a Numscript template. Reads from the usagebuilder side-store, so
+	// values may lag the live FSM by up to one tick interval. Returns a
+	// zero-valued TemplateUsage when the template has never been invoked (or
+	// the usagebuilder has not caught up to any of its invocations yet).
+	GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error)
+
 	// Cluster-wide config operations (read-only)
 	GetChapterSchedule(ctx context.Context) (string, error)
 	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)

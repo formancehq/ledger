@@ -288,7 +288,16 @@ paths:
   /v3/{ledgerName}/stats:
     get:
       summary: Get ledger statistics
-      description: Returns aggregate statistics (account count, transaction count) for a ledger. Requires `ledger:read` scope.
+      description: >-
+        Returns aggregate usage statistics (transaction, volume, reference, posting, log, revert
+        and Numscript-execution counts, plus ephemeral-evicted and transient-used volume tallies)
+        for a ledger. Requires `ledger:read` scope.
+        Note: for checkpoint-scoped (historical) reads, only `transactionCount` and `logCount` are
+        checkpoint-consistent; the usage-derived counters (`postingCount`, `revertCount`,
+        `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`, `transientUsedCount`,
+        `volumeCount`) are sourced from the live usagestore projection, which is not checkpoint-aware,
+        and are returned as `0` at a checkpoint rather than a live value — treat `0` on a checkpoint
+        read as "not available at this checkpoint".
       operationId: getLedgerStats
       tags:
         - Ledgers
@@ -1678,6 +1687,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /v3/{ledgerName}/numscripts/{name}/usage:
+    get:
+      summary: Get template usage
+      description: |
+        Returns the invocation counter and last-used timestamp for a Numscript template. Values are
+        materialised asynchronously by the `usagebuilder` subsystem from the FSM audit chain — expect
+        up to one usagebuilder tick interval (~100 ms) of lag behind the live FSM. A never-invoked
+        template returns a zero-valued response (not 404), so clients handle "never used" uniformly.
+
+        On existing ledgers whose audit chain has been partially archived to cold storage, only
+        invocations still reachable in Pebble are counted.
+      operationId: getNumscriptUsage
+      tags:
+        - Numscript Library
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the numscript template
+      responses:
+        '200':
+          description: Template usage retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTemplateUsageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -3619,19 +3672,61 @@ components:
     LedgerStats:
       type: object
       required:
-        - accountCount
         - transactionCount
+        - volumeCount
+        - referenceCount
+        - postingCount
+        - logCount
+        - ephemeralEvictedCount
+        - transientUsedCount
+        - revertCount
+        - numscriptExecutionCount
       properties:
-        accountCount:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Number of accounts in the ledger
         transactionCount:
           type: integer
           format: uint64
           minimum: 0
           description: Number of transactions in the ledger
+        volumeCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of persisted (account, asset, color) volume rows
+        referenceCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of transaction references registered in the ledger
+        postingCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Total number of postings across all transactions
+        logCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of log entries in the ledger
+        ephemeralEvictedCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of ephemeral/draining volumes evicted from storage at commit
+        transientUsedCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of transient volumes used across proposals
+        revertCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of reverted transactions in the ledger
+        numscriptExecutionCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of Numscript executions in the ledger
 
     Account:
       type: object
@@ -4638,6 +4733,33 @@ components:
             $ref: '#/components/schemas/NumscriptInfo'
           description: List of all numscripts
           nullable: true
+
+    TemplateUsage:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Number of times the template has been invoked. `0` means never invoked (or the
+            usagebuilder has not yet caught up to any invocation on this replica).
+        lastUsed:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp of the most recent invocation (ISO 8601). Absent when `count` is 0.
+
+    GetTemplateUsageResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/TemplateUsage'
 
     ChartOfAccounts:
       type: object

@@ -56,6 +56,7 @@ const (
 	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
 	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
 	BucketService_ListNumscripts_FullMethodName          = "/ledger.BucketService/ListNumscripts"
+	BucketService_GetTemplateUsage_FullMethodName        = "/ledger.BucketService/GetTemplateUsage"
 	BucketService_InspectIndex_FullMethodName            = "/ledger.BucketService/InspectIndex"
 	BucketService_Barrier_FullMethodName                 = "/ledger.BucketService/Barrier"
 )
@@ -138,6 +139,10 @@ type BucketServiceClient interface {
 	GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)
+	// GetTemplateUsage returns per-template invocation usage populated by the
+	// usagebuilder subsystem. Eventually consistent — may lag the live FSM
+	// by up to one usagebuilder tick interval.
+	GetTemplateUsage(ctx context.Context, in *GetTemplateUsageRequest, opts ...grpc.CallOption) (*commonpb.TemplateUsage, error)
 	// InspectIndex scans a metadata index and returns distinct values, facets, or a summary
 	InspectIndex(ctx context.Context, in *InspectIndexRequest, opts ...grpc.CallOption) (*InspectIndexResponse, error)
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
@@ -612,6 +617,16 @@ func (c *bucketServiceClient) ListNumscripts(ctx context.Context, in *ListNumscr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListNumscriptsClient = grpc.ServerStreamingClient[commonpb.NumscriptInfo]
 
+func (c *bucketServiceClient) GetTemplateUsage(ctx context.Context, in *GetTemplateUsageRequest, opts ...grpc.CallOption) (*commonpb.TemplateUsage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(commonpb.TemplateUsage)
+	err := c.cc.Invoke(ctx, BucketService_GetTemplateUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) InspectIndex(ctx context.Context, in *InspectIndexRequest, opts ...grpc.CallOption) (*InspectIndexResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(InspectIndexResponse)
@@ -710,6 +725,10 @@ type BucketServiceServer interface {
 	GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
 	ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error
+	// GetTemplateUsage returns per-template invocation usage populated by the
+	// usagebuilder subsystem. Eventually consistent — may lag the live FSM
+	// by up to one usagebuilder tick interval.
+	GetTemplateUsage(context.Context, *GetTemplateUsageRequest) (*commonpb.TemplateUsage, error)
 	// InspectIndex scans a metadata index and returns distinct values, facets, or a summary
 	InspectIndex(context.Context, *InspectIndexRequest) (*InspectIndexResponse, error)
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
@@ -830,6 +849,9 @@ func (UnimplementedBucketServiceServer) GetNumscript(context.Context, *GetNumscr
 }
 func (UnimplementedBucketServiceServer) ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error {
 	return status.Error(codes.Unimplemented, "method ListNumscripts not implemented")
+}
+func (UnimplementedBucketServiceServer) GetTemplateUsage(context.Context, *GetTemplateUsageRequest) (*commonpb.TemplateUsage, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTemplateUsage not implemented")
 }
 func (UnimplementedBucketServiceServer) InspectIndex(context.Context, *InspectIndexRequest) (*InspectIndexResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectIndex not implemented")
@@ -1404,6 +1426,24 @@ func _BucketService_ListNumscripts_Handler(srv interface{}, stream grpc.ServerSt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListNumscriptsServer = grpc.ServerStreamingServer[commonpb.NumscriptInfo]
 
+func _BucketService_GetTemplateUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTemplateUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetTemplateUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetTemplateUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetTemplateUsage(ctx, req.(*GetTemplateUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_InspectIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(InspectIndexRequest)
 	if err := dec(in); err != nil {
@@ -1538,6 +1578,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetNumscript",
 			Handler:    _BucketService_GetNumscript_Handler,
+		},
+		{
+			MethodName: "GetTemplateUsage",
+			Handler:    _BucketService_GetTemplateUsage_Handler,
 		},
 		{
 			MethodName: "InspectIndex",

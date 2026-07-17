@@ -10,7 +10,6 @@ import (
 type ledgerStatsJSON struct {
 	TransactionCount        uint64 `json:"transactionCount"`
 	VolumeCount             uint64 `json:"volumeCount"`
-	MetadataCount           uint64 `json:"metadataCount"`
 	ReferenceCount          uint64 `json:"referenceCount"`
 	PostingCount            uint64 `json:"postingCount"`
 	LogCount                uint64 `json:"logCount"`
@@ -24,7 +23,6 @@ func toLedgerStatsJSON(stats *commonpb.LedgerStats) *ledgerStatsJSON {
 	return &ledgerStatsJSON{
 		TransactionCount:        stats.GetTransactionCount(),
 		VolumeCount:             stats.GetVolumeCount(),
-		MetadataCount:           stats.GetMetadataCount(),
 		ReferenceCount:          stats.GetReferenceCount(),
 		PostingCount:            stats.GetPostingCount(),
 		LogCount:                stats.GetLogCount(),

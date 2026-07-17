@@ -154,16 +154,16 @@ Per-ledger boundaries use the `LedgerBoundaries` protobuf message from `raft_cmd
 message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
-  fixed64 volume_count = 3;
-  fixed64 metadata_count = 4;
-  fixed64 reference_count = 5;
-  fixed64 posting_count = 6;
-  fixed64 ephemeral_evicted_count = 7;
-  fixed64 transient_used_count = 8;
-  fixed64 revert_count = 9;
-  fixed64 numscript_execution_count = 10;
 }
 ```
+
+> Every per-ledger counter — postings, reverts, numscript executions, references, ephemeral evictions, transient volumes, **and volumes** — lives in the usagebuilder side-store (`internal/application/usagebuilder`, `internal/storage/usagestore`). All counters are derived from the audit chain: event counts (posting / revert / numscript-exec / reference) come from replaying orders; transient counts come from `AppliedProposal.TransientVolumes`; ephemeral and volume counts come from three DISJOINT per-log lists that the FSM populates on every `LedgerLog`:
+>
+> - `purged_volumes` — draining evictions (was non-zero in Pebble, now zero, entry deleted at commit)
+> - `new_kept_volumes` — persistent-new (created + survives past commit)
+> - `ephemeral_volumes` — pure ephemeral (created + evicted same log)
+>
+> Volume count delta per log = `len(new_kept_volumes) − len(purged_volumes)`. Pure ephemeral tuples contribute +0 (was zero, is zero) and are tracked only for the index builder's skip logic and for the ephemeral-eviction counter. Splitting ephemeral out of `purged_volumes` avoids the 2× byte cost that a naive union-encoding would pay on ephemeral-heavy workloads. `LedgerBoundaries` carries only the two ID generators that drive apply-time allocation decisions. `metadata_count` is intentionally not exposed — the admission preload no longer injects old metadata values so cardinality cannot be reliably derived at the FSM level; it will come back on a sound foundation later.
 
 > **Note:** The `State` / `LedgerState` proto messages sometimes shown in older documentation are conceptual models, not actual proto definitions. The real FSM state is spread across the `Machine` struct fields and its `StateRegistry`.
 

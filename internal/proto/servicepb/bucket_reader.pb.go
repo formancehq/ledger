@@ -3040,6 +3040,78 @@ func NewListNumscriptsRequestListReader(s []*ListNumscriptsRequest) ListNumscrip
 	return listNumscriptsRequestListReadonly(s)
 }
 
+// GetTemplateUsageRequestReader provides read-only access to GetTemplateUsageRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetTemplateUsageRequestReader interface {
+	GetLedger() string
+	GetName() string
+	Mutate() *GetTemplateUsageRequest
+}
+
+type getTemplateUsageRequestReadonly GetTemplateUsageRequest
+
+func (r *getTemplateUsageRequestReadonly) GetLedger() string {
+	return (*GetTemplateUsageRequest)(r).GetLedger()
+}
+
+func (r *getTemplateUsageRequestReadonly) GetName() string {
+	return (*GetTemplateUsageRequest)(r).GetName()
+}
+
+func (r *getTemplateUsageRequestReadonly) Mutate() *GetTemplateUsageRequest {
+	return (*GetTemplateUsageRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetTemplateUsageRequest.
+func (m *GetTemplateUsageRequest) AsReader() GetTemplateUsageRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getTemplateUsageRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetTemplateUsageRequest.
+func (m *GetTemplateUsageRequest) Mutate() *GetTemplateUsageRequest {
+	return m.CloneVT()
+}
+
+// GetTemplateUsageRequestListReader provides read-only iteration over []*GetTemplateUsageRequest.
+type GetTemplateUsageRequestListReader interface {
+	Len() int
+	Get(i int) GetTemplateUsageRequestReader
+	Range(yield func(int, GetTemplateUsageRequestReader) bool)
+}
+
+type getTemplateUsageRequestListReadonly []*GetTemplateUsageRequest
+
+func (l getTemplateUsageRequestListReadonly) Len() int { return len(l) }
+
+func (l getTemplateUsageRequestListReadonly) Get(i int) GetTemplateUsageRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getTemplateUsageRequestListReadonly) Range(yield func(int, GetTemplateUsageRequestReader) bool) {
+	for i, v := range l {
+		var r GetTemplateUsageRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetTemplateUsageRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetTemplateUsageRequestListReader(s []*GetTemplateUsageRequest) GetTemplateUsageRequestListReader {
+	return getTemplateUsageRequestListReadonly(s)
+}
+
 // ScriptReferenceReader provides read-only access to ScriptReference.
 // Call Mutate() to obtain a mutable clone.
 type ScriptReferenceReader interface {

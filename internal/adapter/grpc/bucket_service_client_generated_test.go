@@ -1098,6 +1098,50 @@ func (c *MockBucketServiceClientGetSecondaryMetricsCall) DoAndReturn(f func(cont
 	return c
 }
 
+// GetTemplateUsage mocks base method.
+func (m *MockBucketServiceClient) GetTemplateUsage(ctx context.Context, in *servicepb.GetTemplateUsageRequest, opts ...grpc.CallOption) (*commonpb.TemplateUsage, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetTemplateUsage", varargs...)
+	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTemplateUsage indicates an expected call of GetTemplateUsage.
+func (mr *MockBucketServiceClientMockRecorder) GetTemplateUsage(ctx, in any, opts ...any) *MockBucketServiceClientGetTemplateUsageCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTemplateUsage", reflect.TypeOf((*MockBucketServiceClient)(nil).GetTemplateUsage), varargs...)
+	return &MockBucketServiceClientGetTemplateUsageCall{Call: call}
+}
+
+// MockBucketServiceClientGetTemplateUsageCall wrap *gomock.Call
+type MockBucketServiceClientGetTemplateUsageCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetTemplateUsageCall) Return(arg0 *commonpb.TemplateUsage, arg1 error) *MockBucketServiceClientGetTemplateUsageCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetTemplateUsageCall) Do(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*commonpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetTemplateUsageCall) DoAndReturn(f func(context.Context, *servicepb.GetTemplateUsageRequest, ...grpc.CallOption) (*commonpb.TemplateUsage, error)) *MockBucketServiceClientGetTemplateUsageCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetTransaction mocks base method.
 func (m *MockBucketServiceClient) GetTransaction(ctx context.Context, in *servicepb.GetTransactionRequest, opts ...grpc.CallOption) (*servicepb.GetTransactionResponse, error) {
 	m.ctrl.T.Helper()
