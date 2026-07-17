@@ -238,9 +238,13 @@ func (s *appliedProposalSync) close() error {
 	return nil
 }
 
-// extractPurgedVolumes returns the set of (account, asset) volumes evicted
-// from Pebble at commit by THIS log — the UNION of draining (PurgedVolumes)
-// and pure ephemeral (EphemeralVolumes). Both categories share the same
+// extractPurgedVolumes returns the set of (account, asset, color) volumes
+// evicted from Pebble at commit by THIS log — the UNION of draining
+// (PurgedVolumes) and pure ephemeral (EphemeralVolumes). The color dimension is
+// carried so the key matches the (account, asset, color) tuple isExcluded looks
+// up from each posting — dropping it would leave stale index rows for colored
+// evictions and wrongly exclude uncolored postings sharing the (account, asset).
+// Both categories share the same
 // downstream treatment: their acct->tx mappings must be skipped because
 // the volume entries no longer exist in the attribute store.
 //
@@ -255,10 +259,10 @@ func extractPurgedVolumes(ledgerLog ledgerLogWithPurgedVolumes) map[domain.Accou
 
 	out := make(map[domain.AccountAssetKey]struct{}, len(purged)+len(ephemeral))
 	for _, v := range purged {
-		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset()}] = struct{}{}
+		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset(), Color: v.GetColor()}] = struct{}{}
 	}
 	for _, v := range ephemeral {
-		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset()}] = struct{}{}
+		out[domain.AccountAssetKey{Account: v.GetAccount(), Asset: v.GetAsset(), Color: v.GetColor()}] = struct{}{}
 	}
 
 	return out

@@ -370,8 +370,8 @@ func (b *Builder) dispatchMirrorIngest(
 }
 
 // entryVolumeState is the per-audit-entry deduplication scratchpad. Each set
-// records the (account, asset) tuples already applied to their respective
-// counter for the current audit entry. VolumeCount, CounterEphemeralEvicted
+// records the (account, asset, color) tuples already applied to their
+// respective counter for the current audit entry. VolumeCount, CounterEphemeralEvicted
 // and CounterTransientUsed are per-batch cardinality deltas: a tuple that
 // appears in multiple orders of the same batch (e.g. a shared "bank:main"
 // account touched by three transactions) must contribute at most once to
@@ -384,11 +384,16 @@ type entryVolumeState struct {
 }
 
 // volumeSetKey mirrors state.volumeSetKey — kept local to avoid crossing
-// package boundaries just for a triple of strings.
+// package boundaries just for a tuple of strings. Color is part of the volume
+// identity (volumes are keyed by (account, asset, color) in both the FSM and the
+// proto model), so it MUST be in the dedup key: two color buckets of the same
+// (account, asset) within one audit entry are distinct volumes and each must
+// count once, else VolumeCount / EphemeralEvictedCount undercount colored rows.
 type volumeSetKey struct {
 	ledger  string
 	account string
 	asset   string
+	color   string
 }
 
 func newEntryVolumeState() *entryVolumeState {
@@ -407,7 +412,7 @@ func newEntryVolumeState() *entryVolumeState {
 // of the same batch would be counted N times.
 func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batchState, entry *entryVolumeState) {
 	for _, v := range ann.newKept {
-		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset(), color: v.GetColor()}
 		if _, ok := entry.seenNewKept[k]; ok {
 			continue
 		}
@@ -421,7 +426,7 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 	// event) contribute. The pre-EN-1420 EphemeralEvictedCount tallied
 	// every log-level eviction, not just pure ephemeral tuples.
 	for _, v := range ann.purged {
-		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset(), color: v.GetColor()}
 		if _, ok := entry.seenPurged[k]; ok {
 			continue
 		}
@@ -431,7 +436,7 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 	}
 
 	for _, v := range ann.ephemeral {
-		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset()}
+		k := volumeSetKey{ledger: ledger, account: v.GetAccount(), asset: v.GetAsset(), color: v.GetColor()}
 		if _, ok := entry.seenEphemeral[k]; ok {
 			continue
 		}
