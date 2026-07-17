@@ -6104,7 +6104,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
-	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\"\x8b\a\n" +
+	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
@@ -6118,8 +6118,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x15create_prepared_query\x18\v \x01(\v2\x1e.raft.CreatePreparedQueryOrderH\x00R\x13createPreparedQuery\x12T\n" +
 	"\x15update_prepared_query\x18\f \x01(\v2\x1e.raft.UpdatePreparedQueryOrderH\x00R\x13updatePreparedQuery\x12T\n" +
 	"\x15delete_prepared_query\x18\r \x01(\v2\x1e.raft.DeletePreparedQueryOrderH\x00R\x13deletePreparedQueryB\t\n" +
-	"\apayloadJ\x04\b\n" +
-	"\x10\vJ\x04\b\x0e\x10\x0fR\x10delete_numscriptR\x11restore_numscript\"\xd6\n" +
+	"\apayload\"\xd6\n" +
 	"\n" +
 	"\x11SystemScopedOrder\x12Q\n" +
 	"\x14register_signing_key\x18\x01 \x01(\v2\x1d.raft.RegisterSigningKeyOrderH\x00R\x12registerSigningKey\x12K\n" +

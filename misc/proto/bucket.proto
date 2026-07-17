@@ -256,8 +256,6 @@ message Request {
   // atomic/signed unit. Reserved so it cannot be reintroduced per-request.
   reserved 1;
   reserved "idempotency_key";
-  reserved 28, 38;
-  reserved "delete_numscript", "restore_numscript";
   oneof type {
     LedgerApplyRequest apply = 2;
     CreateLedgerRequest create_ledger = 3;
@@ -465,8 +463,6 @@ message GetNumscriptRequest {
 message ListNumscriptsRequest {
   string ledger = 1;
   common.ListOptions options = 2;
-  reserved 3;
-  reserved "include_deleted";
 }
 
 // ListNumscriptVersionsRequest lists every stored version of a single numscript.

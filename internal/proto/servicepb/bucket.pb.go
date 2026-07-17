@@ -9110,7 +9110,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
-	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xcd\x16\n" +
+	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\x9c\x16\n" +
 	"\aRequest\x122\n" +
 	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
 	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
@@ -9147,7 +9147,7 @@ const file_bucket_proto_rawDesc = "" +
 	" delete_query_checkpoint_schedule\x18# \x01(\v2,.ledger.DeleteQueryCheckpointScheduleRequestH\x00R\x1ddeleteQueryCheckpointSchedule\x12U\n" +
 	"\x14save_ledger_metadata\x18$ \x01(\v2!.ledger.SaveLedgerMetadataRequestH\x00R\x12saveLedgerMetadata\x12[\n" +
 	"\x16delete_ledger_metadata\x18% \x01(\v2#.ledger.DeleteLedgerMetadataRequestH\x00R\x14deleteLedgerMetadataB\x06\n" +
-	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x1c\x10\x1dJ\x04\b&\x10'J\x04\b\x05\x10\x06R\x0fidempotency_keyR\x10delete_numscriptR\x11restore_numscriptR\tsignature\"\x1e\n" +
+	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x05\x10\x06R\x0fidempotency_keyR\tsignature\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"C\n" +
 	"\x1cDeleteQueryCheckpointRequest\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\".\n" +
@@ -9223,10 +9223,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
 	"\x06ledger\x18\x03 \x01(\tR\x06ledger\x12'\n" +
-	"\x04read\x18\x04 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"u\n" +
+	"\x04read\x18\x04 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"^\n" +
 	"\x15ListNumscriptsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
-	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x03\x10\x04R\x0finclude_deleted\"s\n" +
+	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"s\n" +
 	"\x1cListNumscriptVersionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12'\n" +

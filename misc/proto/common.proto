@@ -330,8 +330,6 @@ message Log {
 }
 
 message LogPayload {
-  reserved 22, 29;
-  reserved "deleted_numscript", "restored_numscript";
   oneof type {
     CreatedLedgerLog create_ledger = 1;
     DeletedLedgerLog delete_ledger = 2;
@@ -522,8 +520,6 @@ message NumscriptInfo {
   string version = 3;
   Timestamp created_at = 4;
   string ledger = 5;
-  reserved 6;
-  reserved "deleted";
 }
 
 // SavedNumscriptLog records a numscript version being saved to the library.
@@ -535,8 +531,6 @@ message SavedNumscriptLog {
 message NumscriptVersionEntry {
   string version = 1;
   Timestamp created_at = 2;
-  reserved 3;
-  reserved "status";
 }
 
 // TemplateUsage tracks per-template invocation usage. Persisted as a

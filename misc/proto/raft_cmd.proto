@@ -87,8 +87,6 @@ message OrderTechnical {
 // their own ledger field.
 message LedgerScopedOrder {
   string ledger = 1;
-  reserved 10, 14;
-  reserved "delete_numscript", "restore_numscript";
   oneof payload {
     LedgerApplyOrder apply = 2;
     CreateLedgerOrder create_ledger = 3;

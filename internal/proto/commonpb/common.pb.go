@@ -13027,7 +13027,7 @@ const file_common_proto_rawDesc = "" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12\x18\n" +
 	"\areceipt\x18\x06 \x01(\tR\areceipt\x12C\n" +
-	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\x92\x11\n" +
+	"\x12response_signature\x18\a \x01(\v2\x14.signature.SignedLogR\x11responseSignatureJ\x04\b\x04\x10\x05J\x04\b\b\x10\t\"\xdf\x10\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +
@@ -13057,7 +13057,7 @@ const file_common_proto_rawDesc = "" +
 	" delete_query_checkpoint_schedule\x18\x1a \x01(\v2).common.DeletedQueryCheckpointScheduleLogH\x00R\x1ddeleteQueryCheckpointSchedule\x12T\n" +
 	"\x15saved_ledger_metadata\x18\x1b \x01(\v2\x1e.common.SavedLedgerMetadataLogH\x00R\x13savedLedgerMetadata\x12Z\n" +
 	"\x17deleted_ledger_metadata\x18\x1c \x01(\v2 .common.DeletedLedgerMetadataLogH\x00R\x15deletedLedgerMetadataB\x06\n" +
-	"\x04typeJ\x04\b\x16\x10\x17J\x04\b\x1d\x10\x1eR\x11deleted_numscriptR\x12restored_numscript\"'\n" +
+	"\x04type\"'\n" +
 	"\x11PromotedLedgerLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
 	"\x17RegisteredSigningKeyLog\x12\x15\n" +
@@ -13128,20 +13128,20 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"D\n" +
 	"\x18DeletedLedgerMetadataLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xb0\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xa1\x01\n" +
 	"\rNumscriptInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x120\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
-	"\x06ledger\x18\x05 \x01(\tR\x06ledgerJ\x04\b\x06\x10\aR\adeleted\">\n" +
+	"\x06ledger\x18\x05 \x01(\tR\x06ledger\">\n" +
 	"\x11SavedNumscriptLog\x12)\n" +
-	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"q\n" +
+	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"c\n" +
 	"\x15NumscriptVersionEntry\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x120\n" +
 	"\n" +
-	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAtJ\x04\b\x03\x10\x04R\x06status\"U\n" +
+	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\"U\n" +
 	"\rTemplateUsage\x12\x14\n" +
 	"\x05count\x18\x01 \x01(\x06R\x05count\x12.\n" +
 	"\tlast_used\x18\x02 \x01(\v2\x11.common.TimestampR\blastUsed\"3\n" +
