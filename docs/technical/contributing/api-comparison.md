@@ -762,7 +762,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, supports prefix filtering) |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
-| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
+| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /v3/` | ✅ | ✅ | List all ledgers |
@@ -880,7 +880,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
-| `GetLedgerStats` | Get aggregate statistics (account + transaction count) | ✅ |
+| `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
 | `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
 

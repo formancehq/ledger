@@ -288,7 +288,7 @@ paths:
   /v3/{ledgerName}/stats:
     get:
       summary: Get ledger statistics
-      description: Returns aggregate statistics (account count, transaction count) for a ledger. Requires `ledger:read` scope.
+      description: Returns aggregate usage statistics (transaction, volume, reference, posting, log, revert and Numscript-execution counts, plus ephemeral-evicted and transient-used volume tallies) for a ledger. Requires `ledger:read` scope.
       operationId: getLedgerStats
       tags:
         - Ledgers
@@ -3663,19 +3663,61 @@ components:
     LedgerStats:
       type: object
       required:
-        - accountCount
         - transactionCount
+        - volumeCount
+        - referenceCount
+        - postingCount
+        - logCount
+        - ephemeralEvictedCount
+        - transientUsedCount
+        - revertCount
+        - numscriptExecutionCount
       properties:
-        accountCount:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Number of accounts in the ledger
         transactionCount:
           type: integer
           format: uint64
           minimum: 0
           description: Number of transactions in the ledger
+        volumeCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of persisted (account, asset, color) volume rows
+        referenceCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of transaction references registered in the ledger
+        postingCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Total number of postings across all transactions
+        logCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of log entries in the ledger
+        ephemeralEvictedCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of ephemeral/draining volumes evicted from storage at commit
+        transientUsedCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of transient volumes used across proposals
+        revertCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of reverted transactions in the ledger
+        numscriptExecutionCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of Numscript executions in the ledger
 
     Account:
       type: object
