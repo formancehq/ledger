@@ -904,8 +904,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
-  - `save_numscript`: Save a numscript (with semver version)
-  - `delete_numscript`: Delete a numscript
+  - `save_numscript`: Save an immutable numscript version (explicit full semver)
 
 **Response:** `common.Log` - The log entry created by the action (stripped to `sequence` only when `skip_response` is set)
 

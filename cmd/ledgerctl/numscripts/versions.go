@@ -13,8 +13,8 @@ func NewVersionsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "versions <name>",
 		Short: "List every stored version of a numscript",
-		Long: `List every stored version of a numscript, with the status of each derived
-from the current latest pointer: active, superseded, or tombstoned.
+		Long: `List the current latest version (the greatest stored semver) and every
+stored version of a numscript, highest semver first.
 
 Examples:
   ledgerctl numscripts versions transfer --ledger myledger`,

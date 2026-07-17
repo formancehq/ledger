@@ -505,13 +505,6 @@ func (k *NumscriptEntryKey) Unmarshal(d []byte) error {
 	return nil
 }
 
-const (
-	// NumscriptVersionTagSemver is the tag byte for semver-encoded numscript entries.
-	NumscriptVersionTagSemver byte = 0x00
-	// NumscriptVersionTagLatest is the tag byte for the "latest" numscript slot.
-	NumscriptVersionTagLatest byte = 0x01
-)
-
 // IndexKey identifies an entry in the bucket-scoped index registry.
 //
 // Scope:
