@@ -195,7 +195,7 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (*raftpb.Ent
 	}
 
 	// Single-order coverage: every bit set.
-	order.CoverageBits = []byte{0b1}
+	order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b1}}
 
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)
@@ -513,7 +513,7 @@ func makeCreateLedgerEntryWithTerm(t *testing.T, term, index uint64, name string
 			Id: &raftcmdpb.AttributeID{Id: ledgerID[:]}, AttrCode: uint32(dal.SubAttrLedger),
 		}},
 	}
-	order.CoverageBits = []byte{0b1}
+	order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b1}}
 
 	data, err := cmd.MarshalVT()
 	require.NoError(t, err)

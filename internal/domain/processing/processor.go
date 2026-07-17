@@ -40,6 +40,11 @@ type RequestProcessor struct {
 type Context struct {
 	// Per-order — set by the dispatcher before calling the handler.
 	Scope Scope
+	// InputsResolutionHash is the admission-derived Numscript inputs hash for
+	// THIS order (from OrderTechnical). It lives on the parent Order, not the
+	// CreateTransactionOrder handlers see, so the dispatcher stages it here for
+	// the stale-inputs check. Empty when the order carries no resolution hash.
+	InputsResolutionHash []byte
 
 	// Per-apply — set by processApply / processMirrorIngest before
 	// dispatching to apply-child handlers; nil/empty otherwise.
@@ -160,7 +165,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	logs := result.Logs
 
 	for i, order := range orders {
-		orderScope, scopeErr := scopeFactory.NewScope(order.GetCoverageBits())
+		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
 		if scopeErr != nil {
 			// Invariant violation surfaced by the FSM: the execution plan
 			// shipped by admission is structurally inconsistent. Detected
@@ -352,18 +357,31 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 }
 
 // hashOrder computes a blake3 hash of one order's content, returning the hash
-// and the (grown) marshal buffer to reuse. CoverageBits is excluded: admission
-// rebuilds it from the proposal-wide ExecutionPlan, so the same logical order
-// in a different batch would otherwise hash differently.
+// and the (grown) marshal buffer to reuse.
+//
+// All admission-derived fields live on OrderTechnical, which is excluded so the
+// SAME logical request always hashes identically (idempotency dedup / replay
+// must match across retries). OrderTechnical carries:
+//
+//   - coverage_bits: admission rebuilds it from the proposal-wide ExecutionPlan,
+//     so the same order in a different batch would otherwise hash differently.
+//   - inputs_resolution_hash: admission recomputes it by re-resolving the
+//     Numscript against CURRENT balances/metadata, so a retry of a state-reading
+//     script re-resolves at a changed balance and would otherwise hash
+//     differently — turning a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT
+//     (EN-1406 P1-3). It is a preload/staleness hint, not logical identity.
+//
+// Because both live under the single OrderTechnical sub-message, excluding it in
+// one shot means a new technical field can never silently break idempotency.
 func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
-	// Temporarily nil CoverageBits, marshal, then restore it. Avoids a full
-	// CloneVT of the order.
-	savedCoverage := order.GetCoverageBits()
-	order.CoverageBits = nil
+	// Temporarily nil the technical sub-message, marshal, then restore it.
+	// Avoids a full CloneVT of the order.
+	savedTechnical := order.GetTechnical()
+	order.Technical = nil
 
 	buf = order.MarshalDeterministicVT(buf[:0])
 
-	order.CoverageBits = savedCoverage
+	order.Technical = savedTechnical
 
 	sum := blake3.Sum256(buf)
 
@@ -395,9 +413,28 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 // handlers; system-scoped handlers don't receive it.
 func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	ctx.Scope = s
+	// Stage this order's admission-derived inputs hash (from OrderTechnical) for
+	// the stale-inputs check in the numscript producer, which only sees the
+	// CreateTransactionOrder.
+	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
+
+	// preload_unavailable: admission couldn't build this order's preload and
+	// forwarded it (idempotency key present) instead of failing fast, so the FSM
+	// arbitrates. We reach here only for a NON-replay — the per-proposal
+	// idempotency dedup runs before ProcessOrders and short-circuits a frozen
+	// outcome, so a replay never reaches this dispatcher. Without a preload the
+	// order MUST NOT execute (its coverage is empty); reject deterministically
+	// with the retryable, non-frozen ErrPreloadUnavailable BEFORE any read, so
+	// the outcome is intentional rather than a coverage-miss against drifted
+	// apply-time state. Not frozen (Kind=Unavailable): a preload-unavailable
+	// retry must never shadow the real outcome of a concurrent same-key proposal.
+	// See EN-1406.
+	if order.GetTechnical().GetPreloadUnavailable() {
+		return nil, domain.ErrPreloadUnavailable
+	}
 
 	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_LedgerScoped:

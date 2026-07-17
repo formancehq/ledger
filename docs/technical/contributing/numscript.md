@@ -448,37 +448,77 @@ If the Numscript syntax is invalid:
 }
 ```
 
-## Volume Preloading (Numscript Emulation)
+## Volume Preloading (Dependency Resolution)
 
-When a Numscript transaction is submitted, account balances must be preloaded at admission time. However, the accounts involved are determined dynamically by the script at runtime, creating a chicken-and-egg problem: we need balances before execution, but we don't know which accounts until after execution.
+When a Numscript transaction is submitted, the accounts and metadata it touches must be preloaded into the FSM cache at admission time. However, which accounts a script touches can depend on the script's inputs (a `meta()`-resolved account, a `balance()`-derived amount), creating a chicken-and-egg problem: we need to preload before apply, but the touched set can depend on current state.
+
+Since EN-1406 this is solved by the upstream library's static dependency-resolution API rather than by emulating a full execution.
 
 ### How It Works
 
-As a temporary workaround, the admission layer runs the Numscript once with a "discovery store" that returns infinite balances (`2^256`) for every account queried. This emulation run discovers which accounts and assets the script needs, without modifying any real state. The discovered volume keys are then preloaded normally from storage.
+Admission calls `ParseResult.ResolveDependencies(ctx, vars, store)`, which walks the script statically, evaluating var origins and posting selectors against a `Store` backed by admission-time reads (a Pebble snapshot — **not** FSM hot-path reads). It returns a richer dependency model than the old emulation:
 
-The emulation is implemented in `internal/domain/processing/numscript/emulate.go`:
+- **account reads** — balances the resolution consulted (bounded sources, capped/allotment amounts, `balance()`/`overdraft()` in vars or selectors);
+- **account writes** — accounts the script credits or debits (sources — including unbounded ones — and destinations);
+- **account metadata reads** — `meta()` lookups;
+- **account metadata writes** — `set_account_meta` targets;
+- **transaction metadata writes** — `set_tx_meta` keys.
 
-1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is used for parsing during discovery
-2. **Execute** with a discovery store that records queried account/asset pairs and returns infinite balances
-3. **Collect** volume keys from both balance queries (sources) and result postings (sources + destinations)
-4. **Preload** the discovered volumes from the store as usual
+The wrapper lives in `internal/domain/processing/numscript/discover.go` (`DiscoverNumscriptDependencies`), the `Store` adapter and value-recording layer in `internal/domain/processing/numscript/store.go`:
 
-### Determinism Constraint
+1. **Parse** the script using `cache.GetOrParse(script)` — the NumscriptCache is shared with real execution.
+2. **Resolve** dependencies against a `RecordingStore` wrapping the admission-time value source.
+3. **Map** the resolved account/metadata dependencies to Ledger volume/metadata preload keys `(ledger, account, asset)` / `(ledger, account, key)` — Ledger does not partition volumes or metadata by color/scope.
+4. **Preload** the union of read and write keys so every FSM read/mutate resolves from cache.
 
-Scripts must be deterministic: the discovery store enforces that `GetBalances` may be called **at most once** during discovery. A second call indicates a non-deterministic script (e.g., mid-script balance queries that depend on earlier execution results) which cannot be reliably preloaded. `GetAccountsMetadata` always returns `ErrMetaNotSupported` — `meta()` calls are fully rejected, not constrained.
+`meta()`, `oneof` (all branches), and multiple `send` blocks are all handled by the resolver — none is rejected. `ErrMetaNotSupported` and `ErrNonDeterministicScript` no longer exist.
 
-If a script violates the single `GetBalances` constraint, `DiscoverNumscriptDependencies` returns `ErrNonDeterministicScript` with the offending method name. If a script uses `meta()`, it returns `ErrMetaNotSupported`. The admission layer rejects these dependency discovery failures as business validation errors before proposing the command, because proposing without complete preloads would produce a doomed Raft apply.
+#### Color/scope-qualified balances are rejected (reads **and** writes)
 
-### Known Limitations
+Ledger volumes and account metadata have **no** color/scope dimension: every color/scope view of `(account, asset)` resolves to the *same* underlying volume, and every scope-qualified metadata read collapses to the same `(account, key)` entry. Serving such a qualified view would hand the script a full-balance view *per color* (letting it spend the same funds once per color) on the read side, or silently collapse a colored credit/debit onto the unqualified volume (a silent semantic loss) on the write side. Until Ledger gains a first-class color/scope dimension (EN-1334), **every** color/scope-qualified balance or metadata access is rejected with `domain.ErrColoredBalanceUnsupported` (a validation sentinel — admission fails the transaction as a business error before proposing, and the authoritative FSM path rejects it identically):
 
-- **`oneof` selectors**: With infinite balances, `oneof` may only query the first source account, since the first source always has sufficient funds. Other sources in the `oneof` list may not be discovered.
-- **Discovery errors**: If dependency discovery fails, admission rejects the transaction before proposal instead of skipping volume discovery.
-- **Shared parsing cache**: Both discovery and real execution use `cache.GetOrParse(script)`, so the script is parsed only once and cached for both paths.
-- **Non-deterministic scripts**: Scripts with multiple `send` statements that trigger separate `GetBalances` calls are rejected during discovery. Such scripts cannot have their volumes reliably preloaded.
+- **reads** — the `Store` (`internal/domain/processing/numscript/store.go`) rejects any `balance()`/`overdraft()`/`meta()` read carrying a non-empty `Color` or `Scope`;
+- **writes** — `DiscoverNumscriptDependencies` (`discover.go`) rejects any color/scope-qualified `AccountsWrites`/`MetaWrites` dependency, and the FSM posting loop (`processor_transaction_numscript.go`) rejects any colored/scoped posting at apply time.
 
-### Long-term Solution
+This is **uniform**: source or destination, bounded or unbounded. In particular an **unbounded colored source** such as `send [COIN 100] (source = @world \ "RED" ...)` is *not* a harmless no-op — it moves RED-colored `COIN`, so the destination is credited a RED volume that would collapse onto the single uncolored `COIN` volume. It is a color/scope-qualified **write** and is rejected like any other, even though `@world` reads no balance. There is no "allowed" colored shape today; the guard is closed until the color/scope dimension lands.
 
-The emulation approach is a temporary workaround. The long-term solution is static analysis of Numscript scripts to declare all required inputs at parse time. See the [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) for details.
+#### Intra-batch effect accumulation
+
+When several orders arrive in one atomic batch, the FSM applies them **sequentially** against a single mutated `WriteSet`, so a later order sees the balances and metadata written by earlier orders in the same batch. Admission mirrors this during discovery: each order is resolved against the pre-batch Pebble snapshot **with the accumulated effects of every preceding order layered on top** (`internal/application/admission/numscript_source.go`, `batchEffects`). Concretely, the balance/metadata effect of every preceding **mutating** order is folded — not just `CreateTransaction`:
+
+- **`CreateTransaction`** — script/postings net `(input − output)` **balance deltas** per `(ledger, account, asset)`, plus `set_account_meta` writes; the caller-supplied `AccountMetadata` is folded **after** the script's writes because the FSM merges it with precedence over `set_account_meta` for the same key;
+- **`RevertTransaction`** — the reversed-posting balance deltas (original destination → source, original source → destination), the inverse of the original postings, matching `processRevertTransaction`;
+- **`AddMetadata`** (account target) — the metadata value it writes;
+- **`DeleteMetadata`** (account target) — a **tombstone** for the key, so a later `meta()` resolves *absent* even if the pre-batch snapshot still holds a value.
+
+The next order's `admissionValueSource` then reads a balance as `snapshot value + accumulated delta`, and a metadata key as the batch's last write if any — a set returns its value as present, a tombstone returns absent (last-writer-wins) — so it resolves against exactly the state the FSM will present it.
+
+Without this, a batch where order N spends funds order N−1 credits (or reads metadata order N−1 wrote or deleted) would resolve N against a stale (pre-batch) state and mis-predict its outcome — a permanent `STALE_INPUTS_RESOLUTION` on every retry. Layering the effects keeps admission's resolution — and therefore the preload key set and the `inputs_resolution_hash` — consistent with sequential FSM apply.
+
+### Stale-inputs Detection
+
+When resolution's outcome depends on a current value (a `meta()`-resolved account, a `balance()`-derived amount), the preloaded key set is correct only for the *admission-time* state. If that value changes before the FSM applies the transaction, the preload set may be wrong.
+
+To catch this, the `RecordingStore` records every balance/metadata value the resolution actually read and produces a deterministic BLAKE3 `Hash()` over the sorted records. Admission stores the hash on the order's technical sub-message (`OrderTechnical.inputs_resolution_hash`) — it is an admission-derived hint excluded from the idempotency identity, not part of the business `CreateTransactionOrder`. At apply time the FSM re-runs `ResolveDependencies` against a `Store` backed **only** by preloaded cache values (via the coverage-gated `Scope` — no Pebble reads, respecting the hot-path invariant), recomputes the hash, and compares. A mismatch (or a resolution error on a script admission already resolved) returns `ErrStaleInputsResolution` (`Kind=Unavailable`, `codes.Unavailable`, retryable): the client retries, the second admission re-resolves against the new values and re-preloads.
+
+The hash covers only values that *determined* the resolution — not every preloaded balance. A plain bounded source is a read *dependency* (it must be preloaded so the apply-path balance check can run) but its value does not change which keys are discovered, so it is not part of the hash. Fully-static scripts read nothing at resolution time and carry no hash; the FSM then skips the check.
+
+### Preload-unavailable forwarding (idempotent-replay safety)
+
+Stale-inputs detection handles the case where discovery *succeeds* but the values later drift. A harder case is when discovery **fails outright** at admission — e.g. a retry of an already-succeeded idempotent batch whose `meta(@cfg,"dest")` account was deleted after the original success, so the script no longer resolves. Failing fast there would return `DEPENDENCY_DISCOVERY_FAILED` to the client instead of replaying the frozen success — because admission runs *before* the FSM's idempotency dedup, and admission's view is pre-consensus and non-sequenced (it can even see a key as absent while the first request is still inflight). Admission is therefore **not authoritative** for the idempotency decision; only the FSM, applying in Raft log order, is.
+
+So discovery failure is treated as a **preparation gap, not a verdict**:
+
+- **Admission** — if the batch carries an idempotency key, admission does *not* fail fast. It marks the order `OrderTechnical.preload_unavailable = true` and forwards it (empty coverage, no `inputs_resolution_hash`). Without a key there is no replay to preserve, so it keeps the cheap fail-fast (`DEPENDENCY_DISCOVERY_FAILED`).
+- **FSM** — the per-proposal idempotency dedup runs *before* `ProcessOrders`, so a **replay short-circuits to the frozen outcome** and never reaches the order handler. Only a **non-replay** reaches the `processOrder` guard, which — seeing `preload_unavailable` and no preload — rejects **before any execution** with `ErrPreloadUnavailable` (`ERROR_REASON_PRELOAD_UNAVAILABLE`, `Kind=Unavailable`).
+
+That reason is **retryable and deliberately NOT freezable**: a preparation gap is never an authoritative business outcome, and freezing it could let a `preload_unavailable` retry shadow the real outcome of a concurrent same-key proposal (whichever applies first freezes). A non-replay preload-unavailable therefore writes an audit failure (auditable) but is never frozen; the client retries and eventually re-admits successfully or replays the now-frozen outcome. `preload_unavailable` rides in `OrderTechnical`, so it is excluded from the idempotency hash — a forwarded retry hashes identically to the original, which is what lets the FSM dedup match and replay.
+
+### Notes
+
+- **Shared parsing cache**: dependency resolution, the FSM-time stale re-resolution, and real execution all use `cache.GetOrParse(script)`, so a script is parsed once and cached for every path.
+- **`force` mode**: with the transaction's `force` flag, the resolver's `Store` returns unlimited balances, so bounded sources still resolve but no real balance is consulted.
+- **Resolution errors**: if resolution fails at admission (e.g. a `meta()` chain that cannot resolve), admission rejects the transaction as a business validation error before proposing — proposing without complete preloads would produce a doomed Raft apply.
 
 ## Performance Considerations
 
@@ -500,4 +540,3 @@ Cache metrics are exposed via OpenTelemetry:
 - [CLI Reference](../../ops/cli.md) - CLI usage and examples
 - [Numscript Examples](../../../misc/numscript/examples/README.md) - Ready-to-use example scripts
 - [API Comparison](./api-comparison.md) - Feature parity with original ledger
-- [Static Inputs RFC](../../drafts/numscript/numscript-static-inputs-rfc.md) - RFC for static input declaration

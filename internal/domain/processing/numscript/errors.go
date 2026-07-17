@@ -10,52 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// ErrNonDeterministicScript is returned when a Numscript script calls
-// GetBalances more than once during discovery.
-// Deterministic scripts must declare all their reads in a single batch.
-type ErrNonDeterministicScript struct {
-	Method string // "GetBalances"
-}
-
-func (e *ErrNonDeterministicScript) Error() string {
-	return fmt.Sprintf("non-deterministic script: %s called more than once", e.Method)
-}
-func (*ErrNonDeterministicScript) Reason() string { return domain.ErrReasonNonDeterministicScript }
-func (e *ErrNonDeterministicScript) Metadata() map[string]string {
-	return map[string]string{"method": e.Method}
-}
-
-// ErrMetaNotSupported is returned when a Numscript script uses meta() to
-// resolve variables dynamically. meta() prevents the admission layer from
-// statically discovering all accounts needed for preloading.
-type errMetaNotSupported struct{}
-
-func (errMetaNotSupported) Error() string {
-	return "meta() is not supported: scripts must use static account references"
-}
-func (errMetaNotSupported) Reason() string              { return domain.ErrReasonValidation }
-func (errMetaNotSupported) Metadata() map[string]string { return nil }
-
-var ErrMetaNotSupported domain.Describable = errMetaNotSupported{}
-
-// ErrCatchAllAssetNotSupported is returned when a Numscript script triggers
-// the runtime's catch-all asset query (`BASE/*`) — used internally by the
-// numscript interpreter to enumerate every precision flavor of an asset
-// on an account when the script references the bare base. The ledger
-// adapter cannot today expand the catch-all because the in-memory store
-// exposes only point lookups, not iteration; until that capability lands
-// we fail explicitly rather than letting the script see a phantom
-// ErrBalanceNotPreloaded for `BASE/*`.
-type errCatchAllAssetNotSupported struct{}
-
-func (errCatchAllAssetNotSupported) Error() string {
-	return "asset catch-all queries (BASE/*) are not yet supported: use the explicit precision (e.g. `send [USD/2 N]` instead of `send [USD N]`)"
-}
-func (errCatchAllAssetNotSupported) Reason() string              { return domain.ErrReasonValidation }
-func (errCatchAllAssetNotSupported) Metadata() map[string]string { return nil }
-
-var ErrCatchAllAssetNotSupported domain.Describable = errCatchAllAssetNotSupported{}
-
 // convertNumscriptError translates known numscript library errors into domain
 // errors so that the gRPC error mapper can return proper status codes. Library
 // errors that have no specific mapping are wrapped as ErrNumscriptRuntime
@@ -93,27 +47,110 @@ func convertNumscriptError(err error) domain.Describable {
 	}
 
 	// errors.As walks the chain in case a caller has already wrapped the
-	// numscript-library error in a Describable.
+	// numscript-library error in a Describable. This also unwraps
+	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
+	// error — so a rejected scoped read (domain.ErrScopedBalanceUnsupported)
+	// surfaces here as the validation sentinel it already is.
 	var d domain.Describable
 	if errors.As(err, &d) {
 		return d
 	}
 
+	// Every other library error becomes ErrNumscriptRuntime (KindInternal).
+	//
+	// Note: this deliberately does NOT reclassify deterministic client-side
+	// resolver errors (undeclared/mistyped variable, bad portion, …) to
+	// KindValidation, even though that would let admission surface them
+	// definitively instead of forwarding them as a retryable PRELOAD_UNAVAILABLE
+	// under an idempotency key. The reason is that the upstream library reports
+	// script-deterministic errors and *state-dependent* ones (e.g. MetadataNotFound
+	// when a meta()-referenced account was deleted after an earlier success) with
+	// the same leaf InterpreterError shape, and the concrete types live in an
+	// internal package we cannot import to tell them apart. The state-dependent
+	// case MUST stay forwardable so the FSM can replay a frozen success (EN-1406
+	// idempotent-replay), so we keep the conservative KindInternal classification
+	// for all of them; reclassifying by "leaf error" would break that replay. A
+	// precise split needs upstream to expose an error category. See the tracking
+	// ticket for the deterministic-error UX gap.
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
+}
+
+// panicError marks a Describable that originated from a recovered panic inside
+// the numscript library (as opposed to a normal library-returned error). It
+// behaves exactly like the ErrNumscriptRuntime it wraps for every external
+// concern — same Error/Reason/Metadata, so the gRPC/HTTP mapping is unchanged —
+// but IsPanic can recognise it so a caller that would otherwise soften a normal
+// resolution error (e.g. the FSM apply path funnelling resolve errors to
+// ErrStaleInputsResolution) can instead surface the panic loudly. A recovered
+// panic is a "should not happen" (invariant #7): masking it as a retryable
+// stale-inputs error would hide a real defect.
+type panicError struct {
+	*domain.ErrNumscriptRuntime
+}
+
+// Unwrap exposes the embedded ErrNumscriptRuntime so errors.As(err,
+// **domain.ErrNumscriptRuntime) succeeds: a recovered panic must present
+// externally as an ordinary ErrNumscriptRuntime (same Reason/Kind/mapping),
+// while IsPanic keeps it internally distinguishable.
+func (e panicError) Unwrap() error { return e.ErrNumscriptRuntime }
+
+// IsPanic reports whether err was produced by a numscript-library panic that a
+// Safe* wrapper recovered, rather than by a normal library-returned error.
+func IsPanic(err error) bool {
+	var pe panicError
+
+	return errors.As(err, &pe)
+}
+
+// numscriptPanicToDescribable maps a value recovered from a panic inside the
+// numscript library into a Describable panicError (which behaves as an
+// ErrNumscriptRuntime). It returns nil when recovered is nil (no panic in
+// flight). Callers invoke recover() themselves — directly inside their own
+// deferred closure, as the Go runtime requires — and pass the result here so
+// the panic→Describable conversion lives in one place (DRY) across every Safe*
+// wrapper.
+func numscriptPanicToDescribable(recovered any) domain.Describable {
+	if recovered == nil {
+		return nil
+	}
+
+	return panicError{&domain.ErrNumscriptRuntime{Detail: fmt.Sprintf("numscript panic: %v", recovered)}}
 }
 
 // SafeRun wraps ParseResult.Run with a deferred recover to catch panics from the
 // numscript library and convert them into regular errors.
 func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
-		if r := recover(); r != nil {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
-			err = &domain.ErrNumscriptRuntime{Detail: fmt.Sprintf("numscript panic: %v", r)}
+			err = panicErr
 		}
 	}()
 
 	result, runErr := parsed.Run(ctx, vars, store)
 	err = convertNumscriptError(runErr)
+
+	return
+}
+
+// SafeResolveDependencies wraps ParseResult.ResolveDependencies with the same
+// deferred recover + error-conversion contract as SafeRun. ResolveDependencies
+// runs untrusted script analysis and can panic on adversarial input; both call
+// sites (admission dependency discovery and — critically — the FSM apply-path
+// stale-inputs re-resolution) must never let that panic escape, so the panic is
+// converted into a Describable ErrNumscriptRuntime rather than crashing the
+// request goroutine or the Raft apply loop. Library errors are mapped through
+// the shared convertNumscriptError, identically to SafeRun.
+func SafeResolveDependencies(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (resolved numscriptlib.ResolvedDependencies, err domain.Describable) {
+	defer func() {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
+			resolved = numscriptlib.ResolvedDependencies{}
+			err = panicErr
+		}
+	}()
+
+	resolved, resolveErr := parsed.ResolveDependencies(ctx, vars, store)
+	err = convertNumscriptError(resolveErr)
 
 	return
 }

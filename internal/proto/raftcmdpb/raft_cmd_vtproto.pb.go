@@ -28,13 +28,9 @@ func (m *Order) CloneVT() *Order {
 		return (*Order)(nil)
 	}
 	r := OrderFromVTPool()
+	r.Technical = m.Technical.CloneVT()
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isOrder_Type }).CloneVT()
-	}
-	if rhs := m.CoverageBits; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.CoverageBits = tmpBytes
 	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -63,6 +59,33 @@ func (m *Order_SystemScoped) CloneVT() isOrder_Type {
 	r := new(Order_SystemScoped)
 	r.SystemScoped = m.SystemScoped.CloneVT()
 	return r
+}
+
+func (m *OrderTechnical) CloneVT() *OrderTechnical {
+	if m == nil {
+		return (*OrderTechnical)(nil)
+	}
+	r := new(OrderTechnical)
+	r.PreloadUnavailable = m.PreloadUnavailable
+	if rhs := m.CoverageBits; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.CoverageBits = tmpBytes
+	}
+	if rhs := m.InputsResolutionHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.InputsResolutionHash = tmpBytes
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *OrderTechnical) CloneMessageVT() proto.Message {
+	return m.CloneVT()
 }
 
 func (m *LedgerScopedOrder) CloneVT() *LedgerScopedOrder {
@@ -2398,7 +2421,7 @@ func (this *Order) EqualVT(that *Order) bool {
 			return false
 		}
 	}
-	if string(this.CoverageBits) != string(that.CoverageBits) {
+	if !this.Technical.EqualVT(that.Technical) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2461,6 +2484,31 @@ func (this *Order_SystemScoped) EqualVT(thatIface isOrder_Type) bool {
 	return true
 }
 
+func (this *OrderTechnical) EqualVT(that *OrderTechnical) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if string(this.CoverageBits) != string(that.CoverageBits) {
+		return false
+	}
+	if string(this.InputsResolutionHash) != string(that.InputsResolutionHash) {
+		return false
+	}
+	if this.PreloadUnavailable != that.PreloadUnavailable {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *OrderTechnical) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*OrderTechnical)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *LedgerScopedOrder) EqualVT(that *LedgerScopedOrder) bool {
 	if this == that {
 		return true
@@ -6423,10 +6471,13 @@ func (m *Order) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
-	if len(m.CoverageBits) > 0 {
-		i -= len(m.CoverageBits)
-		copy(dAtA[i:], m.CoverageBits)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
+	if m.Technical != nil {
+		size, err := m.Technical.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x2a
 	}
@@ -6471,6 +6522,63 @@ func (m *Order_SystemScoped) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *OrderTechnical) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *OrderTechnical) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *OrderTechnical) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PreloadUnavailable {
+		i--
+		if m.PreloadUnavailable {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.InputsResolutionHash) > 0 {
+		i -= len(m.InputsResolutionHash)
+		copy(dAtA[i:], m.InputsResolutionHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.InputsResolutionHash)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.CoverageBits) > 0 {
+		i -= len(m.CoverageBits)
+		copy(dAtA[i:], m.CoverageBits)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CoverageBits)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *LedgerScopedOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -12132,9 +12240,7 @@ var vtprotoPool_Order = sync.Pool{
 
 func (m *Order) ResetVT() {
 	if m != nil {
-		f0 := m.CoverageBits[:0]
 		m.Reset()
-		m.CoverageBits = f0
 	}
 }
 func (m *Order) ReturnToVTPool() {
@@ -12312,8 +12418,8 @@ func (m *Order) SizeVT() (n int) {
 	if vtmsg, ok := m.Type.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
 	}
-	l = len(m.CoverageBits)
-	if l > 0 {
+	if m.Technical != nil {
+		l = m.Technical.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -12344,6 +12450,27 @@ func (m *Order_SystemScoped) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *OrderTechnical) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.CoverageBits)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.InputsResolutionHash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.PreloadUnavailable {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *LedgerScopedOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14863,6 +14990,93 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 5:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Technical", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Technical == nil {
+				m.Technical = &OrderTechnical{}
+			}
+			if err := m.Technical.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *OrderTechnical) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: OrderTechnical: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: OrderTechnical: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CoverageBits", wireType)
 			}
 			var byteLen int
@@ -14895,6 +15109,60 @@ func (m *Order) UnmarshalVT(dAtA []byte) error {
 				m.CoverageBits = []byte{}
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InputsResolutionHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.InputsResolutionHash = append(m.InputsResolutionHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.InputsResolutionHash == nil {
+				m.InputsResolutionHash = []byte{}
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PreloadUnavailable", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.PreloadUnavailable = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

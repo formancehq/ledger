@@ -1,12 +1,12 @@
 package processing
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"math/big"
-	"strings"
 
 	"github.com/holiman/uint256"
 
@@ -22,6 +22,10 @@ type numscriptPostingProducer struct {
 	cache      *numscript.NumscriptCache
 	ledgerName string
 	assetCache map[string]cachedAssetPrecision
+	// inputsResolutionHash is the admission-derived hash for this order (from
+	// OrderTechnical, staged on Context by the dispatcher) — the baseline the
+	// stale-inputs check re-resolves against. Empty means nothing to check.
+	inputsResolutionHash []byte
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
@@ -39,15 +43,76 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	vars := make(numscriptlib.VariablesMap)
 	maps.Copy(vars, script.GetVars())
 
-	// Create the store adapter
-	// When Force is true, the adapter returns unlimited balances to bypass balance checks
-	storeAdapter := &numscriptStoreAdapter{
-		store:      s,
-		ledgerName: ledgerName,
-		force:      order.GetForce(),
+	// Stale-inputs check: admission bound the balance/metadata values its
+	// dependency resolution read into OrderTechnical.inputs_resolution_hash
+	// (staged on p.inputsResolutionHash by the dispatcher). Re-resolve
+	// here against the coverage-gated Scope (preloaded cache values only — no
+	// Pebble reads, invariant #3) and compare. A mismatch means an input value
+	// changed between admission and apply, so the preloaded key set may be
+	// wrong; reject with the retryable ErrStaleInputsResolution so the client
+	// re-admits against the new values. An empty stored hash means admission's
+	// resolution read nothing to bind (fully static script) — nothing to check.
+	if expected := p.inputsResolutionHash; len(expected) > 0 {
+		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
+		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()))
+
+		// SafeResolveDependencies recovers panics from the numscript library so a
+		// crafted input can never escape onto the deterministic Raft apply loop
+		// (which has no recover of its own) — an escaped panic would crash and
+		// could diverge nodes. Not every resolve error is a stale input, so the
+		// three failure classes are triaged below.
+		if _, resolveErr := numscript.SafeResolveDependencies(parsed, context.Background(), vars, recording); resolveErr != nil {
+			// (1) A recovered panic is a "should not happen" (invariant #7) and
+			// must surface loudly, NOT be softened to stale.
+			if numscript.IsPanic(resolveErr) {
+				return nil, resolveErr
+			}
+
+			// (2) A coverage-contract violation is an admission BUG: the
+			// resolution derived a key admission never declared, so the gated
+			// Scope refused the read (*state.ErrCoverageMiss) or the plan was
+			// structurally inconsistent (*domain.ErrInvalidExecutionPlan). Both
+			// arrive here as a domain.Describable whose typed error survives the
+			// numscript library's error path (the library's QueryBalanceError /
+			// QueryMetadataError implement Unwrap, and convertNumscriptError
+			// returns the Describable as-is). Softening this to retryable stale
+			// would hide the bug and spin the client in an infinite re-admit loop
+			// against the same missing declaration — surface it loudly (invariant
+			// #7). Matched by domain Reason so this file need not import
+			// internal/infra/state (which imports processing — import cycle).
+			//
+			// Accepted limitation (EN-1406): when the resolved dependency set is a
+			// function of mutable metadata (e.g. `account $src = meta(@cfg,"acct")`)
+			// and that metadata changed between admission and apply, re-resolution
+			// derives a different account whose balance was never declared, so this
+			// coverage miss is really a stale-input shift that a re-admission would
+			// fix — yet it is classified fatal (KindInternal) rather than retryable
+			// STALE. We keep it fatal on purpose: at the miss point we cannot
+			// cheaply distinguish a value-derived shift (should be retryable) from a
+			// genuine static under-declaration / preload-construction bug (must stay
+			// fatal per invariant #7, else the client spins re-admitting the same
+			// missing declaration). Downgrading only ErrCoverageMiss to stale would
+			// close the value-shift case but risks masking the latter as an infinite
+			// retry loop, so that refinement is deferred to an explicit design call.
+			if isCoverageContractViolation(resolveErr) {
+				return nil, resolveErr
+			}
+
+			// (3) Otherwise it is a genuine input-shift (a var origin now points
+			// at a missing/changed value) on a script admission already resolved,
+			// not a client script bug — surface it as stale so the client
+			// re-admits against fresh state.
+			return nil, domain.ErrStaleInputsResolution
+		}
+
+		if !bytes.Equal(expected, recording.Hash()) {
+			return nil, domain.ErrStaleInputsResolution
+		}
 	}
 
-	// Execute the script (experimental features are declared directly in scripts)
+	// Execute the script (experimental features are declared directly in scripts).
+	// When Force is true, the store returns unlimited balances to bypass balance checks.
+	storeAdapter := numscript.NewStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 	result, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
 	if err != nil {
 		// SafeRun already converted to Describable: ErrInsufficientFunds
@@ -66,6 +131,17 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	)
 
 	for i, posting := range result.Postings {
+		// Authoritative rejection of scope-qualified postings. Color IS modelled —
+		// posting.Color flows into the commonpb.Posting and NewVolumeKey below, so
+		// a colored posting materialises its own segregated volume bucket. Scope is
+		// NOT modelled: building a commonpb.Posting would silently drop the scope
+		// qualifier and collapse onto the unscoped volume — a silent semantic loss.
+		// Reject deterministically so every node produces the same definitive
+		// failure. Mirrors admission's discover-side rejection.
+		if posting.SourceScope != "" || posting.DestinationScope != "" {
+			return nil, domain.ErrScopedBalanceUnsupported
+		}
+
 		if posting.Amount.Sign() < 0 {
 			return nil, &domain.ErrNumscriptRuntime{
 				Detail: fmt.Sprintf("posting %d has negative amount %s", i, posting.Amount),
@@ -175,20 +251,38 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	var accountsMeta map[string]map[string]*commonpb.MetadataValue
 	if len(result.AccountsMetadata) > 0 {
 		accountsMeta = make(map[string]map[string]*commonpb.MetadataValue, len(result.AccountsMetadata))
-		for account, meta := range result.AccountsMetadata {
-			mdMap := make(map[string]*commonpb.MetadataValue, len(meta))
-			for key, value := range meta {
-				if err := domain.ValidateMetadataKey(key); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-				if err := domain.ValidateMetadataString(value); err != nil {
-					return nil, &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-
-				mdMap[key] = commonpb.NewStringValue(value)
+		for _, row := range result.AccountsMetadata {
+			// Ledger account metadata has no scope dimension; a scoped write would
+			// silently collapse onto the unscoped key. Reject deterministically,
+			// mirroring the posting and discover-side scope rejections.
+			if row.Scope != "" {
+				return nil, domain.ErrScopedBalanceUnsupported
 			}
 
-			accountsMeta[account] = mdMap
+			if err := domain.ValidateMetadataKey(row.Key); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
+			}
+
+			value, convErr := numscript.ValueToString(row.Value)
+			if convErr != nil {
+				// A Numscript value that fails to serialise is a library-level
+				// impossibility, not a client error — surface it loudly.
+				return nil, &domain.ErrNumscriptRuntime{
+					Detail: fmt.Sprintf("serialising account metadata %s/%s: %v", row.Account, row.Key, convErr),
+				}
+			}
+
+			if err := domain.ValidateMetadataString(value); err != nil {
+				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
+			}
+
+			mdMap := accountsMeta[row.Account]
+			if mdMap == nil {
+				mdMap = make(map[string]*commonpb.MetadataValue)
+				accountsMeta[row.Account] = mdMap
+			}
+
+			mdMap[row.Key] = commonpb.NewStringValue(value)
 		}
 	}
 
@@ -201,7 +295,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			stringValue := value.String()
+			stringValue, convErr := numscript.ValueToString(value)
+			if convErr != nil {
+				return nil, &domain.ErrNumscriptRuntime{
+					Detail: fmt.Sprintf("serialising transaction metadata %s: %v", key, convErr),
+				}
+			}
+
 			if err := domain.ValidateMetadataString(stringValue); err != nil {
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
@@ -217,110 +317,97 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	}, nil
 }
 
-// numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
-type numscriptStoreAdapter struct {
-	store      Scope
-	ledgerName string
-	force      bool // When true, return unlimited balances to bypass balance checks
-}
-
-func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
-	balances := make(numscriptlib.Balances, 0, len(query))
-
-	var inputVal, outputVal uint256.Int // stack scratch reused across iterations
-
-	for _, item := range query {
-		// Reject the numscript runtime's catch-all asset query (`BASE/*`)
-		// explicitly: the in-memory store does not expose iteration, so we
-		// cannot expand the wildcard to the concrete precision flavors that
-		// live on the account. Surface the unsupported case loudly rather
-		// than letting readVolumeOrZero miss on a literal "BASE/*" key.
-		if strings.HasSuffix(item.Asset, "/*") {
-			return nil, numscript.ErrCatchAllAssetNotSupported
-		}
-
-		// When force mode is enabled, return unlimited balance for the
-		// queried (account, asset, color) tuple. This bypasses balance
-		// checks inside numscript while still respecting the color
-		// dimension numscript will use to assemble postings.
-		if s.force {
-			balances = append(balances, numscriptlib.BalanceRow{
-				Account: item.Account,
-				Asset:   item.Asset,
-				Color:   item.Color,
-				Amount:  new(big.Int).Set(numscript.MaxForceBalance),
-			})
-
+// isCoverageContractViolation reports whether err is an admission-contract
+// violation surfaced by the coverage-gated Scope during apply-time re-resolution
+// — a *state.ErrCoverageMiss (a key admission never declared) or a
+// *domain.ErrInvalidExecutionPlan (a structurally inconsistent plan). Both are
+// "should not happen" bugs (invariant #7) that must surface loudly rather than
+// be softened to the retryable ErrStaleInputsResolution.
+//
+// It matches on the stable domain Reason string rather than the concrete type so
+// this package need not import internal/infra/state (state imports processing —
+// an import cycle). Every Describable in the chain is inspected because the
+// numscript library wraps the store error (QueryBalanceError / QueryMetadataError
+// both implement Unwrap), so errors.As can reach the underlying typed error.
+func isCoverageContractViolation(err error) bool {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		describable, ok := e.(domain.Describable) //nolint:errorlint // deliberate per-node check; the loop unwraps the chain itself
+		if !ok {
 			continue
 		}
 
-		volumeKey := domain.NewVolumeKey(s.ledgerName, item.Account, item.Asset, item.Color)
-
-		vol, err := readVolumeOrZero(s.store, volumeKey)
-		if err != nil {
-			return nil, err
+		switch describable.Reason() {
+		case domain.ErrReasonCoverageMiss, domain.ErrReasonInvalidExecutionPlan:
+			return true
 		}
-
-		// Mirrors the guard in applyPosting (processor_posting.go) and produce()
-		// above: WriteSet.GetVolume legitimately returns (nil, nil) for a key the
-		// admission layer never preloaded (e.g. a colored bucket touched by a
-		// catch-all expansion that didn't preload everything). Calling GetInput()
-		// on a nil interface panics in the FSM apply path and desyncs the cluster.
-		if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
-			return nil, &domain.ErrBalanceNotPreloaded{Account: item.Account, Asset: item.Asset, Color: item.Color}
-		}
-
-		// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-		vol.GetInput().IntoUint256(&inputVal)
-		vol.GetOutput().IntoUint256(&outputVal)
-
-		// balance escapes into the row, so it must be heap-allocated
-		// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)
-		balances = append(balances, numscriptlib.BalanceRow{
-			Account: item.Account,
-			Asset:   item.Asset,
-			Color:   item.Color,
-			Amount:  new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()),
-		})
 	}
 
-	return balances, nil
+	return false
 }
 
-func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
-	result := make(numscriptlib.AccountsMetadata)
+// scopeValueSource reads balances and metadata through the FSM apply Scope.
+// Every read passes through the coverage gate (invariant #9) and touches only
+// preloaded cache values, never Pebble (invariant #3). It backs both the
+// force-free execution store and the FSM-time stale-inputs re-resolution.
+type scopeValueSource struct {
+	store      Scope
+	ledgerName string
+}
 
-	for account, keys := range query {
-		accountMeta := make(numscriptlib.AccountMetadata)
-		result[account] = accountMeta
+func (s *scopeValueSource) Balance(account, asset, color string) (*big.Int, error) {
+	// #1560 (EN-1406) resolves dependencies through the upstream
+	// ResolveDependencies API, which threads color: a colored balance read
+	// resolves its own segregated (account, asset, color) bucket through the
+	// coverage-gated Scope (scope-qualified reads are still rejected earlier via
+	// domain.ErrScopedBalanceUnsupported).
+	volumeKey := domain.NewVolumeKey(s.ledgerName, account, asset, color)
 
-		for _, key := range keys {
-			metaKey := domain.MetadataKey{
-				AccountKey: domain.AccountKey{
-					LedgerName: s.ledgerName,
-					Account:    account,
-				},
-				Key: key,
-			}
-
-			valueReader, err := s.store.AccountMetadata().Get(metaKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, err
-			}
-
-			if valueReader != nil {
-				// Numscript sees the verbatim client write — declared_type is
-				// an index hint only and MUST NOT influence script behaviour.
-				// A previous version coerced "030" under a UINT64 declaration
-				// to "30" here, which broke the lossless contract and let a
-				// retype silently change transaction outcomes.
-				str := commonpb.MetadataValueToString(valueReader.Mutate())
-				if str != "" {
-					accountMeta[key] = str
-				}
-			}
-		}
+	vol, err := readVolumeOrZero(s.store, volumeKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return result, nil
+	if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
+		return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
+	}
+
+	var inputVal, outputVal uint256.Int
+	vol.GetInput().IntoUint256(&inputVal)
+	vol.GetOutput().IntoUint256(&outputVal)
+
+	// Convert to *big.Int at the numscript boundary (numscript uses *big.Int).
+	return new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()), nil
+}
+
+func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{
+			LedgerName: s.ledgerName,
+			Account:    account,
+		},
+		Key: key,
+	}
+
+	valueReader, err := s.store.AccountMetadata().Get(metaKey)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return "", false, err
+	}
+
+	if valueReader == nil {
+		// Absent key: Scope returns ErrNotFound → nil reader above.
+		return "", false, nil
+	}
+
+	// Present key. Numscript sees the verbatim client write — declared_type is an
+	// index hint only and MUST NOT influence script behaviour. A previous version
+	// coerced "030" under a UINT64 declaration to "30" here, which broke the
+	// lossless contract and let a retype silently change transaction outcomes.
+	//
+	// Presence is driven ONLY by nil-ness: an empty string is a valid stored
+	// metadata value, and MetadataValueToString returns "" for both a real
+	// StringValue("") and an untyped/nil value. Returning present=false on
+	// str=="" would make a valid meta() read of an empty string resolve as
+	// absent, diverging from the admission-side admissionValueSource and
+	// poisoning the resolution hash with the absent sentinel.
+	return commonpb.MetadataValueToString(valueReader.Mutate()), true, nil
 }

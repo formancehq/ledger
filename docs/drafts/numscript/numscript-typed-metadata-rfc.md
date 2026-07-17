@@ -44,7 +44,7 @@ Extend Numscript so that:
 
 ### 0.3 Relation to Other Documents
 
-- **[Static Inputs RFC](./numscript-static-inputs-rfc.md)** — `meta()` reads are declared in `Requirements.accountMetadataReads`. This RFC does not change that contract; it changes the **value type** flowing through the declared reads.
+- **[Static Inputs RFC](../../technical/contributing/numscript.md#volume-preloading-dependency-resolution)** — `meta()` reads are declared in `Requirements.accountMetadataReads`. This RFC does not change that contract; it changes the **value type** flowing through the declared reads.
 - **[Typed Metadata Architecture](../../technical/architecture/subsystems/read-path/typed-metadata.md)** — This RFC builds on the existing typed metadata system and reuses its `MetadataValue` oneof, `MetadataType` enum, and conversion matrix.
 
 ### 0.4 Scope
@@ -386,11 +386,11 @@ meta_value = string_literal | bool_literal | number_literal | variable
 
 ### 5.1 No Impact on Volume Discovery
 
-Typed literals in metadata operations do not affect balance queries or volume preloading. The emulation store (`discoveryStore`) is unaffected.
+Typed literals in metadata operations do not affect balance queries or volume preloading. Dependency resolution (`discover.go`, over a `ValueSource` reading real state via the upstream `ResolveDependencies` API — which replaced the old emulation store) is unaffected.
 
 ### 5.2 No Impact on Static Analysis
 
-The `Requirements` object from the [Static Inputs RFC](./numscript-static-inputs-rfc.md) declares which `(account, key)` pairs are read. The **type** of the value is not part of `Requirements` — it is a runtime concern.
+The `Requirements` object from the [Static Inputs RFC](../../technical/contributing/numscript.md#volume-preloading-dependency-resolution) declares which `(account, key)` pairs are read. The **type** of the value is not part of `Requirements` — it is a runtime concern.
 
 ---
 

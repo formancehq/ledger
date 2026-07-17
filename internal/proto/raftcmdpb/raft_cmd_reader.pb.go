@@ -13,15 +13,19 @@ import (
 // OrderReader provides read-only access to Order.
 // Call Mutate() to obtain a mutable clone.
 type OrderReader interface {
-	GetCoverageBits() []byte
+	GetTechnical() OrderTechnicalReader
 	GetType() isOrder_Type
 	Mutate() *Order
 }
 
 type orderReadonly Order
 
-func (r *orderReadonly) GetCoverageBits() []byte {
-	return bytes.Clone((*Order)(r).GetCoverageBits())
+func (r *orderReadonly) GetTechnical() OrderTechnicalReader {
+	v := (*Order)(r).GetTechnical()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *orderReadonly) GetType() isOrder_Type {
@@ -79,6 +83,83 @@ func (l orderListReadonly) Range(yield func(int, OrderReader) bool) {
 // NewOrderListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewOrderListReader(s []*Order) OrderListReader { return orderListReadonly(s) }
+
+// OrderTechnicalReader provides read-only access to OrderTechnical.
+// Call Mutate() to obtain a mutable clone.
+type OrderTechnicalReader interface {
+	GetCoverageBits() []byte
+	GetInputsResolutionHash() []byte
+	GetPreloadUnavailable() bool
+	Mutate() *OrderTechnical
+}
+
+type orderTechnicalReadonly OrderTechnical
+
+func (r *orderTechnicalReadonly) GetCoverageBits() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCoverageBits())
+}
+
+func (r *orderTechnicalReadonly) GetInputsResolutionHash() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetInputsResolutionHash())
+}
+
+func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
+	return (*OrderTechnical)(r).GetPreloadUnavailable()
+}
+
+func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {
+	return (*OrderTechnical)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this OrderTechnical.
+func (m *OrderTechnical) AsReader() OrderTechnicalReader {
+	if m == nil {
+		return nil
+	}
+	return (*orderTechnicalReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this OrderTechnical.
+func (m *OrderTechnical) Mutate() *OrderTechnical {
+	return m.CloneVT()
+}
+
+// OrderTechnicalListReader provides read-only iteration over []*OrderTechnical.
+type OrderTechnicalListReader interface {
+	Len() int
+	Get(i int) OrderTechnicalReader
+	Range(yield func(int, OrderTechnicalReader) bool)
+}
+
+type orderTechnicalListReadonly []*OrderTechnical
+
+func (l orderTechnicalListReadonly) Len() int { return len(l) }
+
+func (l orderTechnicalListReadonly) Get(i int) OrderTechnicalReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l orderTechnicalListReadonly) Range(yield func(int, OrderTechnicalReader) bool) {
+	for i, v := range l {
+		var r OrderTechnicalReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewOrderTechnicalListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewOrderTechnicalListReader(s []*OrderTechnical) OrderTechnicalListReader {
+	return orderTechnicalListReadonly(s)
+}
 
 // LedgerScopedOrderReader provides read-only access to LedgerScopedOrder.
 // Call Mutate() to obtain a mutable clone.

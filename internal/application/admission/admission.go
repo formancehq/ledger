@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -542,7 +543,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	stopScripts := a.recordPhaseOnExit(ctx, a.scriptsDurationHistogram)
 	defer stopScripts()
 
-	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder); err != nil {
+	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
 	stopScripts()
@@ -568,9 +569,15 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	operations := make([]plan.WriteOperation, len(orders))
 	cmdOrders := cmd.GetOrders()
 	for i := range orders {
+		// coverage_bits lives on OrderTechnical; create it nil-safely (may already
+		// exist from the inputs-resolution-hash pass above) before pointing Build
+		// at the field it fills.
+		if cmdOrders[i].GetTechnical() == nil {
+			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
+		}
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			Target:   &cmdOrders[i].CoverageBits,
+			Target:   &cmdOrders[i].Technical.CoverageBits,
 		}
 	}
 
@@ -1394,7 +1401,64 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 //
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
-func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage) error {
+func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage, hasIdempotencyKey bool) error {
+	// forwardOrFail decides what to do when admission cannot build the preload
+	// for an order (discovery/skip-prediction failed against current state). With
+	// an idempotency key present the failure is NOT authoritative — the batch may
+	// be a replay of a frozen outcome, and only the FSM (log-ordered) can decide.
+	// So we mark the order preload_unavailable and forward it: the FSM replays a
+	// frozen outcome if one exists, else rejects with the retryable, non-frozen
+	// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
+	// preserve, so we keep the cheap fail-fast (returns a terminal error).
+	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
+		// A definitive, deterministic rejection is NOT a preparation gap: the
+		// script could never have succeeded — a parse error, a validation failure,
+		// an unsupported scope-qualified write, a missing ledger, and so on —
+		// so there is no frozen outcome to replay and re-running always fails
+		// identically. Surface the real error: never forward it as a retryable
+		// preload-unavailable (which would spin forever, since no retry can
+		// succeed) and never wrap it as the retryable ErrDependencyDiscoveryFailed.
+		// IsFreezableFailure captures exactly this "definitive & deterministic"
+		// class (validation, parse, not-found, already-exists, conflict,
+		// precondition); only genuinely state-dependent preparation failures fall
+		// through to the idempotency-replay forward below.
+		// A recovered numscript-library panic is a "should not happen" (invariant
+		// #7): it must surface loudly, never be masked as a retryable
+		// preload-unavailable. It is also deterministic (same script → same panic),
+		// so forwarding it would loop forever once an idempotency key is present.
+		// It is KindInternal (so the freezable check below would let it through),
+		// hence the explicit guard here, before that check.
+		if numscript.IsPanic(cause) {
+			var pd domain.Describable
+			if errors.As(cause, &pd) {
+				return false, &domain.BusinessError{Err: pd}
+			}
+
+			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+		}
+		var d domain.Describable
+		if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
+			return false, &domain.BusinessError{Err: d}
+		}
+		if !hasIdempotencyKey {
+			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+		}
+		if order.GetTechnical() == nil {
+			order.Technical = &raftcmdpb.OrderTechnical{}
+		}
+		order.Technical.PreloadUnavailable = true
+
+		return true, nil
+	}
+	// effects accumulates the state changes of orders already processed in this
+	// atomic batch so each subsequent order resolves against the state the FSM
+	// will see when it reaches that order — pre-batch storage plus predecessors'
+	// writes (EN-1406 P1-1). The FSM applies batch orders sequentially against a
+	// single mutated WriteSet; without this, an order whose balance()/meta()
+	// depends on an earlier order in the same batch would hash stale at admission
+	// and be rejected as STALE_INPUTS_RESOLUTION on every retry.
+	effects := newBatchEffects()
+
 	for orderIdx, order := range orders {
 		ls := order.GetLedgerScoped()
 		if ls == nil {
@@ -1406,17 +1470,114 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		createTx, ok := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
-		if !ok {
+		ledgerName := ls.GetLedger()
+
+		// Skip parity with the FSM: ProcessOrders drops a skip-tolerant order's
+		// overlay when the sub-processor hits a whitelisted skippable error
+		// (matchOrderSkip), so that order applies NO state change. Admission must
+		// mirror that decision here — a predecessor predicted to skip contributes
+		// nothing to the batch overlay, or a later Numscript's
+		// inputs_resolution_hash would embed the phantom effects of an order the
+		// FSM actually dropped and be rejected STALE_INPUTS_RESOLUTION forever
+		// (EN-1406). The prediction is a pure function of the order plus the
+		// resolved batch state layered over Pebble.
+		skip, err := a.predictOrderSkip(order, ledgerName, effects)
+		if err != nil {
+			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+				return ferr
+			} else if forwarded {
+				continue
+			}
+		}
+
+		// Every preceding mutating order's effect must be folded into the batch
+		// overlay so a later balance()/meta() resolves against the state the FSM
+		// will see when it reaches that order (EN-1406 P1). Non-CreateTransaction
+		// mutating orders (revert, metadata add/delete) carry no script to
+		// resolve — fold their effects and move on. A predecessor that would be
+		// skipped folds nothing (skip parity above).
+		switch applyData := applyPayload.Apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+			// Handled below (script resolution + effect folding). A predicted
+			// skip short-circuits the whole resolution: the FSM will drop this
+			// order, so it must contribute no effects and needs no resolution
+			// hash (a skipped order's hash is never checked).
+			if skip {
+				continue
+			}
+		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+			if skip {
+				continue
+			}
+
+			// A revert applies each original posting reversed (original
+			// destination becomes source, original source becomes
+			// destination — see processRevertTransaction), so the net balance
+			// delta is the inverse of the original: source +amount, dest
+			// −amount relative to the original posting.
+			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
+				amount := posting.GetAmount().ToBigInt()
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor()),
+					amount,
+				)
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor()),
+					new(big.Int).Neg(amount),
+				)
+			}
+
+			// Record the reverted tx so a later same-batch revert of it is
+			// predicted to skip (TRANSACTION_ALREADY_REVERTED), matching the
+			// FSM's mutated reversion bitset.
+			effects.recordReverted(domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()})
+
+			continue
+		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+			if skip {
+				continue
+			}
+
+			// Only account-targeted metadata is observable by a later meta();
+			// transaction-targeted metadata is not.
+			if acct, isAcct := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+				for k, v := range applyData.AddMetadata.GetMetadata() {
+					effects.setMetadata(domain.MetadataKey{
+						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
+						Key:        k,
+					}, commonpb.MetadataValueToString(v))
+				}
+			}
+
+			continue
+		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
+			if skip {
+				continue
+			}
+
+			// A preceding account-metadata delete tombstones the key so a
+			// later meta() resolves absent, matching the FSM's post-delete state.
+			if acct, isAcct := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct {
+				effects.deleteMetadata(domain.MetadataKey{
+					AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
+					Key:        applyData.DeleteMetadata.GetKey(),
+				})
+			}
+
+			continue
+		default:
+			// Non-mutating or non-account-state orders (index, account-type,
+			// enforcement mode) leave no balance/metadata trace a later script
+			// could read.
 			continue
 		}
+
+		createTx := applyPayload.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction)
 
 		// Script-discovered keys belong to this order's coverage. perOrder
 		// is initialized by extractPreloadNeeds with one entry per input
 		// order, so the index lookup is safe.
 		orderNeeds := perOrder[orderIdx]
-
-		ledgerName := ls.GetLedger()
 
 		var scriptText string
 		var scriptVars map[string]string
@@ -1451,36 +1612,133 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptText = script.GetPlain()
 			scriptVars = script.GetVars()
 		} else {
-			// Postings-only — handled by extractPreloadNeeds
+			// Postings-only — its preload keys are handled by extractPreloadNeeds,
+			// but its balance effects still feed later orders' resolution in this
+			// batch (EN-1406 P1-1), so fold them into the accumulator before moving
+			// on. balance = input − output: source −amount, destination +amount.
+			for _, posting := range createTx.CreateTransaction.GetPostings() {
+				amount := posting.GetAmount().ToBigInt()
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor()),
+					new(big.Int).Neg(amount),
+				)
+				effects.addBalanceDelta(
+					domain.NewVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor()),
+					amount,
+				)
+			}
+
+			// Caller-supplied account metadata on a postings-only order is also a
+			// write a later meta() could read.
+			foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
+
+			// Record this create's transaction reference (if any) so a later
+			// same-batch create carrying the same reference is predicted to skip
+			// (TRANSACTION_REFERENCE_CONFLICT). A postings-only create registers
+			// its reference exactly as the FSM will (processCreateTransaction
+			// stores it in TransactionReferences), identically to the scripted
+			// path below — otherwise the later duplicate would be folded as if it
+			// applied, poisoning the inputs-resolution hash with phantom state.
+			if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+				effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
+			}
+
 			continue
 		}
+
+		valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName, effects: effects}
 
 		discovered, err := numscript.DiscoverNumscriptDependencies(
 			a.numscriptCache,
 			scriptText,
 			scriptVars,
 			ledgerName,
+			valueSource,
+			createTx.CreateTransaction.GetForce(),
 		)
 		if err != nil {
-			return &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: err}}
+			// Discovery couldn't resolve the script against current state (e.g. an
+			// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
+			// the original success). This is a preparation gap, NOT an authoritative
+			// verdict: with an idempotency key the batch may be a replay of a frozen
+			// outcome, and only the FSM (log-ordered) can decide. forwardOrFail marks
+			// the order preload_unavailable and forwards it — the FSM replays the
+			// frozen outcome, or rejects with the retryable, non-frozen
+			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
+			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
+			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+				return ferr
+			} else if forwarded {
+				continue
+			}
 		}
 
 		if discovered != nil {
-			for key := range discovered.SourceVolumes {
+			// Volume reads and writes both need preloading: the FSM apply path
+			// reads every touched source balance and mutates both source and
+			// destination volumes. The union is preloaded so every read/mutate
+			// resolves from cache. #1560 (EN-1406) threads color: a discovered key
+			// may carry a non-empty key.Color, so preloading passes it through to
+			// the segregated (account, asset, color) bucket. Scope-qualified
+			// balances are still rejected upstream.
+			for key := range discovered.ReadVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
-			for key := range discovered.DestinationVolumes {
+			for key := range discovered.WriteVolumes {
 				addVolumeNeed(p, key.LedgerName, key.Account, key.Asset, key.Color)
 				addVolumeNeed(orderNeeds, key.LedgerName, key.Account, key.Asset, key.Color)
 			}
 
-			for key := range discovered.WrittenMetadata {
+			// Metadata reads must be preloaded so the FSM's stale-inputs
+			// re-resolution (which reads meta() through the coverage gate) and
+			// the metadata read on the apply path resolve from cache. Metadata
+			// writes must be preloaded too: the apply path captures the
+			// previous value before writing (indexbuilder relies on it, #186)
+			// via a coverage-gated read.
+			for key := range discovered.ReadMetadata {
 				canonical := key.Bytes()
 				p.Add(dal.SubAttrMetadata, canonical)
 				orderNeeds.Add(dal.SubAttrMetadata, canonical)
 			}
+
+			for key := range discovered.WriteMetadata {
+				canonical := key.Bytes()
+				p.Add(dal.SubAttrMetadata, canonical)
+				orderNeeds.Add(dal.SubAttrMetadata, canonical)
+			}
+
+			// Bind the resolved inputs to the order's technical sub-message. The
+			// FSM re-resolves against preloaded values and rejects with
+			// ErrStaleInputsResolution if the hash differs (inputs changed between
+			// admission and apply). Nil for fully-static scripts (nothing read) —
+			// the FSM then skips the check. Technical is created nil-safely and
+			// shared with the coverage-bits pass (order-independent).
+			if order.GetTechnical() == nil {
+				order.Technical = &raftcmdpb.OrderTechnical{}
+			}
+			order.Technical.InputsResolutionHash = discovered.InputsHash
+
+			// Fold this script's effects into the batch accumulator so a later
+			// order in the same atomic batch resolves against them (EN-1406 P1-1).
+			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)
+		}
+
+		// Caller-supplied account metadata is folded AFTER the script's writes
+		// because the FSM merges it with precedence over set_account_meta
+		// (processCreateTransaction: "order metadata takes precedence over
+		// script metadata"). A later meta() must therefore see the caller value,
+		// not the script value, for the same key.
+		foldCallerAccountMetadata(effects, ledgerName, createTx.CreateTransaction)
+
+		// Record this create's transaction reference (if any) so a later
+		// same-batch create carrying the same reference is predicted to skip
+		// (TRANSACTION_REFERENCE_CONFLICT). We reach here only for a create that
+		// was NOT predicted to skip, so it registers the reference exactly as the
+		// FSM will (processCreateTransaction stores it in TransactionReferences).
+		if txRef := createTx.CreateTransaction.GetReference(); txRef != "" {
+			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
 		}
 
 		// For references: preload the resolved content keyed by (ledger, name, version).

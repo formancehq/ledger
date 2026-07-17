@@ -687,15 +687,28 @@ const (
 	ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED           ErrorReason = 56
 	ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME                ErrorReason = 57
 	ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED          ErrorReason = 58
-	ErrorReason_ERROR_REASON_NON_DETERMINISTIC_SCRIPT         ErrorReason = 59
 	ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY                ErrorReason = 60
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL         ErrorReason = 61
 	ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW        ErrorReason = 62
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY             ErrorReason = 63
 	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP             ErrorReason = 64
 	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID         ErrorReason = 65
-	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW               ErrorReason = 66
-	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND                ErrorReason = 67
+	// ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
+	// Numscript dependency resolution read at admission time changed before the
+	// FSM applied the transaction, so the preloaded key set may be wrong.
+	// Retryable (Kind=Unavailable) — a second admission re-resolves against the
+	// new values. See EN-1406.
+	ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION ErrorReason = 66
+	// ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
+	// for an order (e.g. Numscript dependency discovery failed against current
+	// state). When the batch carries an idempotency key, admission forwards the
+	// order to the FSM (marked OrderTechnical.preload_unavailable) instead of
+	// failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
+	// exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
+	// a preparation gap, never an authoritative business verdict. See EN-1406.
+	ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE ErrorReason = 67
+	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW  ErrorReason = 68
+	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND   ErrorReason = 69
 )
 
 // Enum value maps for ErrorReason.
@@ -760,15 +773,16 @@ var (
 		56: "ERROR_REASON_CHECKPOINT_ID_REQUIRED",
 		57: "ERROR_REASON_NUMSCRIPT_RUNTIME",
 		58: "ERROR_REASON_VOLUME_NOT_MATERIALIZED",
-		59: "ERROR_REASON_NON_DETERMINISTIC_SCRIPT",
 		60: "ERROR_REASON_CLUSTER_UNHEALTHY",
 		61: "ERROR_REASON_WRITES_BLOCKED_DISK_FULL",
 		62: "ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW",
 		63: "ERROR_REASON_CHECKPOINT_NOT_READY",
 		64: "ERROR_REASON_MIRROR_V2_LOG_ID_GAP",
 		65: "ERROR_REASON_MIRROR_V2_LOG_ID_INVALID",
-		66: "ERROR_REASON_AGGREGATE_OVERFLOW",
-		67: "ERROR_REASON_BALANCE_NOT_FOUND",
+		66: "ERROR_REASON_STALE_INPUTS_RESOLUTION",
+		67: "ERROR_REASON_PRELOAD_UNAVAILABLE",
+		68: "ERROR_REASON_AGGREGATE_OVERFLOW",
+		69: "ERROR_REASON_BALANCE_NOT_FOUND",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -830,15 +844,16 @@ var (
 		"ERROR_REASON_CHECKPOINT_ID_REQUIRED":           56,
 		"ERROR_REASON_NUMSCRIPT_RUNTIME":                57,
 		"ERROR_REASON_VOLUME_NOT_MATERIALIZED":          58,
-		"ERROR_REASON_NON_DETERMINISTIC_SCRIPT":         59,
 		"ERROR_REASON_CLUSTER_UNHEALTHY":                60,
 		"ERROR_REASON_WRITES_BLOCKED_DISK_FULL":         61,
 		"ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW":        62,
 		"ERROR_REASON_CHECKPOINT_NOT_READY":             63,
 		"ERROR_REASON_MIRROR_V2_LOG_ID_GAP":             64,
 		"ERROR_REASON_MIRROR_V2_LOG_ID_INVALID":         65,
-		"ERROR_REASON_AGGREGATE_OVERFLOW":               66,
-		"ERROR_REASON_BALANCE_NOT_FOUND":                67,
+		"ERROR_REASON_STALE_INPUTS_RESOLUTION":          66,
+		"ERROR_REASON_PRELOAD_UNAVAILABLE":              67,
+		"ERROR_REASON_AGGREGATE_OVERFLOW":               68,
+		"ERROR_REASON_BALANCE_NOT_FOUND":                69,
 	}
 )
 
@@ -13766,7 +13781,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x9a\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xbf\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13827,16 +13842,17 @@ const file_common_proto_rawDesc = "" +
 	"+ERROR_REASON_TRANSACTION_STATE_INCONSISTENT\x107\x12'\n" +
 	"#ERROR_REASON_CHECKPOINT_ID_REQUIRED\x108\x12\"\n" +
 	"\x1eERROR_REASON_NUMSCRIPT_RUNTIME\x109\x12(\n" +
-	"$ERROR_REASON_VOLUME_NOT_MATERIALIZED\x10:\x12)\n" +
-	"%ERROR_REASON_NON_DETERMINISTIC_SCRIPT\x10;\x12\"\n" +
+	"$ERROR_REASON_VOLUME_NOT_MATERIALIZED\x10:\x12\"\n" +
 	"\x1eERROR_REASON_CLUSTER_UNHEALTHY\x10<\x12)\n" +
 	"%ERROR_REASON_WRITES_BLOCKED_DISK_FULL\x10=\x12*\n" +
 	"&ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW\x10>\x12%\n" +
 	"!ERROR_REASON_CHECKPOINT_NOT_READY\x10?\x12%\n" +
 	"!ERROR_REASON_MIRROR_V2_LOG_ID_GAP\x10@\x12)\n" +
-	"%ERROR_REASON_MIRROR_V2_LOG_ID_INVALID\x10A\x12#\n" +
-	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10B\x12\"\n" +
-	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10C*Q\n" +
+	"%ERROR_REASON_MIRROR_V2_LOG_ID_INVALID\x10A\x12(\n" +
+	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10B\x12$\n" +
+	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10C\x12#\n" +
+	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10D\x12\"\n" +
+	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10E*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

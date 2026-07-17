@@ -89,11 +89,11 @@ The coverage state lives on `gatedScope` as `coverage coverageSlots` — a dense
 
 A single `gatedScope` is allocated per proposal: `gatedScope` doubles as its own factory (the `processing.ScopeFactory` interface is implemented on it), and each `NewScope(coverage_bits)` truncates the slots in place and re-applies the selected plans. The FSM apply path is strictly sequential — `applyTechnicalUpdates` → `ProcessOrders` → `ValidateTransientVolumes` never overlap — so reusing one instance is safe and avoids the `*gatedScope` + 11 backing-array allocations per order the original design paid.
 
-Empty `coverage_bits` on `NewScope` admit no plan (any `CheckCoverage` misses). Proposal-wide coverage — needed by `ValidateTransientVolumes` to reach into every ledger the proposal touched — uses the separate `NewProposalScope()` method, so an order whose proto `CoverageBits` is unset cannot silently inherit coverage from another order in the same batch.
+Empty `coverage_bits` on `NewScope` admit no plan (any `CheckCoverage` misses). Proposal-wide coverage — needed by `ValidateTransientVolumes` to reach into every ledger the proposal touched — uses the separate `NewProposalScope()` method, so an order whose proto `OrderTechnical.coverage_bits` is unset cannot silently inherit coverage from another order in the same batch.
 
 ## TechnicalUpdate envelope (per-update coverage on tech-side writes)
 
-`Proposal.technical_updates` is a `repeated TechnicalUpdate`. Each `TechnicalUpdate` wraps one of the seven non-order payloads (mirror sync, events-sink cursor, idempotency eviction, cluster config, metadata batch, metadata completion, index ready) inside a `oneof kind` and carries its own `coverage_bits` — symmetric to `Order.coverage_bits`. The FSM apply loop builds one `Scope` per `TechnicalUpdate`, narrowed by that update's bits, before dispatching to the handler:
+`Proposal.technical_updates` is a `repeated TechnicalUpdate`. Each `TechnicalUpdate` wraps one of the seven non-order payloads (mirror sync, events-sink cursor, idempotency eviction, cluster config, metadata batch, metadata completion, index ready) inside a `oneof kind` and carries its own `coverage_bits` — symmetric to `OrderTechnical.coverage_bits` (the order-side coverage gate now lives on the `Order.technical` sub-message). The FSM apply loop builds one `Scope` per `TechnicalUpdate`, narrowed by that update's bits, before dispatching to the handler:
 
 ```go
 for _, tu := range proposal.GetTechnicalUpdates() {
