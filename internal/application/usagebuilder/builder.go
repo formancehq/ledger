@@ -164,6 +164,13 @@ func (b *Builder) boot(ctx context.Context) error {
 	pebbleLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
 		b.pebbleLastAuditSeq.Store(pebbleLast)
+
+		// Rollback detection before the catch-up: if the primary store was
+		// restored beneath the persisted cursor, drop the projection and rewind
+		// to 0 so the fold below replays into a clean store.
+		if cursor, err = b.resetIfRolledBack(cursor, pebbleLast); err != nil {
+			return err
+		}
 	}
 
 	b.logger.WithFields(map[string]any{
@@ -211,26 +218,60 @@ func (b *Builder) boot(ctx context.Context) error {
 	return nil
 }
 
-// tick runs one steady-state iteration: refresh the audit-head gauge, then
-// drain any pending audit entries from the persisted cursor forward.
+// tick runs one steady-state iteration: refresh the audit-head gauge, detect a
+// primary-store rollback, then drain any pending audit entries from the cursor
+// forward.
 //
-// No rollback/cursor-ahead re-check is needed: the audit chain is append-only
-// and monotone. Audit entries are written only for committed Raft entries
-// (Machine.applyProposal), so by Raft leader-completeness a written entry
-// survives every leadership change and RestoreCheckpoint only ever advances a
-// node that is behind (IsStoreUpToDate gates sync on LastAppliedIndex >=
-// SnapshotIndex). The persisted cursor can therefore never legitimately sit
-// ahead of the audit head, so there is nothing to rewind.
+// In steady state the persisted cursor sits at or behind the audit head: the
+// chain is append-only and RestoreCheckpoint normally only advances a node that
+// is behind (IsStoreUpToDate gates sync on LastAppliedIndex >= SnapshotIndex).
+// But a restore that rolls the primary store back BENEATH the persisted cursor
+// leaves the cursor ahead of the audit head; a forward-only fold would then
+// no-op and leave the projection permanently over-counted — and, because the
+// usagestore is a peer store outside checker scope (invariant #8), nothing would
+// surface the drift. resetIfRolledBack wipes the projection + cursor and rewinds
+// to 0 so this tick replays into a clean store (docs: usagebuilder.md rollback).
 func (b *Builder) tick(ctx context.Context) error {
 	cursor := b.lastProcessedAuditSeq.Load()
 
 	if last, err := b.sampleAuditHead(); err == nil {
 		b.pebbleLastAuditSeq.Store(last)
+
+		if cursor, err = b.resetIfRolledBack(cursor, last); err != nil {
+			return err
+		}
 	}
 
 	_, err := b.processAuditEntries(ctx, cursor, time.Time{})
 
 	return err
+}
+
+// resetIfRolledBack detects a primary-store rollback beneath the usage cursor —
+// the persisted cursor sitting AHEAD of the current audit head — and, when found,
+// wipes every counter/template row + the progress cursor (usagestore.Reset) so
+// the caller replays the projection from audit sequence 0. It returns the cursor
+// to resume from: 0 after a reset, or the unchanged cursor otherwise. A reset
+// also rewinds the lastProcessedAuditSeq atomic so external readers observe the
+// rewind. This is the online reconvergence path the usagebuilder relies on in
+// 3.0 (offline drop-and-rebuild is deferred to 3.1 — see usagebuilder.md).
+func (b *Builder) resetIfRolledBack(cursor, auditHead uint64) (uint64, error) {
+	if cursor <= auditHead {
+		return cursor, nil
+	}
+
+	b.logger.WithFields(map[string]any{
+		"cursor":    cursor,
+		"auditHead": auditHead,
+	}).Infof("usage cursor ahead of audit head — primary store rolled back; resetting usage projection and replaying from audit sequence 0")
+
+	if err := b.usageStore.Reset(); err != nil {
+		return cursor, fmt.Errorf("resetting usage projection after rollback: %w", err)
+	}
+
+	b.lastProcessedAuditSeq.Store(0)
+
+	return 0, nil
 }
 
 // sampleAuditHead opens a short-lived read handle to read the current audit

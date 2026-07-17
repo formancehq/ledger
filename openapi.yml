@@ -288,7 +288,16 @@ paths:
   /v3/{ledgerName}/stats:
     get:
       summary: Get ledger statistics
-      description: Returns aggregate usage statistics (transaction, volume, reference, posting, log, revert and Numscript-execution counts, plus ephemeral-evicted and transient-used volume tallies) for a ledger. Requires `ledger:read` scope.
+      description: >-
+        Returns aggregate usage statistics (transaction, volume, reference, posting, log, revert
+        and Numscript-execution counts, plus ephemeral-evicted and transient-used volume tallies)
+        for a ledger. Requires `ledger:read` scope.
+        Note: for checkpoint-scoped (historical) reads, only `transactionCount` and `logCount` are
+        checkpoint-consistent; the usage-derived counters (`postingCount`, `revertCount`,
+        `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`, `transientUsedCount`,
+        `volumeCount`) are sourced from the live usagestore projection, which is not checkpoint-aware,
+        and are returned as `0` at a checkpoint rather than a live value — treat `0` on a checkpoint
+        read as "not available at this checkpoint".
       operationId: getLedgerStats
       tags:
         - Ledgers

@@ -317,6 +317,66 @@ func newTestBuilder(primary *dal.Store, usage *usagestore.Store, batchSize int) 
 	}
 }
 
+// TestResetIfRolledBack covers the rollback self-heal wired into boot()/tick():
+// when the persisted usage cursor sits ahead of the audit head (the primary
+// store was restored beneath it), the projection + cursor are wiped so the fold
+// replays from 0. There is no checker backstop for the usagestore, so this is
+// the only reconvergence path — worth pinning.
+func TestResetIfRolledBack(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cursor ahead of audit head wipes the projection and rewinds to 0", func(t *testing.T) {
+		t.Parallel()
+
+		_, usage := newUsageTestStores(t)
+		b := &Builder{usageStore: usage, logger: logging.NopZap()}
+
+		// Seed a projection + a non-zero progress cursor (commitBatch writes both).
+		seed := newBatchState()
+		seed.addCounter("l1", usagestore.CounterPosting, 42)
+		require.NoError(t, b.commitBatch(seed, 7))
+		b.lastProcessedAuditSeq.Store(7)
+
+		got, err := usage.GetCounter("l1", usagestore.CounterPosting)
+		require.NoError(t, err)
+		require.Equal(t, uint64(42), got)
+
+		// Audit head (3) sits BELOW the persisted cursor (7) — rollback.
+		cursor, err := b.resetIfRolledBack(7, 3)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), cursor, "must rewind to replay from 0")
+
+		got, err = usage.GetCounter("l1", usagestore.CounterPosting)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), got, "projection must be wiped")
+
+		progress, err := usage.ReadProgress()
+		require.NoError(t, err)
+		assert.Equal(t, uint64(0), progress, "cursor must be cleared")
+
+		assert.Equal(t, uint64(0), b.lastProcessedAuditSeq.Load(), "atomic hint must be rewound")
+	})
+
+	t.Run("cursor at or behind audit head is a no-op", func(t *testing.T) {
+		t.Parallel()
+
+		_, usage := newUsageTestStores(t)
+		b := &Builder{usageStore: usage, logger: logging.NopZap()}
+
+		seed := newBatchState()
+		seed.addCounter("l1", usagestore.CounterPosting, 5)
+		require.NoError(t, b.commitBatch(seed, 2))
+
+		cursor, err := b.resetIfRolledBack(2, 9)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(2), cursor, "cursor unchanged when at/behind the head")
+
+		got, err := usage.GetCounter("l1", usagestore.CounterPosting)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(5), got, "projection must be intact")
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Table-driven end-to-end tests for the ingestion pipeline.
 // ---------------------------------------------------------------------------

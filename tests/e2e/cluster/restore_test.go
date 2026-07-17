@@ -783,7 +783,6 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(stats.GetLogCount()).To(Equal(uint64(1)))
 			Expect(stats.GetPostingCount()).To(Equal(uint64(1)))
 			Expect(stats.GetVolumeCount()).To(Equal(uint64(2)), "world + founder")
-			Expect(stats.GetMetadataCount()).To(Equal(uint64(0)))
 			Expect(stats.GetRevertCount()).To(Equal(uint64(0)))
 			Expect(stats.GetReferenceCount()).To(Equal(uint64(1)), "the funding tx carried a reference")
 		})
@@ -896,7 +895,7 @@ var _ = Describe("Restore", Ordered, func() {
 			Eventually(func(g Gomega) {
 				resp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "join-fence"})
 				g.Expect(err).To(Succeed())
-				g.Expect(resp.GetVolumes()["USD"].GetInput()).To(Equal("42"))
+				g.Expect(resp.FindVolume("USD", "").GetInput()).To(Equal("42"))
 			}).Within(60*time.Second).ProbeEvery(500*time.Millisecond).Should(Succeed(),
 				"learner never caught up on the post-restore raft log")
 
@@ -905,15 +904,15 @@ var _ = Describe("Restore", Ordered, func() {
 			// learner iff the restored store itself was transferred.
 			aliceResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.GetVolumes()).To(HaveKey("USD"),
+			Expect(aliceResp.FindVolume("USD", "")).ToNot(BeNil(),
 				"learner caught up by log replay alone: the restored state never reached it")
-			Expect(aliceResp.GetVolumes()["USD"].GetInput()).To(Equal("3000"))
+			Expect(aliceResp.FindVolume("USD", "").GetInput()).To(Equal("3000"))
 
 			treasuryResp, err := joinerClient.GetAccount(staleCtx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
-			Expect(treasuryResp.GetVolumes()).To(HaveKey("EUR"),
+			Expect(treasuryResp.FindVolume("EUR", "")).ToNot(BeNil(),
 				"ledger untouched since the restore must still reach the learner")
-			Expect(treasuryResp.GetVolumes()["EUR"].GetInput()).To(Equal("50000"))
+			Expect(treasuryResp.FindVolume("EUR", "").GetInput()).To(Equal("50000"))
 		})
 	})
 })

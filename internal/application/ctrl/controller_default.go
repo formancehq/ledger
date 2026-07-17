@@ -641,7 +641,10 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 	// produce a non-deterministic response for the same checkpoint id.
 	// This is the same trade-off that keeps read-index rebuild scoped to
 	// live state — future work can add checkpointed usage projections if
-	// clients need them.
+	// clients need them. The contract is documented on the openapi /stats
+	// endpoint so a client can read a checkpoint `0` as "not available at
+	// this checkpoint" rather than a live value; only TransactionCount /
+	// LogCount are checkpoint-consistent here.
 	if ctrl.historical {
 		return &stats, nil
 	}
