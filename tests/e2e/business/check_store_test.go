@@ -778,7 +778,18 @@ var _ = Describe("CheckStore", Ordered, func() {
 				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
 			Expect(err).To(Succeed())
 
-			// Seal + archive: tier + wallet are now only in the baseline snapshot.
+			// Fund wallet:1 before archiving so its volume survives only in the
+			// baseline snapshot. A post-archive transaction touching it must
+			// validate its post-commit volume snapshot against baseline + the
+			// replayed post-archive delta — not the delta alone (EN-1546 / #1603).
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "wallet:1", big.NewInt(1000), "USD"),
+				}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			// Seal + archive: tier + wallet and the wallet:1/world volumes are now
+			// only in the baseline snapshot.
 			archiveChapterFull(ctx, client)
 
 			// Post-archive delta: replayed on top of the baseline seed.
@@ -786,6 +797,16 @@ var _ = Describe("CheckStore", Ordered, func() {
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING),
 				actions.AddAccountTypeAction(ledgerName, "bank", "bank:{id}"),
 			))
+			Expect(err).To(Succeed())
+
+			// Spend from wallet:1 after the boundary. Its stored post-commit
+			// volume snapshot is the cumulative {in:1000, out:100} (and world's is
+			// {in:100, out:1000}); the checker must reconstruct that from
+			// baseline + delta or it false-positives on the pre-archive volume.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("wallet:1", "world", big.NewInt(100), "USD"),
+				}, nil, nil)))
 			Expect(err).To(Succeed())
 		})
 

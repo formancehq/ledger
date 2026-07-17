@@ -5,8 +5,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -57,7 +59,7 @@ func runPCVCheck(t *testing.T, postings []*commonpb.Posting, pcv *commonpb.PostC
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
 			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
@@ -208,7 +210,7 @@ func TestCompareTransactionPostCommitVolumes_RevertBranch(t *testing.T) {
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
 			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
@@ -218,4 +220,71 @@ func TestCompareTransactionPostCommitVolumes_RevertBranch(t *testing.T) {
 	require.Len(t, msgs, 1)
 	require.Contains(t, msgs[0], "mismatch")
 	require.Contains(t, msgs[0], "alice")
+}
+
+// TestCompareTransactionPostCommitVolumes_ArchivedBaseline reproduces the
+// archived-store false positive NumaryBot flagged: after archiving, the replay
+// store holds only post-archive deltas, so the expected snapshot must add the
+// pre-archive baseline volume. A post-archive transaction that touches an
+// account funded before the boundary must validate against baseline + delta.
+func TestCompareTransactionPostCommitVolumes_ArchivedBaseline(t *testing.T) {
+	t.Parallel()
+
+	// treasury was funded to {in:1_000_000, out:0} before the archive boundary;
+	// that lives in the baseline checkpoint, not the post-archive replay.
+	treasuryKey := domain.NewVolumeKey("ledger", "treasury", "USD", "")
+	baseline := map[string]*raftcmdpb.VolumePair{
+		string(treasuryKey.Bytes()): {
+			Input:  commonpb.NewUint256FromUint64(1_000_000),
+			Output: commonpb.NewUint256FromUint64(0),
+		},
+	}
+
+	// Post-archive tx: treasury -> alice 100. Replay only sees this delta.
+	postings := []*commonpb.Posting{newPosting("treasury", "alice", "USD", 100)}
+
+	rs := newTestReplayStore(t)
+	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+
+	// The FSM snapshot is the live cumulative: treasury {1_000_000, 100},
+	// alice {100, 0}.
+	data := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1, Postings: postings, PostCommitVolumes: buildPCV(
+					pcvRow{account: "treasury", asset: "USD", input: "1000000", output: "100"},
+					pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
+				)},
+			},
+		},
+	}
+
+	collect := func() []string {
+		var msgs []string
+
+		err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, baseline, func(e *servicepb.CheckStoreEvent) {
+			if ev := e.GetError(); ev != nil &&
+				ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
+				msgs = append(msgs, ev.GetMessage())
+			}
+		})
+		require.NoError(t, err)
+
+		return msgs
+	}
+
+	// With baseline accounted for, the snapshot validates cleanly.
+	require.Empty(t, collect(), "baseline + delta must match the stored snapshot")
+
+	// Sanity: without the baseline (the bug) the treasury input would look
+	// tampered — proving the baseline is what makes this correct.
+	var withoutBaseline []string
+	require.NoError(t, compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
+		if ev := e.GetError(); ev != nil &&
+			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
+			withoutBaseline = append(withoutBaseline, ev.GetMessage())
+		}
+	}))
+	require.Len(t, withoutBaseline, 1)
+	require.Contains(t, withoutBaseline[0], "treasury")
 }

@@ -371,6 +371,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
+	// Pre-load baseline volumes so compareTransactionPostCommitVolumes can add
+	// pre-archive state to the replayed post-archive delta (expected = baseline +
+	// delta), matching compareVolumes. Empty on a non-archived run (baselineDB
+	// nil); when chapters are archived baselineDB is guaranteed non-nil here — the
+	// baselineDB == nil case returned early above.
+	baselineVolumes, err := c.loadBaselineVolumes(baselineDB)
+	if err != nil {
+		return err
+	}
+
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneCold, dal.SubColdLog},
@@ -489,7 +499,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// non-nil buffer); the guard keeps the single-log inline-purge
 						// fallback (post-purge state) from producing false mismatches.
 						if ephemeralPurgeBuffer != nil {
-							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, callback); err != nil {
+							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, baselineVolumes, callback); err != nil {
 								return fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
 							}
 						}
@@ -1763,6 +1773,38 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	return errorCount
 }
 
+// loadBaselineVolumes reads every volume row from the baseline checkpoint into
+// a map keyed by canonical volume key, for compareTransactionPostCommitVolumes
+// to add pre-archive state to the replayed post-archive delta. Returns an empty
+// map when there is no baseline (non-archived run), so callers need no nil
+// guard.
+func (c *Checker) loadBaselineVolumes(baselineDB *pebble.DB) (map[string]*raftcmdpb.VolumePair, error) {
+	baselineVolumes := make(map[string]*raftcmdpb.VolumePair)
+	if baselineDB == nil {
+		return baselineVolumes, nil
+	}
+
+	iter, err := c.attrs.Volume.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating baseline volume iterator: %w", err)
+	}
+
+	for iter.Next() {
+		e := iter.Entry()
+		baselineVolumes[string(e.CanonicalKey)] = e.Value
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("closing baseline volume iterator: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("baseline volume iterator error: %w", err)
+	}
+
+	return baselineVolumes, nil
+}
+
 // compareTransactionPostCommitVolumes verifies the immutable post-commit
 // volume snapshot stored on a created or reverted Transaction (invariant #8:
 // the Transaction is a projection of the audited order, so the checker must
@@ -1771,16 +1813,20 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 // the replay state at this call site (the buffered purge has not yet flushed).
 //
 // The snapshot must hold exactly one row per unique (account, asset, color)
-// tuple the postings touch, each equal to the replayed volume. A missing,
-// extra, duplicated, unparsable, or divergent row is tampering (or an FSM
-// projection bug) and emits CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH. Returns a
-// non-nil error only on a replay-store read failure (checker infrastructure
-// fault), which the caller surfaces as fatal.
+// tuple the postings touch, each equal to the cumulative volume at this
+// sequence: baseline (pre-archive state from the checkpoint) + the replayed
+// post-archive delta, mirroring compareVolumes. On a non-archived run
+// baselineVolumes is empty and the expectation reduces to the replayed delta.
+// A missing, extra, duplicated, unparsable, or divergent row is tampering (or
+// an FSM projection bug) and emits CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH.
+// Returns a non-nil error only on a replay-store read failure (checker
+// infrastructure fault), which the caller surfaces as fatal.
 func compareTransactionPostCommitVolumes(
 	ledgerName string,
 	seq uint64,
 	data *commonpb.LedgerLogPayload,
 	replay *replayStore,
+	baselineVolumes map[string]*raftcmdpb.VolumePair,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	var tx *commonpb.Transaction
@@ -1834,19 +1880,30 @@ func compareTransactionPostCommitVolumes(
 
 			expected[k] = struct{}{}
 
-			pair, err := replay.GetVolume(domain.NewVolumeKey(ledgerName, account, posting.GetAsset(), posting.GetColor()).Bytes())
+			keyBytes := domain.NewVolumeKey(ledgerName, account, posting.GetAsset(), posting.GetColor()).Bytes()
+
+			pair, err := replay.GetVolume(keyBytes)
 			if err != nil {
 				return fmt.Errorf("reading replay volume for post-commit check tx %d: %w", tx.GetId(), err)
 			}
 
-			// A missing replay entry is the zero volume, matching the FSM's
+			// Expected = baseline (pre-archive state carried in the checkpoint) +
+			// replayed delta. After archiving the replay store holds only
+			// post-archive deltas, so the baseline supplies the volume accumulated
+			// before the boundary; without archiving baselineVolumes is empty and a
+			// missing replay entry is the zero volume, matching the FSM's
 			// readVolumeOrZero when it built the snapshot.
 			wantInput := big.NewInt(0)
 			wantOutput := big.NewInt(0)
 
+			if base := baselineVolumes[string(keyBytes)]; base != nil {
+				wantInput = base.GetInput().ToBigInt()
+				wantOutput = base.GetOutput().ToBigInt()
+			}
+
 			if pair != nil {
-				wantInput = pair.GetInput().ToBigInt()
-				wantOutput = pair.GetOutput().ToBigInt()
+				wantInput.Add(wantInput, pair.GetInput().ToBigInt())
+				wantOutput.Add(wantOutput, pair.GetOutput().ToBigInt())
 			}
 
 			stored, ok := storedByTuple[k]
@@ -1868,7 +1925,7 @@ func compareTransactionPostCommitVolumes(
 
 			if gotInput.Cmp(wantInput) != 0 || gotOutput.Cmp(wantOutput) != 0 {
 				emit(k.account, k.asset, k.color,
-					fmt.Sprintf("mismatch: stored(input=%s output=%s) != replay(input=%s output=%s)",
+					fmt.Sprintf("mismatch: stored(input=%s output=%s) != expected(input=%s output=%s)",
 						gotInput, gotOutput, wantInput, wantOutput))
 			}
 		}
