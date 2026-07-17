@@ -769,6 +769,84 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.Equal(t, "purchase", metaMap["category"])
 }
 
+// TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata pins the
+// accepted-order immutability rule: once a request is a raftcmdpb.Order, FSM
+// processing must not mutate its business payload before audit capture. The
+// merge of Numscript set_tx_meta output must land in a map independent of
+// order.Metadata, or the audit chain binds post-execution bytes and a keyed
+// proposal fails the checker with an idempotency mismatch.
+func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
+	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	setupNumscriptVolumeMocks(mockStore)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
+
+	// Caller metadata collides with the script on "type" (caller must win) and
+	// carries a caller-only key the script never sets.
+	request := &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "test-ledger",
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Metadata: map[string]*commonpb.MetadataValue{
+							"type":        commonpb.NewStringValue("caller-wins"),
+							"caller-only": commonpb.NewStringValue("kept"),
+						},
+						Script: &commonpb.Script{
+							Plain: `
+								set_tx_meta("type", "payment")
+								set_tx_meta("category", "purchase")
+								send [USD/2 100] (
+									source = @world
+									destination = @users:alice
+								)
+							`,
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	order := requestToOrder(request)
+
+	// Snapshot the deterministic order bytes before processing. The idempotency
+	// hash and AuditItem.SerializedOrder are both derived from these bytes.
+	before := order.MarshalDeterministicVT(nil)
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	after := order.MarshalDeterministicVT(nil)
+	require.Equal(t, before, after, "processing must not mutate the accepted order's business payload")
+
+	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
+	require.NotNil(t, createdTx)
+
+	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	require.Equal(t, "caller-wins", metaMap["type"], "caller metadata must win collisions")
+	require.Equal(t, "purchase", metaMap["category"], "script metadata must be merged in")
+	require.Equal(t, "kept", metaMap["caller-only"], "caller-only metadata must be preserved")
+}
+
 // TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey pins
 // the fix for #322 (second prong): Numscript-produced metadata keys
 // never passed through admission's ValidateMetadataKey, so a script
