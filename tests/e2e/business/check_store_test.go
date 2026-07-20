@@ -775,16 +775,26 @@ var _ = Describe("CheckStore", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
+				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}"),
+				// staging is EPHEMERAL: draining it to zero after the archive
+				// boundary must be detected as a purge by the checker's replay
+				// (which needs the baseline balance to see the zero-crossing),
+				// exercising the baseline-tombstone path (EN-1546 / #1603).
+				actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
+					commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+			))
 			Expect(err).To(Succeed())
 
-			// Fund wallet:1 before archiving so its volume survives only in the
-			// baseline snapshot. A post-archive transaction touching it must
-			// validate its post-commit volume snapshot against baseline + the
+			// Fund wallet:1 and staging:1 before archiving so their volumes survive
+			// only in the baseline snapshot. Post-archive transactions touching them
+			// must validate their post-commit snapshots against baseline + the
 			// replayed post-archive delta — not the delta alone (EN-1546 / #1603).
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", "wallet:1", big.NewInt(1000), "USD"),
+				}, nil, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "staging:1", big.NewInt(500), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -806,6 +816,23 @@ var _ = Describe("CheckStore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("wallet:1", "world", big.NewInt(100), "USD"),
+				}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			// Drain staging:1 to zero after the boundary → the ephemeral purge
+			// deletes its volume (the replay detects the zero-crossing only by
+			// adding the baseline balance). Then re-touch it: the re-touch snapshot
+			// restarts from zero, so the checker must NOT re-add the now-stale
+			// baseline for the purged tuple (baseline tombstone; #1603).
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("staging:1", "world", big.NewInt(500), "USD"),
+				}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "staging:1", big.NewInt(50), "USD"),
 				}, nil, nil)))
 			Expect(err).To(Succeed())
 		})

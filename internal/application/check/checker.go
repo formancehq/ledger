@@ -419,7 +419,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -634,7 +634,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters, baselineChainStateAvailable, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -662,7 +662,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
