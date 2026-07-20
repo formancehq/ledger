@@ -37,7 +37,7 @@ Examples:
     --format protobuf --batch-size 128 --batch-delay-ms 50
 
   # Add a ClickHouse sink
-  ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table ledger_events
+  ledgerctl events add-sink --name analytics --clickhouse-dsn clickhouse://user:pass@localhost:9000/db --clickhouse-table ledger_events
 
   # Add a Kafka sink
   ledgerctl events add-sink --name streaming --kafka-brokers localhost:9092 --kafka-topic ledger-events
@@ -74,8 +74,8 @@ Examples:
 	cmd.Flags().String("name", "", "Unique name for this sink (required)")
 	cmd.Flags().String("nats-url", "", "NATS server URL")
 	cmd.Flags().String("nats-topic", "", "NATS topic/subject for events")
-	cmd.Flags().String("ch-dsn", "", "ClickHouse DSN (e.g. clickhouse://user:pass@host:9000/db)")
-	cmd.Flags().String("ch-table", "ledger_events", "ClickHouse table name")
+	cmd.Flags().String("clickhouse-dsn", "", "ClickHouse DSN (e.g. clickhouse://user:pass@host:9000/db)")
+	cmd.Flags().String("clickhouse-table", "ledger_events", "ClickHouse table name")
 	cmd.Flags().String("kafka-brokers", "", "Kafka broker addresses (comma-separated, e.g. localhost:9092)")
 	cmd.Flags().String("kafka-topic", "", "Kafka topic name")
 	cmd.Flags().Bool("kafka-tls", false, "Enable TLS for Kafka connection")
@@ -115,8 +115,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	var (
 		natsURL, _         = cmd.Flags().GetString("nats-url")
 		natsTopic, _       = cmd.Flags().GetString("nats-topic")
-		chDSN, _           = cmd.Flags().GetString("ch-dsn")
-		chTable, _         = cmd.Flags().GetString("ch-table")
+		chDSN, _           = cmd.Flags().GetString("clickhouse-dsn")
+		chTable, _         = cmd.Flags().GetString("clickhouse-table")
 		kafkaBrokersStr, _ = cmd.Flags().GetString("kafka-brokers")
 		kafkaTopic, _      = cmd.Flags().GetString("kafka-topic")
 		kafkaTLS, _        = cmd.Flags().GetBool("kafka-tls")
@@ -183,11 +183,11 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	}
 
 	if sinkCount > 1 {
-		return errors.New("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--ch-dsn), Kafka (--kafka-brokers), HTTP (--http-endpoint), or Databricks (--databricks-host)")
+		return errors.New("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--clickhouse-dsn), Kafka (--kafka-brokers), HTTP (--http-endpoint), or Databricks (--databricks-host)")
 	}
 
 	if sinkCount == 0 {
-		return errors.New("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--ch-dsn), Kafka (--kafka-brokers and --kafka-topic), HTTP (--http-endpoint), or Databricks (--databricks-host)")
+		return errors.New("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--clickhouse-dsn), Kafka (--kafka-brokers and --kafka-topic), HTTP (--http-endpoint), or Databricks (--databricks-host)")
 	}
 
 	var (

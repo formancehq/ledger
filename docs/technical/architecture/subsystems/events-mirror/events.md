@@ -367,10 +367,10 @@ ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats
   --format protobuf --batch-size 128 --batch-delay-ms 50
 
 # Add a ClickHouse sink for analytics
-ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db
+ledgerctl events add-sink --name analytics --clickhouse-dsn clickhouse://user:pass@localhost:9000/db
 
 # Add a ClickHouse sink with custom table name
-ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table my_events
+ledgerctl events add-sink --name analytics --clickhouse-dsn clickhouse://user:pass@localhost:9000/db --clickhouse-table my_events
 
 # Add a Kafka sink
 ledgerctl events add-sink --name streaming --kafka-brokers localhost:9092 --kafka-topic ledger-events
