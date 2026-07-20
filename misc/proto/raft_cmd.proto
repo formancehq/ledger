@@ -376,8 +376,7 @@ message CreateTransactionOrder {
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
-  bool expand_volumes = 8;  // Include post-commit volumes in response
-  NumscriptReference numscript_reference = 9;
+  NumscriptReference numscript_reference = 8;
   // inputs_resolution_hash moved to OrderTechnical.inputs_resolution_hash — it is
   // an admission-derived technical hint, not part of the transaction's identity.
 }
@@ -404,7 +403,6 @@ message RevertTransactionOrder {
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
   repeated common.Posting original_postings = 5;
-  bool expand_volumes = 6;  // Include post-commit volumes in response
 }
 
 message DeleteMetadataOrder {

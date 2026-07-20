@@ -18,7 +18,6 @@ func main() {
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings:      internal.RandomPostings(),
 							Force:         true,
-							ExpandVolumes: true,
 						},
 					}},
 				},
@@ -46,7 +45,6 @@ func main() {
 						RevertTransaction: &servicepb.RevertTransactionPayload{
 							TransactionId: txID,
 							Force:         true,
-							ExpandVolumes: true,
 						},
 					}},
 				},
@@ -62,7 +60,7 @@ func main() {
 			applyLog := revertResp.Logs[0].Payload.GetApply()
 			if applyLog != nil {
 				if revertedTx := applyLog.Log.Data.GetRevertedTransaction(); revertedTx != nil {
-					internal.CheckPostCommitVolumes(revertedTx.PostCommitVolumes, details)
+					internal.CheckPostCommitVolumes(revertedTx.GetRevertTransaction().GetPostCommitVolumes(), details)
 				}
 			}
 		}

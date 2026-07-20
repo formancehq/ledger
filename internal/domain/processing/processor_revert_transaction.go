@@ -130,14 +130,14 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		RevertsTransaction: order.GetTransactionId(),
 	})
 
-	// Compute post-commit volumes if requested
-	var postCommitVolumes *commonpb.PostCommitVolumes
-	if order.GetExpandVolumes() {
-		var pcvErr domain.Describable
-		postCommitVolumes, pcvErr = buildPostCommitVolumes(s, ledger, revertPostings)
-		if pcvErr != nil {
-			return nil, pcvErr
-		}
+	// Post-commit volumes are part of every persisted transaction: compute
+	// them unconditionally from the volume state after the compensating
+	// postings applied (before any proposal-level ephemeral purge). The
+	// compensating transaction carries its own post-revert snapshot; the
+	// original keeps its creation-time snapshot untouched.
+	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, revertPostings)
+	if pcvErr != nil {
+		return nil, pcvErr
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -152,8 +152,8 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 					InsertedAt:         s.GetDate().Mutate(),
 					UpdatedAt:          s.GetDate().Mutate(),
 					RevertsTransaction: order.GetTransactionId(),
+					PostCommitVolumes:  postCommitVolumes,
 				},
-				PostCommitVolumes: postCommitVolumes,
 			},
 		},
 	}, nil

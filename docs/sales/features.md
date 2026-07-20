@@ -78,7 +78,7 @@
 |---------|--------|
 | `preCommitVolumes` in responses | Same - volumes available via dedicated read endpoints |
 
-`postCommitVolumes` is still available as an opt-in response field for transaction creation and reverts when `expandVolumes` is enabled.
+`postCommitVolumes` is part of every transaction and is returned on all transaction responses (create, revert, get, list, prepared-query) as an immutable per-transaction snapshot.
 
 ---
 

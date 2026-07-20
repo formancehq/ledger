@@ -83,6 +83,10 @@ message Transaction {
   fixed64 reverted_by_transaction = 10;
   // Id of the original transaction this transaction reverts. 0 = not a revert.
   fixed64 reverts_transaction = 11;
+  // Post-commit volumes for every (account, asset, color) tuple touched by
+  // this transaction, captured at the transaction's sequence. Immutable
+  // historical snapshot: never recomputed from current balances.
+  PostCommitVolumes post_commit_volumes = 12;
 }
 
 message Script {
@@ -764,13 +768,11 @@ message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataMap> account_metadata = 2;
   fixed64 chapter_id = 3;  // Chapter that was OPEN when this transaction was created
-  PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
 }
 
 message RevertedTransaction {
   fixed64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
-  PostCommitVolumes post_commit_volumes = 3;  // Opt-in: volumes after commit (only when expand_volumes is true)
 }
 
 message SavedMetadata {

@@ -47,7 +47,6 @@ Examples:
 	cmd.Flags().Bool("at-effective-date", false, "Use original transaction timestamp for the revert")
 	cmd.Flags().StringArray("metadata", nil, "Metadata for the revert transaction (key=value)")
 	cmd.Flags().String("receipt", "", "JWT receipt for the transaction (avoids server-side lookup)")
-	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -100,7 +99,6 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 	atEffectiveDate, _ := cmd.Flags().GetBool("at-effective-date")
 	receiptFlag, _ := cmd.Flags().GetString("receipt")
-	expandVolumes, _ := cmd.Flags().GetBool("expand-volumes")
 	metadataFlags, _ := cmd.Flags().GetStringArray("metadata")
 
 	// Parse metadata
@@ -158,7 +156,6 @@ func runRevert(cmd *cobra.Command, args []string) error {
 								AtEffectiveDate: atEffectiveDate,
 								Metadata:        commonpb.MetadataFromGoMap(metadata),
 								Receipt:         receiptFlag,
-								ExpandVolumes:   expandVolumes,
 							},
 						},
 					},
@@ -258,9 +255,9 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Display post-commit volumes
-	if revertedTx.GetPostCommitVolumes() != nil {
-		err := renderPostCommitVolumes(revertedTx.GetPostCommitVolumes())
+	// Display post-commit volumes (carried on the revert transaction)
+	if pcv := revertedTx.GetRevertTransaction().GetPostCommitVolumes(); pcv != nil {
+		err := renderPostCommitVolumes(pcv)
 		if err != nil {
 			return err
 		}

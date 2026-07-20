@@ -37,7 +37,6 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Script          *commonpb.Script          `json:"script,omitempty"`
 		ScriptReference *ScriptReference          `json:"scriptReference,omitempty"`
 		Force           bool                      `json:"force,omitempty"`
-		ExpandVolumes   bool                      `json:"expandVolumes,omitempty"`
 	}{
 		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
 		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
@@ -47,7 +46,6 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Script:          x.GetScript(),
 		ScriptReference: x.GetScriptReference(),
 		Force:           x.GetForce(),
-		ExpandVolumes:   x.GetExpandVolumes(),
 	})
 }
 
@@ -55,11 +53,10 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 //
 // The default protoc-gen-go struct tags are snake_case, so a plain
 // encoding/json decode would silently drop the multi-word camelCase keys the
-// REST contract advertises (scriptReference, accountMetadata, expandVolumes,
-// …) and produce a zero-posting transaction (#452). We mirror MarshalJSON's
-// shape here, then rebuild the protobuf struct field-by-field. Unknown JSON
-// keys are tolerated to preserve the lenient behavior of the previous
-// decoder.
+// REST contract advertises (scriptReference, accountMetadata, …) and produce a
+// zero-posting transaction (#452). We mirror MarshalJSON's shape here, then
+// rebuild the protobuf struct field-by-field. Unknown JSON keys are tolerated
+// to preserve the lenient behavior of the previous decoder.
 func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		AccountMetadata map[string]map[string]any `json:"accountMetadata"`
@@ -70,7 +67,6 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 		Script          *commonpb.Script          `json:"script"`
 		ScriptReference *ScriptReference          `json:"scriptReference"`
 		Force           bool                      `json:"force"`
-		ExpandVolumes   bool                      `json:"expandVolumes"`
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
@@ -103,7 +99,6 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 	x.Metadata = metadata
 	x.AccountMetadata = accountMetadata
 	x.Force = aux.Force
-	x.ExpandVolumes = aux.ExpandVolumes
 	x.ScriptReference = aux.ScriptReference
 
 	return nil
@@ -143,14 +138,12 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		AtEffectiveDate bool           `json:"atEffectiveDate,omitempty"`
 		Metadata        map[string]any `json:"metadata,omitempty"`
 		Receipt         string         `json:"receipt,omitempty"`
-		ExpandVolumes   bool           `json:"expandVolumes,omitempty"`
 	}{
 		TransactionId:   x.GetTransactionId(),
 		Force:           x.GetForce(),
 		AtEffectiveDate: x.GetAtEffectiveDate(),
 		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
 		Receipt:         x.GetReceipt(),
-		ExpandVolumes:   x.GetExpandVolumes(),
 	})
 }
 

@@ -24,7 +24,6 @@ var (
 	DeleteTransactionMetadataAction    = actions.DeleteTransactionMetadataAction
 	RevertTransactionAction            = actions.RevertTransactionAction
 	WithTimestamp                      = actions.WithTimestamp
-	WithExpandVolumes                  = actions.WithExpandVolumes
 	NewPosting                         = actions.NewPosting
 	RegisterSigningKeyAction           = actions.RegisterSigningKeyAction
 	RevokeSigningKeyAction             = actions.RevokeSigningKeyAction

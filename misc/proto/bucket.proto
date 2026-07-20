@@ -547,8 +547,7 @@ message CreateTransactionPayload {
   map<string, common.MetadataValue> metadata = 5;
   map<string, common.MetadataMap> account_metadata = 6;
   bool force = 7;
-  bool expand_volumes = 8;
-  ScriptReference script_reference = 9;
+  ScriptReference script_reference = 8;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction.
@@ -558,7 +557,6 @@ message RevertTransactionPayload {
   bool at_effective_date = 3;
   map<string, common.MetadataValue> metadata = 4;
   string receipt = 5;
-  bool expand_volumes = 6;
   reserved 7;
   reserved "transaction_reference";
 }

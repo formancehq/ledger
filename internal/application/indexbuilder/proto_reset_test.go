@@ -65,7 +65,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	createdTx := ct.CreatedTransaction
 
 	assert.Equal(t, uint64(0), createdTx.GetChapterId())
-	assert.Nil(t, createdTx.GetPostCommitVolumes())
 	assert.Empty(t, createdTx.GetAccountMetadata())
 
 	txn := createdTx.GetTransaction()
@@ -76,6 +75,7 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	assert.Nil(t, txn.GetMetadata())
 	assert.Nil(t, txn.GetUpdatedAt())
 	assert.Nil(t, txn.GetRevertedAt())
+	assert.Nil(t, txn.GetPostCommitVolumes())
 }
 
 func TestResetLogForReuse_PreservesSliceCapacity(t *testing.T) {
@@ -268,6 +268,11 @@ func buildTestLog() *commonpb.Log {
 										InsertedAt: &commonpb.Timestamp{},
 										UpdatedAt:  &commonpb.Timestamp{},
 										RevertedAt: &commonpb.Timestamp{},
+										PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
+											"users:001": {Volumes: []*commonpb.VolumeEntry{
+												{Asset: "USD", Volumes: &commonpb.Volumes{Input: "100", Output: "0"}},
+											}},
+										}},
 									},
 									AccountMetadata: map[string]*commonpb.MetadataMap{
 										"users:001": {Values: map[string]*commonpb.MetadataValue{"type": {}}},

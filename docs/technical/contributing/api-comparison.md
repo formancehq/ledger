@@ -115,7 +115,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | List indexes | ✅ | ❌ | View all indexes with build status and backfill progress. HTTP: `GET /v3/{ledger}/indexes` (per-ledger), `GET /v3/_/indexes?scope=all\|bucket` (bucket-wide); gRPC: `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER` |
 | Aggregated index status | ✅ | ❌ | Cluster-wide progress (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) + IndexEntry list. HTTP: `GET /v3/_/indexes/status?ledger=`; gRPC: `GetIndexStatus` |
 | **Volumes (responses)** |
-| postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
+| postCommitVolumes | ✅ | ✅ | On every transaction (create, revert, get, list, prepared-query); immutable per-transaction snapshot |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
 | postCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
@@ -604,7 +604,7 @@ These endpoints are documented in Section 3 (Metadata Management) above.
 
 ## Intentionally Removed Features
 
-### 1. Post-Commit Volumes (Opt-in) / Pre-Commit Volumes (Removed)
+### 1. Post-Commit Volumes (Always Present) / Pre-Commit Volumes (Removed)
 
 **Description:** In the original ledger, transaction creation responses include volumes before and after the commit:
 
@@ -614,36 +614,29 @@ These endpoints are documented in Section 3 (Metadata Management) above.
 - `preCommitEffectiveVolumes` - Effective volumes before application (with effective timestamp)
 
 **POC Status:**
-- `postCommitVolumes` is available **opt-in** via `expandVolumes: true` in the request body for both `createTransaction` and `revertTransaction`. When enabled, the response includes volumes (input/output) per account/asset after the transaction is applied.
+- `postCommitVolumes` is part of **every** persisted transaction. It rides on the `transaction` object (not a sibling field), so create, revert, bulk, unitary get, list, and prepared-query results all expose the same value. It is an immutable historical snapshot captured at the transaction's sequence — the volumes (input/output) per `(account, asset, color)` tuple touched by the transaction, right after it applied — never recomputed from current balances.
 - `preCommitVolumes`, `postCommitEffectiveVolumes`, and `preCommitEffectiveVolumes` remain **intentionally removed**.
 
-**Usage:**
+**Response shape** (the `transaction` object carries the field):
 ```json
-POST /{ledgerName}/transactions
 {
+  "id": 1,
   "postings": [...],
-  "expandVolumes": true
-}
-```
-
-The response will include a `postCommitVolumes` field:
-```json
-{
   "postCommitVolumes": {
-    "users:alice": {
-      "USD/2": { "input": "0", "output": "1000" }
-    },
-    "users:bob": {
-      "USD/2": { "input": "1000", "output": "0" }
-    }
+    "users:alice": [
+      { "asset": "USD/2", "color": "", "input": "0", "output": "1000" }
+    ],
+    "users:bob": [
+      { "asset": "USD/2", "color": "", "input": "1000", "output": "0" }
+    ]
   }
 }
 ```
 
 **Impact on clients:**
-- Clients that need post-commit volumes can opt-in with `expandVolumes: true`
-- When `expandVolumes` is false (default), no volumes are returned (preserving the lightweight default)
-- `preCommitVolumes` and effective volumes remain removed; use dedicated read endpoints if needed
+- Post-commit volumes are always returned; there is no request flag to toggle them (the former `expandVolumes` flag is removed).
+- Each account maps to a flat list of `(asset, color)` rows; the empty color is the uncolored bucket.
+- `preCommitVolumes` and effective volumes remain removed; use dedicated read endpoints if needed.
 
 ---
 

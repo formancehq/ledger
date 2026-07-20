@@ -3313,10 +3313,6 @@ components:
         scriptReference:
           $ref: '#/components/schemas/ScriptReference'
           description: Reference to a numscript saved in the ledger's library. Mutually exclusive with `postings` and `script`.
-        expandVolumes:
-          type: boolean
-          default: false
-          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     PostingRequest:
       type: object
@@ -3485,10 +3481,6 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Metadata for the revert transaction (supports typed values)
-        expandVolumes:
-          type: boolean
-          default: false
-          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     RevertTransactionRequestBody:
       type: object
@@ -3506,10 +3498,6 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Metadata for the revert transaction (supports typed values)
-        expandVolumes:
-          type: boolean
-          default: false
-          description: When true, include post-commit volumes (per account, asset and color) in the response
 
     DeleteMetadataRequest:
       type: object
@@ -3596,9 +3584,6 @@ components:
               additionalProperties:
                 type: object
               description: Metadata for accounts involved in the transaction
-            postCommitVolumes:
-              $ref: '#/components/schemas/PostCommitVolumes'
-              description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
             chapterId:
               type: integer
               format: uint64
@@ -3922,6 +3907,13 @@ components:
           type: integer
           format: int64
           description: ID of the original transaction this transaction reverts (absent when this is not a revert)
+        postCommitVolumes:
+          $ref: '#/components/schemas/PostCommitVolumes'
+          description: |
+            Post-commit volumes for every (account, asset, color) tuple touched
+            by this transaction, captured at the transaction's sequence. An
+            immutable historical snapshot, present on every transaction; never
+            recomputed from current balances.
 
     RevertedTransaction:
       type: object
@@ -3933,9 +3925,6 @@ components:
         revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        postCommitVolumes:
-          $ref: '#/components/schemas/PostCommitVolumes'
-          description: Post-commit volumes per (account, asset, color) (only present when expandVolumes is true)
         warnings:
           type: array
           items:

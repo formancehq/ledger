@@ -113,7 +113,7 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
 
 	// Purge should NOT delete (input=100, output=0 => not zero balance)
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil, nil))
 
 	orderKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:123"},
@@ -130,7 +130,7 @@ func TestSimulateEphemeralPurgeDeletesZeroBalance(t *testing.T) {
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
 
 	// After drain, orders:123/USD has input=100, output=100 => zero balance
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil, nil))
 
 	pair, err = rs.GetVolume(orderKey.Bytes())
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestSimulateEphemeralPurgeSkipsNonEphemeral(t *testing.T) {
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
 
 	// Purge should NOT delete because account type is not ephemeral
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil, nil))
 
 	userKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "users:alice"},
@@ -187,7 +187,7 @@ func TestSimulateEphemeralPurgeNoAccountTypes(t *testing.T) {
 		newPosting("world", "account", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil, nil))
 
 	// Volume should still exist
 	key := domain.VolumeKey{
@@ -220,7 +220,7 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
 
 	// Should not error — world is explicitly skipped
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil, nil))
 }
 
 // --- checkReversionInvariants tests ---
@@ -458,7 +458,7 @@ func TestSimulateEphemeralPurgeMultipleAssets(t *testing.T) {
 		newPosting("orders:1", "world", "USD", 100),
 	}
 	require.NoError(t, domainreplay.ApplyPostings("ledger", drainPostings, rs))
-	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil))
+	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", drainPostings, rs, ledgerAccountTypes, nil, nil))
 
 	// USD should be purged (input==output==100)
 	usdKey := domain.VolumeKey{

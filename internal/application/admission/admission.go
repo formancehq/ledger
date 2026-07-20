@@ -2175,7 +2175,6 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				Metadata:           ct.GetMetadata(),
 				AccountMetadata:    ct.GetAccountMetadata(),
 				Force:              ct.GetForce(),
-				ExpandVolumes:      ct.GetExpandVolumes(),
 				NumscriptReference: numscriptRef,
 			},
 		}
@@ -2265,7 +2264,6 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 				AtEffectiveDate:  data.RevertTransaction.GetAtEffectiveDate(),
 				Metadata:         data.RevertTransaction.GetMetadata(),
 				OriginalPostings: originalPostings,
-				ExpandVolumes:    data.RevertTransaction.GetExpandVolumes(),
 			},
 		}
 	default:

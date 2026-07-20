@@ -63,10 +63,6 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		if atEffectiveDate, ok := reqBody["atEffectiveDate"].(bool); ok {
 			payload.AtEffectiveDate = atEffectiveDate
 		}
-
-		if ev, ok := reqBody["expandVolumes"].(bool); ok {
-			payload.ExpandVolumes = ev
-		}
 	}
 
 	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{

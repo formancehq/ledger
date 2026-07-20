@@ -120,7 +120,6 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 					CreateTransaction: &servicepb.CreateTransactionPayload{
 						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
 						Force:         true,
-						ExpandVolumes: true,
 					},
 				}},
 			},
@@ -134,7 +133,7 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 	if tx == nil {
 		return
 	}
-	internal.CheckPostCommitVolumes(tx.PostCommitVolumes, details)
+	internal.CheckPostCommitVolumes(tx.GetTransaction().GetPostCommitVolumes(), details)
 }
 
 func stringify(v int64) string {

@@ -3250,7 +3250,6 @@ type CreateTransactionOrderReader interface {
 	GetMetadata() CreateTransactionOrder_MetadataMapReader
 	GetAccountMetadata() CreateTransactionOrder_AccountMetadataMapReader
 	GetForce() bool
-	GetExpandVolumes() bool
 	GetNumscriptReference() NumscriptReferenceReader
 	Mutate() *CreateTransactionOrder
 }
@@ -3291,10 +3290,6 @@ func (r *createTransactionOrderReadonly) GetAccountMetadata() CreateTransactionO
 
 func (r *createTransactionOrderReadonly) GetForce() bool {
 	return (*CreateTransactionOrder)(r).GetForce()
-}
-
-func (r *createTransactionOrderReadonly) GetExpandVolumes() bool {
-	return (*CreateTransactionOrder)(r).GetExpandVolumes()
 }
 
 func (r *createTransactionOrderReadonly) GetNumscriptReference() NumscriptReferenceReader {
@@ -3637,7 +3632,6 @@ type RevertTransactionOrderReader interface {
 	GetAtEffectiveDate() bool
 	GetMetadata() RevertTransactionOrder_MetadataMapReader
 	GetOriginalPostings() commonpb.PostingListReader
-	GetExpandVolumes() bool
 	Mutate() *RevertTransactionOrder
 }
 
@@ -3661,10 +3655,6 @@ func (r *revertTransactionOrderReadonly) GetMetadata() RevertTransactionOrder_Me
 
 func (r *revertTransactionOrderReadonly) GetOriginalPostings() commonpb.PostingListReader {
 	return commonpb.NewPostingListReader((*RevertTransactionOrder)(r).GetOriginalPostings())
-}
-
-func (r *revertTransactionOrderReadonly) GetExpandVolumes() bool {
-	return (*RevertTransactionOrder)(r).GetExpandVolumes()
 }
 
 func (r *revertTransactionOrderReadonly) Mutate() *RevertTransactionOrder {

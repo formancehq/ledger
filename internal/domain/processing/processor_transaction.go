@@ -219,14 +219,12 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		)
 	}
 
-	// Compute post-commit volumes if requested
-	var postCommitVolumes *commonpb.PostCommitVolumes
-	if order.GetExpandVolumes() {
-		var pcvErr domain.Describable
-		postCommitVolumes, pcvErr = buildPostCommitVolumes(s, ledger, result.Postings)
-		if pcvErr != nil {
-			return nil, pcvErr
-		}
+	// Post-commit volumes are part of every persisted transaction: compute
+	// them unconditionally from the volume state after this transaction's
+	// postings applied (before any proposal-level ephemeral purge).
+	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, result.Postings)
+	if pcvErr != nil {
+		return nil, pcvErr
 	}
 
 	// Get the current open chapter ID for the receipt
@@ -239,17 +237,17 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
 				Transaction: &commonpb.Transaction{
-					Postings:   result.Postings,
-					Metadata:   finalMetadata,
-					Timestamp:  timestamp,
-					Reference:  order.GetReference(),
-					Id:         nextTransactionID,
-					InsertedAt: s.GetDate().Mutate(),
-					UpdatedAt:  s.GetDate().Mutate(),
+					Postings:          result.Postings,
+					Metadata:          finalMetadata,
+					Timestamp:         timestamp,
+					Reference:         order.GetReference(),
+					Id:                nextTransactionID,
+					InsertedAt:        s.GetDate().Mutate(),
+					UpdatedAt:         s.GetDate().Mutate(),
+					PostCommitVolumes: postCommitVolumes,
 				},
-				AccountMetadata:   accountMetadata,
-				ChapterId:         chapterID,
-				PostCommitVolumes: postCommitVolumes,
+				AccountMetadata: accountMetadata,
+				ChapterId:       chapterID,
 			},
 		},
 	}, nil

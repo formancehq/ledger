@@ -23,7 +23,6 @@ func main() {
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings:      internal.RandomPostings(),
 							Force:         true,
-							ExpandVolumes: true,
 						},
 					}},
 				},
@@ -56,7 +55,6 @@ func main() {
 						RevertTransaction: &servicepb.RevertTransactionPayload{
 							TransactionId: txID,
 							Force:         true,
-							ExpandVolumes: true,
 						},
 					}},
 				},

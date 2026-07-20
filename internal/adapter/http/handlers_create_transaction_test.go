@@ -140,10 +140,10 @@ func TestHandleCreateTransaction_MissingLedgerName(t *testing.T) {
 }
 
 // TestHandleCreateTransaction_CamelCaseFields exercises the multi-word JSON
-// keys the REST contract advertises (scriptReference, accountMetadata,
-// expandVolumes). Before #452 the protobuf-generated Go struct tags used
-// snake_case, so a plain encoding/json decode silently dropped these
-// fields and the FSM observed an empty payload. The hand-written
+// keys the REST contract advertises (scriptReference, accountMetadata).
+// Before #452 the protobuf-generated Go struct tags used snake_case, so a
+// plain encoding/json decode silently dropped these fields and the FSM
+// observed an empty payload. The hand-written
 // CreateTransactionPayload.UnmarshalJSON must now route them to the
 // backend intact.
 func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
@@ -179,14 +179,6 @@ func TestHandleCreateTransaction_CamelCaseFields(t *testing.T) {
 				require.Contains(t, am, "users:alice")
 				require.Contains(t, am["users:alice"].GetValues(), "vip")
 				require.Equal(t, "yes", am["users:alice"].GetValues()["vip"].GetStringValue())
-			},
-		},
-		{
-			name: "expandVolumes",
-			body: `{"postings":[{"source":"world","destination":"users:alice","amount":1,"asset":"USD"}],"expandVolumes":true}`,
-			verify: func(t *testing.T, ct *servicepb.CreateTransactionPayload) {
-				t.Helper()
-				require.True(t, ct.GetExpandVolumes())
 			},
 		},
 	}

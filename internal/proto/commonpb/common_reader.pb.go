@@ -565,6 +565,7 @@ type TransactionReader interface {
 	GetRevertedAt() TimestampReader
 	GetRevertedByTransaction() uint64
 	GetRevertsTransaction() uint64
+	GetPostCommitVolumes() PostCommitVolumesReader
 	Mutate() *Transaction
 }
 
@@ -628,6 +629,14 @@ func (r *transactionReadonly) GetRevertedByTransaction() uint64 {
 
 func (r *transactionReadonly) GetRevertsTransaction() uint64 {
 	return (*Transaction)(r).GetRevertsTransaction()
+}
+
+func (r *transactionReadonly) GetPostCommitVolumes() PostCommitVolumesReader {
+	v := (*Transaction)(r).GetPostCommitVolumes()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *transactionReadonly) Mutate() *Transaction {
@@ -5988,7 +5997,6 @@ type CreatedTransactionReader interface {
 	GetTransaction() TransactionReader
 	GetAccountMetadata() CreatedTransaction_AccountMetadataMapReader
 	GetChapterId() uint64
-	GetPostCommitVolumes() PostCommitVolumesReader
 	Mutate() *CreatedTransaction
 }
 
@@ -6008,14 +6016,6 @@ func (r *createdTransactionReadonly) GetAccountMetadata() CreatedTransaction_Acc
 
 func (r *createdTransactionReadonly) GetChapterId() uint64 {
 	return (*CreatedTransaction)(r).GetChapterId()
-}
-
-func (r *createdTransactionReadonly) GetPostCommitVolumes() PostCommitVolumesReader {
-	v := (*CreatedTransaction)(r).GetPostCommitVolumes()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
 }
 
 func (r *createdTransactionReadonly) Mutate() *CreatedTransaction {
@@ -6108,7 +6108,6 @@ func (m createdTransaction_accountMetadataMapReadonly) Range(yield func(string, 
 type RevertedTransactionReader interface {
 	GetRevertedTransactionId() uint64
 	GetRevertTransaction() TransactionReader
-	GetPostCommitVolumes() PostCommitVolumesReader
 	Mutate() *RevertedTransaction
 }
 
@@ -6120,14 +6119,6 @@ func (r *revertedTransactionReadonly) GetRevertedTransactionId() uint64 {
 
 func (r *revertedTransactionReadonly) GetRevertTransaction() TransactionReader {
 	v := (*RevertedTransaction)(r).GetRevertTransaction()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *revertedTransactionReadonly) GetPostCommitVolumes() PostCommitVolumesReader {
-	v := (*RevertedTransaction)(r).GetPostCommitVolumes()
 	if v == nil {
 		return nil
 	}

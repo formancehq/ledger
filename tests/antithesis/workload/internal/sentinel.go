@@ -39,7 +39,6 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
 						Reference:     ref,
 						Force:         true,
-						ExpandVolumes: true,
 					},
 				}},
 			},

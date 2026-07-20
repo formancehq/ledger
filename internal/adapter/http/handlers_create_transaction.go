@@ -20,8 +20,8 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	// Decode request body into protobuf CreateTransactionPayload.
 	// The custom UnmarshalJSON in service.pb.json.go drives field naming
 	// from the public camelCase contract (scriptReference, accountMetadata,
-	// expandVolumes, …) — the default protoc-gen-go tags are snake_case and
-	// would silently drop multi-word keys (#452).
+	// …) — the default protoc-gen-go tags are snake_case and would silently
+	// drop multi-word keys (#452).
 	req := &servicepb.CreateTransactionPayload{}
 
 	err := json.UnmarshalRead(r.Body, req)

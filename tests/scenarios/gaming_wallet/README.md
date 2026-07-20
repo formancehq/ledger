@@ -89,7 +89,7 @@ Trades skipped if sender has insufficient balance.
 | Purchase 1 | `force=false` | Balance-checked revert. Metadata: `reason=refund` |
 | Purchase 2 | `force=true` | Forced revert. Metadata: `reason=admin-refund` |
 | Purchase 1 again | `force=false` | **Double-revert error** (expected failure) |
-| Purchase 3 | `force=false` + `ExpandVolumes` | Revert with post-commit volumes in response |
+| Purchase 3 | `force=false` | Revert; response carries post-commit volumes on the transaction |
 
 ### Phase 7: Insufficient Funds
 
