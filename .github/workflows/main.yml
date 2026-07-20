@@ -217,9 +217,8 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run Schemathesis API conformity tests
-        continue-on-error: true
         run: >
-          nix develop --command bash -c "MAX_EXAMPLES=10 just test-schemathesis"
+          nix develop --command bash -c "MAX_EXAMPLES=10 SCHEMATHESIS_WORKERS=1 just test-schemathesis"
       - name: Upload Schemathesis results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

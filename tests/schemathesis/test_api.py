@@ -9,13 +9,16 @@ Usage:
 """
 
 import argparse
+import copy
 import re
 import sys
 from datetime import timedelta
 from pathlib import Path
 
 from hypothesis import HealthCheck, Phase, settings as hypothesis_settings
+from hypothesis import strategies as st
 import schemathesis
+from schemathesis import GenerationConfig
 from schemathesis.checks import (
     not_a_server_error,
     response_schema_conformance,
@@ -110,6 +113,83 @@ def after_call(context, case, response):
         )
 
 
+# --- Prepared-query body generation override -------------------------------
+# The prepared-query create/update bodies embed QueryFilter, a *recursive* JSON
+# DSL ($and/$or/$not -> QueryFilter, each operator object with
+# additionalProperties: true). Hypothesis spends ~26s per draw trying to build
+# arbitrarily deep trees for that schema and eventually trips the `too_slow`
+# health check — this single schema was ~5min of the ~6min CI run and the only
+# source of errors. Exploring the recursion adds nothing to a *conformance*
+# gate, so for just these two write operations we replace the body strategy with
+# a curated set of valid, well-typed filter payloads. Every other operation
+# keeps its original schema-derived strategy. Filters respect each target's
+# field rules (log-only fields only on LOGS, etc.).
+_FILTERS_BY_TARGET = {
+    "TRANSACTIONS": [
+        {"$match": {"reference": "ref-1"}},
+        {"$and": [{"$match": {"reverted": False}}, {"$exists": {"metadata": "status"}}]},
+        'reference == "ref-2"',
+    ],
+    "ACCOUNTS": [
+        {"$match": {"address": "users:001"}},
+        {"$or": [{"$match": {"address": "users:"}}, {"$exists": {"metadata": "kyc"}}]},
+        'address == "world"',
+    ],
+    "LOGS": [
+        {"$gte": {"date": "2023-11-14T22:13:20Z"}},
+        {"$match": {"ledger": "test-ledger"}},
+    ],
+}
+_ALL_FILTERS = [f for filters in _FILTERS_BY_TARGET.values() for f in filters]
+
+
+def _create_prepared_query_body():
+    # `name` must be unique or the server returns 409, so vary it across
+    # examples. `target` dictates which filter fields are legal, so the filter is
+    # drawn from the pool matching the chosen target.
+    def _for_target(target):
+        return st.fixed_dictionaries(
+            {
+                "name": st.integers(min_value=0, max_value=1_000_000_000).map(
+                    lambda i: f"pq-{i}"
+                ),
+                "target": st.just(target),
+                "filter": st.sampled_from(_FILTERS_BY_TARGET[target]),
+            }
+        )
+
+    return (
+        st.sampled_from(list(_FILTERS_BY_TARGET))
+        .flatmap(_for_target)
+        .map(copy.deepcopy)
+    )
+
+
+def _update_prepared_query_body():
+    # Update targets an existing query by (fuzzed) name; any well-formed filter
+    # is fine for conformance.
+    return st.fixed_dictionaries({"filter": st.sampled_from(_ALL_FILTERS)}).map(
+        copy.deepcopy
+    )
+
+
+@schemathesis.hook
+def before_generate_body(context, strategy):
+    """Bypass the recursive QueryFilter body generation for prepared queries.
+
+    Returns a fast fixed-payload strategy for the two prepared-query write
+    operations; all other operations keep their original strategy.
+    """
+    op = context.operation
+    path = getattr(op, "path", "")
+    method = (getattr(op, "method", "") or "").lower()
+    if path == "/v3/{ledgerName}/prepared-queries" and method == "post":
+        return _create_prepared_query_body()
+    if path == "/v3/{ledgerName}/prepared-queries/{queryName}" and method == "put":
+        return _update_prepared_query_body()
+    return strategy
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Schemathesis API conformity and fuzzing tests for Ledger V3"
@@ -126,6 +206,19 @@ def main():
         help="Max examples per endpoint (default: 50)",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Number of concurrent workers (default: 1). Keep at 1 for the CI "
+            "gate: >1 reintroduces nondeterminism (thread interleaving over the "
+            "stateful-link sequences) that defeats the `derandomize` "
+            "reproducibility below. The suite is fast at 1 worker since the "
+            "cost was generation, not request throughput; raise this only for "
+            "ad-hoc exploratory fuzzing, not the reproducible gate."
+        ),
+    )
+    parser.add_argument(
         "--shrink",
         action="store_true",
         help=(
@@ -140,6 +233,7 @@ def main():
     print(f"Loading schema from {OPENAPI_PATH}")
     print(f"Target server: {args.base_url}")
     print(f"Max examples per endpoint: {args.max_examples}")
+    print(f"Workers: {args.workers}")
     print("=" * 60)
 
     schema = load_schema(args.base_url)
@@ -168,12 +262,30 @@ def main():
             status_code_conformance,
             response_schema_conformance,
         ],
+        workers_num=args.workers,
+        # The harness starts the server with authentication DISABLED (see
+        # run.sh), but openapi.yml declares a global BearerAuth scheme. Without
+        # this, Schemathesis synthesizes an `Authorization` header from that
+        # scheme; a fuzzed value (e.g. `Bearer \b`) is rejected by Go's net/http
+        # as a plain-text 400 before routing, which is a transport artifact, not
+        # an application response. Disabling security-parameter generation keeps
+        # the fuzzer on real endpoint behavior for the auth-disabled harness.
+        generation_config=GenerationConfig(with_security_parameters=False),
         stateful=Stateful.links,
         hypothesis_settings=hypothesis_settings(
             max_examples=args.max_examples,
             suppress_health_check=[HealthCheck.filter_too_much],
             deadline=timedelta(seconds=30),
             phases=phases,
+            # Deterministic generation: a blocking CI gate must be reproducible,
+            # not a randomized fuzzer that flakes red on a different latent bug
+            # every run. `derandomize` seeds Hypothesis from a fixed internal
+            # value (stable across machines for a given hypothesis version), and
+            # `database=None` ignores the local `.hypothesis` replay cache, so a
+            # local run reproduces CI exactly. Bump `max_examples` (or a future
+            # explicit seed) to widen coverage when hunting new conformance bugs.
+            derandomize=True,
+            database=None,
         ),
     )
     for event in runner.execute():

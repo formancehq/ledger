@@ -80,6 +80,17 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
+	// domain.ErrNotFound is a bare sentinel (not a typed NotFoundError and not
+	// a Describable), returned by read-side queries when the target ledger or
+	// resource is absent — e.g. reading numscripts or prepared-queries against
+	// a deleted ledger via query.GetLedgerByName. Without this branch it falls
+	// through to the 500 sanitizer; a missing resource on a read is a 404.
+	if errors.Is(err, domain.ErrNotFound) {
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+		return
+	}
+
 	// Domain Describables: every typed *Err* and sentinel in internal/domain
 	// (and transitively in admission/numscript) flows through this branch.
 	// Catches BusinessError too (it implements Describable transparently).

@@ -57,6 +57,20 @@ func TestHandleError(t *testing.T) {
 			expectedCode:   "NOT_FOUND",
 		},
 		{
+			// Bare domain.ErrNotFound sentinel — e.g. a read against a deleted
+			// ledger (query.GetLedgerByName). Must be a 404, not a 500.
+			name:           "bare domain.ErrNotFound sentinel",
+			err:            domain.ErrNotFound,
+			expectedStatus: http.StatusNotFound,
+			expectedCode:   "NOT_FOUND",
+		},
+		{
+			name:           "wrapped domain.ErrNotFound",
+			err:            fmt.Errorf("reading ledger info: %w", domain.ErrNotFound),
+			expectedStatus: http.StatusNotFound,
+			expectedCode:   "NOT_FOUND",
+		},
+		{
 			name:           "ledger already exists",
 			err:            &domain.ErrLedgerAlreadyExists{Name: "test"},
 			expectedStatus: http.StatusConflict,

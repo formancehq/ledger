@@ -5,7 +5,11 @@
 # waits for readiness, runs Schemathesis tests, then tears down.
 #
 # Usage: bash tests/schemathesis/run.sh
-# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_SHRINK
+# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_WORKERS,
+#   SCHEMATHESIS_SHRINK
+#   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
+#   (default 1). Keep at 1 for the reproducible gate: >1 breaks the
+#   `derandomize` determinism (see test_api.py). The suite is fast at 1 worker.
 #   SCHEMATHESIS_SHRINK=1 re-enables Hypothesis shrinking (minimal failing
 #   examples) for local debugging. Off by default — see test_api.py --shrink.
 set -euo pipefail
@@ -17,9 +21,18 @@ HTTP_PORT=${HTTP_PORT:-9099}
 GRPC_PORT=${GRPC_PORT:-8899}
 RAFT_PORT=${RAFT_PORT:-7779}
 MAX_EXAMPLES=${MAX_EXAMPLES:-50}
+SCHEMATHESIS_WORKERS=${SCHEMATHESIS_WORKERS:-1}
 
 TMPDIR=$(mktemp -d)
-trap 'kill "$SERVER_PID" 2>/dev/null; rm -rf "$TMPDIR"' EXIT
+# On exit, preserve the server log as an uploadable diagnostic BEFORE removing
+# TMPDIR, so a failing run still ships server-side context. The filename matches
+# the CI artifact glob (/tmp/schemathesis-*.txt).
+# Every command is guarded with `|| true`: `set -e` is active inside the trap, so
+# an unguarded non-zero status would abort the remaining cleanup. `wait` returns
+# the SIGTERM status (143) of the server we just killed, and `kill` fails if the
+# server already exited — either would otherwise skip the log copy (most valuable
+# exactly when the server crashed) and corrupt the script's real exit status.
+trap 'kill "${SERVER_PID:-}" 2>/dev/null || true; wait "${SERVER_PID:-}" 2>/dev/null || true; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR" || true' EXIT
 
 echo "==> Building server..."
 cd "$REPO_ROOT"
@@ -57,10 +70,12 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-if ! python3 -c "import schemathesis" 2>/dev/null; then
-    echo "==> Installing Schemathesis..."
-    pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
-fi
+# Install unconditionally: an `import schemathesis` guard would skip install when
+# a pre-existing .venv already has *some* version, silently bypassing the exact
+# pins in requirements.txt (defeating the reproducibility they exist for). pip is
+# a fast no-op when the pinned versions are already satisfied.
+echo "==> Installing/verifying pinned Schemathesis dependencies..."
+pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
 
 echo "==> Running Schemathesis tests..."
 echo ""
@@ -68,7 +83,11 @@ SHRINK_FLAG=""
 if [ -n "${SCHEMATHESIS_SHRINK:-}" ] && [ "${SCHEMATHESIS_SHRINK}" != "0" ]; then
     SHRINK_FLAG="--shrink"
 fi
+# Tee the full run (stdout+stderr) to an uploadable report. `set -o pipefail`
+# (see `set` above) makes the pipeline inherit test_api.py's non-zero exit, so a
+# conformity failure still fails the job. Filename matches the CI artifact glob.
 python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
-    $SHRINK_FLAG
+    --workers "$SCHEMATHESIS_WORKERS" \
+    $SHRINK_FLAG 2>&1 | tee /tmp/schemathesis-report.txt

@@ -61,6 +61,10 @@ func Execute(
 	// Fetch ledger info for schema-based filter validation and ledger ID resolution
 	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.GetLedger())
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: req.GetLedger()}
+		}
+
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}
 
