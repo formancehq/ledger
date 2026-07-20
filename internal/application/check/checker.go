@@ -542,7 +542,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// non-nil buffer); the guard keeps the single-log inline-purge
 						// fallback (post-purge state) from producing false mismatches.
 						if ephemeralPurgeBuffer != nil {
-							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, baselineVolumes, callback); err != nil {
+							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, baselineVolumes, excluded, callback); err != nil {
 								return fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
 							}
 						}
@@ -2034,6 +2034,15 @@ func (c *Checker) loadBaselineVolumes(baselineDB *pebble.DB) (map[string]*raftcm
 // sequence: baseline (pre-archive state from the checkpoint) + the replayed
 // post-archive delta, mirroring compareVolumes. On a non-archived run
 // baselineVolumes is empty and the expectation reduces to the replayed delta.
+//
+// excluded carries the (ledger, account, asset, color) tuples the replay-time
+// ephemeral purge has already deleted at this point in the loop. A baseline row
+// for such a tuple is stale: the FSM deleted the volume when it hit zero and any
+// later re-touch restarts from zero, so the baseline must NOT be added on top of
+// the post-purge replayed delta (mirrors compareVolumes' exclusion handling).
+// The stored snapshot is still verified against the delta, so tampering is not
+// masked.
+//
 // A missing, extra, duplicated, unparsable, or divergent row is tampering (or
 // an FSM projection bug) and emits CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH.
 // Returns a non-nil error only on a replay-store read failure (checker
@@ -2044,6 +2053,7 @@ func compareTransactionPostCommitVolumes(
 	data *commonpb.LedgerLogPayload,
 	replay *replayStore,
 	baselineVolumes map[string]*raftcmdpb.VolumePair,
+	excluded excludedVolumesSet,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	var tx *commonpb.Transaction
@@ -2110,10 +2120,16 @@ func compareTransactionPostCommitVolumes(
 			// before the boundary; without archiving baselineVolumes is empty and a
 			// missing replay entry is the zero volume, matching the FSM's
 			// readVolumeOrZero when it built the snapshot.
+			//
+			// Skip the baseline when the tuple has already been ephemeral-purged
+			// during replay: the FSM deleted that volume and the re-touch restarts
+			// from zero, so its post-purge snapshot is the delta alone. Adding the
+			// stale pre-purge baseline would over-count and false-positive.
 			wantInput := big.NewInt(0)
 			wantOutput := big.NewInt(0)
 
-			if base := baselineVolumes[string(keyBytes)]; base != nil {
+			if base := baselineVolumes[string(keyBytes)]; base != nil &&
+				!excluded.contains(ledgerName, account, posting.GetAsset(), posting.GetColor()) {
 				wantInput = base.GetInput().ToBigInt()
 				wantOutput = base.GetOutput().ToBigInt()
 			}

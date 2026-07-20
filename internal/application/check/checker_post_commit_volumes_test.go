@@ -59,7 +59,7 @@ func runPCVCheck(t *testing.T, postings []*commonpb.Posting, pcv *commonpb.PostC
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, nil, func(e *servicepb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
 			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
@@ -210,7 +210,7 @@ func TestCompareTransactionPostCommitVolumes_RevertBranch(t *testing.T) {
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, nil, func(e *servicepb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
 			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
@@ -262,7 +262,7 @@ func TestCompareTransactionPostCommitVolumes_ArchivedBaseline(t *testing.T) {
 	collect := func() []string {
 		var msgs []string
 
-		err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, baseline, func(e *servicepb.CheckStoreEvent) {
+		err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, baseline, nil, func(e *servicepb.CheckStoreEvent) {
 			if ev := e.GetError(); ev != nil &&
 				ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 				msgs = append(msgs, ev.GetMessage())
@@ -279,7 +279,7 @@ func TestCompareTransactionPostCommitVolumes_ArchivedBaseline(t *testing.T) {
 	// Sanity: without the baseline (the bug) the treasury input would look
 	// tampered — proving the baseline is what makes this correct.
 	var withoutBaseline []string
-	require.NoError(t, compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, func(e *servicepb.CheckStoreEvent) {
+	require.NoError(t, compareTransactionPostCommitVolumes("ledger", 7, data, rs, nil, nil, func(e *servicepb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
 			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			withoutBaseline = append(withoutBaseline, ev.GetMessage())
@@ -287,4 +287,69 @@ func TestCompareTransactionPostCommitVolumes_ArchivedBaseline(t *testing.T) {
 	}))
 	require.Len(t, withoutBaseline, 1)
 	require.Contains(t, withoutBaseline[0], "treasury")
+}
+
+// TestCompareTransactionPostCommitVolumes_ArchivedBaselineTombstone covers the
+// churned-account case: a baseline-backed ephemeral account that was
+// ephemeral-purged after the archive boundary and then re-touched. The FSM
+// snapshot restarts from zero, so the stale baseline row must be skipped when
+// the tuple is in the replay-purge exclusion set — otherwise it over-counts and
+// false-positives.
+func TestCompareTransactionPostCommitVolumes_ArchivedBaselineTombstone(t *testing.T) {
+	t.Parallel()
+
+	// staging carried pre-archive volume in the baseline checkpoint...
+	stagingKey := domain.NewVolumeKey("ledger", "staging", "USD", "")
+	baseline := map[string]*raftcmdpb.VolumePair{
+		string(stagingKey.Bytes()): {
+			Input:  commonpb.NewUint256FromUint64(1000),
+			Output: commonpb.NewUint256FromUint64(900),
+		},
+	}
+
+	// ...but it was ephemeral-purged post-archive and then re-touched:
+	// world -> staging 50. The replay store (post-purge) holds only this delta.
+	postings := []*commonpb.Posting{newPosting("world", "staging", "USD", 50)}
+
+	rs := newTestReplayStore(t)
+	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+
+	// The FSM snapshot restarts from zero: staging {in:50, out:0}.
+	data := &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: 1, Postings: postings, PostCommitVolumes: buildPCV(
+					pcvRow{account: "world", asset: "USD", input: "0", output: "50"},
+					pcvRow{account: "staging", asset: "USD", input: "50", output: "0"},
+				)},
+			},
+		},
+	}
+
+	collect := func(excluded excludedVolumesSet) []string {
+		var msgs []string
+
+		err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, baseline, excluded, func(e *servicepb.CheckStoreEvent) {
+			if ev := e.GetError(); ev != nil &&
+				ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
+				msgs = append(msgs, ev.GetMessage())
+			}
+		})
+		require.NoError(t, err)
+
+		return msgs
+	}
+
+	// staging was purged during replay → its stale baseline must be excluded.
+	excluded := excludedVolumesSet{
+		"ledger": {
+			domain.AccountAssetKey{Account: "staging", Asset: "USD", Color: ""}: {},
+		},
+	}
+	require.Empty(t, collect(excluded), "a purged tuple's stale baseline must not be added")
+
+	// Sanity: without the tombstone the stale baseline over-counts staging.
+	msgs := collect(nil)
+	require.Len(t, msgs, 1)
+	require.Contains(t, msgs[0], "staging")
 }
