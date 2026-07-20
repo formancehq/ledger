@@ -1837,6 +1837,10 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: ledger}
+		}
+
 		return nil, err
 	}
 
@@ -1878,6 +1882,10 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: ledger}
+		}
+
 		return nil, err
 	}
 
@@ -1935,6 +1943,10 @@ func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: ledger}
+		}
+
 		return nil, err
 	}
 

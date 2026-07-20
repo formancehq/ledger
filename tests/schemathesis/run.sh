@@ -19,7 +19,10 @@ RAFT_PORT=${RAFT_PORT:-7779}
 MAX_EXAMPLES=${MAX_EXAMPLES:-50}
 
 TMPDIR=$(mktemp -d)
-trap 'kill "$SERVER_PID" 2>/dev/null; rm -rf "$TMPDIR"' EXIT
+# On exit, preserve the server log as an uploadable diagnostic BEFORE removing
+# TMPDIR, so a failing run still ships server-side context. The filename matches
+# the CI artifact glob (/tmp/schemathesis-*.txt).
+trap 'kill "$SERVER_PID" 2>/dev/null; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR"' EXIT
 
 echo "==> Building server..."
 cd "$REPO_ROOT"
@@ -68,7 +71,10 @@ SHRINK_FLAG=""
 if [ -n "${SCHEMATHESIS_SHRINK:-}" ] && [ "${SCHEMATHESIS_SHRINK}" != "0" ]; then
     SHRINK_FLAG="--shrink"
 fi
+# Tee the full run (stdout+stderr) to an uploadable report. `set -o pipefail`
+# (see `set` above) makes the pipeline inherit test_api.py's non-zero exit, so a
+# conformity failure still fails the job. Filename matches the CI artifact glob.
 python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
-    $SHRINK_FLAG
+    $SHRINK_FLAG 2>&1 | tee /tmp/schemathesis-report.txt

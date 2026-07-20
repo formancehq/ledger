@@ -16,6 +16,7 @@ from pathlib import Path
 
 from hypothesis import HealthCheck, Phase, settings as hypothesis_settings
 import schemathesis
+from schemathesis import GenerationConfig
 from schemathesis.checks import (
     not_a_server_error,
     response_schema_conformance,
@@ -168,6 +169,14 @@ def main():
             status_code_conformance,
             response_schema_conformance,
         ],
+        # The harness starts the server with authentication DISABLED (see
+        # run.sh), but openapi.yml declares a global BearerAuth scheme. Without
+        # this, Schemathesis synthesizes an `Authorization` header from that
+        # scheme; a fuzzed value (e.g. `Bearer \b`) is rejected by Go's net/http
+        # as a plain-text 400 before routing, which is a transport artifact, not
+        # an application response. Disabling security-parameter generation keeps
+        # the fuzzer on real endpoint behavior for the auth-disabled harness.
+        generation_config=GenerationConfig(with_security_parameters=False),
         stateful=Stateful.links,
         hypothesis_settings=hypothesis_settings(
             max_examples=args.max_examples,
