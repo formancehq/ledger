@@ -249,21 +249,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 			},
 		},
 		{
-			name: "save_numscript_latest",
-			payload: &raftcmdpb.LedgerScopedOrder{
-				Ledger: wrapperTestLedger,
-				Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
-					SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Name: "tx", Version: "latest"},
-				},
-			},
-			assert: func(t *testing.T, n *plan.Coverage) {
-				require.True(t, n.Has(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"}.Bytes()))
-				// latest does not preload a specific version content
-				require.Zero(t, n.Count(dal.SubAttrNumscriptContent))
-			},
-		},
-		{
-			name: "save_numscript_semver",
+			name: "save_numscript",
 			payload: &raftcmdpb.LedgerScopedOrder{
 				Ledger: wrapperTestLedger,
 				Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
@@ -271,24 +257,14 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 				},
 			},
 			assert: func(t *testing.T, n *plan.Coverage) {
-				// semver saves preload the specific (name, version) for immutability check
+				// Save reads the latest pointer (max maintenance) and the target
+				// version's content (immutability check).
+				require.True(t, n.Has(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"}.Bytes()))
 				require.True(t, n.Has(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{
 					LedgerName: wrapperTestLedger,
 					Name:       "tx",
 					Version:    "1.2.3",
 				}.Bytes()))
-			},
-		},
-		{
-			name: "delete_numscript",
-			payload: &raftcmdpb.LedgerScopedOrder{
-				Ledger: wrapperTestLedger,
-				Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
-					DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{Name: "tx"},
-				},
-			},
-			assert: func(t *testing.T, n *plan.Coverage) {
-				require.True(t, n.Has(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: wrapperTestLedger, Name: "tx"}.Bytes()))
 			},
 		},
 		{

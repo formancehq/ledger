@@ -112,6 +112,9 @@ service BucketService {
   // usagebuilder subsystem. Eventually consistent — may lag the live FSM
   // by up to one usagebuilder tick interval.
   rpc GetTemplateUsage(GetTemplateUsageRequest) returns (common.TemplateUsage);
+  // ListNumscriptVersions returns the latest pointer and every stored version
+  // of a numscript, ordered greatest semver first.
+  rpc ListNumscriptVersions(ListNumscriptVersionsRequest) returns (ListNumscriptVersionsResponse);
   // InspectIndex scans a metadata index and returns distinct values, facets, or a summary
   rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse);
   // Barrier proposes a no-op through Raft consensus. When it returns, all
@@ -278,7 +281,6 @@ message Request {
     CreateIndexRequest create_index = 25;
     DropIndexRequest drop_index = 26;
     SaveNumscriptRequest save_numscript = 27;
-    DeleteNumscriptRequest delete_numscript = 28;
     AddAccountTypeLedgerRequest add_account_type = 29;
     RemoveAccountTypeLedgerRequest remove_account_type = 30;
     SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 31;
@@ -432,8 +434,8 @@ message DropIndexRequest {
 // Numscript Library Messages
 // ============================================================================
 
-// SaveNumscriptRequest saves a numscript to the library.
-// version must be a valid semver string (e.g. "1.0.0") or "latest" to overwrite the most recent version.
+// SaveNumscriptRequest appends an immutable version to the library. version
+// must be an explicit full semver (e.g. "1.0.0").
 message SaveNumscriptRequest {
   string name = 1;
   string content = 2;
@@ -441,16 +443,12 @@ message SaveNumscriptRequest {
   string ledger = 4;
 }
 
-// DeleteNumscriptRequest removes a numscript from the library (versions preserved).
-message DeleteNumscriptRequest {
-  string name = 1;
-  string ledger = 2;
-}
-
-// GetNumscriptRequest retrieves a numscript by name and optional version.
+// GetNumscriptRequest retrieves a numscript by name and version selector.
+// version accepts an exact semver, a partial selector (e.g. "1", "1.2"), or
+// "" / "latest" for the greatest stored semver.
 message GetNumscriptRequest {
   string name = 1;
-  string version = 2; // "" = latest
+  string version = 2; // "" = latest (greatest stored semver)
   string ledger = 3;
   common.ReadOptions read = 4;
 
@@ -461,10 +459,24 @@ message GetNumscriptRequest {
   reserved "checkpoint_id";
 }
 
-// ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
+// ListNumscriptsRequest lists all numscripts for a ledger (greatest version of each).
 message ListNumscriptsRequest {
   string ledger = 1;
   common.ListOptions options = 2;
+}
+
+// ListNumscriptVersionsRequest lists every stored version of a single numscript.
+message ListNumscriptVersionsRequest {
+  string ledger = 1;
+  string name = 2;
+  common.ReadOptions read = 3;
+}
+
+// ListNumscriptVersionsResponse carries the numscript's history: the current
+// latest (greatest stored semver) and every stored version.
+message ListNumscriptVersionsResponse {
+  string latest_version = 1;
+  repeated common.NumscriptVersionEntry versions = 2;
 }
 
 // GetTemplateUsageRequest retrieves the invocation counter + last-used
@@ -869,6 +881,15 @@ enum CheckStoreErrorType {
   // EphemeralEvictedCount / TransientUsedCount are informational and excluded
   // (cf. Index BuildStatus).
   CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 18;
+  // Emitted when the numscript library projections (SubAttrNumscriptContent
+  // immutable version entries and SubAttrNumscriptVersion latest pointers)
+  // diverge from the state the checker re-derived by replaying SavedNumscript /
+  // DeleteLedger log payloads. Those projections are the source for reads,
+  // listing, version history and admission-side reference resolution; a stored
+  // content row that has no matching SavedNumscript, an altered content entry,
+  // or a latest pointer that is not the greatest saved semver is tampering. The
+  // audit chain is the source of truth.
+  CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH = 19;
 }
 
 message CheckStoreError {

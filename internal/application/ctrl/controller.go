@@ -78,6 +78,7 @@ type Controller interface {
 	// Numscript library operations
 	GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error)
 	ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error)
+	ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error)
 
 	// GetTemplateUsage returns the invocation counter and last-used timestamp
 	// for a Numscript template. Reads from the usagebuilder side-store, so

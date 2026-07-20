@@ -360,7 +360,7 @@ send $amount (
 		return err
 	}
 
-	// --- DeleteNumscript ---
+	// --- SaveNumscript ---
 	if _, err := r.Step("SaveTempNumscript",
 		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "temp_script", `vars {
   monetary $amount
@@ -369,11 +369,6 @@ send $amount (
   source = @world
   destination = @customer:1
 )`, "1.0.0"),
-	); err != nil {
-		return err
-	}
-	if _, err := r.Step("DeleteNumscript",
-		actions.DeleteNumscriptAction(MarketplaceLedger, "temp_script"),
 	); err != nil {
 		return err
 	}

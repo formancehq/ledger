@@ -1159,16 +1159,11 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder)
 		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
+		// Save reads the latest pointer (to keep it at the greatest semver) and
+		// the target version's content (immutability check). Version is always an
+		// explicit semver in this model.
 		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName()}.Bytes())
-
-		// For semver saves, preload the specific version content for immutability check.
-		version := payload.SaveNumscript.GetVersion()
-		if version != "" && version != "latest" {
-			p.Add(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: version}.Bytes())
-		}
-	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		p.Add(dal.SubAttrLedger, ledgerBytes)
-		p.Add(dal.SubAttrNumscriptVersion, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: payload.DeleteNumscript.GetName()}.Bytes())
+		p.Add(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: payload.SaveNumscript.GetName(), Version: payload.SaveNumscript.GetVersion()}.Bytes())
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		for key := range payload.SaveLedgerMetadata.GetMetadata() {
@@ -1583,10 +1578,24 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		var scriptVars map[string]string
 		isReference := false
 
-		// Resolve ScriptReference: load numscript content from overlay (intra-bulk) or Pebble.
-		var resolvedVersion string
+		// Resolve ScriptReference for planning only (parse, dependency discovery,
+		// preload). The accepted order is NOT mutated — its selector ("latest" or
+		// an exact semver) is audited as-is and re-resolved by the FSM at apply.
+		var (
+			resolvedVersion string
+			refName         string
+			refIsLatest     bool
+		)
 
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
+			// Executable references accept only "latest"/"" or a full semver;
+			// partial selectors (1, 1.2) are read-only in v3.0.
+			if v := ref.GetVersion(); v != "" && v != "latest" {
+				if _, perr := semver.Parse(v); perr != nil {
+					return &domain.BusinessError{Err: &domain.ErrNumscriptInvalidVersion{Version: v}}
+				}
+			}
+
 			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
@@ -1595,15 +1604,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptText = content
 			scriptVars = ref.GetVars()
 			resolvedVersion = rv
+			refName = ref.GetName()
+			refIsLatest = ref.GetVersion() == "" || ref.GetVersion() == "latest"
 			isReference = true
-
-			// Replace the entire NumscriptReference rather than mutating a field
-			// on the committed order's shared pointer.
-			createTx.CreateTransaction.NumscriptReference = &raftcmdpb.NumscriptReference{
-				Name:    ref.GetName(),
-				Version: resolvedVersion,
-				Vars:    ref.GetVars(),
-			}
 		} else if createTx.CreateTransaction.GetScript() != nil &&
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
 			len(createTx.CreateTransaction.GetPostings()) == 0 {
@@ -1741,18 +1744,27 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			effects.recordReference(domain.TransactionReferenceKey{LedgerName: ledgerName, Reference: txRef})
 		}
 
-		// For references: preload the resolved content keyed by (ledger, name, version).
-		// The FSM resolves via NumscriptReference from the dual-gen cache.
-		// For inline scripts: the text stays in the order as-is, no preload needed.
+		// For references: preload the content for the version admission observed
+		// (the discovered greatest for "latest", or the exact semver). The FSM
+		// resolves the reference from the dual-gen cache. If a "latest" ref's
+		// greatest advanced since planning, the FSM's read of the newer version's
+		// content is not covered and surfaces as a retryable stale proposal.
 		if isReference {
-			ref := createTx.CreateTransaction.GetNumscriptReference()
 			contentKey := domain.NumscriptEntryKey{
 				LedgerName: ledgerName,
-				Name:       ref.GetName(),
+				Name:       refName,
 				Version:    resolvedVersion,
 			}.Bytes()
 			p.Add(dal.SubAttrNumscriptContent, contentKey)
 			orderNeeds.Add(dal.SubAttrNumscriptContent, contentKey)
+
+			// A "latest" selector makes the FSM read the per-name pointer to
+			// resolve the greatest semver; declare it so that read is covered.
+			if refIsLatest {
+				pointerKey := domain.NumscriptVersionKey{LedgerName: ledgerName, Name: refName}.Bytes()
+				p.Add(dal.SubAttrNumscriptVersion, pointerKey)
+				orderNeeds.Add(dal.SubAttrNumscriptVersion, pointerKey)
+			}
 		}
 	}
 
@@ -2023,17 +2035,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			reqType.SaveNumscript.GetVersion(),
 			reqType.SaveNumscript.GetContent(),
 		)
-	case *servicepb.Request_DeleteNumscript:
-		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
-			Ledger: reqType.DeleteNumscript.GetLedger(),
-			Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
-				DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-					Name: reqType.DeleteNumscript.GetName(),
-				},
-			},
-		})
-
-		overlay.recordNumscriptDelete(reqType.DeleteNumscript.GetLedger(), reqType.DeleteNumscript.GetName())
 	case *servicepb.Request_CreateQueryCheckpoint:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
@@ -2274,22 +2275,46 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 	return order, nil
 }
 
-// requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order.
-// resolveNumscriptReference resolves a numscript reference from the overlay (intra-bulk) or Pebble.
+// resolveNumscriptReference resolves a numscript reference for planning (parse,
+// dependency discovery, preload). It resolves against both the intra-bulk
+// overlay and Pebble, always preferring the greater persisted version so an
+// overlay save at a lower version can never hide a greater committed one.
 func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName string, name, version string) (string, string, error) {
-	if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledgerName, name, version); found {
-		return content, resolvedVersion, nil
-	}
-
-	if overlay.numscriptLatest.IsDeleted(numscriptNameKey{Ledger: ledgerName, Name: name}) {
-		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
-	}
-
 	nsHandle, handleErr := a.store.NewDirectReadHandle()
 	if handleErr != nil {
 		return "", "", fmt.Errorf("creating read handle: %w", handleErr)
 	}
 	defer func() { _ = nsHandle.Close() }()
+
+	if version == "" || version == "latest" {
+		// Greatest = max(in-bulk greatest, persisted greatest).
+		greatest := ""
+		if ov, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: ledgerName, Name: name}); ok {
+			greatest = ov
+		}
+
+		persisted, perr := query.ReadNumscriptLatestVersion(a.attrs.NumscriptVersion, nsHandle, ledgerName, name)
+		if perr != nil {
+			return "", "", fmt.Errorf("reading numscript latest %q: %w", name, perr)
+		}
+
+		if greaterSemver(persisted, greatest) {
+			greatest = persisted
+		}
+
+		if greatest == "" {
+			return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
+		}
+
+		// Content for the greatest: overlay entry (in-bulk save) or Pebble.
+		if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledgerName, Name: name, Version: greatest}); ok {
+			return content, greatest, nil
+		}
+
+		version = greatest
+	} else if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledgerName, name, version); found {
+		return content, resolvedVersion, nil
+	}
 
 	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, nsHandle, ledgerName, name, version)
 	if err != nil {
@@ -2297,37 +2322,15 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	}
 
 	if info == nil {
-		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name}}
+		return "", "", &domain.BusinessError{Err: &domain.ErrNumscriptNotFound{Name: name, Version: version}}
 	}
 
 	return info.GetContent(), info.GetVersion(), nil
 }
 
-// resolveNumscriptFromOverlay tries to resolve a numscript from the intra-bulk overlay.
+// resolveNumscriptFromOverlay resolves an exact or partial semver selector from
+// the intra-bulk overlay. "latest"/"" are handled by resolveNumscriptReference.
 func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, name, version string) (string, string, bool) {
-	if version == "" {
-		latestVer, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: ledger, Name: name})
-		if !ok {
-			return "", "", false
-		}
-
-		content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: latestVer})
-		if !ok {
-			return "", "", false
-		}
-
-		return content, latestVer, true
-	}
-
-	if version == "latest" {
-		content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: "latest"})
-		if !ok {
-			return "", "", false
-		}
-
-		return content, "latest", true
-	}
-
 	// Exact semver lookup
 	if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}); ok {
 		return content, version, true

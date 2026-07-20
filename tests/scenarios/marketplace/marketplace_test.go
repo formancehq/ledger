@@ -439,20 +439,21 @@ send $amount (
 	// idempotency key survives snapshot restore (regression test).
 	expectedCustomer1BeforeRestart := new(big.Int).Set(customerBalance[1])
 
-	// --- Phase 11: DeleteNumscript ---
-	t.Run("DeleteNumscript", func(t *testing.T) {
-		// Save a temporary script, then delete it
-		scenariotest.ApplyActions(t, ctx, client,
-			actions.SaveNumscriptWithVersionAction(ledger, "temp_script", `vars {
+	// --- Phase 11: Numscript versioning (immutable append-only) ---
+	t.Run("NumscriptVersioning", func(t *testing.T) {
+		script := `vars {
   monetary $amount
 }
 send $amount (
   source = @world
   destination = @customer:1
-)`, "1.0.0"),
+)`
+		// Append two immutable versions; the latest pointer tracks the greatest.
+		scenariotest.ApplyActions(t, ctx, client,
+			actions.SaveNumscriptWithVersionAction(ledger, "temp_script", script, "1.0.0"),
 		)
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.DeleteNumscriptAction(ledger, "temp_script"),
+			actions.SaveNumscriptWithVersionAction(ledger, "temp_script", script, "2.0.0"),
 		)
 	})
 

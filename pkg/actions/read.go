@@ -85,6 +85,20 @@ func ListNumscripts(ctx context.Context, client servicepb.BucketServiceClient, l
 	}
 }
 
+// ListNumscriptVersions returns the numscript's current latest (greatest stored
+// semver) and every stored version.
+func ListNumscriptVersions(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	resp, err := client.ListNumscriptVersions(ctx, &servicepb.ListNumscriptVersionsRequest{
+		Ledger: ledger,
+		Name:   name,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	return resp.GetLatestVersion(), resp.GetVersions(), nil
+}
+
 // nextCursorFromTrailer returns the opaque cursor for the following page, or
 // "" when the server signaled end-of-stream (no trailer). Mirrors the
 // cmdutil.NextCursorFromTrailer helper without creating a CLI-package

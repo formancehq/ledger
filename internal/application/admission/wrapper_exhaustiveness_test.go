@@ -85,7 +85,6 @@ func ledgerScopedCoveredByDispatchTest(t *testing.T) map[string]struct{} {
 		"save_ledger_metadata":   {},
 		"delete_ledger_metadata": {},
 		"save_numscript":         {},
-		"delete_numscript":       {},
 		"create_prepared_query":  {},
 		"update_prepared_query":  {},
 		"delete_prepared_query":  {},

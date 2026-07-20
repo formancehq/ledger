@@ -102,17 +102,20 @@ func main() {
 			"GetNumscript should return latest version",
 			details.With(internal.Details{"expected": version2, "actual": nsInfo.GetVersion()}))
 
-		// 5. Delete the numscript.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeleteNumscript{
-				DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-					Name:   scriptName,
-					Ledger: ledger,
-				},
-			},
-		}))
+		// 5. ListNumscriptVersions should report the latest pointer at the
+		//    greatest saved semver (the library is immutable append-only).
+		versions, err := client.ListNumscriptVersions(ctx, &servicepb.ListNumscriptVersionsRequest{
+			Name:   scriptName,
+			Ledger: ledger,
+		})
+		if err != nil {
+			internal.LogCleanupError("list numscript versions", err)
+			return
+		}
 
-		assert.Sometimes(internal.IsTolerated(err), "should be able to delete numscript", details.With(internal.Details{"error": err}))
+		assert.AlwaysOrUnreachable(versions.GetLatestVersion() == version2,
+			"latest pointer should be the greatest saved semver",
+			details.With(internal.Details{"expected": version2, "actual": versions.GetLatestVersion()}))
 	})
 }
 

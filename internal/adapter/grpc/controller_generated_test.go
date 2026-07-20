@@ -1099,6 +1099,46 @@ func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, string,
 	return c
 }
 
+// ListNumscriptVersions mocks base method.
+func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNumscriptVersions", ctx, ledger, name)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].([]*commonpb.NumscriptVersionEntry)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListNumscriptVersions indicates an expected call of ListNumscriptVersions.
+func (mr *MockControllerMockRecorder) ListNumscriptVersions(ctx, ledger, name any) *MockControllerListNumscriptVersionsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscriptVersions", reflect.TypeOf((*MockController)(nil).ListNumscriptVersions), ctx, ledger, name)
+	return &MockControllerListNumscriptVersionsCall{Call: call}
+}
+
+// MockControllerListNumscriptVersionsCall wrap *gomock.Call
+type MockControllerListNumscriptVersionsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerListNumscriptVersionsCall) Return(arg0 string, arg1 []*commonpb.NumscriptVersionEntry, arg2 error) *MockControllerListNumscriptVersionsCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerListNumscriptVersionsCall) Do(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerListNumscriptVersionsCall) DoAndReturn(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListNumscripts mocks base method.
 func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()

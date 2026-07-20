@@ -434,10 +434,6 @@ func TestExtractLedgers_WrapperCoversAllLedgerScopedPayloads(t *testing.T) {
 			Ledger:  "books",
 			Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{}},
 		},
-		"delete_numscript": {
-			Ledger:  "books",
-			Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{}},
-		},
 		"create_prepared_query": {
 			Ledger:  "books",
 			Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{}},

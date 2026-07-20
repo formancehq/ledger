@@ -101,7 +101,7 @@ type Scope interface {
 	GetNumscriptLatestVersion(ledgerName string, name string) (string, error)
 	NumscriptVersionExists(ledgerName string, name, version string) (bool, error)
 	PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
-	DeleteNumscriptLatest(ledgerName string, name string)
+	SetNumscriptLatestVersion(ledgerName string, name, version string)
 	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 
 	// Query checkpoint operations

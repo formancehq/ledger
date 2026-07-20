@@ -45,7 +45,7 @@ func TestSkipSafeScope_TrapsNonBufferedMutations(t *testing.T) {
 		{"RemoveClosingChapter", func() { trap.RemoveClosingChapter(7) }},
 		{"UpdateChapter", func() { trap.UpdateChapter(&commonpb.Chapter{}) }},
 		{"PutNumscript", func() { trap.PutNumscript("L", &commonpb.NumscriptInfo{}) }},
-		{"DeleteNumscriptLatest", func() { trap.DeleteNumscriptLatest("L", "n") }},
+		{"SetNumscriptLatestVersion", func() { trap.SetNumscriptLatestVersion("L", "n", "1.0.0") }},
 		{"SaveQueryCheckpoint", func() { trap.SaveQueryCheckpoint(&raftcmdpb.QueryCheckpointState{}) }},
 		{"DeleteQueryCheckpoint", func() { trap.DeleteQueryCheckpoint(7) }},
 	}

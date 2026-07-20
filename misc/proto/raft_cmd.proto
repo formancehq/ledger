@@ -96,7 +96,6 @@ message LedgerScopedOrder {
     SaveLedgerMetadataOrder save_ledger_metadata = 7;
     DeleteLedgerMetadataOrder delete_ledger_metadata = 8;
     SaveNumscriptOrder save_numscript = 9;
-    DeleteNumscriptOrder delete_numscript = 10;
     CreatePreparedQueryOrder create_prepared_query = 11;
     UpdatePreparedQueryOrder update_prepared_query = 12;
     DeletePreparedQueryOrder delete_prepared_query = 13;
@@ -190,14 +189,12 @@ message SetChapterScheduleOrder {
 
 message DeleteChapterScheduleOrder {}
 
+// SaveNumscriptOrder appends an immutable version to the library. version must
+// be an explicit full semver.
 message SaveNumscriptOrder {
   string name = 1;
   string content = 2;
   string version = 3;
-}
-
-message DeleteNumscriptOrder {
-  string name = 1;
 }
 
 // CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.
@@ -385,8 +382,11 @@ message CreateTransactionOrder {
   // an admission-derived technical hint, not part of the transaction's identity.
 }
 
-// NumscriptReference identifies a numscript from the library to use for a transaction.
-// The version is resolved by admission (fuzzy → exact) before entering the Raft log.
+// NumscriptReference identifies a numscript from the library to use for a
+// transaction. The version selector — "" / "latest" or an exact full semver
+// (partial selectors are read-only, rejected here) — is carried verbatim into
+// the audited order; admission only plans the reads, and the FSM resolves
+// "latest" to the greatest stored semver at apply.
 message NumscriptReference {
   string name = 1;
   string version = 2;

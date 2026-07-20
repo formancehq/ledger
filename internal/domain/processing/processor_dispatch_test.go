@@ -91,15 +91,6 @@ func TestProcessOrder_DispatchEveryLedgerScopedVariant(t *testing.T) {
 			},
 		},
 		{
-			"delete_numscript",
-			&raftcmdpb.LedgerScopedOrder{
-				Ledger: ledger,
-				Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
-					DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{Name: "n"},
-				},
-			},
-		},
-		{
 			"create_prepared_query",
 			&raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,
