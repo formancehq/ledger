@@ -2045,6 +2045,7 @@ func (m *CreatedIndexLog) CloneVT() *CreatedIndexLog {
 	}
 	r := new(CreatedIndexLog)
 	r.Id = m.Id.CloneVT()
+	r.Initial = m.Initial
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -8016,6 +8017,9 @@ func (this *CreatedIndexLog) EqualVT(that *CreatedIndexLog) bool {
 		return false
 	}
 	if !this.Id.EqualVT(that.Id) {
+		return false
+	}
+	if this.Initial != that.Initial {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -17286,6 +17290,16 @@ func (m *CreatedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Initial {
+		i--
+		if m.Initial {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
+	}
 	if m.Id != nil {
 		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -25496,6 +25510,9 @@ func (m *CreatedIndexLog) SizeVT() (n int) {
 	if m.Id != nil {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Initial {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -40409,6 +40426,26 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Initial", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Initial = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

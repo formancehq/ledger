@@ -6422,8 +6422,13 @@ func (x *OrderSkippedLog) GetContext() map[string]string {
 
 // CreatedIndexLog records the creation of an index.
 type CreatedIndexLog struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *IndexID               `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    *IndexID               `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
+	// initial marks an index declared on a ledger that had no local history yet
+	// (same atomic apply batch as CreateLedger, before any indexable data log).
+	// The read-side indexbuilder promotes such indexes straight to live with no
+	// historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
+	Initial       bool `protobuf:"varint,5,opt,name=initial,proto3" json:"initial,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6463,6 +6468,13 @@ func (x *CreatedIndexLog) GetId() *IndexID {
 		return x.Id
 	}
 	return nil
+}
+
+func (x *CreatedIndexLog) GetInitial() bool {
+	if x != nil {
+		return x.Initial
+	}
+	return false
 }
 
 // DroppedIndexLog records the removal of an index.
@@ -13261,9 +13273,10 @@ const file_common_proto_rawDesc = "" +
 	"\acontext\x18\x02 \x03(\v2$.common.OrderSkippedLog.ContextEntryR\acontext\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"g\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
-	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"g\n" +
+	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02id\x12\x18\n" +
+	"\ainitial\x18\x05 \x01(\bR\ainitialJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"g\n" +
 	"\x0fDroppedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x04 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vlog_builtinR\vtransactionR\aaccount\"/\n" +
 	"\fFilledGapLog\x12\x1f\n" +
