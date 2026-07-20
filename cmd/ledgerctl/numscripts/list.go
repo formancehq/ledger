@@ -92,7 +92,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if len(scripts) == 0 {
 		pterm.Info.Printfln("No numscripts in library for ledger %s.", ledgerName)
 		pterm.Println(pterm.Gray("Hint: Save a numscript using:"))
-		pterm.FgCyan.Printfln("  ledgerctl numscripts save <name> --ledger %s --file <path>", ledgerName)
+		pterm.FgCyan.Printfln("  ledgerctl numscripts save <name> --ledger %s --file <path> --version 1.0.0", ledgerName)
 
 		return nil
 	}

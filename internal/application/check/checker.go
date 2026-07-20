@@ -31,6 +31,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -295,6 +296,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// effects (mirror fill-gap advances, numscript executions). Verified
 		// against the stored rows by compareBoundaries.
 		expectedBoundaries = make(map[string]*raftcmdpb.LedgerBoundaries)
+		// Expected numscript library projections derived from SavedNumscript /
+		// DeleteLedger logs. compareNumscripts diffs these against the stored
+		// SubAttrNumscriptContent (immutable version entries) and
+		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
+		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo)
+		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -363,6 +370,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// in now-purged logs; seed them from the boundary-time baseline so the
 		// post-archive replay applies its delta on top.
 		c.seedExpectedFromBaseline(ctx, baselineDB, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
+
+		// Seed the numscript projections (immutable content + greatest-semver
+		// latest pointer) from the baseline so a post-archive out-of-order save
+		// does not make the checker expect a lower latest than the store holds,
+		// and archived immutable content stays verified.
+		if err := c.foldBaselineNumscripts(baselineDB, expectedNumscriptContent, expectedNumscriptLatest); err != nil {
+			return err
+		}
 
 		// Pre-populate the reversion tracking from the baseline's transaction
 		// states so reversion invariant checks cover pre-archive transactions.
@@ -470,6 +485,34 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						if key.LedgerName == name {
 							delete(expectedIndexes, key)
 						}
+					}
+
+					// DeleteLedger also range-deletes SubAttrNumscriptVersion /
+					// SubAttrNumscriptContent for the ledger (deleteLedgerData),
+					// so mirror the cascade on the expected numscript projections.
+					for key := range expectedNumscriptContent {
+						if key.LedgerName == name {
+							delete(expectedNumscriptContent, key)
+						}
+					}
+
+					for key := range expectedNumscriptLatest {
+						if key.LedgerName == name {
+							delete(expectedNumscriptLatest, key)
+						}
+					}
+				}
+			case *commonpb.LogPayload_SavedNumscript:
+				// A save writes an immutable content entry and advances the latest
+				// pointer to the greatest stored semver (versions may be saved out
+				// of order).
+				if info := payload.SavedNumscript.GetInfo(); info != nil {
+					ck := domain.NumscriptEntryKey{LedgerName: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}
+					expectedNumscriptContent[ck] = info
+
+					vk := domain.NumscriptVersionKey{LedgerName: info.GetLedger(), Name: info.GetName()}
+					if cur, ok := expectedNumscriptLatest[vk]; !ok || numscriptVersionGreater(info.GetVersion(), cur) {
+						expectedNumscriptLatest[vk] = info.GetVersion()
 					}
 				}
 			case *commonpb.LogPayload_Apply:
@@ -700,6 +743,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
 		return err
 	}
+
+	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, pendingCleanupLedgers, callback)
 
 	return nil
 }
@@ -1087,6 +1132,178 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 				fmt.Sprintf("stored last_mirror_v2_log_id %d does not equal max audited MirrorIngest v2_log_id %d for ledger %q: %s",
 					storedV2, auditedMax, name, detail),
 				0, name, "", ""))
+		}
+	}
+}
+
+// numscriptVersionGreater reports whether a is a strictly greater full semver
+// than b. A non-semver b is treated as smaller so a valid version always wins.
+func numscriptVersionGreater(a, b string) bool {
+	av, aerr := semver.Parse(a)
+	bv, berr := semver.Parse(b)
+	if aerr != nil {
+		return false
+	}
+
+	if berr != nil {
+		return true
+	}
+
+	return av.Compare(bv) > 0
+}
+
+// compareNumscripts verifies the numscript library projections against the
+// state re-derived from the audit/log chain. SubAttrNumscriptContent holds the
+// immutable per-version entries; SubAttrNumscriptVersion holds the per-name
+// latest pointer (the greatest stored semver). Both are load-bearing for reads,
+// listing, version history, and admission-side reference resolution, so a
+// stored content row with no matching SavedNumscript, an altered content, or a
+// latest pointer that is not the greatest saved semver is tampering. Under
+// archiving the expected state is baseline-seeded (foldBaselineNumscripts), so —
+// unlike compareIndexes — there is no archive-orphan tolerance: a stored row
+// absent from both the baseline and the replay is a surplus/injected row and is
+// flagged. Only the deferred-cleanup tolerance remains.
+func (c *Checker) compareNumscripts(
+	reader dal.PebbleReader,
+	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
+	expectedLatest map[domain.NumscriptVersionKey]string,
+	deletedInReplay map[string]struct{},
+	pendingCleanupLedgers map[string]struct{},
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	mismatch := func(msg, ledger string) {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH, msg, 0, ledger, "", ""))
+	}
+
+	// Content entries (immutable): every stored row must trace to a SavedNumscript.
+	contentIter, err := c.attrs.NumscriptContent.NewStreamingIter(reader, nil)
+	if err != nil {
+		mismatch(fmt.Sprintf("opening numscript content iterator: %v", err), "")
+
+		return
+	}
+
+	seenContent := make(map[domain.NumscriptEntryKey]struct{}, len(expectedContent))
+
+	for contentIter.Next() {
+		entry := contentIter.Entry()
+		if entry.Value == nil {
+			continue
+		}
+
+		var key domain.NumscriptEntryKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			mismatch(fmt.Sprintf("stored numscript content has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
+
+			continue
+		}
+
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
+		seenContent[key] = struct{}{}
+
+		exp, ok := expectedContent[key]
+		if !ok {
+			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
+				mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.Version, key.LedgerName), key.LedgerName)
+
+				continue
+			}
+
+			mismatch(fmt.Sprintf("stored numscript content %q@%q for ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.Version, key.LedgerName), key.LedgerName)
+
+			continue
+		}
+
+		// Compare the whole NumscriptInfo, not just Content: reads and listing
+		// serve every field (Name, Version, Ledger, CreatedAt) straight from
+		// this projection, so each must match the audit-derived value.
+		if !entry.Value.EqualVT(exp) {
+			mismatch(fmt.Sprintf("numscript %q@%q for ledger %q: stored entry diverges from the audit-derived NumscriptInfo", key.Name, key.Version, key.LedgerName), key.LedgerName)
+		}
+	}
+
+	if err := contentIter.Err(); err != nil {
+		mismatch(fmt.Sprintf("scanning numscript content: %v", err), "")
+	}
+
+	_ = contentIter.Close()
+
+	for key := range expectedContent {
+		// A baseline-seeded entry for a ledger mid-purge legitimately lingers
+		// on neither side in lockstep — the stored loop skips it too.
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
+		if _, ok := seenContent[key]; !ok {
+			mismatch(fmt.Sprintf("audit chain expects numscript content %q@%q for ledger %q but the store has no matching entry", key.Name, key.Version, key.LedgerName), key.LedgerName)
+		}
+	}
+
+	// Latest pointers: the stored version string must match the greatest
+	// saved semver derived from the SavedNumscript sequence.
+	versionIter, err := c.attrs.NumscriptVersion.NewStreamingIter(reader, nil)
+	if err != nil {
+		mismatch(fmt.Sprintf("opening numscript version iterator: %v", err), "")
+
+		return
+	}
+
+	seenLatest := make(map[domain.NumscriptVersionKey]struct{}, len(expectedLatest))
+
+	for versionIter.Next() {
+		entry := versionIter.Entry()
+		if entry.Value == nil {
+			continue
+		}
+
+		var key domain.NumscriptVersionKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			mismatch(fmt.Sprintf("stored numscript version pointer has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
+
+			continue
+		}
+
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
+		seenLatest[key] = struct{}{}
+
+		exp, ok := expectedLatest[key]
+		if !ok {
+			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
+				mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q survives a replayed DeleteLedger + completed cleanup", key.Name, key.LedgerName), key.LedgerName)
+
+				continue
+			}
+
+			mismatch(fmt.Sprintf("stored numscript latest pointer for %q on ledger %q has no matching SavedNumscript in the audit chain", key.Name, key.LedgerName), key.LedgerName)
+
+			continue
+		}
+
+		if entry.Value.GetVersion() != exp {
+			mismatch(fmt.Sprintf("numscript %q on ledger %q: stored latest pointer %q diverges from the audit-derived %q", key.Name, key.LedgerName, entry.Value.GetVersion(), exp), key.LedgerName)
+		}
+	}
+
+	if err := versionIter.Err(); err != nil {
+		mismatch(fmt.Sprintf("scanning numscript version pointers: %v", err), "")
+	}
+
+	_ = versionIter.Close()
+
+	for key := range expectedLatest {
+		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
+			continue
+		}
+
+		if _, ok := seenLatest[key]; !ok {
+			mismatch(fmt.Sprintf("audit chain expects a numscript latest pointer for %q on ledger %q but the store has no matching entry", key.Name, key.LedgerName), key.LedgerName)
 		}
 	}
 }
@@ -3358,6 +3575,68 @@ func (c *Checker) foldBaselineReferences(
 	}
 
 	return true, nil
+}
+
+// foldBaselineNumscripts seeds the expected numscript projections from the
+// boundary-time baseline snapshot: the immutable per-version content entries
+// (SubAttrNumscriptContent) and the per-name latest pointer
+// (SubAttrNumscriptVersion, the greatest stored semver). Under archiving the
+// SavedNumscript logs that produced pre-archive versions are purged, so without
+// this seed the post-archive replay would rebuild the expected state from the
+// delta alone: an out-of-order save (e.g. a delta 1.0.0 on top of an archived
+// 2.0.0) would make the checker expect a lower latest than the store correctly
+// holds — a false NUMSCRIPT_MISMATCH — and an archived immutable content entry
+// would go unverified. The delta replay layers on top with the same
+// greatest-wins rule the FSM uses.
+//
+// baselineDB=nil short-circuits (no archived data).
+func (c *Checker) foldBaselineNumscripts(
+	baselineDB *pebble.DB,
+	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
+	expectedLatest map[domain.NumscriptVersionKey]string,
+) error {
+	if baselineDB == nil {
+		return nil
+	}
+
+	contentIter, err := c.attrs.NumscriptContent.NewStreamingIter(baselineDB, nil)
+	if err != nil {
+		return fmt.Errorf("iterating baseline numscript content: %w", err)
+	}
+
+	for contentIter.Next() {
+		entry := contentIter.Entry()
+		if entry.Value == nil {
+			continue
+		}
+
+		var key domain.NumscriptEntryKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+
+		expectedContent[key] = entry.Value
+
+		// Derive the latest pointer from the content rows — the greatest stored
+		// semver — rather than trusting the baseline's stored pointer, which
+		// could itself have drifted before the archive boundary. Mirrors the
+		// live FSM, which always advances latest to the greatest content; the
+		// delta replay then advances it further with the same greatest-wins rule.
+		vk := domain.NumscriptVersionKey{LedgerName: key.LedgerName, Name: key.Name}
+		if cur, ok := expectedLatest[vk]; !ok || numscriptVersionGreater(key.Version, cur) {
+			expectedLatest[vk] = key.Version
+		}
+	}
+
+	if err := contentIter.Close(); err != nil {
+		return fmt.Errorf("closing baseline numscript content iterator: %w", err)
+	}
+
+	if err := contentIter.Err(); err != nil {
+		return fmt.Errorf("baseline numscript content iterator error: %w", err)
+	}
+
+	return nil
 }
 
 // foldBaselineChainState seeds chainBound.reverted / metadata /

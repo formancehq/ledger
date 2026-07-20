@@ -18,7 +18,36 @@ func (v Version) String() string {
 	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
-// Parse parses a strict "major.minor.patch" version string.
+// Compare returns -1 if v < o, +1 if v > o, and 0 if they are equal.
+func (v Version) Compare(o Version) int {
+	switch {
+	case v.Major != o.Major:
+		if v.Major < o.Major {
+			return -1
+		}
+
+		return 1
+	case v.Minor != o.Minor:
+		if v.Minor < o.Minor {
+			return -1
+		}
+
+		return 1
+	case v.Patch != o.Patch:
+		if v.Patch < o.Patch {
+			return -1
+		}
+
+		return 1
+	default:
+		return 0
+	}
+}
+
+// Parse parses a strict, canonical "major.minor.patch" version string.
+// Non-canonical forms (leading zeros, e.g. "01.0.0") are rejected: callers use
+// the raw string as a storage key while comparing the parsed value, so two
+// strings that parse equal but differ textually would diverge the projection.
 func Parse(s string) (Version, error) {
 	parts := strings.Split(s, ".")
 	if len(parts) != 3 {
@@ -45,6 +74,10 @@ func Parse(s string) (Version, error) {
 		case 2:
 			v.Patch = uint32(n)
 		}
+	}
+
+	if v.String() != s {
+		return Version{}, fmt.Errorf("invalid semver %q: non-canonical form, expected %q", s, v.String())
 	}
 
 	return v, nil

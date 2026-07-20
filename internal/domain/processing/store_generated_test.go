@@ -286,42 +286,6 @@ func (c *MockScopeCheckCoverageCall) DoAndReturn(f func(byte, CoverageKey) error
 	return c
 }
 
-// DeleteNumscriptLatest mocks base method.
-func (m *MockScope) DeleteNumscriptLatest(ledgerName, name string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteNumscriptLatest", ledgerName, name)
-}
-
-// DeleteNumscriptLatest indicates an expected call of DeleteNumscriptLatest.
-func (mr *MockScopeMockRecorder) DeleteNumscriptLatest(ledgerName, name any) *MockScopeDeleteNumscriptLatestCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockScope)(nil).DeleteNumscriptLatest), ledgerName, name)
-	return &MockScopeDeleteNumscriptLatestCall{Call: call}
-}
-
-// MockScopeDeleteNumscriptLatestCall wrap *gomock.Call
-type MockScopeDeleteNumscriptLatestCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeDeleteNumscriptLatestCall) Return() *MockScopeDeleteNumscriptLatestCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeDeleteNumscriptLatestCall) Do(f func(string, string)) *MockScopeDeleteNumscriptLatestCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeDeleteNumscriptLatestCall) DoAndReturn(f func(string, string)) *MockScopeDeleteNumscriptLatestCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // DeleteQueryCheckpoint mocks base method.
 func (m *MockScope) DeleteQueryCheckpoint(checkpointID uint64) {
 	m.ctrl.T.Helper()
@@ -1526,6 +1490,42 @@ func (c *MockScopeSetMaintenanceModeCall) Do(f func(bool)) *MockScopeSetMaintena
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeSetMaintenanceModeCall) DoAndReturn(f func(bool)) *MockScopeSetMaintenanceModeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SetNumscriptLatestVersion mocks base method.
+func (m *MockScope) SetNumscriptLatestVersion(ledgerName, name, version string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetNumscriptLatestVersion", ledgerName, name, version)
+}
+
+// SetNumscriptLatestVersion indicates an expected call of SetNumscriptLatestVersion.
+func (mr *MockScopeMockRecorder) SetNumscriptLatestVersion(ledgerName, name, version any) *MockScopeSetNumscriptLatestVersionCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNumscriptLatestVersion", reflect.TypeOf((*MockScope)(nil).SetNumscriptLatestVersion), ledgerName, name, version)
+	return &MockScopeSetNumscriptLatestVersionCall{Call: call}
+}
+
+// MockScopeSetNumscriptLatestVersionCall wrap *gomock.Call
+type MockScopeSetNumscriptLatestVersionCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeSetNumscriptLatestVersionCall) Return() *MockScopeSetNumscriptLatestVersionCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeSetNumscriptLatestVersionCall) Do(f func(string, string, string)) *MockScopeSetNumscriptLatestVersionCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeSetNumscriptLatestVersionCall) DoAndReturn(f func(string, string, string)) *MockScopeSetNumscriptLatestVersionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

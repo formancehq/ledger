@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
@@ -38,19 +39,45 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		}
 	}
 
-	// Resolve script reference: load content from preloaded cache.
+	// Resolve script reference: load content from the preloaded cache. The
+	// audited order keeps its selector ("latest" or an exact semver); "latest"
+	// is resolved here, at apply time, to the greatest stored semver.
 	var script *commonpb.Script
 	if ref := order.GetNumscriptReference(); ref != nil {
-		info, err := s.ResolveNumscriptContent(ledger, ref.GetName(), ref.GetVersion())
+		name := ref.GetName()
+		version := ref.GetVersion()
+
+		if version == "" || version == "latest" {
+			greatest, gErr := s.GetNumscriptLatestVersion(ledger, name)
+			if gErr != nil {
+				return nil, &domain.ErrStorageOperation{Operation: fmt.Sprintf("resolving latest numscript %q", name), Cause: gErr}
+			}
+
+			if greatest == "" {
+				return nil, &domain.ErrNumscriptNotFound{Name: name}
+			}
+
+			// Admission preloaded the content for the version it observed as the
+			// greatest. If the greatest advanced since planning (a concurrent
+			// save committed first), that content key is not covered — reject as
+			// stale so the retry re-plans against the new greatest.
+			if s.CheckCoverage(dal.SubAttrNumscriptContent, domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: greatest}) != nil {
+				return nil, domain.ErrStaleProposal
+			}
+
+			version = greatest
+		}
+
+		info, err := s.ResolveNumscriptContent(ledger, name, version)
 		if err != nil {
 			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("resolving numscript %q v%s", ref.GetName(), ref.GetVersion()),
+				Operation: fmt.Sprintf("resolving numscript %q v%s", name, version),
 				Cause:     err,
 			}
 		}
 
 		if info == nil {
-			return nil, &domain.ErrNumscriptNotFound{Name: ref.GetName()}
+			return nil, &domain.ErrNumscriptNotFound{Name: name, Version: version}
 		}
 
 		script = &commonpb.Script{

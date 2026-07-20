@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -269,7 +270,11 @@ func ComputeDiff(ledgerName string, current, desired *EditableConfig) ([]DiffAct
 	}
 	actions = append(actions, pqActions...)
 
-	actions = append(actions, diffNumscripts(ledgerName, current, desired)...)
+	nsActions, err := diffNumscripts(ledgerName, current, desired)
+	if err != nil {
+		return nil, err
+	}
+	actions = append(actions, nsActions...)
 
 	return actions, nil
 }
@@ -744,63 +749,80 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 	return actions, nil
 }
 
-func diffNumscripts(ledgerName string, current, desired *EditableConfig) []DiffAction {
+func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
 	var actions []DiffAction
 
-	// Added or updated
+	// The library is immutable and append-only: a save is only ever a NEW
+	// version. Editing a version's content in place is impossible server-side,
+	// so an edit that keeps the same version is a mistake — catch it here
+	// rather than emitting a save the server rejects with
+	// NUMSCRIPT_VERSION_ALREADY_EXISTS.
 	for name, desiredNS := range desired.Numscripts {
 		currentNS, exists := current.Numscripts[name]
-		if !exists || currentNS.Content != desiredNS.Content || currentNS.Version != desiredNS.Version {
-			op := "add"
-			desc := fmt.Sprintf("Save numscript %q", name)
-			if desiredNS.Version != "" {
-				desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
+
+		if exists && currentNS.Version == desiredNS.Version {
+			if currentNS.Content != desiredNS.Content {
+				return nil, fmt.Errorf("numscript %q: content changed but version %q was not bumped; publish the change under a new semver", name, desiredNS.Version)
 			}
-			if exists {
-				op = "update"
-				desc = fmt.Sprintf("Update numscript %q", name)
-				if desiredNS.Version != "" {
-					desc += fmt.Sprintf(" (v%s)", desiredNS.Version)
-				}
+
+			continue
+		}
+
+		// The server requires an explicit full canonical semver; validate here
+		// so an omitted/partial/non-canonical version fails the diff with a
+		// clear message rather than a valid-looking plan that only errors at
+		// apply time.
+		desiredVersion, err := semver.Parse(desiredNS.Version)
+		if err != nil {
+			return nil, fmt.Errorf("numscript %q: %w (a full canonical semver is required, e.g. 1.0.0)", name, err)
+		}
+
+		// The exported config carries only the greatest version of each script,
+		// and latest is always the greatest stored semver. A desired version at
+		// or below the current greatest can never become latest, so the plan
+		// would never converge (and re-fail with NUMSCRIPT_VERSION_ALREADY_EXISTS
+		// once stored). Require a strictly greater version to advance latest.
+		if exists {
+			currentVersion, err := semver.Parse(currentNS.Version)
+			if err != nil {
+				return nil, fmt.Errorf("numscript %q: stored version %q is not a canonical semver: %w", name, currentNS.Version, err)
 			}
-			actions = append(actions, DiffAction{
-				Section:     "numscript",
-				Operation:   op,
-				Description: desc,
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_SaveNumscript{
-						SaveNumscript: &servicepb.SaveNumscriptRequest{
-							Ledger:  ledgerName,
-							Name:    name,
-							Content: desiredNS.Content,
-							Version: desiredNS.Version,
-						},
+
+			if desiredVersion.Compare(currentVersion) <= 0 {
+				return nil, fmt.Errorf("numscript %q: desired version %q is not greater than the current greatest %q; publish a higher version to advance latest", name, desiredNS.Version, currentNS.Version)
+			}
+		}
+
+		desc := fmt.Sprintf("Save numscript %q (v%s)", name, desiredNS.Version)
+
+		actions = append(actions, DiffAction{
+			Section:     "numscript",
+			Operation:   "add",
+			Description: desc,
+			Request: &servicepb.Request{
+				Type: &servicepb.Request_SaveNumscript{
+					SaveNumscript: &servicepb.SaveNumscriptRequest{
+						Ledger:  ledgerName,
+						Name:    name,
+						Content: desiredNS.Content,
+						Version: desiredNS.Version,
 					},
 				},
-			})
-		}
+			},
+		})
 	}
 
-	// Removed
+	// The library is append-only: a script present in the store but dropped
+	// from the desired config cannot be removed, so the desired state is
+	// unreachable. Fail loudly rather than silently reporting "already up to
+	// date" (the other config sections emit a remove action here).
 	for name := range current.Numscripts {
-		if _, exists := desired.Numscripts[name]; !exists {
-			actions = append(actions, DiffAction{
-				Section:     "numscript",
-				Operation:   "remove",
-				Description: fmt.Sprintf("Delete numscript %q", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DeleteNumscript{
-						DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-							Ledger: ledgerName,
-							Name:   name,
-						},
-					},
-				},
-			})
+		if _, ok := desired.Numscripts[name]; !ok {
+			return nil, fmt.Errorf("numscript %q exists in the ledger but is absent from the desired config; the append-only library does not support removal", name)
 		}
 	}
 
-	return actions
+	return actions, nil
 }
 
 func parseEnforcementModeProto(s string) commonpb.ChartEnforcementMode {

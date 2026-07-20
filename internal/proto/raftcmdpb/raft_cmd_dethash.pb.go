@@ -171,14 +171,6 @@ func (m *LedgerScopedOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (in
 			i--
 			dAtA[i] = 0x4a
 		}
-	case *LedgerScopedOrder_DeleteNumscript:
-		if v.DeleteNumscript != nil {
-			size, _ := v.DeleteNumscript.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x52
-		}
 	case *LedgerScopedOrder_CreatePreparedQuery:
 		if v.CreatePreparedQuery != nil {
 			size, _ := v.CreatePreparedQuery.MarshalToSizedBufferVT(dAtA[:i])
@@ -384,17 +376,6 @@ func (m *DeleteChapterScheduleOrder) MarshalDeterministicVT(dAtA []byte) []byte 
 }
 
 func (m *SaveNumscriptOrder) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *DeleteNumscriptOrder) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

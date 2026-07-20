@@ -198,7 +198,7 @@ func (s *skipSafeScope) UpdateChapter(chapter *commonpb.Chapter) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Numscript library — reads pass through; Put/Delete are NOT buffered.
+// Numscript library — reads pass through; Put/Set are NOT buffered.
 // ──────────────────────────────────────────────────────────────────────────
 
 func (s *skipSafeScope) GetNumscriptLatestVersion(ledgerName string, name string) (string, error) {
@@ -213,8 +213,8 @@ func (s *skipSafeScope) PutNumscript(ledgerName string, info *commonpb.Numscript
 	trapUnbuffered("PutNumscript", map[string]any{"ledger": ledgerName})
 }
 
-func (s *skipSafeScope) DeleteNumscriptLatest(ledgerName string, name string) {
-	trapUnbuffered("DeleteNumscriptLatest", map[string]any{"ledger": ledgerName, "name": name})
+func (s *skipSafeScope) SetNumscriptLatestVersion(ledgerName string, name, version string) {
+	trapUnbuffered("SetNumscriptLatestVersion", map[string]any{"ledger": ledgerName, "name": name, "version": version})
 }
 
 func (s *skipSafeScope) ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error) {

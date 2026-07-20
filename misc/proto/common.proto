@@ -355,7 +355,6 @@ message LogPayload {
     UpdatedPreparedQueryLog updated_prepared_query = 19;
     DeletedPreparedQueryLog deleted_prepared_query = 20;
     SavedNumscriptLog saved_numscript = 21;
-    DeletedNumscriptLog deleted_numscript = 22;
     CreatedQueryCheckpointLog created_query_checkpoint = 23;
     DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
     SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 25;
@@ -518,7 +517,7 @@ enum EventType {
 // Numscript Library Messages
 // ============================================================================
 
-// NumscriptInfo represents a stored numscript with versioning.
+// NumscriptInfo represents a stored, immutable numscript version.
 message NumscriptInfo {
   string name = 1;
   string content = 2;
@@ -527,15 +526,15 @@ message NumscriptInfo {
   string ledger = 5;
 }
 
-// SavedNumscriptLog records a numscript being saved to the library.
+// SavedNumscriptLog records a numscript version being saved to the library.
 message SavedNumscriptLog {
   NumscriptInfo info = 1;
 }
 
-// DeletedNumscriptLog records a numscript being deleted from the library.
-message DeletedNumscriptLog {
-  string name = 1;
-  string ledger = 2;
+// NumscriptVersionEntry describes one stored, immutable version of a numscript.
+message NumscriptVersionEntry {
+  string version = 1;
+  Timestamp created_at = 2;
 }
 
 // TemplateUsage tracks per-template invocation usage. Persisted as a

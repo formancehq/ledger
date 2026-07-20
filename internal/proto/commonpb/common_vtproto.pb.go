@@ -953,15 +953,6 @@ func (m *LogPayload_SavedNumscript) CloneVT() isLogPayload_Type {
 	return r
 }
 
-func (m *LogPayload_DeletedNumscript) CloneVT() isLogPayload_Type {
-	if m == nil {
-		return (*LogPayload_DeletedNumscript)(nil)
-	}
-	r := new(LogPayload_DeletedNumscript)
-	r.DeletedNumscript = m.DeletedNumscript.CloneVT()
-	return r
-}
-
 func (m *LogPayload_CreatedQueryCheckpoint) CloneVT() isLogPayload_Type {
 	if m == nil {
 		return (*LogPayload_CreatedQueryCheckpoint)(nil)
@@ -1404,13 +1395,13 @@ func (m *SavedNumscriptLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DeletedNumscriptLog) CloneVT() *DeletedNumscriptLog {
+func (m *NumscriptVersionEntry) CloneVT() *NumscriptVersionEntry {
 	if m == nil {
-		return (*DeletedNumscriptLog)(nil)
+		return (*NumscriptVersionEntry)(nil)
 	}
-	r := new(DeletedNumscriptLog)
-	r.Name = m.Name
-	r.Ledger = m.Ledger
+	r := new(NumscriptVersionEntry)
+	r.Version = m.Version
+	r.CreatedAt = m.CreatedAt.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1418,7 +1409,7 @@ func (m *DeletedNumscriptLog) CloneVT() *DeletedNumscriptLog {
 	return r
 }
 
-func (m *DeletedNumscriptLog) CloneMessageVT() proto.Message {
+func (m *NumscriptVersionEntry) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6234,31 +6225,6 @@ func (this *LogPayload_SavedNumscript) EqualVT(thatIface isLogPayload_Type) bool
 	return true
 }
 
-func (this *LogPayload_DeletedNumscript) EqualVT(thatIface isLogPayload_Type) bool {
-	that, ok := thatIface.(*LogPayload_DeletedNumscript)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeletedNumscript, that.DeletedNumscript; p != q {
-		if p == nil {
-			p = &DeletedNumscriptLog{}
-		}
-		if q == nil {
-			q = &DeletedNumscriptLog{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *LogPayload_CreatedQueryCheckpoint) EqualVT(thatIface isLogPayload_Type) bool {
 	that, ok := thatIface.(*LogPayload_CreatedQueryCheckpoint)
 	if !ok {
@@ -6902,23 +6868,23 @@ func (this *SavedNumscriptLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DeletedNumscriptLog) EqualVT(that *DeletedNumscriptLog) bool {
+func (this *NumscriptVersionEntry) EqualVT(that *NumscriptVersionEntry) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Name != that.Name {
+	if this.Version != that.Version {
 		return false
 	}
-	if this.Ledger != that.Ledger {
+	if !this.CreatedAt.EqualVT(that.CreatedAt) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *DeletedNumscriptLog) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeletedNumscriptLog)
+func (this *NumscriptVersionEntry) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*NumscriptVersionEntry)
 	if !ok {
 		return false
 	}
@@ -14451,27 +14417,6 @@ func (m *LogPayload_SavedNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LogPayload_DeletedNumscript) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LogPayload_DeletedNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeletedNumscript != nil {
-		size, err := m.DeletedNumscript.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xb2
-	}
-	return len(dAtA) - i, nil
-}
 func (m *LogPayload_CreatedQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -15680,7 +15625,7 @@ func (m *SavedNumscriptLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DeletedNumscriptLog) MarshalVT() (dAtA []byte, err error) {
+func (m *NumscriptVersionEntry) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15693,12 +15638,12 @@ func (m *DeletedNumscriptLog) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeletedNumscriptLog) MarshalToVT(dAtA []byte) (int, error) {
+func (m *NumscriptVersionEntry) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *DeletedNumscriptLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *NumscriptVersionEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15710,17 +15655,20 @@ func (m *DeletedNumscriptLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+	if m.CreatedAt != nil {
+		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
 	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -24342,18 +24290,6 @@ func (m *LogPayload_SavedNumscript) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LogPayload_DeletedNumscript) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.DeletedNumscript != nil {
-		l = m.DeletedNumscript.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *LogPayload_CreatedQueryCheckpoint) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -24830,18 +24766,18 @@ func (m *SavedNumscriptLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DeletedNumscriptLog) SizeVT() (n int) {
+func (m *NumscriptVersionEntry) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Name)
+	l = len(m.Version)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Ledger)
-	if l > 0 {
+	if m.CreatedAt != nil {
+		l = m.CreatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -33520,47 +33456,6 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &LogPayload_SavedNumscript{SavedNumscript: v}
 			}
 			iNdEx = postIndex
-		case 22:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeletedNumscript", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*LogPayload_DeletedNumscript); ok {
-				if err := oneof.DeletedNumscript.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeletedNumscriptLog{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &LogPayload_DeletedNumscript{DeletedNumscript: v}
-			}
-			iNdEx = postIndex
 		case 23:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedQueryCheckpoint", wireType)
@@ -36520,7 +36415,7 @@ func (m *SavedNumscriptLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeletedNumscriptLog) UnmarshalVT(dAtA []byte) error {
+func (m *NumscriptVersionEntry) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36543,15 +36438,15 @@ func (m *DeletedNumscriptLog) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeletedNumscriptLog: wiretype end group for non-group")
+			return fmt.Errorf("proto: NumscriptVersionEntry: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeletedNumscriptLog: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: NumscriptVersionEntry: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -36579,13 +36474,13 @@ func (m *DeletedNumscriptLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Name = string(dAtA[iNdEx:postIndex])
+			m.Version = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -36595,23 +36490,27 @@ func (m *DeletedNumscriptLog) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return protohelpers.ErrInvalidLength
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return protohelpers.ErrInvalidLength
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
+			if m.CreatedAt == nil {
+				m.CreatedAt = &Timestamp{}
+			}
+			if err := m.CreatedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

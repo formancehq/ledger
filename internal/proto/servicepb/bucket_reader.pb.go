@@ -2806,78 +2806,6 @@ func NewSaveNumscriptRequestListReader(s []*SaveNumscriptRequest) SaveNumscriptR
 	return saveNumscriptRequestListReadonly(s)
 }
 
-// DeleteNumscriptRequestReader provides read-only access to DeleteNumscriptRequest.
-// Call Mutate() to obtain a mutable clone.
-type DeleteNumscriptRequestReader interface {
-	GetName() string
-	GetLedger() string
-	Mutate() *DeleteNumscriptRequest
-}
-
-type deleteNumscriptRequestReadonly DeleteNumscriptRequest
-
-func (r *deleteNumscriptRequestReadonly) GetName() string {
-	return (*DeleteNumscriptRequest)(r).GetName()
-}
-
-func (r *deleteNumscriptRequestReadonly) GetLedger() string {
-	return (*DeleteNumscriptRequest)(r).GetLedger()
-}
-
-func (r *deleteNumscriptRequestReadonly) Mutate() *DeleteNumscriptRequest {
-	return (*DeleteNumscriptRequest)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this DeleteNumscriptRequest.
-func (m *DeleteNumscriptRequest) AsReader() DeleteNumscriptRequestReader {
-	if m == nil {
-		return nil
-	}
-	return (*deleteNumscriptRequestReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this DeleteNumscriptRequest.
-func (m *DeleteNumscriptRequest) Mutate() *DeleteNumscriptRequest {
-	return m.CloneVT()
-}
-
-// DeleteNumscriptRequestListReader provides read-only iteration over []*DeleteNumscriptRequest.
-type DeleteNumscriptRequestListReader interface {
-	Len() int
-	Get(i int) DeleteNumscriptRequestReader
-	Range(yield func(int, DeleteNumscriptRequestReader) bool)
-}
-
-type deleteNumscriptRequestListReadonly []*DeleteNumscriptRequest
-
-func (l deleteNumscriptRequestListReadonly) Len() int { return len(l) }
-
-func (l deleteNumscriptRequestListReadonly) Get(i int) DeleteNumscriptRequestReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l deleteNumscriptRequestListReadonly) Range(yield func(int, DeleteNumscriptRequestReader) bool) {
-	for i, v := range l {
-		var r DeleteNumscriptRequestReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewDeleteNumscriptRequestListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewDeleteNumscriptRequestListReader(s []*DeleteNumscriptRequest) DeleteNumscriptRequestListReader {
-	return deleteNumscriptRequestListReadonly(s)
-}
-
 // GetNumscriptRequestReader provides read-only access to GetNumscriptRequest.
 // Call Mutate() to obtain a mutable clone.
 type GetNumscriptRequestReader interface {
@@ -3038,6 +2966,159 @@ func (l listNumscriptsRequestListReadonly) Range(yield func(int, ListNumscriptsR
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewListNumscriptsRequestListReader(s []*ListNumscriptsRequest) ListNumscriptsRequestListReader {
 	return listNumscriptsRequestListReadonly(s)
+}
+
+// ListNumscriptVersionsRequestReader provides read-only access to ListNumscriptVersionsRequest.
+// Call Mutate() to obtain a mutable clone.
+type ListNumscriptVersionsRequestReader interface {
+	GetLedger() string
+	GetName() string
+	GetRead() commonpb.ReadOptionsReader
+	Mutate() *ListNumscriptVersionsRequest
+}
+
+type listNumscriptVersionsRequestReadonly ListNumscriptVersionsRequest
+
+func (r *listNumscriptVersionsRequestReadonly) GetLedger() string {
+	return (*ListNumscriptVersionsRequest)(r).GetLedger()
+}
+
+func (r *listNumscriptVersionsRequestReadonly) GetName() string {
+	return (*ListNumscriptVersionsRequest)(r).GetName()
+}
+
+func (r *listNumscriptVersionsRequestReadonly) GetRead() commonpb.ReadOptionsReader {
+	v := (*ListNumscriptVersionsRequest)(r).GetRead()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *listNumscriptVersionsRequestReadonly) Mutate() *ListNumscriptVersionsRequest {
+	return (*ListNumscriptVersionsRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ListNumscriptVersionsRequest.
+func (m *ListNumscriptVersionsRequest) AsReader() ListNumscriptVersionsRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*listNumscriptVersionsRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ListNumscriptVersionsRequest.
+func (m *ListNumscriptVersionsRequest) Mutate() *ListNumscriptVersionsRequest {
+	return m.CloneVT()
+}
+
+// ListNumscriptVersionsRequestListReader provides read-only iteration over []*ListNumscriptVersionsRequest.
+type ListNumscriptVersionsRequestListReader interface {
+	Len() int
+	Get(i int) ListNumscriptVersionsRequestReader
+	Range(yield func(int, ListNumscriptVersionsRequestReader) bool)
+}
+
+type listNumscriptVersionsRequestListReadonly []*ListNumscriptVersionsRequest
+
+func (l listNumscriptVersionsRequestListReadonly) Len() int { return len(l) }
+
+func (l listNumscriptVersionsRequestListReadonly) Get(i int) ListNumscriptVersionsRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l listNumscriptVersionsRequestListReadonly) Range(yield func(int, ListNumscriptVersionsRequestReader) bool) {
+	for i, v := range l {
+		var r ListNumscriptVersionsRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewListNumscriptVersionsRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewListNumscriptVersionsRequestListReader(s []*ListNumscriptVersionsRequest) ListNumscriptVersionsRequestListReader {
+	return listNumscriptVersionsRequestListReadonly(s)
+}
+
+// ListNumscriptVersionsResponseReader provides read-only access to ListNumscriptVersionsResponse.
+// Call Mutate() to obtain a mutable clone.
+type ListNumscriptVersionsResponseReader interface {
+	GetLatestVersion() string
+	GetVersions() commonpb.NumscriptVersionEntryListReader
+	Mutate() *ListNumscriptVersionsResponse
+}
+
+type listNumscriptVersionsResponseReadonly ListNumscriptVersionsResponse
+
+func (r *listNumscriptVersionsResponseReadonly) GetLatestVersion() string {
+	return (*ListNumscriptVersionsResponse)(r).GetLatestVersion()
+}
+
+func (r *listNumscriptVersionsResponseReadonly) GetVersions() commonpb.NumscriptVersionEntryListReader {
+	return commonpb.NewNumscriptVersionEntryListReader((*ListNumscriptVersionsResponse)(r).GetVersions())
+}
+
+func (r *listNumscriptVersionsResponseReadonly) Mutate() *ListNumscriptVersionsResponse {
+	return (*ListNumscriptVersionsResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ListNumscriptVersionsResponse.
+func (m *ListNumscriptVersionsResponse) AsReader() ListNumscriptVersionsResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*listNumscriptVersionsResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ListNumscriptVersionsResponse.
+func (m *ListNumscriptVersionsResponse) Mutate() *ListNumscriptVersionsResponse {
+	return m.CloneVT()
+}
+
+// ListNumscriptVersionsResponseListReader provides read-only iteration over []*ListNumscriptVersionsResponse.
+type ListNumscriptVersionsResponseListReader interface {
+	Len() int
+	Get(i int) ListNumscriptVersionsResponseReader
+	Range(yield func(int, ListNumscriptVersionsResponseReader) bool)
+}
+
+type listNumscriptVersionsResponseListReadonly []*ListNumscriptVersionsResponse
+
+func (l listNumscriptVersionsResponseListReadonly) Len() int { return len(l) }
+
+func (l listNumscriptVersionsResponseListReadonly) Get(i int) ListNumscriptVersionsResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l listNumscriptVersionsResponseListReadonly) Range(yield func(int, ListNumscriptVersionsResponseReader) bool) {
+	for i, v := range l {
+		var r ListNumscriptVersionsResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewListNumscriptVersionsResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewListNumscriptVersionsResponseListReader(s []*ListNumscriptVersionsResponse) ListNumscriptVersionsResponseListReader {
+	return listNumscriptVersionsResponseListReadonly(s)
 }
 
 // GetTemplateUsageRequestReader provides read-only access to GetTemplateUsageRequest.

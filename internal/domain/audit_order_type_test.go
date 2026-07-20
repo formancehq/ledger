@@ -166,13 +166,6 @@ func TestAuditOrderType(t *testing.T) {
 			want: "save_numscript",
 		},
 		{
-			name: "delete numscript",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
-				LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{}},
-			}},
-			want: "delete_numscript",
-		},
-		{
 			name: "create prepared query",
 			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 				LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_CreatePreparedQuery{}},

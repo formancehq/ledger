@@ -966,8 +966,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			Asset:      "USD/2",
 		}.Bytes()), "should discover destination account from reference vars")
 
+		// Admission no longer rewrites the reference — the audited order keeps the
+		// client's selector (empty = latest); only planning/discovery resolves it.
 		ref := orders[0].GetLedgerScoped().GetApply().GetCreateTransaction().GetNumscriptReference()
-		require.Equal(t, "v1", ref.GetVersion())
+		require.Equal(t, "", ref.GetVersion())
 		require.Equal(t, "users:alice", ref.GetVars()["account"])
 	})
 

@@ -1522,7 +1522,7 @@ paths:
   /v3/{ledgerName}/numscripts:
     get:
       summary: List all numscripts
-      description: Returns a list of all saved numscripts for a ledger with their latest version info.
+      description: Returns every numscript for a ledger at its greatest stored version.
       operationId: listNumscripts
       tags:
         - Numscript Library
@@ -1598,11 +1598,10 @@ paths:
     put:
       summary: Save a numscript
       description: |
-        Saves a numscript to a ledger's library. The `version` field in the request body controls
-        versioning behavior:
-        - A semver string (e.g. "2.0.0") creates a new version. Fails if the version already exists.
-        - The special value "latest" overwrites the content of the current latest version.
-        - If omitted or empty, defaults to "latest".
+        Appends an immutable version to a ledger's numscript library. The `version`
+        field must be an explicit full semver (e.g. "1.0.0"); it creates a new
+        version and fails if that version already exists. The per-name latest is
+        always the greatest stored semver.
       operationId: saveNumscript
       tags:
         - Numscript Library
@@ -1633,21 +1632,18 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 name: '$response.body#/data/name'
-            DeleteSavedNumscript:
-              operationId: deleteNumscript
-              parameters:
-                ledgerName: '$request.path.ledgerName'
-                name: '$response.body#/data/name'
         '204':
           description: Numscript saved (no content returned)
         '400':
-          description: Bad request (invalid version format, parse error, etc.)
+          description: Bad request (version not an explicit full semver, parse error, etc.)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: Version already exists
+          description: |
+            The version already exists (`NUMSCRIPT_VERSION_ALREADY_EXISTS`).
+            Stored versions are immutable and cannot be overwritten.
           content:
             application/json:
               schema:
@@ -1662,10 +1658,14 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
-    delete:
-      summary: Delete a numscript
-      description: Deletes a numscript from a ledger's library. Removes the latest version entry.
-      operationId: deleteNumscript
+
+  /v3/{ledgerName}/numscripts/{name}/versions:
+    get:
+      summary: List numscript versions
+      description: |
+        Returns the numscript's history: its current latest (greatest stored
+        semver) and every stored version, highest-first.
+      operationId: listNumscriptVersions
       tags:
         - Numscript Library
       parameters:
@@ -1677,24 +1677,18 @@ paths:
             type: string
           description: Name of the numscript
       responses:
-        '204':
-          description: Numscript deleted successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          description: Numscript not found
+        '200':
+          description: Numscript versions retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ListNumscriptVersionsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
@@ -4659,6 +4653,7 @@ components:
       type: object
       required:
         - content
+        - version
       properties:
         content:
           type: string
@@ -4666,10 +4661,9 @@ components:
         version:
           type: string
           description: |
-            Semver version string (e.g. "1.0.0") or the special value "latest".
-            - A semver string creates a new version. Fails if the version already exists.
-            - "latest" overwrites the content of the current latest version.
-            - If omitted or empty, defaults to "latest".
+            Explicit full semver (e.g. "1.0.0"). Appends a new immutable version;
+            fails if that version already exists. "latest" and partial selectors
+            are not accepted for save.
           example: "1.0.0"
 
     NumscriptInfo:
@@ -4694,6 +4688,39 @@ components:
         ledger:
           type: string
           description: Ledger name this numscript belongs to
+
+    NumscriptVersionEntry:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          description: Stored semver version string (e.g. "1.0.0")
+          example: "1.0.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: When this version was stored (ISO 8601 format)
+
+    ListNumscriptVersionsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          properties:
+            latestVersion:
+              type: string
+              description: The current latest — the greatest stored semver
+              example: "2.0.0"
+            versions:
+              type: array
+              items:
+                $ref: '#/components/schemas/NumscriptVersionEntry'
+              description: Every stored version, highest-first
+              nullable: true
 
     PromoteLedgerResponse:
       type: object

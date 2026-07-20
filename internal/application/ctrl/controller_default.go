@@ -1924,7 +1924,7 @@ func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, nam
 	return usage, nil
 }
 
-// ListNumscripts returns the latest version of all numscripts for a ledger.
+// ListNumscripts returns the greatest version of every numscript for a ledger.
 func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -1939,6 +1939,24 @@ func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string
 	}
 
 	return query.ReadAllNumscripts(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName())
+}
+
+// ListNumscriptVersions returns a numscript's current latest (greatest stored
+// semver) and every stored version.
+func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return "", nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledger)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return query.ReadAllNumscriptVersions(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName(), name)
 }
 
 func (ctrl *DefaultController) GetChapterSchedule(_ context.Context) (string, error) {

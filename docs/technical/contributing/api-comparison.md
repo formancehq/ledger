@@ -68,10 +68,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
 | Skip-on-conflict opt-in | ✅ | ❌ | Per-entry `skippableReasons: ["TRANSACTION_REFERENCE_CONFLICT"]` on the bulk endpoint → the entry's `BulkResult.data` carries an `OrderSkippedResponse` shape instead of the normal Transaction. The unitary POST endpoint intentionally does NOT expose the opt-in (a single-tx caller can catch the 4xx directly); gRPC clients can set `LedgerApplyRequest.skippable_reasons` on any Apply. |
 | **Numscript Library** |
-| Save numscript (versioned) | ✅ | ❌ | Per-ledger, semver versioning (e.g. "1.0.0") |
-| Get numscript (by version) | ✅ | ❌ | Per-ledger, query param `?version=1.0.0`, empty = latest |
-| List numscripts | ✅ | ❌ | Per-ledger, lists all saved numscripts |
-| Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
+| Save numscript (versioned) | ✅ | ❌ | Per-ledger, immutable append-only, explicit full semver (e.g. "1.0.0"). Re-saving a version returns `NUMSCRIPT_VERSION_ALREADY_EXISTS` |
+| Get numscript (by version) | ✅ | ❌ | Per-ledger, `?version=1.0.0`; empty/`latest` = greatest stored semver; partial selectors (`1`, `1.2`) allowed |
+| List numscripts | ✅ | ❌ | Per-ledger, greatest version of each |
+| List numscript versions | ✅ | ❌ | Per-ledger, `GET .../numscripts/{name}/versions`, current latest + every stored version |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
 | List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
@@ -371,11 +371,11 @@ Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or 
 The numscript library allows saving, retrieving, and managing reusable numscript programs with semver versioning.
 
 **Endpoints:**
-- `GET /v3/{ledgerName}/numscripts` - List all saved numscripts for a ledger
-- `GET /v3/{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version query param)
+- `GET /v3/{ledgerName}/numscripts` - List all numscripts (greatest version of each)
+- `GET /v3/{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version selector)
 - `GET /v3/{ledgerName}/numscripts/{name}/usage` - Get invocation count and last-used timestamp for a template
-- `PUT /v3/{ledgerName}/numscripts/{name}` - Save a numscript (create new version or overwrite latest)
-- `DELETE /v3/{ledgerName}/numscripts/{name}` - Delete a numscript
+- `GET /v3/{ledgerName}/numscripts/{name}/versions` - List version history (current latest + every stored version)
+- `PUT /v3/{ledgerName}/numscripts/{name}` - Save an immutable version (explicit full semver)
 
 **Versioning:**
 
@@ -769,11 +769,11 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /v3/{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
-| `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts for a ledger |
-| `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
+| `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts (greatest version of each) |
+| `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
 | `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp |
-| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
-| `DELETE /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Delete numscript |
+| `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
+| `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver) |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type |
@@ -859,10 +859,10 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Apply` | Apply a ledger action (write operations) | ✅ |
 | `Apply(CreateLedger)` with mirror mode | Create a mirror ledger | ✅ |
 | `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
-| `Apply(SaveNumscript)` | Save a numscript (semver versioned) | ✅ |
-| `Apply(DeleteNumscript)` | Delete a numscript | ✅ |
-| `GetNumscript` | Get a numscript by name and optional version | ✅ |
-| `ListNumscripts` | List all saved numscripts | ✅ |
+| `Apply(SaveNumscript)` | Save an immutable numscript version (explicit full semver) | ✅ |
+| `GetNumscript` | Get a numscript by name and version selector | ✅ |
+| `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
+| `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `Apply(CloseChapter)` | Close the current open chapter | ✅ |
 | `ListChapters` | Stream all chapters | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
@@ -897,8 +897,7 @@ The `Apply` method is the **single entry point for all ledger write operations**
   - `add_metadata`: Add metadata to an account or transaction
   - `revert_transaction`: Revert a transaction
   - `delete_metadata`: Delete metadata from an account or transaction
-  - `save_numscript`: Save a numscript (with semver version)
-  - `delete_numscript`: Delete a numscript
+  - `save_numscript`: Save an immutable numscript version (explicit full semver)
 
 **Response:** `common.Log` - The log entry created by the action (stripped to `sequence` only when `skip_response` is set)
 

@@ -34,7 +34,7 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), "", &servicepb.Request{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
 		Type: &servicepb.Request_SaveNumscript{
 			SaveNumscript: &servicepb.SaveNumscriptRequest{
 				Ledger:  ledgerName,

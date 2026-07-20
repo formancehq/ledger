@@ -1253,6 +1253,46 @@ func (c *MockBackendListLogsCall) DoAndReturn(f func(context.Context, string, ui
 	return c
 }
 
+// ListNumscriptVersions mocks base method.
+func (m *MockBackend) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNumscriptVersions", ctx, ledger, name)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].([]*commonpb.NumscriptVersionEntry)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListNumscriptVersions indicates an expected call of ListNumscriptVersions.
+func (mr *MockBackendMockRecorder) ListNumscriptVersions(ctx, ledger, name any) *MockBackendListNumscriptVersionsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscriptVersions", reflect.TypeOf((*MockBackend)(nil).ListNumscriptVersions), ctx, ledger, name)
+	return &MockBackendListNumscriptVersionsCall{Call: call}
+}
+
+// MockBackendListNumscriptVersionsCall wrap *gomock.Call
+type MockBackendListNumscriptVersionsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendListNumscriptVersionsCall) Return(arg0 string, arg1 []*commonpb.NumscriptVersionEntry, arg2 error) *MockBackendListNumscriptVersionsCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendListNumscriptVersionsCall) Do(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockBackendListNumscriptVersionsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendListNumscriptVersionsCall) DoAndReturn(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockBackendListNumscriptVersionsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListNumscripts mocks base method.
 func (m *MockBackend) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
