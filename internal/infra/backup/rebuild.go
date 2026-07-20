@@ -831,6 +831,10 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 
 	defer func() { _ = auditCursor.Close() }()
 
+	// Keys already given an outcome in this pass; a later failure entry (e.g. a
+	// same-key/different-body conflict) must not overwrite one — see below.
+	seen := make(map[string]struct{})
+
 	for {
 		entry, err := auditCursor.Next()
 		if errors.Is(err, io.EOF) {
@@ -855,9 +859,42 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 			continue
 		}
 
+		// A failure must not overwrite a key that already holds an outcome, just
+		// as the live path's recordIdempotencyFailure never overwrites a real
+		// result ("a conflict holds the real outcome"): a reused key with a
+		// different body is audited as a freezable (AlreadyExists) failure, so
+		// without this guard it would clobber the original success/failure. The
+		// prior outcome is either an earlier delta entry (seen) or a checkpoint
+		// SST (reader — its snapshot predates this pass's writes). A SUCCESS
+		// always writes: it only reaches the FSM when the gate found no live
+		// outcome, so any prior had expired — a legitimate re-freeze.
+		//
+		// Expiry is not re-evaluated here (unlike the live guard's !IsExpired):
+		// an outcome expiring within the exported delta would let the live path
+		// record a later failure this keeps as the earlier outcome — benign and
+		// unreachable at the default 24h TTL; matching it would need the TTL
+		// threaded through RebuildDelta.
+		if value.GetFailure() != nil {
+			_, dup := seen[key]
+			if !dup {
+				existing, err := state.LoadIdempotencyKey(reader, key)
+				if err != nil {
+					return fmt.Errorf("checking existing idempotency outcome for rebuild (seq %d): %w", entry.GetSequence(), err)
+				}
+
+				dup = existing != nil
+			}
+
+			if dup {
+				continue
+			}
+		}
+
 		if err := state.SaveIdempotencyKey(w.batch, key, value); err != nil {
 			return fmt.Errorf("persisting rebuilt idempotency key (seq %d): %w", entry.GetSequence(), err)
 		}
+
+		seen[key] = struct{}{}
 	}
 
 	return nil

@@ -98,6 +98,13 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 		Expect(err).To(HaveOccurred(), "%s: reusing a key with a different body must conflict", phase)
 		Expect(status.Code(err)).To(Equal(codes.AlreadyExists), "%s: conflict must surface as AlreadyExists", phase)
 
+		// The conflict must NOT have clobbered the committed outcome: re-sending the
+		// ORIGINAL body under conflictKey still replays its committed success. A
+		// restore that froze the conflict entry over the original (no overwrite
+		// guard in the rebuild) would hash-mismatch here and conflict instead.
+		_, err = client.Apply(ctx, conflictSeed())
+		Expect(err).To(Succeed(), "%s: the original body must still replay after a conflict, not conflict itself", phase)
+
 		// Each key moved funds exactly once: 100 + 50 = 150.
 		acct, err := actions.GetAccount(ctx, client, ledgerName, account)
 		Expect(err).To(Succeed())
