@@ -370,6 +370,15 @@ func (b *RoutedController) GetTemplateUsage(ctx context.Context, ledger, name st
 	return c.GetTemplateUsage(ctx, ledger, name)
 }
 
+func (b *RoutedController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return c.ListNumscriptVersions(ctx, ledger, name)
+}
+
 func (b *RoutedController) GetChapterSchedule(ctx context.Context) (string, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {

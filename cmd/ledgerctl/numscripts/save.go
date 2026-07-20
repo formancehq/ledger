@@ -17,22 +17,23 @@ func NewSaveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "save <name>",
 		Short: "Save a numscript to the library",
-		Long: `Save a numscript to a ledger's library.
+		Long: `Save a new immutable version of a numscript to a ledger's library.
 
-If a script with the same name already exists, a new version is created.
-The script content is read from a file (--file) or stdin.
+The library is append-only: the version must be an explicit full semver and
+must not already exist. The script content is read from a file (--file) or stdin.
 
 Examples:
-  ledgerctl numscripts save transfer --ledger myledger --file transfer.num
-  cat transfer.num | ledgerctl numscripts save transfer --ledger myledger`,
+  ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.0.0
+  cat transfer.num | ledgerctl numscripts save transfer --ledger myledger --version 1.0.0`,
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runSave,
 	}
 
 	cmd.Flags().String("file", "", "Path to the numscript file (reads stdin if omitted)")
-	cmd.Flags().String("version", "", "Semver version (e.g. 1.0.0) or empty for latest")
+	cmd.Flags().String("version", "", "Explicit full semver (e.g. 1.0.0); required")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	_ = cmd.MarkFlagRequired("version")
 
 	return cmd
 }

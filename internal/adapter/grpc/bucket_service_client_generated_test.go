@@ -1494,6 +1494,50 @@ func (c *MockBucketServiceClientListLogsCall) DoAndReturn(f func(context.Context
 	return c
 }
 
+// ListNumscriptVersions mocks base method.
+func (m *MockBucketServiceClient) ListNumscriptVersions(ctx context.Context, in *servicepb.ListNumscriptVersionsRequest, opts ...grpc.CallOption) (*servicepb.ListNumscriptVersionsResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ListNumscriptVersions", varargs...)
+	ret0, _ := ret[0].(*servicepb.ListNumscriptVersionsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNumscriptVersions indicates an expected call of ListNumscriptVersions.
+func (mr *MockBucketServiceClientMockRecorder) ListNumscriptVersions(ctx, in any, opts ...any) *MockBucketServiceClientListNumscriptVersionsCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscriptVersions", reflect.TypeOf((*MockBucketServiceClient)(nil).ListNumscriptVersions), varargs...)
+	return &MockBucketServiceClientListNumscriptVersionsCall{Call: call}
+}
+
+// MockBucketServiceClientListNumscriptVersionsCall wrap *gomock.Call
+type MockBucketServiceClientListNumscriptVersionsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientListNumscriptVersionsCall) Return(arg0 *servicepb.ListNumscriptVersionsResponse, arg1 error) *MockBucketServiceClientListNumscriptVersionsCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientListNumscriptVersionsCall) Do(f func(context.Context, *servicepb.ListNumscriptVersionsRequest, ...grpc.CallOption) (*servicepb.ListNumscriptVersionsResponse, error)) *MockBucketServiceClientListNumscriptVersionsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientListNumscriptVersionsCall) DoAndReturn(f func(context.Context, *servicepb.ListNumscriptVersionsRequest, ...grpc.CallOption) (*servicepb.ListNumscriptVersionsResponse, error)) *MockBucketServiceClientListNumscriptVersionsCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // ListNumscripts mocks base method.
 func (m *MockBucketServiceClient) ListNumscripts(ctx context.Context, in *servicepb.ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
 	m.ctrl.T.Helper()

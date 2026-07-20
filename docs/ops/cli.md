@@ -3533,6 +3533,26 @@ ledgerctl numscripts list --ledger <ledger-name> [flags]
 |------|---------|-------------|
 | `--timeout` | `10s` | Request timeout |
 
+#### numscripts versions
+
+List every stored version of a numscript, highest semver first, alongside the current latest pointer (the greatest stored semver).
+
+```bash
+ledgerctl numscripts versions <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+ledgerctl numscripts versions transfer --ledger myledger
+```
+
 #### numscripts get
 
 Get a numscript from the library by name.
@@ -3545,13 +3565,13 @@ ledgerctl numscripts get <name> --ledger <ledger-name> [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--version` | | Specific version to retrieve (empty = latest) |
+| `--version` | | Version selector (exact semver, or empty/`latest` for the greatest stored semver) |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**
 
 ```bash
-# Get the latest version
+# Get the latest version (greatest stored semver)
 ledgerctl numscripts get transfer --ledger myledger
 
 # Get a specific version
@@ -3560,10 +3580,10 @@ ledgerctl numscripts get transfer --ledger myledger --version 1.0.0
 
 #### numscripts save
 
-Save a numscript to a ledger's library. If a script with the same name already exists, a new version is created.
+Save a new immutable version of a numscript. The version must be an explicit full semver and must not already exist. The library is append-only: existing versions are never overwritten, and the latest pointer advances to the greatest stored semver.
 
 ```bash
-ledgerctl numscripts save <name> --ledger <ledger-name> [flags]
+ledgerctl numscripts save <name> --ledger <ledger-name> --version <semver> [flags]
 ```
 
 **Flags:**
@@ -3571,37 +3591,21 @@ ledgerctl numscripts save <name> --ledger <ledger-name> [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--file` | | Path to the numscript file (reads stdin if omitted) |
-| `--version` | | Semver version (e.g. `1.0.0`) or empty for latest |
+| `--version` | | Explicit full semver (e.g. `1.0.0`); required |
 | `--timeout` | `10s` | Request timeout |
 
 **Example:**
 
 ```bash
 # Save from a file
-ledgerctl numscripts save transfer --ledger myledger --file transfer.num
+ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 1.0.0
 
-# Save with a specific version
+# Save a later version
 ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 2.0.0
 
 # Save from stdin
-cat transfer.num | ledgerctl numscripts save transfer --ledger myledger
+cat transfer.num | ledgerctl numscripts save transfer --ledger myledger --version 1.0.0
 ```
-
-#### numscripts delete
-
-Delete a numscript from the library.
-
-**Aliases:** `rm`, `remove`
-
-```bash
-ledgerctl numscripts delete <name> --ledger <ledger-name> [flags]
-```
-
-**Flags:**
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--timeout` | `10s` | Request timeout |
 
 ---
 

@@ -34,8 +34,6 @@ func ledgerScopedOrderType(o *raftcmdpb.LedgerScopedOrder) string {
 		return "delete_ledger_metadata"
 	case *raftcmdpb.LedgerScopedOrder_SaveNumscript:
 		return "save_numscript"
-	case *raftcmdpb.LedgerScopedOrder_DeleteNumscript:
-		return "delete_numscript"
 	case *raftcmdpb.LedgerScopedOrder_CreatePreparedQuery:
 		return "create_prepared_query"
 	case *raftcmdpb.LedgerScopedOrder_UpdatePreparedQuery:

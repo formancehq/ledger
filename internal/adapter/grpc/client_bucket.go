@@ -466,6 +466,18 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 	}
 }
 
+func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+	resp, err := g.client.ListNumscriptVersions(ctx, &servicepb.ListNumscriptVersionsRequest{
+		Ledger: ledger,
+		Name:   name,
+	})
+	if err != nil {
+		return "", nil, fmt.Errorf("gRPC ListNumscriptVersions call failed: %w", err)
+	}
+
+	return resp.GetLatestVersion(), resp.GetVersions(), nil
+}
+
 func (g *BucketGrpcClient) GetChapterSchedule(ctx context.Context) (string, error) {
 	resp, err := g.client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 	if err != nil {

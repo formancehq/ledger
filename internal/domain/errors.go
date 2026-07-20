@@ -1042,15 +1042,32 @@ func (e *ErrInvalidReceipt) Metadata() map[string]string {
 }
 
 // ErrNumscriptNotFound — referenced numscript does not exist in the library.
+// Version is optional: set it when a specific version was requested (restore,
+// exact get) and left empty when the numscript name itself is unknown.
 type ErrNumscriptNotFound struct {
-	Name string
+	Name    string
+	Version string
 }
 
-func (e *ErrNumscriptNotFound) Error() string               { return "numscript not found: " + e.Name }
-func (*ErrNumscriptNotFound) Reason() string                { return ErrReasonNumscriptNotFound }
-func (e *ErrNumscriptNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+func (e *ErrNumscriptNotFound) Error() string {
+	if e.Version != "" {
+		return fmt.Sprintf("numscript not found: %s version %s", e.Name, e.Version)
+	}
 
-// ErrNumscriptVersionAlreadyExists — saving with a semver version that already exists.
+	return "numscript not found: " + e.Name
+}
+func (*ErrNumscriptNotFound) Reason() string { return ErrReasonNumscriptNotFound }
+func (e *ErrNumscriptNotFound) Metadata() map[string]string {
+	m := map[string]string{"name": e.Name}
+	if e.Version != "" {
+		m["version"] = e.Version
+	}
+
+	return m
+}
+
+// ErrNumscriptVersionAlreadyExists — saving a semver version that already
+// exists on a live numscript. The immutable content cannot be overwritten.
 type ErrNumscriptVersionAlreadyExists struct {
 	Name    string
 	Version string

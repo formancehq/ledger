@@ -7,12 +7,20 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// TestProcessSaveNumscript_RejectsInvalidNames pins the validator branch on
-// the save path. Numscript names land in the `x-next-cursor` trailer of
-// `numscripts list`, so they must be HTTP/2-header-safe (printable ASCII).
+const validNumscriptContent = "send [USD 1] (source = @world destination = @x)"
+
+func saveNumscriptOrder(ledger, name, content, version string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger:  ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{SaveNumscript: &raftcmdpb.SaveNumscriptOrder{Name: name, Content: content, Version: version}},
+	}}}
+}
+
+// TestProcessSaveNumscript_RejectsInvalidNames pins the validator branch.
 func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 	t.Parallel()
 
@@ -31,75 +39,84 @@ func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 			t.Parallel()
 
 			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
-			// Validator must short-circuit before any store interaction —
-			// gomock fails the test if PutNumscript/GetLedger is hit.
-
-			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_LedgerScoped{
-					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-						Ledger: "main",
-						Payload: &raftcmdpb.LedgerScopedOrder_SaveNumscript{
-							SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-								Name:    tt.input,
-								Content: "send [USD 1] (source = @world allocate { @bob })"},
-						},
-					},
-				},
-			}
-
-			result, err := processor.ProcessOrder(order, mockStore)
-			require.Error(t, err)
-			require.ErrorIs(t, err, tt.wantErr)
+			result, perr := processor.ProcessOrder(saveNumscriptOrder("main", tt.input, validNumscriptContent, "1.0.0"), mockStore)
+			require.Error(t, perr)
+			require.ErrorIs(t, perr, tt.wantErr)
 			require.Nil(t, result)
 		})
 	}
 }
 
-func TestProcessDeleteNumscript_RejectsInvalidNames(t *testing.T) {
+// TestProcessSaveNumscript_RequiresExplicitSemver rejects "", "latest" and
+// partial selectors — save is explicit-semver only.
+func TestProcessSaveNumscript_RequiresExplicitSemver(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
-		input   string
-		wantErr domain.Describable
-	}{
-		{name: "empty", input: "", wantErr: domain.ErrNumscriptNameRequired},
-		{name: "with control byte", input: "name\x01", wantErr: domain.ErrNumscriptNameInvalidChar},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, version := range []string{"", "latest", "1", "1.2", "bogus"} {
+		t.Run(version, func(t *testing.T) {
 			t.Parallel()
 
 			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			mockStore := NewMockScope(ctrl)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
-			order := &raftcmdpb.Order{
-				Type: &raftcmdpb.Order_LedgerScoped{
-					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-						Ledger: "main",
-						Payload: &raftcmdpb.LedgerScopedOrder_DeleteNumscript{
-							DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-								Name: tt.input},
-						},
-					},
-				},
-			}
-
-			result, err := processor.ProcessOrder(order, mockStore)
-			require.Error(t, err)
-			require.ErrorIs(t, err, tt.wantErr)
+			// Version is validated before any store interaction (after parse).
+			result, perr := processor.ProcessOrder(saveNumscriptOrder("main", "pay", validNumscriptContent, version), mockStore)
 			require.Nil(t, result)
+			var e *domain.ErrNumscriptInvalidVersion
+			require.ErrorAs(t, perr, &e)
 		})
 	}
+}
+
+// TestProcessSaveNumscript_DuplicateVersionRejected: an already-stored version
+// is immutable.
+func TestProcessSaveNumscript_DuplicateVersionRejected(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "main"
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil)
+	mockStore.EXPECT().NumscriptVersionExists(ledger, "pay", "1.0.0").Return(true, nil)
+
+	result, perr := processor.ProcessOrder(saveNumscriptOrder(ledger, "pay", validNumscriptContent, "1.0.0"), mockStore)
+	require.Nil(t, result)
+	var e *domain.ErrNumscriptVersionAlreadyExists
+	require.ErrorAs(t, perr, &e)
+}
+
+// TestProcessSaveNumscript_KeepsGreatestPointer: saving a lower version after a
+// greater one keeps the latest pointer at the greatest.
+func TestProcessSaveNumscript_KeepsGreatestPointer(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "main"
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: ledger}, (&commonpb.LedgerInfo{Name: ledger}).AsReader(), nil)
+	mockStore.EXPECT().NumscriptVersionExists(ledger, "pay", "1.0.0").Return(false, nil)
+	mockStore.EXPECT().GetNumscriptLatestVersion(ledger, "pay").Return("2.0.0", nil)
+	mockStore.EXPECT().PutNumscript(ledger, gomock.Any())
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{}).AsReader())
+	// New version (1.0.0) is lower than the current greatest (2.0.0): the pointer
+	// is restored to 2.0.0.
+	mockStore.EXPECT().SetNumscriptLatestVersion(ledger, "pay", "2.0.0")
+
+	result, perr := processor.ProcessOrder(saveNumscriptOrder(ledger, "pay", validNumscriptContent, "1.0.0"), mockStore)
+	require.Nil(t, perr)
+	require.NotNil(t, result.GetSavedNumscript())
 }
