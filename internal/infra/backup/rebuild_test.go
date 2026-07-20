@@ -887,35 +887,27 @@ func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason commonpb.
 	}
 }
 
-func writeIdempotencyTTL(t *testing.T, batch *dal.WriteSession, ttlSeconds uint64) {
-	t.Helper()
-	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig},
-		&commonpb.PersistedConfig{IdempotencyTtlSeconds: ttlSeconds}))
-}
+const (
+	idemConflict     = commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
+	idemFreshFailure = commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS
+)
 
-const idemConflict = commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
-
-// A same-key/different-body conflict later in the delta is audited as a
-// freezable failure. While the original outcome is still live, the rebuild must
-// keep it — mirroring the live recordIdempotencyFailure — not clobber it with
-// the conflict (which would make the original body conflict after restore).
-func TestRebuildDelta_IdempotencyConflictKeepsLiveDeltaOutcome(t *testing.T) {
+// A same-key/different-body reuse is audited as an IDEMPOTENCY_KEY_CONFLICT
+// failure. The FSM only produces it against a live prior and never overwrites
+// that prior, so the rebuild must skip it — keeping the original, not clobbering
+// it with the conflict (which would make the original body conflict after
+// restore).
+func TestRebuildDelta_IdempotencyConflictKeepsDeltaOutcome(t *testing.T) {
 	t.Parallel()
 
 	store := newRebuildTestStore(t)
 
-	const (
-		key     = "idem-key"
-		ttlSecs = 100
-	)
-	t0 := uint64(1_000_000)
-	t1 := t0 + 50*1_000_000 // within the 100s TTL: the original is still live
+	const key = "idem-key"
 
 	batch := store.OpenWriteSession()
-	writeIdempotencyTTL(t, batch, ttlSecs)
-	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, t0, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, 1_000_000, 1, 1)))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
-	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, 2_000_000, idemConflict)))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
 	require.NoError(t, batch.Commit())
 
@@ -928,32 +920,27 @@ func TestRebuildDelta_IdempotencyConflictKeepsLiveDeltaOutcome(t *testing.T) {
 	v, err := state.LoadIdempotencyKey(handle, key)
 	require.NoError(t, err)
 	require.NotNil(t, v, "the committed keyed outcome must be rebuilt")
-	require.Nil(t, v.GetFailure(), "a live original must not be overwritten by the conflict")
-	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success must survive")
+	require.Nil(t, v.GetFailure(), "the conflict must not overwrite the original")
+	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success survives")
 }
 
-// Same guard, but the original outcome lives in the checkpoint SSTs (present in
-// the store before the rebuild) rather than an earlier delta entry.
+// Same, but the original outcome lives in the checkpoint SSTs (present in the
+// store before the rebuild) rather than an earlier delta entry — the rebuild
+// skips the delta conflict, so nothing overwrites it.
 func TestRebuildDelta_IdempotencyConflictKeepsCheckpointOutcome(t *testing.T) {
 	t.Parallel()
 
 	store := newRebuildTestStore(t)
 
-	const (
-		key     = "idem-key"
-		ttlSecs = 100
-	)
-	t0 := uint64(1_000_000)
-	t1 := t0 + 50*1_000_000 // within the 100s TTL
+	const key = "idem-key"
 
 	batch := store.OpenWriteSession()
-	writeIdempotencyTTL(t, batch, ttlSecs)
 	// Original success frozen in the "checkpoint" (already in the store).
 	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
-		FirstLogSequence: 1, LogCount: 1, CreatedAt: t0,
+		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000,
 	}))
 	// Only the later conflict is in the exported delta.
-	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, 2_000_000, idemConflict)))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 2))))
 	require.NoError(t, batch.Commit())
 
@@ -966,30 +953,25 @@ func TestRebuildDelta_IdempotencyConflictKeepsCheckpointOutcome(t *testing.T) {
 	v, err := state.LoadIdempotencyKey(handle, key)
 	require.NoError(t, err)
 	require.NotNil(t, v)
-	require.Nil(t, v.GetFailure(), "a live checkpoint outcome must not be overwritten by a delta conflict")
+	require.Nil(t, v.GetFailure(), "a delta conflict must not overwrite the checkpoint outcome")
 	require.Equal(t, uint64(1), v.GetFirstLogSequence())
 }
 
-// Once the original outcome has expired (a short/custom TTL and a delta that
-// spans it), the guard must NOT protect it: the later freezable failure is
-// materialized, exactly as the live recordIdempotencyFailure would.
-func TestRebuildDelta_IdempotencyExpiredOutcomeOverwritten(t *testing.T) {
+// A genuine (non-conflict) failure DOES overwrite an earlier outcome: it is a
+// reuse the FSM's gate executed fresh because the prior had expired, so the new
+// freeze is real. Unlike a conflict it carries a normal business reason and must
+// materialize.
+func TestRebuildDelta_IdempotencyFreshFailureOverwrites(t *testing.T) {
 	t.Parallel()
 
 	store := newRebuildTestStore(t)
 
-	const (
-		key     = "idem-key"
-		ttlSecs = 100
-	)
-	t0 := uint64(1_000_000)
-	t1 := t0 + 200*1_000_000 // past the 100s TTL: the original has expired
+	const key = "idem-key"
 
 	batch := store.OpenWriteSession()
-	writeIdempotencyTTL(t, batch, ttlSecs)
-	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, t0, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, 1_000_000, 1, 1)))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
-	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, 2_000_000, idemFreshFailure)))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
 	require.NoError(t, batch.Commit())
 
@@ -1002,5 +984,5 @@ func TestRebuildDelta_IdempotencyExpiredOutcomeOverwritten(t *testing.T) {
 	v, err := state.LoadIdempotencyKey(handle, key)
 	require.NoError(t, err)
 	require.NotNil(t, v)
-	require.NotNil(t, v.GetFailure(), "once the original expired, the later freezable failure is materialized")
+	require.NotNil(t, v.GetFailure(), "a fresh non-conflict failure overwrites the earlier outcome")
 }

@@ -812,12 +812,18 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 // rebuildIdempotency re-materializes the idempotency-key projection for the
 // delta range. The full checkpoint carries pre-checkpoint keys as raw SSTs, but
 // keys frozen after it live only in the audit — so RebuildDelta re-derives each
-// keyed proposal's frozen outcome (committed-log range or definitive failure)
-// and persists it, letting a restored node dedup a retried key instead of
-// re-executing it. A key produced no frozen outcome (all-replay success or a
-// non-freezable failure) is skipped, matching the apply path. Expired entries
-// are re-materialized too: the read-path TTL gate ignores them and the leader's
-// eviction scheduler reclaims them, exactly as on a live node.
+// keyed proposal's frozen outcome and persists it, letting a restored node dedup
+// a retried key instead of re-executing it.
+//
+// Entries are folded in ascending order, last write wins. No overwrite guard is
+// needed: IdempotencyValueFromAudit returns ok=false for the only rejection that
+// must NOT overwrite a prior — an IDEMPOTENCY_KEY_CONFLICT, which the FSM's gate
+// only produces against a still-live prior. Every other keyed outcome (a fresh
+// success, or a non-conflict failure from a reuse the gate executed because the
+// prior had expired) is a genuine freeze that overwrites, matching the FSM. This
+// reads the FSM's own live/expired decision straight off the hash-chain-bound
+// audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
+// consulted here.
 func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
 	var after *uint64
 	if fromAuditSeq > 0 {
@@ -830,27 +836,6 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 	}
 
 	defer func() { _ = auditCursor.Close() }()
-
-	// The overwrite guard below mirrors the live recordIdempotencyFailure, which
-	// only protects a NON-expired outcome, so read the persisted TTL and apply
-	// the same expiry test. An absent config (exports-only restore, no
-	// checkpoint) yields ttl 0 = never expire — the conservative "never overwrite
-	// a prior" behaviour. (Threading TTL config changes through Raft so expiry is
-	// fully deterministic across nodes is future work; here it is the persisted
-	// value the checkpoint carried.)
-	cfg, err := query.ReadPersistedConfig(reader)
-	if err != nil {
-		return fmt.Errorf("reading persisted config for idempotency TTL: %w", err)
-	}
-
-	var ttlMicros uint64
-	if cfg != nil {
-		ttlMicros = cfg.GetIdempotencyTtlSeconds() * 1_000_000
-	}
-
-	// seen maps a key to the created_at of the outcome currently rebuilt for it,
-	// so a later failure can tell whether that prior is still live.
-	seen := make(map[string]uint64)
 
 	var written uint64
 
@@ -878,45 +863,13 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 			continue
 		}
 
-		// A failure must not overwrite a key that already holds a LIVE outcome,
-		// mirroring the live recordIdempotencyFailure ("a conflict holds the real
-		// outcome"): a reused key with a different body is audited as a freezable
-		// (AlreadyExists) failure, so without this guard it would clobber the
-		// original success/failure. The prior outcome is an earlier delta entry
-		// (seen) or a checkpoint SST (reader — its snapshot predates this pass's
-		// writes). A SUCCESS always writes: it only reaches the FSM when the gate
-		// found no live outcome, so any prior had expired — a legitimate re-freeze.
-		if value.GetFailure() != nil {
-			priorTs, have := seen[key]
-			if !have {
-				existing, err := state.LoadIdempotencyKey(reader, key)
-				if err != nil {
-					return fmt.Errorf("checking existing idempotency outcome for rebuild (seq %d): %w", entry.GetSequence(), err)
-				}
-
-				if existing != nil {
-					priorTs, have = existing.GetCreatedAt(), true
-					seen[key] = priorTs
-				}
-			}
-
-			// Skip only while the prior is still live at this entry's time —
-			// exactly the FSM's !IsExpired guard; an expired prior is overwritten.
-			if have && !state.IdempotencyExpired(priorTs, value.GetCreatedAt(), ttlMicros) {
-				continue
-			}
-		}
-
 		if err := state.SaveIdempotencyKey(w.batch, key, value); err != nil {
 			return fmt.Errorf("persisting rebuilt idempotency key (seq %d): %w", entry.GetSequence(), err)
 		}
 
-		seen[key] = value.GetCreatedAt()
-
 		// Flush in bounded chunks so restore memory does not grow with the whole
 		// delta, mirroring the log-replay pass above. The read snapshot is
-		// unaffected (committed keys stay invisible to it), and prior-outcome
-		// tracking lives in `seen`, so the guard above is unchanged across a flush.
+		// unaffected — committed keys stay invisible to it.
 		written++
 		if written%5000 == 0 {
 			if err := w.batch.Commit(); err != nil {

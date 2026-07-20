@@ -11,9 +11,11 @@ import (
 // IdempotencyValueFromAudit re-derives the frozen idempotency value a keyed
 // proposal wrote, from its (chain-verified) audit entry and items. ok is false
 // when the proposal froze nothing under its key: an all-replay success (no log
-// produced) or a non-freezable (retryable/internal) failure — neither writes
-// SubIdempKeys. The proposal hash is recomputed from the audit orders, reusing
-// the FSM's hashing so it is byte-identical to what was frozen at apply time.
+// produced), a non-freezable (retryable/internal) failure, or an
+// IDEMPOTENCY_KEY_CONFLICT (a rejection of a reuse, which never overwrites the
+// existing outcome) — none of these write SubIdempKeys. The proposal hash is
+// recomputed from the audit orders, reusing the FSM's hashing so it is
+// byte-identical to what was frozen at apply time.
 //
 // Shared by the integrity checker (which compares it against the stored
 // projection) and the backup restore path (which persists it via
@@ -22,6 +24,18 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 	switch out := entry.GetOutcome().(type) {
 	case *auditpb.AuditEntry_Failure:
 		reason := out.Failure.GetReason()
+
+		// A conflict (reused key + different body) freezes nothing: the FSM's gate
+		// only produces it when a LIVE prior outcome exists, and
+		// recordIdempotencyFailure never overwrites that prior. So it is never a
+		// stored outcome — skip it. The hash-chain-bound audit reason already
+		// records whether a reuse hit a live prior (conflict) or executed fresh
+		// (a normal reason), so no expiry re-derivation is needed to tell them
+		// apart.
+		if reason == commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT {
+			return nil, false
+		}
+
 		if !domain.IsFreezableFailure(domain.KindForReason(reason)) {
 			return nil, false
 		}
