@@ -4846,10 +4846,10 @@ ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats
   --format protobuf --batch-size 128 --batch-delay-ms 50
 
 # Add a ClickHouse sink for analytics
-ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db
+ledgerctl events add-sink --name analytics --clickhouse-dsn clickhouse://user:pass@localhost:9000/db
 
 # Add a ClickHouse sink with custom table name
-ledgerctl events add-sink --name analytics --ch-dsn clickhouse://user:pass@localhost:9000/db --ch-table my_events
+ledgerctl events add-sink --name analytics --clickhouse-dsn clickhouse://user:pass@localhost:9000/db --clickhouse-table my_events
 
 # Add a Kafka sink
 ledgerctl events add-sink --name streaming --kafka-brokers localhost:9092 --kafka-topic ledger-events
@@ -4872,8 +4872,8 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--name` | *(required)* | Unique name for this sink |
 | `--nats-url` | | NATS server URL (required for NATS sinks) |
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
-| `--ch-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
-| `--ch-table` | `ledger_events` | ClickHouse table name |
+| `--clickhouse-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
+| `--clickhouse-table` | `ledger_events` | ClickHouse table name |
 | `--kafka-brokers` | | Kafka broker addresses (comma-separated, required for Kafka sinks) |
 | `--kafka-topic` | | Kafka topic name (required for Kafka sinks) |
 | `--kafka-tls` | `false` | Enable TLS for Kafka connection |
@@ -4897,7 +4897,7 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 | `--event-types` | | Comma-separated list of event types to forward (empty = all) |
 | `--timeout` | `10s` | Request timeout |
 
-You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--ch-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), HTTP (`--http-endpoint`), or Databricks (`--databricks-host` + `--databricks-http-path` + `--databricks-catalog` + `--databricks-schema` + one of `--databricks-token` for PAT or `--databricks-client-id`/`--databricks-client-secret` for OAuth M2M).
+You must specify exactly one sink type: NATS (`--nats-url` + `--nats-topic`), ClickHouse (`--clickhouse-dsn`), Kafka (`--kafka-brokers` + `--kafka-topic`), HTTP (`--http-endpoint`), or Databricks (`--databricks-host` + `--databricks-http-path` + `--databricks-catalog` + `--databricks-schema` + one of `--databricks-token` for PAT or `--databricks-client-id`/`--databricks-client-secret` for OAuth M2M).
 
 The HTTP sink sends each event as an individual POST request with headers:
 - `Content-Type`: `application/json` or `application/protobuf`
