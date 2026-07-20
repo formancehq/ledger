@@ -27,7 +27,7 @@ TMPDIR=$(mktemp -d)
 # On exit, preserve the server log as an uploadable diagnostic BEFORE removing
 # TMPDIR, so a failing run still ships server-side context. The filename matches
 # the CI artifact glob (/tmp/schemathesis-*.txt).
-trap 'kill "$SERVER_PID" 2>/dev/null; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR"' EXIT
+trap 'kill "${SERVER_PID:-}" 2>/dev/null; wait "${SERVER_PID:-}" 2>/dev/null; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR"' EXIT
 
 echo "==> Building server..."
 cd "$REPO_ROOT"
@@ -65,10 +65,12 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-if ! python3 -c "import schemathesis" 2>/dev/null; then
-    echo "==> Installing Schemathesis..."
-    pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
-fi
+# Install unconditionally: an `import schemathesis` guard would skip install when
+# a pre-existing .venv already has *some* version, silently bypassing the exact
+# pins in requirements.txt (defeating the reproducibility they exist for). pip is
+# a fast no-op when the pinned versions are already satisfied.
+echo "==> Installing/verifying pinned Schemathesis dependencies..."
+pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
 
 echo "==> Running Schemathesis tests..."
 echo ""
