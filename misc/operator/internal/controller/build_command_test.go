@@ -153,7 +153,7 @@ func TestBuildEnvVars_AuthEd25519Keys(t *testing.T) {
 			if tt.authEnabled != nil {
 				ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: tt.authEnabled}
 			}
-			envs := buildEnvVars(ls, "disabled", tt.credentials)
+			envs := buildEnvVars(ls, "required", tt.credentials)
 			if tt.wantEnv {
 				assertEnv(t, envs, "AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json")
 			} else {
