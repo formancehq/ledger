@@ -1064,3 +1064,49 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	assert.Equal(t, firstBackfills, len(b.backfillTasks), "retry must not double-schedule backfills")
 	assert.Equal(t, firstRewrites, len(b.schemaRewriteTasks), "retry must not double-schedule rewrites")
 }
+
+// TestHandleCreatedIndexLog_InitialSkipsBackfill verifies an initial index is
+// promoted straight to live (current=1) with no backfill task (EN-1564).
+func TestHandleCreatedIndexLog_InitialSkipsBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks, "initial index must not schedule a backfill")
+
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current, "initial index is live immediately")
+	require.Equal(t, uint32(0), pending)
+}
+
+// TestHandleCreatedIndexLog_NonInitialSchedulesBackfill pins the unchanged path:
+// a normal CreateIndex still schedules a backfill and stays gated at current=0.
+func TestHandleCreatedIndexLog_NonInitialSchedulesBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "non-initial index must schedule a backfill")
+
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current, "non-initial index stays gated until backfill catches up")
+	require.Equal(t, uint32(1), pending)
+}
