@@ -27,7 +27,12 @@ TMPDIR=$(mktemp -d)
 # On exit, preserve the server log as an uploadable diagnostic BEFORE removing
 # TMPDIR, so a failing run still ships server-side context. The filename matches
 # the CI artifact glob (/tmp/schemathesis-*.txt).
-trap 'kill "${SERVER_PID:-}" 2>/dev/null; wait "${SERVER_PID:-}" 2>/dev/null; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR"' EXIT
+# Every command is guarded with `|| true`: `set -e` is active inside the trap, so
+# an unguarded non-zero status would abort the remaining cleanup. `wait` returns
+# the SIGTERM status (143) of the server we just killed, and `kill` fails if the
+# server already exited — either would otherwise skip the log copy (most valuable
+# exactly when the server crashed) and corrupt the script's real exit status.
+trap 'kill "${SERVER_PID:-}" 2>/dev/null || true; wait "${SERVER_PID:-}" 2>/dev/null || true; cp "$TMPDIR/server.log" /tmp/schemathesis-server.txt 2>/dev/null || true; rm -rf "$TMPDIR" || true' EXIT
 
 echo "==> Building server..."
 cd "$REPO_ROOT"
