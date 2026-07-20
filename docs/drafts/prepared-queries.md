@@ -548,7 +548,7 @@ The only effect of the index builder's lag is **visibility**: a recently created
 If the read store is lost or corrupted:
 
 1. The primary store is unaffected (all authoritative data is there)
-2. `store rebuild-indexes` replays all system logs (`[0x01]`) and reconstructs the read store from scratch
+2. The read store is reconstructed from scratch by replaying all system logs (`[0x01]`) (the mechanism to drive this rebuild is deferred to a future release)
 3. During rebuild, prepared query execution returns an error ("indexes not ready")
 4. No data loss — the read store is entirely derived from system logs
 
@@ -1129,7 +1129,7 @@ Response:
 10. **Prepared query CRUD**: Raft commands for create/update/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation + FieldRef/target compatibility at creation time
 11. **Query executor**: filter tree compiler (recursive tree → iterator tree), condition/schema re-validation at execution time, target-dependent result type (accounts or transaction IDs), keyset pagination
 12. **Volume aggregation**: cross-store merge-scan (bbolt filter → Pebble `ForEachInPrefix`) with per-asset accumulator, `AGGREGATE_VOLUMES` mode validation (ACCOUNTS target only)
-13. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
+13. **Backfill**: mechanism to populate the read store from existing logs (deferred to a future release)
 
 ## 13. Decisions Record
 

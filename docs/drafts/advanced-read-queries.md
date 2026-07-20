@@ -874,7 +874,7 @@ If `--read-index-dir` is not specified, the read index store defaults to `{data-
 
 If the read store is lost or corrupted:
 1. The primary store is unaffected (it contains all authoritative data)
-2. `store rebuild-indexes` replays all logs from the primary store and reconstructs the read store
+2. The read store is reconstructed by replaying all logs from the primary store (the mechanism to drive this rebuild is deferred to a future release)
 3. During rebuild, prepared queries return an error indicating indexes are not ready
 4. No data loss — the read store is entirely derived data
 
@@ -1037,7 +1037,7 @@ For Phases 2, 3, and 4, existing data will not have the secondary indexes popula
 - **Backfill**: scan existing logs and populate indexes (one-time migration, can be a CLI command)
 - **Progressive**: indexes are only populated for new data; old data falls back to full scan
 
-Backfill is recommended for correctness and can be implemented as a `store rebuild-indexes` CLI command that reads all logs and populates the missing indexes. This command also serves as the recovery mechanism for the dedicated read store — if the read store is lost or corrupted, `store rebuild-indexes` reconstructs it from the primary store.
+Backfill is recommended for correctness: replaying all logs to populate the missing indexes also serves as the recovery mechanism for the dedicated read store — if the read store is lost or corrupted, it can be reconstructed from the primary store. The generic mechanism to drive this rebuild is deferred to a future release; no offline rebuild command ships in v3.0.
 
 ## 10. Performance Considerations
 
@@ -1103,7 +1103,7 @@ For typical use cases (10-20% selectivity), a 2-filter merge-join on 1M accounts
 ## 12. Open Questions for Team
 
 1. **AggregateBalances performance**: for ledgers with millions of accounts, a full aggregation scan could take seconds. Should we add a time limit or streaming aggregation? Or is this acceptable given it's a read-only operation on a follower?
-2. **Index backfill**: should `store rebuild-indexes` be a blocking CLI command, or a background operation with progress streaming (like `store check`)?
+2. **Index backfill**: should the projection-rebuild mechanism be a blocking CLI command, or a background operation with progress streaming (like `store check`)? (Deferred to a future release; no offline rebuild command ships in v3.0.)
 3. **Interaction with data retention**: when chapters are archived and purged, secondary indexes for purged data should also be cleaned up. The per-ledger log index (`0x05`) can use range delete on `[0x05][ledgerName\x00][startLogID]...[endLogID]`. The account-tx index (`0x0B`) requires scanning to find entries in the purged range — should we store txID in big-endian so range delete works? (Note: txID is already stored big-endian via `PutUint64`.)
 4. **Point-in-time reads**: the compaction strategy destroys historical data (see Section 5.4). If PIT becomes a requirement, the most promising approach is log replay from chapter boundary snapshots (builds on the data retention draft). Should we plan for this, or is current-state-only sufficient?
 5. **Metadata preload cost**: extending the admission preload to include old metadata values adds Pebble reads on the leader during admission. For high-throughput metadata updates, this could become a bottleneck. Should we batch metadata preloads? Or is the async index builder (Section 5.8) sufficient to avoid this entirely?
