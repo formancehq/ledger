@@ -19,7 +19,10 @@ ledger run \
 
 > `--auth-enabled` requires `--tls-mode=required`; the server refuses to start
 > with `--tls-mode=disabled` or `--tls-mode=optional` so bearer tokens are never
-> exposed to plaintext. See [Configuration Invariants](#configuration-invariants).
+> exposed to plaintext **on the gRPC service transport**. The HTTP REST-compat
+> listener is not covered by `--tls-mode` and must be TLS-terminated separately
+> (HTTPS at the ingress/proxy) when authentication is enabled.
+> See [Configuration Invariants](#configuration-invariants).
 
 ## CLI Flags
 
@@ -76,7 +79,10 @@ The server enforces the following rules at startup:
   zero-downtime inter-node TLS migration through the transitional `optional`
   mode, but the external service API has no such requirement. There is no
   opt-out; terminate TLS on the ledger process itself even when an ingress or
-  service mesh also terminates TLS upstream.
+  service mesh also terminates TLS upstream. Note this guard covers the
+  **gRPC service transport** only — `--tls-mode` does not govern the HTTP
+  REST-compat listener, which remains plaintext and must be protected by
+  separate HTTPS termination (ingress/proxy) when authentication is enabled.
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
