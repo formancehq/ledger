@@ -584,6 +584,81 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(result.GetCursor().TransactionData).To(BeEmpty())
 		})
 	})
+
+	// ========================================================================
+	// Initial index declared atomically with CreateLedger (EN-1564):
+	// an index created in the same batch as the ledger, before any data log,
+	// is stamped CreatedIndexLog.initial and promoted straight to live by the
+	// indexbuilder (current_version > 0, no backfill cursor). Contrast with the
+	// "Reference index lifecycle" context above, where an index added after the
+	// ledger already holds transactions goes through a backfill pass.
+	// ========================================================================
+	Context("Initial index on an empty ledger", Ordered, func() {
+		const ledgerName = "idx-initial"
+
+		BeforeAll(func() {
+			// Create the ledger AND its reference index in ONE atomic Apply,
+			// before any transaction is ingested.
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerAction(ledgerName, nil),
+				actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+			))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should promote the initial index straight to live with no backfill", func() {
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetIndexStatus(sharedCtx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
+				g.Expect(err).To(Succeed())
+
+				var entry *servicepb.IndexEntry
+				for _, e := range resp.GetIndexes() {
+					b, ok := e.GetIndex().GetId().GetKind().(*commonpb.IndexID_TxBuiltin)
+					if e.GetLedger() == ledgerName && ok && b.TxBuiltin == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE {
+						entry = e
+
+						break
+					}
+				}
+				g.Expect(entry).NotTo(BeNil())
+				// Live immediately on the local replica: current_version has
+				// advanced past 0 without ever running a backfill pass.
+				g.Expect(entry.GetCurrentVersion()).To(BeNumerically(">", 0))
+				// No backfill cursor was ever set (0 == not backfilling / done).
+				g.Expect(entry.GetCursor()).To(Equal(uint64(0)))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should resolve a reference-backed query immediately after ingest, with no ErrIndexBuilding", func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.WithReference(actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
+				}, nil), "init-pay-001"),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
+
+				Query: &commonpb.PreparedQuery{
+					Name:   "by-reference",
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: actions.ReferenceFilter("init-pay-001"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "by-reference",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.GetCursor().TransactionData).To(HaveLen(1))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
 })
 
 // listLedgerIndexes streams BucketService.ListIndexes scoped to ledgerName and
