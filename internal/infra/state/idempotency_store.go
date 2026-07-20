@@ -60,11 +60,14 @@ func (s *IdempotencyStore) Put(key string, value *commonpb.IdempotencyKeyValue) 
 // IsExpired returns true if the value's created_at is older than TTL relative to nowMicros.
 // Returns false if TTL is 0 (no expiration).
 func (s *IdempotencyStore) IsExpired(value *commonpb.IdempotencyKeyValue, nowMicros uint64) bool {
-	if s.ttlMicros == 0 {
-		return false
-	}
+	return IdempotencyExpired(value.GetCreatedAt(), nowMicros, s.ttlMicros)
+}
 
-	return nowMicros-value.GetCreatedAt() > s.ttlMicros
+// IdempotencyExpired reports whether an outcome frozen at createdAt has outlived
+// ttlMicros as of nowMicros. ttlMicros == 0 means never expire. Shared with the
+// backup restore path so its overwrite guard uses the same rule as the FSM.
+func IdempotencyExpired(createdAt, nowMicros, ttlMicros uint64) bool {
+	return ttlMicros != 0 && nowMicros-createdAt > ttlMicros
 }
 
 // Reset clears the in-memory map (used during snapshot restore).

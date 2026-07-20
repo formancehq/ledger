@@ -861,3 +861,146 @@ func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
 	require.Empty(t, bs.Words(), "deleted ledger's reversion rows must not survive the replay")
 	require.Empty(t, writer.reversions["doomed"])
 }
+
+// keyedAuditSuccess / keyedAuditFailure build audit entries carrying an
+// idempotency key and timestamp, as the rebuild reads them to reconstruct the
+// SubIdempKeys projection.
+func keyedAuditSuccess(seq uint64, key string, tsMicros, minLog, maxLog uint64) *auditpb.AuditEntry {
+	return &auditpb.AuditEntry{
+		Sequence:    seq,
+		Timestamp:   &commonpb.Timestamp{Data: tsMicros},
+		Idempotency: &commonpb.Idempotency{Key: key},
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
+		},
+	}
+}
+
+func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason commonpb.ErrorReason) *auditpb.AuditEntry {
+	return &auditpb.AuditEntry{
+		Sequence:    seq,
+		Timestamp:   &commonpb.Timestamp{Data: tsMicros},
+		Idempotency: &commonpb.Idempotency{Key: key},
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{Reason: reason},
+		},
+	}
+}
+
+func writeIdempotencyTTL(t *testing.T, batch *dal.WriteSession, ttlSeconds uint64) {
+	t.Helper()
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig},
+		&commonpb.PersistedConfig{IdempotencyTtlSeconds: ttlSeconds}))
+}
+
+const idemConflict = commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
+
+// A same-key/different-body conflict later in the delta is audited as a
+// freezable failure. While the original outcome is still live, the rebuild must
+// keep it — mirroring the live recordIdempotencyFailure — not clobber it with
+// the conflict (which would make the original body conflict after restore).
+func TestRebuildDelta_IdempotencyConflictKeepsLiveDeltaOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		key     = "idem-key"
+		ttlSecs = 100
+	)
+	t0 := uint64(1_000_000)
+	t1 := t0 + 50*1_000_000 // within the 100s TTL: the original is still live
+
+	batch := store.OpenWriteSession()
+	writeIdempotencyTTL(t, batch, ttlSecs)
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, t0, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	v, err := state.LoadIdempotencyKey(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, v, "the committed keyed outcome must be rebuilt")
+	require.Nil(t, v.GetFailure(), "a live original must not be overwritten by the conflict")
+	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success must survive")
+}
+
+// Same guard, but the original outcome lives in the checkpoint SSTs (present in
+// the store before the rebuild) rather than an earlier delta entry.
+func TestRebuildDelta_IdempotencyConflictKeepsCheckpointOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		key     = "idem-key"
+		ttlSecs = 100
+	)
+	t0 := uint64(1_000_000)
+	t1 := t0 + 50*1_000_000 // within the 100s TTL
+
+	batch := store.OpenWriteSession()
+	writeIdempotencyTTL(t, batch, ttlSecs)
+	// Original success frozen in the "checkpoint" (already in the store).
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+		FirstLogSequence: 1, LogCount: 1, CreatedAt: t0,
+	}))
+	// Only the later conflict is in the exported delta.
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditFailure(1, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	v, err := state.LoadIdempotencyKey(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.Nil(t, v.GetFailure(), "a live checkpoint outcome must not be overwritten by a delta conflict")
+	require.Equal(t, uint64(1), v.GetFirstLogSequence())
+}
+
+// Once the original outcome has expired (a short/custom TTL and a delta that
+// spans it), the guard must NOT protect it: the later freezable failure is
+// materialized, exactly as the live recordIdempotencyFailure would.
+func TestRebuildDelta_IdempotencyExpiredOutcomeOverwritten(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		key     = "idem-key"
+		ttlSecs = 100
+	)
+	t0 := uint64(1_000_000)
+	t1 := t0 + 200*1_000_000 // past the 100s TTL: the original has expired
+
+	batch := store.OpenWriteSession()
+	writeIdempotencyTTL(t, batch, ttlSecs)
+	require.NoError(t, batch.SetProto(coldAuditKey(1), keyedAuditSuccess(1, key, t0, 1, 1)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditFailure(2, key, t1, idemConflict)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	v, err := state.LoadIdempotencyKey(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.NotNil(t, v.GetFailure(), "once the original expired, the later freezable failure is materialized")
+}
