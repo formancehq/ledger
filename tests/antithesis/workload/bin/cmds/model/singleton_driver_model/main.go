@@ -175,13 +175,15 @@ func runWorker(
 		// (declared field types). Reads validate against the in-flight bulk set,
 		// exercising cross-node freshness without needing quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
 				runTransactionRead(ctx, client, c)
 			case 2:
 				runSchemaRead(ctx, client, c)
+			case 3:
+				runReplay(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
@@ -201,6 +203,10 @@ func runWorker(
 			c.mu.Unlock()
 			continue
 		}
+		// Occasionally tag this bulk with an idempotency key — reusing a committed
+		// key on a different body (conflict) or minting a fresh tracked one (a
+		// replayable original) — to exercise the server's dedup.
+		c.stampIdempotency(&bulk)
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 

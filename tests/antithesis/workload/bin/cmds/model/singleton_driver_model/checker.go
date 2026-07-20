@@ -57,6 +57,12 @@ type Checker struct {
 	// during generation, both under mu.
 	receiptByRef map[string]string
 
+	// replayable holds committed bulks that carried a tracked idempotency key —
+	// the originals runReplay re-sends to exercise the server's idempotency
+	// replay. Populated at commit (rememberReplayable), capped at
+	// replayRegistryCap. Guarded by mu.
+	replayable []replayEntry
+
 	// paused gates worker dispatch during a restore cycle; resumeCh is closed on
 	// resume so parked workers wake. Both guarded by mu (see restore.go).
 	paused   bool

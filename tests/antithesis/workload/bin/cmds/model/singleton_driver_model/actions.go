@@ -17,13 +17,44 @@ import (
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-// applyRequest renders a bulk into a sendable ApplyRequest. One fresh
-// idempotency key for the whole batch (idempotency is per ApplyBatch),
-// generated once per Apply call and reused across the client's internal
-// retries, so an ambiguous UNAVAILABLE replays the committed batch instead of
-// re-applying it.
+// applyRequest renders a bulk into a sendable ApplyRequest. Idempotency is per
+// ApplyBatch, so the whole batch carries one key. A replayable original (and its
+// later replay) carries a tracked key the model froze; every other bulk gets a
+// fresh ephemeral key — untracked by the model, but still making the client's
+// internal retries safe (an ambiguous UNAVAILABLE replays the committed batch
+// instead of re-applying it).
 func applyRequest(b oracle.Bulk) *servicepb.ApplyRequest {
-	return servicepb.UnsignedApplyRequest(idempotencyKey(), b.Requests...)
+	key := b.IdempotencyKey
+	if key == "" {
+		key = idempotencyKey()
+	}
+
+	return servicepb.UnsignedApplyRequest(key, b.Requests...)
+}
+
+// indexPool builds a 0..n-1 index slice for a 1-in-n RandomChoice roll, derived
+// from the const so the odds and the pool stay in lockstep (see typePool).
+func indexPool(n int) []uint8 {
+	out := make([]uint8, n)
+	for i := range out {
+		out[i] = uint8(i)
+	}
+	return out
+}
+
+var (
+	replayTrackPool    = indexPool(replayTrackOneIn)
+	replayConflictPool = indexPool(replayConflictOneIn)
+)
+
+// rollReplayTrack reports whether to stamp a bulk as a replayable original.
+func rollReplayTrack() bool {
+	return random.RandomChoice(replayTrackPool) == 0
+}
+
+// rollConflict reports whether to reuse a committed key on a different body.
+func rollConflict() bool {
+	return random.RandomChoice(replayConflictPool) == 0
 }
 
 // Pool: every type name and every tx address uses a "t-N" prefix where

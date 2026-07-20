@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 
@@ -12,6 +13,17 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
+
+func hashState(g GlobalState) string {
+	var buf bytes.Buffer
+	g.Hash(&buf)
+
+	return buf.String()
+}
+
+func keyedBulk(key string, reqs ...*servicepb.Request) Bulk {
+	return Bulk{Requests: reqs, IdempotencyKey: key}
+}
 
 // dec renders a uint256 volume value (Dec has a pointer receiver, so this
 // takes an addressable copy for call sites on non-addressable map/return values).
@@ -41,6 +53,78 @@ func TestGlobalState_Apply_ChartOps(t *testing.T) {
 	gone := removed.State.Apply(bulkOf(oracletest.RemoveTypeReq("T")))
 	require.False(t, gone.OK)
 	require.Equal(t, domain.ErrReasonAccountTypeNotFound, gone.Reason)
+}
+
+func TestGlobalState_Apply_IdempotencyReplay(t *testing.T) {
+	t.Parallel()
+
+	// First apply of a keyed bulk commits and assigns id 1.
+	first := NewGlobalState().Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, first.OK)
+	require.Equal(t, uint64(1), first.Orders[0].TxID)
+	require.Len(t, first.State.Ledger("L").txs, 1)
+
+	// Replay: same key, same body -> the recorded outcome, no new transaction.
+	replay := first.State.Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, replay.OK)
+	require.Equal(t, uint64(1), replay.Orders[0].TxID)
+	require.Len(t, replay.State.Ledger("L").txs, 1, "replay must not append a second transaction")
+	replayed := replay.State.Ledger("L")
+	require.Equal(t, "5", dec(replayed.vol(VolumeKey{"a:1", "USD"}).Input),
+		"replay must not move volumes again")
+
+	// A fresh key with the same body applies for real (id 2).
+	fresh := first.State.Apply(keyedBulk("k2", oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, fresh.OK)
+	require.Equal(t, uint64(2), fresh.Orders[0].TxID)
+	require.Len(t, fresh.State.Ledger("L").txs, 2)
+}
+
+func TestGlobalState_Apply_IdempotencyConflict(t *testing.T) {
+	t.Parallel()
+
+	first := NewGlobalState().Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, first.OK)
+
+	// Same key, different body -> conflict, no state change.
+	conflict := first.State.Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 6)))
+	require.False(t, conflict.OK)
+	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, conflict.Reason)
+	require.Len(t, conflict.State.Ledger("L").txs, 1)
+}
+
+func TestGlobalState_Apply_IdempotencyFailureNotFrozen(t *testing.T) {
+	t.Parallel()
+
+	// A keyed bulk that the FSM rejects freezes nothing, so the key stays free:
+	// a later bulk reusing it is neither a replay nor a conflict.
+	failed := NewGlobalState().Apply(keyedBulk("k1", oracletest.RemoveTypeReq("missing")))
+	require.False(t, failed.OK)
+
+	reuse := failed.State.Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, reuse.OK, "a key whose first bulk failed must not be frozen")
+	require.Equal(t, uint64(1), reuse.Orders[0].TxID)
+}
+
+func TestGlobalState_Hash_DistinguishesFrozenKeyAssignments(t *testing.T) {
+	t.Parallel()
+
+	// Two keyed bulks with IDENTICAL postings reach the same business state under
+	// either order (a's volume, both tx records), so LedgerState.Hash alone can't
+	// tell the orders apart. Idempotency makes the key->id assignment observable
+	// via replay, so the frozen map must push the two orders to distinct hashes —
+	// else candidateBases collapses them and a replay can't resolve to the id the
+	// server actually returned.
+	ab := NewGlobalState().
+		Apply(keyedBulk("ka", oracletest.TxReq("world", "a:1", "USD", 5))).State.
+		Apply(keyedBulk("kb", oracletest.TxReq("world", "a:1", "USD", 5))).State
+
+	ba := NewGlobalState().
+		Apply(keyedBulk("kb", oracletest.TxReq("world", "a:1", "USD", 5))).State.
+		Apply(keyedBulk("ka", oracletest.TxReq("world", "a:1", "USD", 5))).State
+
+	require.NotEqual(t, hashState(ab), hashState(ba),
+		"frozen key->id assignment must be part of the state fingerprint")
 }
 
 func TestGlobalState_Apply_AtomicRejection(t *testing.T) {
