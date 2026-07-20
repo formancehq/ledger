@@ -149,20 +149,17 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		}
 	}
 
-	// Merge metadata: order metadata takes precedence over script metadata.
+	// Merge script metadata under caller metadata (caller wins collisions)
+	// into a map independent of order.Metadata: the audit chain captures the
+	// accepted order bytes, so Numscript output must never be written back
+	// into the caller-owned order map.
 	finalMetadata := order.GetMetadata()
 
 	if len(result.TransactionMetadata) > 0 {
-		if finalMetadata == nil {
-			finalMetadata = make(map[string]*commonpb.MetadataValue, len(result.TransactionMetadata))
-		}
-
-		// Append script metadata (order metadata takes precedence if key exists)
-		for key, value := range result.TransactionMetadata {
-			if _, exists := finalMetadata[key]; !exists {
-				finalMetadata[key] = value
-			}
-		}
+		merged := make(map[string]*commonpb.MetadataValue, len(finalMetadata)+len(result.TransactionMetadata))
+		maps.Copy(merged, result.TransactionMetadata)
+		maps.Copy(merged, finalMetadata)
+		finalMetadata = merged
 	}
 
 	if len(finalMetadata) > 0 {
