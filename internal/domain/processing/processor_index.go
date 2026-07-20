@@ -31,7 +31,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	}
 
 	if existing != nil && existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-		return buildCreatedIndexLogPayload(id), nil
+		return buildCreatedIndexLogPayload(id, false), nil
 	}
 
 	indexes.Put(ctx.Scope.Indexes(), info.GetName(), &commonpb.Index{
@@ -44,7 +44,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		ForwardEncodingVersion: 1,
 	})
 
-	return buildCreatedIndexLogPayload(id), nil
+	return buildCreatedIndexLogPayload(id, ctx.isBornEmpty(ledger)), nil
 }
 
 func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
@@ -90,10 +90,10 @@ func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain
 	return nil
 }
 
-func buildCreatedIndexLogPayload(id *commonpb.IndexID) *commonpb.LedgerLogPayload {
+func buildCreatedIndexLogPayload(id *commonpb.IndexID, initial bool) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+			CreateIndex: &commonpb.CreatedIndexLog{Id: id, Initial: initial},
 		},
 	}
 }
