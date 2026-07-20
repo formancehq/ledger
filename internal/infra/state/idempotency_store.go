@@ -298,9 +298,9 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	return evicted, nil
 }
 
-// SaveIdempotencyKey writes an idempotency key-value pair to Pebble under prefix 0x03,
-// and creates a time index entry under prefix 0x04 for efficient eviction.
-func saveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.IdempotencyKeyValue) error {
+// SaveIdempotencyKey writes an idempotency key-value pair under [0x05][0x01] and
+// a time-index entry under [0x05][0x02] for efficient eviction.
+func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.IdempotencyKeyValue) error {
 	keyHash := HashIdempotencyKey(key)
 
 	// Main entry: [0x05][0x01][key_hash 16 bytes] -> marshaled IdempotencyKeyValue

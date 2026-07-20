@@ -382,7 +382,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 }
 
 // writeIdempotencyEntry persists a frozen idempotency value at its canonical
-// SubIdempKeys location (the layout state.saveIdempotencyKey uses).
+// SubIdempKeys location (the layout state.SaveIdempotencyKey uses).
 func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *commonpb.IdempotencyKeyValue) {
 	t.Helper()
 

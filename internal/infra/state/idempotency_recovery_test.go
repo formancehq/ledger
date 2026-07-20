@@ -29,7 +29,7 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	}
 
 	for key, value := range values {
-		require.NoError(t, saveIdempotencyKey(batch, key, value))
+		require.NoError(t, SaveIdempotencyKey(batch, key, value))
 	}
 
 	require.NoError(t, batch.Commit())
@@ -78,12 +78,12 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, saveIdempotencyKey(batch, "ancient", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "ancient", &commonpb.IdempotencyKeyValue{
 		FirstLogSequence: 1,
 		LogCount:         1,
 		CreatedAt:        ancientCreatedAt,
 	}))
-	require.NoError(t, saveIdempotencyKey(batch, "fresh", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "fresh", &commonpb.IdempotencyKeyValue{
 		FirstLogSequence: 2,
 		LogCount:         1,
 		CreatedAt:        freshCreatedAt,
@@ -141,7 +141,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 	store := newTestStore(t)
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, saveIdempotencyKey(batch, "persisted", &commonpb.IdempotencyKeyValue{
+	require.NoError(t, SaveIdempotencyKey(batch, "persisted", &commonpb.IdempotencyKeyValue{
 		FirstLogSequence: 42,
 		LogCount:         1,
 		CreatedAt:        1_000,

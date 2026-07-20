@@ -448,6 +448,15 @@ func RebuildDelta(
 		return fmt.Errorf("flushing rebuilt reversion bitsets: %w", err)
 	}
 
+	// Re-materialize idempotency keys frozen in the delta range (pre-checkpoint
+	// keys ride along in the raw checkpoint SSTs; post-checkpoint ones live only
+	// in the audit). Reads the delta audit entries seeded by ApplyExports.
+	if err := writer.rebuildIdempotency(ctx, readHandle, fromAuditSeq); err != nil {
+		_ = writer.batch.Cancel()
+
+		return fmt.Errorf("rebuilding idempotency keys: %w", err)
+	}
+
 	if err := writer.batch.Commit(); err != nil {
 		return fmt.Errorf("committing boundaries batch: %w", err)
 	}
@@ -798,6 +807,60 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 	}
 
 	return iter.Error()
+}
+
+// rebuildIdempotency re-materializes the idempotency-key projection for the
+// delta range. The full checkpoint carries pre-checkpoint keys as raw SSTs, but
+// keys frozen after it live only in the audit — so RebuildDelta re-derives each
+// keyed proposal's frozen outcome (committed-log range or definitive failure)
+// and persists it, letting a restored node dedup a retried key instead of
+// re-executing it. A key produced no frozen outcome (all-replay success or a
+// non-freezable failure) is skipped, matching the apply path. Expired entries
+// are re-materialized too: the read-path TTL gate ignores them and the leader's
+// eviction scheduler reclaims them, exactly as on a live node.
+func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
+	var after *uint64
+	if fromAuditSeq > 0 {
+		after = &fromAuditSeq
+	}
+
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, after)
+	if err != nil {
+		return fmt.Errorf("reading audit entries for idempotency rebuild: %w", err)
+	}
+
+	defer func() { _ = auditCursor.Close() }()
+
+	for {
+		entry, err := auditCursor.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading audit entry for idempotency rebuild: %w", err)
+		}
+
+		key := entry.GetIdempotency().GetKey()
+		if key == "" {
+			continue
+		}
+
+		items, err := query.ReadAuditItems(ctx, reader, entry.GetSequence())
+		if err != nil {
+			return fmt.Errorf("reading audit items for idempotency rebuild (seq %d): %w", entry.GetSequence(), err)
+		}
+
+		value, ok := state.IdempotencyValueFromAudit(entry, items)
+		if !ok {
+			continue
+		}
+
+		if err := state.SaveIdempotencyKey(w.batch, key, value); err != nil {
+			return fmt.Errorf("persisting rebuilt idempotency key (seq %d): %w", entry.GetSequence(), err)
+		}
+	}
+
+	return nil
 }
 
 // deleteLedger reproduces the live DeleteLedger apply state: the LedgerInfo

@@ -49,7 +49,7 @@ func (d *DerivedIdempotencyStore) Reset() {
 // updates the parent in-memory map.
 func (d *DerivedIdempotencyStore) Merge(batch *dal.WriteSession) error {
 	for key, value := range d.pending {
-		if err := saveIdempotencyKey(batch, key, value); err != nil {
+		if err := SaveIdempotencyKey(batch, key, value); err != nil {
 			return err
 		}
 
