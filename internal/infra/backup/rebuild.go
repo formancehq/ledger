@@ -852,6 +852,8 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 	// so a later failure can tell whether that prior is still live.
 	seen := make(map[string]uint64)
 
+	var written uint64
+
 	for {
 		entry, err := auditCursor.Next()
 		if errors.Is(err, io.EOF) {
@@ -910,6 +912,19 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 		}
 
 		seen[key] = value.GetCreatedAt()
+
+		// Flush in bounded chunks so restore memory does not grow with the whole
+		// delta, mirroring the log-replay pass above. The read snapshot is
+		// unaffected (committed keys stay invisible to it), and prior-outcome
+		// tracking lives in `seen`, so the guard above is unchanged across a flush.
+		written++
+		if written%5000 == 0 {
+			if err := w.batch.Commit(); err != nil {
+				return fmt.Errorf("committing idempotency batch at audit %d: %w", entry.GetSequence(), err)
+			}
+
+			w.batch = w.store.OpenWriteSession()
+		}
 	}
 
 	return nil
