@@ -127,6 +127,17 @@ def main():
         help="Max examples per endpoint (default: 50)",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Number of concurrent workers (default: 1). Endpoints are tested "
+            "in parallel against the single server; the run is CPU/IO bound on "
+            "the serial default, so raising this to the runner's vCPU count is "
+            "the main wall-clock lever. Coverage is unchanged."
+        ),
+    )
+    parser.add_argument(
         "--shrink",
         action="store_true",
         help=(
@@ -141,6 +152,7 @@ def main():
     print(f"Loading schema from {OPENAPI_PATH}")
     print(f"Target server: {args.base_url}")
     print(f"Max examples per endpoint: {args.max_examples}")
+    print(f"Workers: {args.workers}")
     print("=" * 60)
 
     schema = load_schema(args.base_url)
@@ -169,6 +181,7 @@ def main():
             status_code_conformance,
             response_schema_conformance,
         ],
+        workers_num=args.workers,
         # The harness starts the server with authentication DISABLED (see
         # run.sh), but openapi.yml declares a global BearerAuth scheme. Without
         # this, Schemathesis synthesizes an `Authorization` header from that

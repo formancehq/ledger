@@ -5,7 +5,11 @@
 # waits for readiness, runs Schemathesis tests, then tears down.
 #
 # Usage: bash tests/schemathesis/run.sh
-# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_SHRINK
+# Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_WORKERS,
+#   SCHEMATHESIS_SHRINK
+#   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
+#   against the single server (default 1). Raising it to the runner's vCPU count
+#   is the main wall-clock lever; coverage is unchanged.
 #   SCHEMATHESIS_SHRINK=1 re-enables Hypothesis shrinking (minimal failing
 #   examples) for local debugging. Off by default — see test_api.py --shrink.
 set -euo pipefail
@@ -17,6 +21,7 @@ HTTP_PORT=${HTTP_PORT:-9099}
 GRPC_PORT=${GRPC_PORT:-8899}
 RAFT_PORT=${RAFT_PORT:-7779}
 MAX_EXAMPLES=${MAX_EXAMPLES:-50}
+SCHEMATHESIS_WORKERS=${SCHEMATHESIS_WORKERS:-1}
 
 TMPDIR=$(mktemp -d)
 # On exit, preserve the server log as an uploadable diagnostic BEFORE removing
@@ -77,4 +82,5 @@ fi
 python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
+    --workers "$SCHEMATHESIS_WORKERS" \
     $SHRINK_FLAG 2>&1 | tee /tmp/schemathesis-report.txt
