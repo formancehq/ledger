@@ -4638,7 +4638,7 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires TLS (`--tls-mode` `optional` or `required`) — rejected with `--tls-mode=disabled` |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` (`optional` still accepts plaintext client connections) |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
