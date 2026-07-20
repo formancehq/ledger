@@ -385,10 +385,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  description: System log entry (protobuf JSON representation)
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      description: System log entry (protobuf JSON representation)
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

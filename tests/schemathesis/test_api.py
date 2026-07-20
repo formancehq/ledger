@@ -210,10 +210,12 @@ def main():
         type=int,
         default=1,
         help=(
-            "Number of concurrent workers (default: 1). Endpoints are tested "
-            "in parallel against the single server; the run is CPU/IO bound on "
-            "the serial default, so raising this to the runner's vCPU count is "
-            "the main wall-clock lever. Coverage is unchanged."
+            "Number of concurrent workers (default: 1). Keep at 1 for the CI "
+            "gate: >1 reintroduces nondeterminism (thread interleaving over the "
+            "stateful-link sequences) that defeats the `derandomize` "
+            "reproducibility below. The suite is fast at 1 worker since the "
+            "cost was generation, not request throughput; raise this only for "
+            "ad-hoc exploratory fuzzing, not the reproducible gate."
         ),
     )
     parser.add_argument(
@@ -275,6 +277,15 @@ def main():
             suppress_health_check=[HealthCheck.filter_too_much],
             deadline=timedelta(seconds=30),
             phases=phases,
+            # Deterministic generation: a blocking CI gate must be reproducible,
+            # not a randomized fuzzer that flakes red on a different latent bug
+            # every run. `derandomize` seeds Hypothesis from a fixed internal
+            # value (stable across machines for a given hypothesis version), and
+            # `database=None` ignores the local `.hypothesis` replay cache, so a
+            # local run reproduces CI exactly. Bump `max_examples` (or a future
+            # explicit seed) to widen coverage when hunting new conformance bugs.
+            derandomize=True,
+            database=None,
         ),
     )
     for event in runner.execute():

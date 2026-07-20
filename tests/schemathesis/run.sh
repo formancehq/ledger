@@ -8,8 +8,8 @@
 # Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_WORKERS,
 #   SCHEMATHESIS_SHRINK
 #   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
-#   against the single server (default 1). Raising it to the runner's vCPU count
-#   is the main wall-clock lever; coverage is unchanged.
+#   (default 1). Keep at 1 for the reproducible gate: >1 breaks the
+#   `derandomize` determinism (see test_api.py). The suite is fast at 1 worker.
 #   SCHEMATHESIS_SHRINK=1 re-enables Hypothesis shrinking (minimal failing
 #   examples) for local debugging. Off by default — see test_api.py --shrink.
 set -euo pipefail
