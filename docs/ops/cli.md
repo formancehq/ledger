@@ -4449,6 +4449,7 @@ one node's secret drifted from the rest of the cluster.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
+  --tls-mode required \
   --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   [other flags...]
 ```

@@ -17,15 +17,15 @@ ledger run \
   --auth-service ledger
 ```
 
-> `--auth-enabled` requires TLS (`--tls-mode` set to `optional` or `required`);
-> the server refuses to start with `--tls-mode=disabled` so bearer tokens are
-> never sent in plaintext. See [Configuration Invariants](#configuration-invariants).
+> `--auth-enabled` requires `--tls-mode=required`; the server refuses to start
+> with `--tls-mode=disabled` or `--tls-mode=optional` so bearer tokens are never
+> exposed to plaintext. See [Configuration Invariants](#configuration-invariants).
 
 ## CLI Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires TLS (`--tls-mode` `optional` or `required`) — rejected with `--tls-mode=disabled` |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
@@ -66,11 +66,15 @@ The server enforces the following rules at startup:
 - `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
   `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
-- `--auth-enabled` requires TLS (`--tls-mode` set to `optional` or `required`).
-  Over a plaintext transport the bearer JWT/Ed25519 tokens would be sent in the
-  clear and could be intercepted and replayed by an on-path attacker, so the
-  combination `--tls-mode=disabled --auth-enabled` is rejected at startup. This
-  mirrors the `--cluster-secret` rule, which likewise requires TLS. There is no
+- `--auth-enabled` requires `--tls-mode=required`. Over a plaintext transport
+  the bearer JWT/Ed25519 tokens would be sent in the clear and could be
+  intercepted and replayed by an on-path attacker, so both
+  `--tls-mode=disabled` and `--tls-mode=optional` are rejected at startup —
+  `optional` runs a dual listener that still accepts plaintext client
+  connections, so it is not sufficient. This is intentionally stricter than the
+  `--cluster-secret` rule (which permits `optional`): the operator drives
+  zero-downtime inter-node TLS migration through the transitional `optional`
+  mode, but the external service API has no such requirement. There is no
   opt-out; terminate TLS on the ledger process itself even when an ingress or
   service mesh also terminates TLS upstream.
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,

@@ -214,10 +214,10 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name:    "auth enabled with issuer over TLS optional",
+			name:    "auth enabled with issuer over TLS optional is rejected",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeOptional,
-			wantErr: "",
+			wantErr: "--auth-enabled requires --tls-mode=required",
 		},
 		{
 			name:    "auth enabled with ed25519 keys file over TLS",
@@ -235,7 +235,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			name:    "auth enabled with credentials but TLS disabled",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeDisabled,
-			wantErr: "--auth-enabled requires TLS",
+			wantErr: "--auth-enabled requires --tls-mode=required",
 		},
 		{
 			name:    "auth enabled without credentials",

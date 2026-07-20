@@ -75,14 +75,25 @@ when TLS is at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
-This means **authentication requires TLS**. If you intend to enable
-`--auth-enabled`, enable TLS first.
+This means **authentication requires TLS**. Note the two guards differ in
+strictness:
 
-The server enforces this invariant at startup:
+- `--cluster-secret` (inter-node static bearer token) requires `mode != disabled`,
+  i.e. `optional` or `required` — it must tolerate `optional` because the
+  operator drives the migration *through* that transitional mode.
+- `--auth-enabled` (external service API JWT/Ed25519) requires `--tls-mode=required`.
+  `optional` is rejected because its dual listener still accepts plaintext client
+  connections, so bearer tokens could travel in the clear. Bring the cluster to
+  `required` before enabling `--auth-enabled`.
+
+The server enforces these invariants at startup:
 
 ```
 --cluster-secret requires TLS (set --tls-mode to optional or required
 and provide --tls-cert-file / --tls-key-file)
+
+--auth-enabled requires --tls-mode=required (with --tls-cert-file /
+--tls-key-file)
 ```
 
 ## Direct (non-operator) deployments
