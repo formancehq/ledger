@@ -123,7 +123,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source (world) and destination (user:alice) are preloaded
@@ -149,7 +149,22 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		// For a revert, original postings are reversed:
 		// Original: world -> alice
-		// Revert: alice -> world (alice needs balance check, world receives credit)
+		// Revert: alice -> world (alice needs balance check, world receives credit).
+		// The postings live in the overlay sidecar (admission resolves them at
+		// order-build time), not on the wire order.
+		overlay := newBulkOverlay()
+		overlay.recordRevertOriginalPostings(
+			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			[]*commonpb.Posting{
+				{
+					Source:      "world",
+					Destination: "user:alice",
+					Amount:      commonpb.NewUint256FromUint64(100),
+					Asset:       "USD",
+				},
+			},
+		)
+
 		orders := []*raftcmdpb.Order{
 			{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -159,14 +174,6 @@ func TestExtractNeededVolumes(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									OriginalPostings: []*commonpb.Posting{
-										{
-											Source:      "world",
-											Destination: "user:alice",
-											Amount:      commonpb.NewUint256FromUint64(100),
-											Asset:       "USD",
-										},
-									},
 								},
 							},
 							},
@@ -176,7 +183,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both the new source (alice) and new destination (world) are preloaded
@@ -200,6 +207,25 @@ func TestExtractNeededVolumes(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
+		overlay := newBulkOverlay()
+		overlay.recordRevertOriginalPostings(
+			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			[]*commonpb.Posting{
+				{
+					Source:      "world",
+					Destination: "user:alice",
+					Amount:      commonpb.NewUint256FromUint64(100),
+					Asset:       "USD",
+				},
+				{
+					Source:      "user:alice",
+					Destination: "user:bob",
+					Amount:      commonpb.NewUint256FromUint64(50),
+					Asset:       "USD",
+				},
+			},
+		)
+
 		orders := []*raftcmdpb.Order{
 			{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -209,20 +235,6 @@ func TestExtractNeededVolumes(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
-									OriginalPostings: []*commonpb.Posting{
-										{
-											Source:      "world",
-											Destination: "user:alice",
-											Amount:      commonpb.NewUint256FromUint64(100),
-											Asset:       "USD",
-										},
-										{
-											Source:      "user:alice",
-											Destination: "user:bob",
-											Amount:      commonpb.NewUint256FromUint64(50),
-											Asset:       "USD",
-										},
-									},
 								},
 							},
 							},
@@ -232,7 +244,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 		require.NoError(t, err)
 
 		// Should have 3 volume keys: alice, bob (original destinations become sources in revert)
@@ -285,7 +297,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		require.True(t, needs.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: "test-ledger", ID: 7}.Bytes()), "transaction key should be preloaded when id is used")
@@ -296,7 +308,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("attaches original postings for volume coverage", func(t *testing.T) {
+	t.Run("records original postings in sidecar for volume coverage", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission, attrs := createTestAdmission(t, store)
@@ -333,17 +345,22 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		overlay := newBulkOverlay()
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest, overlay)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
 		revertOrder := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.NotNil(t, revertOrder)
 		require.Equal(t, uint64(1), revertOrder.GetTransactionId())
-		require.Len(t, revertOrder.GetOriginalPostings(), 1,
-			"admission reads TxState.Postings directly and attaches them to declare volume coverage (invariant #9)")
-		require.Equal(t, "world", revertOrder.GetOriginalPostings()[0].GetSource())
-		require.Equal(t, "user:alice", revertOrder.GetOriginalPostings()[0].GetDestination())
+
+		// The audit-bound order carries only caller intent; the resolved
+		// postings live in the sidecar for the preload pass (invariant #9).
+		sidecar := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 1})
+		require.Len(t, sidecar, 1,
+			"admission reads TxState.Postings into the sidecar to declare volume coverage")
+		require.Equal(t, "world", sidecar[0].GetSource())
+		require.Equal(t, "user:alice", sidecar[0].GetDestination())
 	})
 
 	t.Run("passes revert of non-existent transaction through to FSM (audited)", func(t *testing.T) {
@@ -365,17 +382,18 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		// A revert on a non-existent transaction must NOT fail-fast at
 		// admission: invariant #8 requires business decisions to be
 		// hash-chained in the audit, and only the FSM apply writes audit
-		// entries. Admission emits an order with OriginalPostings=nil;
-		// the FSM's processRevertTransaction returns ErrTransactionNotFound
-		// (via `txID >= boundaries.GetNextTransactionId()`) BEFORE touching
-		// volumes — that error lands in the audit chain.
-		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		// entries. Admission emits the order and records nil postings in the
+		// sidecar; the FSM's processRevertTransaction returns
+		// ErrTransactionNotFound (via `txID >= boundaries.GetNextTransactionId()`)
+		// BEFORE touching volumes — that error lands in the audit chain.
+		overlay := newBulkOverlay()
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest, overlay)
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
-		revert, ok := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
+		_, ok := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
 		require.True(t, ok)
-		require.Empty(t, revert.RevertTransaction.GetOriginalPostings(),
+		require.Empty(t, overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 999}),
 			"admission must pass through with nil postings when the source tx is absent")
 	})
 
@@ -393,7 +411,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 			},
 		}
 
-		_, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		_, err := admission.convertApplyRequest(t.Context(), applyRequest, newBulkOverlay())
 		require.ErrorIs(t, err, domain.ErrTransactionTargetMissing)
 	})
 }
@@ -432,7 +450,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source and destination are always preloaded
@@ -482,7 +500,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// Should have 2 volume keys: both source and destination are always preloaded
@@ -557,7 +575,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// Should have 4 volume keys: source+dest from both orders
@@ -594,6 +612,19 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		admission, _ := createTestAdmission(t, store)
 
 		// force=true on revert still preloads all volumes
+		overlay := newBulkOverlay()
+		overlay.recordRevertOriginalPostings(
+			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			[]*commonpb.Posting{
+				{
+					Source:      "world",
+					Destination: "user:alice",
+					Amount:      commonpb.NewUint256FromUint64(100),
+					Asset:       "USD",
+				},
+			},
+		)
+
 		orders := []*raftcmdpb.Order{
 			{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -604,14 +635,6 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 								RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 									TransactionId: 1,
 									Force:         true,
-									OriginalPostings: []*commonpb.Posting{
-										{
-											Source:      "world",
-											Destination: "user:alice",
-											Amount:      commonpb.NewUint256FromUint64(100),
-											Asset:       "USD",
-										},
-									},
 								},
 							},
 							},
@@ -621,7 +644,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 		require.NoError(t, err)
 
 		// Revert reverses postings: alice->world. Both source (alice) and destination (world) preloaded.
@@ -716,7 +739,7 @@ func TestExtractPreloadNeeds_AccountMetadata_ScriptBacked(t *testing.T) {
 				},
 			}
 
-			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+			needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 			require.NoError(t, err)
 
 			key := domain.MetadataKey{
@@ -757,7 +780,7 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 			},
 		}
 
-		order, err := admission.convertApplyRequest(t.Context(), applyRequest)
+		order, err := admission.convertApplyRequest(t.Context(), applyRequest, newBulkOverlay())
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
@@ -769,13 +792,13 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 func TestRequestToOrder_RevertTransaction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("converts revert request with empty OriginalPostings", func(t *testing.T) {
+	t.Run("converts revert request to a caller-intent-only order", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		// Non-receipt reverts leave OriginalPostings nil on the wire; the FSM
-		// reads TxState.Postings authoritatively at apply time.
+		// The wire order carries only caller intent; the FSM reads
+		// TxState.Postings authoritatively at apply time.
 		request := &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
@@ -804,7 +827,6 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		revertOrder := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.Equal(t, uint64(42), revertOrder.GetTransactionId())
 		require.True(t, revertOrder.GetForce())
-		require.Empty(t, revertOrder.GetOriginalPostings())
 	})
 }
 
@@ -843,7 +865,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
@@ -895,7 +917,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
@@ -957,7 +979,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 				)
 			`)
 
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 		require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false))
 
@@ -999,7 +1021,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
@@ -1054,7 +1076,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		err = admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrderNeeds, false)
@@ -1109,7 +1131,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// hasIdempotencyKey = true → forward instead of fail-fast.
@@ -1150,7 +1172,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		}
 
 		overlay := newBulkOverlay()
-		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, perOrderNeeds, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// hasIdempotencyKey = true, but the cause is definitive → terminal.
@@ -1197,7 +1219,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders)
+		needs, _, err := admission.extractPreloadNeeds(context.Background(), orders, newBulkOverlay())
 		require.NoError(t, err)
 
 		// Should use explicit postings, not numscript emulation; both source and destination preloaded

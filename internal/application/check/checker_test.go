@@ -864,7 +864,10 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 	}
 }
 
-func revertTransactionOrder(ledger string, txID uint64, originalPostings []*commonpb.Posting) *raftcmdpb.Order {
+// revertTransactionOrder builds a revert order carrying only caller intent.
+// The FSM sources the original postings from the target's stored
+// TransactionState, so the transaction must have been created earlier.
+func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -872,8 +875,7 @@ func revertTransactionOrder(ledger string, txID uint64, originalPostings []*comm
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-							TransactionId:    txID,
-							OriginalPostings: originalPostings,
+							TransactionId: txID,
 						},
 					},
 					},
@@ -1068,11 +1070,7 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 8: Revert a transaction ---
 	// Revert the first user:alice USD transfer (tx ID 4 in trading ledger, 0-indexed tx=3 -> 4th tx)
 	// The postings were: bank -> user:alice 1000 USD
-	engine.processAndCommit(revertTransactionOrder("trading", 4,
-		[]*commonpb.Posting{
-			newPosting("bank", "user:alice", "USD", 1000),
-		},
-	))
+	engine.processAndCommit(revertTransactionOrder("trading", 4))
 
 	// --- Step 9: More transactions after revert ---
 	engine.processAndCommit(createTransactionOrder("trading", false,
@@ -1308,18 +1306,10 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 	}))
 
 	// Revert the user:alpha -> user:beta transfer (tx ID 11: 4 funding + 5 distribution + 1 multi + 1 alpha->beta)
-	engine.processAndCommit(revertTransactionOrder("main", 11,
-		[]*commonpb.Posting{
-			newPosting("user:alpha", "user:beta", "USD", 100),
-		},
-	))
+	engine.processAndCommit(revertTransactionOrder("main", 11))
 
 	// Revert the escrow -> beneficiary:1 transfer
-	engine.processAndCommit(revertTransactionOrder("secondary", 2,
-		[]*commonpb.Posting{
-			newPosting("escrow", "beneficiary:1", "USD", 10000),
-		},
-	))
+	engine.processAndCommit(revertTransactionOrder("secondary", 2))
 
 	// More transactions after reverts
 	engine.processAndCommit(createTransactionOrder("main", false,

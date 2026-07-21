@@ -78,6 +78,38 @@ adding a variant, classify it with the table above and answer:
 If any answer is yes, the variant needs either an audited order or an explicit
 checker pass that verifies the stored value against audit-bound data.
 
+## Accepted Order Enrichment
+
+An accepted order is audit-bound: its serialized bytes feed the hash chain
+(`AuditItem.SerializedOrder`, via `state.BuildPerItemPayload`). The order must
+therefore carry only **caller intent** — the fields the caller submitted.
+Admission must not enrich it with state-derived execution data, even when that
+data is deterministic given the request. Doing so binds admission-time state into
+the audit chain and makes the serialized order depend on which node admitted it
+and what that node could read.
+
+State-derived execution inputs the FSM needs at apply time flow through a
+different channel: the **coverage-gated preloaded state**. Admission declares the
+`preload.Needs` for every key the apply path reads (invariant #6), and the FSM
+reads the value through `Scope.GetX(...)` under the coverage gate (invariant #9).
+Because the apply path cannot read Pebble (invariant #3), the value comes from the
+cache the preload seeded — never from the order.
+
+**Revert is the canonical example.** `RevertTransactionOrder` carries only
+`transaction_id`, `force`, `at_effective_date`, `metadata`, and `expand_volumes`.
+The original postings the FSM reverses are **not** on the order: admission
+preloads the target `TransactionState` (`addTransactionTargetNeeds`) and
+`processRevertTransaction` reads `origState.GetPostings()` through the coverage
+gate. Admission still resolves the postings at order-build time — from the signed
+receipt or the `Transaction` attribute — to declare the volume-preload coverage
+the reversed postings touch (invariant #9), but it holds them in an
+admission-local sidecar (`bulkOverlay.revertOriginalPostings`), never on the wire
+order. Chapter archival does not evict `TransactionState` (`executePurge` removes
+only the cold log/audit ranges), so a revert of a pre-archival transaction reads
+its postings from the surviving projection; a missing state for an *allocated* id
+is an inconsistency surfaced loudly (invariant #7), not a routine not-found —
+that case is caught earlier by the `txID >= NextTransactionId` boundary check.
+
 ## Mirror Cursor
 
 Mirror ingestion is the highest-risk boundary because the mirror cursor is an

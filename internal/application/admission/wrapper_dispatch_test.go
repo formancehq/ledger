@@ -25,9 +25,17 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 
 	ledgerKey := domain.LedgerKey{Name: wrapperTestLedger}
 
+	// Revert original postings live in the overlay sidecar, not on the order.
+	revertOverlay := newBulkOverlay()
+	revertOverlay.recordRevertOriginalPostings(
+		domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13},
+		[]*commonpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}},
+	)
+
 	cases := []struct {
 		name    string
 		payload *raftcmdpb.LedgerScopedOrder
+		overlay *bulkOverlay
 		assert  func(t *testing.T, n *plan.Coverage)
 	}{
 		{
@@ -329,14 +337,12 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 								TransactionId: 13,
-								OriginalPostings: []*commonpb.Posting{
-									{Source: "world", Destination: "user:eve", Asset: "USD"},
-								},
 							},
 						},
 					},
 				},
 			},
+			overlay: revertOverlay,
 			assert: func(t *testing.T, n *plan.Coverage) {
 				require.True(t, n.Has(dal.SubAttrTransaction, domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13}.Bytes()))
 				require.True(t, n.Has(dal.SubAttrVolume, domain.VolumeKey{
@@ -438,8 +444,13 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			overlay := tc.overlay
+			if overlay == nil {
+				overlay = newBulkOverlay()
+			}
+
 			needs := plan.NewCoverage()
-			extractLedgerScopedNeeds(needs, tc.payload)
+			extractLedgerScopedNeeds(needs, tc.payload, overlay)
 			tc.assert(t, needs)
 		})
 	}
