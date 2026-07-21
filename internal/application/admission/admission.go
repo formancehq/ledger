@@ -84,6 +84,8 @@ type Admission struct {
 	preloadCacheHitsCounter        metric.Int64Counter
 	missingCallerCounter           metric.Int64Counter
 	callerSubjectEmptyCounter      metric.Int64Counter
+	actionCounter                  metric.Int64Counter
+	actionErrorsCounter            metric.Int64Counter
 
 	// Per-phase histograms — decompose command.duration into
 	// resolve_batch (signature verify) + orders_prep (orders + coverage
@@ -307,6 +309,24 @@ func NewAdmission(
 		panic(err)
 	}
 
+	actionCounter, err := meter.Int64Counter(
+		"admission.action.total",
+		metric.WithDescription("Total number of orders (actions) admission processed, tagged by order_type. Counts every order attempted in the batch; not gated on the FSM apply outcome."),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	actionErrorsCounter, err := meter.Int64Counter(
+		"admission.action.errors.total",
+		metric.WithDescription("Number of orders (actions) whose admission batch ended in error, tagged by order_type. A strict subset of admission.action.total."),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	missingCallerCounter, err := meter.Int64Counter(
 		"admission.audit.missing_caller",
 		metric.WithDescription("Committed user writes with no caller snapshot while auth is enabled"),
@@ -379,6 +399,8 @@ func NewAdmission(
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
 	a.missingCallerCounter = missingCallerCounter
 	a.callerSubjectEmptyCounter = callerSubjectEmptyCounter
+	a.actionCounter = actionCounter
+	a.actionErrorsCounter = actionErrorsCounter
 	a.resolveBatchDurationHistogram = resolveBatchDurationHistogram
 	a.ordersPreparationDurationHistogram = ordersPreparationDurationHistogram
 	a.scriptsDurationHistogram = scriptsDurationHistogram
@@ -411,6 +433,31 @@ func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.Ca
 		if id.GetSubject() == "" {
 			a.logger.Infof("committed write caller has a source but an empty subject: audit entry identifies the caller only by source")
 			a.callerSubjectEmptyCounter.Add(ctx, 1)
+		}
+	}
+}
+
+// recordActionOutcome tallies the per-order admission counters at the single
+// Admit exit. It runs as a deferred call registered only once the batch's orders
+// have been built, so pre-order (structural) failures — bad signature,
+// maintenance mode, request-to-order conversion — carry no order_type and are
+// intentionally excluded.
+//
+// admission.action.total counts every order attempted, regardless of outcome.
+// A batch is one atomic Raft command with a single outcome, so on failure
+// (*errp != nil) every order in the batch is counted as errored under its own
+// order_type: none of them applied. That keeps admission.action.errors.total a
+// strict subset of admission.action.total (error rate ∈ [0, 1]). order_type
+// reuses domain.AuditOrderType so the labels stay consistent with the audit
+// filter DSL (EN-1305 / EN-1582). Recording stays on the admission path; the FSM
+// apply path is never touched.
+func (a *Admission) recordActionOutcome(ctx context.Context, orders []*raftcmdpb.Order, errp *error) {
+	failed := *errp != nil
+	for _, order := range orders {
+		attrs := metric.WithAttributes(attribute.String("order_type", domain.AuditOrderType(order)))
+		a.actionCounter.Add(ctx, 1, attrs)
+		if failed {
+			a.actionErrorsCounter.Add(ctx, 1, attrs)
 		}
 	}
 }
@@ -455,7 +502,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (logs []*commonpb.Log, err error) {
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {
 		return nil, err
 	}
@@ -513,6 +560,12 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
 	}
+
+	// Tally per-order action counters at whichever exit Admit returns through.
+	// Registered here — after orders exist — so pre-order failures (signature,
+	// maintenance mode, conversion) fall outside per-action attribution. Reads the
+	// named return err to classify the batch outcome. See recordActionOutcome.
+	defer a.recordActionOutcome(ctx, orders, &err)
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
 	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders)
@@ -750,7 +803,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*
 		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
 	}()
 
-	logs := make([]*commonpb.Log, len(result.Logs))
+	logs = make([]*commonpb.Log, len(result.Logs))
 	for i, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs[i] = created

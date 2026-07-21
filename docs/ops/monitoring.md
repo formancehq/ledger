@@ -286,6 +286,27 @@ When a value is not guaranteed to be in cache (based on the cache generation), t
 | `admission.propose.duration` | Histogram | µs | Time waiting for Raft to accept and replicate a proposal (Propose + Wait). |
 | `admission.command.size` | Histogram | By | Size of marshalled Raft commands in bytes. Large commands may indicate many postings or metadata. |
 
+### Action Metrics
+
+An `Admit` call carries one batch = one Raft command, and a batch can hold multiple, mixed orders (actions). `command.duration` observes once per batch, so it cannot break work down by action. These two counters do, keyed by action type.
+
+| Metric | Type | Unit | Description |
+|--------|------|------|-------------|
+| `admission.action.total` | Counter | 1 | Number of orders (actions) admission processed, by `order_type`. Counts **every order attempted** in the batch, regardless of outcome — it is not gated on the FSM apply result. |
+| `admission.action.errors.total` | Counter | 1 | Number of orders whose admission batch ended in error, by `order_type`. A **strict subset** of `admission.action.total`. |
+
+**Attributes**:
+- `order_type`: The action kind, e.g. `create_transaction`, `revert_transaction`, `add_metadata`, `create_ledger`, `delete_ledger`, `save_numscript`, `create_index`, `register_signing_key`, `seal_chapter`, … This is the same stable vocabulary used by the audit filter DSL (`domain.AuditOrderType`); it is extended additively and tokens are never renamed.
+
+**Per-action error rate**: `admission.action.errors.total / admission.action.total` — a ratio in `[0, 1]` because errors is a strict subset of total.
+
+**Semantics and attribution**:
+- **Attempted, not performed**: `action.total` increments for every order in the batch even when the batch ultimately fails. This is deliberate — it is what makes the error rate a clean ratio.
+- **Atomic batch**: a batch is one Raft command with a single outcome. On failure, **every order in the batch is counted as errored** under its own `order_type` — none of them applied. For the common single-order batch this is exact; for a mixed batch the failure is attributed to each action type present.
+- **All admission-observed errors**: both admission-side rejections raised after orders are built (numscript resolution, preload, per-order validation) and FSM business rejections (insufficient funds, conflicts) surfaced when the command resolves.
+- **Carve-out**: failures *before* orders are built — write gate, leader readiness, bad batch signature, maintenance mode, request-to-order conversion — have no `order_type` to attribute to and are **not** counted here. They are batch-level/structural failures, not per-action business outcomes.
+- **Leader-local**: like `command.duration`, recording happens on the admission path on the leader only. Recording never touches the FSM apply path, preserving FSM determinism.
+
 ### Propose Queue Metrics
 
 | Metric | Type | Unit | Description |
