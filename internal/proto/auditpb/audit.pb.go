@@ -239,14 +239,19 @@ type AuditItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Zero-based position of this order within the proposal.
 	OrderIndex uint32 `protobuf:"varint,1,opt,name=order_index,json=orderIndex,proto3" json:"order_index,omitempty"`
-	// Deterministic serialized bytes of the order at apply time. The audit
-	// hash chain on AuditEntry.hash is computed over the concatenation of
-	// these bytes (in order_index order) so verification never re-marshals
-	// an Order proto. This decouples the hash chain from the Order schema
-	// and the vtprotobuf marshaller version. Field 2 previously held
-	// `raft.Order order`; the wire format is identical (length-delimited,
-	// bytes-equal) so the swap is on-wire compatible with entries persisted
-	// before the change.
+	// Deterministic serialized bytes of the order's BUSINESS INTENT at apply time
+	// (the order with OrderTechnical excluded — coverage_bits,
+	// inputs_resolution_hash, preload_unavailable are admission-derived execution
+	// metadata, not accepted intent). Produced by
+	// processing.MarshalOrderBusinessIntent, symmetric with the idempotency hash.
+	// The audit hash chain on AuditEntry.hash is computed over the concatenation of
+	// these bytes (in order_index order) so verification never re-marshals an Order
+	// proto. This decouples the hash chain from the Order schema and the vtprotobuf
+	// marshaller version. Field 2 previously held `raft.Order order`; the wire
+	// format is identical (length-delimited, bytes-equal) so the swap is on-wire
+	// compatible with entries persisted before the change. Entries persisted before
+	// EN-1558 embed OrderTechnical in these bytes and still verify verbatim (the
+	// verifier hashes the stored bytes as-is; no migration).
 	SerializedOrder []byte `protobuf:"bytes,2,opt,name=serialized_order,json=serializedOrder,proto3" json:"serialized_order,omitempty"`
 	// Sequence of the log produced by this order. Zero if the order was
 	// an idempotent replay or if the proposal failed.

@@ -62,6 +62,19 @@ exemption. Those governance projections must either be checker-verified against
 the audited orders that recorded the intent, or read back from an audit-bound
 source before they are trusted (see the Governance-truth row above).
 
+### Technical execution metadata is excluded from the audit business-intent hash (EN-1558)
+
+`AuditItem.serialized_order` stores the *business-intent* bytes of the order — the
+order with its `OrderTechnical` sub-message (`coverage_bits`,
+`inputs_resolution_hash`, `preload_unavailable`) excluded. These fields are
+admission-derived execution metadata that rides in the Raft entry for the FSM apply
+path but is not part of the accepted user intent, so it must not participate in the
+audit hash. The exclusion is defined once in `processing.MarshalOrderBusinessIntent`
+and shared by both the audit serialization (`marshalOrdersForAudit`) and the
+idempotency hash (`processor.hashOrder`), so the two can never diverge. Audit entries
+persisted before EN-1558 embed `OrderTechnical` in `serialized_order` and remain
+verifiable: the verifier hashes the stored bytes verbatim, requiring no migration.
+
 ## TechnicalUpdate Gate
 
 `Proposal.technical_updates` bypasses the order/log path, so a new
