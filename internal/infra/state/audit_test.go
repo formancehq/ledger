@@ -509,6 +509,36 @@ func TestExtractLedgers_MixedBatchDeduplicatesAndSorts(t *testing.T) {
 	require.Equal(t, []string{"alpha", "zeta"}, extractLedgers(orders))
 }
 
+// TestMarshalOrdersForAudit_ExcludesTechnical proves the audited bytes carry only
+// business intent: two orders identical except for coverage_bits serialize to
+// byte-equal audit payloads, and the stored bytes unmarshal to an Order with no
+// Technical sub-message.
+func TestMarshalOrdersForAudit_ExcludesTechnical(t *testing.T) {
+	t.Parallel()
+
+	mk := func(bits []byte) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+			},
+			Technical: &raftcmdpb.OrderTechnical{CoverageBits: bits},
+		}
+	}
+
+	a := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b0001})})
+	b := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b1110})})
+
+	require.Len(t, a, 1)
+	require.Len(t, b, 1)
+	require.Equal(t, a[0], b[0], "coverage_bits must not change the audited order bytes")
+
+	var decoded raftcmdpb.Order
+	require.NoError(t, decoded.UnmarshalVT(a[0]))
+	require.Nil(t, decoded.GetTechnical(), "audited bytes must not carry OrderTechnical")
+	require.Equal(t, "ledger-a", decoded.GetLedgerScoped().GetLedger(),
+		"business payload must survive")
+}
+
 // Log sequence range tests previously pinned the extractLogSequenceRange
 // helper. The accumulator now lives inside processing.ProcessOrders'
 // single pass — see processor_test.go for the equivalent invariants
