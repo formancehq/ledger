@@ -42,6 +42,7 @@
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
           stablePackages = with pkgs; [
+            go_1_26
             ffmpeg
             ginkgo
             gomarkdoc
@@ -60,7 +61,6 @@
             yq-go
           ];
           unstablePackages = with pkgs-unstable; [
-            go
             go-tools
             protobuf_34
             goperf
