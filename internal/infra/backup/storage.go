@@ -12,7 +12,7 @@ import (
 // errors.Is(err, ErrFileNotFound) holds.
 var ErrFileNotFound = errors.New("backup: file not found")
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source storage.go -destination storage_generated_test.go -package backup . Storage
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source storage.go -destination storage_generated_test.go -package backup . Storage
 
 // Storage provides file-level access to a backup destination.
 // Keys use forward slashes as path separators regardless of the backend.

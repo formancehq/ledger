@@ -23,9 +23,9 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
+    go tool golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
-    cd misc/operator && golangci-lint run --fix --timeout 5m
+    cd misc/operator && go tool golangci-lint run --fix --timeout 5m
 
 tidy:
     #!/usr/bin/env bash
@@ -286,9 +286,15 @@ generate-proto:
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
-    @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
+    @go build -o build/protoc-gen-go google.golang.org/protobuf/cmd/protoc-gen-go
+    @go build -o build/protoc-gen-go-grpc google.golang.org/grpc/cmd/protoc-gen-go-grpc
+    @go build -o build/protoc-gen-go-vtproto github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto
+    @protoc --plugin=protoc-gen-go=build/protoc-gen-go \
+        --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-go-grpc=build/protoc-gen-go-grpc \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-go-vtproto=build/protoc-gen-go-vtproto \
         --go-vtproto_out=. \
         --go-vtproto_opt=module=github.com/formancehq/ledger/v3 \
         --go-vtproto_opt=features=marshal+unmarshal+size+clone+equal+pool \
@@ -330,8 +336,9 @@ generate-proto:
 
 # --- Operator (Kubernetes) ---
 
-# controller-gen binary for CRD/RBAC generation
-controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+# controller-gen binary for CRD/RBAC generation (declared as a tool in
+# misc/operator/go.mod; operator-generate runs it from that module dir)
+controller-gen := "go tool controller-gen"
 
 # Generate operator CRDs, RBAC, and sync Helm chart
 operator-generate:
