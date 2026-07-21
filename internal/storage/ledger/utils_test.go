@@ -244,25 +244,27 @@ func TestFilterAccountAddress_NormalCases(t *testing.T) {
 		assert.Equal(t, "address = 'users:alice'", result)
 	})
 
-	t.Run("partial address with trailing colon matches on segment", func(t *testing.T) {
+	t.Run("partial address with trailing colon matches one level deeper", func(t *testing.T) {
 		t.Parallel()
+		// "users:" means exactly 2 segments with "users" at position 0
 		result := filterAccountAddress("users:", "address")
-		assert.Equal(t, `address_array @@ ('$[0] == "users"')::jsonpath`, result)
+		assert.Equal(t, `jsonb_array_length(address_array) = 2 and address_array @@ ('$[0] == "users"')::jsonpath`, result)
 	})
 
 	t.Run("partial address with two fixed segments", func(t *testing.T) {
 		t.Parallel()
 		result := filterAccountAddress("users:alice:", "address")
+		assert.Contains(t, result, "jsonb_array_length(address_array) = 3")
 		assert.Contains(t, result, `$[0] == "users"`)
 		assert.Contains(t, result, `$[1] == "alice"`)
 	})
 
-	t.Run("wildcard suffix constrains length and segment", func(t *testing.T) {
+	t.Run("wildcard suffix matches the whole subtree", func(t *testing.T) {
 		t.Parallel()
-		// "users:..." means exactly 2 segments with "users" at position 0
+		// "users:..." means "users" at position 0 with any number of segments
 		result := filterAccountAddress("users:...", "address")
-		assert.Contains(t, result, "jsonb_array_length(address_array) = 2")
-		assert.Contains(t, result, `$[0] == "users"`)
+		assert.Equal(t, `address_array @@ ('$[0] == "users"')::jsonpath`, result)
+		assert.NotContains(t, result, "jsonb_array_length")
 	})
 
 	t.Run("key prefix is applied correctly", func(t *testing.T) {
