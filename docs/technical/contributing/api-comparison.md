@@ -753,7 +753,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, supports prefix filtering) |
+| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
