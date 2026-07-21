@@ -349,8 +349,16 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		if impl.receiptSigner != nil {
 			// Checkpoint read: sign from the checkpoint's fixed store so the
 			// receipt's ledger + creation-log reads stay self-consistent with the
-			// transaction, which was read from that same store.
-			receiptToken, cErr := impl.localCtrl.ComputeTransactionReceipt(ctx, mainStore, req.GetLedger(), req.GetTransactionId(), tx)
+			// transaction, which was read from that same store. A read handle (not
+			// the raw store) so the creation-log lookup's cold-storage fallback can
+			// scan chapters.
+			receiptHandle, hErr := mainStore.NewReadHandle()
+			if hErr != nil {
+				return nil, fmt.Errorf("opening checkpoint receipt read handle: %w", hErr)
+			}
+
+			receiptToken, cErr := impl.localCtrl.ComputeTransactionReceipt(ctx, receiptHandle, req.GetLedger(), req.GetTransactionId(), tx)
+			_ = receiptHandle.Close()
 			if cErr != nil {
 				return nil, fmt.Errorf("computing transaction receipt: %w", cErr)
 			}

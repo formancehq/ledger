@@ -231,17 +231,18 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 // no receipt: no creation log in this store (archived/purged), or a
 // non-created creation log (e.g. a reversal). The caller must have verified the
 // signer is non-nil.
-func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleGetter, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
+func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
 	if err != nil {
 		return "", err
 	}
 
-	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
+	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.coldReader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
 	if errors.Is(err, domain.ErrNotFound) {
-		// No creation log for this transaction in this store (e.g. its log was
-		// archived/purged). The transaction is still readable; it just has no
-		// receipt. Not an error.
+		// No creation log found in hot or cold storage — cold storage disabled,
+		// or the log genuinely absent. The transaction is still readable from its
+		// state; it just has no receipt. Not an error. (An archived transaction's
+		// log IS found via the cold fallback, so it keeps its receipt.)
 		return "", nil
 	}
 
@@ -315,14 +316,18 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	return assembleTransactionFromState(ctx, reader, transactionID, state)
+	return assembleTransactionFromState(ctx, reader, ctrl.coldReader, transactionID, state)
 }
 
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // Metadata values are returned verbatim — declared_type is an index hint, not
 // an API contract, so reads do not coerce.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
-	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, coldReader *coldstorage.ColdReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
+	// Cold-storage fallback so a transaction whose creation log lives in an
+	// archived-and-purged chapter is still assembled from the cold-stored log
+	// (which carries the reference / post-commit volumes the attribute-zone
+	// state does not), rather than reported NotFound.
+	log, err := query.ReadLogBySequenceWithCold(ctx, reader, coldReader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
 	}
