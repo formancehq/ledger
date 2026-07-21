@@ -24,9 +24,18 @@ func prefixedName(crName string) string {
 }
 
 // resourceName is the base name for the primary objects of a Cluster:
-// the StatefulSet, ClusterIP Service, Ingress, NetworkPolicy and DNSEndpoint.
+// the StatefulSet, ClusterIP Service, Ingress and NetworkPolicy. DNSEndpoint
+// objects derive their names from it via dnsEndpointName.
 func resourceName(crName string) string {
 	return prefixedName(crName)
+}
+
+// dnsEndpointName returns the DNSEndpoint object name for the entry identified
+// by epName within a Cluster. Each spec.dnsEndpoints entry is reconciled into
+// its own DNSEndpoint object, so its name is suffixed with the entry's unique
+// name to keep the objects distinct.
+func dnsEndpointName(crName, epName string) string {
+	return resourceName(crName) + "-" + epName
 }
 
 // headlessServiceName returns the headless Service name for a Cluster.
