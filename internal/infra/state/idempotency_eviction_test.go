@@ -64,7 +64,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 		}
 
 		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
-		require.NoError(t, saveIdempotencyKey(batch, k, value))
+		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		// Mirror the in-memory map: production paths always Put alongside
 		// the Pebble write, and RestoreFromStore rebuilds the map from
 		// Pebble at boot. Evict's step-2 dedup uses the map as the source
@@ -158,7 +158,7 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
 		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
-		require.NoError(t, saveIdempotencyKey(batch, string(key), value))
+		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
 
@@ -223,7 +223,7 @@ func TestIdempotencyEviction_DoubleApplyIsNoOp(t *testing.T) {
 	batch := store.OpenWriteSession()
 	for _, k := range keys {
 		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
-		require.NoError(t, saveIdempotencyKey(batch, k, value))
+		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		idemp.Put(k, value)
 	}
 
@@ -285,7 +285,7 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
 		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts + uint64(i)}
-		require.NoError(t, saveIdempotencyKey(batch, string(key), value))
+		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
 
@@ -391,7 +391,7 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	idemp := NewIdempotencyStore(0)
 	batch := store.OpenWriteSession()
 	value := &commonpb.IdempotencyKeyValue{CreatedAt: expiredTs}
-	require.NoError(t, saveIdempotencyKey(batch, "stop-test", value))
+	require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
 	idemp.Put("stop-test", value)
 	require.NoError(t, batch.Commit())
 

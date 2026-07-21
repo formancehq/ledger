@@ -4725,61 +4725,32 @@ type expectedIdempotency struct {
 }
 
 // expectedIdempotencyOutcome re-derives the frozen idempotency value a keyed
-// proposal would have written, from its audit entry + items. ok is false when
-// the proposal froze nothing under its key: an all-replay success (no log
-// produced) or a non-freezable failure (retryable/internal) — neither writes
-// SubIdempKeys.
+// proposal would have written, from its audit entry + items, as the comparison
+// target for the stored SubIdempKeys projection. ok is false when the proposal
+// froze nothing under its key: an all-replay success (no log produced) or a
+// non-freezable failure (retryable/internal) — neither writes SubIdempKeys. The
+// derivation itself lives in state.IdempotencyValueFromAudit, shared with the
+// backup restore path so the two never diverge.
 func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.AuditItem) (expectedIdempotency, bool) {
-	switch out := entry.GetOutcome().(type) {
-	case *auditpb.AuditEntry_Failure:
-		reason := out.Failure.GetReason()
-		if !domain.IsFreezableFailure(domain.KindForReason(reason)) {
-			return expectedIdempotency{}, false
-		}
-
-		return expectedIdempotency{
-			proposalHash: recomputeProposalHash(items),
-			failure:      true,
-			reason:       reason,
-			message:      out.Failure.GetMessage(),
-			metadata:     out.Failure.GetContext(),
-		}, true
-	case *auditpb.AuditEntry_Success:
-		maxSeq := out.Success.GetMaxLogSequence()
-		if maxSeq == 0 {
-			return expectedIdempotency{}, false
-		}
-
-		minSeq := out.Success.GetMinLogSequence()
-
-		return expectedIdempotency{
-			proposalHash: recomputeProposalHash(items),
-			firstLog:     minSeq,
-			logCount:     uint32(maxSeq - minSeq + 1),
-		}, true
-	default:
+	value, ok := state.IdempotencyValueFromAudit(entry, items)
+	if !ok {
 		return expectedIdempotency{}, false
 	}
-}
 
-// recomputeProposalHash re-derives a proposal's idempotency hash from its
-// persisted audit orders, reusing the FSM's hashing so the result is
-// byte-identical to what was frozen. The orders round-trip from the chain-bound
-// serialized_order bytes; a corrupt order would already have broken the audit
-// chain above, so a nil here only forces a loud hash mismatch.
-func recomputeProposalHash(items []*auditpb.AuditItem) []byte {
-	orders := make([]*raftcmdpb.Order, 0, len(items))
-
-	for _, item := range items {
-		order := &raftcmdpb.Order{}
-		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-			return nil
-		}
-
-		orders = append(orders, order)
+	exp := expectedIdempotency{
+		proposalHash: value.GetHash(),
+		firstLog:     value.GetFirstLogSequence(),
+		logCount:     value.GetLogCount(),
 	}
 
-	return processing.HashOrders(orders)
+	if f := value.GetFailure(); f != nil {
+		exp.failure = true
+		exp.reason = f.GetReason()
+		exp.message = f.GetMessage()
+		exp.metadata = f.GetMetadata()
+	}
+
+	return exp, true
 }
 
 // reDeriveArchivedIdempotency extends `expected` with the frozen idempotency

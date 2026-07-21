@@ -1591,7 +1591,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			CreatedAt:        effectiveDate.GetData(),
 		}
 
-		if saveErr := saveIdempotencyKey(batch, idempotencyKey, value); saveErr != nil {
+		if saveErr := SaveIdempotencyKey(batch, idempotencyKey, value); saveErr != nil {
 			return nil, fmt.Errorf("storing idempotency outcome: %w", saveErr)
 		}
 
@@ -1756,7 +1756,7 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		},
 	}
 
-	if err := saveIdempotencyKey(batch, key, value); err != nil {
+	if err := SaveIdempotencyKey(batch, key, value); err != nil {
 		return err
 	}
 

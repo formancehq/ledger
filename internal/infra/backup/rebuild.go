@@ -476,6 +476,15 @@ func RebuildDelta(
 		return fmt.Errorf("flushing rebuilt reversion bitsets: %w", err)
 	}
 
+	// Re-materialize idempotency keys frozen in the delta range (pre-checkpoint
+	// keys ride along in the raw checkpoint SSTs; post-checkpoint ones live only
+	// in the audit). Reads the delta audit entries seeded by ApplyExports.
+	if err := writer.rebuildIdempotency(ctx, readHandle, fromAuditSeq); err != nil {
+		_ = writer.batch.Cancel()
+
+		return fmt.Errorf("rebuilding idempotency keys: %w", err)
+	}
+
 	if err := writer.batch.Commit(); err != nil {
 		return fmt.Errorf("committing boundaries batch: %w", err)
 	}
@@ -826,6 +835,80 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 	}
 
 	return iter.Error()
+}
+
+// rebuildIdempotency re-materializes the idempotency-key projection for the
+// delta range. The full checkpoint carries pre-checkpoint keys as raw SSTs, but
+// keys frozen after it live only in the audit — so RebuildDelta re-derives each
+// keyed proposal's frozen outcome and persists it, letting a restored node dedup
+// a retried key instead of re-executing it.
+//
+// Entries are folded in ascending order, last write wins. No overwrite guard is
+// needed: IdempotencyValueFromAudit returns ok=false for the only rejection that
+// must NOT overwrite a prior — an IDEMPOTENCY_KEY_CONFLICT, which the FSM's gate
+// only produces against a still-live prior. Every other keyed outcome (a fresh
+// success, or a non-conflict failure from a reuse the gate executed because the
+// prior had expired) is a genuine freeze that overwrites, matching the FSM. This
+// reads the FSM's own live/expired decision straight off the hash-chain-bound
+// audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
+// consulted here.
+func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
+	var after *uint64
+	if fromAuditSeq > 0 {
+		after = &fromAuditSeq
+	}
+
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, after)
+	if err != nil {
+		return fmt.Errorf("reading audit entries for idempotency rebuild: %w", err)
+	}
+
+	defer func() { _ = auditCursor.Close() }()
+
+	var written uint64
+
+	for {
+		entry, err := auditCursor.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading audit entry for idempotency rebuild: %w", err)
+		}
+
+		key := entry.GetIdempotency().GetKey()
+		if key == "" {
+			continue
+		}
+
+		items, err := query.ReadAuditItems(ctx, reader, entry.GetSequence())
+		if err != nil {
+			return fmt.Errorf("reading audit items for idempotency rebuild (seq %d): %w", entry.GetSequence(), err)
+		}
+
+		value, ok := state.IdempotencyValueFromAudit(entry, items)
+		if !ok {
+			continue
+		}
+
+		if err := state.SaveIdempotencyKey(w.batch, key, value); err != nil {
+			return fmt.Errorf("persisting rebuilt idempotency key (seq %d): %w", entry.GetSequence(), err)
+		}
+
+		// Flush in bounded chunks so restore memory does not grow with the whole
+		// delta, mirroring the log-replay pass above. The read snapshot is
+		// unaffected — committed keys stay invisible to it.
+		written++
+		if written%5000 == 0 {
+			if err := w.batch.Commit(); err != nil {
+				return fmt.Errorf("committing idempotency batch at audit %d: %w", entry.GetSequence(), err)
+			}
+
+			w.batch = w.store.OpenWriteSession()
+		}
+	}
+
+	return nil
 }
 
 // deleteLedger reproduces the live DeleteLedger apply state: the LedgerInfo
