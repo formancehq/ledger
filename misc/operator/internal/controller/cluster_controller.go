@@ -614,6 +614,21 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 // this only rejects values that would either be silently ignored or that the
 // server would refuse.
 func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
+	// Auth requires TLS. The ledger server rejects --auth-enabled unless
+	// --tls-mode=required, and buildEnvVars defers auth env until TLS converges
+	// to `required`. Without this guard a CR with auth.enabled=true but
+	// tls.enabled=false would reconcile into a silently-unauthenticated cluster
+	// (auth env deferred forever because the target mode never reaches
+	// `required`). Reject that contradiction loudly here instead. During a valid
+	// TLS-enable migration tls.enabled is already true, so this passes and the
+	// deferral only bridges the transient `optional` rollout window.
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled &&
+		(spec.TLS == nil || !spec.TLS.Enabled) {
+		return errors.New("auth.enabled requires tls.enabled: authentication needs TLS " +
+			"(the ledger server rejects --auth-enabled without --tls-mode=required); " +
+			"enable TLS before enabling auth")
+	}
+
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
 		return fmt.Errorf("cache.rotationThreshold must be > 0, got %d", *spec.Cache.RotationThreshold)
 	}

@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -145,6 +144,12 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		// Auth requires TLS (bearer tokens must not travel in plaintext), so
+		// generate a throwaway CA + server cert for the fixture.
+		certDir := GinkgoT().TempDir()
+		certs, err := testserver.GenerateTestCerts(certDir)
+		Expect(err).To(Succeed())
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
@@ -161,6 +166,9 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
+			testserver.WithTLSMode("required"),
+			testserver.WithTLSCertFile(certs.ServerCertFile),
+			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
 		server := testservice.New(cmdserver.NewRunCommand,
@@ -174,17 +182,10 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		// Create gRPC client
-		grpcConn, err = grpc.NewClient(
-			fmt.Sprintf("localhost:%d", ed25519AuthTestGRPCPort),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
-		)
+		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519AuthTestGRPCPort, certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-
-		client = servicepb.NewBucketServiceClient(grpcConn)
-		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
 
 		// Wait for leader election
 		Eventually(func(g Gomega) bool {
@@ -351,6 +352,12 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		// Auth requires TLS (bearer tokens must not travel in plaintext), so
+		// generate a throwaway CA + server cert for the fixture.
+		certDir := GinkgoT().TempDir()
+		certs, err := testserver.GenerateTestCerts(certDir)
+		Expect(err).To(Succeed())
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
@@ -367,6 +374,9 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
+			testserver.WithTLSMode("required"),
+			testserver.WithTLSCertFile(certs.ServerCertFile),
+			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
 		server := testservice.New(cmdserver.NewRunCommand,
@@ -380,16 +390,10 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		grpcConn, err = grpc.NewClient(
-			fmt.Sprintf("localhost:%d", ed25519ScopeTestGRPCPort),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
-		)
+		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519ScopeTestGRPCPort, certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-
-		client = servicepb.NewBucketServiceClient(grpcConn)
-		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
 
 		// Wait for leader election using a read that goes through Raft.
 		// GetLedger calls ReadIndexAndWait, which returns ErrNoLeader (Unavailable)
@@ -541,6 +545,12 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		// Auth requires TLS (bearer tokens must not travel in plaintext), so
+		// generate a throwaway CA + server cert for the fixture.
+		certDir := GinkgoT().TempDir()
+		certs, err := testserver.GenerateTestCerts(certDir)
+		Expect(err).To(Succeed())
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
@@ -557,6 +567,9 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
+			testserver.WithTLSMode("required"),
+			testserver.WithTLSCertFile(certs.ServerCertFile),
+			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
 		server := testservice.New(cmdserver.NewRunCommand,
@@ -570,16 +583,10 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		grpcConn, err = grpc.NewClient(
-			fmt.Sprintf("localhost:%d", ed25519GodTestGRPCPort),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
-		)
+		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519GodTestGRPCPort, certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-
-		client = servicepb.NewBucketServiceClient(grpcConn)
-		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
 
 		// Wait for leader election
 		Eventually(func(g Gomega) bool {
