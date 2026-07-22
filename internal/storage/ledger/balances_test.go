@@ -457,7 +457,7 @@ func TestBalancesAggregatesPITWithMetadataHistoryDisabled(t *testing.T) {
 		ret, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
 			PIT: pointer.For(now.Add(time.Minute)),
 			Builder: query.And(
-				query.Match("address", "merchant:"),
+				query.Match("address", "merchant:..."),
 				query.Match("metadata[trust]", "true"),
 			),
 		})
