@@ -524,3 +524,50 @@ func TestAccountsUpsert(t *testing.T) {
 	err = store.UpsertAccounts(ctx, &account1)
 	require.NoError(t, err)
 }
+
+// TestAccountsListAddressSegmentMatching pins the trailing-segment matching
+// semantics: "foo:" matches exactly one level deeper, "foo::" matches exactly
+// two levels deeper, and "foo:..." matches the whole subtree. All address-filtered
+// endpoints (accounts / volumes / aggregate-balances) share filterAccountAddress,
+// so covering accounts is enough to guard the behavior.
+func TestAccountsListAddressSegmentMatching(t *testing.T) {
+	t.Parallel()
+	store := newLedgerStore(t)
+	ctx := logging.TestingContext()
+
+	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
+		"foo:a":     {"seg": "1"},
+		"foo:d":     {"seg": "1"},
+		"foo:a:b":   {"seg": "1"},
+		"foo:a:b:c": {"seg": "1"},
+	}, time.Time{}))
+
+	addresses := func(t *testing.T, address string) []string {
+		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("address", address),
+			},
+		})
+		require.NoError(t, err)
+		result := make([]string, len(accounts.Data))
+		for i, account := range accounts.Data {
+			result[i] = account.Address
+		}
+		return result
+	}
+
+	t.Run("trailing colon matches one level deeper only", func(t *testing.T) {
+		t.Parallel()
+		require.ElementsMatch(t, []string{"foo:a", "foo:d"}, addresses(t, "foo:"))
+	})
+
+	t.Run("double trailing colon matches two levels deeper only", func(t *testing.T) {
+		t.Parallel()
+		require.ElementsMatch(t, []string{"foo:a:b"}, addresses(t, "foo::"))
+	})
+
+	t.Run("trailing ellipsis matches the whole subtree", func(t *testing.T) {
+		t.Parallel()
+		require.ElementsMatch(t, []string{"foo:a", "foo:d", "foo:a:b", "foo:a:b:c"}, addresses(t, "foo:..."))
+	})
+}
