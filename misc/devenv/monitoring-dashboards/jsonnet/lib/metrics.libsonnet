@@ -31,6 +31,8 @@
     orders_preparation_duration: 'admission.orders_preparation.duration',
     scripts_duration: 'admission.scripts.duration',
     response_resolution_duration: 'admission.response_resolution.duration',
+    action_total: 'admission.action.total',
+    action_errors_total: 'admission.action.errors.total',
   },
 
   // bloom — internal/infra/bloom/bloom.go
