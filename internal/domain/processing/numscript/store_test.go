@@ -3,6 +3,7 @@ package numscript
 import (
 	"context"
 	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -127,4 +128,81 @@ func TestRecordingStore_HashInjectiveOverAmbiguousMetadata(t *testing.T) {
 
 	require.NotEqual(t, a.Hash(), b.Hash(),
 		"distinct metadata record sets that collided under key=value framing must hash distinctly")
+}
+
+// stubStore is a minimal numscriptlib.Store implementation for RecordingStore
+// tests. balErr/metaErr, when set, force the corresponding lookup to fail —
+// used to prove a FAILED lookup still marks a read attempt.
+type stubStore struct {
+	balances numscriptlib.Balances
+	balErr   error
+
+	meta    numscriptlib.AccountsMetadata
+	metaErr error
+}
+
+func (s *stubStore) GetBalances(context.Context, numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
+	if s.balErr != nil {
+		return nil, s.balErr
+	}
+	return s.balances, nil
+}
+
+func (s *stubStore) GetAccountsMetadata(context.Context, numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	if s.metaErr != nil {
+		return nil, s.metaErr
+	}
+	return s.meta, nil
+}
+
+// TestRecordingStoreMutableReadAttempted pins that MutableReadAttempted
+// reports whether the resolver delegated any balance/metadata lookup to the
+// inner store, INCLUDING a lookup that failed and so recorded no value — the
+// gap ReadNothing() cannot see, since it only reflects successfully recorded
+// values.
+func TestRecordingStoreMutableReadAttempted(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no read", func(t *testing.T) {
+		t.Parallel()
+
+		rs := NewRecordingStore(&stubStore{})
+		require.False(t, rs.MutableReadAttempted())
+		require.True(t, rs.ReadNothing())
+	})
+
+	t.Run("successful balance read", func(t *testing.T) {
+		t.Parallel()
+
+		rs := NewRecordingStore(&stubStore{
+			balances: numscriptlib.Balances{{Account: "acc", Asset: "COIN", Amount: big.NewInt(100)}},
+		})
+
+		_, err := rs.GetBalances(context.Background(), numscriptlib.BalanceQuery{{Account: "acc", Asset: "COIN"}})
+		require.NoError(t, err)
+		require.True(t, rs.MutableReadAttempted())
+	})
+
+	t.Run("failing balance read still counts", func(t *testing.T) {
+		t.Parallel()
+
+		balErr := errors.New("boom")
+		rs := NewRecordingStore(&stubStore{balErr: balErr})
+
+		_, err := rs.GetBalances(context.Background(), numscriptlib.BalanceQuery{{Account: "acc", Asset: "COIN"}})
+		require.ErrorIs(t, err, balErr)
+		require.True(t, rs.MutableReadAttempted())
+		require.True(t, rs.ReadNothing(), "a failed lookup records no value, so ReadNothing stays true")
+	})
+
+	t.Run("failing metadata read still counts", func(t *testing.T) {
+		t.Parallel()
+
+		metaErr := errors.New("boom")
+		rs := NewRecordingStore(&stubStore{metaErr: metaErr})
+
+		_, err := rs.GetAccountsMetadata(context.Background(), numscriptlib.MetadataQuery{{Account: "acc", Keys: []string{"k"}}})
+		require.ErrorIs(t, err, metaErr)
+		require.True(t, rs.MutableReadAttempted())
+	})
 }
