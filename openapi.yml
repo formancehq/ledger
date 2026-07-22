@@ -889,7 +889,8 @@ paths:
       summary: Aggregate volumes
       description: |
         Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
-        Supports filtering by account address prefix, grouping by account prefixes, and max-precision merging.
+        Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
+        and max-precision merging.
         Requires `ledger:AccountRead` scope.
       operationId: aggregateVolumes
       tags:
@@ -899,15 +900,7 @@ paths:
         - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - name: prefix
-          in: query
-          description: |
-            Filter accounts whose address starts with this raw byte-level
-            prefix (e.g. `users:` matches `users:alice`, `users:bob`, ...).
-            Matching is not path-segment aware: `acc:1` also matches `acc:10`,
-            `acc:11`, etc. Do not use for exact-address lookups.
-          schema:
-            type: string
+        - $ref: '#/components/parameters/ListFilter'
         - name: useMaxPrecision
           in: query
           description: Merge assets with the same base at the highest observed precision

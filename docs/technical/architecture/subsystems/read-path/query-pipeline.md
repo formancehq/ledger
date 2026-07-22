@@ -67,7 +67,10 @@ query parameter and AND-combine the result with the transactions endpoint's
 remaining convenience param — the `startDate`/`endDate` range — through
 `combineFilters` (the `reference` and `prefix` aliases were removed in EN-1540:
 account prefix is now `address ^= "..."`, transaction reference is structured
-`{"$match":{"reference":"..."}}`); prepared-query
+`{"$match":{"reference":"..."}}`); the aggregate-volumes endpoint
+(`GET /{ledger}/volumes`) also parses `filter` through `parseListFilter` for the
+Accounts target as its sole account selector, its `prefix` parameter removed the
+same way (EN-1541); prepared-query
 create/update decode the JSON `filter` body field through the same helper; and
 `ledgerctl --filter` routes through it in `cmdutil.BuildQueryFilter`. Audit
 fields are written **bare** (`outcome`, `ledger`, `seq`, `proposal_id`,

@@ -86,16 +86,13 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 		groupByPrefixes = strings.Split(g, ",")
 	}
 
-	// Build optional address-prefix filter from query parameter
-	var filter *commonpb.QueryFilter
-	if prefix := r.URL.Query().Get("prefix"); prefix != "" {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
-				},
-			},
-		}
+	// The `filter` query parameter accepts either the textual filterexpr grammar
+	// or the structured v2 JSON DSL (EN-1511) and is the sole account selector.
+	// It is compiled for the Accounts target and forwarded unchanged; aggregation
+	// options (precision, grouping, color collapsing) stay independent of it.
+	filter, ok := parseListFilter(w, r, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	if !ok {
+		return
 	}
 
 	ctx, profile := query.WithProfile(r.Context())
