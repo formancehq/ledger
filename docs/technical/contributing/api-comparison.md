@@ -441,7 +441,7 @@ non-whitespace byte:
   `{"$match":{"address":"users:"}}` with the trailing `:` marking a prefix
   match), and a transaction reference is the structured
   `?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D`
-  (`{"$match":{"reference":"ref-1"}}`) or the textual `filter=reference == "ref-1"`.
+  (`{"$match":{"reference":"ref-1"}}`) — reference matching is structured-only; the textual grammar has no `reference` field.
 - **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
   object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
   is the textual form.

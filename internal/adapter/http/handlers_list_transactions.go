@@ -20,8 +20,8 @@ import (
 //     enabled on the ledger via `CreateIndex`.
 //   - filter             textual filterexpr grammar OR structured v2 JSON DSL
 //     (EN-1511). A reference selection is expressed through it as the structured
-//     `{"$match":{"reference":"<ref>"}}` (or textual `reference == "<ref>"`);
-//     there is no separate `reference` alias.
+//     `{"$match":{"reference":"<ref>"}}` (structured-only — the textual grammar
+//     has no `reference` field); there is no separate `reference` alias.
 //
 // Ordering convention (mirrors `ctrl.Controller.ListTransactions`): the
 // default (reverse=false) returns newest-first (descending transaction id);
