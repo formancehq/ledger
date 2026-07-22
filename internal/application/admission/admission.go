@@ -568,7 +568,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	defer a.recordActionOutcome(ctx, orders, &err)
 
 	// Step 1: Extract preload needs from orders (excludes script-dependent needs)
-	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders)
+	needs, perOrder, err := a.extractPreloadNeeds(ctx, orders, overlay)
 	if err != nil {
 		return nil, err
 	}
@@ -1106,7 +1106,7 @@ func addTransactionTargetNeeds(p *plan.Coverage, ledgerName string, txID uint64)
 // extractLedgerScopedNeeds populates the preload Coverage for a ledger-scoped
 // order. The ledger lives once on the wrapper; every payload variant reads it
 // from there instead of carrying its own field.
-func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder) {
+func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder, overlay *bulkOverlay) {
 	ledgerName := ls.GetLedger()
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
 
@@ -1275,7 +1275,13 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder)
 		case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 			addTransactionTargetNeeds(p, ledgerName, applyData.RevertTransaction.GetTransactionId())
 
-			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
+			// The reversed postings touch the same accounts as the original;
+			// admission resolved them at order-build time into the overlay
+			// sidecar (the order itself carries only caller intent).
+			originalPostings := overlay.revertOriginalPostingsFor(
+				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
+			)
+			for _, posting := range originalPostings {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
 			}
@@ -1422,7 +1428,7 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
 // Returns the proposal-wide aggregate Coverage and a parallel slice with one
 // Coverage per order (used to compute Order.coverage_bits after Build).
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*plan.Coverage, []*plan.Coverage, error) {
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay) (*plan.Coverage, []*plan.Coverage, error) {
 	aggregate := plan.NewCoverage()
 	perOrder := make([]*plan.Coverage, len(orders))
 
@@ -1431,7 +1437,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_LedgerScoped:
-			extractLedgerScopedNeeds(p, orderType.LedgerScoped)
+			extractLedgerScopedNeeds(p, orderType.LedgerScoped, overlay)
 		case *raftcmdpb.Order_SystemScoped:
 			extractSystemScopedNeeds(p, orderType.SystemScoped)
 		}
@@ -1562,8 +1568,12 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// destination becomes source, original source becomes
 			// destination — see processRevertTransaction), so the net balance
 			// delta is the inverse of the original: source +amount, dest
-			// −amount relative to the original posting.
-			for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
+			// −amount relative to the original posting. The postings come from
+			// the sidecar admission filled at order-build time, not the order.
+			originalPostings := overlay.revertOriginalPostingsFor(
+				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
+			)
+			for _, posting := range originalPostings {
 				amount := posting.GetAmount().ToBigInt()
 				effects.addBalanceDelta(
 					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor()),
@@ -1861,7 +1871,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			return nil, err
 		}
 
-		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply)
+		applyOrder, err := a.convertApplyRequest(ctx, reqType.Apply, overlay)
 		if err != nil {
 			return nil, err
 		}
@@ -2188,7 +2198,7 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 // convertApplyRequest converts a servicepb.LedgerApplyRequest to a
 // raftcmdpb.LedgerApplyOrder payload. The ledger name lives on the
 // surrounding LedgerScopedOrder wrapper; callers must set it there.
-func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.LedgerApplyRequest) (*raftcmdpb.LedgerApplyOrder, error) {
+func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.LedgerApplyRequest, overlay *bulkOverlay) (*raftcmdpb.LedgerApplyOrder, error) {
 	order := &raftcmdpb.LedgerApplyOrder{}
 
 	switch data := apply.GetAction().GetData().(type) {
@@ -2273,19 +2283,21 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			return nil, err
 		}
 
-		// Fetch the original postings so admission can (a) declare volume
+		// Resolve the original postings so admission can declare volume
 		// coverage for each posting account (invariant #9 — the FSM's
-		// applyPosting call reads Volumes().Get through the coverage gate)
-		// and (b) attach them to the order as a migration bridge for
-		// pre-EN-1242 TxStates that don't yet carry Postings.
+		// applyPosting call reads Volumes().Get through the coverage gate).
+		// They are recorded in the overlay sidecar for the preload and
+		// intra-bulk effect passes, NOT attached to the order: the FSM
+		// re-derives them from the coverage-gated TransactionState, so the
+		// audit-bound order carries only caller intent.
 		//
-		// A receipt-signed revert bypasses the store fetch: admission trusts
-		// the signed claims. On the non-receipt path a fetch miss (missing
-		// ledger, missing tx, or persistence lag racing a just-applied create)
-		// yields nil postings and the proposal still enters Raft; the FSM
-		// apply is the audit authority for the resulting business rejection
-		// (invariant #8) — processApply.loadBoundaries audits missing ledgers,
-		// processRevertTransaction's boundary check audits missing txs.
+		// A receipt-signed revert trusts the signed claims and skips the
+		// store fetch. On the non-receipt path a fetch miss (missing ledger
+		// or missing tx) yields nil postings and the proposal still enters
+		// Raft; the FSM apply is the audit authority for the resulting
+		// business rejection (invariant #8) — processApply.loadBoundaries
+		// audits missing ledgers, processRevertTransaction's boundary check
+		// audits missing txs.
 		var originalPostings []*commonpb.Posting
 
 		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
@@ -2310,13 +2322,17 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			}
 		}
 
+		overlay.recordRevertOriginalPostings(
+			domain.TransactionKey{LedgerName: apply.GetLedger(), ID: txID},
+			originalPostings,
+		)
+
 		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:    txID,
-				Force:            data.RevertTransaction.GetForce(),
-				AtEffectiveDate:  data.RevertTransaction.GetAtEffectiveDate(),
-				Metadata:         data.RevertTransaction.GetMetadata(),
-				OriginalPostings: originalPostings,
+				TransactionId:   txID,
+				Force:           data.RevertTransaction.GetForce(),
+				AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
+				Metadata:        data.RevertTransaction.GetMetadata(),
 			},
 		}
 	default:
