@@ -1800,8 +1800,9 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
 			// the original success). This is a preparation gap, NOT an authoritative
 			// verdict: with an idempotency key the batch may be a replay of a frozen
-			// outcome, and only the FSM (log-ordered) can decide. forwardOrFail marks
-			// the order preload_unavailable and forwards it — the FSM replays the
+			// outcome, and only the FSM (log-ordered) can decide. When the failure is
+			// state-dependent, classifyResolutionFailure marks the order
+			// preload_unavailable and forwards it — the FSM replays the
 			// frozen outcome, or rejects with the retryable, non-frozen
 			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
 			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
