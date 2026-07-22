@@ -145,6 +145,7 @@ func (s *stubStore) GetBalances(context.Context, numscriptlib.BalanceQuery) (num
 	if s.balErr != nil {
 		return nil, s.balErr
 	}
+
 	return s.balances, nil
 }
 
@@ -152,6 +153,7 @@ func (s *stubStore) GetAccountsMetadata(context.Context, numscriptlib.MetadataQu
 	if s.metaErr != nil {
 		return nil, s.metaErr
 	}
+
 	return s.meta, nil
 }
 
