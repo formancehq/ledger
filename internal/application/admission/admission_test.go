@@ -1063,11 +1063,17 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		var businessErr *domain.BusinessError
 		require.ErrorAs(t, err, &businessErr)
 
-		var discoveryErr *domain.ErrDependencyDiscoveryFailed
-		require.ErrorAs(t, err, &discoveryErr)
-
+		// EN-1557: an inline script with a deterministic no-read failure (undeclared
+		// $amount — resolution fails before any balance/metadata lookup) surfaces
+		// the real numscript cause directly. It is NOT wrapped in the retryable
+		// ErrDependencyDiscoveryFailed: it can never succeed on retry, so it must
+		// terminate rather than invite a retry loop.
 		var runtimeErr *domain.ErrNumscriptRuntime
 		require.ErrorAs(t, err, &runtimeErr)
+
+		var discoveryErr *domain.ErrDependencyDiscoveryFailed
+		require.NotErrorAs(t, err, &discoveryErr,
+			"a deterministic no-read failure surfaces the cause, not the retryable discovery error")
 		require.Zero(t, needs.Count(dal.SubAttrVolume))
 	})
 
@@ -1076,10 +1082,13 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		store := createTestStore(t)
 		admission, _ := createTestAdmission(t, store)
 
-		// Same emulation-failing script as above (undeclared $amount), but this
-		// batch carries an idempotency key → admission must NOT fail fast; it
-		// marks the order preload_unavailable and forwards it so the FSM can
-		// replay a frozen outcome or reject with the retryable reason.
+		// A STATE-DEPENDENT failure: meta(@cfg,"dest") attempts a metadata read and
+		// then fails because the key is absent against current state. That is
+		// exactly the class an idempotency key must still forward (EN-1557): the
+		// batch may be a replay of a frozen outcome, so admission marks the order
+		// preload_unavailable and forwards it for the FSM to decide. (A deterministic
+		// no-read failure — e.g. undeclared $amount — now terminates instead; see
+		// TestForwardOrFail_ProvenanceClassification.)
 		orders := []*raftcmdpb.Order{
 			{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -1091,11 +1100,11 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 									Script: &commonpb.Script{
 										Plain: `
 										vars {
-											monetary $amount
+											account $dst = meta(@cfg, "dest")
 										}
-										send $amount (
+										send [USD/2 1] (
 											source = @world
-											destination = @users:alice
+											destination = $dst
 										)
 									`,
 									},
