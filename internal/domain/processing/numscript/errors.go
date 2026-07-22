@@ -58,20 +58,18 @@ func convertNumscriptError(err error) domain.Describable {
 
 	// Every other library error becomes ErrNumscriptRuntime (KindInternal).
 	//
-	// Note: this deliberately does NOT reclassify deterministic client-side
-	// resolver errors (undeclared/mistyped variable, bad portion, …) to
-	// KindValidation, even though that would let admission surface them
-	// definitively instead of forwarding them as a retryable PRELOAD_UNAVAILABLE
-	// under an idempotency key. The reason is that the upstream library reports
-	// script-deterministic errors and *state-dependent* ones (e.g. MetadataNotFound
-	// when a meta()-referenced account was deleted after an earlier success) with
-	// the same leaf InterpreterError shape, and the concrete types live in an
-	// internal package we cannot import to tell them apart. The state-dependent
-	// case MUST stay forwardable so the FSM can replay a frozen success (EN-1406
-	// idempotent-replay), so we keep the conservative KindInternal classification
-	// for all of them; reclassifying by "leaf error" would break that replay. A
-	// precise split needs upstream to expose an error category. See the tracking
-	// ticket for the deterministic-error UX gap.
+	// This intentionally keeps a single conservative classification for the whole
+	// residue. Admission no longer needs the leaf error category to decide
+	// forward-vs-terminate: it classifies from state provenance instead — selector
+	// mutability (`latest` vs inline/exact) plus whether resolution attempted a
+	// mutable balance/metadata read (RecordingStore.MutableReadAttempted, carried
+	// out via DependencyResolutionError). See EN-1557. This matters because the
+	// upstream library reports script-deterministic errors and state-dependent ones
+	// (e.g. MetadataNotFound when a meta()-referenced account was deleted after an
+	// earlier success) with the same leaf InterpreterError shape, and the concrete
+	// types live in an internal package we must not import. A public Numscript
+	// resolver-error taxonomy is therefore NOT required (EN-1563 cancelled), and we
+	// must never classify by error string or import Numscript internals.
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 }
 
