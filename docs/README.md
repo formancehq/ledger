@@ -29,6 +29,7 @@ Experimental ideas, advanced concepts, and future design proposals.
 | Deployment guide | [ops/deployment.md](./ops/deployment.md) |
 | Architecture overview | [technical/architecture-overview.md](./technical/architecture-overview.md) |
 | API comparison (v2 parity) | [technical/contributing/api-comparison.md](./technical/contributing/api-comparison.md) |
+| Query filtering (QueryFilter) | [technical/architecture/subsystems/read-path/query-filter.md](./technical/architecture/subsystems/read-path/query-filter.md) |
 | Benchmarks (106K tx/s) | [sales/benchmarks.md](./sales/benchmarks.md) |
 | Getting started | [technical/contributing/getting-started.md](./technical/contributing/getting-started.md) |
 | Operator | [misc/operator/README.md](../misc/operator/README.md) |
