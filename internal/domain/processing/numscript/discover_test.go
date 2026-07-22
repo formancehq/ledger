@@ -1,6 +1,7 @@
 package numscript
 
 import (
+	"errors"
 	"math/big"
 	"testing"
 
@@ -18,9 +19,10 @@ import (
 // repo's "no hand-rolled fakes" convention while retaining the stub ergonomics
 // the value-driven tests need.
 type sourceSpec struct {
-	balances map[string]*big.Int // "account\x00asset\x00color" -> balance
-	metadata map[string]string   // "account\x00key" -> value
-	present  map[string]struct{} // keys treated as present (for absent vs empty)
+	balances   map[string]*big.Int // "account\x00asset\x00color" -> balance
+	metadata   map[string]string   // "account\x00key" -> value
+	present    map[string]struct{} // keys treated as present (for absent vs empty)
+	balanceErr error               // when set, Balance fails with this error
 }
 
 func newFakeSource() *sourceSpec {
@@ -44,6 +46,14 @@ func (f *sourceSpec) withColoredBalance(account, asset, color string, amount int
 	return f
 }
 
+// withBalanceError makes every Balance lookup fail with err, simulating a
+// state-source read failure during dependency resolution.
+func (f *sourceSpec) withBalanceError(err error) *sourceSpec {
+	f.balanceErr = err
+
+	return f
+}
+
 func (f *sourceSpec) withMetadata(account, key, value string) *sourceSpec {
 	f.metadata[account+"\x00"+key] = value
 	f.present[account+"\x00"+key] = struct{}{}
@@ -62,6 +72,10 @@ func (f *sourceSpec) build(t *testing.T) *MockValueSource {
 
 	mock.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(account, asset, color string) (*big.Int, error) {
+			if f.balanceErr != nil {
+				return nil, f.balanceErr
+			}
+
 			if b, ok := f.balances[account+"\x00"+asset+"\x00"+color]; ok {
 				return new(big.Int).Set(b), nil
 			}
@@ -103,6 +117,35 @@ func discover(t *testing.T, script string, vars map[string]string, source *sourc
 	require.NoError(t, err)
 
 	return result
+}
+
+// TestDiscover_ResolveErrorCarriesReadProvenance pins EN-1557: when dependency
+// resolution consults a mutable balance (here via balance() in a vars block) and
+// that lookup fails, DiscoverNumscriptDependencies returns a
+// *DependencyResolutionError whose MutableReadAttempted is true. The recording
+// store sets the flag BEFORE delegating to the failing source, so the failure is
+// classified as state-dependent (forwardable) rather than deterministic.
+func TestDiscover_ResolveErrorCarriesReadProvenance(t *testing.T) {
+	t.Parallel()
+
+	script := `
+vars {
+  monetary $amt = balance(@wallet, USD/2)
+}
+send $amt (source = @world destination = @out)
+`
+	boom := errors.New("state source unavailable")
+	source := newFakeSource().withBalanceError(boom)
+
+	cache := NewNumscriptCache(16)
+	_, err := DiscoverNumscriptDependencies(cache, script, nil, "ledger", source.build(t), false)
+	require.Error(t, err)
+
+	var dre *DependencyResolutionError
+	require.True(t, errors.As(err, &dre),
+		"a resolve failure must be wrapped in *DependencyResolutionError")
+	require.True(t, dre.MutableReadAttempted,
+		"a balance read was attempted before the failure, so provenance must be state-dependent")
 }
 
 // TestDiscover_Simple: world source (unbounded) is a write, not a read; the
