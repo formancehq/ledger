@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+
 	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/numscript"
+
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"net/http"
-	"slices"
 )
 
 type JsonBulkHandler struct {
@@ -95,24 +98,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 		)
 
 		if result.Error != nil {
-			switch {
-			case errors.Is(result.Error, &ledgercontroller.ErrInsufficientFunds{}):
-				errorCode = common.ErrInsufficientFund
-			case errors.Is(result.Error, &ledgercontroller.ErrInvalidVars{}) || errors.Is(result.Error, ledgercontroller.ErrCompilationFailed{}):
-				errorCode = common.ErrCompilationFailed
-			case errors.Is(result.Error, &ledgercontroller.ErrMetadataOverride{}):
-				errorCode = common.ErrMetadataOverride
-			case errors.Is(result.Error, ledgercontroller.ErrNoPostings):
-				errorCode = common.ErrNoPostings
-			case errors.Is(result.Error, ledgerstore.ErrTransactionReferenceConflict{}):
-				errorCode = common.ErrConflict
-			case errors.Is(result.Error, ledgercontroller.ErrParsing{}):
-				errorCode = common.ErrInterpreterParse
-			case errors.Is(result.Error, ledgercontroller.ErrRuntime{}):
-				errorCode = common.ErrInterpreterRuntime
-			default:
-				errorCode = api.ErrorInternal
-			}
+			errorCode = mapBulkElementError(result.Error)
 			errorDescription = result.Error.Error()
 			responseType = "ERROR"
 		}
@@ -146,4 +132,36 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 type ComposedErrorResponse struct {
 	api.BaseResponse[[]APIResult]
 	api.ErrorResponse
+}
+
+// mapBulkElementError maps a controller error for a bulk element to the same API
+// error code the individual (non-bulk) endpoints return, so a business error in a
+// bulk is not reported as a generic INTERNAL. It must stay consistent with the
+// per-endpoint mappings in internal/api/v2 and common.HandleCommon*Errors.
+func mapBulkElementError(err error) string {
+	switch {
+	case errors.Is(err, &ledgercontroller.ErrInsufficientFunds{}), errors.Is(err, numscript.MissingFundsErr{}):
+		return common.ErrInsufficientFund
+	case errors.Is(err, &ledgercontroller.ErrInvalidVars{}) || errors.Is(err, ledgercontroller.ErrCompilationFailed{}):
+		return common.ErrCompilationFailed
+	case errors.Is(err, &ledgercontroller.ErrMetadataOverride{}):
+		return common.ErrMetadataOverride
+	case errors.Is(err, ledgercontroller.ErrNoPostings):
+		return common.ErrNoPostings
+	case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}), errors.Is(err, ledgercontroller.ErrIdempotencyKeyConflict{}):
+		return common.ErrConflict
+	case errors.Is(err, ledgercontroller.ErrParsing{}):
+		return common.ErrInterpreterParse
+	case errors.Is(err, ledgercontroller.ErrRuntime{}):
+		return common.ErrInterpreterRuntime
+	case errors.Is(err, ledgercontroller.ErrAlreadyReverted{}):
+		return common.ErrAlreadyRevert
+	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}):
+		return common.ErrValidation
+	case errors.Is(err, ledgercontroller.ErrNotFound):
+		// go-libs/v3's api package has no exported NOT_FOUND constant.
+		return "NOT_FOUND"
+	default:
+		return api.ErrorInternal
+	}
 }
