@@ -54,7 +54,10 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, ledgercontroller.ErrNotFound):
 			api.NotFound(w, err)
 		default:
-			common.HandleCommonErrors(w, r, err)
+			// RevertTransaction carries an idempotency key, so route through the
+			// write-error handler: an idempotency conflict / invalid input is a
+			// 409/400, not a 500.
+			common.HandleCommonWriteErrors(w, r, err)
 		}
 		return
 	}
