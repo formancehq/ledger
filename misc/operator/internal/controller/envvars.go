@@ -296,6 +296,13 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	// migrating away from. When TLS is `disabled`/`optional` no auth env is
 	// emitted at all (auth defaults off), which also avoids the server's
 	// "auth flags set without --auth-enabled" rejection.
+	//
+	// This deferral is safe — never a silent auth drop — because
+	// validateClusterConfig (cluster_controller.go) rejects the invalid steady
+	// state auth.enabled=true + tls.enabled=false up front (ValidationFailed
+	// condition, Phase=Error, no reconcile). The only reachable non-`required`
+	// auth case that gets here is therefore the transient `optional` window of a
+	// `disabled`->`required` migration, where tls.enabled is already true.
 	if targetTLSMode == tlsModeRequired && spec.Auth != nil {
 		envs = appendIfBool(envs, "AUTH_ENABLED", spec.Auth.Enabled)
 		envs = appendIfStr(envs, "AUTH_ISSUER", spec.Auth.Issuer)

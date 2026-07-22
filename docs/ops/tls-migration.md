@@ -96,6 +96,19 @@ and provide --tls-cert-file / --tls-key-file)
 --tls-key-file)
 ```
 
+Because `--auth-enabled` demands `required`, the operator coordinates auth
+with the TLS state machine so a single CR edit that turns on both TLS and
+auth does not deadlock:
+
+- If you set `auth.enabled: true` while `tls.enabled` is false, the operator
+  **rejects** the CR (it would otherwise reconcile into a silently
+  unauthenticated cluster). Enable TLS first.
+- When both are enabled together on an existing plaintext cluster, the
+  operator holds auth **off** while the StatefulSet rolls through the
+  transitional `optional` mode, then enables auth once TLS has converged to
+  `required`. The API is briefly unauthenticated during that window — no
+  worse than the plaintext state you are migrating away from.
+
 ## Direct (non-operator) deployments
 
 When running the ledger binary directly (no operator), use:
