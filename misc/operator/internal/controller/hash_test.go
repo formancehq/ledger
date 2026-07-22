@@ -31,10 +31,10 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	withGrpcIngress.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{Enabled: true}
 	assert.Equal(t, baseHash, computeSpecHash(withGrpcIngress), "IngressGrpc change should not affect hash")
 
-	// Changing DNSEndpoint should NOT change the hash.
+	// Changing DNSEndpoints should NOT change the hash.
 	withDNS := base.DeepCopy()
-	withDNS.DNSEndpoint = &ledgerv1alpha1.DNSEndpointSpec{Enabled: true}
-	assert.Equal(t, baseHash, computeSpecHash(withDNS), "DNSEndpoint change should not affect hash")
+	withDNS.DNSEndpoints = []ledgerv1alpha1.DNSEndpointSpec{{Name: "public", Enabled: true}}
+	assert.Equal(t, baseHash, computeSpecHash(withDNS), "DNSEndpoints change should not affect hash")
 
 	// Changing Replicas should NOT change the hash.
 	withReplicas := base.DeepCopy()

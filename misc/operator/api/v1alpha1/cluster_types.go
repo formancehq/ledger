@@ -312,9 +312,14 @@ type ClusterSpec struct {
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
-	// DNSEndpoint configuration for ExternalDNS.
+	// DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
+	// Each entry is reconciled into its own DNSEndpoint object, so distinct
+	// endpoints (e.g. a public and a private one) can carry different
+	// annotations. Entries are keyed by their unique name.
 	// +optional
-	DNSEndpoint *DNSEndpointSpec `json:"dnsEndpoint,omitempty"`
+	// +listType=map
+	// +listMapKey=name
+	DNSEndpoints []DNSEndpointSpec `json:"dnsEndpoints,omitempty"`
 
 	// LivenessProbe overrides the default liveness probe for the ledger container.
 	// +optional
@@ -1219,9 +1224,18 @@ type NetworkPolicySpec struct {
 	AdditionalEgress []networkingv1.NetworkPolicyEgressRule `json:"additionalEgress,omitempty"`
 }
 
-// DNSEndpointSpec defines ExternalDNS DNSEndpoint configuration.
-// +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoints) > 0",message="endpoints are required when dnsEndpoint is enabled"
+// DNSEndpointSpec defines a single ExternalDNS DNSEndpoint configuration.
+// +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoints) > 0",message="endpoints are required when the DNSEndpoint is enabled"
 type DNSEndpointSpec struct {
+	// Name is a unique, stable identifier for this DNSEndpoint within the
+	// Cluster. It is used as the suffix of the generated DNSEndpoint object's
+	// name (e.g. "public", "private"), so it must be unique across entries and
+	// a valid DNS-1123 label (it is concatenated into the object's metadata.name).
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+
 	// Enabled enables the DNSEndpoint resource.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`

@@ -779,10 +779,12 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 		*out = new(NetworkPolicySpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.DNSEndpoint != nil {
-		in, out := &in.DNSEndpoint, &out.DNSEndpoint
-		*out = new(DNSEndpointSpec)
-		(*in).DeepCopyInto(*out)
+	if in.DNSEndpoints != nil {
+		in, out := &in.DNSEndpoints, &out.DNSEndpoints
+		*out = make([]DNSEndpointSpec, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	if in.LivenessProbe != nil {
 		in, out := &in.LivenessProbe, &out.LivenessProbe

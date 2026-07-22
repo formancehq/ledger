@@ -27,7 +27,7 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.Ingress = nil
 	cp.IngressGrpc = nil
 	cp.NetworkPolicy = nil
-	cp.DNSEndpoint = nil
+	cp.DNSEndpoints = nil
 
 	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
 	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
