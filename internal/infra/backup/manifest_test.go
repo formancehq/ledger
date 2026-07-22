@@ -43,14 +43,14 @@ func TestReadManifest_CurrentFormatDecodes(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := NewMockStorage(ctrl)
 
-	current := `{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":{"size":123,"key":"b/backups/data/000001.sst.abc"}}},"exports":null}`
+	current := `{"checkpoint":{"timestamp":"t","lastAppliedIndex":1,"lastLogSequence":1,"lastAuditSequence":1,"files":{"000001.sst":{"size":123,"key":"b/data/000001.sst.abc"}}},"exports":null}`
 	storage.EXPECT().GetFile(gomock.Any(), "k").
 		Return(io.NopCloser(bytes.NewReader([]byte(current))), nil)
 
 	m, err := ReadManifest(context.Background(), storage, "k")
 	require.NoError(t, err)
 	require.NotNil(t, m.Checkpoint)
-	require.Equal(t, "b/backups/data/000001.sst.abc", m.Checkpoint.Files["000001.sst"].Key)
+	require.Equal(t, "b/data/000001.sst.abc", m.Checkpoint.Files["000001.sst"].Key)
 	require.EqualValues(t, 123, m.Checkpoint.Files["000001.sst"].Size)
 }
 
