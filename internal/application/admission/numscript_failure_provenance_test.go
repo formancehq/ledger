@@ -2,11 +2,15 @@ package admission
 
 import (
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript/numscriptmock"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -194,6 +198,104 @@ func TestForwardOrFail_ProvenanceClassification(t *testing.T) {
 
 		var discoveryErr *domain.ErrDependencyDiscoveryFailed
 		require.ErrorAs(t, err, &discoveryErr)
+		require.False(t, order.GetTechnical().GetPreloadUnavailable())
+	})
+}
+
+// TestClassifyResolutionFailure exercises classifyResolutionFailure directly with
+// synthetic causes for the decision-table rows that are impractical to trigger
+// through the real-store resolution path: a recovered numscript panic and context
+// cancellation. Both must stay loud (terminal *domain.BusinessError, never
+// PRELOAD_UNAVAILABLE) per EN-1557 and invariant #7, regardless of the idempotency
+// key — and, for cancellation, even when a mutable read was attempted (the guard
+// runs before the provenance branch).
+func TestClassifyResolutionFailure(t *testing.T) {
+	t.Parallel()
+
+	admission, _ := createTestAdmission(t, createTestStore(t))
+
+	// panicCause produces a GENUINE numscript panic error the real way: a value
+	// source whose Balance panics, driven through DiscoverNumscriptDependencies so
+	// the numscript recover path marks it. panicError is unexported and IsPanic
+	// keys off it, so it cannot be fabricated in this package — it must come from
+	// the real path.
+	panicCause := func(t *testing.T) error {
+		t.Helper()
+
+		ctrl := gomock.NewController(t)
+		source := numscriptmock.NewMockValueSource(ctrl)
+		source.EXPECT().Balance(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+			func(string, string, string) (*big.Int, error) { panic("boom: numscript store panic") })
+		source.EXPECT().Metadata(gomock.Any(), gomock.Any()).AnyTimes().Return("", false, nil)
+
+		_, err := numscript.DiscoverNumscriptDependencies(
+			admission.numscriptCache,
+			`vars {
+	monetary $x = balance(@a, USD)
+}
+send $x (
+	source = @a
+	destination = @b
+)`,
+			nil, testLedgerName, source, false,
+		)
+		require.Error(t, err)
+		require.True(t, numscript.IsPanic(err), "the driven cause must be a recovered numscript panic")
+
+		return err
+	}
+
+	t.Run("panic stays loud regardless of idempotency key", func(t *testing.T) {
+		t.Parallel()
+
+		for _, hasKey := range []bool{true, false} {
+			cause := panicCause(t)
+			order := scriptOrder(testLedgerName, "")
+
+			forwarded, err := admission.classifyResolutionFailure(order, cause, false, hasKey)
+
+			require.False(t, forwarded, "a panic must never be forwarded (hasKey=%v)", hasKey)
+			var businessErr *domain.BusinessError
+			require.ErrorAs(t, err, &businessErr)
+			require.False(t, order.GetTechnical().GetPreloadUnavailable(),
+				"a panic must never be softened to PRELOAD_UNAVAILABLE — invariant #7 (hasKey=%v)", hasKey)
+		}
+	})
+
+	t.Run("cancellation stays loud even with read attempted and key", func(t *testing.T) {
+		t.Parallel()
+
+		for _, ctxErr := range []error{context.Canceled, context.DeadlineExceeded} {
+			// refIsLatest=true, MutableReadAttempted=true and hasIdempotencyKey=true
+			// would forward via the provenance branch — but the cancellation guard
+			// runs first and must terminate loudly instead.
+			cause := &numscript.DependencyResolutionError{Cause: ctxErr, MutableReadAttempted: true}
+			order := scriptOrder(testLedgerName, "")
+
+			forwarded, err := admission.classifyResolutionFailure(order, cause, true, true)
+
+			require.False(t, forwarded, "cancellation must not forward even with a read attempted + key (%v)", ctxErr)
+			var businessErr *domain.BusinessError
+			require.ErrorAs(t, err, &businessErr)
+			require.False(t, order.GetTechnical().GetPreloadUnavailable(),
+				"a cancellation must never be softened to PRELOAD_UNAVAILABLE (%v)", ctxErr)
+		}
+	})
+
+	t.Run("freezable validation surfaces the sentinel", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := domain.ErrEmptyTransaction
+		cause := &numscript.DependencyResolutionError{Cause: sentinel, MutableReadAttempted: false}
+		order := scriptOrder(testLedgerName, "")
+
+		forwarded, err := admission.classifyResolutionFailure(order, cause, false, true)
+
+		require.False(t, forwarded)
+		var businessErr *domain.BusinessError
+		require.ErrorAs(t, err, &businessErr)
+		require.Equal(t, sentinel, businessErr.Err,
+			"a freezable validation failure surfaces the real sentinel, not the generic discovery error")
 		require.False(t, order.GetTechnical().GetPreloadUnavailable())
 	})
 }
