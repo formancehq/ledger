@@ -402,10 +402,11 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // declared on a born-empty ledger), there is no local history to replay — the
 // index is promoted straight to live (current=1) and NO backfill is scheduled.
 //
-// Idempotency: when the same CreateIndex is replayed against an index that
-// is already cached as READY (the processor short-circuited a duplicate
-// create on an already-built index), we skip the backfill scheduling so the
-// builder does not redo work that has already completed.
+// Idempotency: when the same CreateIndex is replayed (or re-submitted) against
+// an index this replica has already promoted to live, we skip the reset and
+// backfill scheduling so the builder does not redo work that has already
+// completed — and, more importantly, does not knock a live index back into
+// ErrIndexBuilding.
 func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
 	id := log.GetId()
 	if id == nil {
@@ -414,8 +415,17 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	cfg := b.getOrCreateLedgerConfig(ledgerName)
 
-	if existing := cfg.byCanonical[indexes.Canonical(id)]; existing != nil &&
-		existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
+	// Post-EN-1323 the per-replica readiness signal is
+	// IndexVersionState.CurrentVersion, not the (now purely informational)
+	// registry BuildStatus — nothing ever flips BuildStatus back to READY, so a
+	// BuildStatus-based short-circuit here is dead. If this replica has already
+	// promoted the index to live (current != 0), a repeated CreatedIndexLog —
+	// a duplicate CreateIndex re-emitted by the processor, or an apply replay —
+	// must be a no-op: re-seeding {current:0, pending:1} and rescheduling a
+	// backfill would flip an already-live index back to ErrIndexBuilding. This
+	// mirrors the loadIndexRegistry boot guard and covers both the EN-1564
+	// initial fast path and the normal post-backfill live state.
+	if current, _ := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
 		return
 	}
 

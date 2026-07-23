@@ -1110,3 +1110,42 @@ func TestHandleCreatedIndexLog_NonInitialSchedulesBackfill(t *testing.T) {
 	require.Equal(t, uint32(0), current, "non-initial index stays gated until backfill catches up")
 	require.Equal(t, uint32(1), pending)
 }
+
+// TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent pins the fix for the
+// duplicate-CreateIndex reschedule: once a replica has promoted an index to live
+// (current != 0), a second CreatedIndexLog for the same index must NOT reset the
+// version state to {0,1} or schedule a backfill — doing so would flip an
+// already-live index back to ErrIndexBuilding. Covers both EN-1564 (initial fast
+// path) and the pre-existing normal post-backfill live state.
+func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// First create promotes the index straight to live (current=1, no backfill).
+	first := b.readStore.NewBatch()
+	b.initBatch(first)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current)
+	require.Equal(t, uint32(0), pending)
+
+	// A duplicate CreateIndex — re-emitted by the processor as initial=false once
+	// the ledger is no longer born-empty — must be a no-op on this live replica.
+	second := b.readStore.NewBatch()
+	b.initBatch(second)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks, "duplicate create must not reschedule a backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current, "index stays live after a duplicate create")
+	require.Equal(t, uint32(0), pending, "no pending backfill after a duplicate create")
+}
