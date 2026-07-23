@@ -273,6 +273,26 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	return s.db.Merge(key, buf, pebble.NoSync)
 }
 
+// SeedTransaction pre-loads a finalized transaction state (from the baseline
+// checkpoint) as the merge base for a key, so that post-archive delta operands
+// (SaveTxMetadata / DeleteTxMetadata / SetRevertedBy) combine on top of the full
+// pre-archive state. Under archiving the create log is purged, so without this
+// the replay would hold only the delta and compareTransactions would flag the
+// correct live state as tampered. Must be called before any delta operand for
+// the key so the merger sees the base first.
+func (s *replayStore) SeedTransaction(canonicalKey []byte, state *commonpb.TransactionState) error {
+	data, err := state.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling seeded tx state: %w", err)
+	}
+
+	buf := make([]byte, 1+len(data))
+	buf[0] = txOpFinalized
+	copy(buf[1:], data)
+
+	return s.db.Merge(replayKey(replayPrefixTransaction, canonicalKey), buf, pebble.NoSync)
+}
+
 // SetTransactionReference records an expected reference→txID assignment.
 // References are set-once (admission rejects duplicates), so a plain Set is
 // the whole merge; compareReferences reads these back against the stored
