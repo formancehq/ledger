@@ -366,6 +366,51 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+// TestRequireScope_LedgersRead_GatesLogListing pins the HTTP side of EN-1508:
+// GET /{ledgerName}/logs sits behind requireLedgersRead, i.e.
+// RequireScope(cfg, ScopeLedgersRead). It asserts the gate with GRANULAR scopes
+// (identity pass-through) rather than the aggregate "ledger:read" — the
+// aggregate expands to both ScopeLedgersRead and ScopeOpsRead and would mask a
+// scope drift between transports.
+func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+	}
+
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeLedgersRead)(ok200))
+
+	t.Run("granular ledger-read token passes the gate", func(t *testing.T) {
+		t.Parallel()
+
+		token := signToken(t, privKey, newTestClaims(string(ScopeLedgersRead)))
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/main/logs", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		handler.ServeHTTP(w, r)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("granular ops-read-only token is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		// Regression guard: an OpsRead-only token (the scope the old code
+		// required) must NOT list a ledger's logs over HTTP.
+		token := signToken(t, privKey, newTestClaims(string(ScopeOpsRead)))
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/main/logs", nil)
+		r.Header.Set("Authorization", "Bearer "+token)
+		handler.ServeHTTP(w, r)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
 // --- EdDSA (Ed25519) HTTP middleware tests ---
 
 func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {

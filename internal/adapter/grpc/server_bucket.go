@@ -1064,7 +1064,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLogs")
 	defer span.End()
 
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return err
 	}
 

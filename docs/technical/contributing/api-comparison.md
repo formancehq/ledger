@@ -754,7 +754,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
-| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination |
+| `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
@@ -780,7 +780,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
 | `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
-| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
+| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
@@ -867,8 +867,8 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListChapters` | Stream all chapters | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
-| `GetLog` | Get a single system log by sequence number | ✅ |
+| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
+| `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:OpsRead`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
