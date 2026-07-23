@@ -142,10 +142,22 @@ func main() {
 		log.Printf("restore cycle enabled (interval ~%s)", restoreInterval())
 	}
 
-	// Workers stop on ctx.Done. Wait for the restore cycle too before closing the
-	// processor's channel, so no cycle touches the checker during teardown.
+	var archival sync.WaitGroup
+	if interval := selectArchivalInterval(); interval > 0 {
+		archival.Add(1)
+		go func() {
+			defer archival.Done()
+			runArchivalCycle(ctx, client, checker, interval)
+		}()
+		log.Printf("archival cycle enabled (interval ~%s)", interval)
+	}
+
+	// Workers stop on ctx.Done. Wait for the restore and archival cycles too
+	// before closing the processor's channel, so no cycle touches the checker
+	// during teardown.
 	workers.Wait()
 	restore.Wait()
+	archival.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }

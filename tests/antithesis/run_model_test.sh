@@ -21,8 +21,13 @@
 # the cluster failing to recover to N voters after a restart.
 #
 # Usage:
-#   ./run_model_test.sh [--nodes N | --cluster] [--restore] [DURATION_SECONDS]
+#   ./run_model_test.sh [--nodes N | --cluster] [--restore] [--archive] [DURATION_SECONDS]
 #   NODES=3 ./run_model_test.sh 300
+#
+# --archive enables filesystem cold storage on the node and drives an online
+# archival cycle (close -> seal -> archive -> confirm -> purge) alongside the
+# workers; combined with --restore it exercises restore-from-archived-baseline.
+# A teardown `store check` verifies the archived store's integrity.
 #
 # Environment:
 #   REPO              path to the ledger repo checkout (default: the repo root, two levels up from this script)
@@ -32,6 +37,7 @@
 #   RESTART_INTERVAL  seconds to soak between restarts, N>1 only; 0 disables restarts (default: 15)
 #   RECOVER_TIMEOUT   seconds to wait for N-voter recovery after a restart, N>1 only (default: 90)
 #   RESTORE_INTERVAL  seconds between backup/restore cycles, --restore only (default: 45)
+#   MODEL_ARCHIVE_INTERVAL  seconds between archival cycles, --archive only (default: 20)
 #   DEAD_TIME             seconds a killed node stays down, N>1 only (default: 30)
 #   COMPACTION_MARGIN     raft log entries between snapshots; low forces snapshot recovery (default: 200)
 #   MAINTENANCE_INTERVAL  background WAL snapshot + checkpoint cadence (default: 10s)
@@ -46,6 +52,7 @@ set -uo pipefail
 # --- Arguments ------------------------------------------------------------
 NODES="${NODES:-1}"
 RESTORE="${RESTORE:-0}"
+ARCHIVE="${ARCHIVE:-0}"
 DURATION=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -53,12 +60,21 @@ while [ $# -gt 0 ]; do
 		--nodes)    NODES="$2"; shift 2 ;;
 		--nodes=*)  NODES="${1#*=}"; shift ;;
 		--restore)  RESTORE=1; shift ;;
+		--archive)  ARCHIVE=1; shift ;;
 		-h|--help)  sed -n '2,42p' "$0"; exit 0 ;;
 		*)          DURATION="$1"; shift ;;
 	esac
 done
 
 case "$RESTORE" in ''|0|off|false|no) RESTORE=0 ;; *) RESTORE=1 ;; esac
+
+# Archival cycle: the driver closes and archives chapters online, exercising
+# cold storage and (with --restore) restore-from-archived-baseline. Enabled by
+# --archive or a set MODEL_ARCHIVE_INTERVAL; needs filesystem cold storage on the
+# node (start_node) and drives a teardown CheckStore.
+[ -n "${MODEL_ARCHIVE_INTERVAL:-}" ] && ARCHIVE=1
+case "$ARCHIVE" in ''|0|off|false|no) ARCHIVE=0 ;; *) ARCHIVE=1 ;; esac
+ARCHIVE_INTERVAL="${MODEL_ARCHIVE_INTERVAL:-20}"
 # The restore cycle periodically backs the node up, restores the backup into a
 # fresh store (exercising RebuildDelta), and relaunches the node on it while the
 # driver keeps running -- its ordinary checks validate the rebuilt state. Only
@@ -85,6 +101,8 @@ RESTORE_INTERVAL="${RESTORE_INTERVAL:-45}"
 if [ -z "$DURATION" ]; then
 	if [ "$RESTORE" = 1 ]; then
 		DURATION=$(( RESTORE_INTERVAL * 2 + 30 ))
+	elif [ "$ARCHIVE" = 1 ]; then
+		DURATION=$(( ARCHIVE_INTERVAL * 3 + 30 ))
 	elif [ "$NODES" -gt 1 ]; then
 		DURATION=120
 	else
@@ -286,6 +304,14 @@ start_node() {
 		join)      flags+=( --join "127.0.0.1:${RAFT_PORTS[0]}" ) ;;
 		rejoin)    ;;
 	esac
+	# Filesystem cold storage for the archival cycle. The path is a sibling of the
+	# node data dir (NOT inside it), so archived chapters survive the restore
+	# cycle's data-dir swap. The bucket id defaults to CLUSTER_ID, stable across
+	# a restore.
+	local cold_flags=()
+	if [ "$ARCHIVE" = 1 ]; then
+		cold_flags+=( --cold-storage-driver filesystem --cold-storage-path "$WORKDIR/cold-n$i" )
+	fi
 	"$SERVER_BIN" run \
 		--node-id "$(( i + 1 ))" \
 		--cluster-id "$CLUSTER_ID" \
@@ -300,6 +326,7 @@ start_node() {
 		--maintenance-interval "$MAINTENANCE_INTERVAL" \
 		--health-wal-threshold "$HEALTH_THRESHOLD" \
 		--health-data-threshold "$HEALTH_THRESHOLD" \
+		${cold_flags[@]+"${cold_flags[@]}"} \
 		${flags[@]+"${flags[@]}"} \
 		>> "${SERVER_LOGS[$i]}" 2>&1 &
 	SERVER_PIDS[$i]=$!
@@ -382,7 +409,9 @@ check_fail_fast() {
 server_tags=""
 [ "$RESTORE" = 1 ] && server_tags="-tags s3"
 build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
-if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
+# ledgerctl is needed for cluster health checks, the restore backup RPCs, and the
+# archival run's teardown CheckStore.
+if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ] || [ "$ARCHIVE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
 build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
@@ -461,6 +490,8 @@ RESTORE_REQ_ENV="" RESTORE_RESP_ENV="" RESTORE_INTERVAL_ENV=""
 if [ "$RESTORE" = 1 ]; then
 	RESTORE_REQ_ENV="$RESTORE_REQ"; RESTORE_RESP_ENV="$RESTORE_RESP"; RESTORE_INTERVAL_ENV="$RESTORE_INTERVAL"
 fi
+ARCHIVE_INTERVAL_ENV=""
+[ "$ARCHIVE" = 1 ] && ARCHIVE_INTERVAL_ENV="$ARCHIVE_INTERVAL"
 LEDGER_GRPC_ADDR="$ADDR_LIST" \
 ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 MODEL_DEBUG="${MODEL_DEBUG:-}" \
@@ -470,6 +501,7 @@ MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \
 MODEL_RESTORE_REQ="$RESTORE_REQ_ENV" \
 MODEL_RESTORE_RESP="$RESTORE_RESP_ENV" \
 MODEL_RESTORE_INTERVAL="$RESTORE_INTERVAL_ENV" \
+MODEL_ARCHIVE_INTERVAL="$ARCHIVE_INTERVAL_ENV" \
 	"$DRIVER_BIN" > "$DRIVER_LOG" 2>&1 &
 DRIVER_PID=$!
 
@@ -522,6 +554,27 @@ kill -9 "$DRIVER_PID" 2>/dev/null
 wait "$DRIVER_PID" 2>/dev/null
 DRIVER_PID=""
 
+# Archival cycles the driver completed (each logs "chapter archived + purged").
+ARCHIVE_CYCLES=0
+if [ "$ARCHIVE" = 1 ]; then
+	ARCHIVE_CYCLES=$(grep -c "chapter archived + purged" "$DRIVER_LOG" 2>/dev/null || true)
+	ARCHIVE_CYCLES=${ARCHIVE_CYCLES:-0}
+fi
+
+# Teardown store check (archival runs): a full integrity pass over the still-live
+# node, exercising the ColdReader + baseline re-derivation over the archived
+# chapters. store check exits non-zero on any CheckStoreError.
+CHECK_STORE_FAILED=0
+if [ "$ARCHIVE" = 1 ]; then
+	log "running teardown store check..."
+	if "$LEDGERCTL_BIN" store check --insecure --server "127.0.0.1:${GRPC_PORTS[0]}" --timeout 120s >"$WORKDIR/checkstore.log" 2>&1; then
+		log "store check: clean"
+	else
+		CHECK_STORE_FAILED=1
+		log "store check: FAILED"
+	fi
+fi
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -530,6 +583,7 @@ echo "================= model test report ================="
 log "topology: $NODES node(s)"
 [ "$NODES" -gt 1 ] && log "restart cycles completed: $cycle"
 [ "$RESTORE" = 1 ] && log "restore cycles completed: $RESTORE_CYCLES ($RESTORE_FAILED_CYCLES failed)"
+[ "$ARCHIVE" = 1 ] && log "archival cycles completed: $ARCHIVE_CYCLES"
 
 findings=0
 
@@ -620,6 +674,40 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then
 	echo
 	echo "RESTORE CYCLE FAILURES: $RESTORE_FAILED_CYCLES cycle(s) failed (see 'restore:' lines above)"
 	findings=$((findings + 1))
+fi
+
+# 8. --archive ran zero cycles: the archival path was never exercised, so a green
+# run says nothing about cold storage -- a vacuous pass. Skipped when a finding
+# already stopped the run early.
+if [ "$ARCHIVE" = 1 ] && [ "$ARCHIVE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; then
+	echo
+	echo "NO ARCHIVAL CYCLES: --archive was requested but no chapter was archived+purged"
+	echo "  (duration ${DURATION}s vs archive interval ~${ARCHIVE_INTERVAL}s plus seal/confirm waits; increase the duration)"
+	findings=$((findings + 1))
+fi
+
+# 9. The teardown store check found integrity errors over the (archived) store.
+if [ "$CHECK_STORE_FAILED" -ne 0 ]; then
+	echo
+	echo "STORE CHECK FAILED: teardown integrity check reported errors"
+	tail -30 "$WORKDIR/checkstore.log" 2>/dev/null
+	findings=$((findings + 1))
+fi
+
+# 10. Combined --archive --restore coverage must interleave: some restore must
+# complete AFTER a chapter was archived, or no rebuild ever ran against an
+# archival-purged history (incremental backfill from cold + baseline seeding)
+# and the combined run proved nothing beyond the two flags in isolation. Driver
+# log line order is chronological, so compare line numbers.
+if [ "$ARCHIVE" = 1 ] && [ "$RESTORE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ "$RESTORE_CYCLES" -gt 0 ] && [ "$findings" -eq 0 ]; then
+	first_archive_line=$(grep -n "chapter archived + purged" "$DRIVER_LOG" | head -1 | cut -d: -f1)
+	last_restore_line=$(grep -n "restore cycle: complete, resumed" "$DRIVER_LOG" | tail -1 | cut -d: -f1)
+	if [ -z "$first_archive_line" ] || [ -z "$last_restore_line" ] || [ "$last_restore_line" -lt "$first_archive_line" ]; then
+		echo
+		echo "NO POST-ARCHIVAL RESTORE: every restore completed before the first archival"
+		echo "  (the rebuild-from-archived-history path was never exercised; lengthen the run or shrink MODEL_ARCHIVE_INTERVAL)"
+		findings=$((findings + 1))
+	fi
 fi
 
 echo "-----------------------------------------------------"

@@ -163,3 +163,19 @@ const defaultRestoreTimeoutSecs = 180
 
 // Base restore-cycle interval (seconds) when MODEL_RESTORE_INTERVAL is unset.
 const defaultRestoreIntervalSecs = 90
+
+// --- Archival cycle -----------------------------------------------------
+
+// Base archival-cycle interval (seconds) when MODEL_ARCHIVE_INTERVAL is unset.
+// Kept shorter than the restore interval so chapters are archived before a
+// restore fires, exercising restore-from-archived-baseline.
+const defaultArchiveIntervalSecs = 20
+
+// Bounded wait for the background Sealer to move a closed chapter CLOSING ->
+// CLOSED, and for the background Archiver to move it ARCHIVING -> ARCHIVED
+// (upload + confirm + purge). A cycle that times out is skipped, not a finding.
+const (
+	archiveSealTimeout    = 30 * time.Second
+	archiveConfirmTimeout = 45 * time.Second
+	archivePoll           = 250 * time.Millisecond
+)
