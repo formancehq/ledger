@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -37,20 +38,24 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	return failure
 }
 
-// marshalOrdersForAudit returns the deterministic bytes of each order,
-// captured once at apply time. The same byte slices feed (a) the audit
-// hash chain and (b) AuditItem.SerializedOrder, so verifiers re-hash
-// the exact bytes that were persisted instead of re-marshalling an
-// Order proto. The chain is then immune to vtprotobuf or Order schema
-// evolution.
+// marshalOrdersForAudit returns the deterministic BUSINESS-INTENT bytes of each
+// order (OrderTechnical excluded via processing.MarshalOrderBusinessIntent),
+// captured once at apply time. The same byte slices feed (a) the audit hash
+// chain and (b) AuditItem.SerializedOrder, so verifiers re-hash the exact bytes
+// that were persisted instead of re-marshalling an Order proto — and the chain
+// proves only accepted intent, never admission-derived execution metadata
+// (coverage_bits, inputs_resolution_hash, preload_unavailable). The chain is
+// immune to vtprotobuf or Order schema evolution. Symmetric with the idempotency
+// hash (processor.hashOrder), which binds the identical projection.
 func marshalOrdersForAudit(orders []*raftcmdpb.Order) [][]byte {
 	out := make([][]byte, len(orders))
 
 	for i, order := range orders {
-		// nil base makes MarshalDeterministicVT allocate a fresh slice
-		// per call. Each entry owns its bytes; the apply path hashes
-		// them and writes them straight to Pebble.
-		out[i] = order.MarshalDeterministicVT(nil)
+		// nil buf makes MarshalOrderBusinessIntent allocate a fresh slice per
+		// call. Each entry owns its bytes; the apply path hashes them and writes
+		// them straight to Pebble. (Reusing one buffer would alias earlier
+		// entries — do NOT pass a shared buffer here.)
+		out[i] = processing.MarshalOrderBusinessIntent(order, nil)
 	}
 
 	return out

@@ -356,32 +356,49 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 	return h.Sum(nil)
 }
 
-// hashOrder computes a blake3 hash of one order's content, returning the hash
-// and the (grown) marshal buffer to reuse.
+// MarshalOrderBusinessIntent returns the deterministic wire bytes of an order's
+// business intent: the order with its OrderTechnical sub-message excluded. This
+// is the SINGLE definition of what both the audit hash chain
+// (AuditItem.serialized_order) and the idempotency hash (hashOrder) bind — so a
+// new technical field can never silently diverge the two.
 //
 // All admission-derived fields live on OrderTechnical, which is excluded so the
-// SAME logical request always hashes identically (idempotency dedup / replay
-// must match across retries). OrderTechnical carries:
+// SAME logical request always serializes identically (idempotency dedup / replay
+// must match across retries, and the audit proves only accepted intent).
+// OrderTechnical carries:
 //
 //   - coverage_bits: admission rebuilds it from the proposal-wide ExecutionPlan,
-//     so the same order in a different batch would otherwise hash differently.
+//     so the same order in a different batch would otherwise serialize differently.
 //   - inputs_resolution_hash: admission recomputes it by re-resolving the
 //     Numscript against CURRENT balances/metadata, so a retry of a state-reading
-//     script re-resolves at a changed balance and would otherwise hash
-//     differently — turning a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT
-//     (EN-1406 P1-3). It is a preload/staleness hint, not logical identity.
+//     script re-resolves at a changed balance and would otherwise differ — turning
+//     a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT (EN-1406 P1-3). It is a
+//     preload/staleness hint, not logical identity.
+//   - preload_unavailable: an admission-forwarding marker, never logical identity.
 //
-// Because both live under the single OrderTechnical sub-message, excluding it in
-// one shot means a new technical field can never silently break idempotency.
-func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
-	// Temporarily nil the technical sub-message, marshal, then restore it.
-	// Avoids a full CloneVT of the order.
+// out is marshalled into buf[:0] (grown as needed) and returned; reuse it as buf
+// on the next call to amortize allocations. Pass nil to allocate a fresh slice
+// the caller can retain (the audit path stores one slice per order). Single-
+// threaded apply only: it transiently nils order.Technical, marshals, then
+// restores, leaving the live order byte-identical — mirroring the historical
+// hashOrder behaviour and safe because the FSM apply path is the sole caller.
+func MarshalOrderBusinessIntent(order *raftcmdpb.Order, buf []byte) []byte {
 	savedTechnical := order.GetTechnical()
 	order.Technical = nil
 
-	buf = order.MarshalDeterministicVT(buf[:0])
+	out := order.MarshalDeterministicVT(buf[:0])
 
 	order.Technical = savedTechnical
+
+	return out
+}
+
+// hashOrder computes a blake3 hash of one order's business intent, returning the
+// hash and the (grown) marshal buffer to reuse. The bytes hashed are exactly the
+// business-intent projection MarshalOrderBusinessIntent produces, so the
+// idempotency hash and the audit serialization bind the identical bytes.
+func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte) {
+	buf = MarshalOrderBusinessIntent(order, buf)
 
 	sum := blake3.Sum256(buf)
 
