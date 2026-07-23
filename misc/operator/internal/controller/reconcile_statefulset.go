@@ -181,6 +181,11 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			}
 			// Returning here requeues via the owned-StatefulSet delete event — the next
 			// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
+			// This branch only DELETES; it never builds the replacement template. The
+			// new StatefulSet is created on the next reconcile, which re-runs
+			// reconcilePVCExpansion above and re-clamps `desired` against the live PVCs
+			// (which survive the orphan delete) — so a rejected shrink cannot reach the
+			// recreated template even though this delete carries the grown volume.
 			return ctrl.Result{}, nil
 		}
 	}
