@@ -831,7 +831,7 @@ func TestExportEntries_SplitsLargeRangeAndRoundTrips(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = readHandle.Close() })
 
-	segs, count, err := exportEntries(ctx, storage, readHandle,
+	segs, count, err := exportEntries(ctx, logging.Testing(), storage, readHandle,
 		dal.ZoneCold, dal.SubColdLog, 0, n, "log",
 		func(part int) string { return ExportLogSegmentKey("bucket", 1, n, part) },
 		capBytes,
@@ -907,7 +907,7 @@ func TestExportEntries_SplitsOnlyAtSequenceBoundaries(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = readHandle.Close() })
 
-	segs, count, err := exportEntries(ctx, storage, readHandle,
+	segs, count, err := exportEntries(ctx, logging.Testing(), storage, readHandle,
 		dal.ZoneCold, dal.SubColdAuditItem, 0, seqs, "auditItem",
 		func(part int) string { return ExportAuditItemSegmentKey("bucket", 1, seqs, part) },
 		capBytes,
@@ -964,7 +964,7 @@ func TestExportEntries_EmptyRangeUploadsNothing(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = readHandle.Close() })
 
-	segs, count, err := exportEntries(ctx, storage, readHandle,
+	segs, count, err := exportEntries(ctx, logging.Testing(), storage, readHandle,
 		dal.ZoneCold, dal.SubColdAppliedProposal, 0, 100, "appliedProposal",
 		func(part int) string { return ExportAppliedProposalSegmentKey("bucket", 1, 100, part) },
 		maxExportSegmentBytes,
