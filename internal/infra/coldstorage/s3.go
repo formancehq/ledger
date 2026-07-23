@@ -27,7 +27,17 @@ const s3ChecksumMetadataKey = "sha256"
 // Otherwise the default AWS credential chain is used (env vars, ~/.aws/credentials, IAM role).
 // If endpoint is non-empty, it is used as a custom S3 endpoint (e.g. for MinIO).
 func NewS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Client, error) {
-	var opts []func(*awsconfig.LoadOptions) error
+	// Disable the SDK-default request checksums (WhenSupported adds a trailing
+	// CRC via aws-chunked encoding on every PutObject/UploadPart). That default
+	// shipped with recent aws-sdk-go-v2 and is the suspected cause of multipart
+	// CompleteMultipartUpload failing with InvalidPart against this deployment's
+	// S3 path (EN backup incident) — the older binary that predates the default
+	// uploaded fine. Object integrity is still covered end to end: checkpoint
+	// keys are content-addressed by sha256 and cold-storage archives carry a
+	// sha256 metadata checksum verified on read.
+	opts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
+	}
 	if region != "" {
 		opts = append(opts, awsconfig.WithRegion(region))
 	}
@@ -61,9 +71,22 @@ type S3Storage struct {
 	bucket   string
 }
 
+// s3UploadPartSize is the multipart part size for cold-storage archive uploads.
+// It matches the backup uploader (see internal/infra/backup/s3.go): 32 MiB
+// instead of the aws-sdk-go-v2 default 5 MiB, so multi-GB chapter archives
+// upload in far fewer parts (smaller failure surface, higher single-object
+// ceiling) with per-part memory still bounded by partSize x concurrency.
+const s3UploadPartSize = 32 << 20 // 32 MiB
+
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
-	return &S3Storage{client: client, uploader: manager.NewUploader(client), bucket: bucket}
+	return &S3Storage{
+		client: client,
+		uploader: manager.NewUploader(client, func(u *manager.Uploader) {
+			u.PartSize = s3UploadPartSize
+		}),
+		bucket: bucket,
+	}
 }
 
 func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
