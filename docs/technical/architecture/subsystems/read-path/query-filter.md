@@ -47,7 +47,7 @@ not yet on the canonical surface.
 | `GET /v3/_/indexes` | — | — | — | `scope` | option-only |
 | `.../indexes/{id}/inspect` | — | — | `cursor`, `pageSize` | `mode` | option-only |
 | `analyze-accounts` / `analyze-transactions` | — | — | — | `variableThreshold` | option-only |
-| prepared-query `execute` | (body) | — | `cursor`, `pageSize` | `mode`, `minLogSequence` | body-driven |
+| prepared-query `execute` | — (stored; see note) | — | `cursor`, `pageSize` | `parameters`, `mode`, `minLogSequence` | body-driven |
 
 The four roles:
 
@@ -58,6 +58,15 @@ The four roles:
 - **pagination** — opaque/typed cursor controls (`after`/`cursor`/`reverse`/`pageSize`),
   default page 100, capped at 1000.
 - **endpoint/output option** — shapes output or scope, not selection.
+
+> **The prepared-query `filter` is not a request parameter.** A prepared query's
+> `filter` is defined once on the create/update path
+> (`CreatePreparedQueryRequest.query` / `UpdatePreparedQueryRequest.filter`,
+> `misc/proto/bucket.proto`) and stored server-side. The `execute` body
+> (`internal/adapter/http/handlers_execute_prepared_query.go:32`) carries **no**
+> `filter` — only `parameters` (bind values for the stored definition),
+> pagination (`cursor`, `pageSize`), a freshness floor (`minLogSequence`), and
+> `mode`. A `filter` sent at execute time is silently ignored.
 
 ## 3. Textual vs structured expressiveness
 
