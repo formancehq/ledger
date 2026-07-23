@@ -127,11 +127,41 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 	desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
 	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
-	// VCTs are immutable — we must delete-recreate with orphan propagation.
+	// VCTs are immutable, so any change that must land in the template requires a
+	// delete-recreate with orphan propagation:
+	//   - a name-set change (a volume switching between PVC and hostPath mode), and
+	//   - a size increase, so future scale-out ordinals are born at the new size.
+	// A size increase additionally requires patching the *existing* PVCs directly:
+	// recreating the StatefulSet re-adopts them without resizing, so the live
+	// disks only grow via reconcilePVCExpansion's CSI online expansion.
+	//
+	// This is deliberately skipped while a scale-down is in progress: the
+	// delete-recreate returns early, which would bypass the deleteScaledDownPVCs
+	// cleanup below and orphan the removed ordinals' PVCs. Two disruptive
+	// StatefulSet operations must not interleave in one pass — the scale-down
+	// completes this reconcile (including PVC cleanup) and the template change is
+	// picked up on the next one, once scalingDown is false.
 	existing := &appsv1.StatefulSet{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil {
-		if volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates) {
-			logger.Info("VolumeClaimTemplates changed, recreating StatefulSet with orphan propagation")
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil && !scalingDown {
+		namesChanged := volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
+
+		templateGrew := false
+		if r.Clientset != nil {
+			grew, err := reconcilePVCExpansion(ctx, r.Clientset, r.Recorder, ledger,
+				ledger.Namespace, name, desiredReplicas,
+				existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("expanding PVCs for volume size change: %w", err)
+			}
+			templateGrew = grew
+		}
+
+		if namesChanged || templateGrew {
+			reason := "VolumeClaimTemplates changed"
+			if templateGrew {
+				reason = "volume size increased"
+			}
+			logger.Info("recreating StatefulSet with orphan propagation", "reason", reason)
 			orphan := metav1.DeletePropagationOrphan
 			if err := r.Delete(ctx, existing, &client.DeleteOptions{
 				PropagationPolicy: &orphan,
