@@ -51,15 +51,19 @@ func (it *AndIterator) SeekGE(target []byte) bool {
 		return false
 	}
 
-	// Absolute reposition: clear the exhausted latch so a re-seek after
-	// exhaustion re-establishes the intersection (converge re-seeks children).
+	// Absolute reposition: seek EVERY child to target, not just children[0].
+	// converge uses each child's Current() as a candidate, so a child left at a
+	// stale position past target would become the candidate and skip valid
+	// intersections below it. Clearing exhausted lets a re-seek after exhaustion
+	// re-establish the intersection.
 	it.exhausted = false
 
-	// Seek all children to target
-	if !it.children[0].SeekGE(target) {
-		it.exhausted = true
+	for i := range it.children {
+		if !it.children[i].SeekGE(target) {
+			it.exhausted = true
 
-		return false
+			return false
+		}
 	}
 
 	return it.converge()
