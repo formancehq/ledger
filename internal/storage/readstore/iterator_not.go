@@ -75,19 +75,21 @@ func (it *NotIterator) SeekGE(target []byte) bool {
 		return false
 	}
 
-	if !it.started {
-		it.started = true
-		if it.child.SeekGE(target) {
-			it.childVal = it.child.Current()
-		} else {
-			it.childDone = true
-		}
-	} else if !it.childDone {
-		if it.child.SeekGE(target) {
-			it.childVal = it.child.Current()
-		} else {
-			it.childDone = true
-		}
+	it.started = true
+
+	// Re-position the child on every SeekGE, including after it has reported
+	// done. Forward Next() iteration can consume the child past a later,
+	// smaller seek target (nested NOTs reach this: the outer NOT advances the
+	// inner one to emit its first row, exhausting a finite child such as the
+	// reversion bitset). A latched childDone would then leave the child unable
+	// to report that the entity at target is excluded, leaking it into the
+	// difference. SeekGE is absolute repositioning (>= target), so re-seeking
+	// is always well-defined.
+	if it.child.SeekGE(target) {
+		it.childVal = it.child.Current()
+		it.childDone = false
+	} else {
+		it.childDone = true
 	}
 
 	if !it.universe.SeekGE(target) {
