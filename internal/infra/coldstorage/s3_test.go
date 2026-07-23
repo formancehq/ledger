@@ -316,10 +316,13 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 	t.Parallel()
 
 	client, _ := setupMinIO(t)
-	storage := NewS3Storage(client, minioBucket)
+	// Force a 5 MiB part size so the 12 MiB payload takes the multipart path
+	// (the production default is 32 MiB, which would otherwise route a 12 MiB
+	// object through a single PutObject).
+	storage := newS3StorageWithPartSize(client, minioBucket, 5<<20)
 	ctx := context.Background()
 
-	// 12 MiB > the 5 MiB default part size → at least 3 parts.
+	// 12 MiB > the 5 MiB part size set above → at least 3 parts.
 	const size = 12 << 20
 
 	payload := make([]byte, size)
