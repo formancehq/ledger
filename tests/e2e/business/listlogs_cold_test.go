@@ -53,33 +53,24 @@ var _ = Describe("ListLogs reads archived logs from cold storage", Ordered, func
 
 		archiveChapterFull(ctx, client)
 
-		// Give the read-side a moment, then list.
-		var (
-			count   int
-			listErr error
-		)
-		Eventually(func() bool {
-			stream, e := client.ListLogs(ctx, &servicepb.ListLogsRequest{Ledger: ledger})
-			if e != nil {
-				listErr = e
-				return true
-			}
-			count = 0
+		// The read-side index is eventually consistent, so retry until all three
+		// logs are listable — each must now resolve from cold storage since the
+		// chapter is archived. Asserting inside Eventually makes it actually wait
+		// for the indexer rather than pass on the first attempt.
+		Eventually(func(g Gomega) {
+			stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{Ledger: ledger})
+			g.Expect(err).To(Succeed(), "ListLogs must not error on archived logs")
+
+			count := 0
 			for {
 				_, re := stream.Recv()
 				if re == io.EOF {
 					break
 				}
-				if re != nil {
-					listErr = re
-					return true
-				}
+				g.Expect(re).To(Succeed(), "streaming archived logs must not error")
 				count++
 			}
-			return true
-		}).Should(BeTrue())
-
-		Expect(listErr).To(Succeed(), "ListLogs must not error on archived logs")
-		Expect(count).To(Equal(3), "ListLogs returned %d logs after archiving 3", count)
+			g.Expect(count).To(Equal(3), "expected 3 logs after archiving 3")
+		}).Should(Succeed())
 	})
 })
