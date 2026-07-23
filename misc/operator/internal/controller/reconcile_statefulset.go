@@ -126,36 +126,47 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 
 	desired := buildStatefulSetSpec(ledger, specHash, credentials, targetTLSMode)
 
-	// Check if VolumeClaimTemplates changed on an existing StatefulSet.
-	// VCTs are immutable, so any change that must land in the template requires a
-	// delete-recreate with orphan propagation:
-	//   - a name-set change (a volume switching between PVC and hostPath mode), and
-	//   - a size increase, so future scale-out ordinals are born at the new size.
-	// A size increase additionally requires patching the *existing* PVCs directly:
-	// recreating the StatefulSet re-adopts them without resizing, so the live
-	// disks only grow via reconcilePVCExpansion's CSI online expansion.
-	//
-	// This is deliberately skipped while a scale-down is in progress: the
-	// delete-recreate returns early, which would bypass the deleteScaledDownPVCs
-	// cleanup below and orphan the removed ordinals' PVCs. Two disruptive
-	// StatefulSet operations must not interleave in one pass — the scale-down
-	// completes this reconcile (including PVC cleanup) and the template change is
-	// picked up on the next one, once scalingDown is false.
 	existing := &appsv1.StatefulSet{}
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing); err == nil && !scalingDown {
-		namesChanged := volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
+	stsFound := r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, existing) == nil
 
-		templateGrew := false
-		if r.Clientset != nil {
-			grew, err := reconcilePVCExpansion(ctx, r.Clientset, r.Recorder, ledger,
-				ledger.Namespace, name, desiredReplicas,
-				existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("expanding PVCs for volume size change: %w", err)
-			}
-			templateGrew = grew
+	var existingVCTs []corev1.PersistentVolumeClaim
+	if stsFound {
+		existingVCTs = existing.Spec.VolumeClaimTemplates
+	}
+
+	// Reconcile PVC sizes: clamp the desired templates up to the largest live PVC
+	// (grow-only — a spec shrink is rejected and the current size kept), grow any
+	// lagging PVCs via CSI online expansion, and learn whether the template grew.
+	//
+	// This runs on EVERY path, not only when the StatefulSet exists: the create
+	// path right after a recreate (below) rebuilds the template straight from the
+	// spec, so the clamp must re-apply there too, or a rejected shrink would leak
+	// back into the rebuilt template. Because the clamp floors against the live
+	// PVCs (which survive the orphan delete), it is stable across the recreate.
+	templateGrew := false
+	if r.Clientset != nil {
+		grew, err := reconcilePVCExpansion(ctx, r.Clientset, r.Recorder, ledger,
+			ledger.Namespace, name, desiredReplicas, existingVCTs, desired.VolumeClaimTemplates)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconciling PVC sizes for volume change: %w", err)
 		}
+		templateGrew = grew
+	}
 
+	// VolumeClaimTemplates are immutable, so a change that must land in the
+	// template requires a delete-recreate with orphan propagation:
+	//   - a name-set change (a volume switching between PVC and hostPath mode), or
+	//   - a size increase, so future scale-out ordinals are born at the new size.
+	// The pods and PVCs are retained and re-adopted by the recreated StatefulSet.
+	//
+	// Deliberately skipped while a scale-down is in progress: the delete-recreate
+	// returns early, which would bypass the deleteScaledDownPVCs cleanup below and
+	// orphan the removed ordinals' PVCs. Two disruptive StatefulSet operations
+	// must not interleave in one pass — the scale-down completes this reconcile
+	// (including PVC cleanup), and the template change is picked up on the next
+	// one, once scalingDown is false.
+	if stsFound && !scalingDown {
+		namesChanged := volumeClaimTemplatesChanged(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
 		if namesChanged || templateGrew {
 			reason := "VolumeClaimTemplates changed"
 			if templateGrew {
