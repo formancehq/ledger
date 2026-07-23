@@ -1149,3 +1149,66 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	require.Equal(t, uint32(1), current, "index stays live after a duplicate create")
 	require.Equal(t, uint32(0), pending, "no pending backfill after a duplicate create")
 }
+
+// TestDropLedgerVersionState_EvictsOnlyThatLedger pins the eviction the live
+// DeleteLedger apply path performs (via dropLedgerVersionState): every in-memory
+// version state for the deleted ledger is dropped, and other ledgers are left
+// untouched. Without this a same-name recreate would read a stale
+// CurrentVersion != 0 (see TestHandleCreatedIndexLog_RecreateAfterDelete).
+func TestDropLedgerVersionState_EvictsOnlyThatLedger(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	idA := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	idB := indexes.Canonical(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+
+	b.putVersionState("gone", idA, readstore.IndexVersionState{CurrentVersion: 1})
+	b.putVersionState("gone", idB, readstore.IndexVersionState{CurrentVersion: 2})
+	b.putVersionState("kept", idA, readstore.IndexVersionState{CurrentVersion: 3})
+
+	b.dropLedgerVersionState("gone")
+
+	c, _ := b.versionFor("gone", idA)
+	require.Equal(t, uint32(0), c, "deleted ledger index A must be evicted")
+	c, _ = b.versionFor("gone", idB)
+	require.Equal(t, uint32(0), c, "deleted ledger index B must be evicted")
+	c, _ = b.versionFor("kept", idA)
+	require.Equal(t, uint32(3), c, "other ledgers must be untouched")
+}
+
+// TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill guards the
+// name-reuse corner of the readiness guard: once the DeleteLedger apply path has
+// evicted the in-memory version state (dropLedgerVersionState), a same-name
+// recreate must be treated as genuinely new — re-seed {current:0, pending:1} and
+// schedule a backfill — rather than short-circuited as a live duplicate and
+// stranded behind ErrIndexBuilding.
+func TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "reused"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// A live index left over in memory from the ledger's prior life, then the
+	// DeleteLedger apply path evicts it (as processLogs does live).
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1})
+	b.dropLedgerVersionState(ledger)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current, "delete must evict the in-memory version state")
+	require.Equal(t, uint32(0), pending)
+
+	// A CreateIndex for the recreated ledger must be treated as genuinely new:
+	// re-seed {current:0, pending:1} and schedule a backfill, not short-circuit.
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "recreated ledger index must schedule a backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(1), pending)
+}

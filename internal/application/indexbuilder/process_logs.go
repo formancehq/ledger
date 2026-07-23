@@ -134,6 +134,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 					}
 
 					b.markLedgerDeletedInBatch(name)
+					// Live delete: evict the in-memory version state too so a
+					// same-name recreate is treated as genuinely new. (The
+					// backfill replay path deliberately does NOT do this — see
+					// dropLedgerVersionState.)
+					b.dropLedgerVersionState(name)
 				}
 
 				continue
@@ -903,6 +908,23 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.deletedThisBatch[name] = struct{}{}
 	b.seenAcctAsset = make(map[string]struct{})
+}
+
+// dropLedgerVersionState evicts every in-memory per-index version state for a
+// ledger — the whole-ledger counterpart of dropVersionState. It mirrors the
+// persisted wipe DeleteLedgerIndexes performs on the SubInternalIndexVersion
+// prefix, so a same-name recreate in the same process starts from a clean
+// CurrentVersion == 0: otherwise the handleCreatedIndexLog readiness guard would
+// read the dead generation's CurrentVersion != 0, skip seeding fresh state and
+// scheduling the backfill, and strand the new index behind ErrIndexBuilding.
+//
+// This lives on the LIVE DeleteLedger apply path only (processLogs), NOT in
+// markLedgerDeletedInBatch: the backfill replay path also calls that helper for
+// a historical delete of the task ledger, where the in-progress version state
+// tracks the RECREATED generation the backfill is building and must survive so
+// completeBackfill can promote it.
+func (b *Builder) dropLedgerVersionState(name string) {
+	delete(b.indexVersions, name)
 }
 
 // readstoreKeyExists reports whether key is present in committed read-store
