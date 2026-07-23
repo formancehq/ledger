@@ -34,10 +34,19 @@ type S3Storage struct {
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
+	return newS3StorageWithPartSize(client, bucket, s3UploadPartSize)
+}
+
+// newS3StorageWithPartSize is NewS3Storage with an explicit multipart part
+// size. Production always uses s3UploadPartSize; tests use it to force a small
+// part size so a modest payload still exercises the multipart path
+// (CreateMultipartUpload / UploadPart / CompleteMultipartUpload) rather than a
+// single PutObject, independent of the production default.
+func newS3StorageWithPartSize(client *s3.Client, bucket string, partSize int64) *S3Storage {
 	return &S3Storage{
 		client: client,
 		uploader: manager.NewUploader(client, func(u *manager.Uploader) {
-			u.PartSize = s3UploadPartSize
+			u.PartSize = partSize
 		}),
 		bucket: bucket,
 	}
