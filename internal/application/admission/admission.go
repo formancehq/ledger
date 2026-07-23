@@ -1512,13 +1512,16 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 
 	// A definitive, deterministic rejection is NOT a preparation gap: the
 	// script could never have succeeded — a parse error, a validation failure,
-	// an unsupported scope-qualified write, a missing ledger, and so on — so
-	// there is no frozen outcome to replay and re-running always fails
-	// identically. Surface the real error rather than forwarding it as a
-	// retryable preload-unavailable (which would spin forever, since no retry
-	// can succeed). IsFreezableFailure captures exactly this "definitive &
+	// an unsupported scope-qualified write, an unsupported asset-scaling source
+	// (ErrNumscriptScalingUnsupported), a missing ledger, and so on — so there
+	// is no frozen outcome to replay and re-running always fails identically.
+	// Surface the real error rather than forwarding it as a retryable
+	// preload-unavailable (which would spin forever, since no retry can
+	// succeed). IsFreezableFailure captures exactly this "definitive &
 	// deterministic" class (validation, parse, not-found, already-exists,
-	// conflict, precondition).
+	// conflict, precondition). Scaling reaches this branch even when a prior
+	// successful balance()/meta() read set MutableReadAttempted, because the
+	// freezable check runs before the provenance branch (EN-1557).
 	var d domain.Describable
 	if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
 		return false, &domain.BusinessError{Err: d}

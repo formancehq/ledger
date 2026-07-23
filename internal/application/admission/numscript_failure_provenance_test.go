@@ -108,6 +108,39 @@ func TestForwardOrFail_ProvenanceClassification(t *testing.T) {
 			"the order must NOT be forwarded as PRELOAD_UNAVAILABLE — that is the loop this fix stops")
 	})
 
+	// REGRESSION (EN-1557, flemzord's blocker): an inline script that reads a
+	// balance SUCCESSFULLY and only THEN hits an unsupported asset-scaling source
+	// must TERMINATE even with an idempotency key. Resolution binds the balance()
+	// origin (a successful read → MutableReadAttempted=true) before walking the
+	// scaling statement, so the provenance flag alone would misclassify this as
+	// state-dependent and forward it as PRELOAD_UNAVAILABLE — an unbounded loop,
+	// since no state change can make a scaling source succeed. The fix classifies
+	// scaling as a freezable validation failure so the freezable branch terminates
+	// it before the provenance branch is ever reached.
+	t.Run("inline read-then-scaling with key terminates (no forward)", func(t *testing.T) {
+		t.Parallel()
+
+		admission, _ := createTestAdmission(t, createTestStore(t))
+		order := scriptOrder(testLedgerName, `
+vars {
+	monetary $amt = balance(@wallet, USD/2)
+}
+send $amt (
+	source = @alice with scaling through @pool
+	destination = @bob
+)`)
+
+		err := runResolveProvenance(t, admission, []*raftcmdpb.Order{order}, true)
+
+		var businessErr *domain.BusinessError
+		require.ErrorAs(t, err, &businessErr,
+			"a deterministic scaling failure after a successful read must surface a terminal business error")
+		require.ErrorIs(t, err, domain.ErrNumscriptScalingUnsupported,
+			"the surfaced cause is the freezable scaling sentinel, not a retryable discovery error")
+		require.False(t, order.GetTechnical().GetPreloadUnavailable(),
+			"a read preceded the failure, but scaling is deterministic — it must NOT forward as PRELOAD_UNAVAILABLE (the loop this fix stops)")
+	})
+
 	// Contrast with the regression: a `latest` reference with the SAME no-read
 	// failure IS forwarded under a key, because a previously-saved version may
 	// hold the frozen outcome.

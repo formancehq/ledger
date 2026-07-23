@@ -46,6 +46,22 @@ func convertNumscriptError(err error) domain.Describable {
 		}
 	}
 
+	// Asset scaling (`… with scaling through …`) is not supported by dependency
+	// resolution: SourceWithScaling returns ErrScalingNotSupported unconditionally,
+	// independent of any balance/metadata. It is the one deterministic resolver
+	// failure the library re-exports as a public sentinel (numscriptlib.
+	// ErrScalingNotSupported), so — unlike the internal-only residue below — we can
+	// split it out without importing internals or matching strings. Map it to the
+	// freezable ErrNumscriptScalingUnsupported (KindValidation) so admission
+	// terminates it definitively rather than forwarding a PRELOAD_UNAVAILABLE that
+	// no retry could satisfy. This closes the read-then-scaling loop that the
+	// provenance flag alone could not, because a successful balance()/meta() origin
+	// read (bound before statements are walked) sets MutableReadAttempted before the
+	// scaling source deterministically fails (EN-1557).
+	if errors.Is(err, numscriptlib.ErrScalingNotSupported) {
+		return domain.ErrNumscriptScalingUnsupported
+	}
+
 	// errors.As walks the chain in case a caller has already wrapped the
 	// numscript-library error in a Describable. This also unwraps
 	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
@@ -68,8 +84,10 @@ func convertNumscriptError(err error) domain.Describable {
 	// (e.g. MetadataNotFound when a meta()-referenced account was deleted after an
 	// earlier success) with the same leaf InterpreterError shape, and the concrete
 	// types live in an internal package we must not import. A public Numscript
-	// resolver-error taxonomy is therefore NOT required (EN-1563 cancelled), and we
-	// must never classify by error string or import Numscript internals.
+	// resolver-error taxonomy is therefore NOT required (EN-1563 cancelled) — the
+	// one publicly-exposed deterministic sentinel (scaling) is handled above; the
+	// rest stay conservatively forwarded — and we must never classify by error
+	// string or import Numscript internals.
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 }
 

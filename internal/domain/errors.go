@@ -453,6 +453,17 @@ var (
 	// Rejecting keeps the balance a script sees consistent with the volume the FSM
 	// will mutate.
 	ErrScopedBalanceUnsupported = NewValidationSentinel("numscript: scope-qualified balances/metadata are not supported (ledger models color but not scope)")
+	// ErrNumscriptScalingUnsupported rejects a Numscript whose dependency
+	// resolution hits an asset-scaling source (`… with scaling through …`),
+	// which the resolver does not support. Unlike most resolver failures this is
+	// unconditionally deterministic and state-independent — the scaling source
+	// fails identically regardless of any balance/metadata — so it is a freezable
+	// validation rejection (like ErrScopedBalanceUnsupported), NOT a retryable
+	// preparation gap. Classifying it as freezable lets admission terminate it
+	// instead of forwarding it as a PRELOAD_UNAVAILABLE that no retry could ever
+	// satisfy, even when a prior successful balance()/meta() read set the
+	// read-attempt provenance flag (EN-1557).
+	ErrNumscriptScalingUnsupported = NewValidationSentinel("numscript: asset scaling is not supported")
 	// Prepared-query identifier sentinels stay local: prepared queries are
 	// a ledger-internal feature (CQRS read-side), not part of the
 	// Formance-wide invariants in github.com/formancehq/invariants.
