@@ -1679,7 +1679,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
 	}
 
-	c, err := query.ReadLedgerLogsCompiled(handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
+	c, err := query.ReadLedgerLogsCompiled(ctx, handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
 		_ = handle.Close()
 

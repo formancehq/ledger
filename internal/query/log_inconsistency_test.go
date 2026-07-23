@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"testing"
@@ -78,6 +79,7 @@ func TestReadLedgerLogsCompiled_HappyPath(t *testing.T) {
 	}
 
 	cur, err := ReadLedgerLogsCompiled(
+		context.Background(),
 		nil, // pebble reader unused in this path (cursor.Next is not called)
 		nil, // cold reader unused
 		newGetterWithEntries(t, entries),
@@ -98,6 +100,7 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 	t.Parallel()
 
 	_, err := ReadLedgerLogsCompiled(
+		context.Background(),
 		nil, nil, newGetterUnused(t),
 		"test",
 		[][]byte{{0x01, 0x02}}, // logID is only 2 bytes — caught before any Get
@@ -120,6 +123,7 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	const ledgerName = "test"
 
 	_, err := ReadLedgerLogsCompiled(
+		context.Background(),
 		nil,
 		nil,
 		newGetterAlwaysErr(t, pebble.ErrNotFound),
@@ -148,6 +152,7 @@ func TestReadLedgerLogsCompiled_MalformedIndexValue(t *testing.T) {
 	}
 
 	_, err := ReadLedgerLogsCompiled(
+		context.Background(),
 		nil,
 		nil,
 		newGetterWithEntries(t, entries),

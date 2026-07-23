@@ -228,7 +228,7 @@ func executeList(
 
 		cursor.TransactionData = txns
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		logs, err := EnrichLogs(reader, coldReader, indexReader, ledgerName, entities)
+		logs, err := EnrichLogs(ctx, reader, coldReader, indexReader, ledgerName, entities)
 		if err != nil {
 			return nil, err
 		}
@@ -296,8 +296,8 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // payloads from Pebble. pebbleReader reads the log payloads (Cold zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
-func EnrichLogs(pebbleReader dal.PebbleReader, coldReader *coldstorage.ColdReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
-	c, err := ReadLedgerLogsCompiled(pebbleReader, coldReader, indexReader, ledgerName, logIDs)
+func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, coldReader *coldstorage.ColdReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+	c, err := ReadLedgerLogsCompiled(ctx, pebbleReader, coldReader, indexReader, ledgerName, logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}
