@@ -71,9 +71,9 @@ func (it *NotIterator) Current() []byte {
 }
 
 func (it *NotIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the universe is re-seeked below).
+	it.exhausted = false
 
 	it.started = true
 

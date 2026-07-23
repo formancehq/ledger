@@ -47,9 +47,13 @@ func (it *AndIterator) Current() []byte {
 }
 
 func (it *AndIterator) SeekGE(target []byte) bool {
-	if it.exhausted || len(it.children) == 0 {
+	if len(it.children) == 0 {
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion re-establishes the intersection (converge re-seeks children).
+	it.exhausted = false
 
 	// Seek all children to target
 	if !it.children[0].SeekGE(target) {
