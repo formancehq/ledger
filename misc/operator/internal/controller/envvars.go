@@ -280,8 +280,30 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		}
 	}
 
-	// Auth
-	if spec.Auth != nil {
+	// Auth — deferred until TLS has fully converged to `required`.
+	//
+	// The ledger server rejects `--auth-enabled` (and the auto-enabling
+	// AUTH_ED25519_KEYS) unless `--tls-mode=required`, so bearer tokens can
+	// never travel in plaintext (see internal/bootstrap/config.go
+	// validateAuthConfig). But `computeTargetTLSMode` drives a TLS *enable*
+	// toggle through the transitional `optional` mode: emitting auth env during
+	// that phase would boot every pod into a config the server refuses, so the
+	// rolling update never becomes Ready, never converges, and the migration
+	// deadlocks at `optional`. We therefore hold ALL auth env off until the
+	// target mode reaches `required`; a subsequent reconcile then enables auth
+	// on top of the converged TLS. The API is briefly unauthenticated during
+	// the `optional` window — no worse than the plaintext state the cluster is
+	// migrating away from. When TLS is `disabled`/`optional` no auth env is
+	// emitted at all (auth defaults off), which also avoids the server's
+	// "auth flags set without --auth-enabled" rejection.
+	//
+	// This deferral is safe — never a silent auth drop — because
+	// validateClusterConfig (cluster_controller.go) rejects the invalid steady
+	// state auth.enabled=true + tls.enabled=false up front (ValidationFailed
+	// condition, Phase=Error, no reconcile). The only reachable non-`required`
+	// auth case that gets here is therefore the transient `optional` window of a
+	// `disabled`->`required` migration, where tls.enabled is already true.
+	if targetTLSMode == tlsModeRequired && spec.Auth != nil {
 		envs = appendIfBool(envs, "AUTH_ENABLED", spec.Auth.Enabled)
 		envs = appendIfStr(envs, "AUTH_ISSUER", spec.Auth.Issuer)
 		if len(spec.Auth.Issuers) > 0 {
@@ -304,9 +326,12 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 
 	// AUTH_ED25519_KEYS points at the configmap-mounted JSON file when
 	// credentials are registered and auth is not explicitly disabled. The path
-	// is fixed by the volume mount declared in reconcileStatefulSet.
+	// is fixed by the volume mount declared in reconcileStatefulSet. Gated on
+	// `required` for the same reason as the block above — AUTH_ED25519_KEYS
+	// auto-enables auth on the server, so emitting it under `optional` would
+	// deadlock the migration.
 	authExplicitlyDisabled := spec.Auth != nil && spec.Auth.Enabled != nil && !*spec.Auth.Enabled
-	if len(credentials) > 0 && !authExplicitlyDisabled {
+	if targetTLSMode == tlsModeRequired && len(credentials) > 0 && !authExplicitlyDisabled {
 		envs = append(envs, strEnv("AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json"))
 	}
 

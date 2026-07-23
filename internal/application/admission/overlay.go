@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -74,14 +75,34 @@ type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
 	sinks            *overlay[string, *commonpb.SinkConfig]
+	// Original postings of each revert target, resolved once at order-build
+	// time (from the signed receipt or the transaction attribute) and reused
+	// by the preload and intra-bulk effect passes. They stay off the wire
+	// order: the FSM re-derives them from the coverage-gated TransactionState,
+	// and only caller intent is bound into the audit chain.
+	revertOriginalPostings map[domain.TransactionKey][]*commonpb.Posting
 }
 
 func newBulkOverlay() *bulkOverlay {
 	return &bulkOverlay{
-		numscriptEntries: newOverlay[numscriptEntryKey, string](),
-		numscriptLatest:  newOverlay[numscriptNameKey, string](),
-		sinks:            newOverlay[string, *commonpb.SinkConfig](),
+		numscriptEntries:       newOverlay[numscriptEntryKey, string](),
+		numscriptLatest:        newOverlay[numscriptNameKey, string](),
+		sinks:                  newOverlay[string, *commonpb.SinkConfig](),
+		revertOriginalPostings: make(map[domain.TransactionKey][]*commonpb.Posting),
 	}
+}
+
+// recordRevertOriginalPostings stores the postings admission resolved for a
+// revert target so later passes read them without re-fetching (and without a
+// second fetch missing on the receipt path, where the store read is skipped).
+func (o *bulkOverlay) recordRevertOriginalPostings(key domain.TransactionKey, postings []*commonpb.Posting) {
+	o.revertOriginalPostings[key] = postings
+}
+
+// revertOriginalPostingsFor returns the postings recorded for a revert target,
+// or nil if none were resolved (missing tx — the FSM audits the rejection).
+func (o *bulkOverlay) revertOriginalPostingsFor(key domain.TransactionKey) []*commonpb.Posting {
+	return o.revertOriginalPostings[key]
 }
 
 // recordNumscriptSave records an immutable save in the overlay and advances the

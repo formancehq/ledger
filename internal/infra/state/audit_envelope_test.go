@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
@@ -455,4 +456,81 @@ func goldenSortStrings(s []string) {
 			s[j-1], s[j] = s[j], s[j-1]
 		}
 	}
+}
+
+// TestBuildPerItemPayload_CoverageBitsDoNotChangeHash is the EN-1558 acceptance
+// criterion: an order that differs only in coverage_bits must produce a
+// byte-identical audit per-item payload (and therefore an identical audit hash
+// pre-image), because the audited bytes exclude OrderTechnical.
+func TestBuildPerItemPayload_CoverageBitsDoNotChangeHash(t *testing.T) {
+	t.Parallel()
+
+	mk := func(bits []byte) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+			},
+			Technical: &raftcmdpb.OrderTechnical{CoverageBits: bits},
+		}
+	}
+
+	serialized := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b0001})})
+	serializedOther := marshalOrdersForAudit([]*raftcmdpb.Order{mk([]byte{0b1111_0000})})
+
+	itemA := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serialized[0]}
+	itemB := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 7, SerializedOrder: serializedOther[0]}
+
+	require.Equal(t, BuildPerItemPayload(itemA), BuildPerItemPayload(itemB),
+		"coverage_bits must not alter the audit business-intent per-item payload")
+}
+
+// TestRecomputeProposalHash_AlignsWithFrozenHash proves audit-derived recomputation
+// stays byte-identical to the idempotency hash the FSM froze, even when the live
+// order carried coverage_bits. The audit stores business-intent bytes; recompute
+// unmarshals them and re-hashes via HashOrders (which also excludes technical), so
+// the two agree by construction.
+func TestRecomputeProposalHash_AlignsWithFrozenHash(t *testing.T) {
+	t.Parallel()
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+		},
+		Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b1010}},
+	}
+
+	// Frozen hash: byte-identical to what HashProposal froze under the idempotency
+	// key at apply time (HashOrders is the allocation-per-call twin of HashProposal).
+	frozen := processing.HashOrders([]*raftcmdpb.Order{order})
+
+	serialized := marshalOrdersForAudit([]*raftcmdpb.Order{order})
+	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized[0]}}
+
+	require.Equal(t, frozen, recomputeProposalHash(items),
+		"audit-derived recomputation must equal the frozen idempotency hash")
+}
+
+// TestBuildPerItemPayload_LegacyBytesVerifyVerbatim proves entries persisted
+// BEFORE EN-1558 (whose serialized_order still embeds OrderTechnical) remain
+// verifiable: BuildPerItemPayload hashes the stored bytes verbatim, so no
+// migration or hash-version bump is required.
+func TestBuildPerItemPayload_LegacyBytesVerifyVerbatim(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a pre-change entry: the WHOLE order (with Technical) was stored.
+	legacyOrder := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+		},
+		Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0b0011}},
+	}
+	legacyBytes := legacyOrder.MarshalDeterministicVT(nil)
+
+	item := &auditpb.AuditItem{OrderIndex: 0, LogSequence: 3, SerializedOrder: legacyBytes}
+
+	require.Equal(t, BuildPerItemPayload(item), BuildPerItemPayload(item))
+	require.Contains(t, string(item.GetSerializedOrder()), "ledger-a")
+	// Legacy bytes DIFFER from new business-intent bytes (they still carry technical),
+	// which is exactly why verification hashes stored bytes rather than re-deriving.
+	require.NotEqual(t, legacyBytes, marshalOrdersForAudit([]*raftcmdpb.Order{legacyOrder})[0])
 }

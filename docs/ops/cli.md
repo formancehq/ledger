@@ -4417,6 +4417,7 @@ one node's secret drifted from the rest of the cluster.
 
 ```bash
 ledger run --cluster-secret "my-cluster-secret" --auth-enabled \
+  --tls-mode required \
   --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   [other flags...]
 ```
@@ -4483,6 +4484,7 @@ ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags
 
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-anonymous-scopes "*:read"
 ```
 
@@ -4604,7 +4606,7 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` (`optional` still accepts plaintext client connections) |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |

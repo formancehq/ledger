@@ -32,8 +32,10 @@ flowchart LR
 ## 2. Parameter classification
 
 Every query parameter on every filtered endpoint plays exactly one role. The
-master table below classifies them; the **Status** column flags the one endpoint
-not yet on the canonical surface.
+master table below classifies them; the **Status** column records each endpoint's
+relationship to the canonical `filter` surface (`canonical`, `option-only`, or the
+`body-driven` prepared-query path). Every list/aggregation endpoint that selects by
+account, transaction, or log is now on the canonical surface.
 
 | Endpoint | Canonical `filter` | Typed coercion | Pagination | Endpoint/output options | Status |
 |----------|---|---|---|---|---|
@@ -41,7 +43,7 @@ not yet on the canonical surface.
 | `GET /v3/{ledger}/transactions` | filter (TRANSACTIONS) | `startDate`,`endDate` | `after`(txID), `pageSize`, `reverse` | — | canonical |
 | `GET /v3/{ledger}/logs` | filter (LOGS) | `startDate`,`endDate` | `after`(logID), `pageSize` | — | canonical |
 | `GET /v3/_/audit-entries` | filter (AUDIT, textual-only) | — | `after`(seq), `pageSize`, `reverse` | — | canonical |
-| `GET /v3/{ledger}/volumes` | — | — | — | `useMaxPrecision`, `collapseColors`, `groupByPrefixes` | **legacy `prefix` alias — not yet on the canonical surface (pending volume-filter migration)** |
+| `GET /v3/{ledger}/volumes` | filter (ACCOUNTS) | — | — | `useMaxPrecision`, `collapseColors`, `groupByPrefixes` | canonical |
 | `GET /v3/{ledger}/accounts/{addr}` | — | — | — | `collapseColors` | option-only |
 | `GET /v3/_/indexes/status` | — | — | — | `ledger` | option-only |
 | `GET /v3/_/indexes` | — | — | — | `scope` | option-only |
@@ -86,6 +88,10 @@ longer exist):
 
 - `prefix=` (accounts) → `filter=address ^= "users:"` (textual) or the structured
   `{"$match":{"address":"users:"}}`.
+- `prefix=` (volumes, EN-1541) → the same `filter=address ^= "users:"`. The
+  dual-format `filter`, compiled for the Accounts target, is now the sole account
+  selector on `GET /v3/{ledger}/volumes`; the aggregation options
+  (`useMaxPrecision`, `collapseColors`, `groupByPrefixes`) are unaffected.
 - `reference=` (transactions) → `{"$match":{"reference":"..."}}` (**structured
   only** — the textual grammar has no `reference` field).
 

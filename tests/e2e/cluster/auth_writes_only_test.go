@@ -26,7 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -68,6 +67,12 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		// Auth requires TLS (bearer tokens must not travel in plaintext), so
+		// generate a throwaway CA + server cert for the fixture.
+		certDir := GinkgoT().TempDir()
+		certs, err := testserver.GenerateTestCerts(certDir)
+		Expect(err).To(Succeed())
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
@@ -84,6 +89,9 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthIssuer(oidcServer.URL),
 			testserver.WithAuthService("ledger"),
+			testserver.WithTLSMode("required"),
+			testserver.WithTLSCertFile(certs.ServerCertFile),
+			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			// Writes-only: every read scope is granted to anonymous callers.
 			testserver.WithAuthAnonymousScopes("*:read"),
 		)
@@ -99,16 +107,10 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		grpcConn, err = grpc.NewClient(
-			fmt.Sprintf("localhost:%d", writesOnlyGRPCPort),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
-		)
+		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
+		client, clusterCli, grpcConn, err = newTLSGRPCClient(writesOnlyGRPCPort, certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-
-		client = servicepb.NewBucketServiceClient(grpcConn)
-		clusterCli = clusterpb.NewClusterServiceClient(grpcConn)
 		httpAddr = fmt.Sprintf("http://localhost:%d", writesOnlyHTTPPort)
 
 		// Wait for leader election (use a write-scoped token).

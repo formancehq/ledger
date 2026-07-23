@@ -401,7 +401,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			Issuers: []string{"https://issuer1.example.com", "https://issuer2.example.com"},
 		}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		assertEnv(t, envs, "AUTH_ISSUERS", "https://issuer1.example.com,https://issuer2.example.com")
 	})
 
@@ -411,7 +411,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			Issuers: []string{"https://auth.example.com"},
 		}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		assertEnv(t, envs, "AUTH_ISSUERS", "https://auth.example.com")
 	})
 
@@ -419,7 +419,7 @@ func TestBuildEnvVars_AuthIssuers(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		assertNoEnv(t, envs, "AUTH_ISSUERS")
 	})
 }
@@ -432,7 +432,7 @@ func TestBuildEnvVars_AuthCheckScopes(t *testing.T) {
 	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 		CheckScopes: &b,
 	}
-	envs := buildEnvVars(ls, "disabled", nil)
+	envs := buildEnvVars(ls, "required", nil)
 	assertEnv(t, envs, "AUTH_CHECK_SCOPES", "true")
 }
 
@@ -444,7 +444,7 @@ func TestBuildEnvVars_AuthReadKeySetMaxRetries(t *testing.T) {
 	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 		ReadKeySetMaxRetries: &v,
 	}
-	envs := buildEnvVars(ls, "disabled", nil)
+	envs := buildEnvVars(ls, "required", nil)
 	assertEnv(t, envs, "AUTH_READ_KEY_SET_MAX_RETRIES", "5")
 }
 
@@ -773,7 +773,7 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 				"ledger:write": {"ledger:TransactionWrite"},
 			},
 		}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		e := findEnv(envs, "AUTH_SCOPE_MAPPING")
 		require.NotNil(t, e, "AUTH_SCOPE_MAPPING should be present")
 		assert.Contains(t, e.Value, "ledger:read")
@@ -784,7 +784,7 @@ func TestBuildEnvVars_AuthScopeMapping(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		assertNoEnv(t, envs, "AUTH_SCOPE_MAPPING")
 	})
 }
@@ -802,7 +802,7 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			AnonymousScopes: []string{"*:read"},
 		}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e, "AUTH_ANONYMOUS_SCOPES should be present")
 		assert.Equal(t, "*:read", e.Value)
@@ -814,7 +814,7 @@ func TestBuildEnvVars_AuthAnonymousScopes(t *testing.T) {
 		ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
 			AnonymousScopes: []string{"ledger:LedgerRead", "ledger:AccountRead"},
 		}
-		envs := buildEnvVars(ls, "disabled", nil)
+		envs := buildEnvVars(ls, "required", nil)
 		e := findEnv(envs, "AUTH_ANONYMOUS_SCOPES")
 		require.NotNil(t, e)
 		assert.Equal(t, "ledger:LedgerRead,ledger:AccountRead", e.Value)
@@ -989,7 +989,7 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 		},
 	}
 
-	envs := buildEnvVars(ls, "disabled", nil)
+	envs := buildEnvVars(ls, "required", nil)
 
 	// Sentinel mode
 	assertEnv(t, envs, "SENTINEL_MODE", "true")
