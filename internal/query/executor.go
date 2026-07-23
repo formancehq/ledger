@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -44,6 +45,7 @@ func Execute(
 	ctx context.Context,
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
+	coldReader *coldstorage.ColdReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	indexAttr *attributes.Attribute[*commonpb.Index],
@@ -136,7 +138,7 @@ func Execute(
 
 	switch req.GetMode() {
 	case commonpb.QueryMode_QUERY_MODE_LIST:
-		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
+		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, coldReader, indexSnap, ledgerInfo.GetName(), enricher)
 		if err != nil {
 			return nil, err
 		}
@@ -169,6 +171,7 @@ func executeList(
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 	reader dal.PebbleReader,
+	coldReader *coldstorage.ColdReader,
 	indexReader dal.PebbleReader,
 	ledgerName string,
 	enricher *EntityEnricher,
@@ -225,7 +228,7 @@ func executeList(
 
 		cursor.TransactionData = txns
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		logs, err := EnrichLogs(reader, indexReader, ledgerName, entities)
+		logs, err := EnrichLogs(reader, coldReader, indexReader, ledgerName, entities)
 		if err != nil {
 			return nil, err
 		}
@@ -293,8 +296,8 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // payloads from Pebble. pebbleReader reads the log payloads (Cold zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
-func EnrichLogs(pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
-	c, err := ReadLedgerLogsCompiled(pebbleReader, indexReader, ledgerName, logIDs)
+func EnrichLogs(pebbleReader dal.PebbleReader, coldReader *coldstorage.ColdReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+	c, err := ReadLedgerLogsCompiled(pebbleReader, coldReader, indexReader, ledgerName, logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}

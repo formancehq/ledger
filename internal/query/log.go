@@ -65,9 +65,10 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence ui
 // ledgerLogCursor iterates over pre-fetched global sequences and fetches full
 // Log entries from Pebble on demand. It holds no long-lived resources.
 type ledgerLogCursor struct {
-	pebble dal.PebbleGetter
-	seqs   []uint64
-	pos    int
+	pebble     dal.PebbleReader
+	coldReader *coldstorage.ColdReader
+	seqs       []uint64
+	pos        int
 }
 
 func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
@@ -78,7 +79,10 @@ func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
 	seq := c.seqs[c.pos]
 	c.pos++
 
-	log, err := ReadLogBySequence(context.Background(), c.pebble, seq)
+	// Cold-storage fallback: a listed sequence may belong to a chapter that has
+	// been archived and purged from hot storage, so fall back to cold (like
+	// GetLog) instead of failing the whole listing.
+	log, err := ReadLogBySequenceWithCold(context.Background(), c.pebble, c.coldReader, seq)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +106,8 @@ func (c *ledgerLogCursor) Close() error { return nil }
 // truncated query result is worse than a clear error because the caller
 // cannot tell it apart from a legitimate empty result.
 func ReadLedgerLogsCompiled(
-	pebbleReader dal.PebbleGetter,
+	pebbleReader dal.PebbleReader,
+	coldReader *coldstorage.ColdReader,
 	indexReader dal.PebbleGetter,
 	ledgerName string,
 	logIDs [][]byte,
@@ -153,7 +158,7 @@ func ReadLedgerLogsCompiled(
 		_ = closer.Close()
 	}
 
-	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
+	return &ledgerLogCursor{pebble: pebbleReader, coldReader: coldReader, seqs: seqs}, nil
 }
 
 // ReadLogsSinceRaw returns a raw Pebble iterator for logs after the given
