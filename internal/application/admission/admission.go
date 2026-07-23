@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -64,6 +65,7 @@ type Admission struct {
 	attrs              *attributes.Attributes
 	numscriptCache     *numscript.NumscriptCache
 	coldStorageEnabled bool
+	coldReader         *coldstorage.ColdReader
 	authEnabled        bool
 	waitLeaderReady    func(context.Context) error
 
@@ -132,6 +134,15 @@ func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 func WithColdStorageEnabled() func(*Admission) {
 	return func(a *Admission) {
 		a.coldStorageEnabled = true
+	}
+}
+
+// WithColdReader wires the cold-storage reader so an idempotent-replay response
+// can resolve a referenced log whose chapter has been archived and purged from
+// hot storage. Nil (cold storage disabled) leaves resolution hot-only.
+func WithColdReader(cr *coldstorage.ColdReader) func(*Admission) {
+	return func(a *Admission) {
+		a.coldReader = cr
 	}
 }
 
@@ -804,17 +815,44 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	}()
 
 	logs = make([]*commonpb.Log, len(result.Logs))
+
+	// A referenced log may live in a chapter that has been archived and purged
+	// from hot storage, so resolve it with a cold-storage fallback (mirroring
+	// GetLog) — otherwise a replay of that key returns an empty log. The cold
+	// read needs a read handle (its archived-chapter lookup iterates), which the
+	// raw store is not; open one lazily, only on the replay path.
+	var handle *dal.ReadHandle
+	defer func() {
+		if handle != nil {
+			_ = handle.Close()
+		}
+	}()
+
 	for i, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs[i] = created
-		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
-			log, fetchErr := query.ReadLogBySequence(ctx, a.store, refSeq)
-			if fetchErr != nil {
-				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
-			}
 
-			logs[i] = log
+			continue
 		}
+
+		refSeq := logOrRef.GetReferenceSequence()
+		if refSeq == 0 {
+			continue
+		}
+
+		if handle == nil {
+			handle, err = a.store.NewReadHandle()
+			if err != nil {
+				return nil, fmt.Errorf("opening read handle for idempotent response: %w", err)
+			}
+		}
+
+		log, fetchErr := query.ReadLogBySequenceWithCold(ctx, handle, a.coldReader, refSeq)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
+		}
+
+		logs[i] = log
 	}
 
 	return logs, err
