@@ -313,3 +313,75 @@ func TestExportEntries_RetriesStreamedSegmentAndRoundTrips(t *testing.T) {
 		_ = closer.Close()
 	}
 }
+
+func TestCtxReader_Read(t *testing.T) {
+	t.Parallel()
+
+	// Live context: reads pass through.
+	live := &ctxReader{ctx: context.Background(), r: bytes.NewReader([]byte("abc"))}
+	buf := make([]byte, 3)
+	n, err := live.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, 3, n)
+
+	// Cancelled context: reads short-circuit with the context error.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dead := &ctxReader{ctx: ctx, r: bytes.NewReader([]byte("abc"))}
+	_, err = dead.Read(buf)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestHashFile_OpenError(t *testing.T) {
+	t.Parallel()
+
+	_, err := hashFile(context.Background(), filepath.Join(t.TempDir(), "does-not-exist"))
+	require.Error(t, err)
+}
+
+func TestPutWithRetry_BodyFactoryError(t *testing.T) {
+	withFastBackoff(t)
+
+	storage := &flakyStorage{}
+	err := putWithRetry(context.Background(), storage, "k", 0, logging.Testing(), func() (io.Reader, func(), error) {
+		return nil, func() {}, errors.New("cannot open body")
+	})
+	require.Error(t, err)
+	require.Equal(t, 0, storage.calls, "PutFile must not be called when the body cannot be prepared")
+}
+
+func TestWriteManifestWithRetry_RetriesThenSucceeds(t *testing.T) {
+	withFastBackoff(t)
+
+	storage := &flakyStorage{failsLeft: 1}
+	m := &Manifest{Checkpoint: &CheckpointManifest{Files: map[string]CheckpointFile{}}}
+	err := writeManifestWithRetry(context.Background(), storage, "backups/manifest.json", m, logging.Testing())
+	require.NoError(t, err)
+	require.Equal(t, 2, storage.calls, "manifest write must retry the transient failure")
+}
+
+func TestUploadFile_StatError(t *testing.T) {
+	t.Parallel()
+
+	storage := &flakyStorage{}
+	err := uploadFile(context.Background(), logging.Testing(), storage, t.TempDir(), "some/key", "missing.sst")
+	require.Error(t, err)
+	require.Equal(t, 0, storage.calls, "a missing local file must fail before any upload")
+}
+
+func TestListCheckpointFiles_ContextCancelledAbortsWalk(t *testing.T) {
+	// No t.Parallel(): mutates the hashFileFn global.
+	dir := t.TempDir()
+	writeCheckpointFile(t, dir, "100.sst", "sst-contents")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var hashed []string
+	restore := stubHashCounter(&hashed)
+	_, err := listCheckpointFiles(ctx, "bucket", dir, &Manifest{}, nil)
+	restore()
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, hashed, "a cancelled walk must not hash any file")
+}
