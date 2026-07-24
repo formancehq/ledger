@@ -697,7 +697,7 @@ func Module() fx.Option {
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
-			func(
+			fx.Annotate(func(
 				cfg Config,
 				node *node.Node,
 				store *dal.Store,
@@ -710,6 +710,7 @@ func Module() fx.Option {
 				receiptSigner *receipt.Signer,
 				attrs *attributes.Attributes,
 				authCfg internalauth.AuthConfig,
+				coldReader *coldstorage.ColdReader,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -723,6 +724,10 @@ func Module() fx.Option {
 				if cfg.ColdStorageConfig.Driver != "none" {
 					opts = append(opts, admission.WithColdStorageEnabled())
 				}
+
+				// nil when cold storage is disabled (optional fx dependency) —
+				// idempotent-replay log resolution then stays hot-only.
+				opts = append(opts, admission.WithColdReader(coldReader))
 
 				if authCfg.Enabled {
 					opts = append(opts, admission.WithAuthEnabled())
@@ -742,7 +747,7 @@ func Module() fx.Option {
 					node.WaitLeaderReady,
 					opts...,
 				)
-			},
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
 			func(
 				logger logging.Logger,
 				store *dal.Store,

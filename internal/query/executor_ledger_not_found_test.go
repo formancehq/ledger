@@ -67,7 +67,7 @@ func TestExecute_LedgerNotFound(t *testing.T) {
 				QueryName: "q",
 			}
 
-			_, err = query.Execute(context.Background(), rs, s, attrs.Volume, attrs.PreparedQuery, attrs.Index, req, nil, nil)
+			_, err = query.Execute(context.Background(), rs, s, nil, attrs.Volume, attrs.PreparedQuery, attrs.Index, req, nil, nil)
 			require.Error(t, err)
 
 			var notFound *domain.ErrLedgerNotFound

@@ -1684,7 +1684,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
 	}
 
-	c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetName(), logIDs)
+	c, err := query.ReadLedgerLogsCompiled(ctx, handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
 		_ = handle.Close()
 
@@ -1873,7 +1873,7 @@ func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.coldReader, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
