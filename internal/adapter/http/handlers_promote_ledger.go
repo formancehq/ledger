@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -28,15 +27,13 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(logs) == 0 {
-		unreachable("promote-ledger apply returned no log", map[string]any{"ledger": ledgerName})
-	}
+	details := map[string]any{"ledger": ledgerName}
 
-	promoteLedgerLog := logs[0].GetPayload().GetPromoteLedger()
+	logEntry := exactlyOneLog("promote-ledger", logs, details)
+
+	promoteLedgerLog := logEntry.GetPayload().GetPromoteLedger()
 	if promoteLedgerLog == nil {
-		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-
-		return
+		unexpectedLogPayload("promote-ledger", logEntry, details)
 	}
 
 	writeCreated(w, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})

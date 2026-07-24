@@ -56,27 +56,60 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-func TestHandleCreateTransaction_NoLogReturned(t *testing.T) {
+// TestHandleCreateTransaction_LogContractViolations locks in the exact-one
+// typed-log contract: exactly one non-nil Apply log carrying a CreatedTransaction
+// inner payload. Any other cardinality, a nil sole log, a non-Apply outer
+// payload, or a mismatched inner payload must fail loudly through unreachable
+// (the jsonRecoverer turns the panic into a sanitized 500 in production).
+func TestHandleCreateTransaction_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{}, nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
+	created := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}},
+			},
+		}}},
+	}}}
+	wrongOuter := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
+	}}
+	wrongInner := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+				RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
+			},
+		}}},
+	}}}
 
-	w := httptest.NewRecorder()
-	body := strings.NewReader(`{"script":{"plain":"send [USD 100] (\n  source = @world\n  destination = @users:001\n)"}}`)
-	r := newRequest(t, http.MethodPost, "/ledger1/transactions", body, map[string]string{
-		"ledgerName": "ledger1",
-	})
+	cases := []struct {
+		name string
+		logs []*commonpb.Log
+	}{
+		{"zero logs", []*commonpb.Log{}},
+		{"two logs", []*commonpb.Log{created, created}},
+		{"nil sole log", []*commonpb.Log{nil}},
+		{"wrong outer payload", []*commonpb.Log{wrongOuter}},
+		{"wrong inner payload", []*commonpb.Log{wrongInner}},
+	}
 
-	// An apply that returns no log is a backend contract violation; the handler
-	// panics (the jsonRecoverer middleware turns this into a 500 in production).
-	require.Panics(t, func() {
-		srv.handleCreateTransaction(w, r)
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newTestServer(t, backendReturningLogs(t, tc.logs))
+
+			w := httptest.NewRecorder()
+			body := strings.NewReader(`{"script":{"plain":"send [USD 100] (\n  source = @world\n  destination = @users:001\n)"}}`)
+			r := newRequest(t, http.MethodPost, "/ledger1/transactions", body, map[string]string{
+				"ledgerName": "ledger1",
+			})
+
+			require.Panics(t, func() {
+				srv.handleCreateTransaction(w, r)
+			})
+		})
+	}
 }
 
 func TestHandleCreateTransaction_InvalidBody(t *testing.T) {
