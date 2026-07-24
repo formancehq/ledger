@@ -84,7 +84,10 @@ func DiscoverNumscriptDependencies(
 
 	resolved, err := SafeResolveDependencies(parsed, context.Background(), variablesMap, recording)
 	if err != nil {
-		return nil, err
+		return nil, &DependencyResolutionError{
+			Cause:                err,
+			MutableReadAttempted: recording.MutableReadAttempted(),
+		}
 	}
 
 	result := &DiscoveryResult{

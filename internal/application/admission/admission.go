@@ -1449,6 +1449,139 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	return aggregate, perOrder, nil
 }
 
+// markPreloadUnavailable stamps the OrderTechnical PreloadUnavailable flag — the
+// only mutation permitted on an accepted order before audit capture (invariant
+// #10 exempts OrderTechnical) — and reports forwarded=true so the caller
+// forwards the order to the FSM replay gate.
+func (a *Admission) markPreloadUnavailable(order *raftcmdpb.Order) bool {
+	if order.GetTechnical() == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+	order.Technical.PreloadUnavailable = true
+
+	return true
+}
+
+// describableCause returns the Describable a resolution failure wraps, so the
+// terminal inline/exact branch can surface the real numscript error rather than
+// the generic ErrDependencyDiscoveryFailed. errors.As walks through the
+// DependencyResolutionError's Unwrap to the underlying cause.
+func describableCause(cause error) (domain.Describable, bool) {
+	var d domain.Describable
+	if errors.As(cause, &d) {
+		return d, true
+	}
+
+	return nil, false
+}
+
+// classifyResolutionFailure decides what to do when admission cannot build the
+// preload for an order (discovery/skip-prediction failed against current state).
+// With an idempotency key present the failure is NOT authoritative — the batch
+// may be a replay of a frozen outcome, and only the FSM (log-ordered) can decide.
+// So we mark the order preload_unavailable and forward it: the FSM replays a
+// frozen outcome if one exists, else rejects with the retryable, non-frozen
+// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to preserve,
+// so we keep the cheap fail-fast (returns a terminal error).
+//
+// refIsLatest is true only for a `latest`/"" numscript reference selector, whose
+// resolution could differ from a previously-saved version that already produced
+// the frozen outcome; an inline script or an exact immutable version is
+// deterministic. It is a standalone method (not a closure) so the classification
+// is directly unit-testable with synthetic causes (panic, cancellation, …) that
+// are impractical to trigger through the real-store resolution path.
+func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause error, refIsLatest, hasIdempotencyKey bool) (forwarded bool, err error) {
+	// A recovered numscript-library panic is a "should not happen" (invariant
+	// #7): it must surface loudly, never be masked as a retryable
+	// preload-unavailable. It is also deterministic (same script → same panic),
+	// so forwarding it would loop forever once an idempotency key is present.
+	// It is KindInternal (so the freezable check below would let it through)
+	// and errors.As on the DependencyResolutionError wrapper would unwrap past
+	// it — hence the explicit guard here, before both checks.
+	if numscript.IsPanic(cause) {
+		var pd domain.Describable
+		if errors.As(cause, &pd) {
+			return false, &domain.BusinessError{Err: pd}
+		}
+
+		return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+	}
+
+	// Context cancellation / deadline is a genuine host condition, never a
+	// retryable business outcome — surface it loudly, never soften to
+	// PRELOAD_UNAVAILABLE (EN-1557, invariant #7). Checked before the freezable
+	// and provenance branches: a ctx error is neither, and the errors.As unwrap
+	// below would happily walk past it to the inner cause.
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+	}
+
+	// A definitive, deterministic rejection is NOT a preparation gap: the
+	// script could never have succeeded — a parse error, a validation failure,
+	// an unsupported scope-qualified write, an unsupported asset-scaling source
+	// (ErrNumscriptScalingUnsupported), a missing ledger, and so on — so there
+	// is no frozen outcome to replay and re-running always fails identically.
+	// Surface the real error rather than forwarding it as a retryable
+	// preload-unavailable (which would spin forever, since no retry can
+	// succeed). IsFreezableFailure captures exactly this "definitive &
+	// deterministic" class (validation, parse, not-found, already-exists,
+	// conflict, precondition). Scaling reaches this branch even when a prior
+	// successful balance()/meta() read set MutableReadAttempted, because the
+	// freezable check runs before the provenance branch (EN-1557).
+	var d domain.Describable
+	if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
+		return false, &domain.BusinessError{Err: d}
+	}
+
+	// Provenance-based classification (EN-1557). A DependencyResolutionError
+	// carries whether resolution attempted a mutable balance/metadata read
+	// before failing, letting us tell a state-dependent failure from a
+	// deterministic one that the conservative KindInternal mapping can no
+	// longer distinguish on its own.
+	var dre *numscript.DependencyResolutionError
+	if errors.As(cause, &dre) {
+		if dre.MutableReadAttempted {
+			// State-dependent: current state made resolution fail. With an
+			// idempotency key the batch may replay a frozen outcome, so forward;
+			// without one there is no replay to preserve, so fail fast.
+			if !hasIdempotencyKey {
+				return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+			}
+
+			return a.markPreloadUnavailable(order), nil
+		}
+
+		// No mutable read was attempted. A `latest` selector may resolve to a
+		// different, previously-saved version that produced the frozen outcome,
+		// so it stays forwardable under a key. An inline script or an exact
+		// immutable version is deterministic: it can never succeed on retry, so
+		// terminate now (surface the cause) — the EN-1557 fix that stops the
+		// PRELOAD_UNAVAILABLE retry loop.
+		if refIsLatest {
+			if !hasIdempotencyKey {
+				return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+			}
+
+			return a.markPreloadUnavailable(order), nil
+		}
+
+		if surfaced, ok := describableCause(cause); ok {
+			return false, &domain.BusinessError{Err: surfaced}
+		}
+
+		return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+	}
+
+	// No provenance (e.g. a predictOrderSkip cause carries no
+	// DependencyResolutionError): preserve the prior behavior — fail fast
+	// without a key, forward under one.
+	if !hasIdempotencyKey {
+		return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
+	}
+
+	return a.markPreloadUnavailable(order), nil
+}
+
 // resolveScriptsAndEnrichNeeds resolves ScriptReferences and discovers volume/metadata
 // dependencies from all script-based CreateTransaction orders. It enriches the given
 // Coverage with the discovered dependencies so that a single Build call covers everything.
@@ -1456,54 +1589,6 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 // This runs after extractPreloadNeeds (which preloads caller-supplied accountMetadata
 // keys but skips posting-driven volumes for script-based orders) and before Build.
 func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*raftcmdpb.Order, overlay *bulkOverlay, p *plan.Coverage, perOrder []*plan.Coverage, hasIdempotencyKey bool) error {
-	// forwardOrFail decides what to do when admission cannot build the preload
-	// for an order (discovery/skip-prediction failed against current state). With
-	// an idempotency key present the failure is NOT authoritative — the batch may
-	// be a replay of a frozen outcome, and only the FSM (log-ordered) can decide.
-	// So we mark the order preload_unavailable and forward it: the FSM replays a
-	// frozen outcome if one exists, else rejects with the retryable, non-frozen
-	// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
-	// preserve, so we keep the cheap fail-fast (returns a terminal error).
-	forwardOrFail := func(order *raftcmdpb.Order, cause error) (forwarded bool, err error) {
-		// A definitive, deterministic rejection is NOT a preparation gap: the
-		// script could never have succeeded — a parse error, a validation failure,
-		// an unsupported scope-qualified write, a missing ledger, and so on —
-		// so there is no frozen outcome to replay and re-running always fails
-		// identically. Surface the real error: never forward it as a retryable
-		// preload-unavailable (which would spin forever, since no retry can
-		// succeed) and never wrap it as the retryable ErrDependencyDiscoveryFailed.
-		// IsFreezableFailure captures exactly this "definitive & deterministic"
-		// class (validation, parse, not-found, already-exists, conflict,
-		// precondition); only genuinely state-dependent preparation failures fall
-		// through to the idempotency-replay forward below.
-		// A recovered numscript-library panic is a "should not happen" (invariant
-		// #7): it must surface loudly, never be masked as a retryable
-		// preload-unavailable. It is also deterministic (same script → same panic),
-		// so forwarding it would loop forever once an idempotency key is present.
-		// It is KindInternal (so the freezable check below would let it through),
-		// hence the explicit guard here, before that check.
-		if numscript.IsPanic(cause) {
-			var pd domain.Describable
-			if errors.As(cause, &pd) {
-				return false, &domain.BusinessError{Err: pd}
-			}
-
-			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
-		}
-		var d domain.Describable
-		if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
-			return false, &domain.BusinessError{Err: d}
-		}
-		if !hasIdempotencyKey {
-			return false, &domain.BusinessError{Err: &domain.ErrDependencyDiscoveryFailed{Cause: cause}}
-		}
-		if order.GetTechnical() == nil {
-			order.Technical = &raftcmdpb.OrderTechnical{}
-		}
-		order.Technical.PreloadUnavailable = true
-
-		return true, nil
-	}
 	// effects accumulates the state changes of orders already processed in this
 	// atomic batch so each subsequent order resolves against the state the FSM
 	// will see when it reaches that order — pre-batch storage plus predecessors'
@@ -1537,7 +1622,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		// resolved batch state layered over Pebble.
 		skip, err := a.predictOrderSkip(order, ledgerName, effects)
 		if err != nil {
-			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+			// skip-prediction failure is not a resolution failure; no DependencyResolutionError, so refIsLatest is irrelevant
+			if forwarded, ferr := a.classifyResolutionFailure(order, err, false, hasIdempotencyKey); ferr != nil {
 				return ferr
 			} else if forwarded {
 				continue
@@ -1727,12 +1813,13 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
 			// the original success). This is a preparation gap, NOT an authoritative
 			// verdict: with an idempotency key the batch may be a replay of a frozen
-			// outcome, and only the FSM (log-ordered) can decide. forwardOrFail marks
-			// the order preload_unavailable and forwards it — the FSM replays the
+			// outcome, and only the FSM (log-ordered) can decide. When the failure is
+			// state-dependent, classifyResolutionFailure marks the order
+			// preload_unavailable and forwards it — the FSM replays the
 			// frozen outcome, or rejects with the retryable, non-frozen
 			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
 			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
-			if forwarded, ferr := forwardOrFail(order, err); ferr != nil {
+			if forwarded, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey); ferr != nil {
 				return ferr
 			} else if forwarded {
 				continue

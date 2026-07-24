@@ -46,6 +46,22 @@ func convertNumscriptError(err error) domain.Describable {
 		}
 	}
 
+	// Asset scaling (`… with scaling through …`) is not supported by dependency
+	// resolution: SourceWithScaling returns ErrScalingNotSupported unconditionally,
+	// independent of any balance/metadata. It is the one deterministic resolver
+	// failure the library re-exports as a public sentinel (numscriptlib.
+	// ErrScalingNotSupported), so — unlike the internal-only residue below — we can
+	// split it out without importing internals or matching strings. Map it to the
+	// freezable ErrNumscriptScalingUnsupported (KindValidation) so admission
+	// terminates it definitively rather than forwarding a PRELOAD_UNAVAILABLE that
+	// no retry could satisfy. This closes the read-then-scaling loop that the
+	// provenance flag alone could not, because a successful balance()/meta() origin
+	// read (bound before statements are walked) sets MutableReadAttempted before the
+	// scaling source deterministically fails (EN-1557).
+	if errors.Is(err, numscriptlib.ErrScalingNotSupported) {
+		return domain.ErrNumscriptScalingUnsupported
+	}
+
 	// errors.As walks the chain in case a caller has already wrapped the
 	// numscript-library error in a Describable. This also unwraps
 	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
@@ -58,20 +74,20 @@ func convertNumscriptError(err error) domain.Describable {
 
 	// Every other library error becomes ErrNumscriptRuntime (KindInternal).
 	//
-	// Note: this deliberately does NOT reclassify deterministic client-side
-	// resolver errors (undeclared/mistyped variable, bad portion, …) to
-	// KindValidation, even though that would let admission surface them
-	// definitively instead of forwarding them as a retryable PRELOAD_UNAVAILABLE
-	// under an idempotency key. The reason is that the upstream library reports
-	// script-deterministic errors and *state-dependent* ones (e.g. MetadataNotFound
-	// when a meta()-referenced account was deleted after an earlier success) with
-	// the same leaf InterpreterError shape, and the concrete types live in an
-	// internal package we cannot import to tell them apart. The state-dependent
-	// case MUST stay forwardable so the FSM can replay a frozen success (EN-1406
-	// idempotent-replay), so we keep the conservative KindInternal classification
-	// for all of them; reclassifying by "leaf error" would break that replay. A
-	// precise split needs upstream to expose an error category. See the tracking
-	// ticket for the deterministic-error UX gap.
+	// This intentionally keeps a single conservative classification for the whole
+	// residue. Admission no longer needs the leaf error category to decide
+	// forward-vs-terminate: it classifies from state provenance instead — selector
+	// mutability (`latest` vs inline/exact) plus whether resolution attempted a
+	// mutable balance/metadata read (RecordingStore.MutableReadAttempted, carried
+	// out via DependencyResolutionError). See EN-1557. This matters because the
+	// upstream library reports script-deterministic errors and state-dependent ones
+	// (e.g. MetadataNotFound when a meta()-referenced account was deleted after an
+	// earlier success) with the same leaf InterpreterError shape, and the concrete
+	// types live in an internal package we must not import. A public Numscript
+	// resolver-error taxonomy is therefore NOT required (EN-1563 cancelled) — the
+	// one publicly-exposed deterministic sentinel (scaling) is handled above; the
+	// rest stay conservatively forwarded — and we must never classify by error
+	// string or import Numscript internals.
 	return &domain.ErrNumscriptRuntime{Detail: err.Error()}
 }
 

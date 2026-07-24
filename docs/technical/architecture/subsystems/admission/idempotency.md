@@ -63,6 +63,44 @@ type IdempotencyKeyValue struct {
 | Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
+## Numscript Dependency-Resolution Failures
+
+Idempotency keys also govern a narrower, forward-vs-terminate decision admission has to make while *preparing* a `CreateTransaction` order that references a Numscript script. Before a script's order can be proposed, admission statically discovers the accounts, assets, and metadata it depends on (`DiscoverNumscriptDependencies`, `internal/domain/processing/numscript/discover.go` — see [Numscript Library](../scripting/numscript-library.md)) so the FSM never has to touch Pebble to resolve them. When that discovery fails, admission must decide whether the failure is **deterministic** — the script could never have succeeded, no matter how many times it is retried — or **state-dependent** — current state caused it, and a different (or later) state might not. `Admission.classifyResolutionFailure` (`internal/application/admission/admission.go`) makes this call from two signals Ledger already owns; it never inspects error strings or Numscript internals. A dedicated public Numscript resolver-error taxonomy (EN-1563) was evaluated for this purpose and cancelled as unnecessary.
+
+### The two signals
+
+1. **Selector mutability.** Under the numscript-library versioning model (see [Version Resolution](../scripting/numscript-library.md#version-resolution)), a script reference is either an exact immutable semver, the literal `latest`/empty, or an inline script body. A `latest` reference can resolve to a *different, previously-saved* version on a later attempt, so a `latest` failure stays forwardable under an idempotency key even when the currently-selected version failed before reading any state. An inline script or an exact pinned version is deterministic: the same input always produces the same failure.
+2. **Read-attempt provenance.** `RecordingStore.MutableReadAttempted()` (`internal/domain/processing/numscript/store.go`) reports whether resolution delegated any balance/metadata lookup to the inner store before failing — **including a lookup that itself returned an error**. This is carried out of `DiscoverNumscriptDependencies` through the typed `DependencyResolutionError` (`internal/domain/processing/numscript/resolution_error.go`). The pre-existing `RecordingStore.ReadNothing()` is insufficient for this purpose: it reflects only *successfully recorded* values, so it cannot distinguish "no read was attempted" from "a read was attempted and failed" — exactly the case that matters here.
+
+### Decision flow
+
+```mermaid
+flowchart TD
+    FAIL[Dependency discovery fails] --> PANIC{Recovered<br/>Numscript panic?}
+    PANIC -->|Yes| LOUD1[Surface loudly<br/>never forwarded]
+    PANIC -->|No| CANCEL{Context canceled /<br/>deadline exceeded?}
+    CANCEL -->|Yes| LOUD2[Surface loudly<br/>never forwarded]
+    CANCEL -->|No| FREEZE{Freezable deterministic<br/>rejection?<br/>parse / validation / not-found / …}
+    FREEZE -->|Yes| TERM1[Terminate:<br/>surface the real cause]
+    FREEZE -->|No| READ{Mutable read<br/>attempted?}
+    READ -->|Yes| KEY1{Idempotency<br/>key present?}
+    KEY1 -->|Yes| FWD1["Forward: PRELOAD_UNAVAILABLE<br/>(FSM may replay a frozen outcome)"]
+    KEY1 -->|No| TERM2[Terminate: fail fast]
+    READ -->|No| LATEST{Selector is<br/>'latest' / empty?}
+    LATEST -->|Yes| KEY2{Idempotency<br/>key present?}
+    KEY2 -->|Yes| FWD2[Forward: PRELOAD_UNAVAILABLE]
+    KEY2 -->|No| TERM3[Terminate: fail fast]
+    LATEST -->|No: inline or exact version| TERM4["Terminate: surface the real cause<br/>(EN-1557 fix)"]
+```
+
+A recovered Numscript panic and context cancellation/deadline are surfaced loudly and never softened to `PRELOAD_UNAVAILABLE` — they are "should not happen" or host-level conditions (invariant #7), not business outcomes with a frozen replay to preserve. A freezable deterministic rejection (parse error, validation failure, not-found, already-exists, …) is likewise terminal: there is nothing a retry could change.
+
+Asset scaling (`… with scaling through …`) is a special member of that freezable class worth calling out: resolution rejects it unconditionally, independent of any balance/metadata, so it is deterministic — yet a `balance()`/`meta()` var origin bound *before* the scaling statement is walked will already have set the read-attempt flag. `convertNumscriptError` therefore maps the one publicly-exposed deterministic sentinel (`numscriptlib.ErrScalingNotSupported`) to the freezable `ErrNumscriptScalingUnsupported` (`KindValidation`), so the freezable guard above terminates it *before* the provenance signals below are consulted. Without this, a read-then-scaling script under an idempotency key would be forwarded as `PRELOAD_UNAVAILABLE` and retried forever (EN-1557). The remaining deterministic post-read failures the library exposes only as internal types stay conservatively forwarded — splitting them would need the upstream taxonomy (EN-1563).
+
+Past those guards, the provenance signals decide. A mutable read attempted before failing — even one that itself errored — means the failure is state-dependent: with an idempotency key, the order is stamped `PreloadUnavailable` on its `OrderTechnical` (the one field invariant #10 permits mutating post-acceptance) and forwarded, so the FSM can replay a frozen outcome if the batch is a retry, or reject with the retryable, non-frozen `ERROR_REASON_PRELOAD_UNAVAILABLE` if it isn't. Without a key there is no frozen outcome to preserve, so admission fails fast instead.
+
+When no mutable read was attempted, only a `latest`/empty selector keeps the same forwarding behavior, because a later attempt could still resolve to a different saved version. An inline script or an exact immutable version with no attempted read is fully deterministic — this is the case the EN-1557 fix changed: it previously forwarded as a retryable `PRELOAD_UNAVAILABLE` with no frozen outcome to ever converge on, producing an unbounded retry loop. It now terminates immediately, surfacing the real Numscript cause.
+
 ## TTL and Eviction
 
 ### Configuration
@@ -198,3 +236,8 @@ When a conflict is detected (same key, different content, within TTL):
 2. **Be aware of TTL**: Keys expire after the configured TTL (default 24h)
 3. **Don't reuse keys**: Even for "similar" operations
 4. **Handle conflicts**: Implement retry logic with new keys on conflict
+
+## Related Documentation
+
+- [Numscript Library](../scripting/numscript-library.md) — the versioning model behind selector mutability, and dependency discovery / resolution.
+- [Admission Pipeline](pipeline.md) — where numscript resolution and Needs enrichment sit in the overall admission flow.

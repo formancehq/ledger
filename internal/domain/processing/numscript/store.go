@@ -152,6 +152,8 @@ type RecordingStore struct {
 
 	balanceRecords  map[string]string // "account\x00asset\x00color\x00scope" -> amount (decimal)
 	metadataRecords map[string]string // "account\x00scope\x00key" -> value or absent sentinel
+
+	readAttempted bool // set before any inner balance/metadata lookup
 }
 
 // NewRecordingStore wraps inner so that every balance/metadata it returns is
@@ -165,6 +167,8 @@ func NewRecordingStore(inner numscriptlib.Store) *RecordingStore {
 }
 
 func (s *RecordingStore) GetBalances(ctx context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
+	s.readAttempted = true
+
 	rows, err := s.inner.GetBalances(ctx, query)
 	if err != nil {
 		return nil, err
@@ -191,6 +195,8 @@ func (s *RecordingStore) GetBalances(ctx context.Context, query numscriptlib.Bal
 const metadataAbsentSentinel = "\x00absent"
 
 func (s *RecordingStore) GetAccountsMetadata(ctx context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	s.readAttempted = true
+
 	rows, err := s.inner.GetAccountsMetadata(ctx, query)
 	if err != nil {
 		return nil, err
@@ -229,6 +235,14 @@ func metadataRecordKey(account, scope, key string) string {
 func (s *RecordingStore) ReadNothing() bool {
 	return len(s.balanceRecords) == 0 && len(s.metadataRecords) == 0
 }
+
+// MutableReadAttempted reports whether the resolver delegated any balance or
+// metadata lookup to the inner store, INCLUDING a lookup that returned an error
+// and therefore recorded no value. Distinct from ReadNothing(), which reflects
+// only successfully recorded values and so cannot see a failed lookup. Admission
+// uses this to tell a state-dependent resolution failure (a mutable read was
+// attempted) from a deterministic one (no read) — see EN-1557.
+func (s *RecordingStore) MutableReadAttempted() bool { return s.readAttempted }
 
 // Hash returns a deterministic BLAKE3 digest over the recorded balance and
 // metadata reads. Records are sorted so the digest is independent of the order
