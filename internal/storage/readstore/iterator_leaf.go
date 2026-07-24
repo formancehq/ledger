@@ -90,9 +90,9 @@ func (it *PrefixIterator) Current() []byte {
 }
 
 func (it *PrefixIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	// Build a seek key: prefix base + target entity.
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
@@ -232,9 +232,9 @@ func (it *RangeIterator) Current() []byte {
 }
 
 func (it *RangeIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
 	// Use the stored lower bound prefix for seek key construction.

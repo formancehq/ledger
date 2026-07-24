@@ -188,9 +188,9 @@ func (it *PebbleAccountIterator) Current() []byte {
 }
 
 func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -355,9 +355,9 @@ func (it *PebbleReverseAccountIterator) Current() []byte {
 }
 
 func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -519,9 +519,9 @@ func (it *PebbleTxIterator) Current() []byte {
 }
 
 func (it *PebbleTxIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -656,9 +656,9 @@ func (it *PebbleReverseTxIterator) Current() []byte {
 }
 
 func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -843,9 +843,9 @@ func (it *PebbleTxRangeIterator) Next() bool {
 func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
 
 func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 

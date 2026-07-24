@@ -88,9 +88,9 @@ func (it *ReversePrefixIterator) Current() []byte {
 
 // SeekLE positions the iterator at the first entity whose key is <= target.
 func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
-	if it.exhausted {
-		return false
-	}
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	// Build seek key: prefix base + target entity
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
