@@ -27,7 +27,7 @@ const healthCheckCallTimeout = 5 * time.Second
 // writes are allowed; a non-nil return is a domain.Describable error
 // (ErrWritesBlockedDiskFull or ErrWritesBlockedClockSkew) identifying why.
 //
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source healthcheck.go -destination healthcheck_generated.go -package health . WriteGate
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source healthcheck.go -destination healthcheck_generated.go -package health . WriteGate
 type WriteGate interface {
 	CheckWritesAllowed() error
 }

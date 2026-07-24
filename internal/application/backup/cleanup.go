@@ -17,7 +17,7 @@ import (
 // Used to pace the scan, never as part of a staleness decision.
 const DefaultCleanupInterval = 30 * time.Second
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=cleanup.go -destination=cleanup_generated_test.go -package=backup
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source=cleanup.go -destination=cleanup_generated_test.go -package=backup
 
 // StaleProvider is the slice of the FSM state used by the cleanup loop.
 // It is satisfied by *state.BackupJobsState; the indirection keeps the

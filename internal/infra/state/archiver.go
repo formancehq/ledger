@@ -40,7 +40,7 @@ type ArchiveRequest struct {
 // ArchiveProposer is a callback to propose a ConfirmArchiveChapter order back into Raft.
 type ArchiveProposer func(chapterID uint64) error
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_chapter_state_generated_test.go -package state . ArchiverChapterState
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_chapter_state_generated_test.go -package state . ArchiverChapterState
 
 // ArchiverChapterState provides the Archiver with read access to the current
 // chapter state, used to gate consumption of stale archive requests after a

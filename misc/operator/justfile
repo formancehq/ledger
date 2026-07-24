@@ -1,4 +1,4 @@
-controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+controller-gen := "go tool controller-gen"
 
 generate:
     {{controller-gen}} object:headerFile="" paths=./api/... \

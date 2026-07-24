@@ -44,7 +44,7 @@ import (
 
 var tracer = otel.Tracer("admission")
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source admission.go -destination proposer_generated_test.go -typed -package admission . Proposer
 type Proposer interface {
 	Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error)
 	InitialIndex() uint64

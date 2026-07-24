@@ -18,8 +18,8 @@ type GetAccountOptions struct {
 	CollapseColors bool
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ctrl . Controller
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination ctrlmock/controller_generated.go -package ctrlmock . Controller
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ctrl . Controller
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source controller.go -destination ctrlmock/controller_generated.go -package ctrlmock . Controller
 type Controller interface {
 	// Ledger management (read-only)
 	ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error)

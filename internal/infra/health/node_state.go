@@ -5,7 +5,7 @@ package health
 // logic (HealthChecker) and the readiness computation (GRPCHealthUpdater) are
 // unit-testable without standing up a real Raft node. *node.Node satisfies it.
 //
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source node_state.go -destination node_state_generated_test.go -package health
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source node_state.go -destination node_state_generated_test.go -package health
 type nodeState interface {
 	// IsLeader reports whether this node is the current Raft leader.
 	IsLeader() bool

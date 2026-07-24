@@ -37,7 +37,7 @@ func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs 
 	return s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
 }
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -destination backend_generated_test.go -typed -package http . Backend
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -destination backend_generated_test.go -typed -package http . Backend
 
 type Backend interface {
 	ctrl.Controller

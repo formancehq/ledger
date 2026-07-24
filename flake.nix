@@ -41,11 +41,14 @@
     {
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
+          # Go-based codegen/lint tools (mockgen, protoc-gen-go/-grpc/-vtproto,
+          # golangci-lint, gomarkdoc, ginkgo, controller-gen, setup-envtest) are
+          # NOT provided here: they are declared as `tool` directives in go.mod
+          # (root) and misc/operator/go.mod and invoked via `go tool <name>`,
+          # so their versions are pinned alongside the code they generate.
           stablePackages = with pkgs; [
             go_1_26
             ffmpeg
-            ginkgo
-            gomarkdoc
             go-jsonnet
             jsonnet-bundler
             grpcurl
@@ -65,12 +68,6 @@
             protobuf_34
             goperf
             gotools
-            mockgen
-            protoc-gen-go
-            protoc-gen-go-grpc
-            protoc-gen-go-vtproto
-            golangci-lint
-            setup-envtest
             just
           ];
           otherPackages = [
@@ -84,8 +81,11 @@
             shellHook = ''
               # Auto-configure envtest assets for operator integration tests.
               # setup-envtest downloads etcd + kube-apiserver on first run and caches them.
+              # It is declared as a `tool` in misc/operator/go.mod and invoked via
+              # `go tool` from that module; the `|| true` keeps a build/network
+              # failure from breaking `nix develop`.
               if [ -z "$KUBEBUILDER_ASSETS" ]; then
-                KUBEBUILDER_ASSETS="$(setup-envtest use -p path 2>/dev/null || true)"
+                KUBEBUILDER_ASSETS="$( (cd misc/operator && go tool setup-envtest use -p path) 2>/dev/null || true)"
                 if [ -n "$KUBEBUILDER_ASSETS" ]; then
                   export KUBEBUILDER_ASSETS
                 fi
