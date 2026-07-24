@@ -158,7 +158,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.purged, 1)
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
@@ -232,7 +233,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.transient, 2)
 	require.Len(t, result.kept, 1)
@@ -319,7 +321,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.kept, 1)
 	require.Equal(t, "staging:draining", result.kept[0].Key.Account)

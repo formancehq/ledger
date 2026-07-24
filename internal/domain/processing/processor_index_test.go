@@ -126,6 +126,9 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 4}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	// The Boundary cascade is now gated: processDeleteLedger deletes it
+	// through the Scope with the envelope key (EN-1522).
+	expectDeleteBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"})
 	// No DeleteIndex / RangeIndexes — the deferred Pebble range delete is
 	// derived from the DeletedLedgerLog by the WriteSet sink via Absorb at
 	// commit time, not requested directly by the processor.

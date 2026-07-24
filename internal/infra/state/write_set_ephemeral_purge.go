@@ -1,6 +1,9 @@
 package state
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -47,7 +50,7 @@ type volumePartitionResult struct {
 //     purged): never written to Pebble.
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-) volumePartitionResult {
+) (volumePartitionResult, error) {
 	// Build a cache of ledger → compiled account types to avoid repeated parsing.
 	ledgerTypes := make(map[string][]accounttype.CompiledType)
 
@@ -59,10 +62,22 @@ func (b *WriteSet) partitionVolumes(
 		compiled, ok := ledgerTypes[update.Key.LedgerName]
 		if !ok {
 			info, err := b.getLedgerData(update.Key.LedgerName)
-			if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				// Expected soft outcome: the ledger carries no
+				// account-type info (never created, or the volume belongs
+				// to a ledger deleted earlier in this batch). Default
+				// persistence is "kept".
 				result.kept = append(result.kept, update)
 
 				continue
+			}
+
+			if err != nil {
+				// Any other error is a genuine storage/cache fault, not an
+				// absence — surface it loudly rather than silently keeping
+				// the volume and mis-classifying its persistence
+				// (invariant #7).
+				return volumePartitionResult{}, fmt.Errorf("loading ledger %q for volume partition: %w", update.Key.LedgerName, err)
 			}
 
 			compiled = accounttype.CompileTypes(info.GetAccountTypes())
@@ -112,7 +127,7 @@ func (b *WriteSet) partitionVolumes(
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.

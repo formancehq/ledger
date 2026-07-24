@@ -1117,16 +1117,14 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedger:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
-		// LogPayload_DeleteLedger cascades via WriteSet.Absorb into
-		// b.Derived.Boundaries.Delete(...) directly (NOT via
-		// gatedAccessor.Delete — the Absorb path calls the concrete
-		// DerivedKeyStore), which flushes at Merge to
-		// KeyStore.Delete → AttributeCache.Del. The coverage gate is
-		// therefore NOT enforced on this cascade; the Boundary preload
-		// declared here is what makes the FSM's cache read horizon match
-		// admission's intent under invariant #6. AttributeCache.Del still
-		// lazy-fabricates a Gen0 tombstone from Gen1's tag if a
-		// concurrent write raced with the rotation.
+		// processDeleteLedger deletes the Boundary through the gated
+		// Scope (Scope.Boundaries().Delete with the command-envelope key),
+		// so this SubAttrBoundary declaration is consumed on the gated
+		// path and the coverage gate IS enforced on the cascade
+		// (invariants #6 and #9). The delete flushes at Merge to
+		// KeyStore.Delete → AttributeCache.Del, which still
+		// lazy-fabricates a Gen0 tombstone from Gen1's tag if a concurrent
+		// write raced with the rotation.
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
 	case *raftcmdpb.LedgerScopedOrder_PromoteLedger:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
