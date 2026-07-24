@@ -119,8 +119,20 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 	l.DeletedAt = s.GetDate().Mutate()
 
 	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, l)
-	// The LedgerCleanup signal (cleanup queue + boundary overlay drop) is
-	// derived from DeletedLedgerLog by deriveSignals.
+
+	// Delete the Boundary through the gated Scope with the command-envelope
+	// key. Routing the cascade through the Scope (rather than the raw
+	// Derived.Boundaries.Delete that WriteSet.Absorb used to perform)
+	// consumes the SubAttrBoundary coverage admission declared for
+	// DeleteLedger, keeping the coverage gate honoured (invariant #9). A
+	// missing declaration surfaces as *ErrCoverageMiss instead of a silent
+	// ungated delete. Future GetBoundaries calls — in this proposal and,
+	// after Merge, in later ones — return domain.ErrNotFound as before.
+	if err := s.Boundaries().Delete(domain.LedgerKey{Name: ledger}); err != nil {
+		return nil, &domain.ErrStorageOperation{Operation: "deleting ledger boundary", Cause: err}
+	}
+	// The LedgerCleanup signal (cleanup queue + deferred data purge) is
+	// derived from DeletedLedgerLog by deriveSignals / WriteSet.Absorb.
 
 	// Index registry entries scoped to this ledger are NOT cleared here:
 	//   - processApply rejects every same-batch Apply order with
@@ -141,7 +153,7 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{
 			DeleteLedger: &commonpb.DeletedLedgerLog{
-				Name:      l.GetName(),
+				Name:      ledger,
 				DeletedAt: l.GetDeletedAt(),
 			},
 		},

@@ -250,7 +250,10 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftc
 //
 // No log entry is produced.
 func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteSet, update *raftcmdpb.MirrorSyncUpdate) error {
-	ledgerInfo, err := scope.Ledgers().Get(domain.LedgerKey{Name: update.GetLedgerName()})
+	// Load through the gated Scope purely as an existence check: a stale
+	// update for a deleted ledger is skipped. The write below keys off the
+	// envelope, so the loaded projection is intentionally discarded.
+	_, err := scope.Ledgers().Get(domain.LedgerKey{Name: update.GetLedgerName()})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil // ledger may have been deleted — stale update, skip
 	}
@@ -260,7 +263,12 @@ func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteS
 	}
 
 	buffer.QueueMirrorSync(MirrorSyncWrite{
-		LedgerName:     ledgerInfo.GetName(),
+		// Key the write off the command envelope, not the loaded
+		// projection: a divergent LedgerInfo.name must never redirect the
+		// mirror cursor / status write to another ledger's keys. The load
+		// above still gates on the envelope key and preserves the
+		// ErrNotFound stale-update skip.
+		LedgerName:     update.GetLedgerName(),
 		Cursor:         update.GetCursor(),
 		SourceLogCount: update.GetSourceLogCount(),
 		ClearError:     update.GetClearError(),

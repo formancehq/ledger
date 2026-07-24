@@ -14,8 +14,7 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	info, loadErr := loadLedger(s, ledger)
-	if loadErr != nil {
+	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
@@ -27,7 +26,10 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 
 	for key, value := range order.GetMetadata() {
 		metaKey := domain.LedgerMetadataKey{
-			LedgerName: info.GetName(),
+			// Key off the command envelope, never the loaded projection's
+			// mutable name field, so a divergent LedgerInfo.name cannot
+			// redirect the write to another ledger's metadata keys.
+			LedgerName: ledger,
 			Key:        key,
 		}
 
@@ -54,13 +56,14 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
-	info, loadErr := loadLedger(s, ledger)
-	if loadErr != nil {
+	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
 	metaKey := domain.LedgerMetadataKey{
-		LedgerName: info.GetName(),
+		// Key off the command envelope, never the loaded projection's
+		// mutable name field (see processAddLedgerMetadata).
+		LedgerName: ledger,
 		Key:        order.GetKey(),
 	}
 
