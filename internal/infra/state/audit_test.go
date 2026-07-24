@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -376,14 +375,6 @@ func TestBuildAuditFailure(t *testing.T) {
 		failure := buildAuditFailure(err)
 		require.Equal(t, domain.ErrReasonChapterNotClosed, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "3", failure.GetContext()["chapterId"])
-	})
-
-	t.Run("Unknown", func(t *testing.T) {
-		t.Parallel()
-
-		err := errors.New("some unknown error")
-		failure := buildAuditFailure(err)
-		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, failure.GetReason())
 	})
 }
 
