@@ -28,7 +28,7 @@ func filterAccountAddress(address, key string) string {
 
 	if isPartialAddress(address) {
 		src := strings.Split(address, ":")
-		if src[len(src)-1] != "" {
+		if src[len(src)-1] != "..." {
 			parts = append(parts, fmt.Sprintf("jsonb_array_length(%s_array) = %d", key, len(src)))
 		}
 
