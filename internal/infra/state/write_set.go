@@ -260,7 +260,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
-	partResult := b.partitionVolumes(volumeUpdates)
+	partResult, err := b.partitionVolumes(volumeUpdates)
+	if err != nil {
+		return fmt.Errorf("partitioning volumes: %w", err)
+	}
 
 	metadataUpdates, metadataDeletions, err := b.Derived.AccountMetadata.Merge()
 	if err != nil {
@@ -787,9 +790,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// Register pending ledger data cleanups (deferred to purge time). Boundary
-	// deletion is handled by MarkLedgerForCleanup adding a Delete to the
-	// Derived.Boundaries overlay (flushed in phase 3 above).
+	// Register pending ledger data cleanups (deferred to purge time). The
+	// Boundary deletion itself was already queued by processDeleteLedger
+	// through the gated Scope (Derived.Boundaries overlay, flushed in
+	// phase 3 above); this block only records the deferred data-purge
+	// bookkeeping.
 	for _, ledgerName := range b.deletedLedgers {
 		seq := deleteSequences[ledgerName]
 
@@ -959,13 +964,13 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		empty := ""
 		b.queryCheckpointScheduleUpdate = &empty
 	case *commonpb.LogPayload_DeleteLedger:
-		ledger := p.DeleteLedger.GetName()
-		b.deletedLedgers = append(b.deletedLedgers, ledger)
-		// Remove boundary from the in-memory overlay so that subsequent
-		// GetBoundaries calls return domain.ErrNotFound — both within
-		// this proposal and in future ones after Merge propagates the
-		// deletion.
-		b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
+		// Only the cleanup signal is recorded here (drives
+		// SavePendingLedgerCleanup + the deferred range delete at purge
+		// time). The Boundary deletion now happens in processDeleteLedger
+		// through the gated Scope with the command-envelope key, so the
+		// SubAttrBoundary coverage is consumed on the gated path instead
+		// of via this raw, ungated overlay delete (invariant #9).
+		b.deletedLedgers = append(b.deletedLedgers, p.DeleteLedger.GetName())
 	case *commonpb.LogPayload_CloseChapter:
 		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
 		// CloseChapter is the last order of its proposal, so at most one
@@ -1208,10 +1213,24 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		}
 
 		baseVol, _, baseErr := b.Derived.Volumes.Parent().GetKey(key)
-		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
+		if baseErr != nil && !errors.Is(baseErr, domain.ErrNotFound) {
+			// A non-ErrNotFound fault means the base read failed — the
+			// zero-balance assertion below would run on an unread base and
+			// mis-decide the proposal. Surface it loudly rather than
+			// silently treating the base as absent (invariant #7).
+			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "reading transient base volume", Cause: baseErr}})
+
 			continue
 		}
 
+		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
+			// Pre-existing non-zero base — exempt from the end-of-batch
+			// zero-balance assertion (handled by the ephemeral-mirror flow).
+			continue
+		}
+
+		// ErrNotFound or a nil-and-zero base: steady-state transient — the
+		// cumulative must be back to zero by end of batch.
 		if !isVolumeZeroBalance(vol) {
 			offenders = append(offenders, key)
 		}
@@ -1355,7 +1374,17 @@ func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 
 func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
-	if err != nil || cfg == nil {
+	// A cache miss is the documented "no sink config" outcome; any other
+	// error is a real storage/cache fault and must surface (invariant #7).
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg == nil {
 		return nil, nil
 	}
 
@@ -1690,9 +1719,16 @@ func (b *WriteSet) SetNumscriptLatestVersion(ledgerName string, name, version st
 
 func (b *WriteSet) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
-	if err != nil {
-		// Not in cache — treat as not existing (admission ensures preloading)
+	// A cache miss is the documented "version does not exist" outcome
+	// (admission ensures preloading). Any other error is a real
+	// storage/cache fault and must surface so the caller does not treat a
+	// transient failure as absence and write a duplicate (invariant #7).
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
+	}
+
+	if err != nil {
+		return false, err
 	}
 
 	return info != nil, nil

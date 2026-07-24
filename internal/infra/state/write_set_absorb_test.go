@@ -102,16 +102,19 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		require.Empty(t, *b.queryCheckpointScheduleUpdate)
 	})
 
-	t.Run("DeleteLedger → deletedLedgers + Boundaries drop", func(t *testing.T) {
+	t.Run("DeleteLedger → deletedLedgers cleanup signal only", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
 		b.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
 		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}},
 		}})
+		// Absorb records only the cleanup signal now (EN-1522): the Boundary
+		// deletion moved to processDeleteLedger's gated Scope, so Absorb must
+		// NOT touch the overlay.
 		require.Equal(t, []string{"L"}, b.deletedLedgers)
 		_, err := b.Boundaries().Get(domain.LedgerKey{Name: "L"})
-		require.Error(t, err, "boundaries overlay must reflect the deletion immediately")
+		require.NoError(t, err, "Absorb must not delete the boundary — that is the gated handler's job")
 	})
 
 	t.Run("CloseChapter → chapterClosing", func(t *testing.T) {

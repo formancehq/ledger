@@ -213,6 +213,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, existingLedger.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	// The Boundary cascade is gated through the Scope (EN-1522).
+	expectDeleteBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"})
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{

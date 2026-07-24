@@ -392,6 +392,14 @@ func expectPutBoundaries(t *testing.T, mockStore *MockScope, key domain.LedgerKe
 	return call
 }
 
+func expectDeleteBoundaries(t *testing.T, mockStore *MockScope, key domain.LedgerKey) *gomock.Call {
+	t.Helper()
+	stub, call := stubsFor(mockStore).boundariesStubFor(mockStore)
+	stub.expectDelete(t, key)
+
+	return call
+}
+
 func expectGetAccountMetadata(mockStore *MockScope, key domain.MetadataKey, value commonpb.MetadataValueReader, err error) *gomock.Call {
 	stub, call := stubsFor(mockStore).accountMetadataStubFor(mockStore)
 	stub.expectGet(key, value, err)
