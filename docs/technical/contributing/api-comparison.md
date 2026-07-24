@@ -407,77 +407,13 @@ A never-invoked template returns a zero-valued response (not 404), so clients ha
 On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted.
 ### Filter input formats (dual-format contract, EN-1511)
 
-Every filtered surface — the list endpoints (`GET .../transactions`,
-`.../accounts`, `.../logs`, `GET /v3/_/audit-entries`), prepared-query
-create/update, and `ledgerctl --filter` — accepts a filter in **either** of two
-interchangeable representations. Both parse into the same `*commonpb.QueryFilter`
-and flow through the same compile/validate path (the per-target validity gate,
-`domain.ValidateFilterForTarget`), so a caller never needs to know which syntax a
-given endpoint "wants":
-
-| Representation | Looks like | Parsed by |
-|----------------|-----------|-----------|
-| **Textual** (`filterexpr` grammar) | `metadata[status] == "active"`, `address ^= "users:"`, `ledger == "main"` | `filterexpr.Parse` |
-| **Structured** (v2 JSON `QueryFilter` DSL) | `{"$match":{"metadata[status]":"active"}}` | `commonpb.QueryFilter.UnmarshalJSON` |
-
-Both go through one shared decoder, `filterexpr.DecodeDualFormat` (in
-`internal/pkg/filterexpr/decode.go`), which detects the form from the first
-non-whitespace byte:
-
-- `{` → structured JSON `QueryFilter` DSL;
-- `"` → a JSON-quoted string carrying textual `filterexpr` (body-field form);
-- anything else → raw textual `filterexpr` (query-string form).
-
-**How each form is passed over HTTP:**
-
-- **Query-string endpoints** (`?filter=`): the value is textual `filterexpr`
-  passed verbatim (URL-encoded). To pass the structured form, URL-encode the JSON
-  object as the value (`?filter=%7B%22%24match%22%3A…%7D`). The generic `filter`
-  parameter is AND-combined with the endpoint's remaining convenience params (the
-  transactions `startDate`/`endDate` timestamp range). It has no dedicated
-  address-prefix or reference aliases: an account address prefix is the textual
-  `filter=address ^= "users:"` (or structured
-  `?filter=%7B%22%24match%22%3A%7B%22address%22%3A%22users%3A%22%7D%7D`, i.e.
-  `{"$match":{"address":"users:"}}` with the trailing `:` marking a prefix
-  match), and a transaction reference is the structured
-  `?filter=%7B%22%24match%22%3A%7B%22reference%22%3A%22ref-1%22%7D%7D`
-  (`{"$match":{"reference":"ref-1"}}`) or the textual `filter=reference == "ref-1"`.
-- **JSON-body endpoints** (prepared-query create/update `filter` field): a JSON
-  object is the structured form; a JSON string (`"filter": "metadata[k] == v"`)
-  is the textual form.
-
-**Audit is text-only.** Audit fields are written **bare** (`outcome`, `ledger`,
-`seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`) and
-resolved against the audit query target (EN-1549 — this replaced the old
-`audit[...]` namespaced syntax, a breaking change with no backward
-compatibility). They have no structured JSON representation — bare `timestamp`
-and `ledger` collide with the transaction `timestamp` field and the top-level
-`ledger` condition the JSON DSL already claims (EN-1241), which is why the audit
-resolution is target-aware and audit fields are valid on the audit endpoint only
-— so the JSON codec rejects them. The dual-format decoder still accepts both
-forms as input on the audit endpoint; the textual form is simply the only one
-that can carry an audit condition, so it is the canonical representation for
-`GET /v3/_/audit-entries`.
-
-**Date fields accept RFC3339 or raw microseconds (EN-1544).** The builtin date
-indexes store unsigned Unix microseconds, but their DSL bounds accept **either** an
-RFC3339 timestamp **or** the raw-microsecond form, in both representations:
-
-| Target | Field | Textual | Structured |
-|--------|-------|---------|------------|
-| transactions | `timestamp` (also `insertedAt`, `revertedAt`) | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
-| logs | `date` | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
-| audit | `timestamp` (bare, resolved on the audit target) | `timestamp >= "2023-11-14T22:13:20Z"` | — (audit is text-only) |
-
-The raw form still parses (`timestamp >= 1700000000000000`), so this is purely
-additive. RFC3339 acceptance and pre-epoch rejection are defined once, in the
-shared `commonpb.CoerceDatetimeMicros`, reused by the audit / transactions / logs
-DSL paths and by the transport-level `startDate`/`endDate` convenience params
-(`startDate`/`endDate` remain RFC3339-only). A pre-epoch RFC3339 value (negative
-`UnixMicro`) has no representable unsigned bound and is rejected with `400`. The
-`date` and `timestamp` fields are subject to the same per-target validity gate —
-`date` is valid on logs only, `timestamp` (like `insertedAt`/`revertedAt`) on
-transactions only — enforced identically for both serializations.
+Every filtered surface accepts one `filter` in either the textual `filterexpr`
+grammar or the structured v2 JSON DSL; both compile to the same
+`*commonpb.QueryFilter`. The full contract — parameter classification, the
+textual/structured expressiveness asymmetries (address prefix, reference, audit),
+date coercion (EN-1544), AND-combination, and the removed `prefix`/`reference`
+aliases (EN-1540) — is documented once in
+[query-filter.md](../architecture/subsystems/read-path/query-filter.md).
 
 ### 10. Prepared Queries and User-Configurable Indexes
 

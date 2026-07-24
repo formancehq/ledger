@@ -138,8 +138,10 @@ arm cannot silently drop a filter. The full DSL is documented under `QueryFilter
 `internal/proto/commonpb/query_filter_test.go`; the REST wire is asserted in
 `tests/e2e/business/prepared_query_rest_shape_test.go`.
 
-This shape is shared by every filtered endpoint (and by the audit conditions in
-EN-1548): new conditions extend it as new `$match`/`$gt`/… over new field names.
+This shape is shared by every filtered endpoint that accepts the structured JSON
+form: new conditions extend it as new `$match`/`$gt`/… over new field names. Audit
+conditions are **not** part of this JSON shape — they are textual-only (EN-1549);
+see [query-filter.md](query-filter.md).
 
 **REST prepared-query targets are `ACCOUNTS`, `TRANSACTIONS` and `LOGS`** (EN-1503).
 For each target `query.Execute` hydrates exactly one `PreparedQueryCursor` result
