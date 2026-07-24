@@ -1518,29 +1518,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// checked before Commit.
 	validateScope, scopeErr := scopeFactory.NewProposalScope()
 	if scopeErr != nil {
-		// Building the proposal-wide scope failed only when the
-		// ExecutionPlan is malformed (unknown attr_code). Treat as
-		// business rejection — same model as orders/TU coverage misses.
-		// NewScope's contract guarantees the error is
-		// *domain.ErrInvalidExecutionPlan.
-		invariant := planInvariantDescribable(scopeErr)
-		if invariant == nil {
-			invariant = &domain.ErrInvalidExecutionPlan{Reason_: scopeErr.Error()}
-		}
+		// Impossible after a successful Preload. Preload already ran
+		// validatePlan over every AttributeCoverage in this immutable
+		// ExecutionPlan (machine.go Preload), and applyAllPlans re-runs the
+		// SAME check on the SAME plan. A failure here means pre-validation
+		// and scope construction have diverged — an FSM invariant violation,
+		// never a business outcome. Fail loudly: write no audit failure,
+		// freeze no idempotency outcome, return no soft ApplyResult. The
+		// caller cancels the Pebble batch and propagates, so nothing commits.
+		assert.Unreachable("proposal scope construction failed after successful Preload", map[string]any{
+			"raftIndex":  raftIndex,
+			"proposalID": proposal.GetId(),
+			"error":      scopeErr.Error(),
+		})
 
-		scopeFailureEntry := auditpb.AuditEntryFromVTPool()
-		scopeFailureEntry.Outcome = &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(scopeErr)}
-		appendErr := writeAuditEntry(scopeFailureEntry, nil, "validate-scope construction failure")
-		scopeFailureEntry.ReturnToVTPool()
-		if appendErr != nil {
-			return nil, appendErr
-		}
-
-		return &ApplyResult{
-			ProposalID:        proposal.GetId(),
-			Error:             &domain.BusinessError{Err: invariant},
-			AuditEntryWritten: true,
-		}, nil
+		return nil, fmt.Errorf("invariant: proposal scope construction failed after Preload (raft index %d, proposal %d): %w",
+			raftIndex, proposal.GetId(), scopeErr)
 	}
 
 	transientErr := buffer.ValidateTransientVolumes(validateScope)
