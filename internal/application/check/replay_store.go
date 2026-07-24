@@ -507,6 +507,13 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 
 		switch op[0] {
 		case txOpCreate:
+			// A create is the genesis of a transaction, so reset the accumulator:
+			// a reused (ledger, txID) — DeleteLedger then same-name recreate — or a
+			// seeded pre-archive baseline state must not leak stale reverted /
+			// metadata / timestamp fields (which create only conditionally sets)
+			// into the new generation.
+			state = &commonpb.TransactionState{}
+
 			// [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp]
 			// [uint64 timestamp.Data][uint32 metaLen][metaBytes][uint32 postingsLen][postingsBytes]
 			const headerLen = 1 + 8 + 8 + 1 + 8 + 4
