@@ -1064,3 +1064,151 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	assert.Equal(t, firstBackfills, len(b.backfillTasks), "retry must not double-schedule backfills")
 	assert.Equal(t, firstRewrites, len(b.schemaRewriteTasks), "retry must not double-schedule rewrites")
 }
+
+// TestHandleCreatedIndexLog_InitialSkipsBackfill verifies an initial index is
+// promoted straight to live (current=1) with no backfill task (EN-1564).
+func TestHandleCreatedIndexLog_InitialSkipsBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks, "initial index must not schedule a backfill")
+
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current, "initial index is live immediately")
+	require.Equal(t, uint32(0), pending)
+}
+
+// TestHandleCreatedIndexLog_NonInitialSchedulesBackfill pins the unchanged path:
+// a normal CreateIndex still schedules a backfill and stays gated at current=0.
+func TestHandleCreatedIndexLog_NonInitialSchedulesBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "non-initial index must schedule a backfill")
+
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current, "non-initial index stays gated until backfill catches up")
+	require.Equal(t, uint32(1), pending)
+}
+
+// TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent pins the fix for the
+// duplicate-CreateIndex reschedule: once a replica has promoted an index to live
+// (current != 0), a second CreatedIndexLog for the same index must NOT reset the
+// version state to {0,1} or schedule a backfill — doing so would flip an
+// already-live index back to ErrIndexBuilding. Covers both EN-1564 (initial fast
+// path) and the pre-existing normal post-backfill live state.
+func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// First create promotes the index straight to live (current=1, no backfill).
+	first := b.readStore.NewBatch()
+	b.initBatch(first)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current)
+	require.Equal(t, uint32(0), pending)
+
+	// A duplicate CreateIndex — re-emitted by the processor as initial=false once
+	// the ledger is no longer born-empty — must be a no-op on this live replica.
+	second := b.readStore.NewBatch()
+	b.initBatch(second)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Empty(t, b.backfillTasks, "duplicate create must not reschedule a backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(1), current, "index stays live after a duplicate create")
+	require.Equal(t, uint32(0), pending, "no pending backfill after a duplicate create")
+}
+
+// TestDropLedgerVersionState_EvictsOnlyThatLedger pins the eviction the live
+// DeleteLedger apply path performs (via dropLedgerVersionState): every in-memory
+// version state for the deleted ledger is dropped, and other ledgers are left
+// untouched. Without this a same-name recreate would read a stale
+// CurrentVersion != 0 (see TestHandleCreatedIndexLog_RecreateAfterDelete).
+func TestDropLedgerVersionState_EvictsOnlyThatLedger(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	idA := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	idB := indexes.Canonical(indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
+
+	b.putVersionState("gone", idA, readstore.IndexVersionState{CurrentVersion: 1})
+	b.putVersionState("gone", idB, readstore.IndexVersionState{CurrentVersion: 2})
+	b.putVersionState("kept", idA, readstore.IndexVersionState{CurrentVersion: 3})
+
+	b.dropLedgerVersionState("gone")
+
+	c, _ := b.versionFor("gone", idA)
+	require.Equal(t, uint32(0), c, "deleted ledger index A must be evicted")
+	c, _ = b.versionFor("gone", idB)
+	require.Equal(t, uint32(0), c, "deleted ledger index B must be evicted")
+	c, _ = b.versionFor("kept", idA)
+	require.Equal(t, uint32(3), c, "other ledgers must be untouched")
+}
+
+// TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill guards the
+// name-reuse corner of the readiness guard: once the DeleteLedger apply path has
+// evicted the in-memory version state (dropLedgerVersionState), a same-name
+// recreate must be treated as genuinely new — re-seed {current:0, pending:1} and
+// schedule a backfill — rather than short-circuited as a live duplicate and
+// stranded behind ErrIndexBuilding.
+func TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "reused"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// A live index left over in memory from the ledger's prior life, then the
+	// DeleteLedger apply path evicts it (as processLogs does live).
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1})
+	b.dropLedgerVersionState(ledger)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current, "delete must evict the in-memory version state")
+	require.Equal(t, uint32(0), pending)
+
+	// A CreateIndex for the recreated ledger must be treated as genuinely new:
+	// re-seed {current:0, pending:1} and schedule a backfill, not short-circuit.
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "recreated ledger index must schedule a backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(1), pending)
+}

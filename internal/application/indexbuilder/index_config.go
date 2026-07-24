@@ -398,10 +398,15 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // The index starts in BUILDING state — it is NOT marked as ready here.
 // A backfill task is created to replay historical logs for the new index.
 //
-// Idempotency: when the same CreateIndex is replayed against an index that
-// is already cached as READY (the processor short-circuited a duplicate
-// create on an already-built index), we skip the backfill scheduling so the
-// builder does not redo work that has already completed.
+// Initial fast path (EN-1564): when the log carries the initial flag (index
+// declared on a born-empty ledger), there is no local history to replay — the
+// index is promoted straight to live (current=1) and NO backfill is scheduled.
+//
+// Idempotency: when the same CreateIndex is replayed (or re-submitted) against
+// an index this replica has already promoted to live, we skip the reset and
+// backfill scheduling so the builder does not redo work that has already
+// completed — and, more importantly, does not knock a live index back into
+// ErrIndexBuilding.
 func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
 	id := log.GetId()
 	if id == nil {
@@ -410,8 +415,17 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	cfg := b.getOrCreateLedgerConfig(ledgerName)
 
-	if existing := cfg.byCanonical[indexes.Canonical(id)]; existing != nil &&
-		existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
+	// Post-EN-1323 the per-replica readiness signal is
+	// IndexVersionState.CurrentVersion, not the (now purely informational)
+	// registry BuildStatus — nothing ever flips BuildStatus back to READY, so a
+	// BuildStatus-based short-circuit here is dead. If this replica has already
+	// promoted the index to live (current != 0), a repeated CreatedIndexLog —
+	// a duplicate CreateIndex re-emitted by the processor, or an apply replay —
+	// must be a no-op: re-seeding {current:0, pending:1} and rescheduling a
+	// backfill would flip an already-live index back to ErrIndexBuilding. This
+	// mirrors the loadIndexRegistry boot guard and covers both the EN-1564
+	// initial fast path and the normal post-backfill live state.
+	if current, _ := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
 		return
 	}
 
@@ -419,6 +433,33 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		Id:                     id,
 		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		ForwardEncodingVersion: 1,
+	}
+
+	// EN-1564: an index declared on a born-empty ledger has no local history to
+	// replay. Promote it straight to live (current=1) and skip the backfill;
+	// the live indexing path maintains it from ledger birth. Persist so a reboot
+	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
+	if log.GetInitial() {
+		state := readstore.IndexVersionState{
+			CurrentVersion: 1,
+			PendingVersion: 0,
+		}
+
+		if b.wb != nil && b.readStore != nil {
+			if batch := b.wb.Batch(); batch != nil {
+				if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
+					b.logger.WithFields(map[string]any{
+						"ledger": ledgerName,
+						"index":  indexes.Canonical(id),
+						"error":  err,
+					}).Errorf("Persisting IndexVersionState on initial CreateIndex")
+				}
+			}
+		}
+
+		b.putVersionState(ledgerName, indexes.Canonical(id), state)
+
+		return
 	}
 
 	// First time this replica sees the index: target v=1 via the

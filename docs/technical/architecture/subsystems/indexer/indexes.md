@@ -84,6 +84,15 @@ stateDiagram-v2
     Steady --> [*]: DropIndex
 ```
 
+### Initial indexes vs. later indexes
+
+An index gets a fast path when it is declared in the **same atomic apply batch** as the `CreateLedger` that creates its ledger, before any indexable data log for that ledger. The FSM classifies this per-proposal — a ledger is treated as "born empty" until it emits its first indexable data log — and stamps the result on a new `CreatedIndexLog.initial` boolean.
+
+- **Initial index** (`CreatedIndexLog.initial == true`): there is no history to replay, so the indexbuilder promotes the index straight to live on applying the log — it seeds `IndexVersionState{CurrentVersion: 1, PendingVersion: 0}` and schedules **no** historical backfill. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
+- **Later index** (`CreatedIndexLog.initial == false`): the unchanged path described above. This covers an index added to a ledger that already holds data, **and** an index created in a separate apply batch even if the ledger is still empty. It is seeded `IndexVersionState{CurrentVersion: 0, PendingVersion: 1}`, backfilled from cursor `0`, and gated by `current_version == 0` (queries get `ErrIndexBuilding`) until the backfill completes and the atomic switch flips the served version.
+
+The classification is deliberately conservative: only the same-atomic-batch-before-any-data case qualifies as initial. A separate-batch index on a still-empty ledger backfills exactly as before — safe (it replays an empty history and completes immediately), just not routed through the zero-cost promotion.
+
 ## Statistics (computed on demand)
 
 There is **no persisted statistics structure**. The figures returned by `InspectIndex` are recomputed by scanning the live Pebble keyspace at the version the caller asks for.

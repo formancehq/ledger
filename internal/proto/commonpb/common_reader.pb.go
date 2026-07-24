@@ -5786,6 +5786,7 @@ func (m orderSkippedLog_contextMapReadonly) Range(yield func(string, string) boo
 // Call Mutate() to obtain a mutable clone.
 type CreatedIndexLogReader interface {
 	GetId() IndexIDReader
+	GetInitial() bool
 	Mutate() *CreatedIndexLog
 }
 
@@ -5797,6 +5798,10 @@ func (r *createdIndexLogReadonly) GetId() IndexIDReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *createdIndexLogReadonly) GetInitial() bool {
+	return (*CreatedIndexLog)(r).GetInitial()
 }
 
 func (r *createdIndexLogReadonly) Mutate() *CreatedIndexLog {

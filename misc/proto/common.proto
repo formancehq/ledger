@@ -750,6 +750,11 @@ message CreatedIndexLog {
   reserved 1, 2, 3;
   reserved "log_builtin", "transaction", "account";
   IndexID id = 4;
+  // initial marks an index declared on a ledger that had no local history yet
+  // (same atomic apply batch as CreateLedger, before any indexable data log).
+  // The read-side indexbuilder promotes such indexes straight to live with no
+  // historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
+  bool initial = 5;
 }
 
 // DroppedIndexLog records the removal of an index.

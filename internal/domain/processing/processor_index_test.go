@@ -134,3 +134,58 @@ func TestProcessDeleteLedger_DoesNotTouchIndexRegistry(t *testing.T) {
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 }
+
+// TestProcessCreateIndex_StampsInitialWhenBornEmpty verifies an index declared
+// while its ledger is still born-empty is stamped initial=true on the log.
+func TestProcessCreateIndex_StampsInitialWhenBornEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
+	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	now := &commonpb.Timestamp{Data: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+
+	idxStub := setupIndexesStub(mockStore)
+	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
+	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+
+	ctx := &Context{Scope: mockStore}
+	ctx.markBornEmpty("test-ledger")
+
+	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, ctx)
+	require.Nil(t, derr)
+	require.True(t, payload.GetCreateIndex().GetInitial())
+}
+
+// TestProcessCreateIndex_NotInitialWithoutBornEmpty verifies the default: an
+// index on a ledger not tracked as born-empty is stamped initial=false.
+func TestProcessCreateIndex_NotInitialWithoutBornEmpty(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
+	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	now := &commonpb.Timestamp{Data: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+
+	idxStub := setupIndexesStub(mockStore)
+	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
+	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+
+	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
+	require.Nil(t, derr)
+	require.False(t, payload.GetCreateIndex().GetInitial())
+}
