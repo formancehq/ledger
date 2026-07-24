@@ -8,11 +8,14 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // newTestServer creates a Server with a mock backend for testing.
@@ -41,6 +44,20 @@ func newRequest(t *testing.T, method, target string, body io.Reader, chiParams m
 	}
 
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+// backendReturningLogs builds a mock backend whose Apply returns the given
+// logs and no error, for exercising the unitary-handler log-response contract.
+func backendReturningLogs(t *testing.T, logs []*commonpb.Log) *MockBackend {
+	t.Helper()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+			return logs, nil
+		}).AnyTimes()
+
+	return backend
 }
 
 // decodeResponse decodes a JSON response body.

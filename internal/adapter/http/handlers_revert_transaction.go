@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -89,20 +88,18 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the full reverted transaction response (includes post-commit volumes when requested)
-	if len(logs) == 0 {
-		unreachable("revert-transaction apply returned no log", map[string]any{
-			"ledger":         ledgerName,
-			"transaction_id": transactionID,
-		})
+	details := map[string]any{
+		"ledger":         ledgerName,
+		"transaction_id": transactionID,
 	}
 
-	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
+	logEntry := exactlyOneLog("revert-transaction", logs, details)
+
+	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
 	rt, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_RevertedTransaction)
 	if !ok {
-		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-
-		return
+		unexpectedLogPayload("revert-transaction", logEntry, details)
 	}
-	revertedPayload := rt.RevertedTransaction
-	writeCreated(w, revertedPayload)
+
+	writeCreated(w, rt.RevertedTransaction)
 }

@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -53,16 +52,15 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return the service response directly - JSON encoding will handle it
-	if len(logs) == 0 {
-		unreachable("create-transaction apply returned no log", map[string]any{"ledger": ledgerName})
+	details := map[string]any{"ledger": ledgerName}
+
+	logEntry := exactlyOneLog("create-transaction", logs, details)
+
+	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
+	created, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
+	if !ok {
+		unexpectedLogPayload("create-transaction", logEntry, details)
 	}
 
-	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
-	switch payload := ledgerLog.GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		writeCreated(w, payload.CreatedTransaction)
-	default:
-		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-	}
+	writeCreated(w, created.CreatedTransaction)
 }

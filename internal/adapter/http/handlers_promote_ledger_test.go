@@ -79,52 +79,47 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 	require.Equal(t, "LEDGER_NOT_IN_MIRROR_MODE", resp.ErrorCode)
 }
 
-func TestHandlePromoteLedger_NoLogReturned(t *testing.T) {
+// TestHandlePromoteLedger_LogContractViolations locks in the exact-one
+// typed-log contract for promote: exactly one non-nil PromoteLedger log. Any
+// other cardinality, a nil sole log, or a mismatched payload type must fail
+// loudly through unreachable (the jsonRecoverer turns the panic into a
+// sanitized 500 in production).
+func TestHandlePromoteLedger_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{}, nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
+	promoted := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_PromoteLedger{PromoteLedger: &commonpb.PromotedLedgerLog{Name: "mirror-ledger"}},
+	}}
+	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "mirror-ledger"}},
+	}}
 
-	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPost, "/mirror-ledger/promote", nil, map[string]string{
-		"ledgerName": "mirror-ledger",
-	})
+	cases := []struct {
+		name string
+		logs []*commonpb.Log
+	}{
+		{"zero logs", []*commonpb.Log{}},
+		{"two logs", []*commonpb.Log{promoted, promoted}},
+		{"nil sole log", []*commonpb.Log{nil}},
+		{"wrong payload type", []*commonpb.Log{wrongPayload}},
+	}
 
-	// An apply that returns no log is a backend contract violation; the handler
-	// panics (the jsonRecoverer middleware turns this into a 500 in production).
-	require.Panics(t, func() {
-		srv.handlePromoteLedger(w, r)
-	})
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestHandlePromoteLedger_UnexpectedPayloadType(t *testing.T) {
-	t.Parallel()
+			srv := newTestServer(t, backendReturningLogs(t, tc.logs))
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{{
-				Payload: &commonpb.LogPayload{
-					Type: &commonpb.LogPayload_CreateLedger{
-						CreateLedger: &commonpb.CreatedLedgerLog{Name: "mirror-ledger"},
-					},
-				},
-			}}, nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPost, "/mirror-ledger/promote", nil, map[string]string{
+				"ledgerName": "mirror-ledger",
+			})
 
-	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPost, "/mirror-ledger/promote", nil, map[string]string{
-		"ledgerName": "mirror-ledger",
-	})
-
-	srv.handlePromoteLedger(w, r)
-
-	require.Equal(t, http.StatusInternalServerError, w.Code)
+			require.Panics(t, func() {
+				srv.handlePromoteLedger(w, r)
+			})
+		})
+	}
 }
 
 func TestHandlePromoteLedger_LedgerNotFound(t *testing.T) {

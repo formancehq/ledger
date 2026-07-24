@@ -2,7 +2,6 @@ package http
 
 import (
 	stdjson "encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -157,15 +156,13 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(logs) == 0 {
-		unreachable("create-ledger apply returned no log", map[string]any{"ledger": ledgerName})
-	}
+	details := map[string]any{"ledger": ledgerName}
 
-	createLedgerLog := logs[0].GetPayload().GetCreateLedger()
+	logEntry := exactlyOneLog("create-ledger", logs, details)
+
+	createLedgerLog := logEntry.GetPayload().GetCreateLedger()
 	if createLedgerLog == nil {
-		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
-
-		return
+		unexpectedLogPayload("create-ledger", logEntry, details)
 	}
 
 	writeCreated(w, createLedgerLog.ToLedgerInfo())

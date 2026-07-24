@@ -107,7 +107,7 @@ func TestNewHandler_SanitizesPanicEndToEnd(t *testing.T) {
 
 	// An Apply that returns no log is a backend contract violation:
 	// handleCreateLedger panics, which the real chain must turn into a
-	// sanitized JSON 500 (see TestHandleCreateLedger_NoLogReturned).
+	// sanitized JSON 500 (see TestHandleCreateLedger_LogContractViolations).
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
