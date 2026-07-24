@@ -384,6 +384,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
 			return err
 		}
+
+		// Seed the replay with the baseline transaction states so a post-archive
+		// metadata/revert delta merges onto the full pre-archive state; otherwise
+		// compareTransactions (replay overrides baseline) would see only the delta
+		// and flag the correct live state as tampered. Runs before the replay pass.
+		if err := c.seedReplayTransactionsFromBaseline(baselineDB, replay); err != nil {
+			return err
+		}
 	}
 
 	// Pre-load baseline volumes so compareTransactionPostCommitVolumes can add
@@ -5285,6 +5293,38 @@ func (c *Checker) seedTxTrackingFromBaseline(baseline *pebble.DB, ledgerKnownTxI
 
 	if err := txIter.Err(); err != nil {
 		return fmt.Errorf("pre-populating knownTxIDs: %w", err)
+	}
+
+	return nil
+}
+
+// seedReplayTransactionsFromBaseline pre-loads the replay with each baseline
+// transaction state, so a post-archive delta (metadata set/delete, revert
+// marker) merges on top of the full pre-archive state instead of replaying as a
+// standalone partial. Under archiving the create logs are purged, so without
+// this the replay holds only the delta and compareTransactions — which takes the
+// replay state as authoritative over the baseline — would flag the (correct)
+// live state as tampered. Reads the baseline, never the live store; must run
+// before the log-replay pass so the seed is the merger's base operand.
+func (c *Checker) seedReplayTransactionsFromBaseline(baseline *pebble.DB, replay *replayStore) error {
+	txIter, err := c.attrs.Transaction.NewStreamingIter(baseline, nil)
+	if err != nil {
+		return fmt.Errorf("creating baseline tx streaming iter for replay seeding: %w", err)
+	}
+
+	for txIter.Next() {
+		entry := txIter.Entry()
+		if err := replay.SeedTransaction(entry.CanonicalKey, entry.Value); err != nil {
+			return fmt.Errorf("seeding replay transaction from baseline: %w", err)
+		}
+	}
+
+	if err := txIter.Close(); err != nil {
+		return fmt.Errorf("closing baseline tx streaming iter: %w", err)
+	}
+
+	if err := txIter.Err(); err != nil {
+		return fmt.Errorf("seeding replay transactions from baseline: %w", err)
 	}
 
 	return nil
