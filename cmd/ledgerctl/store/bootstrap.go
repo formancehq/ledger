@@ -90,7 +90,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		bucketID = "default"
 	}
 
-	manifestKey := bucketID + "/backups/manifest.json"
+	manifestKey := backup.ManifestKey(bucketID)
 
 	// Read manifest
 	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest...")
