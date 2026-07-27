@@ -701,12 +701,15 @@ message IdempotencyEviction {
   bytes last_scanned_time_index_key = 3;
 }
 
+// MirrorSyncUpdate carries per-ledger mirror technical state: the latest known
+// source head and the error/status. It deliberately carries NO ingestion
+// cursor — LedgerBoundaries.last_mirror_v2_log_id is the sole durable
+// authority for the applied position (EN-1513).
 message MirrorSyncUpdate {
   string ledger_name = 1;
-  fixed64 cursor = 2;
-  common.MirrorSyncError error = 3;
-  bool clear_error = 4;
-  fixed64 source_log_count = 5;  // Latest known log ID in v2 source
+  common.MirrorSyncError error = 2;
+  bool clear_error = 3;
+  fixed64 source_log_count = 4;  // Latest known log ID in v2 source
 }
 
 // EventsSinkUpdate carries a per-sink cursor advance or error status change.

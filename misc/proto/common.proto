@@ -1093,6 +1093,10 @@ enum MirrorSyncState {
 
 message MirrorSyncProgress {
   MirrorSyncState state = 1;
+  // Highest source (v2) log ID actually applied to this mirror ledger by the
+  // FSM, read from LedgerBoundaries.last_mirror_v2_log_id. This is NOT an
+  // independent worker pointer: there is no separate persisted cursor
+  // (EN-1513).
   fixed64 cursor = 2;
   fixed64 source_log_count = 3;
   fixed64 remaining_logs = 4;
