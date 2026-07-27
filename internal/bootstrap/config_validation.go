@@ -20,7 +20,16 @@ import (
 // schema-v1 store's volume keys no longer parse under the v2 layout. Refusing
 // to open a v1 store (via SchemaVersionError, non-bypassable) turns what would
 // otherwise be silent balance corruption into a fatal, actionable boot error.
-const CurrentStorageSchemaVersion uint32 = 2
+//
+// v3: mirror ingestion position consolidation (EN-1513). The per-ledger
+// MirrorCursor row (ZonePerLedger / sub 0x05) was removed in favour of
+// LedgerBoundaries.last_mirror_v2_log_id, and MirrorSyncUpdate's field tags
+// were realigned. Refusing a v2 store guarantees no un-applied Raft WAL entry
+// carrying the old tag layout is ever replayed against the new one. The bump
+// also retroactively gates the EN-1550 last_mirror_v2_log_id field itself:
+// v2 predates it, and compareMirrorV2LogID requires it with no backfill
+// leniency.
+const CurrentStorageSchemaVersion uint32 = 3
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with
