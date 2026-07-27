@@ -41,6 +41,7 @@ const (
 	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId][uint8 hasRevertedAt][uint64 revertedAt]
 	txOpSetMeta    = 0x03 // [txOpSetMeta][key\x00][marshaledMetadataValue]
 	txOpDeleteMeta = 0x04 // [txOpDeleteMeta][key string]
+	txOpBatch      = 0x05 // [txOpBatch][(uint32 len)(op)]* — ordered ops deferred by a partial merge (includesBase=false)
 )
 
 // replayStore is a temporary Pebble DB that stores replay state (volumes,
@@ -497,10 +498,22 @@ func (m *txMerger) MergeOlder(value []byte) error {
 	return nil
 }
 
-func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
+func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	ops := make([][]byte, 0, len(m.ops))
+	if err := flattenTxOps(m.ops, &ops); err != nil {
+		return nil, nil, err
+	}
+
+	// A partial merge may not include the base value, and a delta op — a metadata
+	// delete has no snapshot representation — cannot be resolved without it. Defer by
+	// re-emitting the ordered ops; a base-inclusive fold resolves them.
+	if !includesBase {
+		return encodeTxBatch(ops), nil, nil
+	}
+
 	state := &commonpb.TransactionState{}
 
-	for _, op := range m.ops {
+	for _, op := range ops {
 		if len(op) == 0 {
 			continue
 		}
@@ -593,7 +606,9 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			delete(state.GetMetadata(), metaKey)
 
 		case txOpFinalized:
-			// Re-ingesting a previously finalized state (from a prior compaction).
+			// A resolved snapshot: a seeded baseline, or the output of a base-inclusive
+			// fold. It is always the oldest operand for the key, so it lands on an empty
+			// accumulator and the overlay coincides with a replace.
 			if err := state.UnmarshalVT(op[1:]); err != nil {
 				return nil, nil, fmt.Errorf("unmarshaling finalized tx state: %w", err)
 			}
@@ -608,10 +623,81 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	// Prefix with txOpFinalized so a subsequent compaction can re-ingest this result.
+	// Prefix with txOpFinalized so a later fold can re-ingest this resolved snapshot.
 	result := make([]byte, 1+len(data))
 	result[0] = txOpFinalized
 	copy(result[1:], data)
 
 	return result, nil, nil
+}
+
+// flattenTxOps expands any txOpBatch operand into its constituent ops in order,
+// so both the fold and the re-emit paths operate on a flat ordered op sequence.
+func flattenTxOps(ops [][]byte, out *[][]byte) error {
+	for _, op := range ops {
+		if len(op) == 0 {
+			continue
+		}
+
+		if op[0] == txOpBatch {
+			sub, err := decodeTxBatch(op)
+			if err != nil {
+				return err
+			}
+
+			if err := flattenTxOps(sub, out); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		*out = append(*out, op)
+	}
+
+	return nil
+}
+
+// decodeTxBatch splits a [txOpBatch][(uint32 len)(op)]* buffer into its ops. The
+// returned slices alias op's backing array and are read-only.
+func decodeTxBatch(op []byte) ([][]byte, error) {
+	var ops [][]byte
+
+	buf := op[1:]
+	for len(buf) > 0 {
+		if len(buf) < 4 {
+			return nil, fmt.Errorf("txOpBatch: truncated length prefix, %d bytes left", len(buf))
+		}
+
+		n := int(binary.BigEndian.Uint32(buf[:4]))
+		buf = buf[4:]
+		if len(buf) < n {
+			return nil, fmt.Errorf("txOpBatch: op length %d overruns %d remaining bytes", n, len(buf))
+		}
+
+		ops = append(ops, buf[:n])
+		buf = buf[n:]
+	}
+
+	return ops, nil
+}
+
+// encodeTxBatch frames ordered ops into a single [txOpBatch][(uint32 len)(op)]* buffer.
+func encodeTxBatch(ops [][]byte) []byte {
+	size := 1
+	for _, op := range ops {
+		size += 4 + len(op)
+	}
+
+	out := make([]byte, 1, size)
+	out[0] = txOpBatch
+
+	var lenBuf [4]byte
+	for _, op := range ops {
+		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(op)))
+		out = append(out, lenBuf[:]...)
+		out = append(out, op...)
+	}
+
+	return out
 }
