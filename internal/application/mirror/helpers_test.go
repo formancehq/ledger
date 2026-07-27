@@ -8,6 +8,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -47,4 +48,18 @@ func writeBoundaries(t *testing.T, store *dal.Store, ledgerName string, b *raftc
 	_, err := attrs.Boundary.Set(session, []byte(ledgerName), b)
 	require.NoError(t, err)
 	require.NoError(t, session.Commit())
+}
+
+// newWorkerForTest builds a Worker wired to a mock source. The proposer is
+// nil: every test here returns zero logs from the source, so processBatch
+// returns before reaching the propose path.
+func newWorkerForTest(t *testing.T, ledgerName string, source v2.Source, store *dal.Store, builder *plan.Builder) *Worker {
+	t.Helper()
+
+	ctx := logging.TestingContext()
+
+	return NewWorker(
+		ledgerName, 100, source, nil, store, nil, builder,
+		logging.FromContext(ctx), noop.NewMeterProvider(),
+	)
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -34,14 +33,15 @@ const (
 )
 
 // prefetchResult holds the result of a background log fetch started during
-// the previous batch's Raft wait. The cursor field is used to validate that
-// the prefetch is still valid (cursor hasn't changed due to errors).
+// the previous batch's Raft wait. afterID records the source position the
+// fetch was issued from, so a stale prefetch (the position moved because of
+// an error or a boundary re-read) can be discarded.
 type prefetchResult struct {
 	logs     []v2.V2Log
 	hasMore  bool
 	err      error
 	duration time.Duration
-	cursor   uint64
+	afterID  uint64
 }
 
 // Worker continuously fetches v2 logs for a single mirror ledger and proposes
@@ -57,14 +57,18 @@ type Worker struct {
 	logger         logging.Logger
 	sourceLogCount uint64
 
-	notify         signal.Signal
-	w              worker.Worker
-	backoff        time.Duration // current backoff duration (0 = no backoff)
-	cursor         uint64        // last known cursor, avoids Pebble read per batch
-	nextTxID       uint64        // last known next transaction ID, avoids Pebble read per batch
-	cursorLoaded   bool
-	nextTxIDLoaded bool
-	prefetchCh     chan prefetchResult // pending prefetch from previous batch
+	notify  signal.Signal
+	w       worker.Worker
+	backoff time.Duration // current backoff duration (0 = no backoff)
+	// lastAppliedV2LogID caches LedgerBoundaries.last_mirror_v2_log_id, the
+	// sole durable authority for the ingestion position. It is an
+	// optimisation only: it is seeded from the boundary, advanced solely
+	// after confirmed FSM application, and dropped on any batch error so the
+	// next tick re-reads the authority (EN-1513).
+	lastAppliedV2LogID uint64
+	nextTxID           uint64 // next transaction ID, from the same boundary read
+	boundariesLoaded   bool
+	prefetchCh         chan prefetchResult // pending prefetch from previous batch
 
 	// Metrics
 	ledgerAttr        attribute.KeyValue
@@ -226,6 +230,11 @@ func (w *Worker) processLogs(ctx context.Context) {
 			w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror sync error")
 			w.reportError(ctx, err.Error())
 
+			// Drop the boundary snapshot: it is a cache over the durable
+			// authority, so a failed batch must re-read rather than retry
+			// against a possibly-stale in-memory position (EN-1513).
+			w.boundariesLoaded = false
+
 			// Apply exponential backoff on persistent errors
 			if w.backoff == 0 {
 				w.backoff = initialBackoff
@@ -253,21 +262,27 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	batchStart := time.Now()
 	attrs := metric.WithAttributes(w.ledgerAttr)
 
-	// Load cursor from Pebble only once; subsequent batches use the in-memory value.
-	if !w.cursorLoaded {
-		cursor, err := query.ReadMirrorCursor(w.store, w.ledgerName)
+	// Load the applied boundary from Pebble once; subsequent batches use the
+	// in-memory snapshot. This single read serves BOTH the source position and
+	// nextTxID — LedgerBoundaries carries both (EN-1513).
+	if !w.boundariesLoaded {
+		boundaries, err := w.builder.ReadBoundaries(w.ledgerName)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("reading boundaries: %w", err)
 		}
 
-		w.cursor = cursor
-		w.cursorLoaded = true
+		w.lastAppliedV2LogID = boundaries.GetLastMirrorV2LogId()
+
+		if boundaries != nil {
+			w.nextTxID = boundaries.GetNextTransactionId()
+		} else {
+			w.nextTxID = 1
+		}
+
+		w.boundariesLoaded = true
 	}
 
-	expectedNextLogID := w.cursor + 1
-	if w.cursor == 0 {
-		expectedNextLogID = 1
-	}
+	expectedNextLogID := w.lastAppliedV2LogID + 1
 
 	// Use prefetched result if available and valid, otherwise fetch synchronously.
 	var (
@@ -280,7 +295,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		pf := <-w.prefetchCh
 
 		w.prefetchCh = nil
-		if pf.err == nil && pf.cursor == w.cursor {
+		if pf.err == nil && pf.afterID == w.lastAppliedV2LogID {
 			v2Logs = pf.logs
 			hasMore = pf.hasMore
 			fetchDur = pf.duration
@@ -295,7 +310,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 		var err error
 
-		v2Logs, hasMore, err = w.source.FetchLogs(fetchCtx, w.cursor, w.batchSize)
+		v2Logs, hasMore, err = w.source.FetchLogs(fetchCtx, w.lastAppliedV2LogID, w.batchSize)
 		if err != nil {
 			return false, err
 		}
@@ -310,23 +325,6 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	}
 
 	w.logsIngested.Add(ctx, int64(len(v2Logs)), attrs)
-
-	// Load NextTransactionId from boundaries only once; subsequent batches use the in-memory value
-	// updated by TranslateBatch.
-	if !w.nextTxIDLoaded {
-		boundaries, err := w.builder.ReadBoundaries(w.ledgerName)
-		if err != nil {
-			return false, fmt.Errorf("reading boundaries: %w", err)
-		}
-
-		if boundaries != nil {
-			w.nextTxID = boundaries.GetNextTransactionId()
-		} else {
-			w.nextTxID = 1
-		}
-
-		w.nextTxIDLoaded = true
-	}
 
 	expectedNextTxID := w.nextTxID
 
@@ -354,26 +352,27 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	aggregate, perOrder := w.extractMirrorNeeds(cmd)
 
-	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
-	// The FSM processes TechnicalUpdates on any proposal (machine.go).
+	// Merge the source-head/status update into the data proposal to avoid a
+	// second Raft round-trip. The FSM processes TechnicalUpdates on any
+	// proposal (machine.go). The applied position is NOT carried here — the
+	// FSM derives it from the ingest orders themselves (EN-1513).
 	lastV2LogID := v2Logs[len(v2Logs)-1].ID
 	cmd.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
 			MirrorSync: &raftcmdpb.MirrorSyncUpdate{
 				LedgerName:     w.ledgerName,
-				Cursor:         lastV2LogID,
 				ClearError:     true,
 				SourceLogCount: w.sourceLogCount,
 			},
 		},
 	}}
 
-	// One WriteOperation per Order + one for the cursor TU. The cursor
-	// TU reads Registry.Ledgers[w.ledgerName] in applyMirrorSyncUpdate.
+	// One WriteOperation per Order + one for the mirror-sync TU. The
+	// mirror-sync TU reads Registry.Ledgers[w.ledgerName] in applyMirrorSyncUpdate.
 	tuNeeds := plan.NewCoverage()
 	tuNeeds.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
-	// Roll the cursor TU's need into the batch aggregate — Build no
+	// Roll the mirror-sync TU's need into the batch aggregate — Build no
 	// longer recomputes it from operations.
 	aggregate.Merge(tuNeeds)
 
@@ -435,7 +434,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	var nextPrefetchCh chan prefetchResult
 	if hasMore {
 		nextPrefetchCh = make(chan prefetchResult, 1)
-		nextCursor := lastV2LogID
+		nextAfterID := lastV2LogID
 
 		go func() {
 			start := time.Now()
@@ -446,13 +445,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 			fCtx, fCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer fCancel()
 
-			logs, more, fetchErr := w.source.FetchLogs(fCtx, nextCursor, w.batchSize)
+			logs, more, fetchErr := w.source.FetchLogs(fCtx, nextAfterID, w.batchSize)
 			nextPrefetchCh <- prefetchResult{
 				logs:     logs,
 				hasMore:  more,
 				err:      fetchErr,
 				duration: time.Since(start),
-				cursor:   nextCursor,
+				afterID:  nextAfterID,
 			}
 		}()
 	}
@@ -493,8 +492,9 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.batchTotal.Add(ctx, 1, attrs, metric.WithAttributes(attribute.String("status", "success")))
 	w.batchDuration.Record(ctx, time.Since(batchStart).Microseconds(), attrs)
 
-	// Update in-memory cursor so next batch skips the Pebble read.
-	w.cursor = lastV2LogID
+	// Advance the in-memory position so the next batch skips the Pebble read.
+	// Only reached after BOTH Raft acceptance and successful FSM application.
+	w.lastAppliedV2LogID = lastV2LogID
 	w.prefetchCh = nextPrefetchCh
 
 	return hasMore, nil
