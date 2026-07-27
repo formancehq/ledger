@@ -103,6 +103,18 @@ func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) (Scope, bool
 		return ScopeMetadataWrite, true
 	case *servicepb.LedgerAction_DeleteMetadata:
 		return ScopeMetadataWrite, true
+	// Chart-of-accounts edits. The HTTP routes POST/DELETE
+	// /v3/{ledgerName}/account-types and PUT
+	// /v3/{ledgerName}/account-types/default-enforcement-mode sit under the
+	// requireMetadataWrite group (handler.go:197-199), so the batch path must
+	// agree. These are the LedgerAction twins of the top-level variants
+	// classified in requiredScopeForRequest.
+	case *servicepb.LedgerAction_AddAccountType:
+		return ScopeMetadataWrite, true
+	case *servicepb.LedgerAction_RemoveAccountType:
+		return ScopeMetadataWrite, true
+	case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+		return ScopeMetadataWrite, true
 	default:
 		return ScopeOpsWrite, false
 	}
