@@ -25,7 +25,7 @@ The Worker (`worker.go:27-167`) is a polling loop:
 | Poll interval | 5 s | Worker-local |
 | Prefetch | Next batch fetched async while previous one is applying | `worker.go:425-447` |
 
-On startup the worker loads its cursor from Pebble once (`worker.go:254`) and then keeps it in memory; subsequent ticks rely on the in-memory value and persist updates through the FSM's WriteSet.
+On startup the worker reads `LedgerBoundaries` from Pebble once, before its first fetch, and takes both its ingestion position (`last_mirror_v2_log_id`) and `NextTransactionId` from it. The value it keeps in memory afterwards is a cache, not an authority: it advances only after both Raft acceptance and successful FSM application, and it is dropped on any batch error so the next tick re-reads the durable boundary. See [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for why this is the only durable ingestion position.
 
 ## Source adapters
 
@@ -78,31 +78,31 @@ Properties:
 
 `misc/proto/raft_cmd.proto:200-212` — `MirrorIngestOrder{MirrorLogEntry entry}`. Each order ingests **one** v2 log entry. A batch of 100 fetched logs becomes 100 orders inside one proposal.
 
-The FSM apply path (`internal/infra/state/machine_technical_updates.go:211-241`, `applyMirrorSyncUpdate`) queues three cursor-related projections in the WriteSet, **atomically with the orders**:
+The ingestion position itself is advanced by the order-apply path (`processMirrorIngest` writes `LedgerBoundaries.last_mirror_v2_log_id`), not by the technical update. `applyMirrorSyncUpdate` (`internal/infra/state/machine_technical_updates.go`) queues only the two reporting projections in the WriteSet, **atomically with the orders**:
 
-- `MirrorCursor` — the highest v2 log ID successfully ingested.
 - `MirrorSourceHead` — the latest v2 log count observed (so the controller can report a `FOLLOWING` vs `CATCHING_UP` status).
 - `MirrorStatus` — the last error, if any.
 
-Atomicity matters: if any of the orders in the batch fails (e.g. balance mismatch in a translated CreatedTransaction), the whole proposal rolls back and the cursor does **not** advance. The worker will retry the same batch on the next tick.
+Atomicity matters: if any of the orders in the batch fails (e.g. balance mismatch in a translated CreatedTransaction), the whole proposal rolls back and the boundary does **not** advance. The worker will retry the same batch on the next tick.
 
 ## Storage layout
 
-`internal/query/mirror.go` — cursor and status keys under the per-ledger zone:
+`internal/query/mirror.go` — reporting keys under the per-ledger zone:
 
 | Key prefix | Content | Read helper |
 |------------|---------|-------------|
-| `[ZonePerLedger][SubPLMirrorCursor][ledger]` | `uint64` — last v2 log ID applied. | `ReadMirrorCursor` (line 26) |
-| `[ZonePerLedger][SubPLMirrorStatus][ledger]` | Persisted last error. | `ReadMirrorStatus` (line 40) |
-| `[ZonePerLedger][SubPLMirrorSourceHead][ledger]` | `uint64` — latest count observed from source. | `ReadMirrorSourceHead` (line 54) |
+| `[ZonePerLedger][SubPLMirrorStatus][ledger]` | Persisted last error. | `ReadMirrorStatus` |
+| `[ZonePerLedger][SubPLMirrorSourceHead][ledger]` | `uint64` — latest count observed from source. | `ReadMirrorSourceHead` |
 
-The cursor row is **monotone** by design — even if the source is reconfigured, the cursor never moves backwards.
+Sub-prefix `0x05` under this zone is **reserved and unused**: it formerly held a `MirrorCursor` row, removed in EN-1513.
+
+The ingestion position is not stored here. It lives on the per-ledger `LedgerBoundaries` record as `last_mirror_v2_log_id`, which `ReadMirrorSyncProgress` derives the reported `cursor`, `FOLLOWING` state, and `remaining_logs` from. It is **monotone** by design: the FSM only ever advances it by one contiguous source log at a time, so it never moves backwards even if the source is reconfigured.
 
 ## Promotion
 
 A mirror ledger can be promoted to a normal ledger via `PromoteLedgerOrder` (`raft_cmd.proto:246`). The FSM emits a `PromotedLedgerLog` (`common.proto:315`), the WriteSet flags `mirrorConfigChanged = true`, and `Manager.reconcile()` stops the worker on the next reconciliation tick.
 
-After promotion, the ledger accepts normal write requests. The cursor and source-head rows are kept for forensic purposes but no longer advance.
+After promotion, the ledger accepts normal write requests. The boundary's `last_mirror_v2_log_id` and the source-head row are kept for forensic purposes but no longer advance.
 
 ## Configuration
 
@@ -162,10 +162,10 @@ This applies to any mode; it is documented here because mirror ledgers are the p
 
 | Trigger | Worker behaviour |
 |---------|------------------|
-| Manual delete | Manager stops the worker on reconcile. Cursor / status rows remain in Pebble. |
+| Manual delete | Manager stops the worker on reconcile. The status / source-head rows remain in Pebble until the covering cleanup purge runs. |
 | Source unreachable | `FetchLogs` returns an error → the worker writes the error into `MirrorStatus` via a small technical-update proposal, then retries with exponential backoff (`worker.go:225-237`). |
 | Translation error (e.g. malformed v2 log) | Same path — error persisted, batch is **not** advanced, retried until the operator intervenes or the source heals. |
-| Promotion | Manager stops the worker. The cursor row is preserved for audit. |
+| Promotion | Manager stops the worker. The boundary's `last_mirror_v2_log_id` is preserved for audit. |
 | Pebble write-stall | The worker pauses (`worker.go:208-217`) until back-pressure clears, then resumes. |
 
 There is no automatic "skip the broken log" mode. Operators investigate, fix the upstream condition, and the worker resumes.
@@ -173,8 +173,8 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 ## Performance notes
 
 - **Async prefetch**: the next batch is fetched from the source while the previous batch is still applying through Raft + FSM. This overlaps source latency with consensus latency.
-- **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:589-683`), so the per-proposal preload work is amortised.
-- **Single-writer**: the cursor row is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage.
+- **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:594-684`), so the per-proposal preload work is amortised.
+- **Single-writer**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage.
 
 ## What the mirror does not do
 

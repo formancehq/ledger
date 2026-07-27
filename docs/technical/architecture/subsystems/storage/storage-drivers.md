@@ -66,7 +66,7 @@ Every Pebble key starts with a **zone byte** that groups data by access pattern,
 |------|------|-------------|
 | Attributes | `0x01` | Hot-path attribute data (volumes, metadata, boundaries, etc.) |
 | Cache | `0x02` | Generation-based cache for fast restart (0xFF zone) |
-| Per-Ledger | `0x03` | Per-ledger state (reversions, pending cleanups, mirror cursors) |
+| Per-Ledger | `0x03` | Per-ledger state (reversions, pending cleanups, mirror source head and status) |
 | Cold | `0x04` | Archivable data (logs, audit entries) |
 | Idempotency | `0x05` | Deduplication keys with TTL |
 | Global | `0x06` | Singleton system state (applied index, ledger info, signing, chapters, config) |

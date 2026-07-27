@@ -507,7 +507,7 @@ var ledgerScopedAttrTypes = []byte{
 //   - Attributes zone (0xF1): one range delete per ledger-scoped attribute type
 //   - Prepared queries: range delete for [zone][sub][ledgerName padded 64B]
 //   - Reversions: range delete for [zone][sub][ledgerName padded 64B]
-//   - Point deletes: mirror source head, mirror cursor, mirror status
+//   - Point deletes: mirror source head, mirror status
 //   - Point delete: pending ledger cleanup
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"

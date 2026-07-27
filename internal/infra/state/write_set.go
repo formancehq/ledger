@@ -65,15 +65,17 @@ type WriteSet struct {
 	purgeRanges     []purgeRange
 	archiveRequests []ArchiveRequest
 
-	// pendingMirrorSyncs queues mirror cursor / source-head / status
-	// writes produced by applyMirrorSyncUpdate. They are drained into
+	// pendingMirrorSyncs queues mirror source-head / status writes
+	// produced by applyMirrorSyncUpdate. The ingestion position is not
+	// among them — since EN-1513 it lives solely in
+	// LedgerBoundaries.last_mirror_v2_log_id. They are drained into
 	// the Pebble batch by Merge, which only runs when ProcessOrders +
 	// ValidateTransientVolumes succeed — so a business-rejected order
-	// in the same proposal as a mirror-sync TU never advances the
-	// cursor (mirror worker bundles ingest orders + cursor TU in a
-	// single proposal; without this gate the cursor would commit via
-	// the failure audit batch path and the worker would skip source
-	// logs on the next batch).
+	// in the same proposal as a mirror-sync TU never reports progress
+	// for a batch that never applied (mirror worker bundles ingest
+	// orders + the TU in a single proposal; without this gate it would
+	// commit via the failure audit batch path and the ledger would
+	// report a source head and a cleared error the batch never earned).
 	pendingMirrorSyncs []MirrorSyncWrite
 
 	// deletedLedgers holds ledger names scheduled for data cleanup during Merge.
