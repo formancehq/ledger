@@ -194,3 +194,138 @@ func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 	// Nil apply defaults to ledger:OpsWrite (most restrictive)
 	assert.Equal(t, ScopeOpsWrite, RequiredScopeForRequest(req))
 }
+
+// TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite is the
+// EN-1506 regression guard. Each of these operations has a dedicated HTTP
+// route under a business scope; before the fix they fell through to
+// ledger:OpsWrite over gRPC Apply, so an operator scope was needed to perform
+// a business action — and ledger:OpsWrite also grants maintenance mode,
+// signing-key and chapter control.
+func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing.T) {
+	t.Parallel()
+
+	businessRequests := []struct {
+		name     string
+		req      *servicepb.Request
+		expected Scope
+	}{
+		{"SaveNumscript", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		{"SaveLedgerMetadata", &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{}}, ScopeMetadataWrite},
+		{"DeleteLedgerMetadata", &servicepb.Request{Type: &servicepb.Request_DeleteLedgerMetadata{}}, ScopeMetadataWrite},
+		{"AddAccountType", &servicepb.Request{Type: &servicepb.Request_AddAccountType{}}, ScopeMetadataWrite},
+		{"RemoveAccountType", &servicepb.Request{Type: &servicepb.Request_RemoveAccountType{}}, ScopeMetadataWrite},
+		{"SetDefaultEnforcementMode", &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{}}, ScopeMetadataWrite},
+	}
+
+	for _, tc := range businessRequests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := RequiredScopeForRequest(tc.req)
+			assert.Equal(t, tc.expected, got)
+			assert.NotEqual(t, ScopeOpsWrite, got, "business operation must not require an operator scope")
+		})
+	}
+}
+
+// TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite guards the
+// privilege-escalation half of EN-1506. ClusterService gates these operations
+// on ledger:ClusterWrite (server_cluster.go:442, 481), which DefaultMapping
+// grants only via ledger:admin. While Apply accepted ledger:OpsWrite, any
+// ledger:write token could perform them.
+func TestRequiredScopeForRequest_QueryCheckpointsRequireClusterWrite(t *testing.T) {
+	t.Parallel()
+
+	checkpointRequests := []struct {
+		name string
+		req  *servicepb.Request
+	}{
+		{"CreateQueryCheckpoint", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}},
+		{"DeleteQueryCheckpoint", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}},
+		{"SetQueryCheckpointSchedule", &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{}}},
+		{"DeleteQueryCheckpointSchedule", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{}}},
+	}
+
+	for _, tc := range checkpointRequests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := RequiredScopeForRequest(tc.req)
+			assert.Equal(t, ScopeClusterWrite, got)
+			assert.NotEqual(t, ScopeOpsWrite, got,
+				"an admin-only cluster operation must not be reachable with ledger:OpsWrite")
+		})
+	}
+}
+
+// TestRequiredScopeForLedgerApply_AccountTypeActions covers the LedgerAction
+// twins of the account-type operations, reachable as
+// Request_Apply{Apply: {Action: ...}}. Each case is spelled out rather than
+// table-driven over the oneof wrapper: the generated isLedgerAction_Data
+// interface is unexported outside servicepb, so a shared table field cannot
+// name its type.
+func TestRequiredScopeForLedgerApply_AccountTypeActions(t *testing.T) {
+	t.Parallel()
+
+	applyWith := func(action *servicepb.LedgerAction) *servicepb.Request {
+		return &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{Action: action},
+		}}
+	}
+
+	t.Run("AddAccountType", func(t *testing.T) {
+		t.Parallel()
+
+		req := applyWith(&servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_AddAccountType{},
+		})
+		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
+	})
+
+	t.Run("RemoveAccountType", func(t *testing.T) {
+		t.Parallel()
+
+		req := applyWith(&servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_RemoveAccountType{},
+		})
+		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
+	})
+
+	t.Run("SetDefaultEnforcementMode", func(t *testing.T) {
+		t.Parallel()
+
+		req := applyWith(&servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{},
+		})
+		assert.Equal(t, ScopeMetadataWrite, RequiredScopeForRequest(req))
+	})
+}
+
+// TestRequiredScopeForRequest_FailsClosed pins the fail-closed contract for
+// input the classifier cannot recognize. These cases are deliberately excluded
+// from the exhaustiveness table, which requires well-formed entries.
+func TestRequiredScopeForRequest_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	failClosed := []struct {
+		name string
+		req  *servicepb.Request
+	}{
+		{"nil request", nil},
+		{"no oneof set", &servicepb.Request{}},
+		{"apply with nil LedgerApplyRequest", &servicepb.Request{Type: &servicepb.Request_Apply{}}},
+		{"apply with nil action", &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{},
+		}}},
+		{"apply with empty action", &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{Action: &servicepb.LedgerAction{}},
+		}}},
+	}
+
+	for _, tc := range failClosed {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, ScopeOpsWrite, RequiredScopeForRequest(tc.req))
+		})
+	}
+}
