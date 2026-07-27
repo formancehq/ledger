@@ -251,7 +251,7 @@ func TestMirrorIngest_ReplayIsNoOp(t *testing.T) {
 }
 
 // TestMirrorIngest_LowerV2LogIdSkipped pins that an OLDER v2LogId arriving after
-// a higher one (e.g. a tampered/rolled-back MirrorCursor makes the worker
+// a higher one (e.g. a rolled-back boundary makes the worker
 // re-emit past logs) is skipped as a no-op.
 func TestMirrorIngest_LowerV2LogIdSkipped(t *testing.T) {
 	t.Parallel()
