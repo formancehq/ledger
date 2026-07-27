@@ -188,6 +188,7 @@ send $amt (
 	require.True(t, domain.IsFreezableFailure(domain.Kind(func() domain.Describable {
 		var target domain.Describable
 		_ = errors.As(dre.Cause, &target)
+
 		return target
 	}())),
 		"the carried cause must be freezable so admission terminates instead of forwarding")
