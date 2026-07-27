@@ -9,7 +9,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -19,20 +21,6 @@ func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerName string) []byte {
 		PutZonePrefix(dal.ZonePerLedger, sub).
 		PutLedgerNameFixed(ledgerName).
 		Build()
-}
-
-// ReadMirrorCursor returns the last ingested v2 log ID for a mirror ledger.
-// Returns 0 if no cursor has been persisted yet.
-func ReadMirrorCursor(reader dal.PebbleGetter, ledgerName string) (uint64, error) {
-	kb := dal.NewKeyBuilder()
-	key := mirrorPointKey(kb, dal.SubPLMirrorCursor, ledgerName)
-
-	v, err := dal.ReadUint64(reader, key, 0)
-	if err != nil {
-		return 0, fmt.Errorf("reading mirror cursor: %w", err)
-	}
-
-	return v, nil
 }
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
@@ -63,17 +51,26 @@ func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerName string) (uint64, e
 	return v, nil
 }
 
-// ReadMirrorSyncProgress reads the cursor, source head, and error from Pebble
-// and computes the sync progress for a mirror ledger.
-func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleGetter, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
+// ReadMirrorSyncProgress derives mirror sync progress for a ledger from the
+// FSM-applied high-water mark (LedgerBoundaries.last_mirror_v2_log_id), the
+// source head, and the recorded error. There is no separate persisted cursor:
+// the boundary is the sole durable ingestion-position authority (EN-1513).
+func ReadMirrorSyncProgress(
+	ctx context.Context,
+	reader dal.PebbleGetter,
+	boundaries *attributes.Attribute[*raftcmdpb.LedgerBoundaries],
+	ledgerName string,
+) (*commonpb.MirrorSyncProgress, error) {
 	_, span := queryTracer.Start(ctx, "query.read_mirror_sync_progress",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
 
-	cursor, err := ReadMirrorCursor(reader, ledgerName)
+	b, err := boundaries.Get(reader, []byte(ledgerName))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading ledger boundaries: %w", err)
 	}
+
+	cursor := b.GetLastMirrorV2LogId()
 
 	sourceHead, err := ReadMirrorSourceHead(reader, ledgerName)
 	if err != nil {
