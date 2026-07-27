@@ -3631,7 +3631,6 @@ type RevertTransactionOrderReader interface {
 	GetForce() bool
 	GetAtEffectiveDate() bool
 	GetMetadata() RevertTransactionOrder_MetadataMapReader
-	GetOriginalPostings() commonpb.PostingListReader
 	Mutate() *RevertTransactionOrder
 }
 
@@ -3651,10 +3650,6 @@ func (r *revertTransactionOrderReadonly) GetAtEffectiveDate() bool {
 
 func (r *revertTransactionOrderReadonly) GetMetadata() RevertTransactionOrder_MetadataMapReader {
 	return revertTransactionOrder_metadataMapReadonly((*RevertTransactionOrder)(r).GetMetadata())
-}
-
-func (r *revertTransactionOrderReadonly) GetOriginalPostings() commonpb.PostingListReader {
-	return commonpb.NewPostingListReader((*RevertTransactionOrder)(r).GetOriginalPostings())
 }
 
 func (r *revertTransactionOrderReadonly) Mutate() *RevertTransactionOrder {

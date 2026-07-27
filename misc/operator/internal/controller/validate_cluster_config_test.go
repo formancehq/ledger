@@ -42,6 +42,64 @@ func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {
 	}))
 }
 
+func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {
+	t.Parallel()
+
+	enabled := true
+	disabled := false
+
+	tests := []struct {
+		name    string
+		auth    *ledgerv1alpha1.AuthorizationConfig
+		tls     *ledgerv1alpha1.TLSConfig
+		wantErr bool
+	}{
+		{
+			name:    "auth enabled + tls enabled is accepted",
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			tls:     &ledgerv1alpha1.TLSConfig{Enabled: true},
+			wantErr: false,
+		},
+		{
+			name:    "auth enabled + tls disabled is rejected",
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			tls:     &ledgerv1alpha1.TLSConfig{Enabled: false},
+			wantErr: true,
+		},
+		{
+			name:    "auth enabled + tls nil is rejected",
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			tls:     nil,
+			wantErr: true,
+		},
+		{
+			name:    "auth explicitly disabled + tls disabled is accepted",
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &disabled},
+			tls:     nil,
+			wantErr: false,
+		},
+		{
+			name:    "auth nil + tls disabled is accepted",
+			auth:    nil,
+			tls:     nil,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{Auth: tt.auth, TLS: tt.tls})
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "auth.enabled requires tls.enabled")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestValidateClusterConfig_RejectsNonPositiveRotation(t *testing.T) {
 	t.Parallel()
 	zero := int32(0)

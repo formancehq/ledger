@@ -2,28 +2,29 @@
 
 ## Overview
 
-A **receipt** is a short JWT that lets a client revert an **archived** transaction without anyone reading cold storage. The client gets the receipt at the time the transaction is archived (or already has it from when the transaction was created); on revert, it presents the receipt to the server; the server verifies the receipt and applies the reversal directly, with no round-trip to S3.
+A **receipt** is a short JWT, issued when a transaction is created, that carries a signed copy of the transaction's postings. A client can present it when reverting so that admission does not have to read the transaction's postings itself.
 
-Receipts are how the cold-storage layer stays write-only: the system never needs to thaw an archived chapter just to revert a single transaction inside it.
+The reversal is always applied by the FSM from the transaction's own state (`TransactionState`), which lives in the coverage-gated cache and **survives chapter archival** — archival purges only the cold `Log` / `Audit` / `AppliedProposal` ranges, never `TransactionState` (see `WriteSet.executePurge`). No revert path — receipt or not — reads cold storage. The receipt's role is purely admission-side: it is one source (versus admission's own store read) for the postings admission uses to declare the volume-preload coverage the reversed postings touch (invariant #9).
+
+> **Open question.** Because `TransactionState` survives archival and the FSM reverts from it, admission can normally read the postings directly, so the receipt's distinct value is now thin. Whether the receipt feature is still needed is under review (tracked in the Ledger v3.0 backlog).
 
 Source: `internal/infra/receipt/receipt.go`.
 
 ## Claim shape
 
-`receipt.go:32-40` — the JWT carries everything the FSM needs to construct the reversal:
+`receipt.go` — the JWT carries the signed postings admission uses to declare the revert's coverage:
 
 ```go
 type Claims struct {
-    Ledger    string             // ledger name
-    TxID      uint64             // archived transaction ID
-    Postings  []*commonpb.Posting// the original transaction's postings
-    Asset     string
-    ChapterID uint64             // which chapter holds the original
-    jwt.RegisteredClaims         // iss, iat
+    jwt.RegisteredClaims            // iss, iat
+    Ledger    string                // ledger name
+    TxID      uint64                // original transaction ID
+    Postings  []PostingClaim        // the original transaction's postings
+    ChapterID uint64                // chapter that held the original
 }
 ```
 
-The `Postings` field is the load-bearing one: the receipt is essentially **a frozen copy of the postings to invert**. The FSM consumes them at revert time without ever consulting the chapter's archived log.
+The `Postings` field is a signed, frozen copy of the original transaction's postings. **Admission** consumes it at propose time — to declare the volume-preload coverage the reversed postings will touch — as an alternative to reading the postings from the transaction's own state. It is not consumed by the FSM: the FSM reverts from the coverage-gated `TransactionState` (see [The revert path](#the-revert-path)).
 
 ## Signing
 
@@ -48,7 +49,7 @@ Receipts are deliberately the simpler primitive: the only consumer is the cluste
 3. HMAC check.
 4. Standard `exp` / `nbf` handling (claims expose `IssuedAt`; expiration is a deployment-policy choice).
 
-If verification passes, the FSM has a trusted `Claims` struct and can apply the revert deterministically.
+Verification runs in **admission** (`convertApplyRequest`), which also checks that the receipt's `Ledger` and `TxID` match the resolved request. If verification passes, admission has a trusted `Claims` struct and uses its `Postings` to declare the revert's volume coverage.
 
 ## Lifecycle
 
@@ -66,24 +67,28 @@ sequenceDiagram
     Note over S,Cold: Chapter sealed → archived
     ...
     C->>S: RevertTransaction(receipt)
-    S->>S: receipt.Verify(token)
-    S->>S: apply reversal from receipt.Postings
+    S->>S: admission: receipt.Verify(token) → declare volume coverage from receipt.Postings
+    S->>S: FSM: revert from coverage-gated TransactionState
     S-->>C: revert log
 ```
 
-The receipt is issued **once**, at the time of the transaction's archival (or directly when the transaction is created, for forward-compatibility — the client gets the receipt regardless of whether the chapter has been archived yet). The client is responsible for storing it; the server does not keep a copy. From the cluster's point of view, the receipt's content is recoverable from the chapter even after archival — the receipt just saves the round-trip.
+The receipt is issued **once**, when the transaction is created; the client is responsible for storing it and the server keeps no copy. It is only ever an admission-side convenience: the postings are also recoverable from the transaction's own state (which the FSM reads on revert regardless), so the receipt just saves admission a store read.
 
 ## The revert path
 
-`RevertTransactionOrder` (`raft_cmd.proto:337-344`) carries an optional `original_postings` field. Under normal conditions (transaction still in a hot chapter), the field is left empty and the FSM reads the postings from Pebble. For an archived transaction, the field is populated **from the verified receipt's `Postings`**, and the FSM applies the inverse without touching cold storage.
+`RevertTransactionOrder` carries only caller intent — `transaction_id`, `force`, `at_effective_date`, `metadata`. It does **not** carry the original postings: that would be state-derived execution data on an audit-bound order (see [audit-vs-technical-state.md](../../audit-vs-technical-state.md#accepted-order-enrichment)).
 
-The resulting `RevertedTransaction` log is hash-bound by the audit chain exactly like any other revert — the fact that the original was archived has no effect on the chain integrity.
+At apply time the FSM sources the original postings from the target's `TransactionState`, read through the coverage-gated scope — admission preloads that entry (`addTransactionTargetNeeds`), so the read never touches Pebble (invariant #3). It builds the reversed postings from `origState.GetPostings()`; a missing state for an allocated id is a loud inconsistency, and a non-existent id is caught earlier by the `txID >= NextTransactionId` boundary check.
+
+The receipt (when present) never reaches the FSM. Admission verifies it and uses its `Postings` only to declare the volume-preload coverage the reversed postings touch — the same coverage it would otherwise derive from its own read of `TransactionState`.
+
+The resulting `RevertedTransaction` log is hash-bound by the audit chain exactly like any other revert — the fact that the original chapter was archived has no effect on chain integrity.
 
 ## What a receipt does not authorise
 
 - **It does not authenticate the caller.** Receipt verification proves "this content was signed by the cluster" — it says nothing about who is allowed to invoke it. The standard [auth](../api/auth.md) flow (JWT bearer + scopes) still runs in front. A valid receipt without a valid `ledger:TransactionWrite` scope is rejected at admission.
 - **It is not idempotency.** Re-submitting the same receipt twice produces two revert attempts; the second one is rejected by the FSM because the original is already reverted (`checkReversionInvariants` enforces no-double-revert). If the client needs idempotent retries, it uses the standard idempotency key on the request — receipts and idempotency keys are orthogonal.
-- **It is not arbitrary forging power.** The receipt's `Postings` are fixed at issuance time; they cannot be edited and re-signed. A receipt revert produces a revert log that is, byte-for-byte, the revert the cluster would have produced from cold-storage replay.
+- **It is not arbitrary forging power.** The receipt's `Postings` are fixed at issuance time and can't be edited without the HMAC key. And even a validly-signed receipt can't determine the reversal: the FSM builds the revert from the target's `TransactionState`, not from the receipt. A receipt whose postings disagreed with the stored state would only mis-declare coverage — at worst a coverage-miss error, never a wrong revert.
 
 ## Security envelope
 
@@ -95,7 +100,7 @@ Three things keep the scheme honest:
 
 ## Audit binding
 
-Receipts themselves are **not** stored in the audit chain — they are external artefacts. The **revert log** that uses a receipt is bound by the chain like every other log, carrying the original-postings field in the order's `SerializedOrder`. The audit chain therefore records "the cluster reverted txID X with these postings", which is exactly what an independent auditor needs to verify.
+Receipts themselves are **not** stored in the audit chain — they are external artefacts. The audit-bound order (`AuditItem.SerializedOrder`) carries only the caller's revert intent (`transaction_id`, `force`, `at_effective_date`, `metadata`), not the postings. The reversed postings appear in the produced `RevertedTransaction` log — a checker-verified projection, re-derivable by replaying the target's `TransactionState` — so an independent auditor can still confirm "the cluster reverted txID X with these postings" from the chain-bound log.
 
 A receipt that is signed but never used leaves no trace anywhere — there is no audit row for "receipt issued but never redeemed".
 
@@ -104,7 +109,8 @@ A receipt that is signed but never used leaves no trace anywhere — there is no
 | Concern | File |
 |---------|------|
 | Signer / Verifier | `internal/infra/receipt/receipt.go` |
-| Claims shape | `internal/infra/receipt/receipt.go:32-40` |
-| `RevertTransactionOrder` proto | `misc/proto/raft_cmd.proto:337-344` |
-| Revert FSM processor | `internal/domain/processing/processor_revert_transaction.go` |
-| Double-revert invariant | `internal/application/check/checker.go:1959-2006` |
+| Claims shape | `internal/infra/receipt/receipt.go` |
+| Receipt verification + coverage declaration (admission) | `internal/application/admission/admission.go` (`convertApplyRequest`) |
+| `RevertTransactionOrder` proto | `misc/proto/raft_cmd.proto` |
+| Revert FSM processor (postings from `TransactionState`) | `internal/domain/processing/processor_revert_transaction.go` |
+| Double-revert invariant | `internal/application/check/checker.go` |

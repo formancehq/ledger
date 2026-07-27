@@ -62,8 +62,8 @@ func postingsOrderWithReference(ledger, source, destination, asset string, amoun
 
 // revertOrderSkippable builds a revert order opting into the
 // TRANSACTION_ALREADY_REVERTED skippable reason.
-func revertOrderSkippable(ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
-	order := revertOrder(ledger, txID, original...)
+func revertOrderSkippable(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
+	order := revertOrder(overlay, ledger, txID, original...)
 	order.GetLedgerScoped().GetApply().SkippableReasons = []commonpb.ErrorReason{
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 	}
@@ -134,14 +134,14 @@ func TestResolveScripts_SkippedReferenceConflictNotFolded(t *testing.T) {
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
 	// The reference already exists → order 0 will be skipped by the FSM.
 	writeReference(t, admissionBatch, testLedgerName, "dup-ref", 42)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 1)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), batch, 1)
 	require.NotEmpty(t, batchHash, "order 1 reads a balance, so it must carry a resolution hash")
 
 	// Reference: order 1 resolved standalone against an EMPTY store — the state
 	// the FSM sees once order 0 has been dropped (skip:src still at 0).
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("skip:src")),
 	}, 0)
 
@@ -153,7 +153,7 @@ func TestResolveScripts_SkippedReferenceConflictNotFolded(t *testing.T) {
 	// same deposit via a NON-skippable predecessor and confirming a different hash.
 	storeFolded := createTestStore(t)
 	admissionFolded, _ := createTestAdmission(t, storeFolded)
-	foldedHash := resolveHashFor(t, admissionFolded, []*raftcmdpb.Order{
+	foldedHash := resolveHashFor(t, admissionFolded, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, `send [USD/2 100] (source = @world destination = @skip:src)`),
 		scriptOrder(testLedgerName, dependentBalanceScript("skip:src")),
 	}, 1)
@@ -179,7 +179,7 @@ func TestResolveScripts_NonConflictingReferenceStillFolded(t *testing.T) {
 
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 1)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), batch, 1)
 	require.NotEmpty(t, batchHash)
 
 	// Reference: order 1 resolved standalone against a store where fresh:src
@@ -188,7 +188,7 @@ func TestResolveScripts_NonConflictingReferenceStillFolded(t *testing.T) {
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "fresh:src", "USD/2", 100, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("fresh:src")),
 	}, 0)
 
@@ -207,8 +207,9 @@ func TestResolveScripts_SkippedAlreadyRevertedNotFolded(t *testing.T) {
 	// Pre-batch: rev:acct holds 250. Order 0 reverts tx 1 (original world->rev:acct
 	// 100) with skip opt-in, but tx 1 is ALREADY reverted → the FSM drops it, so
 	// rev:acct stays at 250. Order 1 reads balance(@rev:acct).
+	overlay := newBulkOverlay()
 	batch := []*raftcmdpb.Order{
-		revertOrderSkippable(testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
+		revertOrderSkippable(overlay, testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
 		scriptOrder(testLedgerName, dependentBalanceScript("rev:acct")),
 	}
 
@@ -216,7 +217,7 @@ func TestResolveScripts_SkippedAlreadyRevertedNotFolded(t *testing.T) {
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
 	writeVolume(t, admissionBatch, testLedgerName, "rev:acct", "USD/2", 250, 0)
 	writeReverted(t, admissionBatch, testLedgerName, 1) // tx 1 already reverted
-	batchHash := resolveHashFor(t, admissionBatch, batch, 1)
+	batchHash := resolveHashFor(t, admissionBatch, overlay, batch, 1)
 	require.NotEmpty(t, batchHash)
 
 	// Reference: order 1 resolved standalone against rev:acct = 250 — the state
@@ -224,7 +225,7 @@ func TestResolveScripts_SkippedAlreadyRevertedNotFolded(t *testing.T) {
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "rev:acct", "USD/2", 250, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("rev:acct")),
 	}, 0)
 
@@ -236,8 +237,9 @@ func TestResolveScripts_SkippedAlreadyRevertedNotFolded(t *testing.T) {
 	storeApplied := createTestStore(t)
 	admissionApplied, _ := createTestAdmission(t, storeApplied)
 	writeVolume(t, admissionApplied, testLedgerName, "rev:acct", "USD/2", 250, 0)
-	appliedHash := resolveHashFor(t, admissionApplied, []*raftcmdpb.Order{
-		revertOrderSkippable(testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
+	appliedOverlay := newBulkOverlay()
+	appliedHash := resolveHashFor(t, admissionApplied, appliedOverlay, []*raftcmdpb.Order{
+		revertOrderSkippable(appliedOverlay, testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
 		scriptOrder(testLedgerName, dependentBalanceScript("rev:acct")),
 	}, 1)
 	require.NotEqual(t, appliedHash, batchHash,
@@ -265,14 +267,14 @@ func TestResolveScripts_IntraBatchDuplicateReferenceSkipped(t *testing.T) {
 
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 2)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), batch, 2)
 	require.NotEmpty(t, batchHash)
 
 	// Reference: order 2 resolved against ib:src = 100 (only the first deposit).
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "ib:src", "USD/2", 100, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
 	}, 0)
 
@@ -283,7 +285,7 @@ func TestResolveScripts_IntraBatchDuplicateReferenceSkipped(t *testing.T) {
 	storeBoth := createTestStore(t)
 	admissionBoth, _ := createTestAdmission(t, storeBoth)
 	writeVolume(t, admissionBoth, testLedgerName, "ib:src", "USD/2", 200, 0)
-	bothHash := resolveHashFor(t, admissionBoth, []*raftcmdpb.Order{
+	bothHash := resolveHashFor(t, admissionBoth, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
 	}, 0)
 	require.NotEqual(t, bothHash, batchHash,
@@ -314,14 +316,14 @@ func TestResolveScripts_PostingsOnlyReferenceRecordedForIntraBatchSkip(t *testin
 
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 2)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), batch, 2)
 	require.NotEmpty(t, batchHash)
 
 	// Reference: order 2 resolved against ib:src = 100 (only the first deposit).
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "ib:src", "USD/2", 100, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
 	}, 0)
 
@@ -333,7 +335,7 @@ func TestResolveScripts_PostingsOnlyReferenceRecordedForIntraBatchSkip(t *testin
 	storeBoth := createTestStore(t)
 	admissionBoth, _ := createTestAdmission(t, storeBoth)
 	writeVolume(t, admissionBoth, testLedgerName, "ib:src", "USD/2", 200, 0)
-	bothHash := resolveHashFor(t, admissionBoth, []*raftcmdpb.Order{
+	bothHash := resolveHashFor(t, admissionBoth, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, dependentBalanceScript("ib:src")),
 	}, 0)
 	require.NotEqual(t, bothHash, batchHash,

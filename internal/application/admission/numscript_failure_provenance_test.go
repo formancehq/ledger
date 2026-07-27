@@ -76,10 +76,15 @@ func referenceOrder(ledger, name, version string) *raftcmdpb.Order {
 func runResolveProvenance(t *testing.T, admission *Admission, orders []*raftcmdpb.Order, hasIdempotencyKey bool) error {
 	t.Helper()
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders)
+	// A single overlay is threaded through both phases, exactly as the real
+	// Admit path does (extractPreloadNeeds seeds it, resolveScriptsAndEnrichNeeds
+	// reads it back).
+	overlay := newBulkOverlay()
+
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 	require.NoError(t, err)
 
-	return admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, newBulkOverlay(), needs, perOrder, hasIdempotencyKey)
+	return admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, hasIdempotencyKey)
 }
 
 // TestForwardOrFail_ProvenanceClassification covers the EN-1557 decision table:

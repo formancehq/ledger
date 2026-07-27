@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +28,6 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -149,6 +147,12 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		// Auth requires TLS (bearer tokens must not travel in plaintext), so
+		// generate a throwaway CA + server cert for the fixture.
+		certDir := GinkgoT().TempDir()
+		certs, err := testserver.GenerateTestCerts(certDir)
+		Expect(err).To(Succeed())
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
@@ -165,6 +169,9 @@ var _ = Describe("Auth", Ordered, func() {
 			testserver.WithAuthEnabled(),
 			testserver.WithAuthIssuer(oidcServer.URL),
 			testserver.WithAuthService("ledger"),
+			testserver.WithTLSMode("required"),
+			testserver.WithTLSCertFile(certs.ServerCertFile),
+			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
 		server := testservice.New(cmdserver.NewRunCommand,
@@ -178,17 +185,10 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(server.Stop(stopCtx)).To(Succeed())
 		})
 
-		// Create insecure gRPC client (no TLS needed for this test)
-		grpcConn, err = grpc.NewClient(
-			fmt.Sprintf("localhost:%d", authTestGRPCPort),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
-		)
+		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(authTestGRPCPort, certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-
-		client = servicepb.NewBucketServiceClient(grpcConn)
-		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
 
 		// Wait for leader election
 		Eventually(func(g Gomega) bool {

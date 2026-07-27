@@ -339,18 +339,22 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	}}
 	appendLogs(t, s, 1, logs...)
 
-	// Find the creation log
-	log, err := query.FindTransactionCreationLog(context.Background(), s, txAttr, "test", 1)
+	reader, err := s.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	// Find the creation log. Nil cold reader: hot-only lookup.
+	log, err := query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "test", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "other", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "other", 1)
 	require.Error(t, err)
 }
 

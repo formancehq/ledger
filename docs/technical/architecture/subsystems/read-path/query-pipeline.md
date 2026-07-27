@@ -52,60 +52,17 @@ sequenceDiagram
 
 The HTTP REST surface (`internal/adapter/http/`) is a thin wrapper that routes to the same controller methods.
 
-### Filter input: dual-format decode (EN-1511)
+### Filter input: one `*commonpb.QueryFilter`
 
 Whatever the transport, a filter reaches the pipeline as a single
-`*commonpb.QueryFilter`. Callers may express it in **either** the textual
-`filterexpr` grammar (`metadata[k] == v`) or the structured v2 JSON
-`QueryFilter` DSL (`{"$match":{"metadata[k]":"v"}}`); both are decoded by the one
-shared helper `filterexpr.DecodeDualFormat` (`internal/pkg/filterexpr/decode.go`),
-which detects the form from the first non-whitespace byte, parses to the same
-proto, and applies the single per-target validity gate
-(`domain.ValidateFilterForTarget`). The HTTP list handlers call it via
-`parseListFilter` (`internal/adapter/http/list_filter.go`) for the `?filter=`
-query parameter and AND-combine the result with the transactions endpoint's
-remaining convenience param — the `startDate`/`endDate` range — through
-`combineFilters` (the `reference` and `prefix` aliases were removed in EN-1540:
-account prefix is now `address ^= "..."`, transaction reference is structured
-`{"$match":{"reference":"..."}}`); prepared-query
-create/update decode the JSON `filter` body field through the same helper; and
-`ledgerctl --filter` routes through it in `cmdutil.BuildQueryFilter`. Audit
-fields are written **bare** (`outcome`, `ledger`, `seq`, `proposal_id`,
-`timestamp`, `log_seq`, `caller_subject`, `order_type`) and resolved against the
-audit query target (EN-1549 — this replaced the old `audit[...]` namespaced
-syntax, a breaking change with no backward compatibility). Bare `timestamp` and
-`ledger` collide with the transaction `timestamp` field and the top-level
-`ledger` condition, so they resolve to the audit condition only on the audit
-target — which is why audit fields are valid on that endpoint alone. Audit
-conditions exist only in the textual form — the JSON codec has no representation
-for them (EN-1241) — so the textual form is canonical for
-`GET /v3/_/audit-entries`. See
-[api-comparison.md](../../../contributing/api-comparison.md#filter-input-formats-dual-format-contract-en-1511)
-for the full contract.
-
-#### Date fields: RFC3339 coercion (EN-1544)
-
-The builtin date indexes — the transaction `timestamp`/`insertedAt`/`revertedAt`
-and the log `date` — store **unsigned Unix microseconds**. Both DSL forms accept a
-date bound written as **either** an RFC3339 timestamp (e.g.
-`"2023-11-14T22:13:20Z"`) **or** the raw microsecond form:
-
-| Target | Textual | Structured |
-|--------|---------|------------|
-| transactions | `timestamp >= "2023-11-14T22:13:20Z"` | `{"$gte":{"timestamp":"2023-11-14T22:13:20Z"}}` |
-| logs | `date >= "2023-11-14T22:13:20Z"` | `{"$gte":{"date":"2023-11-14T22:13:20Z"}}` |
-| audit | `timestamp >= "2023-11-14T22:13:20Z"` (bare, resolved on the audit target) | — (audit is text-only) |
-
-The raw-microsecond form of each still parses (`timestamp >= 1700000000000000`),
-so this is purely additive. All three surfaces (audit, transactions, logs) funnel
-through the **one** coercion `commonpb.CoerceDatetimeMicros`, which also backs the
-transport-level `startDate`/`endDate` convenience params
-(`parseFilterDateMicros`). A pre-epoch RFC3339 value (negative `UnixMicro`) has no
-representable unsigned bound and is **rejected deterministically** at decode time
-rather than wrapping to a huge micro value. The `date`/`timestamp` fields select
-the proto arm only; which target each is valid on is decided by the same
-per-target validity gate above — `date` on a non-logs target and `timestamp` on a
-non-transactions target are rejected identically in both forms.
+`*commonpb.QueryFilter`. Callers express it in either the textual `filterexpr`
+grammar or the structured v2 JSON DSL; both are decoded by
+`filterexpr.DecodeDualFormat` and pass the per-target validity gate before the
+pipeline sees them. The canonical contract — the two serializations, the
+parameter classification, expressiveness asymmetries, date coercion, AND-combination
+and audit's textual-only rule — lives in
+[query-filter.md](query-filter.md). The pipeline itself is agnostic to which form
+was used.
 
 ## Linearizability — `ReadIndex`
 

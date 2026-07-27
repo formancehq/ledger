@@ -1216,29 +1216,3 @@ func TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass(t *testing.T) {
 	require.ErrorIs(t, err, ErrMirrorIAMRequiresTLS,
 		"PGSSLMODE=require in the pod env must not satisfy the admission TLS gate — the persisted DSN must carry sslmode= itself")
 }
-
-func TestValidateOrder_RejectsInvalidColorInRevert(t *testing.T) {
-	t.Parallel()
-
-	order := &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: "default",
-				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
-						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-								TransactionId: 42,
-								OriginalPostings: []*commonpb.Posting{
-									commonpb.NewColoredPosting("users:alice", "world", "USD/2", "lowercase", big.NewInt(100)),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	require.Error(t, validateOrder(order))
-}

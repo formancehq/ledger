@@ -753,7 +753,7 @@ kubectl cp ledger-0:/tmp/backup.tar.gz ./backup.tar.gz
 ### Production Recommendations
 
 1. **TLS/HTTPS**: Configure TLS for all communications. To enable or disable TLS on a running cluster without downtime, see [TLS migration](tls-migration.md).
-2. **Authentication**: Add API authentication (JWT, OAuth2)
+2. **Authentication**: Add API authentication (JWT, OAuth2). `--auth-enabled` requires `--tls-mode=required` and the server refuses to start with `--tls-mode=disabled` or `--tls-mode=optional` — bearer tokens would otherwise be exposed to plaintext interception (`optional` still accepts plaintext client connections). This is intentionally stricter than the `--cluster-secret` rule, which permits `optional` for zero-downtime migration. See [Authentication](authentication.md#configuration-invariants).
 3. **Network Policies**: Restrict network communications
 4. **Secrets Management**: Use Kubernetes Secrets or Vault
 5. **RBAC**: Configure appropriate Kubernetes permissions

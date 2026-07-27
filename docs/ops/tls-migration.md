@@ -75,15 +75,39 @@ when TLS is at least partially active (`mode != disabled`). Sending a
 static token over plaintext is an anti-pattern, so the secret only exists
 when the wire is encrypted.
 
-This means **authentication requires TLS**. If you intend to enable
-`--auth-enabled`, enable TLS first.
+This means **authentication requires TLS**. Note the two guards differ in
+strictness:
 
-The server enforces this invariant at startup:
+- `--cluster-secret` (inter-node static bearer token) requires `mode != disabled`,
+  i.e. `optional` or `required` — it must tolerate `optional` because the
+  operator drives the migration *through* that transitional mode.
+- `--auth-enabled` (external service API JWT/Ed25519) requires `--tls-mode=required`.
+  `optional` is rejected because its dual listener still accepts plaintext client
+  connections, so bearer tokens could travel in the clear. Bring the cluster to
+  `required` before enabling `--auth-enabled`.
+
+The server enforces these invariants at startup:
 
 ```
 --cluster-secret requires TLS (set --tls-mode to optional or required
 and provide --tls-cert-file / --tls-key-file)
+
+--auth-enabled requires --tls-mode=required (with --tls-cert-file /
+--tls-key-file)
 ```
+
+Because `--auth-enabled` demands `required`, the operator coordinates auth
+with the TLS state machine so a single CR edit that turns on both TLS and
+auth does not deadlock:
+
+- If you set `auth.enabled: true` while `tls.enabled` is false, the operator
+  **rejects** the CR (it would otherwise reconcile into a silently
+  unauthenticated cluster). Enable TLS first.
+- When both are enabled together on an existing plaintext cluster, the
+  operator holds auth **off** while the StatefulSet rolls through the
+  transitional `optional` mode, then enables auth once TLS has converged to
+  `required`. The API is briefly unauthenticated during that window — no
+  worse than the plaintext state you are migrating away from.
 
 ## Direct (non-operator) deployments
 

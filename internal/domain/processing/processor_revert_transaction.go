@@ -33,23 +33,16 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
 
-	// Admission attaches OriginalPostings from either the signed receipt or
-	// its own read of TxState.Postings (via attrs.Transaction.Get). A revert
-	// order that reaches the FSM with an empty OriginalPostings means the
-	// tx was not visible to admission at propose time — a business
-	// rejection that must appear in the audit chain (invariant #8).
-	originalPostings := order.GetOriginalPostings()
-	if len(originalPostings) == 0 {
-		return nil, &domain.ErrTransactionNotFound{TransactionID: order.GetTransactionId()}
-	}
-
+	// The original postings live on the transaction's own state, which
+	// admission preloaded (addTransactionTargetNeeds) and the FSM reads
+	// through the coverage gate — never off the order, which carries only
+	// caller intent (invariant #8). A genuinely non-existent tx is already
+	// rejected by the boundary check above; a miss here means an allocated
+	// tx with no state (chapter archival does not evict TransactionState,
+	// and IDs have no gaps), i.e. a cache/Pebble desync — surface loudly
+	// with the invariant-violation error class (invariant #7).
 	origStateReader, err := s.TransactionStates().Get(txKey)
 	if errors.Is(err, domain.ErrNotFound) {
-		// Impossible by design under invariants #1/#6: the len(originalPostings)
-		// check above already established the tx was visible to admission at
-		// propose time (so admission preloaded TxState). A miss here implies
-		// a cache/Pebble desync, not a routine business "not found" — surface
-		// loudly with the invariant-violation error class.
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
@@ -58,6 +51,14 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	origState := origStateReader.Mutate()
+
+	originalPostings := origState.GetPostings()
+	if len(originalPostings) == 0 {
+		// Create rejects empty transactions, so a stored state always carries
+		// at least one posting; an empty set here is an inconsistent projection
+		// (invariant #7), not a revertable transaction.
+		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
+	}
 
 	// Create reversed postings and update volumes
 	// For a revert: original destination becomes source, original source becomes destination.

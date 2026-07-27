@@ -114,6 +114,41 @@ func TestHashOrders_ExcludesPreloadUnavailable(t *testing.T) {
 		"preload_unavailable must not change the idempotency hash")
 }
 
+// TestMarshalOrderBusinessIntent_ExcludesTechnical pins that the shared
+// business-intent projection drops OrderTechnical entirely and leaves the
+// input order byte-identical (no mutation leak from the nil-and-restore).
+func TestMarshalOrderBusinessIntent_ExcludesTechnical(t *testing.T) {
+	t.Parallel()
+
+	base := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+		},
+	}
+	withTechnical := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "ledger-a"},
+		},
+		Technical: &raftcmdpb.OrderTechnical{
+			CoverageBits:         []byte{0b1010_1010},
+			InputsResolutionHash: []byte("resolution-hash"),
+			PreloadUnavailable:   true,
+		},
+	}
+
+	baseBytes := MarshalOrderBusinessIntent(base, nil)
+	techBytes := MarshalOrderBusinessIntent(withTechnical, nil)
+
+	require.Equal(t, baseBytes, techBytes,
+		"OrderTechnical must not appear in the business-intent bytes")
+	require.NotEmpty(t, baseBytes, "business payload must still be serialized")
+
+	// The nil-and-restore must leave the live order intact.
+	require.NotNil(t, withTechnical.GetTechnical(), "Technical must be restored")
+	require.Equal(t, []byte{0b1010_1010}, withTechnical.GetTechnical().GetCoverageBits())
+	require.True(t, withTechnical.GetTechnical().GetPreloadUnavailable())
+}
+
 // TestProcessOrder_PreloadUnavailableRejected pins the FSM guard: an order that
 // admission forwarded with preload_unavailable (idempotency key present, preload
 // could not be built) is rejected deterministically with the retryable,

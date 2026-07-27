@@ -53,13 +53,17 @@ func validateOrder(order *raftcmdpb.Order) error {
 }
 
 // validateOrderPostingColors validates Color on every direct Posting attached
-// to a CreateTransaction or RevertTransaction order, BEFORE admission extracts
-// preload needs from those postings.
+// to a CreateTransaction order, BEFORE admission extracts preload needs from
+// those postings.
 //
 // Color flows directly from the request into the volume-key tuple admission
 // uses for preload extraction, so a malformed value (e.g. `Color="A\x00B"`)
 // would otherwise materialize a corrupted cache key before the FSM's own
 // ValidateColor rejected the order. Validating here closes that window.
+//
+// Revert orders need no check here: their reversed postings inherit colors
+// from the original transaction (via the coverage-gated TransactionState),
+// already validated when that transaction was created.
 //
 // Postings produced by Numscript still get their second-pass validation in
 // the FSM (`validatePostings` in processor_transaction.go); the FSM stays the
@@ -71,15 +75,8 @@ func validateOrderPostingColors(order *raftcmdpb.Order) domain.Describable {
 		return nil
 	}
 
-	switch d := apply.Apply.GetData().(type) {
-	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
+	if d, ok := apply.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction); ok {
 		for _, p := range d.CreateTransaction.GetPostings() {
-			if err := domain.ValidateColor(p.GetColor()); err != nil {
-				return err
-			}
-		}
-	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		for _, p := range d.RevertTransaction.GetOriginalPostings() {
 			if err := domain.ValidateColor(p.GetColor()); err != nil {
 				return err
 			}

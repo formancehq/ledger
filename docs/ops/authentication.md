@@ -9,16 +9,26 @@ ledger run \
   --node-id 1 \
   --cluster-id prod-ledger \
   --bootstrap \
+  --tls-mode required \
+  --tls-cert-file /etc/ledger/tls.crt \
+  --tls-key-file /etc/ledger/tls.key \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-service ledger
 ```
 
+> `--auth-enabled` requires `--tls-mode=required`; the server refuses to start
+> with `--tls-mode=disabled` or `--tls-mode=optional` so bearer tokens are never
+> exposed to plaintext **on the gRPC service transport**. The HTTP REST-compat
+> listener is not covered by `--tls-mode` and must be TLS-terminated separately
+> (HTTPS at the ingress/proxy) when authentication is enabled.
+> See [Configuration Invariants](#configuration-invariants).
+
 ## CLI Flags
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
@@ -59,6 +69,20 @@ The server enforces the following rules at startup:
 - `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
   `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
+- `--auth-enabled` requires `--tls-mode=required`. Over a plaintext transport
+  the bearer JWT/Ed25519 tokens would be sent in the clear and could be
+  intercepted and replayed by an on-path attacker, so both
+  `--tls-mode=disabled` and `--tls-mode=optional` are rejected at startup —
+  `optional` runs a dual listener that still accepts plaintext client
+  connections, so it is not sufficient. This is intentionally stricter than the
+  `--cluster-secret` rule (which permits `optional`): the operator drives
+  zero-downtime inter-node TLS migration through the transitional `optional`
+  mode, but the external service API has no such requirement. There is no
+  opt-out; terminate TLS on the ledger process itself even when an ingress or
+  service mesh also terminates TLS upstream. Note this guard covers the
+  **gRPC service transport** only — `--tls-mode` does not govern the HTTP
+  REST-compat listener, which remains plaintext and must be protected by
+  separate HTTPS termination (ingress/proxy) when authentication is enabled.
 - Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
@@ -82,6 +106,7 @@ The writes-only configuration is:
 
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-anonymous-scopes "*:read"
 ```
 

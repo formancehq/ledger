@@ -52,15 +52,17 @@ func applyOrder(ledger string, data *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Orde
 	}
 }
 
-// revertOrder builds a revert whose original postings are supplied directly
-// (admission normally reads them from the store; here we set them so the FSM's
-// reversed-posting balance effect is deterministic).
-func revertOrder(ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
+// revertOrder builds a caller-intent revert order and records its original
+// postings in the overlay sidecar (admission normally resolves them from the
+// store/receipt at order-build time), so the FSM's reversed-posting balance
+// effect is deterministic in tests.
+func revertOrder(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
+	overlay.recordRevertOriginalPostings(domain.TransactionKey{LedgerName: ledger, ID: txID}, original)
+
 	return applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:    txID,
-				OriginalPostings: original,
+				TransactionId: txID,
 			},
 		},
 	})
@@ -118,12 +120,12 @@ func writeVolume(t *testing.T, admission *Admission, ledger, account, asset stri
 	require.NoError(t, batch.Commit())
 }
 
-func resolveHashFor(t *testing.T, admission *Admission, orders []*raftcmdpb.Order, idx int) []byte {
+func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
 	t.Helper()
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders)
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, newBulkOverlay(), needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
 
 	return orders[idx].GetTechnical().GetInputsResolutionHash()
 }
@@ -153,7 +155,7 @@ send $all (source = @bulk:source destination = @bulk:dest)
 
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 1)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), batch, 1)
 	require.NotEmpty(t, batchHash, "order 1 reads a balance, so it must carry a resolution hash")
 
 	// Reference: the same order 1 resolved standalone against a store where
@@ -163,7 +165,7 @@ send $all (source = @bulk:source destination = @bulk:dest)
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "bulk:source", "USD/2", 100, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, `
 vars {
   monetary $all = balance(@bulk:source, USD/2)
@@ -180,7 +182,7 @@ send $all (source = @bulk:source destination = @bulk:dest)
 	// the resolved balance.
 	storeEmpty := createTestStore(t)
 	admissionEmpty, _ := createTestAdmission(t, storeEmpty)
-	emptyHash := resolveHashFor(t, admissionEmpty, []*raftcmdpb.Order{
+	emptyHash := resolveHashFor(t, admissionEmpty, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, `
 vars {
   monetary $all = balance(@bulk:source, USD/2)
@@ -213,9 +215,10 @@ send [USD/2 5] (source = @world destination = $dst)
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch)
+	overlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
 
 	// The dependent order's meta() resolved to ib:resolved, so that destination
 	// volume must have been preloaded — proving admission saw order 0's write.
@@ -237,8 +240,9 @@ func TestResolveScripts_IntraBatchRevertBalanceDependency(t *testing.T) {
 	// whose original posting sent 100 world->rev:acct; the reversed posting
 	// sends 100 rev:acct->world, so rev:acct ends at 150. Order 1 sends
 	// balance(@rev:acct) onward and must resolve against 150.
+	overlay := newBulkOverlay()
 	batch := []*raftcmdpb.Order{
-		revertOrder(testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
+		revertOrder(overlay, testLedgerName, 1, posting("world", "rev:acct", "USD/2", 100)),
 		scriptOrder(testLedgerName, `
 vars {
   monetary $all = balance(@rev:acct, USD/2)
@@ -250,7 +254,7 @@ send $all (source = @rev:acct destination = @rev:dest)
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
 	writeVolume(t, admissionBatch, testLedgerName, "rev:acct", "USD/2", 250, 0)
-	batchHash := resolveHashFor(t, admissionBatch, batch, 1)
+	batchHash := resolveHashFor(t, admissionBatch, overlay, batch, 1)
 	require.NotEmpty(t, batchHash, "order 1 reads a balance, so it must carry a resolution hash")
 
 	// Reference: order 1 resolved standalone against a store where rev:acct
@@ -259,7 +263,7 @@ send $all (source = @rev:acct destination = @rev:dest)
 	storeRef := createTestStore(t)
 	admissionRef, _ := createTestAdmission(t, storeRef)
 	writeVolume(t, admissionRef, testLedgerName, "rev:acct", "USD/2", 150, 0)
-	refHash := resolveHashFor(t, admissionRef, []*raftcmdpb.Order{
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, `
 vars {
   monetary $all = balance(@rev:acct, USD/2)
@@ -275,7 +279,7 @@ send $all (source = @rev:acct destination = @rev:dest)
 	storePre := createTestStore(t)
 	admissionPre, _ := createTestAdmission(t, storePre)
 	writeVolume(t, admissionPre, testLedgerName, "rev:acct", "USD/2", 250, 0)
-	preHash := resolveHashFor(t, admissionPre, []*raftcmdpb.Order{
+	preHash := resolveHashFor(t, admissionPre, newBulkOverlay(), []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, `
 vars {
   monetary $all = balance(@rev:acct, USD/2)
@@ -306,9 +310,10 @@ send [USD/2 5] (source = @world destination = $dst)
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
 
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch)
+	overlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, newBulkOverlay(), needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
 
 	// meta() resolved to am:resolved, so that destination volume must have been
 	// discovered — proving admission saw the preceding AddMetadata write.
@@ -343,9 +348,10 @@ vars {
 send [USD/2 1] (source = @world destination = $dst)
 `),
 	}
-	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), okBatch)
+	okOverlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), okBatch, okOverlay)
 	require.NoError(t, err)
-	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, newBulkOverlay(), needs, perOrder, false))
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), okBatch, okOverlay, needs, perOrder, false))
 
 	// A preceding DeleteMetadata tombstones the key: the dependent meta() now
 	// resolves absent and discovery fails.
@@ -358,10 +364,11 @@ vars {
 send [USD/2 1] (source = @world destination = $dst)
 `),
 	}
-	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), delBatch)
+	delOverlay := newBulkOverlay()
+	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), delBatch, delOverlay)
 	require.NoError(t, err)
 
-	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, newBulkOverlay(), needs, perOrder, false)
+	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), delBatch, delOverlay, needs, perOrder, false)
 	require.Error(t, err, "a preceding same-batch delete must make the dependent meta() resolve absent and fail discovery")
 
 	var businessErr *domain.BusinessError

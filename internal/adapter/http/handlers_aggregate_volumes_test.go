@@ -5,10 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -78,14 +80,17 @@ func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?useMaxPrecision=true&groupByPrefixes=users:,merchants:&prefix=users:", nil, map[string]string{
-		"ledgerName": "my-ledger",
-	})
+	r := newRequest(t, http.MethodGet,
+		"/my-ledger/volumes?useMaxPrecision=true&collapseColors=true&groupByPrefixes=users:,merchants:&filter="+
+			url.QueryEscape(`address ^= "users:"`), nil, map[string]string{
+			"ledgerName": "my-ledger",
+		})
 
 	srv.handleAggregateVolumes(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.True(t, capturedOpts.UseMaxPrecision)
+	require.True(t, capturedOpts.CollapseColors)
 	require.Equal(t, []string{"users:", "merchants:"}, capturedOpts.GroupByPrefixes)
 	require.NotNil(t, capturedFilter)
 	require.Equal(t, "users:", capturedFilter.GetAddress().GetHardcodedPrefix())
@@ -271,4 +276,115 @@ func TestHandleAggregateVolumes_EmitsColorAlways(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), `"color":""`,
 		`empty color must surface as "color":"" not be omitted by omitempty`)
+}
+
+// TestHandleAggregateVolumes_DualFormatFilter is the endpoint-level EN-1511
+// acceptance check for volumes: the same logical account selector passed via
+// `?filter=` in the textual form and in the structured JSON form reaches the
+// backend as the same QueryFilter.
+func TestHandleAggregateVolumes_DualFormatFilter(t *testing.T) {
+	t.Parallel()
+
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+		t.Helper()
+
+		var captured *commonpb.QueryFilter
+
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, filter *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+				captured = filter
+
+				return &commonpb.AggregateResult{}, nil
+			}).AnyTimes()
+		srv := newTestServer(t, backend)
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, target, nil, map[string]string{"ledgerName": "my-ledger"})
+		srv.handleAggregateVolumes(w, r)
+
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+		require.NotNil(t, captured)
+
+		return captured
+	}
+
+	fromText := capture(t, "/my-ledger/volumes?filter="+url.QueryEscape(`metadata[status] == "active"`))
+	fromJSON := capture(t, "/my-ledger/volumes?filter="+url.QueryEscape(`{"$match":{"metadata[status]":"active"}}`))
+
+	require.True(t, proto.Equal(fromText, fromJSON),
+		"textual and JSON ?filter= forms must reach the backend as the same QueryFilter\n text: %v\n json: %v",
+		fromText, fromJSON)
+}
+
+// TestHandleAggregateVolumes_FilterReachesBackend proves the canonical `filter`
+// is the sole account selector: address and metadata conditions both reach the
+// controller, and the removed `prefix=` parameter is no longer interpreted (its
+// canonical replacement is the textual `address ^= "<prefix>"`).
+func TestHandleAggregateVolumes_FilterReachesBackend(t *testing.T) {
+	t.Parallel()
+
+	capture := func(t *testing.T, target string) *commonpb.QueryFilter {
+		t.Helper()
+
+		var captured *commonpb.QueryFilter
+
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, filter *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+				captured = filter
+
+				return &commonpb.AggregateResult{}, nil
+			}).AnyTimes()
+		srv := newTestServer(t, backend)
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, target, nil, map[string]string{"ledgerName": "my-ledger"})
+		srv.handleAggregateVolumes(w, r)
+
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+
+		return captured
+	}
+
+	// Address-prefix selection reaches the backend as a HardcodedPrefix (the sole
+	// filter is not wrapped in a redundant 1-element $and).
+	fromAddress := capture(t, "/my-ledger/volumes?filter="+url.QueryEscape(`address ^= "users:"`))
+	require.NotNil(t, fromAddress)
+	require.Equal(t, "users:", fromAddress.GetAddress().GetHardcodedPrefix())
+
+	// Metadata selection reaches the backend as a field condition.
+	fromMetadata := capture(t, "/my-ledger/volumes?filter="+url.QueryEscape(`metadata[status] == "active"`))
+	require.NotNil(t, fromMetadata)
+	require.NotNil(t, fromMetadata.GetField(), "metadata filter must reach the backend as a field condition")
+
+	// The removed `prefix=` parameter must no longer be interpreted: passed alone
+	// (no `filter=`), it yields an unfiltered read (nil filter).
+	aliasOnly := capture(t, "/my-ledger/volumes?prefix=users:")
+	require.Nil(t, aliasOnly, "the removed prefix= parameter must not build a filter")
+}
+
+// TestHandleAggregateVolumes_FilterInvalidForTarget checks that a malformed
+// filter and a condition invalid on the Accounts target are both rejected with
+// a 400 for both dual-format forms, without invoking the backend (the mock has
+// no expectation, so any call fails the test).
+func TestHandleAggregateVolumes_FilterInvalidForTarget(t *testing.T) {
+	t.Parallel()
+
+	// `ledger == ...` is a logs-only condition, invalid for the Accounts target;
+	// `metadata[status ==` is syntactically malformed.
+	for _, raw := range []string{
+		`ledger == "main"`,
+		`{"$match":{"ledger":"main"}}`,
+		`metadata[status ==`,
+	} {
+		srv := newTestServer(t, NewMockBackend(gomock.NewController(t)))
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodGet, "/my-ledger/volumes?filter="+url.QueryEscape(raw), nil,
+			map[string]string{"ledgerName": "my-ledger"})
+		srv.handleAggregateVolumes(w, r)
+
+		require.Equal(t, http.StatusBadRequest, w.Code, "raw: %s", raw)
+	}
 }

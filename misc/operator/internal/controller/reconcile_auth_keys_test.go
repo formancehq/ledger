@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -67,6 +68,12 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	// Create Cluster first so the credentials has a namespace to distribute into.
 	ls := newCluster("authsts-cluster", ns)
 	ls.Labels = map[string]string{"tier": "authsts"}
+	// Auth env (incl. AUTH_ED25519_KEYS) is only emitted once TLS has converged
+	// to `required` (see buildEnvVars' auth deferral). A fresh cluster with no
+	// prior StatefulSet targets the desired mode directly (computeTargetTLSMode
+	// bootstrap branch), so enabling TLS here makes the reconcile reach
+	// `required` immediately and the AUTH_ED25519_KEYS assertion below holds.
+	ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "authsts-tls"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create credentials with matching selector.

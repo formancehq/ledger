@@ -1386,15 +1386,6 @@ func (m *RevertTransactionOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.OriginalPostings) > 0 {
-		for iNdEx := len(m.OriginalPostings) - 1; iNdEx >= 0; iNdEx-- {
-			size, _ := m.OriginalPostings[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x2a
-		}
-	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoRaftcmdpbRaftCmdString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
