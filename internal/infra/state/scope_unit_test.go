@@ -162,6 +162,43 @@ func TestApplyPlans_Errors(t *testing.T) {
 	})
 }
 
+// TestApplyAllPlans_AcceptsValidPlans pins the contract that makes the
+// post-Preload NewProposalScope branch in applyProposal unreachable: any
+// AttributeCoverage set that passes validatePlan (16-byte AttributeID +
+// an attr_code the FSM handles) is accepted by applyAllPlans without error.
+// Preload runs the SAME validatePlan over the SAME immutable plan before
+// order processing, so a NewProposalScope failure after a successful
+// Preload can only mean the two checks diverged — an FSM invariant, not a
+// business outcome.
+func TestApplyAllPlans_AcceptsValidPlans(t *testing.T) {
+	t.Parallel()
+
+	var coverage coverageSlots
+
+	ledgerU128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+	volumeU128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L2"}.Bytes())
+
+	plans := []*raftcmdpb.AttributeCoverage{
+		{
+			Id:       &raftcmdpb.AttributeID{Id: ledgerU128[:]},
+			AttrCode: uint32(dal.SubAttrLedger),
+		},
+		{
+			Id:       &raftcmdpb.AttributeID{Id: volumeU128[:]},
+			AttrCode: uint32(dal.SubAttrVolume),
+		},
+	}
+
+	// Each plan must first pass the shared envelope check.
+	for i, p := range plans {
+		require.Nil(t, validatePlan(p, i))
+	}
+
+	// applyAllPlans (the proposal-wide path NewProposalScope uses) accepts
+	// every validatePlan-passing plan.
+	require.Nil(t, applyAllPlans(&coverage, plans))
+}
+
 // TestPlanInvariantDescribable pins the predicate that decides whether
 // an error coming out of applyTechnicalUpdates / NewScope should be
 // surfaced as a business-level ApplyResult.Error (admission bug) or

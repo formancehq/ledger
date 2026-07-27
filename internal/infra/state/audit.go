@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"maps"
 	"slices"
 
@@ -11,30 +10,21 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// buildAuditFailure extracts the error type and context from a processing error
-// to build an AuditFailure proto. Previously this was a 30-case hand-maintained
-// type-switch that would fall to "UNKNOWN" on every new typed error; it now
-// consumes the Describable contract directly so adding a new domain error type
-// automatically extends audit coverage with no edit here.
-func buildAuditFailure(err error) *auditpb.AuditFailure {
+// buildAuditFailure projects a typed domain error into an AuditFailure proto.
+// It accepts domain.Describable — not a bare error — so the compiler
+// guarantees only typed, deterministic outcomes reach the audit chain. There
+// is no ERROR_REASON_UNSPECIFIED fallback: a non-Describable failure is an FSM
+// invariant violation that must fail loudly at its origin, never be downgraded
+// to an unspecified business outcome in the authoritative chain.
+func buildAuditFailure(d domain.Describable) *auditpb.AuditFailure {
 	failure := &auditpb.AuditFailure{
-		Message: err.Error(),
+		Message: d.Error(),
 		Context: make(map[string]string),
 	}
 
-	var d domain.Describable
-	if errors.As(err, &d) {
-		failure.Reason = domain.ReasonCode(d.Reason())
+	failure.Reason = domain.ReasonCode(d.Reason())
+	maps.Copy(failure.GetContext(), d.Metadata())
 
-		maps.Copy(failure.GetContext(), d.Metadata())
-
-		return failure
-	}
-
-	// Reaching here means a non-Describable error escaped the typed
-	// processing pipeline. After #431 this branch is structurally
-	// unreachable in production; kept as a safety net for tests that
-	// fabricate raw errors. Reason stays ERROR_REASON_UNSPECIFIED.
 	return failure
 }
 
