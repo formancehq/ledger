@@ -1530,7 +1530,20 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// freezable check runs before the provenance branch (EN-1557).
 	var d domain.Describable
 	if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
-		return false, &domain.BusinessError{Err: d}
+		// Terminating on a freezable failure is sound only when the script content
+		// is immutable (inline or exact version): re-running is guaranteed to fail
+		// identically, so there is no frozen outcome to preserve. A `latest`
+		// reference under an idempotency key can resolve to a DIFFERENT version
+		// than the one that produced a frozen outcome on the original keyed
+		// attempt (the idempotency hash binds the reference `name`+`latest`, not
+		// the resolved content), so terminating here would deny the FSM its replay
+		// of that frozen outcome — an idempotency violation (EN-1557). Let that one
+		// case fall through to the refIsLatest forward branch below. Without a key
+		// there is no frozen outcome to preserve, so keep the precise terminal
+		// error even for `latest`.
+		if !refIsLatest || !hasIdempotencyKey {
+			return false, &domain.BusinessError{Err: d}
+		}
 	}
 
 	// Provenance-based classification (EN-1557). A DependencyResolutionError

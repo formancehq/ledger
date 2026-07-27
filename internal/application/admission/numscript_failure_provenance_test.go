@@ -336,4 +336,40 @@ send $x (
 			"a freezable validation failure surfaces the real sentinel, not the generic discovery error")
 		require.False(t, order.GetTechnical().GetPreloadUnavailable())
 	})
+
+	t.Run("freezable latest ref with key forwards for replay", func(t *testing.T) {
+		t.Parallel()
+
+		// A `latest` reference under an idempotency key must NOT be terminated by
+		// the freezable branch: the resolved content can differ from the version
+		// that produced a frozen outcome on the original keyed attempt, so the
+		// order must reach the FSM to replay that outcome. It falls through to the
+		// refIsLatest forward branch and is stamped PRELOAD_UNAVAILABLE instead of
+		// surfacing a terminal error.
+		cause := &numscript.DependencyResolutionError{Cause: domain.ErrEmptyTransaction, MutableReadAttempted: false}
+		order := scriptOrder(testLedgerName, "")
+
+		forwarded, err := admission.classifyResolutionFailure(order, cause, true, true)
+
+		require.NoError(t, err)
+		require.True(t, forwarded,
+			"a latest ref under a key must forward so the FSM can replay a frozen outcome, not terminate")
+		require.True(t, order.GetTechnical().GetPreloadUnavailable())
+	})
+
+	t.Run("freezable latest ref without key still terminates", func(t *testing.T) {
+		t.Parallel()
+
+		// Without a key there is no frozen outcome to preserve, so a `latest` ref
+		// keeps the precise terminal error rather than forwarding.
+		cause := &numscript.DependencyResolutionError{Cause: domain.ErrEmptyTransaction, MutableReadAttempted: false}
+		order := scriptOrder(testLedgerName, "")
+
+		forwarded, err := admission.classifyResolutionFailure(order, cause, true, false)
+
+		require.False(t, forwarded)
+		var businessErr *domain.BusinessError
+		require.ErrorAs(t, err, &businessErr)
+		require.False(t, order.GetTechnical().GetPreloadUnavailable())
+	})
 }
