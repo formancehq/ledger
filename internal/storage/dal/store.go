@@ -251,8 +251,11 @@ const (
 	SubPLPendingCleanup   byte = 0x02
 	SubPLPreparedQuery    byte = 0x03
 	SubPLMirrorSourceHead byte = 0x04
-	SubPLMirrorCursor     byte = 0x05
-	SubPLMirrorStatus     byte = 0x06
+	// 0x05 reserved — formerly SubPLMirrorCursor (EN-1513). Never reassign:
+	// existing stores may still carry orphan rows under this sub-prefix, and
+	// the applied mirror position now lives solely in
+	// LedgerBoundaries.last_mirror_v2_log_id.
+	SubPLMirrorStatus byte = 0x06
 )
 
 // Cold sub-prefixes (zone 0x04).

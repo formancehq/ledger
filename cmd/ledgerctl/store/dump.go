@@ -403,8 +403,6 @@ func describePerLedgerKey(key []byte) string {
 		return "PREPARED_QUERY rest=" + safeString(key[2:])
 	case dal.SubPLMirrorSourceHead:
 		return "MIRROR_SOURCE_HEAD ledger=" + safeString(stripNull(key[2:]))
-	case dal.SubPLMirrorCursor:
-		return "MIRROR_CURSOR ledger=" + safeString(stripNull(key[2:]))
 	case dal.SubPLMirrorStatus:
 		return "MIRROR_STATUS ledger=" + safeString(stripNull(key[2:]))
 	default:
