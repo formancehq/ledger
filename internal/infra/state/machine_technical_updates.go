@@ -265,11 +265,10 @@ func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteS
 	buffer.QueueMirrorSync(MirrorSyncWrite{
 		// Key the write off the command envelope, not the loaded
 		// projection: a divergent LedgerInfo.name must never redirect the
-		// mirror cursor / status write to another ledger's keys. The load
-		// above still gates on the envelope key and preserves the
-		// ErrNotFound stale-update skip.
+		// mirror status write to another ledger's keys. The load above
+		// still gates on the envelope key and preserves the ErrNotFound
+		// stale-update skip.
 		LedgerName:     update.GetLedgerName(),
-		Cursor:         update.GetCursor(),
 		SourceLogCount: update.GetSourceLogCount(),
 		ClearError:     update.GetClearError(),
 		Error:          update.GetError(),
