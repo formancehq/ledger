@@ -80,7 +80,7 @@ func DiscoverNumscriptDependencies(
 	variablesMap := make(numscriptlib.VariablesMap, len(vars))
 	maps.Copy(variablesMap, vars)
 
-	recording := NewRecordingStore(NewStore(source, force))
+	recording := NewRecordingStore(NewStore(source, force), force)
 
 	resolved, err := SafeResolveDependencies(parsed, context.Background(), variablesMap, recording)
 	if err != nil {

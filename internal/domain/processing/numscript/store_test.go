@@ -168,7 +168,7 @@ func TestRecordingStoreMutableReadAttempted(t *testing.T) {
 	t.Run("no read", func(t *testing.T) {
 		t.Parallel()
 
-		rs := NewRecordingStore(&stubStore{})
+		rs := NewRecordingStore(&stubStore{}, false)
 		require.False(t, rs.MutableReadAttempted())
 		require.True(t, rs.ReadNothing())
 	})
@@ -178,18 +178,49 @@ func TestRecordingStoreMutableReadAttempted(t *testing.T) {
 
 		rs := NewRecordingStore(&stubStore{
 			balances: numscriptlib.Balances{{Account: "acc", Asset: "COIN", Amount: big.NewInt(100)}},
-		})
+		}, false)
 
 		_, err := rs.GetBalances(context.Background(), numscriptlib.BalanceQuery{{Account: "acc", Asset: "COIN"}})
 		require.NoError(t, err)
 		require.True(t, rs.MutableReadAttempted())
 	})
 
+	t.Run("forced balance read does not count", func(t *testing.T) {
+		t.Parallel()
+
+		// Under force the inner Store returns MaxForceBalance without consulting
+		// the ValueSource, so a forced balance query reads no mutable state and
+		// MUST NOT set the flag — otherwise a later deterministic failure would be
+		// misclassified as state-dependent and forwarded into an indefinite
+		// PRELOAD_UNAVAILABLE loop (EN-1557, store.go:169 finding). The stub still
+		// returns a balance, proving the gate is on force, not on the row count.
+		rs := NewRecordingStore(&stubStore{
+			balances: numscriptlib.Balances{{Account: "acc", Asset: "COIN", Amount: big.NewInt(100)}},
+		}, true)
+
+		_, err := rs.GetBalances(context.Background(), numscriptlib.BalanceQuery{{Account: "acc", Asset: "COIN"}})
+		require.NoError(t, err)
+		require.False(t, rs.MutableReadAttempted(), "a forced balance query reads no state")
+	})
+
+	t.Run("forced metadata read still counts", func(t *testing.T) {
+		t.Parallel()
+
+		// force only nullifies balance reads; metadata still consults real state.
+		rs := NewRecordingStore(&stubStore{
+			meta: numscriptlib.AccountsMetadata{{Account: "acc", Key: "k", Value: "v"}},
+		}, true)
+
+		_, err := rs.GetAccountsMetadata(context.Background(), numscriptlib.MetadataQuery{{Account: "acc", Keys: []string{"k"}}})
+		require.NoError(t, err)
+		require.True(t, rs.MutableReadAttempted(), "metadata is read from real state even under force")
+	})
+
 	t.Run("failing balance read still counts", func(t *testing.T) {
 		t.Parallel()
 
 		balErr := errors.New("boom")
-		rs := NewRecordingStore(&stubStore{balErr: balErr})
+		rs := NewRecordingStore(&stubStore{balErr: balErr}, false)
 
 		_, err := rs.GetBalances(context.Background(), numscriptlib.BalanceQuery{{Account: "acc", Asset: "COIN"}})
 		require.ErrorIs(t, err, balErr)
@@ -201,7 +232,7 @@ func TestRecordingStoreMutableReadAttempted(t *testing.T) {
 		t.Parallel()
 
 		metaErr := errors.New("boom")
-		rs := NewRecordingStore(&stubStore{metaErr: metaErr})
+		rs := NewRecordingStore(&stubStore{metaErr: metaErr}, false)
 
 		_, err := rs.GetAccountsMetadata(context.Background(), numscriptlib.MetadataQuery{{Account: "acc", Keys: []string{"k"}}})
 		require.ErrorIs(t, err, metaErr)
