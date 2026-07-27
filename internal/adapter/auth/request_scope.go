@@ -46,6 +46,11 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 		return ScopeLedgersWrite, true
 	case *servicepb.Request_DropIndex:
 		return ScopeLedgersWrite, true
+	case *servicepb.Request_SaveNumscript:
+		// PUT /v3/{ledgerName}/numscripts/{name} is in the requireLedgersWrite
+		// group (handler.go:176). Saving a numscript is a per-ledger library
+		// write, not an ops action.
+		return ScopeLedgersWrite, true
 	case *servicepb.Request_RegisterSigningKey:
 		return ScopeOpsWrite, true
 	case *servicepb.Request_RevokeSigningKey:
@@ -74,12 +79,47 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 		return ScopeMetadataWrite, true
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return ScopeMetadataWrite, true
+	case *servicepb.Request_SaveLedgerMetadata:
+		// POST /v3/{ledgerName}/metadata — requireMetadataWrite (handler.go:193).
+		return ScopeMetadataWrite, true
+	case *servicepb.Request_DeleteLedgerMetadata:
+		// DELETE /v3/{ledgerName}/metadata/{key} — requireMetadataWrite (handler.go:194).
+		return ScopeMetadataWrite, true
+	case *servicepb.Request_AddAccountType:
+		// POST /v3/{ledgerName}/account-types — requireMetadataWrite (handler.go:197).
+		return ScopeMetadataWrite, true
+	case *servicepb.Request_RemoveAccountType:
+		// DELETE /v3/{ledgerName}/account-types/{typeName} — requireMetadataWrite (handler.go:198).
+		return ScopeMetadataWrite, true
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		// PUT /v3/{ledgerName}/account-types/default-enforcement-mode —
+		// requireMetadataWrite (handler.go:199).
+		return ScopeMetadataWrite, true
 	case *servicepb.Request_CreatePreparedQuery:
 		return ScopeQueriesWrite, true
 	case *servicepb.Request_UpdatePreparedQuery:
 		return ScopeQueriesWrite, true
 	case *servicepb.Request_DeletePreparedQuery:
 		return ScopeQueriesWrite, true
+	// Query checkpoints are cluster-wide state, not per-ledger business data.
+	// The dedicated ClusterService.CreateQueryCheckpoint and
+	// DeleteQueryCheckpoint RPCs require ledger:ClusterWrite
+	// (server_cluster.go:442, 481), which DefaultMapping grants only through
+	// ledger:admin. Accepting ledger:OpsWrite here let a plain ledger:write
+	// token perform an admin-only operation through Apply — a privilege
+	// escalation, not merely a scope mismatch (EN-1506).
+	case *servicepb.Request_CreateQueryCheckpoint:
+		return ScopeClusterWrite, true
+	case *servicepb.Request_DeleteQueryCheckpoint:
+		return ScopeClusterWrite, true
+	// The two schedule variants have no dedicated write RPC — they are
+	// reachable only through Apply. ClusterWrite follows their siblings above
+	// and their read counterpart GetQueryCheckpointSchedule, which requires
+	// ledger:ClusterRead (server_cluster.go:555).
+	case *servicepb.Request_SetQueryCheckpointSchedule:
+		return ScopeClusterWrite, true
+	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+		return ScopeClusterWrite, true
 	default:
 		return ScopeOpsWrite, false
 	}
