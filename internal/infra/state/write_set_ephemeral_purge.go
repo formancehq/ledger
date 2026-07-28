@@ -40,11 +40,11 @@ type volumePartitionResult struct {
 //   - NORMAL accounts: always kept
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
-//   - TRANSIENT accounts with a pre-existing non-zero balance (from before the
+//   - TRANSIENT accounts with a persisted row (non-zero Old, from before the
 //     transient pattern started matching them): mirror EPHEMERAL — kept while
-//     the running cumulative is still unbalanced, purged once it returns to
-//     zero balance. Steady-state TRANSIENT (no pre-existing balance, or already
-//     purged): never written to Pebble.
+//     the running cumulative is still unbalanced, purged once it is at zero
+//     balance. Steady-state TRANSIENT (all-zero Old: never persisted, or
+//     already purged): never written to Pebble.
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) volumePartitionResult {
@@ -84,13 +84,16 @@ func (b *WriteSet) partitionVolumes(
 
 		switch matched.GetPersistence() {
 		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-			// Pre-existing non-zero balance (e.g., account was funded under a
-			// default-normal policy before the transient pattern started matching
-			// it): mirror the ephemeral lifecycle. Keep the running cumulative in
-			// 0xF1 while it's still unbalanced; purge once it returns to zero
-			// balance. Once purged, KS.M is zeroed and the account behaves as
-			// steady-state transient (Old.IsZero) from then on.
-			if update.Old.IsDefined() && !isVolumeZeroBalance(update.Old.Value()) {
+			// A defined Old with non-zero limbs means a persisted row exists
+			// from before the transient pattern started matching the account
+			// (funded under a default-normal policy — its balance may already
+			// sit at zero, e.g. after a revert). Mirror the ephemeral
+			// lifecycle: keep the running cumulative in 0xF1 while it's still
+			// unbalanced; purge once it is at zero balance, deleting the row.
+			// An all-zero Old (post-purge zeroed cache entry, or the
+			// preloader's zero seed for a fresh key) is steady-state
+			// transient: nothing persisted, nothing to delete.
+			if update.Old.IsDefined() && !isVolumePreloadZero(update.Old.Value()) {
 				if isVolumeZeroBalance(update.New) {
 					result.purged = append(result.purged, update)
 				} else {

@@ -305,7 +305,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			},
 		},
 		{
-			// TRANSIENT + Old already zero-balance → steady-state transient.
+			// TRANSIENT + Old all-zero (post-purge placeholder / preload seed)
+			// → steady-state transient.
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
@@ -317,6 +318,22 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 				Output: commonpb.NewUint256FromUint64(42),
 			},
 		},
+		{
+			// TRANSIENT + Old zero-balance but non-zero limbs: a row persisted
+			// while the account was normal that already sits at input == output
+			// (e.g. after a revert). The row exists in Pebble, so the update
+			// must be purged — steady-state classification would strand it.
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:stranded"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:stranded"}, Asset: "USD"}).Bytes(),
+			Old: kv.Some(&raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(100),
+				Output: commonpb.NewUint256FromUint64(100),
+			}),
+			New: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(150),
+				Output: commonpb.NewUint256FromUint64(150),
+			},
+		},
 	}
 
 	result := buf.partitionVolumes(updates)
@@ -324,8 +341,9 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	require.Len(t, result.kept, 1)
 	require.Equal(t, "staging:draining", result.kept[0].Key.Account)
 
-	require.Len(t, result.purged, 1)
+	require.Len(t, result.purged, 2)
 	require.Equal(t, "staging:rebalanced", result.purged[0].Key.Account)
+	require.Equal(t, "staging:stranded", result.purged[1].Key.Account)
 
 	require.Len(t, result.transient, 1)
 	require.Equal(t, "staging:steady", result.transient[0].Key.Account)

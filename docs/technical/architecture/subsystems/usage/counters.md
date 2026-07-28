@@ -79,7 +79,7 @@ The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len
 1. `partitionVolumes(volumeUpdates)` (existing) yields `partResult.{kept, purged, transient}`.
 2. `splitPurged(partResult.purged)` (new, in `write_set_new_volumes.go`) partitions `purged` further into:
    - **ephemeral**: `!Old.IsDefined() || isVolumePreloadZero(Old.Value())` — the key had no prior state, was touched, immediately purged.
-   - **draining**: `Old.IsDefined() && !isVolumePreloadZero(Old.Value())` — had a prior non-zero balance, drained to zero, evicted.
+   - **draining**: `Old.IsDefined() && !isVolumePreloadZero(Old.Value())` — had a prior persisted value, at zero balance now, evicted.
 3. `makeNewKeptKeySet(partResult.kept)` (new) yields the subset of `kept` where `Old` was undefined / zero-placeholder — i.e. new persistent volumes.
 4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset) keeps the log payload byte-identical across nodes.
 
