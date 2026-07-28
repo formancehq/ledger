@@ -12,6 +12,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -81,15 +82,20 @@ func TestCompareTransactions_ArchivedThenUpdated(t *testing.T) {
 
 	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logger)
 
-	// A replay of the post-archive k2 set. With seed, the baseline transaction
-	// state is seeded first — matching production order (Check() seeds before the
-	// replay pass opens), so the merger sees the base operand before the delta.
+	// A replay of the post-archive k2 set. When seeded, the delta is applied
+	// through the lazy-seed writer, which seeds the baseline state on first touch —
+	// matching production, where ReplayLedgerLog drives the delta through the same
+	// writer, so the merger sees the base operand before the delta.
 	buildReplay := func(seed bool) *replayStore {
 		r := newTestReplayStore(t)
+
+		var w domainreplay.Writer = r
 		if seed {
-			require.NoError(t, checker.seedReplayTransactionsFromBaseline(baselineDB, r))
+			w = newLazyTxSeedWriter(r, func(canonicalKey []byte) (*commonpb.TransactionState, error) {
+				return attrs.Transaction.Get(baselineDB, canonicalKey)
+			})
 		}
-		require.NoError(t, r.SaveTxMetadata(txKey.Bytes(), metaK2))
+		require.NoError(t, w.SaveTxMetadata(txKey.Bytes(), metaK2))
 
 		return r
 	}

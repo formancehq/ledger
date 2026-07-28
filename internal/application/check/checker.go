@@ -384,14 +384,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
 			return err
 		}
+	}
 
-		// Seed the replay with the baseline transaction states so a post-archive
-		// metadata/revert delta merges onto the full pre-archive state; otherwise
-		// compareTransactions (replay overrides baseline) would see only the delta
-		// and flag the correct live state as tampered. Runs before the replay pass.
-		if err := c.seedReplayTransactionsFromBaseline(baselineDB, replay); err != nil {
-			return err
-		}
+	// Under archiving, seed each touched transaction's baseline state lazily on
+	// its first post-archive delta, so the delta merges onto the full pre-archive
+	// state whose create log is purged. Only touched transactions are materialized
+	// (keeping the replay store O(touched)); untouched ones fall back to the
+	// baseline in compareTransactions.
+	var replayWriter domainreplay.Writer = replay
+	if hasArchivedChapters {
+		replayWriter = newLazyTxSeedWriter(replay, func(canonicalKey []byte) (*commonpb.TransactionState, error) {
+			return c.attrs.Transaction.Get(baselineDB, canonicalKey)
+		})
 	}
 
 	// Pre-load baseline volumes so compareTransactionPostCommitVolumes can add
@@ -536,7 +540,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -1946,8 +1950,10 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			continue
 		}
 
-		// Expected: replay overrides baseline. Stays nil when only the live
-		// store has the entry (fabricated/corrupted state).
+		// Expected: a replay entry (a tx touched by a post-archive delta, seeded
+		// from its baseline on first touch) overrides the baseline; an untouched
+		// pre-archive tx has no replay entry and falls back to its baseline state.
+		// Stays nil when only the live store has the entry (fabricated state).
 		var expected *commonpb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs
@@ -5293,38 +5299,6 @@ func (c *Checker) seedTxTrackingFromBaseline(baseline *pebble.DB, ledgerKnownTxI
 
 	if err := txIter.Err(); err != nil {
 		return fmt.Errorf("pre-populating knownTxIDs: %w", err)
-	}
-
-	return nil
-}
-
-// seedReplayTransactionsFromBaseline pre-loads the replay with each baseline
-// transaction state, so a post-archive delta (metadata set/delete, revert
-// marker) merges on top of the full pre-archive state instead of replaying as a
-// standalone partial. Under archiving the create logs are purged, so without
-// this the replay holds only the delta and compareTransactions — which takes the
-// replay state as authoritative over the baseline — would flag the (correct)
-// live state as tampered. Reads the baseline, never the live store; must run
-// before the log-replay pass so the seed is the merger's base operand.
-func (c *Checker) seedReplayTransactionsFromBaseline(baseline *pebble.DB, replay *replayStore) error {
-	txIter, err := c.attrs.Transaction.NewStreamingIter(baseline, nil)
-	if err != nil {
-		return fmt.Errorf("creating baseline tx streaming iter for replay seeding: %w", err)
-	}
-
-	for txIter.Next() {
-		entry := txIter.Entry()
-		if err := replay.SeedTransaction(entry.CanonicalKey, entry.Value); err != nil {
-			return fmt.Errorf("seeding replay transaction from baseline: %w", err)
-		}
-	}
-
-	if err := txIter.Close(); err != nil {
-		return fmt.Errorf("closing baseline tx streaming iter: %w", err)
-	}
-
-	if err := txIter.Err(); err != nil {
-		return fmt.Errorf("seeding replay transactions from baseline: %w", err)
 	}
 
 	return nil
