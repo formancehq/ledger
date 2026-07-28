@@ -18,12 +18,13 @@ import (
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-// runRead picks a known account, issues a linearizable GetAccount, and validates
-// the result — the picked asset's volumes and the account's whole metadata map —
-// against the model (see validateAccountRead).
+// runRead picks a read target — usually a known account, sometimes one the model
+// holds no state for — issues a linearizable GetAccount, and validates the result
+// (the picked asset's volumes and the account's whole metadata map) against the
+// model (see validateAccountRead).
 func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, addr, asset, ok := pickCell(c.modelState)
+	ledger, addr, asset, absent, ok := pickReadTarget(c.modelState, c.ledgerNames)
 	if !ok {
 		c.mu.Unlock()
 		return
@@ -31,6 +32,14 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+
+	if absent {
+		// Coverage: GetAccount is probing the negative space pickCell can't reach —
+		// an account the model holds no state for. The server must report it empty;
+		// a returned cell or metadata no candidate base explains is how this path
+		// catches server state the model lacks (validateAccountRead).
+		assert.Reachable("singleton_driver_model: GetAccount probing a model-absent account", internal.Details{"ledger": ledger})
+	}
 
 	// Be explicit about consistency so the test still validates the
 	// property it cares about if the server-side default ever changes.
@@ -77,6 +86,64 @@ func isShutdownError(err error) bool {
 	default:
 		return false
 	}
+}
+
+// pickReadTarget chooses what GetAccount reads back. Most reads hit a known
+// account (pickCell); ~1-in-4 probe an account the model has no state for
+// (pickAbsentAccount, absent=true). Without the absent probe pickCell can only
+// ever target accounts the model already holds, so GetAccount is structurally
+// blind to server state the model lacks — e.g. an account or cell the server
+// retained but the model doesn't have. Falls back to pickCell when no absent
+// address is found. Caller holds c.mu.
+func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absent, ok bool) {
+	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+		if ledger, addr, asset, ok = pickAbsentAccount(g, ledgers); ok {
+			return ledger, addr, asset, true, true
+		}
+	}
+
+	ledger, addr, asset, ok = pickCell(g)
+
+	return ledger, addr, asset, false, ok
+}
+
+// pickAbsentAccount returns a (ledger, address, asset) the model holds no volume
+// cell or metadata for — a pool-space address (t-N:M) the workload could create
+// but has not touched. It reads a random workload asset so a server cell in any
+// asset can be caught. ok=false when no ledger exists or no absent address turned
+// up in a few tries (the pool space is far larger than what is touched, so this is
+// rare). Caller holds c.mu.
+func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
+	if len(ledgers) == 0 {
+		return "", "", "", false
+	}
+
+	ledger = random.RandomChoice(ledgers)
+	ls := g.Ledger(ledger)
+	for tries := 0; tries < 8; tries++ {
+		cand := poolAddress()
+		if !modelKnowsAccount(ls, cand) {
+			return ledger, cand, random.RandomChoice(assets), true
+		}
+	}
+
+	return "", "", "", false
+}
+
+// modelKnowsAccount reports whether ls holds any volume cell or metadata for addr.
+func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
+	for k := range ls.Volumes() {
+		if k.Address == addr {
+			return true
+		}
+	}
+	for k := range ls.Metadata() {
+		if k.Address == addr {
+			return true
+		}
+	}
+
+	return false
 }
 
 // pickCell returns a random readable account across all ledgers as
