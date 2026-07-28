@@ -264,6 +264,33 @@ func TestConvertNumscriptError_Nil(t *testing.T) {
 	require.Nil(t, convertNumscriptError(nil))
 }
 
+// TestConvertNumscriptError_Scaling pins the EN-1557 fix: the public
+// numscriptlib.ErrScalingNotSupported sentinel maps to the freezable
+// ErrNumscriptScalingUnsupported (KindValidation), NOT to the KindInternal
+// ErrNumscriptRuntime. That is what lets admission's freezable branch terminate
+// a read-then-scaling failure deterministically instead of forwarding it as a
+// retryable PRELOAD_UNAVAILABLE that no retry could ever satisfy.
+func TestConvertNumscriptError_Scaling(t *testing.T) {
+	t.Parallel()
+
+	got := convertNumscriptError(numscriptlib.ErrScalingNotSupported)
+
+	require.Equal(t, domain.ErrNumscriptScalingUnsupported, got,
+		"scaling must convert to the freezable validation sentinel")
+	require.Equal(t, domain.ErrReasonValidation, got.Reason())
+	require.True(t, domain.IsFreezableFailure(domain.Kind(got)),
+		"scaling is deterministic and state-independent, so it must be freezable (terminal)")
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.NotErrorAs(t, error(got), &runtimeErr,
+		"scaling must NOT fall through to the KindInternal runtime error that would be forwarded under a key")
+
+	// The mapping still triggers when the sentinel is wrapped (errors.Is walks
+	// the chain), so it survives any intermediate wrapping on the way in.
+	require.Equal(t, domain.ErrNumscriptScalingUnsupported,
+		convertNumscriptError(fmt.Errorf("resolve: %w", numscriptlib.ErrScalingNotSupported)))
+}
+
 func TestErrBalanceNotPreloaded_Error(t *testing.T) {
 	t.Parallel()
 

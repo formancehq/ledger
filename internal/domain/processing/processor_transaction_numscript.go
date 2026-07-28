@@ -54,7 +54,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// resolution read nothing to bind (fully static script) — nothing to check.
 	if expected := p.inputsResolutionHash; len(expected) > 0 {
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
-		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()))
+		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()), order.GetForce())
 
 		// SafeResolveDependencies recovers panics from the numscript library so a
 		// crafted input can never escape onto the deterministic Raft apply loop

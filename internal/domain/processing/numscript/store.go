@@ -152,19 +152,36 @@ type RecordingStore struct {
 
 	balanceRecords  map[string]string // "account\x00asset\x00color\x00scope" -> amount (decimal)
 	metadataRecords map[string]string // "account\x00scope\x00key" -> value or absent sentinel
+
+	force         bool // mirrors the inner Store's force flag; forced balance reads consult no state
+	readAttempted bool // set before any inner lookup that reads real mutable state
 }
 
 // NewRecordingStore wraps inner so that every balance/metadata it returns is
-// recorded for later hashing.
-func NewRecordingStore(inner numscriptlib.Store) *RecordingStore {
+// recorded for later hashing. force must mirror the inner Store's force flag so
+// GetBalances knows a forced lookup consults no state (see readAttempted gating).
+func NewRecordingStore(inner numscriptlib.Store, force bool) *RecordingStore {
 	return &RecordingStore{
 		inner:           inner,
+		force:           force,
 		balanceRecords:  map[string]string{},
 		metadataRecords: map[string]string{},
 	}
 }
 
 func (s *RecordingStore) GetBalances(ctx context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
+	// Under force the inner Store short-circuits to MaxForceBalance without
+	// consulting the ValueSource (see Store.GetBalances), so a forced balance
+	// query reads no mutable state. Marking a read attempt here would make
+	// classifyResolutionFailure treat a later deterministic failure as
+	// state-dependent and forward it under an idempotency key into an indefinite
+	// PRELOAD_UNAVAILABLE loop — the exact failure mode EN-1557 stops. Metadata
+	// reads still consult real state even under force, so GetAccountsMetadata
+	// keeps marking unconditionally.
+	if !s.force {
+		s.readAttempted = true
+	}
+
 	rows, err := s.inner.GetBalances(ctx, query)
 	if err != nil {
 		return nil, err
@@ -191,6 +208,8 @@ func (s *RecordingStore) GetBalances(ctx context.Context, query numscriptlib.Bal
 const metadataAbsentSentinel = "\x00absent"
 
 func (s *RecordingStore) GetAccountsMetadata(ctx context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	s.readAttempted = true
+
 	rows, err := s.inner.GetAccountsMetadata(ctx, query)
 	if err != nil {
 		return nil, err
@@ -229,6 +248,17 @@ func metadataRecordKey(account, scope, key string) string {
 func (s *RecordingStore) ReadNothing() bool {
 	return len(s.balanceRecords) == 0 && len(s.metadataRecords) == 0
 }
+
+// MutableReadAttempted reports whether the resolver delegated a lookup that
+// reads real mutable state, INCLUDING a lookup that returned an error and
+// therefore recorded no value. A forced balance query is NOT such a lookup: it
+// short-circuits to MaxForceBalance without consulting the ValueSource, so it
+// never sets the flag (metadata reads consult real state even under force and
+// still do). Distinct from ReadNothing(), which reflects only successfully
+// recorded values and so cannot see a failed lookup. Admission uses this to tell
+// a state-dependent resolution failure (a mutable read was attempted) from a
+// deterministic one (no read) — see EN-1557.
+func (s *RecordingStore) MutableReadAttempted() bool { return s.readAttempted }
 
 // Hash returns a deterministic BLAKE3 digest over the recorded balance and
 // metadata reads. Records are sorted so the digest is independent of the order

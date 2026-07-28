@@ -335,4 +335,5 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 - [Deterministic FSM](../fsm/deterministic-fsm.md) — Cache, preloading, and generation-based architecture
 - [Checker](../checker/checker.md) — `compareNumscripts` projection verification
 - [System Attributes](../attributes/attributes.md) — Attribute types, caching, and compaction
+- [Idempotency Keys](../admission/idempotency.md#numscript-dependency-resolution-failures) — how admission classifies a dependency-*discovery* failure (distinct from the `ScriptReference` version resolution above) as terminal vs. forwardable, by selector mutability and read-attempt provenance
 - [API Comparison](../../../contributing/api-comparison.md) — Feature parity tracking
