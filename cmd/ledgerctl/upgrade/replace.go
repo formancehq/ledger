@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
-// replaceBinary atomically replaces the current binary with the new one at srcPath.
-// It resolves symlinks to find the actual binary path, preserves permissions,
-// and uses rename for atomicity (requires same filesystem).
+// replaceBinary replaces the current binary with the new one at srcPath.
+// It resolves symlinks to find the actual binary path and preserves permissions.
 func replaceBinary(srcPath string) (string, error) {
 	currentPath, err := os.Executable()
 	if err != nil {
@@ -67,12 +67,38 @@ func replaceBinary(srcPath string) (string, error) {
 		return "", fmt.Errorf("closing temp file: %w", err)
 	}
 
-	// Atomic rename.
-	if err := os.Rename(tmpPath, currentPath); err != nil {
+	if err := replaceExecutable(currentPath, tmpPath, runtime.GOOS); err != nil {
 		_ = os.Remove(tmpPath)
 
 		return "", fmt.Errorf("replacing binary: %w (you may need elevated permissions)", err)
 	}
 
 	return currentPath, nil
+}
+
+func replaceExecutable(currentPath, replacementPath, goos string) error {
+	if goos != "windows" {
+		return os.Rename(replacementPath, currentPath)
+	}
+
+	backupPath := currentPath + ".old"
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing previous backup: %w", err)
+	}
+
+	// Windows cannot replace a running executable in place. Renaming it keeps the
+	// current process alive while freeing the original path for the new binary.
+	if err := os.Rename(currentPath, backupPath); err != nil {
+		return fmt.Errorf("backing up current executable: %w", err)
+	}
+
+	if err := os.Rename(replacementPath, currentPath); err != nil {
+		if rollbackErr := os.Rename(backupPath, currentPath); rollbackErr != nil {
+			return fmt.Errorf("installing replacement: %w; restoring current executable: %w", err, rollbackErr)
+		}
+
+		return fmt.Errorf("installing replacement: %w", err)
+	}
+
+	return nil
 }

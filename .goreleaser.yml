@@ -66,6 +66,7 @@ archives:
   ids:
   - ledger-server
   - ledgerctl
+  allow_different_binary_count: true
   formats:
   - tar.gz
   format_overrides:
