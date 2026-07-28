@@ -430,6 +430,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
+		// At or below the archive boundary the baseline checkpoint and the audit
+		// hash chain are authoritative, not replay. Such logs are normally purged,
+		// but out-of-order archiving (an un-archived chapter below the max archived
+		// close-sequence) can leave them retained — replaying one would fold a
+		// partial pre-boundary log onto a seeded transaction row, and would drop the
+		// gap counter below the archive floor. The audit-order pass applies the same
+		// boundary (collectAuditOrderBoundaryEffects).
+		if seq <= archiveEndSeq {
+			continue
+		}
+
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
