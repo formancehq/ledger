@@ -606,9 +606,12 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 			delete(state.GetMetadata(), metaKey)
 
 		case txOpFinalized:
-			// A resolved snapshot: a seeded baseline, or the output of a base-inclusive
-			// fold. It is always the oldest operand for the key, so it lands on an empty
-			// accumulator and the overlay coincides with a replace.
+			// A resolved snapshot supersedes every older operand, so reset before
+			// ingesting rather than relying on the accumulator being empty:
+			// UnmarshalVT into a non-empty message overlays (repeated fields append,
+			// maps merge, zero scalars don't clear), so an out-of-order finalized
+			// operand would otherwise duplicate postings or resurrect deleted keys.
+			state.Reset()
 			if err := state.UnmarshalVT(op[1:]); err != nil {
 				return nil, nil, fmt.Errorf("unmarshaling finalized tx state: %w", err)
 			}

@@ -81,9 +81,14 @@ func TestCompareTransactions_ArchivedThenUpdated(t *testing.T) {
 
 	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logger)
 
-	// A replay that saw ONLY the post-archive k2 set — the create log was purged.
-	buildReplay := func() *replayStore {
+	// A replay of the post-archive k2 set. With seed, the baseline transaction
+	// state is seeded first — matching production order (Check() seeds before the
+	// replay pass opens), so the merger sees the base operand before the delta.
+	buildReplay := func(seed bool) *replayStore {
 		r := newTestReplayStore(t)
+		if seed {
+			require.NoError(t, checker.seedReplayTransactionsFromBaseline(baselineDB, r))
+		}
 		require.NoError(t, r.SaveTxMetadata(txKey.Bytes(), metaK2))
 
 		return r
@@ -107,13 +112,11 @@ func TestCompareTransactions_ArchivedThenUpdated(t *testing.T) {
 
 	// Bug: with only the partial delta, the replay overrides the baseline create
 	// data, so the correct live state looks tampered.
-	require.NotEmpty(t, runCompare(buildReplay()),
+	require.NotEmpty(t, runCompare(buildReplay(false)),
 		"sanity: an unseeded replay must reproduce the false mismatch")
 
-	// Fix: seeding the baseline transaction state makes the delta merge on top,
-	// so expected == live and nothing is flagged.
-	seeded := buildReplay()
-	require.NoError(t, checker.seedReplayTransactionsFromBaseline(baselineDB, seeded))
-	require.Empty(t, runCompare(seeded),
+	// Fix: seeding the baseline transaction state before the delta makes the delta
+	// merge on top, so expected == live and nothing is flagged.
+	require.Empty(t, runCompare(buildReplay(true)),
 		"an archived transaction updated after the boundary must not be flagged as tampered")
 }
