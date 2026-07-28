@@ -8,46 +8,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReplaceExecutable(t *testing.T) {
+func TestReplaceExecutableWindows(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name       string
-		goos       string
-		wantBackup bool
-	}{
-		{
-			name:       "windows",
-			goos:       "windows",
-			wantBackup: true,
-		},
-	}
+	dir := t.TempDir()
+	currentPath := filepath.Join(dir, "ledgerctl.exe")
+	replacementPath := filepath.Join(dir, "ledgerctl-new.exe")
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+	require.NoError(t, os.WriteFile(currentPath, []byte("old"), 0o755))
+	require.NoError(t, os.WriteFile(replacementPath, []byte("new"), 0o755))
+	require.NoError(t, replaceExecutable(currentPath, replacementPath, "windows"))
 
-			dir := t.TempDir()
-			currentPath := filepath.Join(dir, "ledgerctl")
-			replacementPath := filepath.Join(dir, "ledgerctl-new")
+	current, err := os.ReadFile(currentPath)
+	require.NoError(t, err)
+	require.Equal(t, "new", string(current))
 
-			require.NoError(t, os.WriteFile(currentPath, []byte("old"), 0o755))
-			require.NoError(t, os.WriteFile(replacementPath, []byte("new"), 0o755))
-			require.NoError(t, replaceExecutable(currentPath, replacementPath, test.goos))
-
-			current, err := os.ReadFile(currentPath)
-			require.NoError(t, err)
-			require.Equal(t, "new", string(current))
-
-			backup, err := os.ReadFile(currentPath + ".old")
-			if test.wantBackup {
-				require.NoError(t, err)
-				require.Equal(t, "old", string(backup))
-			} else {
-				require.ErrorIs(t, err, os.ErrNotExist)
-			}
-		})
-	}
+	backup, err := os.ReadFile(currentPath + ".old")
+	require.NoError(t, err)
+	require.Equal(t, "old", string(backup))
 }
 
 func TestReplaceExecutableWindowsRemovesPreviousBackup(t *testing.T) {

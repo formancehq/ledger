@@ -67,3 +67,29 @@ func TestFindAssetForPlatform(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, archiveAssetName("windows", "amd64"), asset.Name)
 }
+
+func TestFindStableRelease(t *testing.T) {
+	t.Parallel()
+
+	releases := []releaseInfo{
+		{TagName: "v2.4.12"},
+		{TagName: "v3.0.0-alpha.13"},
+		{TagName: "v3.0.0"},
+	}
+
+	release, err := findStableRelease(releases)
+	require.NoError(t, err)
+	require.Equal(t, "v3.0.0", release.TagName)
+}
+
+func TestFindStableReleaseRejectsOtherMajorsAndPrereleases(t *testing.T) {
+	t.Parallel()
+
+	releases := []releaseInfo{
+		{TagName: "v2.4.12"},
+		{TagName: "v3.0.0-alpha.13"},
+	}
+
+	_, err := findStableRelease(releases)
+	require.EqualError(t, err, "no stable v3 release found; use --channel nightly")
+}

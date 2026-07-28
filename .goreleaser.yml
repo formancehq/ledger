@@ -46,6 +46,21 @@ builds:
   goos:
   - linux
   - darwin
+  goarch:
+  - amd64
+  - arm64
+
+- binary: ledgerctl
+  id: ledgerctl-windows
+  main: ./cmd/ledgerctl
+  ldflags:
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
+  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
+  - -extldflags=-static
+  env:
+  - CGO_ENABLED=0
+  goos:
   - windows
   goarch:
   - amd64
@@ -62,17 +77,19 @@ release:
   - glob: openapi.yml
 
 archives:
-- id: "{{ .ProjectName }}"
+- id: ledger-unix
   ids:
   - ledger-server
   - ledgerctl
-  allow_different_binary_count: true
   formats:
   - tar.gz
-  format_overrides:
-  - goos: windows
-    formats:
-    - zip
+  name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
+  wrap_in_directory: true
+- id: ledger-windows
+  ids:
+  - ledgerctl-windows
+  formats:
+  - zip
   name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
 

@@ -57,7 +57,7 @@ func fetchNightlyRelease() (*releaseInfo, error) {
 	return &release, nil
 }
 
-var semverTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+`)
+var semverTagRe = regexp.MustCompile(`^v3\.\d+\.\d+$`)
 
 func fetchStableRelease() (*releaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", githubRepo)
@@ -69,13 +69,17 @@ func fetchStableRelease() (*releaseInfo, error) {
 		return nil, err
 	}
 
+	return findStableRelease(releases)
+}
+
+func findStableRelease(releases []releaseInfo) (*releaseInfo, error) {
 	for i := range releases {
 		if semverTagRe.MatchString(releases[i].TagName) {
 			return &releases[i], nil
 		}
 	}
 
-	return nil, errors.New("no stable release found; use --channel nightly")
+	return nil, errors.New("no stable v3 release found; use --channel nightly")
 }
 
 var (

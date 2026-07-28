@@ -27,3 +27,23 @@ func TestReplaceExecutableUnix(t *testing.T) {
 	_, err = os.Stat(currentPath + ".old")
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
+
+func TestCopyReplacementPreservesMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "downloaded-ledgerctl")
+	dstPath := filepath.Join(dir, "staged-ledgerctl")
+
+	require.NoError(t, os.WriteFile(srcPath, []byte("new binary"), 0o600))
+	require.NoError(t, os.WriteFile(dstPath, nil, 0o600))
+	require.NoError(t, copyReplacement(srcPath, dstPath, 0o755))
+
+	contents, err := os.ReadFile(dstPath)
+	require.NoError(t, err)
+	require.Equal(t, "new binary", string(contents))
+
+	info, err := os.Stat(dstPath)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+}

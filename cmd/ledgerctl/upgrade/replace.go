@@ -37,34 +37,10 @@ func replaceBinary(srcPath string) (string, error) {
 	tmpPath := tmpFile.Name()
 	_ = tmpFile.Close()
 
-	// Copy new binary to the temp file.
-	src, err := os.Open(srcPath)
-	if err != nil {
+	if err := copyReplacement(srcPath, tmpPath, info.Mode()); err != nil {
 		_ = os.Remove(tmpPath)
 
-		return "", fmt.Errorf("opening new binary: %w", err)
-	}
-
-	defer func() { _ = src.Close() }()
-
-	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_TRUNC, info.Mode())
-	if err != nil {
-		_ = os.Remove(tmpPath)
-
-		return "", fmt.Errorf("opening temp file: %w", err)
-	}
-
-	if _, err := dst.ReadFrom(src); err != nil {
-		_ = dst.Close()
-		_ = os.Remove(tmpPath)
-
-		return "", fmt.Errorf("writing new binary: %w", err)
-	}
-
-	if err := dst.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-
-		return "", fmt.Errorf("closing temp file: %w", err)
+		return "", err
 	}
 
 	if err := replaceExecutable(currentPath, tmpPath, runtime.GOOS); err != nil {
@@ -74,6 +50,36 @@ func replaceBinary(srcPath string) (string, error) {
 	}
 
 	return currentPath, nil
+}
+
+func copyReplacement(srcPath, dstPath string, mode os.FileMode) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("opening new binary: %w", err)
+	}
+
+	defer func() { _ = src.Close() }()
+
+	dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return fmt.Errorf("opening temp file: %w", err)
+	}
+
+	if _, err := dst.ReadFrom(src); err != nil {
+		_ = dst.Close()
+
+		return fmt.Errorf("writing new binary: %w", err)
+	}
+
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+
+	if err := os.Chmod(dstPath, mode); err != nil {
+		return fmt.Errorf("preserving binary permissions: %w", err)
+	}
+
+	return nil
 }
 
 func replaceExecutable(currentPath, replacementPath, goos string) error {
