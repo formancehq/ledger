@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -74,7 +76,7 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 
 	defer func() { _ = archiveResp.Body.Close() }()
 
-	tmpArchive, err := os.CreateTemp("", "ledgerctl-upgrade-*.tar.gz")
+	tmpArchive, err := os.CreateTemp("", "ledgerctl-upgrade-*")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
@@ -119,19 +121,39 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 		return "", fmt.Errorf("checksum verification failed: expected %s, got %s", expectedHash, actualHash)
 	}
 
-	// 4. Extract ledgerctl binary from tar.gz.
+	// 4. Extract the ledgerctl binary from the platform archive.
 	spinner.UpdateText("Extracting ledgerctl...")
 
 	if _, err := tmpArchive.Seek(0, io.SeekStart); err != nil {
 		return "", fmt.Errorf("seeking archive: %w", err)
 	}
 
-	return extractBinary(tmpArchive, "ledgerctl")
+	archiveInfo, err := tmpArchive.Stat()
+	if err != nil {
+		return "", fmt.Errorf("reading archive metadata: %w", err)
+	}
+
+	return extractBinary(
+		tmpArchive,
+		archiveInfo.Size(),
+		archiveAsset.Name,
+		executableName(runtime.GOOS),
+	)
 }
 
-// extractBinary extracts a named file from a tar.gz archive and writes it to a temp file.
-// Returns the path to the temp file.
-func extractBinary(archive io.Reader, name string) (string, error) {
+// extractBinary extracts a named file from a supported release archive and writes it to a temp file.
+func extractBinary(archive io.ReaderAt, archiveSize int64, archiveName, binaryName string) (string, error) {
+	switch {
+	case strings.HasSuffix(archiveName, ".tar.gz"):
+		return extractTarGzBinary(io.NewSectionReader(archive, 0, archiveSize), binaryName)
+	case strings.HasSuffix(archiveName, ".zip"):
+		return extractZipBinary(archive, archiveSize, binaryName)
+	default:
+		return "", fmt.Errorf("unsupported archive format %q", archiveName)
+	}
+}
+
+func extractTarGzBinary(archive io.Reader, binaryName string) (string, error) {
 	gz, err := gzip.NewReader(archive)
 	if err != nil {
 		return "", fmt.Errorf("opening gzip reader: %w", err)
@@ -150,28 +172,71 @@ func extractBinary(archive io.Reader, name string) (string, error) {
 			return "", fmt.Errorf("reading tar: %w", err)
 		}
 
-		if hdr.Name == name || strings.HasSuffix(hdr.Name, "/"+name) {
-			tmpBinary, err := os.CreateTemp("", "ledgerctl-new-*")
-			if err != nil {
-				return "", fmt.Errorf("creating temp binary: %w", err)
-			}
-
-			if _, err := io.Copy(tmpBinary, tr); err != nil {
-				_ = tmpBinary.Close()
-				_ = os.Remove(tmpBinary.Name())
-
-				return "", fmt.Errorf("extracting binary: %w", err)
-			}
-
-			if err := tmpBinary.Close(); err != nil {
-				_ = os.Remove(tmpBinary.Name())
-
-				return "", fmt.Errorf("closing temp binary: %w", err)
-			}
-
-			return tmpBinary.Name(), nil
+		if isBinaryEntry(hdr.Name, binaryName) {
+			return writeExtractedBinary(tr)
 		}
 	}
 
-	return "", fmt.Errorf("binary %q not found in archive", name)
+	return "", fmt.Errorf("binary %q not found in archive", binaryName)
+}
+
+func extractZipBinary(archive io.ReaderAt, archiveSize int64, binaryName string) (string, error) {
+	zr, err := zip.NewReader(archive, archiveSize)
+	if err != nil {
+		return "", fmt.Errorf("opening zip reader: %w", err)
+	}
+
+	for _, file := range zr.File {
+		if !isBinaryEntry(file.Name, binaryName) {
+			continue
+		}
+
+		binary, err := file.Open()
+		if err != nil {
+			return "", fmt.Errorf("opening binary in zip: %w", err)
+		}
+
+		path, extractErr := writeExtractedBinary(binary)
+		closeErr := binary.Close()
+
+		if extractErr != nil {
+			return "", extractErr
+		}
+
+		if closeErr != nil {
+			_ = os.Remove(path)
+
+			return "", fmt.Errorf("closing binary in zip: %w", closeErr)
+		}
+
+		return path, nil
+	}
+
+	return "", fmt.Errorf("binary %q not found in archive", binaryName)
+}
+
+func isBinaryEntry(entryName, binaryName string) bool {
+	return entryName == binaryName || strings.HasSuffix(entryName, "/"+binaryName)
+}
+
+func writeExtractedBinary(binary io.Reader) (string, error) {
+	tmpBinary, err := os.CreateTemp("", "ledgerctl-new-*")
+	if err != nil {
+		return "", fmt.Errorf("creating temp binary: %w", err)
+	}
+
+	if _, err := io.Copy(tmpBinary, binary); err != nil {
+		_ = tmpBinary.Close()
+		_ = os.Remove(tmpBinary.Name())
+
+		return "", fmt.Errorf("extracting binary: %w", err)
+	}
+
+	if err := tmpBinary.Close(); err != nil {
+		_ = os.Remove(tmpBinary.Name())
+
+		return "", fmt.Errorf("closing temp binary: %w", err)
+	}
+
+	return tmpBinary.Name(), nil
 }

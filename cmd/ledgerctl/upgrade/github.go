@@ -15,7 +15,7 @@ import (
 
 const (
 	githubRepo  = "formancehq/ledger"
-	projectName = "ledger"
+	projectName = "ledger-v3"
 )
 
 type releaseInfo struct {
@@ -173,21 +173,38 @@ func githubDownload(url string) (*http.Response, error) {
 	return resp, nil
 }
 
-// archiveAssetName returns the expected archive filename for the current OS/arch.
-func archiveAssetName() string {
-	return fmt.Sprintf("%s_%s-%s.tar.gz", projectName, runtime.GOOS, runtime.GOARCH)
+// archiveAssetName returns the expected archive filename for an OS/arch pair.
+func archiveAssetName(goos, goarch string) string {
+	extension := ".tar.gz"
+	if goos == "windows" {
+		extension = ".zip"
+	}
+
+	return fmt.Sprintf("%s_%s-%s%s", projectName, goos, goarch, extension)
+}
+
+func executableName(goos string) string {
+	if goos == "windows" {
+		return "ledgerctl.exe"
+	}
+
+	return "ledgerctl"
 }
 
 // findAsset finds the archive asset matching the current OS/arch in the release.
 func findAsset(release *releaseInfo) (*assetInfo, error) {
-	want := archiveAssetName()
+	return findAssetForPlatform(release, runtime.GOOS, runtime.GOARCH)
+}
+
+func findAssetForPlatform(release *releaseInfo, goos, goarch string) (*assetInfo, error) {
+	want := archiveAssetName(goos, goarch)
 	for i := range release.Assets {
 		if release.Assets[i].Name == want {
 			return &release.Assets[i], nil
 		}
 	}
 
-	return nil, fmt.Errorf("no binary available for %s/%s (expected asset %q)", runtime.GOOS, runtime.GOARCH, want)
+	return nil, fmt.Errorf("no binary available for %s/%s (expected asset %q)", goos, goarch, want)
 }
 
 // findChecksumsAsset finds the checksums.txt asset in the release.

@@ -4944,7 +4944,7 @@ ledgerctl upgrade [flags]
 **Behavior:**
 - Downloads the latest release from `formancehq/ledger` GitHub releases
 - Verifies the archive's SHA256 checksum against `checksums.txt`
-- Extracts the `ledgerctl` binary and atomically replaces the current binary
+- Extracts `ledgerctl` from the Linux/macOS tarball or `ledgerctl.exe` from the Windows ZIP archive, then replaces the current binary
 - If the current version is `dev` (built without ldflags), warns and requires `--force`
 
 **Channels:**
