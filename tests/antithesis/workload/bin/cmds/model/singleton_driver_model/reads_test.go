@@ -44,3 +44,23 @@ func TestPickAbsentAccount(t *testing.T) {
 	_, _, _, ok := pickAbsentAccount(c.modelState, nil)
 	require.False(t, ok)
 }
+
+// absentLedgerName must never collide with the fleet, and pickLedgerReadTarget's
+// absent branch must hand back exactly those absent names.
+func TestPickLedgerReadTarget(t *testing.T) {
+	t.Parallel()
+
+	fleet := []string{"L", "L2", "L3"}
+	known := map[string]bool{"L": true, "L2": true, "L3": true}
+
+	for i := 0; i < 200; i++ {
+		require.False(t, known[absentLedgerName(fleet)], "absent name collided with fleet")
+
+		ledger, absent := pickLedgerReadTarget(fleet)
+		if absent {
+			require.False(t, known[ledger], "absent target is a fleet ledger: %s", ledger)
+		} else {
+			require.True(t, known[ledger], "known target is not a fleet ledger: %s", ledger)
+		}
+	}
+}

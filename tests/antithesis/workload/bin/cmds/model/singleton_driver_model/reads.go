@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -216,11 +217,43 @@ func accountAssetVolumes(acct *commonpb.Account, asset string) (in, out uint256.
 	return in, out, true
 }
 
-// runLedgerRead issues a linearizable GetLedger and checks the server's whole
-// ledger snapshot — account types and ledger metadata — against the model (see
-// validateLedgerRead).
+// absentLedgerName returns a ledger name outside the fixed fleet — the
+// negative-space target for a ledger-scoped read. The fleet is created at setup
+// and never grows, so any name not in ledgers is guaranteed absent; the server
+// answers NotFound for it, a pure read that creates nothing.
+func absentLedgerName(ledgers []string) string {
+	known := make(map[string]bool, len(ledgers))
+	for _, l := range ledgers {
+		known[l] = true
+	}
+
+	for {
+		cand := internal.PrefixModel.WithSuffix(fmt.Sprintf("absent-%016x%016x", internal.Rand().Uint64(), internal.Rand().Uint64()))
+		if !known[cand] {
+			return cand
+		}
+	}
+}
+
+// pickLedgerReadTarget chooses a ledger for a ledger-scoped read: usually a known
+// fleet ledger, ~1-in-4 an absent one (absent=true). The absent probe closes the
+// blind spot a known-only pick leaves — a ledger-scoped read can never otherwise
+// detect the server serving a ledger the model never created. An absent ledger
+// must answer NotFound; a served snapshot is a finding.
+func pickLedgerReadTarget(ledgers []string) (ledger string, absent bool) {
+	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+		return absentLedgerName(ledgers), true
+	}
+
+	return random.RandomChoice(ledgers), false
+}
+
+// runLedgerRead issues a linearizable GetLedger — usually on a fleet ledger,
+// sometimes on an absent one — and checks the result against the model: a fleet
+// ledger's whole snapshot (account types and ledger metadata, see
+// validateLedgerRead), or an absent ledger's mandatory NotFound.
 func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNames)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -236,12 +269,26 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		// The fleet is created at setup and never deleted, so a definitive error
-		// on a linearizable read — NotFound, Internal — is a real finding.
+		if absent && status.Code(err) == codes.NotFound {
+			// Coverage: a ledger outside the fleet must resolve NotFound.
+			assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			return
+		}
+		// A fleet ledger is created at setup and never deleted, so a definitive
+		// error on it — NotFound, Internal — is a real finding; so is any
+		// non-NotFound definitive error on an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
 			"ledger": ledger,
+			"absent": absent,
 			"error":  err.Error(),
 		})
+		return
+	}
+
+	if absent {
+		// The fleet never grows, so a snapshot for a name outside it is a ledger the
+		// server holds but the model never created.
+		assert.Unreachable("singleton_driver_model: GetLedger served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}
 
@@ -311,7 +358,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
 func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNames)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -327,12 +374,26 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		// The fleet is created at setup and never deleted, so a definitive error
-		// on a linearizable schema read is a real finding.
+		if absent && status.Code(err) == codes.NotFound {
+			// Coverage: a schema read of a ledger outside the fleet must resolve NotFound.
+			assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			return
+		}
+		// A fleet ledger is created at setup and never deleted, so a definitive
+		// error on it is a real finding; so is any non-NotFound definitive error on
+		// an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
 			"ledger": ledger,
+			"absent": absent,
 			"error":  err.Error(),
 		})
+		return
+	}
+
+	if absent {
+		// The fleet never grows, so a schema for a name outside it is a ledger the
+		// server holds but the model never created.
+		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}
 
