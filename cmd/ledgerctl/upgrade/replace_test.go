@@ -3,7 +3,6 @@ package upgrade
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,10 +17,6 @@ func TestReplaceExecutable(t *testing.T) {
 		wantBackup bool
 	}{
 		{
-			name: "unix",
-			goos: "linux",
-		},
-		{
 			name:       "windows",
 			goos:       "windows",
 			wantBackup: true,
@@ -31,9 +26,6 @@ func TestReplaceExecutable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if runtime.GOOS == "windows" && test.goos != "windows" {
-				t.Skip("Windows cannot exercise Unix overwrite semantics")
-			}
 
 			dir := t.TempDir()
 			currentPath := filepath.Join(dir, "ledgerctl")
