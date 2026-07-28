@@ -98,7 +98,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
 	rt, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_RevertedTransaction)
 	if !ok {
-		unexpectedLogPayload("revert-transaction", logEntry, details)
+		panic(unexpectedLogPayload("revert-transaction", logEntry, details))
 	}
 
 	writeCreated(w, rt.RevertedTransaction)

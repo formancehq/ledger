@@ -168,13 +168,14 @@ func TestHandleCreateLedger_LogContractViolations(t *testing.T) {
 	}}
 
 	cases := []struct {
-		name string
-		logs []*commonpb.Log
+		name    string
+		logs    []*commonpb.Log
+		wantMsg string
 	}{
-		{"zero logs", []*commonpb.Log{}},
-		{"two logs", []*commonpb.Log{created, created}},
-		{"nil sole log", []*commonpb.Log{nil}},
-		{"wrong payload type", []*commonpb.Log{wrongPayload}},
+		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*commonpb.Log{created, created}, "apply did not return exactly one log"},
+		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
+		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
 	}
 
 	for _, tc := range cases {
@@ -188,7 +189,7 @@ func TestHandleCreateLedger_LogContractViolations(t *testing.T) {
 				"ledgerName": "test-ledger",
 			})
 
-			require.Panics(t, func() {
+			requirePanicsContaining(t, tc.wantMsg, func() {
 				srv.handleCreateLedger(w, r)
 			})
 		})

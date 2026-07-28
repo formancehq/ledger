@@ -2,12 +2,14 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -46,8 +48,9 @@ func newRequest(t *testing.T, method, target string, body io.Reader, chiParams m
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-// backendReturningLogs builds a mock backend whose Apply returns the given
-// logs and no error, for exercising the unitary-handler log-response contract.
+// backendReturningLogs builds a mock backend whose Apply returns the given logs
+// and no error, for exercising the unitary-handler log-response contract. Apply
+// is expected exactly once, so reaching the log-response path is itself checked.
 func backendReturningLogs(t *testing.T, logs []*commonpb.Log) *MockBackend {
 	t.Helper()
 
@@ -55,9 +58,25 @@ func backendReturningLogs(t *testing.T, logs []*commonpb.Log) *MockBackend {
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 			return logs, nil
-		}).AnyTimes()
+		}).Times(1)
 
 	return backend
+}
+
+// requirePanicsContaining asserts fn panics with a value whose string rendering
+// contains want. Unlike require.Panics, it pins the panic to the intended
+// branch: an accidental nil dereference panics with a different value and fails
+// the assertion instead of passing for the wrong reason.
+func requirePanicsContaining(t *testing.T, want string, fn func()) {
+	t.Helper()
+
+	defer func() {
+		rec := recover()
+		require.NotNil(t, rec, "expected a panic containing %q", want)
+		require.Contains(t, fmt.Sprint(rec), want)
+	}()
+
+	fn()
 }
 
 // decodeResponse decodes a JSON response body.

@@ -1641,8 +1641,6 @@ paths:
               parameters:
                 ledgerName: '$request.path.ledgerName'
                 name: '$response.body#/data/name'
-        '204':
-          description: Numscript saved (no content returned)
         '400':
           description: Bad request (version not an explicit full semver, parse error, etc.)
           content:

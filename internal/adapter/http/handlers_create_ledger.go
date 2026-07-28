@@ -162,7 +162,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 	createLedgerLog := logEntry.GetPayload().GetCreateLedger()
 	if createLedgerLog == nil {
-		unexpectedLogPayload("create-ledger", logEntry, details)
+		panic(unexpectedLogPayload("create-ledger", logEntry, details))
 	}
 
 	writeCreated(w, createLedgerLog.ToLedgerInfo())

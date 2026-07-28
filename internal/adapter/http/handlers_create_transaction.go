@@ -59,7 +59,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	ledgerLog := logEntry.GetPayload().GetApply().GetLog()
 	created, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	if !ok {
-		unexpectedLogPayload("create-transaction", logEntry, details)
+		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}
 
 	writeCreated(w, created.CreatedTransaction)

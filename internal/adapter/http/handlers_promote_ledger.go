@@ -33,7 +33,7 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 
 	promoteLedgerLog := logEntry.GetPayload().GetPromoteLedger()
 	if promoteLedgerLog == nil {
-		unexpectedLogPayload("promote-ledger", logEntry, details)
+		panic(unexpectedLogPayload("promote-ledger", logEntry, details))
 	}
 
 	writeCreated(w, &commonpb.LedgerInfo{Name: promoteLedgerLog.GetName(), Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL})
