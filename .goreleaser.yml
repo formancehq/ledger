@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
 ---
 version: 2
-project_name: ledger-v3
+project_name: ledger
 
 # IMAGE_REPOSITORY controls where Docker images are pushed. Override the env
 # var to publish to a different GHCR location. Default targets the canonical

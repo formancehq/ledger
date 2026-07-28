@@ -24,13 +24,13 @@ func TestExtractBinary(t *testing.T) {
 	}{
 		{
 			name:        "tar.gz",
-			archiveName: "ledger-v3_linux-amd64.tar.gz",
+			archiveName: archiveAssetName("linux", "amd64"),
 			binaryName:  "ledgerctl",
 			archive:     tarGzArchive,
 		},
 		{
 			name:        "zip",
-			archiveName: "ledger-v3_windows-amd64.zip",
+			archiveName: archiveAssetName("windows", "amd64"),
 			binaryName:  "ledgerctl.exe",
 			archive:     zipArchive,
 		},
@@ -40,7 +40,7 @@ func TestExtractBinary(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			archive := test.archive(t, "ledger-v3/"+test.binaryName, binaryContents)
+			archive := test.archive(t, projectName+"/"+test.binaryName, binaryContents)
 			archiveReader := bytes.NewReader(archive)
 
 			extractedPath, err := extractBinary(
@@ -65,8 +65,9 @@ func TestExtractBinaryRejectsUnknownArchive(t *testing.T) {
 	t.Parallel()
 
 	archive := bytes.NewReader(nil)
-	_, err := extractBinary(archive, 0, "ledger-v3_windows-amd64.rar", "ledgerctl.exe")
-	require.EqualError(t, err, `unsupported archive format "ledger-v3_windows-amd64.rar"`)
+	archiveName := projectName + "_windows-amd64.rar"
+	_, err := extractBinary(archive, 0, archiveName, "ledgerctl.exe")
+	require.EqualError(t, err, `unsupported archive format "ledger_windows-amd64.rar"`)
 }
 
 func tarGzArchive(t *testing.T, binaryName, contents string) []byte {

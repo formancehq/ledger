@@ -19,19 +19,19 @@ func TestArchiveAssetName(t *testing.T) {
 			name:   "linux amd64",
 			goos:   "linux",
 			goarch: "amd64",
-			want:   "ledger-v3_linux-amd64.tar.gz",
+			want:   "ledger_linux-amd64.tar.gz",
 		},
 		{
 			name:   "darwin arm64",
 			goos:   "darwin",
 			goarch: "arm64",
-			want:   "ledger-v3_darwin-arm64.tar.gz",
+			want:   "ledger_darwin-arm64.tar.gz",
 		},
 		{
 			name:   "windows amd64",
 			goos:   "windows",
 			goarch: "amd64",
-			want:   "ledger-v3_windows-amd64.zip",
+			want:   "ledger_windows-amd64.zip",
 		},
 	}
 
@@ -58,12 +58,12 @@ func TestFindAssetForPlatform(t *testing.T) {
 	release := &releaseInfo{
 		Assets: []assetInfo{
 			{Name: "checksums.txt"},
-			{Name: "ledger-v3_linux-amd64.tar.gz"},
-			{Name: "ledger-v3_windows-amd64.zip"},
+			{Name: archiveAssetName("linux", "amd64")},
+			{Name: archiveAssetName("windows", "amd64")},
 		},
 	}
 
 	asset, err := findAssetForPlatform(release, "windows", "amd64")
 	require.NoError(t, err)
-	require.Equal(t, "ledger-v3_windows-amd64.zip", asset.Name)
+	require.Equal(t, archiveAssetName("windows", "amd64"), asset.Name)
 }
