@@ -100,12 +100,12 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 	// GetOutput return the underlying *Uint256 directly, zero allocation.
 	//
 	// readVolumeOrZero treats a declared-but-absent key as a fresh zero
-	// balance (EN-1378); a coverage miss (admission contract violation)
-	// propagates unchanged through the ErrStorageOperation wrap,
-	// preserving the cause for downstream errors.As.
+	// balance (EN-1378); a coverage miss (admission contract violation) is
+	// returned verbatim by domain.StoreFailure — not wrapped at all — so its
+	// COVERAGE_MISS reason reaches the audit chain (EN-1379).
 	sourceReader, err := readVolumeOrZero(s, sourceKey)
 	if err != nil {
-		return &domain.ErrStorageOperation{Operation: "loading source volume", Cause: err}
+		return domain.StoreFailure("loading source volume", err)
 	}
 	if sourceReader == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetSource(), Asset: posting.GetAsset(), Color: color}
@@ -171,7 +171,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 
 	destReader, err := readVolumeOrZero(s, destKey)
 	if err != nil {
-		return &domain.ErrStorageOperation{Operation: "loading destination volume", Cause: err}
+		return domain.StoreFailure("loading destination volume", err)
 	}
 	if destReader == nil {
 		return &domain.ErrBalanceNotPreloaded{Account: posting.GetDestination(), Asset: posting.GetAsset(), Color: color}

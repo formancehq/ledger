@@ -168,10 +168,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		sourceReader, err := readVolumeOrZero(s, sourceKey)
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("source volume %s/%s color=%q", posting.Source, posting.Asset, posting.Color),
-				Cause:     err,
-			}
+			return nil, domain.StoreFailure(
+				fmt.Sprintf("source volume %s/%s color=%q", posting.Source, posting.Asset, posting.Color), err)
 		}
 		if sourceReader == nil || sourceReader.GetInput() == nil || sourceReader.GetOutput() == nil {
 			return nil, &domain.ErrVolumeNotMaterialized{
@@ -206,10 +204,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		destReader, err := readVolumeOrZero(s, destKey)
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("destination volume %s/%s color=%q", posting.Destination, posting.Asset, posting.Color),
-				Cause:     err,
-			}
+			return nil, domain.StoreFailure(
+				fmt.Sprintf("destination volume %s/%s color=%q", posting.Destination, posting.Asset, posting.Color), err)
 		}
 		if destReader == nil || destReader.GetInput() == nil || destReader.GetOutput() == nil {
 			return nil, &domain.ErrVolumeNotMaterialized{

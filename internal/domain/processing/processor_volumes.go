@@ -17,14 +17,15 @@ import (
 // the response is deterministic across reads.
 //
 // Reads go through readVolumeOrZero: a declared-but-absent key (domain.ErrNotFound)
-// is reported as a zero balance, while any other error — notably
-// *state.ErrCoverageMiss, an admission-contract violation (invariants #6/#9) that
-// is impossible by design under a correct preload — is propagated as an
-// ErrStorageOperation so the order is rejected loudly (invariant #7) rather than
-// returned to the client as a silently truncated volume map (EN-1440). Two
-// nodes must not emit divergent PCV payloads for the same applied index, so a
-// non-NotFound store error is always surfaced. This mirrors applyPosting, which
-// reads the same source+destination keys.
+// is reported as a zero balance, while an admission-contract violation — notably
+// *state.ErrCoverageMiss (invariants #6/#9), impossible by design under a correct
+// preload — propagates verbatim so the audit chain records COVERAGE_MISS rather
+// than a storage fault (EN-1379). Any other error is wrapped as ErrStorageOperation.
+// Either way the order is rejected loudly (invariant #7) rather than returned to
+// the client as a silently truncated volume map (EN-1440). Two nodes must not emit
+// divergent PCV payloads for the same applied index, so a non-NotFound store error
+// is always surfaced. This mirrors applyPosting, which reads the same
+// source+destination keys.
 func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.Describable) {
 	type tuple struct {
 		account string
@@ -57,7 +58,7 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 	for _, t := range tuples {
 		vol, err := readVolumeOrZero(s, domain.NewVolumeKey(ledgerName, t.account, t.asset, t.color))
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "loading post-commit volume", Cause: err}
+			return nil, domain.StoreFailure("loading post-commit volume", err)
 		}
 
 		vol.GetInput().IntoUint256(&scratch)
