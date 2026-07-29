@@ -90,6 +90,21 @@ func replayKey(prefix byte, canonicalKey []byte) []byte {
 	return key
 }
 
+// deleteKey issues a Pebble tombstone, refusing the transaction prefix: the tx
+// merge operator trusts includesBase to signal a resolvable base, and a
+// tombstone under a MERGE falsifies it — Pebble folds MERGE-over-DEL with
+// includesBase=true but no base value (kind SETWITHDEL), silently collapsing a
+// deferred metadata delete into an empty snapshot. If transaction deletion is
+// ever needed, model it as an absolute merge op that resets the accumulator
+// (like txOpCreate/txOpFinalized), never as a tombstone.
+func (s *replayStore) deleteKey(key []byte) error {
+	if len(key) > 0 && key[0] == replayPrefixTransaction {
+		return fmt.Errorf("invariant: tombstone on replay transaction key %x would break the txOpBatch deferral", key)
+	}
+
+	return s.db.Delete(key, pebble.NoSync)
+}
+
 // addVolumeDelta merges a volume delta without reading existing state.
 func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
@@ -140,7 +155,7 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 func (s *replayStore) DeleteVolume(canonicalKey []byte) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
-	return s.db.Delete(key, pebble.NoSync)
+	return s.deleteKey(key)
 }
 
 // moveVolume transfers accumulated volume from oldKey to newKey:
@@ -187,7 +202,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 		return err
 	}
 
-	return s.db.Delete(oldKey, pebble.NoSync)
+	return s.deleteKey(oldKey)
 }
 
 // setMetadata stores a metadata value in the replay store (pure write). The
@@ -506,7 +521,9 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 
 	// A partial merge may not include the base value, and a delta op — a metadata
 	// delete has no snapshot representation — cannot be resolved without it. Defer by
-	// re-emitting the ordered ops; a base-inclusive fold resolves them.
+	// re-emitting the ordered ops; a base-inclusive fold resolves them. This trusts
+	// includesBase, which holds only while no tombstone is ever written under the
+	// transaction prefix (enforced by deleteKey).
 	if !includesBase {
 		return encodeTxBatch(ops), nil, nil
 	}
