@@ -109,6 +109,10 @@ func parseLedgerNameFixed(block []byte) (string, error) {
 	return string(name), nil
 }
 
+// ErrBackfillKeyTruncated indicates a backfill key shorter than the minimum
+// ledger-name-block-plus-kind-byte length.
+var ErrBackfillKeyTruncated = errors.New("backfill key: truncated")
+
 // ParseBackfillKey decodes a backfill key into its components.
 // The key does NOT include the PrefixBackfill bytes — that prefix is stripped by the caller.
 // Format:
@@ -119,21 +123,24 @@ func parseLedgerNameFixed(block []byte) (string, error) {
 //	AcctMetadata: [ledgerName padded 64B]a[key]
 //	LogBuiltin:   [ledgerName padded 64B]l[builtin_byte]
 //
-// Returns the ledger name (trimmed of zero padding), kind byte, remaining details, and ok.
-// ok is also false when the fixed-width ledger-name block is corrupted (a
-// NUL byte surviving the zero-padding trim) — see parseLedgerNameFixed.
-func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte, ok bool) {
+// Returns the ledger name (trimmed of zero padding), kind byte, and remaining
+// details. A non-nil error means the key is not well-formed: either
+// ErrBackfillKeyTruncated (shorter than the minimum length) or the fixed-width
+// ledger-name block being corrupted (a NUL byte surviving the zero-padding
+// trim — see parseLedgerNameFixed). Callers must treat a non-nil error as
+// corruption, never as a silent skip.
+func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte, err error) {
 	// Need at least LedgerNameFixedSize bytes for the name + 1 byte for kind.
 	if len(key) < dal.LedgerNameFixedSize+1 {
-		return "", 0, nil, false
+		return "", 0, nil, ErrBackfillKeyTruncated
 	}
 
-	name, err := parseLedgerNameFixed(key[:dal.LedgerNameFixedSize])
-	if err != nil {
-		return "", 0, nil, false
+	name, nameErr := parseLedgerNameFixed(key[:dal.LedgerNameFixedSize])
+	if nameErr != nil {
+		return "", 0, nil, nameErr
 	}
 
-	return name, key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], true
+	return name, key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], nil
 }
 
 // MetadataIndexPrefix returns the prefix for scanning all entries of a
@@ -318,7 +325,7 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 		}
 
 		if end == 0 {
-			return ParsedReverseMapKey{}, ErrReverseMapKeyEntityID
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyEntityID)
 		}
 
 		parsed.EntityID = bytes.Clone(rest[:end])
@@ -339,8 +346,12 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 	}
 
 	metadataKey := rest[4:]
-	if len(metadataKey) == 0 || bytes.IndexByte(metadataKey, 0x00) >= 0 {
-		return ParsedReverseMapKey{}, ErrReverseMapKeyMetadataKey
+	if len(metadataKey) == 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyMetadataKey)
+	}
+
+	if idx := bytes.IndexByte(metadataKey, 0x00); idx >= 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: contains NUL at offset %d", ErrReverseMapKeyMetadataKey, idx)
 	}
 
 	parsed.Version = binary.BigEndian.Uint32(rest[:4])

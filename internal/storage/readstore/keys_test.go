@@ -10,6 +10,94 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// TestParseBackfillKey covers ParseBackfillKey's contract, including the
+// parseLedgerNameFixed sharing introduced alongside ParseReverseMapKey: a
+// public function's behaviour changed (a NUL-corrupted ledger-name block is
+// now rejected instead of silently truncated) with no prior test coverage
+// at all, so this pins the full contract rather than just the delta.
+func TestParseBackfillKey(t *testing.T) {
+	t.Parallel()
+
+	// buildBackfillKey mirrors the format ParseBackfillKey documents:
+	// [ledgerName padded 64B][kind][details]. It never includes the
+	// PrefixBackfill discriminator byte — ParseBackfillKey's doc comment is
+	// explicit that the caller strips that before calling it.
+	buildBackfillKey := func(name string, kind byte, details []byte) []byte {
+		return dal.NewKeyBuilder().
+			Reset().
+			PutLedgerNameFixed(name).
+			PutByte(kind).
+			PutBytes(details).
+			Build()
+	}
+
+	maxLedgerName := strings.Repeat("a", dal.LedgerNameFixedSize)
+
+	tests := map[string]struct {
+		key         []byte
+		wantLedger  string
+		wantKind    byte
+		wantDetails []byte
+		wantErr     error
+	}{
+		"well-formed short zero-padded name is accepted": {
+			key:         buildBackfillKey("main", BackfillKindTxBuiltin, []byte{0x01}),
+			wantLedger:  "main",
+			wantKind:    BackfillKindTxBuiltin,
+			wantDetails: []byte{0x01},
+		},
+		"max-length unpadded name is still accepted": {
+			key:         buildBackfillKey(maxLedgerName, BackfillKindAcctMetadata, []byte("wallet_id")),
+			wantLedger:  maxLedgerName,
+			wantKind:    BackfillKindAcctMetadata,
+			wantDetails: []byte("wallet_id"),
+		},
+		"empty details is accepted": {
+			key:        buildBackfillKey("main", BackfillKindLogBuiltin, nil),
+			wantLedger: "main",
+			wantKind:   BackfillKindLogBuiltin,
+			// A zero-length slice, not nil: details is key[len(key):], the
+			// tail of the same backing array — testify's require.Equal
+			// distinguishes a nil []byte from a non-nil empty one.
+			wantDetails: []byte{},
+		},
+		"NUL-corrupted ledger-name block is rejected, not silently truncated": {
+			// Before parseLedgerNameFixed was shared with ParseReverseMapKey,
+			// this decoded to ledger name "main" (truncate-at-first-NUL). It
+			// must now be rejected like the reverse-map decoder rejects it.
+			key:     buildBackfillKey("main\x00JUNK", BackfillKindTxBuiltin, []byte{0x01}),
+			wantErr: errLedgerNameFixedCorrupt,
+		},
+		"key shorter than the fixed ledger-name block plus kind byte is rejected": {
+			key:     make([]byte, dal.LedgerNameFixedSize),
+			wantErr: ErrBackfillKeyTruncated,
+		},
+		"nil key is rejected": {
+			key:     nil,
+			wantErr: ErrBackfillKeyTruncated,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ledgerName, kind, details, err := ParseBackfillKey(tt.key)
+			if tt.wantErr != nil {
+				require.Error(t, err, name)
+				require.ErrorIs(t, err, tt.wantErr, name)
+
+				return
+			}
+
+			require.NoError(t, err, name)
+			require.Equal(t, tt.wantLedger, ledgerName)
+			require.Equal(t, tt.wantKind, kind)
+			require.Equal(t, tt.wantDetails, details)
+		})
+	}
+}
+
 func TestParseReverseMapKey_AccountRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -23,6 +111,30 @@ func TestParseReverseMapKey_AccountRoundTrip(t *testing.T) {
 	require.Equal(t, "users:42", string(got.EntityID))
 	require.Equal(t, uint32(7), got.Version)
 	require.Equal(t, "wallet_id", got.MetadataKey)
+}
+
+func TestParseReverseMapKey_EntityIDIsIndependentOfSourceKey(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+	key := AccountReverseMapKeyV(kb, "main", "users:42", "wallet_id", 1)
+
+	got, err := ParseReverseMapKey(key)
+	require.NoError(t, err)
+
+	wantEntityID := append([]byte(nil), got.EntityID...)
+
+	// Overwrite the entire source key in place. If EntityID aliased key (a
+	// plain sub-slice) rather than being a bytes.Clone copy, this would
+	// corrupt it too — exactly the use-after-iterator-move hazard the doc
+	// comment on ParseReverseMapKey promises callers are safe from, and
+	// which the checker pass that scans the whole 0x03 keyspace will rely
+	// on for every entity it retains past the iterator's next Next().
+	for i := range key {
+		key[i] = 0xFF
+	}
+
+	require.Equal(t, wantEntityID, got.EntityID, "EntityID must be independent of the source key")
 }
 
 func TestParseReverseMapKey_TransactionRoundTrip(t *testing.T) {
@@ -79,6 +191,11 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 	tests := map[string]struct {
 		key     []byte
 		wantErr error
+		// wantErrContains pins the distinguishing context wrapped around a
+		// shared sentinel — set only where two subtests would otherwise be
+		// indistinguishable via errors.Is alone (e.g. an empty metadata key
+		// vs. one containing a NUL byte both return ErrReverseMapKeyMetadataKey).
+		wantErrContains string
 	}{
 		"nil key must be rejected": {
 			key:     nil,
@@ -158,8 +275,9 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			wantErr: ErrReverseMapKeyTruncated,
 		},
 		"account key with an empty entity id must be rejected": {
-			key:     AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "", "wallet_id", 1),
-			wantErr: ErrReverseMapKeyEntityID,
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "", "wallet_id", 1),
+			wantErr:         ErrReverseMapKeyEntityID,
+			wantErrContains: "empty",
 		},
 		"account entity id with an embedded NUL must be rejected, not silently mis-decoded": {
 			// The critical regression case: an account address like
@@ -171,14 +289,20 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			// pointing at a different entity than the key actually encodes,
 			// rather than an outright decode failure. Must be rejected as
 			// ErrReverseMapKeyMetadataKey, never accepted as consistent.
-			key:     AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "us\x00ers", "wallet_id", 1),
-			wantErr: ErrReverseMapKeyMetadataKey,
+			// The swallowed real version bytes (0,0,0,1 for version=1) land
+			// at the front of the mis-decoded MetadataKey, so the NUL is at
+			// offset 0 — distinct from the "metadata key containing a NUL
+			// byte" case below, which pins a different offset.
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "us\x00ers", "wallet_id", 1),
+			wantErr:         ErrReverseMapKeyMetadataKey,
+			wantErrContains: "contains NUL at offset 0",
 		},
 		"metadata key containing a NUL byte must be rejected directly": {
 			// A well-formed account tail (proper terminator, proper 4-byte
 			// version) whose metadata-key tail itself contains a raw NUL —
 			// isolates the MetadataKey NUL check from the entity-id mis-split
-			// cascade covered by the case above.
+			// cascade covered by the case above. "meta\x00key": the NUL sits
+			// at offset 4 within the decoded MetadataKey.
 			key: dal.NewKeyBuilder().
 				Reset().
 				PutByte(PrefixReverseMap).
@@ -188,15 +312,18 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 				PutUint32(1).
 				PutString("meta\x00key").
 				Build(),
-			wantErr: ErrReverseMapKeyMetadataKey,
+			wantErr:         ErrReverseMapKeyMetadataKey,
+			wantErrContains: "contains NUL at offset 4",
 		},
 		"empty metadata key must be rejected for an account entity": {
-			key:     AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "", 1),
-			wantErr: ErrReverseMapKeyMetadataKey,
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "", 1),
+			wantErr:         ErrReverseMapKeyMetadataKey,
+			wantErrContains: "empty",
 		},
 		"empty metadata key must be rejected for a transaction entity": {
-			key:     TransactionReverseMapKeyV(dal.NewKeyBuilder(), "main", 4242, "", 1),
-			wantErr: ErrReverseMapKeyMetadataKey,
+			key:             TransactionReverseMapKeyV(dal.NewKeyBuilder(), "main", 4242, "", 1),
+			wantErr:         ErrReverseMapKeyMetadataKey,
+			wantErrContains: "empty",
 		},
 		"transaction id shorter than 8 bytes must be rejected": {
 			// Header + namespace only, then 5 bytes — not enough for the
@@ -251,6 +378,10 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			_, err := ParseReverseMapKey(tt.key)
 			require.Error(t, err, "malformed key must be rejected, never silently accepted: %s", name)
 			require.ErrorIs(t, err, tt.wantErr, name)
+
+			if tt.wantErrContains != "" {
+				require.ErrorContains(t, err, tt.wantErrContains, name)
+			}
 		})
 	}
 }
