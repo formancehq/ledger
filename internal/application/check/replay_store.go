@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"os"
 
@@ -525,16 +526,17 @@ func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
 	// includesBase, which holds only while no tombstone is ever written under the
 	// transaction prefix (enforced by deleteKey).
 	if !includesBase {
-		return encodeTxBatch(ops), nil, nil
+		batch, err := encodeTxBatch(ops)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return batch, nil, nil
 	}
 
 	state := &commonpb.TransactionState{}
 
 	for _, op := range ops {
-		if len(op) == 0 {
-			continue
-		}
-
 		switch op[0] {
 		case txOpCreate:
 			// [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp]
@@ -691,6 +693,11 @@ func decodeTxBatch(op []byte) ([][]byte, error) {
 
 		n := int(binary.BigEndian.Uint32(buf[:4]))
 		buf = buf[4:]
+		// A zero-length op would be silently dropped by flattenTxOps — the encoder
+		// never frames one, so this is corruption, not a soft skip.
+		if n == 0 {
+			return nil, errors.New("txOpBatch: zero-length op")
+		}
 		if len(buf) < n {
 			return nil, fmt.Errorf("txOpBatch: op length %d overruns %d remaining bytes", n, len(buf))
 		}
@@ -703,7 +710,7 @@ func decodeTxBatch(op []byte) ([][]byte, error) {
 }
 
 // encodeTxBatch frames ordered ops into a single [txOpBatch][(uint32 len)(op)]* buffer.
-func encodeTxBatch(ops [][]byte) []byte {
+func encodeTxBatch(ops [][]byte) ([]byte, error) {
 	size := 1
 	for _, op := range ops {
 		size += 4 + len(op)
@@ -714,10 +721,14 @@ func encodeTxBatch(ops [][]byte) []byte {
 
 	var lenBuf [4]byte
 	for _, op := range ops {
+		if len(op) > math.MaxUint32 {
+			return nil, fmt.Errorf("txOpBatch: op of %d bytes overflows the uint32 length frame", len(op))
+		}
+
 		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(op)))
 		out = append(out, lenBuf[:]...)
 		out = append(out, op...)
 	}
 
-	return out
+	return out, nil
 }

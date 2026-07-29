@@ -1884,7 +1884,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		}
 
 		// Values are prefixed with txOpFinalized tag from the merger's Finish output.
-		if len(valBytes) == 0 || valBytes[0] != 0x00 {
+		if len(valBytes) == 0 || valBytes[0] != txOpFinalized {
 			_ = replayIter.Close()
 			emitErr(fmt.Sprintf("malformed replay transaction tag at key %x", canonicalKey))
 
