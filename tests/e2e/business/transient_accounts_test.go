@@ -405,6 +405,87 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 		})
 	})
 
+	// An account funded and then reverted to zero balance while NORMAL keeps its
+	// persisted volume row (input == output != 0). When a transient pattern later
+	// starts matching the account, the next batch that touches it must purge that
+	// row: the checker replay (SimulateEphemeralPurge) and the backup rebuild both
+	// delete it at zero balance, so a row left behind diverges from every
+	// re-derivation of the store — and resurfaces as a ghost account in listings.
+	Context("When a zero-balance row persisted before the transient pattern matched", Ordered, func() {
+		const ledgerName = "transient-stranded-row"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+
+			// Fund staging:s with 100 USD (no account type yet → normal persistence).
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "staging:s", big.NewInt(100), "USD"),
+			}, nil)))
+			Expect(err).To(Succeed())
+			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetId()
+
+			// Revert the funding: staging:s lands at input=100, output=100 — zero
+			// balance, still normal → the row is legitimately kept.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RevertTransactionAction(ledgerName, txID, false, false, nil)))
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "staging:s",
+				})
+				g.Expect(err).To(Succeed())
+				usdVol := account.FindVolume("USD", "")
+				g.Expect(usdVol).NotTo(BeNil())
+				g.Expect(usdVol.GetInput()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance()).To(Equal("0"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			// Now mark staging:{id} as transient.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.AddAccountTypeWithPersistenceAction(ledgerName, "staging", "staging:{id}",
+				commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+				actions.AddAccountTypeAction(ledgerName, "wallet", "wallet:{id}")))
+			Expect(err).To(Succeed())
+
+			// Zero-balance wash on staging:s under the transient type.
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "staging:s", big.NewInt(50), "USD"),
+			}, nil),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("staging:s", "wallet:c", big.NewInt(50), "USD"),
+				}, nil, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should purge the stranded row once a transient batch touches the account", func() {
+			Eventually(func(g Gomega) {
+				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					Ledger:  ledgerName,
+					Address: "staging:s",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(account.GetVolumes()).To(BeEmpty(),
+					"staging:s should have no persisted volumes after the transient wash")
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should not list the account anymore", func() {
+			Eventually(func(g Gomega) {
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+
+				addrs := make([]string, 0, len(accounts))
+				for _, a := range accounts {
+					addrs = append(addrs, a.GetAddress())
+				}
+				g.Expect(addrs).To(ContainElement("wallet:c"))
+				g.Expect(addrs).NotTo(ContainElement("staging:s"),
+					"purged transient account must not linger in account listings")
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
 	// Re-touching the same transient address in a later batch must not accumulate.
 	// The transient slot must read {0, 0} into the second batch's PCV — anything
 	// else means the prior cumulative value leaked through the cache.
