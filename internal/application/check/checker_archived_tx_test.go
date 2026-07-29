@@ -105,7 +105,7 @@ func TestCompareTransactions_ArchivedThenDelta(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, batch.Commit())
 
-			checker := NewChecker(store, attrs, "test-cluster", nil, nil, logger)
+			checker := NewChecker(store, attrs, "test-cluster", nil, nil, nil, logger)
 
 			// When seeded, the delta is applied through the lazy-seed writer, which
 			// seeds the baseline state on first touch — matching production, where
@@ -194,7 +194,7 @@ func TestCompareTransactions_PostArchiveCreateThenDelta(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logger)
+	checker := NewChecker(store, attrs, "test-cluster", nil, nil, nil, logger)
 
 	r := newTestReplayStore(t)
 	w := newLazyTxSeedWriter(r, func(canonicalKey []byte) (*commonpb.TransactionState, error) {

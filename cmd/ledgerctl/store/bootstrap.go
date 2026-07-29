@@ -434,7 +434,7 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	// backup, so the idempotency pass keeps the post-archive boundary as its
 	// verification floor. nil TTL: no trusted runtime config for a foreign
 	// backup, so the pass falls back to the backup's persisted TTL.
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, logger)
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, nil, logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 

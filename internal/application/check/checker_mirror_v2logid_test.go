@@ -36,7 +36,7 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, nil, logging.Testing())
+	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, nil, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
 
 	// foldBaselineBoundaries must read the archived last_mirror_v2_log_id (the
 	// Finding 3 fix) — and still seed nextTxID as before (no regression).
-	checker := NewChecker(nil, attrs, "test-cluster", nil, nil, logging.Testing())
+	checker := NewChecker(nil, attrs, "test-cluster", nil, nil, nil, logging.Testing())
 	chainBound := newChainBoundState()
 	require.NoError(t, checker.foldBaselineBoundaries(baselineDB, chainBound))
 

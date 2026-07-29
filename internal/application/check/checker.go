@@ -38,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 const progressInterval = 100
@@ -61,6 +62,13 @@ type Checker struct {
 	// trusted runtime config exists (CLI / restore backup validation) — the
 	// pass then falls back to the persisted TTL.
 	idempotencyTTL *time.Duration
+	// readStore gives the reverse-map orphan pass read access to the peer
+	// read-index store. nil at the restore / CLI call sites, where no peer
+	// readstore exists for the staged store being validated — the pass then
+	// skips with an INFO log rather than reporting a clean result it did not
+	// verify. This is the one documented exception to invariant #8's
+	// peer-store carve-out.
+	readStore *readstore.Store
 }
 
 // NewChecker creates a new Checker. clusterID is used to derive the
@@ -68,8 +76,10 @@ type Checker struct {
 // the value the FSM used when writing those entries (enforced via
 // PersistedConfig immutability). coldReader may be nil when cold storage is
 // not configured. idempotencyTTL may be nil when no trusted runtime config is
-// available (the pass then falls back to the persisted TTL).
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, idempotencyTTL *time.Duration, logger logging.Logger) *Checker {
+// available (the pass then falls back to the persisted TTL). readStore may
+// be nil when no peer read-index store is available (restore / CLI backup
+// validation); the reverse-map orphan pass is then skipped.
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, idempotencyTTL *time.Duration, readStore *readstore.Store, logger logging.Logger) *Checker {
 	return &Checker{
 		store:          store,
 		attrs:          attrs,
@@ -77,6 +87,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 		clusterID:      clusterID,
 		coldReader:     coldReader,
 		idempotencyTTL: idempotencyTTL,
+		readStore:      readStore,
 	}
 }
 
