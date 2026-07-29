@@ -22,6 +22,9 @@ import (
 // raw reverse-map rows (the data under judgement).
 type reverseMapFixtureInput struct {
 	registry map[domain.IndexKey]*commonpb.Index
+	// schemas stands in for the Checker's audit-derived expectedSchemas — the
+	// replayed metadata schema per ledger, NOT the stored LedgerInfo.
+	schemas  map[string]*commonpb.MetadataSchema
 	rmapKeys [][]byte
 	// progress is the read index's last-folded log sequence, written to the
 	// progress cursor so the lag gate can be driven from a test.
@@ -36,13 +39,14 @@ type reverseMapFixtureInput struct {
 type reverseMapFixture struct {
 	checker *Checker
 	reader  dal.PebbleReader
+	schemas map[string]*commonpb.MetadataSchema
 }
 
 // run drives the pass and collects every emitted event, preserving order.
 func (f reverseMapFixture) run(lastSequence uint64, live, pendingCleanup map[string]struct{}) []*servicepb.CheckStoreEvent {
 	var events []*servicepb.CheckStoreEvent
 
-	f.checker.compareReverseMapOrphans(f.reader, lastSequence, live, pendingCleanup, func(e *servicepb.CheckStoreEvent) {
+	f.checker.compareReverseMapOrphans(f.reader, lastSequence, live, pendingCleanup, f.schemas, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -94,7 +98,27 @@ func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFix
 	return reverseMapFixture{
 		checker: NewChecker(store, attrs, "test-cluster", nil, nil, peer, logger),
 		reader:  reader,
+		schemas: in.schemas,
 	}
+}
+
+// schemaField names one declared metadata field, mirroring what a replayed
+// SetMetadataFieldType contributes to the checker's expectedSchemas.
+type schemaField struct {
+	ledger string
+	target commonpb.TargetType
+	key    string
+}
+
+// replayedSchemas builds the audit-derived schema map through the same helper
+// the replay loop uses, so the fixture cannot drift from the real shape.
+func replayedSchemas(fields ...schemaField) map[string]*commonpb.MetadataSchema {
+	schemas := make(map[string]*commonpb.MetadataSchema)
+	for _, field := range fields {
+		setExpectedSchemaField(schemas, field.ledger, field.target, field.key, commonpb.MetadataType_METADATA_TYPE_STRING)
+	}
+
+	return schemas
 }
 
 // metadataRegistry builds registry rows for (ledger, target, key) triples.
@@ -132,6 +156,10 @@ func TestCompareReverseMapOrphans_IndexedFieldsStaySilent(t *testing.T) {
 		readstore.TransactionReverseMapKeyV(kb, "L1", 7, "tier", 1),
 	}
 
+	// Registry entries with no matching schema field: not a state a real
+	// cluster reaches (validateIndexTarget requires SetMetadataFieldType
+	// first), but it isolates the registry term of the oracle so this test
+	// cannot pass via the schema term instead.
 	full := newReverseMapFixture(t, reverseMapFixtureInput{
 		registry: mergeRegistries(
 			metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
@@ -264,18 +292,111 @@ func TestCompareReverseMapOrphans_AggregatesPerField(t *testing.T) {
 
 // TestCompareReverseMapOrphans_IdentityIncludesTarget pins that a row's
 // identity is (ledger, target, metadata key) — never the key alone. The same
-// metadata key indexed for accounts but not for transactions must leave the
+// metadata key covered for accounts but not for transactions must leave the
 // account rows alone and flag only the transaction rows.
+//
+// Both terms of the oracle are checked for target-scoping independently: a
+// key-only match in either one would wrongly absolve the transaction row.
 func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input reverseMapFixtureInput
+	}{
+		{
+			name: "covered by the registry term",
+			input: reverseMapFixtureInput{
+				registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
+			},
+		},
+		{
+			name: "covered by the schema term",
+			input: reverseMapFixtureInput{
+				schemas: replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"}),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			kb := dal.NewKeyBuilder()
+
+			input := test.input
+			input.progress = 3
+			input.rmapKeys = [][]byte{
+				readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "shared", 1),
+				readstore.TransactionReverseMapKeyV(kb, "L1", 9, "shared", 1),
+			}
+
+			events := newReverseMapFixture(t, input).run(3, ledgerNameSet("L1"), nil)
+
+			require.Len(t, events, 1)
+			require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
+			require.Contains(t, events[0].GetError().GetMessage(), "sample transaction 9")
+		})
+	}
+}
+
+// TestCompareReverseMapOrphans_DropIndexResidueNotFlagged is the regression
+// guard for the EN-1621 finding. handleDroppedIndexLog reclaims nothing from
+// the read index, and processDropIndex leaves the schema field declared, so a
+// dropped metadata index leaves rmap rows behind forever on a healthy cluster.
+// A registry-only oracle would report them on every Check() run — permanently
+// red on a legitimate operator action, with no warning channel to soften it.
+//
+// The second half is the sensitivity twin: the same rows with the schema field
+// gone MUST be flagged, so the silence above cannot come from an early return.
+func TestCompareReverseMapOrphans_DropIndexResidueNotFlagged(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+	rows := [][]byte{
+		readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1),
+		readstore.AccountReverseMapKeyV(kb, "L1", "users:2", "role", 1),
+	}
+
+	dropped := newReverseMapFixture(t, reverseMapFixtureInput{
+		// DropIndex removed the registry entry; the schema field survives.
+		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		rmapKeys: rows,
+		progress: 3,
+	})
+
+	require.Empty(t, dropped.run(3, ledgerNameSet("L1"), nil),
+		"DropIndex residue must not be flagged: the schema field is still declared (EN-1621)")
+
+	removed := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: rows,
+		progress: 3,
+	})
+
+	require.Len(t, removed.run(3, ledgerNameSet("L1"), nil), 1,
+		"the same rows with the schema field gone must be flagged, proving the scan reached them")
+}
+
+// TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged is EN-1458's
+// target case. RemovedMetadataFieldType is the single log that both removes the
+// schema field type and runs purgeReverseMapForKey's point-delete scan, so a
+// row whose field is absent from the replayed schema is precisely a row that
+// scan missed — the permanent orphan the reverse map's non-range-deletable key
+// shape makes possible.
+func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	t.Parallel()
 
 	kb := dal.NewKeyBuilder()
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
+		// "kept" survived the removal; "removed" was dropped from the schema by
+		// RemovedMetadataFieldType, and its rmap rows should have gone with it.
+		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"),
+		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "kept"}),
 		rmapKeys: [][]byte{
-			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "shared", 1),
-			readstore.TransactionReverseMapKeyV(kb, "L1", 9, "shared", 1),
+			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "kept", 1),
+			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "removed", 1),
+			readstore.AccountReverseMapKeyV(kb, "L1", "users:2", "removed", 1),
 		},
 		progress: 3,
 	})
@@ -283,8 +404,13 @@ func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
 	events := fixture.run(3, ledgerNameSet("L1"), nil)
 
 	require.Len(t, events, 1)
-	require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
-	require.Contains(t, events[0].GetError().GetMessage(), "sample transaction 9")
+	err := events[0].GetError()
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+		err.GetErrorType())
+	require.Equal(t, "L1", err.GetLedger())
+	require.Contains(t, err.GetMessage(), `"removed"`)
+	require.Contains(t, err.GetMessage(), "rows=2")
 }
 
 // TestCompareReverseMapOrphans_UnknownLedger covers the leak class:

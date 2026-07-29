@@ -90,6 +90,46 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 // projection compare: the primary store is the oracle here, and the read index
 // is the data being judged.
 //
+// A row is an orphan only if its field is BOTH absent from the index registry
+// AND absent from the ledger's replayed metadata schema. The schema term is
+// what makes the pass detect EN-1458's bug and nothing else:
+// RemovedMetadataFieldType is the single log that both removes the schema field
+// type and runs purgeReverseMapForKey, so "field absent from the replayed
+// schema + live rmap rows" is exactly "the point-delete scan missed rows".
+//
+// Residue from a plain DropIndex is deliberately NOT flagged. DropIndex removes
+// the registry entry but leaves the schema field declared, and
+// indexbuilder.handleDroppedIndexLog reclaims nothing — so the rows survive
+// forever on a healthy cluster. That leak is real but it is a different, broader
+// bug: it strands all three read-index limbs, not just the one that cannot be
+// range-deleted. It is tracked as EN-1621
+// (https://formance-team.atlassian.net/browse/EN-1621). Flagging it here would
+// make Check() permanently fail on any cluster that has ever dropped a metadata
+// index — including the restore and bootstrap validation gates, which have no
+// warning channel — and a check that is permanently red on a legitimate
+// operator action trains operators to ignore red.
+//
+// KNOWN COVERAGE LIMIT, revisit when EN-1621 lands: once DropIndex purges rows,
+// a regression in that new purge path would strand rows while the schema field
+// is still declared, and this oracle would NOT catch it. The conjunction does
+// not solve that case and is not intended to — it trades that coverage for not
+// being permanently red today. When EN-1621 makes DropIndex purge, the schema
+// term stops being a safe proxy and the oracle must be reconsidered.
+//
+// The schema MUST be the audit-derived replayed schema, never the stored
+// LedgerInfo.MetadataSchema. Reading the stored row would make the pass
+// self-referential: a tampered or injected schema row could legitimise its own
+// orphaned rmap rows. Same reasoning as sourcing liveLedgers from the replay
+// rather than from stored LedgerInfo rows — an oracle must never come from the
+// data it judges.
+//
+// The registry term is, today, redundant: validateIndexTarget requires
+// SetMetadataFieldType before a metadata index can be created, so
+// schema-declared is a superset of indexed. It is written as an explicit
+// conjunction anyway because it degrades safely — toward FEWER false positives —
+// if that guarantee ever breaks, whereas a bare schema check would start
+// flagging rows of genuinely-indexed fields.
+//
 // Version is deliberately ignored. Current and pending forward-encoding
 // versions legitimately coexist while a per-replica schema rewrite runs, and
 // versions outside that live pair are reclaimed at boot by purgeOrphanVersions.
@@ -110,6 +150,7 @@ func (c *Checker) compareReverseMapOrphans(
 	lastSequence uint64,
 	liveLedgers map[string]struct{},
 	pendingCleanupLedgers map[string]struct{},
+	replayedSchemas map[string]*commonpb.MetadataSchema,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	if c.readStore == nil {
@@ -225,7 +266,8 @@ func (c *Checker) compareReverseMapOrphans(
 		orphan, decided := verdicts[field]
 		if !decided {
 			_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
-			orphan = !indexed
+			_, declared := commonpb.SchemaFieldForTarget(replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
+			orphan = !indexed && declared == nil
 			verdicts[field] = orphan
 		}
 
@@ -334,7 +376,7 @@ func emitReverseMapFindings(
 			class:  reverseMapClassOrphan,
 			ledger: key.ledger,
 			message: fmt.Sprintf(
-				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q, which has no matching index in the registry: rows=%d, sample %s",
+				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q, which is neither in the index registry nor declared in the audit-derived metadata schema: rows=%d, sample %s",
 				key.metaKey, key.namespace, key.ledger, agg.rows, agg.sample),
 		})
 	}
