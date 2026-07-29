@@ -16,6 +16,7 @@ type PrefixIterator struct {
 	current      []byte
 	started      bool
 	exhausted    bool
+	floor        seekFloor
 }
 
 // NewPrefixIterator creates an iterator that scans all keys with the given
@@ -90,6 +91,13 @@ func (it *PrefixIterator) Current() []byte {
 }
 
 func (it *PrefixIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -103,6 +111,7 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target)
 
 		return false
 	}
@@ -122,6 +131,7 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target)
 
 	return false
 }
@@ -167,6 +177,7 @@ type RangeIterator struct {
 	current      []byte
 	started      bool
 	exhausted    bool
+	floor        seekFloor
 }
 
 // NewRangeIterator creates an iterator that scans keys in [lower, upper).
@@ -232,6 +243,13 @@ func (it *RangeIterator) Current() []byte {
 }
 
 func (it *RangeIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -248,6 +266,7 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target)
 
 		return false
 	}
@@ -266,6 +285,7 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target)
 
 	return false
 }

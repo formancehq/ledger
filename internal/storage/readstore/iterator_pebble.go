@@ -58,6 +58,7 @@ type PebbleAccountIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // newSingleTypeAccountIterator creates a forward account iterator for one attribute type.
@@ -188,6 +189,13 @@ func (it *PebbleAccountIterator) Current() []byte {
 }
 
 func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -200,6 +208,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target)
 
 		return false
 	}
@@ -218,6 +227,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target)
 
 	return false
 }
@@ -250,6 +260,7 @@ type PebbleReverseAccountIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	ceil      seekCeil
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
@@ -355,6 +366,13 @@ func (it *PebbleReverseAccountIterator) Current() []byte {
 }
 
 func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -382,12 +400,14 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 		// Past target, step back
 		if !it.iter.Prev() {
 			it.exhausted = true
+			it.ceil.fail(target)
 
 			return false
 		}
 	} else if !it.iter.Last() {
 		// Past end, go to last
 		it.exhausted = true
+		it.ceil.fail(target)
 
 		return false
 	}
@@ -406,6 +426,7 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.ceil.fail(target)
 
 	return false
 }
@@ -442,6 +463,7 @@ type PebbleTxIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // NewPebbleTxIterator creates an iterator over all transactions in a ledger.
@@ -519,6 +541,13 @@ func (it *PebbleTxIterator) Current() []byte {
 }
 
 func (it *PebbleTxIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -531,6 +560,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target)
 
 		return false
 	}
@@ -543,6 +573,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target)
 
 	return false
 }
@@ -578,6 +609,7 @@ type PebbleReverseTxIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	ceil      seekCeil
 }
 
 // NewPebbleReverseTxIterator creates a reverse transaction iterator.
@@ -656,6 +688,13 @@ func (it *PebbleReverseTxIterator) Current() []byte {
 }
 
 func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -672,12 +711,14 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	if it.iter.SeekGE(seekKey) {
 		if !it.iter.Prev() {
 			it.exhausted = true
+			it.ceil.fail(target)
 
 			return false
 		}
 	} else {
 		if !it.iter.Last() {
 			it.exhausted = true
+			it.ceil.fail(target)
 
 			return false
 		}
@@ -697,6 +738,7 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.ceil.fail(target)
 
 	return false
 }
@@ -757,6 +799,7 @@ type PebbleTxRangeIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
@@ -843,6 +886,13 @@ func (it *PebbleTxRangeIterator) Next() bool {
 func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
 
 func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -856,6 +906,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target)
 
 		return false
 	}
@@ -868,6 +919,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target)
 
 	return false
 }

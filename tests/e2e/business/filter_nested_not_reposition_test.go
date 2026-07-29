@@ -5,6 +5,7 @@ package business
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -36,6 +37,22 @@ var _ = Describe("Nested-NOT filter reposition", Ordered, ContinueOnFailure, fun
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 		}
+	})
+
+	// Guard against vacuous passes: an empty result is only meaningful once the
+	// bare leaves see the data. The Pebble read index is populated
+	// asynchronously by the index builder, so wait for both leaf shapes to
+	// return the seeded rows before testing the contradictions.
+	It("baseline: the bare leaves return the seeded data", func() {
+		Eventually(func(g Gomega) {
+			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.TxIDRangeFilter(3, 5))
+			g.Expect(err).To(Succeed())
+			g.Expect(txs).To(HaveLen(3))
+
+			accts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.AddressPrefixFilter("acc:"))
+			g.Expect(err).To(Succeed())
+			g.Expect(accts).To(HaveLen(8))
+		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
 	It("tx-id range: and(not(not(not(id[3,5]))), id[3,5]) is empty", func() {

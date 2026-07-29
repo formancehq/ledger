@@ -18,6 +18,7 @@ type ReversePrefixIterator struct {
 	current      []byte
 	started      bool
 	exhausted    bool
+	ceil         seekCeil
 }
 
 // NewReversePrefixIterator creates an iterator that scans all keys with the
@@ -88,6 +89,13 @@ func (it *ReversePrefixIterator) Current() []byte {
 
 // SeekLE positions the iterator at the first entity whose key is <= target.
 func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
 	// Absolute reposition: clear the exhausted latch so a re-seek after
 	// exhaustion still finds entities (the body re-seeks from target).
 	it.exhausted = false
@@ -111,12 +119,14 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 		// Key is > target, step back
 		if !it.iter.Prev() {
 			it.exhausted = true
+			it.ceil.fail(target)
 
 			return false
 		}
 	} else if !it.iter.Last() {
 		// Past the end — go to last key
 		it.exhausted = true
+		it.ceil.fail(target)
 
 		return false
 	}
@@ -135,6 +145,7 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.ceil.fail(target)
 
 	return false
 }
