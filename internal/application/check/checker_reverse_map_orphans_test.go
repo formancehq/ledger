@@ -44,15 +44,47 @@ type reverseMapFixture struct {
 	schemas map[string]*commonpb.MetadataSchema
 }
 
-// run drives the pass and collects every emitted event, preserving order.
+// run drives the pass on the absence-based oracle only — no replayed
+// RemovedMetadataFieldType or DeleteLedger evidence — and collects every emitted
+// event, preserving order.
 func (f reverseMapFixture) run(lastSequence uint64, live, pendingCleanup map[string]struct{}) []*servicepb.CheckStoreEvent {
+	return f.runScope(reverseMapOrphanScope{
+		lastSequence:          lastSequence,
+		liveLedgers:           live,
+		pendingCleanupLedgers: pendingCleanup,
+	})
+}
+
+// runScope drives the pass with a caller-built scope, for the cases that need
+// the positive-evidence oracle terms or a deliberately misaligned peer cursor.
+// reader, peer and replayedSchemas always come from the fixture.
+func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*servicepb.CheckStoreEvent {
 	var events []*servicepb.CheckStoreEvent
 
-	f.checker.compareReverseMapOrphans(f.reader, lastSequence, live, pendingCleanup, f.schemas, func(e *servicepb.CheckStoreEvent) {
+	scope.reader = f.reader
+	scope.replayedSchemas = f.schemas
+
+	if f.checker.readStore != nil {
+		scope.peer = f.checker.readStore.NewSnapshot()
+		defer func() { _ = scope.peer.Close() }()
+	}
+
+	f.checker.compareReverseMapOrphans(scope, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
 	return events
+}
+
+// removedFieldSet builds the replay's positive-evidence oracle: the metadata
+// fields a RemovedMetadataFieldType log was observed for.
+func removedFieldSet(fields ...schemaField) map[removedSchemaFieldKey]struct{} {
+	set := make(map[removedSchemaFieldKey]struct{}, len(fields))
+	for _, field := range fields {
+		set[removedSchemaFieldKey{ledger: field.ledger, target: field.target, metaKey: field.key}] = struct{}{}
+	}
+
+	return set
 }
 
 func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFixture {
@@ -580,6 +612,174 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 
 	require.Len(t, caughtUp.run(10, ledgerNameSet("L1"), nil), 1,
 		"the same rows must be flagged once the read index has caught up")
+
+	// A lagging peer must still have its keys decoded: a malformed key is
+	// corruption whatever the fold position, and needs no oracle to judge.
+	laggingMalformed := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{append([]byte{readstore.PrefixReverseMap}, 0x01, 0x02)},
+		progress: 9,
+	})
+
+	require.Len(t, laggingMalformed.run(10, ledgerNameSet("L1"), nil), 1,
+		"a malformed key needs no oracle, so the lag gate must not suppress it")
+}
+
+// TestCompareReverseMapOrphans_CursorAhead pins the other side of the gate.
+// Check() pins every oracle term — the index registry, the replayed schemas, the
+// live-ledger set — at lastSequence, but the peer read index is folded
+// asynchronously on a live node, so by scan time it can hold rows for ledgers and
+// fields created AFTER that pin. Judging those by absence reports a healthy
+// cluster as corrupt, so the absence-based verdicts require an exactly aligned
+// cursor while the positive-evidence ones do not.
+func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+
+	// A metadata field created after the checker's snapshot: the peer folded its
+	// rows, but the registry and schema oracles predate it. Absent from both
+	// oracle terms, exactly like a removed field — and yet perfectly healthy.
+	newField := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "created-later", 1)},
+		progress: 12,
+	})
+
+	require.Empty(t, newField.run(10, ledgerNameSet("L1"), nil),
+		"a field created after the pinned oracle must not be reported as an orphan")
+
+	// A ledger created after the snapshot: same shape, unknown-ledger class.
+	newLedger := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L2", "users:1", "role", 1)},
+		progress: 12,
+	})
+
+	require.Empty(t, newLedger.run(10, ledgerNameSet("L1"), nil),
+		"a ledger created after the pinned oracle must not be reported as absent from the live set")
+
+	// Positive evidence survives the same ahead cursor: the replay saw the
+	// removal, so the rows are orphans no matter where the peer cursor sits.
+	removed := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "dropped", 1)},
+		progress: 12,
+	})
+
+	require.Len(t, removed.runScope(reverseMapOrphanScope{
+		lastSequence:  10,
+		liveLedgers:   ledgerNameSet("L1"),
+		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "dropped"}),
+	}), 1, "an audit-observed removal must be reported even when the peer cursor is ahead")
+
+	// Same for a replayed DeleteLedger.
+	deleted := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "gone", "users:1", "role", 1)},
+		progress: 12,
+	})
+
+	require.Len(t, deleted.runScope(reverseMapOrphanScope{
+		lastSequence:   10,
+		liveLedgers:    ledgerNameSet("L1"),
+		deletedLedgers: ledgerNameSet("gone"),
+	}), 1, "an audit-observed DeleteLedger must be reported even when the peer cursor is ahead")
+}
+
+// TestCompareReverseMapOrphans_RemovedThenRedeclared pins that the removal set
+// being append-only is safe. A field removed and later re-declared by a second
+// SetMetadataFieldType has a RemovedMetadataFieldType on record forever, so the
+// verdict must consult the replayed schema first or every re-declared field
+// would be reported as an orphan.
+func TestCompareReverseMapOrphans_RemovedThenRedeclared(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+
+	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
+		// The re-declaration is what the replayed schema ends up holding.
+		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		progress: 10,
+	})
+
+	require.Empty(t, fixture.runScope(reverseMapOrphanScope{
+		lastSequence:  10,
+		liveLedgers:   ledgerNameSet("L1"),
+		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+	}), "a field re-declared after its removal must not be reported as an orphan")
+}
+
+// TestCompareReverseMapOrphans_EmptyAudit pins that an audit with no logs does
+// not make the peer store trustworthy. The read index folds FROM the log stream,
+// so a reverse-map row over a zero-log store has nothing behind it: it is either
+// stale residue or injected. Both are classes this pass reports, and every oracle
+// term is legitimately empty at lastSequence 0.
+func TestCompareReverseMapOrphans_EmptyAudit(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+
+	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{
+			readstore.AccountReverseMapKeyV(kb, "ghost", "users:1", "role", 1),
+			append([]byte{readstore.PrefixReverseMap}, 0x01, 0x02),
+		},
+		progress: 0,
+	})
+
+	events := fixture.run(0, nil, nil)
+	require.Len(t, events, 2, "an unaudited row and a malformed key must both be reported over an empty audit")
+
+	messages := []string{events[0].GetError().GetMessage(), events[1].GetError().GetMessage()}
+	require.Contains(t, messages[0], "absent from the live ledger set")
+	require.Contains(t, messages[1], "do not decode")
+}
+
+// TestCheck_ReverseMapOrphans_EmptyAuditWiring is the Check()-level twin of the
+// above: it pins that the pass actually runs on the lastSequence == 0 path, which
+// returns before the replay and therefore before every other pass.
+func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.FromContext(logging.TestingContext())
+	kb := dal.NewKeyBuilder()
+
+	runCheck := func(t *testing.T, seed bool) []*servicepb.CheckStoreEvent {
+		t.Helper()
+
+		peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = peer.Close() })
+
+		if seed {
+			batch := peer.NewBatch()
+			require.NoError(t, batch.SetBytes(readstore.AccountReverseMapKeyV(kb, "ghost", "users:1", "role", 1), []byte{0x01}))
+			require.NoError(t, batch.Commit())
+		}
+
+		checker := NewChecker(createTestStore(t), attributes.New(), "test-cluster", nil, nil, peer, logger)
+
+		var events []*servicepb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
+			if e.GetError() != nil {
+				events = append(events, e)
+			}
+		}))
+
+		return events
+	}
+
+	t.Run("stale peer row is reported", func(t *testing.T) {
+		t.Parallel()
+
+		events := runCheck(t, true)
+		require.Len(t, events, 1, "a reverse-map row with no audit behind it must be reported")
+		require.Contains(t, events[0].GetError().GetMessage(), "absent from the live ledger set")
+	})
+
+	t.Run("empty peer store stays clean", func(t *testing.T) {
+		t.Parallel()
+
+		require.Empty(t, runCheck(t, false),
+			"an attached but empty read index over an empty audit must report nothing")
+	})
 }
 
 // TestCompareReverseMapOrphans_DeterministicOrdering pins that the emitted
@@ -708,9 +908,14 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 
 	batch := peer.NewBatch()
 	require.NoError(t, batch.SetBytes(orphanRow, []byte{0x01}))
-	// Progress is set far past the store's own last sequence so the lag gate
-	// (indexedSequence < lastSequence) never suppresses the pass regardless of
-	// exactly how many logs the three orders above produced.
+	// Progress is set far past the store's own last sequence, which does double
+	// duty: it keeps the test independent of exactly how many logs the three
+	// orders above produced, AND it pins the cursor-ahead case. Detection here
+	// therefore rests on the positive-evidence path — the replay saw a
+	// RemovedMetadataFieldType for this field — not on the absence-based one,
+	// which an unaligned cursor deliberately suppresses. A healthy row under the
+	// same ahead cursor must stay silent; that is
+	// TestCompareReverseMapOrphans_CursorAhead.
 	require.NoError(t, peer.WriteProgress(batch, 1_000_000))
 	require.NoError(t, batch.Commit())
 

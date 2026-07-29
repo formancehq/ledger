@@ -38,6 +38,16 @@ type reverseMapFieldKey struct {
 	metaKey   string
 }
 
+// removedSchemaFieldKey identifies a metadata field the replay observed a
+// RemovedMetadataFieldType log for. Keyed by target type rather than by
+// reverse-map namespace because that is what the log carries; the pass maps its
+// namespace to a target before looking up.
+type removedSchemaFieldKey struct {
+	ledger  string
+	target  commonpb.TargetType
+	metaKey string
+}
+
 // reverseMapAggregate accumulates a row count plus one representative sample
 // for a single bucket. Only the first sample is retained: dropping a metadata
 // field on a large ledger can strand millions of rows, so the pass must stay
@@ -73,6 +83,27 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 	}
 }
 
+// reverseMapOrphanScope carries the peer snapshot under judgement plus every
+// oracle term compareReverseMapOrphans compares it against.
+type reverseMapOrphanScope struct {
+	// reader is the primary-store snapshot the index registry is read from.
+	reader dal.PebbleReader
+	// peer is the peer read-index snapshot, pinned by Check() alongside the
+	// primary one. nil when no readstore is attached.
+	peer *pebble.Snapshot
+	// lastSequence is the last log sequence the replay verified.
+	lastSequence uint64
+	// liveLedgers, pendingCleanupLedgers, replayedSchemas are absence-based
+	// oracle terms: all three are frozen at lastSequence.
+	liveLedgers           map[string]struct{}
+	pendingCleanupLedgers map[string]struct{}
+	replayedSchemas       map[string]*commonpb.MetadataSchema
+	// removedFields and deletedLedgers are the positive-evidence terms: logs
+	// the replay actually observed, so they are immune to cursor skew.
+	removedFields  map[removedSchemaFieldKey]struct{}
+	deletedLedgers map[string]struct{}
+}
+
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
 // peer read-index store whose metadata field is no longer indexed.
 //
@@ -90,12 +121,28 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 // projection compare: the primary store is the oracle here, and the read index
 // is the data being judged.
 //
-// A row is an orphan only if its field is BOTH absent from the index registry
-// AND absent from the ledger's replayed metadata schema. The schema term is
-// what makes the pass detect EN-1458's bug and nothing else:
-// RemovedMetadataFieldType is the single log that both removes the schema field
-// type and runs purgeReverseMapForKey, so "field absent from the replayed
-// schema + live rmap rows" is exactly "the point-delete scan missed rows".
+// A row is an orphan when its field is no longer indexed and no longer declared.
+// That verdict is reached one of two ways, and the distinction is load-bearing:
+//
+//   - POSITIVE EVIDENCE (skew-immune). The replay observed a
+//     RemovedMetadataFieldType for the field and nothing re-declared it. This is
+//     exactly EN-1458's bug: RemovedMetadataFieldType is the single log that both
+//     removes the schema field type and runs purgeReverseMapForKey, so "the audit
+//     says this field was removed + rows are still live" means "the point-delete
+//     scan missed rows". Because the verdict rests on a log the replay *saw*, it
+//     holds no matter where the peer cursor sits relative to lastSequence.
+//
+//   - ABSENCE (needs an exactly aligned view). The field is in neither the index
+//     registry nor the replayed schema. This catches removals whose log has been
+//     archived away, and rows for fields that were never audited at all — but it
+//     infers "removed" from "not present in a view frozen at lastSequence", so a
+//     field created *after* that point looks identical to a removed one. It is
+//     therefore evaluated only when the peer cursor is exactly aligned with the
+//     verified sequence. See the alignment discussion below.
+//
+// The same split applies to the unknown-ledger class: a replayed DeleteLedger is
+// positive evidence, while mere absence from liveLedgers requires alignment.
+// The malformed-key class needs no oracle at all and always runs.
 //
 // Residue from a plain DropIndex is deliberately NOT flagged. DropIndex removes
 // the registry entry but leaves the schema field declared, and
@@ -136,35 +183,42 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 // A row at ANY version whose field is still indexed is not an orphan; flagging
 // on version would report every in-flight rewrite.
 //
-// lastSequence is the last log sequence the checker verified. The pass is a
-// no-op unless the read index has folded at least that far: the registry is
-// written at Raft apply while the rmap is folded asynchronously by the index
-// builder, so between apply and fold a legitimately-removed field has no
-// registry entry but still has live rmap rows. Without that gate the pass
-// false-positives on every healthy cluster mid-fold.
+// ALIGNMENT. lastSequence is the last log sequence the checker verified, and
+// every oracle term — the index registry read off `reader`, the replayed schemas,
+// the live-ledger set — is frozen at exactly that point. The peer read index is
+// an independent store folded asynchronously by the index builder, so its cursor
+// can sit on either side of lastSequence:
+//
+//   - BEHIND. The registry is written at Raft apply while the rmap folds later,
+//     so between apply and fold a legitimately-removed field has no registry
+//     entry but still has live rmap rows. Both verdict paths are suppressed
+//     (positive evidence too: the peer has not folded the removal yet).
+//
+//   - AHEAD. Check() runs on a live node — CheckStore passes the live readStore
+//     and there is no quiescing — so by the time the scan runs, the builder may
+//     have folded rows for a ledger or field created after lastSequence. Judging
+//     those against oracles pinned earlier reports a healthy cluster as corrupt.
+//     Positive-evidence verdicts are unaffected (a field created after the pin
+//     was never removed); absence-based verdicts are suppressed.
+//
+// scope.peer is pinned by Check() next to the primary snapshot so the two views
+// are as close together as two separate Pebble stores allow, which keeps the
+// aligned case reachable. It is not atomic, which is precisely why correctness
+// rests on the evidence split above rather than on the cursors matching.
 //
 // Rows belonging to a ledger in pendingCleanupLedgers are skipped: like the
 // other passes, the deferred-purge window is tolerated rather than flagged.
 func (c *Checker) compareReverseMapOrphans(
-	reader dal.PebbleReader,
-	lastSequence uint64,
-	liveLedgers map[string]struct{},
-	pendingCleanupLedgers map[string]struct{},
-	replayedSchemas map[string]*commonpb.MetadataSchema,
+	scope reverseMapOrphanScope,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
-	if c.readStore == nil {
+	if c.readStore == nil || scope.peer == nil {
 		c.logger.Infof("Reverse-map orphan check skipped: no peer read-index store is attached to this checker")
 
 		return
 	}
 
-	// One snapshot for both the progress cursor and the scan, so the lag gate
-	// is evaluated against exactly the rows that are about to be judged.
-	snap := c.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
-
-	indexedSequence, err := c.readStore.LastIndexedSequenceFrom(snap)
+	indexedSequence, err := c.readStore.LastIndexedSequenceFrom(scope.peer)
 	if err != nil {
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
@@ -175,23 +229,38 @@ func (c *Checker) compareReverseMapOrphans(
 		return
 	}
 
-	if indexedSequence < lastSequence {
+	// See ALIGNMENT above. `folded` admits the positive-evidence verdicts,
+	// `aligned` additionally admits the absence-based ones. Malformed keys need
+	// no oracle and are reported whatever these say.
+	folded := indexedSequence >= scope.lastSequence
+	aligned := indexedSequence == scope.lastSequence
+
+	if !folded {
 		c.logger.WithFields(map[string]any{
 			"indexedSequence": indexedSequence,
-			"lastSequence":    lastSequence,
-		}).Infof("Reverse-map orphan check skipped: the read index has not folded the whole verified log range")
-
-		return
+			"lastSequence":    scope.lastSequence,
+		}).Infof("Reverse-map orphan check limited to key decoding: the read index has not folded the whole verified log range")
+	} else if !aligned {
+		c.logger.WithFields(map[string]any{
+			"indexedSequence": indexedSequence,
+			"lastSequence":    scope.lastSequence,
+		}).Infof("Reverse-map orphan check limited to audit-observed removals: the read index is ahead of the verified log range")
 	}
 
-	indexedFields, ok := c.collectIndexedFields(reader, callback)
-	if !ok {
-		return
+	// The registry is only consulted by the absence-based path.
+	indexedFields := map[domain.IndexKey]struct{}{}
+	if aligned {
+		var ok bool
+
+		indexedFields, ok = c.collectIndexedFields(scope.reader, callback)
+		if !ok {
+			return
+		}
 	}
 
 	lower := []byte{readstore.PrefixReverseMap}
 
-	iter, err := snap.NewIter(&pebble.IterOptions{
+	iter, err := scope.peer.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
 		UpperBound: readstore.IncrementBytes(lower),
 	})
@@ -231,15 +300,29 @@ func (c *Checker) compareReverseMapOrphans(
 			continue
 		}
 
-		if _, awaiting := pendingCleanupLedgers[parsed.Ledger]; awaiting {
+		if _, awaiting := scope.pendingCleanupLedgers[parsed.Ledger]; awaiting {
 			continue
 		}
 
-		if _, live := liveLedgers[parsed.Ledger]; !live {
-			// DeleteLedger range-deletes the whole [0x03][ledger] span
-			// unconditionally, and the lag gate above guarantees that delete
-			// has been folded — so a survivor is a real leak.
-			observeReverseMapRow(unknownLedgers, parsed.Ledger, renderReverseMapEntity(parsed))
+		if _, deleted := scope.deletedLedgers[parsed.Ledger]; deleted {
+			// Positive evidence: DeleteLedger range-deletes the whole
+			// [0x03][ledger] span unconditionally, the replay saw that log, and
+			// the peer has folded at least that far — so a survivor is a real
+			// leak whatever the cursor's exact position.
+			if folded {
+				observeReverseMapRow(unknownLedgers, parsed.Ledger, renderReverseMapEntity(parsed))
+			}
+
+			continue
+		}
+
+		if _, live := scope.liveLedgers[parsed.Ledger]; !live {
+			// Absence-based: a ledger created after lastSequence is missing from
+			// liveLedgers for a perfectly healthy reason, and is indistinguishable
+			// from a leaked one on an unaligned view.
+			if aligned {
+				observeReverseMapRow(unknownLedgers, parsed.Ledger, renderReverseMapEntity(parsed))
+			}
 
 			continue
 		}
@@ -265,9 +348,33 @@ func (c *Checker) compareReverseMapOrphans(
 
 		orphan, decided := verdicts[field]
 		if !decided {
-			_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
-			_, declared := commonpb.SchemaFieldForTarget(replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
-			orphan = !indexed && declared == nil
+			_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
+			_, removed := scope.removedFields[removedSchemaFieldKey{
+				ledger:  parsed.Ledger,
+				target:  target,
+				metaKey: parsed.MetadataKey,
+			}]
+
+			switch {
+			case declared != nil:
+				// Still declared, so the rows are legitimate — including when an
+				// earlier removal is on record and a later SetMetadataFieldType
+				// re-declared the field. Checking this first is what makes the
+				// removal set safe to keep append-only.
+				orphan = false
+			case removed && folded:
+				// Positive evidence, see ALIGNMENT. Also the only path that
+				// survives an ahead cursor.
+				orphan = true
+			case aligned:
+				// Absence-based fallback: covers a removal whose log was archived
+				// away, and rows for a field the audit never declared at all.
+				_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
+				orphan = !indexed
+			default:
+				orphan = false
+			}
+
 			verdicts[field] = orphan
 		}
 
@@ -376,7 +483,7 @@ func emitReverseMapFindings(
 			class:  reverseMapClassOrphan,
 			ledger: key.ledger,
 			message: fmt.Sprintf(
-				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q, which is neither in the index registry nor declared in the audit-derived metadata schema: rows=%d, sample %s",
+				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q, which the audit-derived metadata schema no longer declares: rows=%d, sample %s",
 				key.metaKey, key.namespace, key.ledger, agg.rows, agg.sample),
 		})
 	}

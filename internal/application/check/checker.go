@@ -113,12 +113,40 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = snap.Close() }()
 
+	// Pin the peer read-index snapshot HERE, next to the primary one, rather
+	// than inside compareReverseMapOrphans at the end of the run. Every oracle
+	// term that pass compares against is frozen at this instant; opening the
+	// peer view minutes later let the index builder fold rows for ledgers and
+	// fields created after the pin, which the pass then judged against oracles
+	// that predate them. The two snapshots cannot be taken atomically across two
+	// Pebble stores, so this narrows the window rather than closing it — the
+	// pass stays correct under any remaining skew by construction. See
+	// ALIGNMENT in reverse_map_orphans.go.
+	var peerSnap *pebble.Snapshot
+
+	if c.readStore != nil {
+		peerSnap = c.readStore.NewSnapshot()
+
+		defer func() { _ = peerSnap.Close() }()
+	}
+
 	lastSequence, err := query.ReadLastSequence(snap)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
 	if lastSequence == 0 {
+		// An empty audit does not make the peer store trustworthy: the read
+		// index folds FROM the log stream, so any reverse-map row over a
+		// zero-log store is unaudited by definition. Malformed keys and rows
+		// for ledgers the audit never created are exactly the classes this pass
+		// exists to report, and returning clean here would hide them. Every
+		// oracle term is legitimately empty — there is nothing to replay.
+		c.compareReverseMapOrphans(reverseMapOrphanScope{
+			reader: snap,
+			peer:   peerSnap,
+		}, callback)
+
 		callback(&servicepb.CheckStoreEvent{
 			Type: &servicepb.CheckStoreEvent_Progress{
 				Progress: &servicepb.CheckStoreProgress{
@@ -301,6 +329,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
+		// Metadata fields the replay observed a RemovedMetadataFieldType log
+		// for. Unlike expectedSchemas this is append-only — a field removed
+		// and later re-declared stays recorded, and
+		// compareReverseMapOrphans resolves that case by checking
+		// expectedSchemas first. It is the positive-evidence oracle for the
+		// reverse-map orphan class: a verdict resting on a log the replay saw
+		// holds regardless of where the peer read-index cursor sits, whereas
+		// inferring removal from absence in a view pinned at lastSequence
+		// misreads a field created after that point. See ALIGNMENT in
+		// reverse_map_orphans.go.
+		removedSchemaFields = make(map[removedSchemaFieldKey]struct{})
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, seeded from the baseline under archiving, advanced per
 		// replayed log, then topped up with the chain-bound audit-order
@@ -622,6 +661,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
 								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
+
+								// This is also the one log that runs
+								// purgeReverseMapForKey, so recording it gives
+								// compareReverseMapOrphans an oracle that does
+								// not depend on the peer read-index cursor
+								// sitting exactly at lastSequence.
+								removedSchemaFields[removedSchemaFieldKey{
+									ledger:  ledgerName,
+									target:  l.GetTargetType(),
+									metaKey: l.GetKey(),
+								}] = struct{}{}
 							}
 
 							// processRemoveMetadataFieldType cascades into a
@@ -744,7 +794,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
-	c.compareReverseMapOrphans(snap, lastSequence, knownLedgers, pendingCleanupLedgers, expectedSchemas, callback)
+	c.compareReverseMapOrphans(reverseMapOrphanScope{
+		reader:                snap,
+		peer:                  peerSnap,
+		lastSequence:          lastSequence,
+		liveLedgers:           knownLedgers,
+		pendingCleanupLedgers: pendingCleanupLedgers,
+		replayedSchemas:       expectedSchemas,
+		removedFields:         removedSchemaFields,
+		deletedLedgers:        deletedInReplay,
+	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
 
