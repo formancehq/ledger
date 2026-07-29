@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"maps"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -622,4 +624,109 @@ func TestCompareReverseMapOrphans_DeterministicOrdering(t *testing.T) {
 	}
 
 	require.Equal(t, messages, replayed, "two runs over the same store must emit an identical stream")
+}
+
+// setMetadataFieldTypeOrder builds a real SetMetadataFieldType order, mirroring
+// the shape admission.go produces for servicepb.Request_SetMetadataFieldType.
+func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: target,
+							Key:        key,
+							Type:       typ,
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+// removeMetadataFieldTypeOrder builds a real RemoveMetadataFieldType order,
+// mirroring the shape admission.go produces for
+// servicepb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
+// processRemoveMetadataFieldType both drops the schema field AND (in
+// production) triggers the indexbuilder's purgeReverseMapForKey point-delete
+// scan of the reverse map.
+func removeMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
+						RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
+							TargetType: target,
+							Key:        key,
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+// TestCheck_ReverseMapOrphans_EndToEnd proves the pass is actually wired into
+// Check(), not merely correct in isolation (every other test in this file
+// calls compareReverseMapOrphans directly). It drives real orders through the
+// RequestProcessor pipeline — CreateLedger, then SetMetadataFieldType, then
+// RemoveMetadataFieldType for the same field — so knownLedgers and
+// expectedSchemas are the genuine audit-replayed projections Check() builds,
+// not hand-constructed maps.
+//
+// RemovedMetadataFieldType is the exact log EN-1458 is about: in production it
+// both drops the schema field AND runs purgeReverseMapForKey's point-delete
+// scan of the reverse map. This test harness has no indexbuilder wired in (its
+// testEngine never folds reverse-map rows), so the "scan missed the row" half
+// of the bug is reproduced the same way the pass's own unit tests do it: the
+// orphaned row is seeded directly into a real peer readstore via its public
+// key/write API, standing in for a row the purge scan failed to reach.
+func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "L1"
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder(ledger))
+	engine.processAndCommit(setMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role", commonpb.MetadataType_METADATA_TYPE_STRING))
+	engine.processAndCommit(removeMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+
+	logger := logging.Testing()
+
+	peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = peer.Close() })
+
+	kb := dal.NewKeyBuilder()
+	orphanRow := readstore.AccountReverseMapKeyV(kb, ledger, "users:1", "role", 1)
+
+	batch := peer.NewBatch()
+	require.NoError(t, batch.SetBytes(orphanRow, []byte{0x01}))
+	// Progress is set far past the store's own last sequence so the lag gate
+	// (indexedSequence < lastSequence) never suppresses the pass regardless of
+	// exactly how many logs the three orders above produced.
+	require.NoError(t, peer.WriteProgress(batch, 1_000_000))
+	require.NoError(t, batch.Commit())
+
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, peer, logger)
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
+		if e.GetError() != nil {
+			events = append(events, e)
+		}
+	}))
+
+	require.Len(t, events, 1, "the only integrity error in this store must be the reverse-map orphan")
+
+	err0 := events[0].GetError()
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
+	require.Equal(t, ledger, err0.GetLedger())
+	require.Contains(t, err0.GetMessage(), `"role"`)
 }

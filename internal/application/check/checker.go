@@ -744,6 +744,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareIndexes(snap, expectedIndexes, indexReplayActivity, deletedInReplay, hasArchivedChapters, pendingCleanupLedgers, callback)
 
+	c.compareReverseMapOrphans(snap, lastSequence, knownLedgers, pendingCleanupLedgers, expectedSchemas, callback)
+
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
 
 	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
