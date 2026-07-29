@@ -33,7 +33,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// payload consistent.
 	existing, findErr := indexes.Find(ctx.Scope.Indexes(), ledger, id)
 	if findErr != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "looking up existing index", Cause: findErr}
+		return nil, domain.StoreFailure("looking up existing index", findErr)
 	}
 
 	if existing != nil && existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
@@ -64,7 +64,7 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 	// Key off the command envelope, never the loaded projection's mutable
 	// name field (see processCreateIndex).
 	if err := indexes.Remove(ctx.Scope.Indexes(), ledger, id); err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "dropping index", Cause: err}
+		return nil, domain.StoreFailure("dropping index", err)
 	}
 
 	return &commonpb.LedgerLogPayload{

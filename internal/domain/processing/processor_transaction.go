@@ -27,7 +27,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 		existingRef, err := s.TransactionReferences().Get(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, &domain.ErrStorageOperation{Operation: "checking transaction reference", Cause: err}
+			return nil, domain.StoreFailure("checking transaction reference", err)
 		}
 
 		if existingRef != nil {
@@ -50,7 +50,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		if version == "" || version == "latest" {
 			greatest, gErr := s.GetNumscriptLatestVersion(ledger, name)
 			if gErr != nil {
-				return nil, &domain.ErrStorageOperation{Operation: fmt.Sprintf("resolving latest numscript %q", name), Cause: gErr}
+				return nil, domain.StoreFailure(fmt.Sprintf("resolving latest numscript %q", name), gErr)
 			}
 
 			if greatest == "" {
@@ -70,10 +70,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 
 		info, err := s.ResolveNumscriptContent(ledger, name, version)
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{
-				Operation: fmt.Sprintf("resolving numscript %q v%s", name, version),
-				Cause:     err,
-			}
+			return nil, domain.StoreFailure(fmt.Sprintf("resolving numscript %q v%s", name, version), err)
 		}
 
 		if info == nil {

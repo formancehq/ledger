@@ -15,7 +15,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	s := ctx.Scope
 	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
+		return nil, domain.StoreFailure("loading ledger", err)
 	}
 
 	if err == nil {

@@ -78,11 +78,11 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 			}
 		}
 
-		return nil, &domain.ErrStorageOperation{Operation: "checking ledger metadata", Cause: err}
+		return nil, domain.StoreFailure("checking ledger metadata", err)
 	}
 
 	if err := s.LedgerMetadata().Delete(metaKey); err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "deleting ledger metadata", Cause: err}
+		return nil, domain.StoreFailure("deleting ledger metadata", err)
 	}
 
 	return &commonpb.LogPayload{

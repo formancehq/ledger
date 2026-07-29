@@ -10,8 +10,10 @@ import (
 
 // lookupPreparedQuery centralises the (nil, ErrNotFound) vs (nil, otherErr)
 // discrimination on the Accessor contract: a tombstone / absent-key returns
-// (nil, nil) so callers see "doesn't exist"; any other error wraps into
-// ErrStorageOperation. Mirrors the loadLedger pattern.
+// (nil, nil) so callers see "doesn't exist"; an admission-contract violation
+// (notably *state.ErrCoverageMiss) propagates verbatim so the audit chain
+// records COVERAGE_MISS rather than a storage fault (EN-1379); any other
+// error wraps into ErrStorageOperation. Mirrors the loadLedger pattern.
 func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryReader, domain.Describable) {
 	pq, err := s.PreparedQueries().Get(domain.PreparedQueryKey{LedgerName: ledger, Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
@@ -19,7 +21,7 @@ func lookupPreparedQuery(s Scope, ledger, name string) (commonpb.PreparedQueryRe
 	}
 
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting prepared query", Cause: err}
+		return nil, domain.StoreFailure("getting prepared query", err)
 	}
 
 	return pq, nil
@@ -176,7 +178,7 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 	}
 
 	if err := s.PreparedQueries().Delete(domain.PreparedQueryKey{LedgerName: ledger, Name: order.GetName()}); err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "deleting prepared query", Cause: err}
+		return nil, domain.StoreFailure("deleting prepared query", err)
 	}
 
 	return &commonpb.LogPayload{

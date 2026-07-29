@@ -74,7 +74,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
 	existing, findErr := indexes.Find(s.Indexes(), ledger, id)
 	if findErr != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema change", Cause: findErr}
+		return nil, domain.StoreFailure("looking up index for schema change", findErr)
 	}
 
 	if existing != nil {
@@ -136,12 +136,12 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
 	existing, findErr := indexes.Find(s.Indexes(), ledger, id)
 	if findErr != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema removal", Cause: findErr}
+		return nil, domain.StoreFailure("looking up index for schema removal", findErr)
 	}
 
 	if existing != nil {
 		if err := indexes.Remove(s.Indexes(), ledger, id); err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "removing metadata field index", Cause: err}
+			return nil, domain.StoreFailure("removing metadata field index", err)
 		}
 		droppedIndex = id
 	}

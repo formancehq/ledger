@@ -26,7 +26,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// Check if the transaction is already reverted (bitset lookup, never errors)
 	reverted, err := s.GetReverted(txKey)
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "checking reverted status", Cause: err}
+		return nil, domain.StoreFailure("checking reverted status", err)
 	}
 
 	if reverted {
@@ -47,7 +47,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	}
 
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting original transaction state", Cause: err}
+		return nil, domain.StoreFailure("getting original transaction state", err)
 	}
 
 	origState := origStateReader.Mutate()
