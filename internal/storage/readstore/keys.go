@@ -2,6 +2,7 @@ package readstore
 
 import (
 	"bytes"
+	"encoding/binary"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -194,6 +195,78 @@ func TransactionReverseMapKeyV(kb *dal.KeyBuilder, ledgerName string, txID uint6
 		PutUint32(version).
 		PutString(metadataKey).
 		Build()
+}
+
+// ReverseMapKey is the decoded form of a reverse-map (0x03) key.
+type ReverseMapKey struct {
+	Ledger      string
+	Namespace   string // NamespaceAccount or NamespaceTransaction
+	EntityID    []byte // account address, or 8-byte BE transaction ID
+	Version     uint32
+	MetadataKey string
+}
+
+// ParseReverseMapKey decodes a full reverse-map key, including the
+// PrefixReverseMap discriminator byte. It is the single chokepoint for the
+// rmap key offset math: callers needing more than one field MUST route
+// through here rather than recomputing offsets.
+//
+//	account:     [0x03][ledgerName padded 64B][a:][account\x00][version:4B BE][metadataKey]
+//	transaction: [0x03][ledgerName padded 64B][t:][txID(8B)]   [version:4B BE][metadataKey]
+//
+// EntityID is a sub-slice of key, so callers that retain it past an iterator
+// move MUST clone it.
+//
+// ok=false for any key that is not a well-formed reverse-map key: wrong
+// discriminator byte, truncated, unknown namespace, or an empty metadata key.
+// Callers must treat !ok as corruption, never as a silent skip.
+func ParseReverseMapKey(key []byte) (ReverseMapKey, bool) {
+	const namespaceLen = 2
+
+	header := 1 + dal.LedgerNameFixedSize + namespaceLen
+	if len(key) < header || key[0] != PrefixReverseMap {
+		return ReverseMapKey{}, false
+	}
+
+	parsed := ReverseMapKey{
+		Ledger:    string(bytes.TrimRight(key[1:1+dal.LedgerNameFixedSize], "\x00")),
+		Namespace: string(key[1+dal.LedgerNameFixedSize : header]),
+	}
+
+	rest := key[header:]
+
+	switch parsed.Namespace {
+	case NamespaceAccount:
+		end := bytes.IndexByte(rest, 0x00)
+		if end < 0 {
+			return ReverseMapKey{}, false
+		}
+
+		parsed.EntityID = rest[:end]
+		rest = rest[end+1:]
+	case NamespaceTransaction:
+		if len(rest) < 8 {
+			return ReverseMapKey{}, false
+		}
+
+		parsed.EntityID = rest[:8]
+		rest = rest[8:]
+	default:
+		return ReverseMapKey{}, false
+	}
+
+	if len(rest) < 4 {
+		return ReverseMapKey{}, false
+	}
+
+	parsed.Version = binary.BigEndian.Uint32(rest[:4])
+	parsed.MetadataKey = string(rest[4:])
+
+	if parsed.MetadataKey == "" {
+		return ReverseMapKey{}, false
+	}
+
+	return parsed, true
 }
 
 // AccountTxKey builds an account-to-transaction mapping key.
