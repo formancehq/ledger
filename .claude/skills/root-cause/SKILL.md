@@ -52,8 +52,8 @@ Walk from the symptom toward the origin, one verified link at a time. This is "5
 Symptom:  API returns 500 on POST /transactions
   why? →  FSM apply returned ErrCacheMiss            [verified: log line]
   why? →  the key was never preloaded                [verified: plan.Coverage lacks the key]
-  why? →  the new proposal type declared no Needs    [verified: code review of the emitter]
-  why? →  nothing forces an emitter to declare Needs [← root cause: missing enforcement]
+  why? →  the new proposal type declared no Coverage  [verified: code review of the emitter]
+  why? →  nothing forces an emitter to declare Coverage [← root cause: missing enforcement]
 ```
 
 Stop conditions — you have reached the root cause when the next "why" leaves the system you can change (e.g. "why does the OS do X"), or when the answer is a *decision or missing rule* rather than a code path. The root cause is usually one of:

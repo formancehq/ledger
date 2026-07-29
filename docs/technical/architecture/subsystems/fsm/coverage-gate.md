@@ -50,7 +50,7 @@ SinkConfig, NumscriptVersion, Transaction, NumscriptContent,
 PreparedQuery, LedgerMetadata, Index
 ```
 
-If a new attribute kind is added to `Needs`, a new entry must land here, and a new `gatedAccessor` must be wired into `Scope`. The two pieces — declaration and enforcement — are deliberately co-located so they can't drift.
+If a new attribute kind is added to the `attrCode` resolver registry (`internal/infra/plan/attribute_resolvers.go`), a matching entry must land in `cacheAttrKinds` here, and a new `gatedAccessor` must be wired into `Scope`. The two registries live in **different packages** — declaration in `internal/infra/plan`, enforcement in `internal/infra/state` — so nothing structural stops them drifting; only review does. Keep them in lock-step.
 
 ## Per-order vs proposal-wide scope
 
@@ -95,7 +95,7 @@ The gate counts misses (`scope.go:367-369`):
 g.miss.Add(ctx, 1, metric.WithAttributes(kindAttr(kind)))
 ```
 
-This is an OTel counter labelled by the attribute kind. A non-zero rate is a smoke signal that a producer's `Needs` declaration is incomplete — the FSM is asking for something admission did not preload, and the proposal will fail until the producer is fixed.
+This is an OTel counter labelled by the attribute kind. A non-zero rate is a smoke signal that a producer's `plan.Coverage` declaration is incomplete — the FSM is asking for something admission did not preload, and the proposal will fail until the producer is fixed.
 
 ## Why this matters
 

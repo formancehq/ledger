@@ -316,7 +316,7 @@ Controller → query.ReadNumscript(versionAttr, contentAttr, reader, ledger, nam
 | State buffer | `internal/infra/state/write_set.go` | `PutNumscript`, `SetNumscriptLatestVersion`, `GetNumscriptLatestVersion`, `ResolveNumscriptContent` |
 | Gated scope | `internal/infra/state/scope.go` | Coverage-gated numscript reads |
 | Query | `internal/query/numscript.go` | `ReadNumscript`, `ReadNumscriptLatestVersion`, `ReadAllNumscripts`, `ReadAllNumscriptVersions` |
-| Admission | `internal/application/admission/admission.go` | Needs declaration + script reference planning |
+| Admission | `internal/application/admission/admission.go` | `plan.Coverage` declaration + script reference planning |
 | Admission overlay | `internal/application/admission/overlay.go` | Intra-bulk greatest-wins overlay |
 | Checker | `internal/application/check/checker.go` | `compareNumscripts` projection verification |
 | Rebuild | `internal/infra/backup/rebuild.go` | Projection rebuild from the audit chain |

@@ -24,11 +24,11 @@ sequenceDiagram
     A->>A: Health + maintenance check
     A->>A: Verify Ed25519 signature, unwrap batch
     A->>A: Convert requests → orders
-    A->>A: Resolve numscript + enrich Needs
-    A->>A: Extract preload Needs
-    A->>Pre: Build(needs) → ExecutionPlan
+    A->>A: Resolve numscript + enrich Coverage
+    A->>A: Extract preload Coverage
+    A->>Pre: Build(aggregate, operations) → ExecutionPlan
     Pre->>Pre: Cache (gen0/gen1) → Pebble fallback
-    Pre-->>A: ExecutionPlan + ProposalGuard token
+    Pre-->>A: BuildResult (ExecutionPlan + loader cleanup token)
     A->>A: marshalCommand(proposal)
     A->>A: AppendProposalPredictedIndex(buf, idx)
     A->>N: AcquireProposalGuard → Propose → release
@@ -72,19 +72,19 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 `requestsToOrders()` walks every `Request` in the batch and dispatches to a per-type converter (`CreateLedger`, `Apply`, `RegisterSigningKey`, …) producing an internal `Order`. Orders are the FSM's input language; requests are the wire language. The conversion is structural — it does not consult Pebble.
 
-### 5. Numscript resolution + Needs enrichment
+### 5. Numscript resolution + coverage enrichment
 
 For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrichNeeds()` resolves the `NumscriptReference` against an intra-batch overlay (programs being created in the same batch) and falls back to the persisted numscript library. Each resolved program is parsed for its account / metadata / volume dependencies; those become additional coverage entries on the order's `plan.Coverage`.
 
-This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `Needs` before consensus.
+This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `plan.Coverage` entries before consensus.
 
-### 6. Preload Needs extraction
+### 6. Preload coverage extraction
 
-`extractPreloadNeeds()` aggregates the per-order `Needs` declared by each order's converter. **Each component owns its own `Needs`** (per [`feedback_component_owns_its_preload`](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute their `Needs` — the order's producer declares them upfront. Idempotency-eviction, indexer mirror, admission orders, etc. each declare their own.
+`extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [`feedback_component_owns_its_preload`](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
 
 ### 7. Build the execution plan
 
-`builder.Build(operations)` (`internal/infra/plan/builder.go`) reads each `Needs` entry, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.
+`builder.Build(aggregate, operations)` (`internal/infra/plan/builder.go`) dispatches each `plan.Coverage` entry to its `attrCode` resolver, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.
 
 `Build` returns a `*BuildResult` holding the resolved `ExecutionPlan` and a loader cleanup token. A separate `AcquireProposalGuard(build)` (`internal/infra/plan/builder.go`) then takes the cache-rotation guard, re-checks the generation boundary — rebuilding the plan if a rotation intervened — and yields the `ProposalGuard` that keeps the loaders in scope for the propose call. The two-step split is the point: `Build` resolves coverage *without* holding the rotation lock, so the expensive work stays outside the critical section. On error paths where the guard was never acquired, `BuildResult.ReleaseLoaders()` releases the token.
 
@@ -112,7 +112,7 @@ A response signature (`SignedLog`) is attached at the gRPC layer on the way out 
 
 Two-stage check:
 
-- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `Needs` so the FSM can look it up.
+- **Admission**: the idempotency key's *shape* is validated (UTF-8, length ≤ 256). The key becomes part of the proposal's `plan.Coverage` — on its separate `IdempotencyKeys` channel, not as a cache attribute — so the FSM can look it up.
 - **FSM**: `processProposal` consults the replay cache (`SubIdempKeys` in Pebble). A hit returns the stored outcome reference (sequence + outcome) without re-executing the orders. A miss falls through to normal processing, and the outcome gets recorded under the same key on the way out.
 
 This split exists because the *uniqueness* check requires committed state — admission can only validate that the key is well-formed.

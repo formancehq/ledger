@@ -242,4 +242,4 @@ When a conflict is detected (same key, different content, within TTL):
 ## Related Documentation
 
 - [Numscript Library](../scripting/numscript-library.md) — the versioning model behind selector mutability, and dependency discovery / resolution.
-- [Admission Pipeline](pipeline.md) — where numscript resolution and Needs enrichment sit in the overall admission flow.
+- [Admission Pipeline](pipeline.md) — where numscript resolution and coverage enrichment sit in the overall admission flow.
