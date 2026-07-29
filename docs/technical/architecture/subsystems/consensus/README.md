@@ -7,6 +7,7 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 | Document | Description |
 |----------|-------------|
 | [raft-consensus.md](raft-consensus.md) | Raft consensus implementation, leader election, log replication, and snapshot transfer. |
+| [snapshot-file-transfer.md](snapshot-file-transfer.md) | Snapshot checkpoint file serving and its filesystem containment boundary. |
 | [global-log.md](global-log.md) | Two-level log architecture enabling system-level atomic bulk operations. |
 | [hybrid-logical-clock.md](hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew. |
 | [removed-member-registry.md](removed-member-registry.md) | Replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted. |
