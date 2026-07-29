@@ -1122,8 +1122,9 @@ func wrapSystemScoped(order *raftcmdpb.Order, ss *raftcmdpb.SystemScopedOrder) {
 // `Scope.GetVolume` returns `domain.ErrNotFound` and callers treat it
 // as a fresh zero balance (see `processing.readVolumeOrZero`). A
 // `*state.ErrCoverageMiss` (admission contract violation — need never
-// declared) stays distinct and propagates loud through
-// `ErrStorageOperation{Cause: covErr}`.
+// declared) stays distinct and propagates verbatim through
+// `domain.StoreFailure`, so the audit chain records `COVERAGE_MISS`
+// rather than a storage fault (EN-1379).
 func addVolumeNeed(p *plan.Coverage, ledgerName, account, asset, color string) {
 	p.Add(dal.SubAttrVolume, domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},

@@ -83,11 +83,28 @@ A coverage miss is an admission bug, not an infrastructure fault, and it is labe
 |---------|-------|
 | Hash-chained `AuditFailure.Reason` | `ERROR_REASON_COVERAGE_MISS` |
 | `AuditFailure.Context` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
-| Frozen idempotency outcome | the same reason and metadata |
+| Frozen idempotency outcome | **not applicable** — `KindInternal` failures are deliberately never frozen (`IsFreezableFailure`, `internal/domain/errors.go:152-158`), so a coverage miss leaves no idempotency record and the request stays retryable |
 | gRPC / HTTP `ErrorInfo.reason` | `COVERAGE_MISS` (status `INTERNAL` — both reasons are `KindInternal`) |
 | Node-local log + OTel counter | `scope.go:374-378` (see [Metrics](#metrics)) |
 
 The `Metadata()` keys are camelCase, matching every other `Describable` and the repo-wide wire convention. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
+
+The idempotency row is worth stating explicitly because the non-freezing is a design point, not an oversight: `recordIdempotencyFailure` returns early (`machine.go:1729`) for any non-freezable kind, and `KindForReason` classifies `ERROR_REASON_COVERAGE_MISS` as `KindInternal` (`internal/domain/reason.go:124`). Freezing would pin a server bug against the caller's key for the whole TTL. This was equally true before EN-1379 — `ERROR_REASON_STORAGE_OPERATION_FAILED` sits in the same `KindInternal` arm — so the idempotency outcome is not one of the surfaces the fix repairs.
+
+### Upgrade note: the reason is hash-bound
+
+`buildAuditFailurePayload` (`internal/infra/state/audit_envelope.go:176-198`) folds the reason, the message and every sorted context key **and value** into the audit hash pre-image. Relabelling an FSM-emitted failure is therefore *not* hash-neutral: for one and the same Raft entry, a node on the old build hashes `{STORAGE_OPERATION_FAILED, "storage operation failed: loading ledger", {operation}}` while a node on the new build hashes `{COVERAGE_MISS, "preload coverage miss (…)", {attribute, canonicalHex, idHex, raftIndex}}`.
+
+During a rolling upgrade both builds apply the same replicated log, so a coverage miss landing inside the mixed-version window writes **different hashes for the same index** — invariant #2 across the version boundary, after which `checker.verifyAuditHashChain` fails on whichever node disagrees with the persisted chain. Nothing absorbs this: `HashVersion` comes from `HashGenerator.Algorithm()` (`machine.go:1427`) and identifies the hash *algorithm* only, carrying no notion of failure-projection semantics, so a node cannot recognise "this entry was produced under the old classification".
+
+Consequences to hold in mind:
+
+- Coverage misses are correctly and consistently classified only once **every** node runs the new build. A miss inside the window can diverge the chain.
+- The window is narrow in practice: the trigger is itself an admission bug that should never fire. This is a low-probability path, not a routine one.
+- Only the read sites EN-1379 **converted** are affected. The numscript re-resolution path already returned the bare miss, so its reason and context are unchanged; only its message shifts, and only because `Error()` was aligned to the camelCase `raftIndex` spelling.
+- **This hazard is general.** It attaches to any change to an FSM-emitted error's reason, message or metadata — not to EN-1379 specifically. Treat "relabelling an FSM error is observable in the hash chain" as the standing rule when reviewing such a change.
+
+Making this structurally safe would mean carrying a failure-projection semantics version alongside `HashVersion` so old entries keep reproducing their original bytes. That is a deliberate design decision, not something EN-1379 took on.
 
 This holds because FSM read sites build their failure through `domain.StoreFailure(operation, err)` instead of constructing a `domain.ErrStorageOperation` directly:
 
@@ -109,9 +126,9 @@ failure.Reason = domain.ReasonCode(d.Reason())
 maps.Copy(failure.GetContext(), d.Metadata())
 ```
 
-So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the context stripped to `{operation: "..."}` — in a chain that is immutable by construction. The same outermost-only read happens in `recordIdempotencyFailure` (`machine.go:1746-1748`), which freezes the outcome for the idempotency TTL, and in `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`).
+So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the context stripped to `{operation: "..."}` — in a chain that is immutable by construction. `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`) performs the same outermost-only read, so the client sees the relabelled reason too. (`recordIdempotencyFailure` reads the outermost `Describable` the same way, but never reaches a coverage miss at all — see the idempotency row above.)
 
-`CoverageContractViolation` matches on the stable domain `Reason()` string rather than the concrete type, because `internal/domain/processing` cannot import `internal/infra/state` — `state` imports `processing`, so a type-based `errors.As` would be an import cycle. It recognises both `COVERAGE_MISS` and `INVALID_EXECUTION_PLAN`, walking the `Unwrap` chain so a violation nested behind a numscript `QueryBalanceError` is still found. (It follows single-error `Unwrap` only; an `errors.Join` hides its members.)
+`CoverageContractViolation` matches on the stable domain `Reason()` string rather than the concrete type, because `internal/domain/processing` cannot import `internal/infra/state` — `state` imports `processing`, so a type-based `errors.As` would be an import cycle. It recognises both `COVERAGE_MISS` and `INVALID_EXECUTION_PLAN`, walking the `Unwrap` chain so a violation nested behind a numscript `QueryBalanceError` is still found. It also descends into multi-error nodes (`errors.Join`, or `fmt.Errorf` with several `%w`), which `errors.Unwrap` cannot follow, visiting members in slice order so the result stays deterministic as the apply path requires. The `forbidigo` rule below cannot see a future `Join` — it is a plain call, not a forbidden type reference — so handling it in the walk is what keeps the guard whole.
 
 A `forbidigo` rule in `.golangci.yaml` forbids bare `ErrStorageOperation` construction, so a new read site cannot silently reintroduce the flattening.
 
