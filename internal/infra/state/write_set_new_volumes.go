@@ -15,15 +15,7 @@ import (
 // — the exact seed the preloader emits so admission's `Needs` can be planned
 // deterministically.
 func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
-	if v == nil {
-		return true
-	}
-
-	in := v.GetInput()
-	out := v.GetOutput()
-
-	return (in == nil || (in.GetV0() == 0 && in.GetV1() == 0 && in.GetV2() == 0 && in.GetV3() == 0)) &&
-		(out == nil || (out.GetV0() == 0 && out.GetV1() == 0 && out.GetV2() == 0 && out.GetV3() == 0))
+	return v.GetInput().IsZero() && v.GetOutput().IsZero()
 }
 
 // isNewVolumeUpdate reports whether a volume update represents a
