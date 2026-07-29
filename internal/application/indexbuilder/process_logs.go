@@ -1154,12 +1154,25 @@ func (b *Builder) indexSetMetadataFieldType(
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		// Strip the prefix byte (0x03) to get the portion after the prefix
-		// that the extract helpers expect.
-		suffixAfterByte := k[1:] // skip PrefixReverseMap byte
-		metaKey := extractMetadataKeyFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
+		rk, err := readstore.ParseReverseMapKey(k)
+		if err != nil {
+			// Mirrors the DecodeValue treatment below: a corrupt rmap key
+			// is fatal, not a silent skip, so the backfill replay of this
+			// SetMetadataFieldType log retries instead of leaving the
+			// index inconsistent for the entity it would have covered.
+			return fmt.Errorf("schema rewrite (backfill replay): parsing rmap key %x: %w", k, err)
+		}
 
-		if metaKey != smft.GetKey() {
+		// The prefix scan already fixes ledger+namespace, so this can
+		// only diverge if the stored key is corrupt in a way
+		// ParseReverseMapKey doesn't itself reject — treat it as the
+		// invariant violation it would be rather than silently
+		// rewriting the wrong entry.
+		if rk.Ledger != ledger || rk.Namespace != ns {
+			return fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, ledger, ns)
+		}
+
+		if rk.MetadataKey != smft.GetKey() {
 			continue
 		}
 
@@ -1170,7 +1183,7 @@ func (b *Builder) indexSetMetadataFieldType(
 
 		entries = append(entries, rmapEntry{
 			rmapKey:  cloneBytes(k),
-			entityID: extractEntityIDFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns),
+			entityID: rk.EntityID, // already a defensive copy — see ParseReverseMapKey's doc
 			oldValue: cloneBytes(v),
 		})
 	}
@@ -1216,40 +1229,6 @@ func cloneBytes(b []byte) []byte {
 	return c
 }
 
-// extractMetadataKeyFromReverseMap extracts the metadata key name from a
-// reverse map key, given the prefix up to the namespace.
-// For accounts:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
-// For transactions: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey].
-//
-// The 4-byte forward-encoding version sitting between the entity
-// delimiter and the metadata key was introduced as part of EN-1323's
-// per-replica versioning; the entity scan helpers skip past it.
-func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		// Find the null terminator after the account address, then
-		// skip the 4-byte version prefix that precedes metadataKey.
-		for i, b := range suffix {
-			if b == 0x00 {
-				rest := suffix[i+1:]
-				if len(rest) < 4 {
-					return ""
-				}
-
-				return string(rest[4:])
-			}
-		}
-
-		return ""
-	}
-	// Transaction: skip 8-byte txID then 4-byte version.
-	if len(suffix) > 12 {
-		return string(suffix[12:])
-	}
-
-	return ""
-}
-
 // isExcluded returns true if the (account, asset, color) tuple is in the
 // excluded set (transient or purged ephemeral). All three dimensions matter
 // — a multi-bucket account may have one (asset, color) purged while another
@@ -1263,25 +1242,4 @@ func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset, co
 	_, ok := excluded[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
 
 	return ok
-}
-
-// extractEntityIDFromReverseMap extracts the entity ID portion from a reverse map key.
-func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		// Entity ID is the account address (up to \x00)
-		for i, b := range suffix {
-			if b == 0x00 {
-				return suffix[:i]
-			}
-		}
-
-		return suffix
-	}
-	// Transaction: entity ID is first 8 bytes
-	if len(suffix) >= 8 {
-		return suffix[:8]
-	}
-
-	return suffix
 }
