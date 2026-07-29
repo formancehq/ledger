@@ -34,6 +34,18 @@ func TestCoverageContractViolation(t *testing.T) {
 		{name: "nil", err: nil, want: nil},
 		{name: "plain error", err: errors.New("disk on fire"), want: nil},
 		{name: "unrelated describable", err: other, want: nil},
+		{
+			// A genuine stale-inputs error is retryable, not an admission bug —
+			// the numscript re-resolution triage depends on the two staying apart.
+			name: "stale inputs resolution sentinel",
+			err:  ErrStaleInputsResolution,
+			want: nil,
+		},
+		{
+			name: "invalid execution plan sentinel type",
+			err:  &ErrInvalidExecutionPlan{Reason_: "undeclared key"},
+			want: &ErrInvalidExecutionPlan{Reason_: "undeclared key"},
+		},
 		{name: "bare coverage miss", err: miss, want: miss},
 		{name: "bare invalid plan", err: plan, want: plan},
 		{

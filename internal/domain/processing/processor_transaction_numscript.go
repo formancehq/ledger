@@ -78,8 +78,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// returns the Describable as-is). Softening this to retryable stale
 			// would hide the bug and spin the client in an infinite re-admit loop
 			// against the same missing declaration — surface it loudly (invariant
-			// #7). Matched by domain Reason so this file need not import
-			// internal/infra/state (which imports processing — import cycle).
+			// #7). Matched by domain Reason via domain.CoverageContractViolation
+			// so this file need not import internal/infra/state (which imports
+			// processing — import cycle).
 			//
 			// Accepted limitation (EN-1406): when the resolved dependency set is a
 			// function of mutable metadata (e.g. `account $src = meta(@cfg,"acct")`)
@@ -94,7 +95,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// missing declaration). Downgrading only ErrCoverageMiss to stale would
 			// close the value-shift case but risks masking the latter as an infinite
 			// retry loop, so that refinement is deferred to an explicit design call.
-			if isCoverageContractViolation(resolveErr) {
+			if domain.CoverageContractViolation(resolveErr) != nil {
 				return nil, resolveErr
 			}
 
@@ -315,34 +316,6 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		TransactionMetadata: txMeta,
 		AccountsMetadata:    accountsMeta,
 	}, nil
-}
-
-// isCoverageContractViolation reports whether err is an admission-contract
-// violation surfaced by the coverage-gated Scope during apply-time re-resolution
-// — a *state.ErrCoverageMiss (a key admission never declared) or a
-// *domain.ErrInvalidExecutionPlan (a structurally inconsistent plan). Both are
-// "should not happen" bugs (invariant #7) that must surface loudly rather than
-// be softened to the retryable ErrStaleInputsResolution.
-//
-// It matches on the stable domain Reason string rather than the concrete type so
-// this package need not import internal/infra/state (state imports processing —
-// an import cycle). Every Describable in the chain is inspected because the
-// numscript library wraps the store error (QueryBalanceError / QueryMetadataError
-// both implement Unwrap), so errors.As can reach the underlying typed error.
-func isCoverageContractViolation(err error) bool {
-	for e := err; e != nil; e = errors.Unwrap(e) {
-		describable, ok := e.(domain.Describable) //nolint:errorlint // deliberate per-node check; the loop unwraps the chain itself
-		if !ok {
-			continue
-		}
-
-		switch describable.Reason() {
-		case domain.ErrReasonCoverageMiss, domain.ErrReasonInvalidExecutionPlan:
-			return true
-		}
-	}
-
-	return false
 }
 
 // scopeValueSource reads balances and metadata through the FSM apply Scope.

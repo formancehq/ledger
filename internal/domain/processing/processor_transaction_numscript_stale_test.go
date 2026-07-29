@@ -1,8 +1,6 @@
 package processing
 
 import (
-	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -144,20 +142,9 @@ func TestProduce_InvalidExecutionPlanDuringResolutionIsLoudNotStale(t *testing.T
 	require.ErrorAs(t, err, &invalid, "the invalid-execution-plan violation must surface loudly")
 }
 
-// TestIsCoverageContractViolation is a focused unit test for the discriminator
-// the apply path uses, including the wrapped-in-chain case.
-func TestIsCoverageContractViolation(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, isCoverageContractViolation(coverageMissDescribable{}))
-	require.True(t, isCoverageContractViolation(&domain.ErrInvalidExecutionPlan{Reason_: "x"}))
-	// A coverage violation nested behind an fmt-wrapped error is still found via
-	// the Unwrap chain.
-	require.True(t, isCoverageContractViolation(
-		fmt.Errorf("wrapped: %w", &domain.ErrInvalidExecutionPlan{Reason_: "x"})))
-
-	require.False(t, isCoverageContractViolation(nil))
-	require.False(t, isCoverageContractViolation(errors.New("some resolution error")))
-	require.False(t, isCoverageContractViolation(domain.ErrStaleInputsResolution),
-		"a genuine stale-inputs error is not a coverage violation")
-}
+// The focused unit test for the discriminator itself now lives with the
+// discriminator: TestCoverageContractViolation in internal/domain/coverage_test.go
+// (EN-1379 promoted the private isCoverageContractViolation to the shared
+// domain.CoverageContractViolation). The tests above keep exercising this
+// package's use of it through produce(), which is the behaviour that matters
+// here.
