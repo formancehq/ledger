@@ -3193,6 +3193,7 @@ components:
           description: Ledger mode (NORMAL or MIRROR)
         mirror_source:
           $ref: '#/components/schemas/MirrorSourceConfig'
+          description: Mirror source configuration with reusable credentials removed from read responses.
         mirror_sync_progress:
           $ref: '#/components/schemas/MirrorSyncProgress'
         account_types:
@@ -4374,7 +4375,10 @@ components:
 
     MirrorSourceConfig:
       type: object
-      description: Configuration for the mirror source (required when mode is MIRROR)
+      description: >
+        Configuration for the mirror source (required when mode is MIRROR).
+        Ledger read responses preserve non-secret connection metadata but omit
+        OAuth client secrets and PostgreSQL password material.
       required:
         - ledgerName
       properties:

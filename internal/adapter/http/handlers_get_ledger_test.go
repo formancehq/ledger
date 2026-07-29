@@ -33,6 +33,34 @@ func TestHandleGetLedger_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleGetLedger_RedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	original := &commonpb.LedgerInfo{
+		Name: "mirror",
+		MirrorSource: &commonpb.MirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+				Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{
+					ClientId:     "client-id",
+					ClientSecret: "http-get-secret",
+				},
+			}},
+		},
+	}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(original, nil)
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/mirror", nil, map[string]string{"ledgerName": "mirror"})
+
+	srv.handleGetLedger(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "http-get-secret")
+	require.Contains(t, w.Body.String(), "client-id")
+	require.Equal(t, "http-get-secret", original.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientSecret())
+}
+
 func TestHandleGetLedger_MissingName(t *testing.T) {
 	t.Parallel()
 

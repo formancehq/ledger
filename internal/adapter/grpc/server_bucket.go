@@ -22,6 +22,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	adapterledgerinfo "github.com/formancehq/ledger/v3/internal/adapter/ledgerinfo"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -713,6 +714,8 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
+	c = adapterledgerinfo.NewRedactingCursor(c)
+
 	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
 		return l.GetName()
 	})
@@ -744,7 +747,12 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 	defer cleanup()
 
-	return c.GetLedgerByName(ctx, req.GetLedger())
+	ledgerInfo, err := c.GetLedgerByName(ctx, req.GetLedger())
+	if err != nil {
+		return nil, err
+	}
+
+	return adapterledgerinfo.RedactSecrets(ledgerInfo), nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {

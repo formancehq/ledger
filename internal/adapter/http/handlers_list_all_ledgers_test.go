@@ -34,6 +34,31 @@ func TestHandleListAllLedgers_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleListAllLedgers_RedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	original := &commonpb.LedgerInfo{
+		Name: "mirror",
+		MirrorSource: &commonpb.MirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{
+				Dsn: "postgres://user:http-list-secret@db.example/ledger?sslmode=require",
+			}},
+		},
+	}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLedgers(gomock.Any()).Return(cursor.NewSliceCursor([]*commonpb.LedgerInfo{original}), nil)
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/", nil, nil)
+
+	srv.handleListAllLedgers(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "http-list-secret")
+	require.Contains(t, w.Body.String(), "db.example/ledger")
+	require.Contains(t, original.GetMirrorSource().GetPostgres().GetDsn(), "http-list-secret")
+}
+
 func TestHandleListAllLedgers_Empty(t *testing.T) {
 	t.Parallel()
 

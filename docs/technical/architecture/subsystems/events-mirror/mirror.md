@@ -128,6 +128,11 @@ message MirrorSourceConfig {
 
 A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
 
+The stored mirror source retains the credentials required by that worker. Public
+ledger get/list responses are deep-cloned projections: OAuth client secrets and
+PostgreSQL password material are removed at the HTTP/gRPC adapter boundary,
+while non-secret source metadata and mirror progress remain visible.
+
 ## Declaring indexes on a mirror ledger (operator)
 
 A mirror ledger is read-only to clients, but index create/drop is explicitly allowed on it (`isMirrorSafeApply` whitelists `CreateIndex`/`DropIndex`), so a mirror can carry the same query indexes as its source. Because mirror ledgers are typically provisioned entirely through the Kubernetes operator's `Ledger` CRD, the CRD exposes a declarative `spec.indexes` block so the index set is part of the same GitOps manifest:

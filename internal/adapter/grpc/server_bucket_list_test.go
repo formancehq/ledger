@@ -93,6 +93,52 @@ func TestListLedgers(t *testing.T) {
 	})
 }
 
+func TestListLedgers_RedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	impl, mockCtrl := newListHandlerHarness(t)
+	original := &commonpb.LedgerInfo{
+		Name: "mirror",
+		MirrorSource: &commonpb.MirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+				Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{
+					ClientId:     "client-id",
+					ClientSecret: "list-secret",
+				},
+			}},
+		},
+	}
+	mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(page(original), nil)
+
+	stream := newFakeServerStream[commonpb.LedgerInfo](t)
+	require.NoError(t, impl.ListLedgers(&servicepb.ListLedgersRequest{}, stream))
+	require.Len(t, stream.sent, 1)
+	require.Empty(t, stream.sent[0].GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientSecret())
+	require.Equal(t, "client-id", stream.sent[0].GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientId())
+	require.Equal(t, "list-secret", original.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetClientSecret())
+}
+
+func TestGetLedger_RedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	impl, mockCtrl := newListHandlerHarness(t)
+	original := &commonpb.LedgerInfo{
+		Name: "mirror",
+		MirrorSource: &commonpb.MirrorSourceConfig{
+			Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{
+				Dsn: "postgres://user:get-secret@db.example/ledger?sslmode=require",
+			}},
+		},
+	}
+	mockCtrl.EXPECT().GetLedgerByName(gomock.Any(), "mirror").Return(original, nil)
+
+	redacted, err := impl.GetLedger(context.Background(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	require.NoError(t, err)
+	require.NotContains(t, redacted.GetMirrorSource().GetPostgres().GetDsn(), "get-secret")
+	require.Contains(t, redacted.GetMirrorSource().GetPostgres().GetDsn(), "db.example/ledger")
+	require.Contains(t, original.GetMirrorSource().GetPostgres().GetDsn(), "get-secret")
+}
+
 // TestListTransactions covers the new plumbing for transactions: peek-ahead
 // uses txCursorOf (id as decimal), ledger-name required, cursor parsing,
 // page-size clamping.
