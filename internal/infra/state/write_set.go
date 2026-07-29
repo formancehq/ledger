@@ -1223,7 +1223,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 			}
 
 			if err != nil {
-				storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "loading ledger for transient volume validation", Cause: err}})
+				storageFaults = append(storageFaults, storageFault{key, domain.StoreFailure("loading ledger for transient volume validation", err)})
 
 				continue
 			}
@@ -1254,7 +1254,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		// preserve the coverage invariant on this otherwise-engine-
 		// internal read.
 		if err := scope.CheckCoverage(dal.SubAttrVolume, key); err != nil {
-			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "coverage check on transient base volume", Cause: err}})
+			storageFaults = append(storageFaults, storageFault{key, domain.StoreFailure("coverage check on transient base volume", err)})
 
 			continue
 		}

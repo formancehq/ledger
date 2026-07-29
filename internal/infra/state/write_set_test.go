@@ -895,8 +895,11 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 // should-not-happen storage/coverage fault surfaces ahead of any business
 // offender: the check could not run correctly for that key, so the aggregated
 // ErrTransientAccountNonZero must not mask it. Here one transient volume has no
-// declared volume coverage (CheckCoverage fails => ErrStorageOperation) while
-// another is a plain non-zero business offender.
+// declared volume coverage (CheckCoverage fails => *ErrCoverageMiss) while
+// another is a plain non-zero business offender. Since EN-1379 that miss
+// propagates verbatim through domain.StoreFailure instead of being relabelled
+// as an ErrStorageOperation, so the audit chain records COVERAGE_MISS with the
+// identifying key.
 func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 	t.Parallel()
 
@@ -952,7 +955,9 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 		describ := buf.ValidateTransientVolumes(scope)
 		require.NotNil(t, describ, "iteration %d: expected a fault", i)
 
-		_, ok := describ.(*domain.ErrStorageOperation)
-		require.True(t, ok, "iteration %d: storage fault must win over business offender, got %T", i, describ)
+		_, ok := describ.(*ErrCoverageMiss)
+		require.True(t, ok, "iteration %d: coverage fault must win over business offender, got %T", i, describ)
+		require.Equal(t, domain.ErrReasonCoverageMiss, describ.Reason(),
+			"iteration %d: an undeclared key is an admission bug, not a storage fault (EN-1379)", i)
 	}
 }
