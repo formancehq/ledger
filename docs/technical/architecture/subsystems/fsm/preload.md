@@ -72,10 +72,10 @@ Every component that emits a proposal declares its own `Coverage`, next to the c
 |----------|----------------------------|
 | Admission | `extractPreloadNeeds`, `extractLedgerScopedNeeds`, `extractSystemScopedNeeds`, `addTransactionTargetNeeds`, `resolveScriptsAndEnrichNeeds` — `internal/application/admission/admission.go` |
 | Mirror worker | `extractMirrorNeeds` — `internal/application/mirror/worker.go` |
-| Metadata converter | `internal/infra/state/metadata_converter.go` |
-| Index builder | `internal/application/indexbuilder/` |
-| Cluster-config reconciler | `internal/bootstrap/` — empty `Coverage` |
-| Idempotency-eviction scheduler | `internal/application/admission/` — empty `Coverage` |
+| Events emitter | `internal/application/events/emitter.go` — empty `Coverage` |
+| Backup proposer | `internal/bootstrap/backup_proposer.go` |
+| Cluster-config reconciler | `proposeClusterConfigIfNeeded` — `internal/bootstrap/module.go` — empty `Coverage` |
+| Idempotency-eviction scheduler | `internal/infra/state/idempotency_eviction_scheduler.go`, wired in `internal/bootstrap/module.go` — empty `Coverage` |
 
 There is **no central proposal-type → `Coverage` registry**. Such a registry was rejected: it couples the preload package to every proposal type and reliably falls behind reality. The component knows what it reads, so the component declares it.
 
