@@ -178,7 +178,17 @@ What it does **not** cover:
 - **The encoding version.** Not validated: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
 - **Row values.** Only presence is judged, never the encoded value or the entity it points at.
 
-The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle, or when the read store's progress cursor has not reached the log sequence the checker verified (the registry is written at Raft apply while the reverse map is folded asynchronously, so an ungated check would false-positive mid-fold on a healthy cluster).
+The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle. An empty audit is **not** a skip: the read index folds from the log stream, so a reverse-map row over a zero-log store has nothing behind it.
+
+**Cursor skew.** The read store is folded asynchronously and independently of the primary store, so its progress cursor can sit on either side of the log sequence the checker pinned its oracles at. The two directions fail differently, so the pass separates its verdicts by the kind of evidence they rest on:
+
+| Evidence | Example | Requirement |
+|---|---|---|
+| Positive — a log the replay saw | replayed `RemovedMetadataFieldType` for the field, replayed `DeleteLedger` for the ledger | cursor has folded up to the verified sequence |
+| Absence — inferred from a pinned view | field in neither registry nor replayed schema; ledger missing from `knownLedgers` | cursor **exactly** at the verified sequence |
+| None | key does not decode | always reported |
+
+A cursor *behind* the verified sequence means a legitimately-removed field has no registry entry but still has live rows, so both verdict paths are suppressed. A cursor *ahead* means the builder may have folded rows for a field or ledger created after the pin, which absence cannot distinguish from a removed one — so only the positive-evidence path runs. `Check()` pins the peer snapshot next to the primary one to keep the aligned case reachable on a busy cluster; two snapshots across two Pebble stores are not atomic, which is why correctness rests on this split and not on the cursors matching.
 
 ## Summary
 
