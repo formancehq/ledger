@@ -43,7 +43,7 @@ type Coverage struct {
 }
 ```
 
-The map-of-maps shape collapses what used to be 13 typed key fields into a single generic dispatch keyed by attribute code — the same code the FSM uses to route through `AttributeCoverage.attr_code`.
+The map-of-maps shape collapses **12** of the 13 former typed key fields into a single generic dispatch keyed by attribute code — the same code the FSM uses to route through `AttributeCoverage.attr_code`. The 13th, idempotency, did **not** collapse: it survives as the separate `IdempotencyKeys` field and is never routed by `attr_code`. See [idempotency keys are a separate channel](#idempotency-keys-are-a-separate-channel) for why.
 
 **`Coverage.Add(attrCode byte, canonical []byte)`** records one key. `attributes.MakeKey(canonical)` returns `(id attributes.U128, tag uint64)`; the `id` becomes the map key and the `tag` is stored alongside the canonical bytes. `Add` is **idempotent** — a repeat `Add` for the same key is a no-op, so duplicate declarations within one proposal deduplicate for free. The caller **transfers ownership** of the slice: it must not mutate `canonical` afterwards.
 
@@ -62,7 +62,16 @@ type WriteOperation struct {
 }
 ```
 
-The two fields are independent, but in practice they are either both filled (admission orders, the mirror cursor) or both nil (cluster config, idempotency eviction, the events sink — technical updates whose handlers read no cache state).
+The two fields are independent, and the common no-read case is **not** "both nil". Every technical-update producer whose handler reads no cache state — the events emitter, the backup proposer, cluster config, idempotency eviction — still sets `Target` to the technical update's `CoverageBits` and leaves only `Coverage` nil, so the empty bitset is always stamped:
+
+```go
+operations := []plan.WriteOperation{{
+    Coverage: nil, // apply reads no FSM cache state
+    Target:   &proposal.GetTechnicalUpdates()[0].CoverageBits,
+}}
+```
+
+`Target` is nil only when the bitset is genuinely to be discarded. A nil `Coverage` is what makes `Builder.Run` take the no-preload fast path; it says nothing about where the bits land.
 
 ## The producer owns its declaration
 

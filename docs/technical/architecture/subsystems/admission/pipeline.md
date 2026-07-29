@@ -29,9 +29,10 @@ sequenceDiagram
     A->>Pre: Build(aggregate, operations) → ExecutionPlan
     Pre->>Pre: Cache (gen0/gen1) → Pebble fallback
     Pre-->>A: BuildResult (ExecutionPlan + loader cleanup token)
-    A->>A: marshalCommand(proposal)
+    A->>A: marshalCommand(proposal) — outside the critical section
+    A->>N: AcquireProposalGuard (tracker locked ⇒ predicted index known)
     A->>A: AppendProposalPredictedIndex(buf, idx)
-    A->>N: AcquireProposalGuard → Propose → release
+    A->>N: Propose → release guard
     N->>FSM: (WAL → replicate → applier → apply)
     FSM-->>A: Future.Wait() resolves
     A-->>Ctrl: per-order ApplyResult
