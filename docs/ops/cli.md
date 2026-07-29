@@ -4789,7 +4789,7 @@ Manage event sinks (NATS, ClickHouse, Kafka, HTTP, Databricks) that receive doma
 
 ### `events list`
 
-List all configured event sinks and their current status (cursor position, errors).
+List all configured event sinks and their current status (cursor position, errors). Credential-bearing fields are redacted by the server and again by `ledgerctl` for compatibility with older servers. Opaque secrets display `(set)` or `(none)`, and DSN passwords display `****`.
 
 ```bash
 ledgerctl events list

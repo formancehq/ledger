@@ -22,6 +22,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/adapter/eventsink"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -1149,10 +1150,10 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 
-	return &servicepb.GetEventsSinksResponse{
+	return eventsink.RedactGetResponse(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
-	}, nil
+	}), nil
 }
 
 func (impl *BucketServiceServerImpl) GetChapterSchedule(ctx context.Context, _ *servicepb.GetChapterScheduleRequest) (*servicepb.GetChapterScheduleResponse, error) {

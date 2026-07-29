@@ -160,7 +160,7 @@ Key formats:
 
 When a sink publish fails, the emitter reports the error via Raft by proposing an `EventsSinkUpdate` with the error details. The FSM stores a `SinkStatus` protobuf under `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`). On subsequent successful publish, the emitter proposes an update with `clear_error = true`, which deletes the status entry.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide:
+The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. The read projection is cloned before serialization and replaces all reusable credentials with non-reusable markers: opaque secrets use `(set)` or `(none)`, while URL-shaped DSN passwords use `****`. The runtime configuration remains unchanged. HTTP `GET /v3/_/events-sinks` uses the same projection, so callers must not reuse either read response as a sink mutation payload.
 
 ```protobuf
 message SinkStatus {

@@ -719,7 +719,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
-| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`; credentials redacted) |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
@@ -782,7 +782,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetPrimaryMetrics` | Get primary Pebble store metrics | ✅ |
 | `GetSecondaryMetrics` | Get secondary (read index) Pebble store metrics | ✅ |
 | `CheckStore` | Verify store integrity (hash chain + derived data) | ✅ |
-| `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
+| `GetEventsSinks` | Get redacted per-sink configurations and statuses | ✅ |
 | `GetChapterSchedule` | Get current chapter rotation schedule | ✅ |
 | `GetMetadataSchemaStatus` | Get the declared metadata schema for a ledger | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |

@@ -2348,7 +2348,9 @@ paths:
       summary: List configured event sinks
       description: |
         Returns every event sink configured on the cluster. Requires
-        `ledger:OpsRead` scope.
+        `ledger:OpsRead` scope. Credential-bearing fields are redacted: opaque
+        secrets use `(set)` or `(none)`, and URL-shaped DSN passwords use
+        `****`. Read responses must not be reused as sink mutation payloads.
       operationId: getEventsSinks
       tags:
         - Ops
@@ -2375,7 +2377,9 @@ paths:
                         type: array
                         items:
                           type: object
-                          description: SinkConfig (protobuf JSON representation)
+                          description: >
+                            Redacted SinkConfig (protobuf JSON representation).
+                            Non-secret operational fields remain visible.
                       sinkStatuses:
                         type: array
                         items:

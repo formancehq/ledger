@@ -63,3 +63,33 @@ func TestHandleGetEventsSinks_BackendError(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+func TestHandleGetEventsSinks_RedactsCredentialsAtHTTPBoundary(t *testing.T) {
+	t.Parallel()
+
+	config := &commonpb.SinkConfig{
+		Name: "kafka",
+		Type: &commonpb.SinkConfig_Kafka{Kafka: &commonpb.KafkaSinkConfig{
+			Brokers:      []string{"broker:9092"},
+			SaslUsername: "operator",
+			SaslPassword: "http-plaintext-password",
+		}},
+	}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().GetEventsSinks(gomock.Any()).Return(
+		[]*commonpb.SinkConfig{config},
+		[]*commonpb.SinkStatus{{SinkName: "kafka", Cursor: 42}},
+		nil,
+	)
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/_/events-sinks", nil, nil)
+
+	srv.handleGetEventsSinks(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), "http-plaintext-password")
+	require.Contains(t, w.Body.String(), `"saslPassword":"(set)"`)
+	require.Contains(t, w.Body.String(), `"saslUsername":"operator"`)
+	require.Equal(t, "http-plaintext-password", config.GetKafka().GetSaslPassword())
+}
