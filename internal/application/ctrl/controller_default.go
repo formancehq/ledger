@@ -1691,7 +1691,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}
 
-	return cursor.NewClosingCursor(c, handle), nil
+	return newProjectingCursor(cursor.NewClosingCursor(c, handle), projectLogForRead), nil
 }
 
 // ListAuditEntries returns a cursor over audit entries against the live store,
@@ -1745,7 +1745,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return cursor.NewClosingCursor(c, handle), nil
+	return newProjectingCursor(cursor.NewClosingCursor(c, handle), projectAuditEntryForRead), nil
 }
 
 // GetLog returns a single system log by sequence number.
@@ -1767,7 +1767,7 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 		return nil, commonpb.NewNotFoundError("log %d not found", sequence)
 	}
 
-	return log, nil
+	return projectLogForRead(log)
 }
 
 // GetAuditEntry returns a single audit entry by sequence number, with items populated.
@@ -1795,7 +1795,7 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 	entry.Items = items
 
-	return entry, nil
+	return projectAuditEntryForRead(entry)
 }
 
 // ListChapters returns a cursor over all non-purged chapters from the store.

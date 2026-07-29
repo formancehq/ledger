@@ -335,6 +335,8 @@ paths:
         Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
         Supports cursor pagination via the `after` query parameter. Requires `ledger:OpsRead` scope.
+        Secret-bearing sink and mirror fields in historical records are replaced with
+        `***REDACTED***`; the authoritative stored log is not mutated.
       operationId: listLedgerLogs
       tags:
         - Logs
@@ -427,6 +429,9 @@ paths:
         indexed. A client that needs a pinned or consistency-bounded audit read
         must use the gRPC surface.
 
+        Secret-bearing signed batch payloads are returned as redacted read
+        projections. The authoritative stored entry and hash chain are unchanged.
+
         Requires `ledger:AuditRead` scope.
       operationId: listAuditEntries
       tags:
@@ -516,6 +521,9 @@ paths:
       description: |
         Returns a single audit entry by its global sequence, with per-order
         `items` populated (the list endpoint omits `items` for compactness).
+        Credentials inside serialized orders and signed batch payloads are
+        replaced with `***REDACTED***`. Projected bytes are not the original
+        audit-hash or Ed25519-signature preimage; the signature bytes are omitted.
         Requires `ledger:AuditRead` scope.
       operationId: getAuditEntry
       tags:
@@ -2229,8 +2237,9 @@ paths:
       summary: Get a single system log by bucket-wide sequence
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
-        Falls back to cold storage when the log has been archived. Requires
-        `ledger:OpsRead` scope.
+        Falls back to cold storage when the log has been archived. Secret-bearing
+        sink and mirror fields are replaced with `***REDACTED***`; the authoritative
+        stored log is not mutated. Requires `ledger:OpsRead` scope.
       operationId: getLog
       tags:
         - Logs
@@ -5431,7 +5440,9 @@ components:
       description: |
         A single audit trail entry for a proposal (success or failure). Exactly
         one of `success` / `failure` is set. `items` is populated only by the
-        single-entry lookup, not by the list endpoint.
+        single-entry lookup, not by the list endpoint. Public reads return a
+        secret-safe projection; the stored hash remains the identifier of the
+        unprojected authoritative entry.
       properties:
         sequence:
           type: integer
@@ -5478,7 +5489,10 @@ components:
           description: Batch identity / idempotency information (protobuf JSON)
         signature:
           type: object
-          description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+          description: |
+            Signed-batch metadata (protobuf JSON); absent for unsigned batches.
+            On public reads the payload is redacted and the signature bytes are
+            omitted because they cover the original unredacted payload.
 
     AuditItem:
       type: object
@@ -5490,7 +5504,10 @@ components:
           description: Zero-based position of this order within the proposal
         serializedOrder:
           type: string
-          description: Hex-encoded deterministic serialized bytes of the order at apply time
+          description: |
+            Hex-encoded deterministic serialized business-intent bytes projected
+            for public reads. Credential fields are `***REDACTED***`, so these
+            bytes are not the authoritative audit-hash preimage.
         logSequence:
           type: integer
           format: uint64

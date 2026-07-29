@@ -58,7 +58,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
 | **Logs** |
-| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
+| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index). Historical sink/mirror credentials are redacted from read responses. |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -74,8 +74,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | List numscript versions | ✅ | ❌ | Per-ledger, `GET .../numscripts/{name}/versions`, current latest + every stored version |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
-| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)) |
-| Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items` |
+| List audit entries | ✅ | ❌ | `GET /v3/_/audit-entries` (HTTP) + gRPC stream. Bucket-wide; `pageSize`/`after`/`reverse` + a bare-audit-field filter expression (`outcome`, `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`, `order_type`, resolved against the audit query target — EN-1549 replaced the old `audit[...]` namespaced syntax; textual form only, audit has no structured JSON form — see [Filter input formats](#filter-input-formats-dual-format-contract-en-1511)). Secret-bearing signed batch payloads are returned as redacted projections. |
+| Get audit entry by sequence | ✅ | ❌ | `GET /v3/_/audit-entries/{sequence}` (HTTP) + gRPC. Populates per-order `items`; secret-bearing order and signed-batch bytes are projected with credentials redacted. |
 | Audit log disable/enable | ❌ | ❌ | Not implemented |
 | **Error Handling** |
 | Structured gRPC error codes | ✅ | ✅ | BusinessError with ErrorInfo details |
@@ -716,7 +716,7 @@ Read endpoints comparison with the original ledger:
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT) |
 | `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
-| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
+| `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence; historical sink/mirror credentials are redacted |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
@@ -801,10 +801,10 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `Apply(CloseChapter)` | Close the current open chapter | ✅ |
 | `ListChapters` | Stream all chapters | ✅ |
-| `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
-| `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination) | ✅ |
-| `GetLog` | Get a single system log by sequence number | ✅ |
+| `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions. Secret-bearing signed payloads are redacted on read. | ✅ |
+| `GetAuditEntry` | Get a single audit entry by sequence number. Secret-bearing order and signed-batch bytes are redacted on read. | ✅ |
+| `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination). Historical credentials are redacted on read. | ✅ |
+| `GetLog` | Get a single system log by sequence number. Historical credentials are redacted on read. | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) and build info (`ServerInfo`: version, commit, build date, Go version) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
