@@ -29,8 +29,12 @@ func countReverseMapRows(t *testing.T, b *Builder, ledger, ns, metaKey string) i
 
 	count := 0
 	for iter.First(); iter.Valid(); iter.Next() {
-		_, mk, _, ok := parseReverseMapKey(iter.Key(), prefix, ns)
-		if ok && mk == metaKey {
+		rk, err := readstore.ParseReverseMapKey(iter.Key())
+		require.NoError(t, err)
+		require.Equal(t, ledger, rk.Ledger)
+		require.Equal(t, ns, rk.Namespace)
+
+		if rk.MetadataKey == metaKey {
 			count++
 		}
 	}

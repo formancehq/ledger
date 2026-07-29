@@ -2,7 +2,6 @@ package indexbuilder
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -1285,72 +1284,4 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 	}
 
 	return suffix
-}
-
-// parseReverseMapKey parses a full reverse-map key (including the
-// PrefixReverseMap discriminator byte) and returns the (entityID,
-// metaKey, version) tuple it encodes. ok=false when the key shape is
-// incompatible with the namespace (corrupt key, scanning past a fresh
-// version frontier with truncated tails).
-//
-// This is the single chokepoint for "the rmap key offset math" — any
-// caller that needs more than one of the three fields should route
-// through here instead of calling the individual extractors. The
-// extract* helpers are kept as-is for callers that want only one
-// field cheaply, but the multi-field sites (schema rewrite, GC, field
-// removal) all read from this helper so an offset bug only has one
-// place to break.
-func parseReverseMapKey(k, rmapPrefix []byte, ns string) (entityID []byte, metaKey string, version uint32, ok bool) {
-	if len(k) < 1 || len(rmapPrefix) < 1 {
-		return nil, "", 0, false
-	}
-
-	suffix := k[1:]
-	nsPrefix := rmapPrefix[1:]
-
-	metaKey = extractMetadataKeyFromReverseMap(suffix, nsPrefix, ns)
-	if metaKey == "" {
-		// Either the key is corrupt or the suffix is too short to hold
-		// a non-empty metaKey — caller treats both as "skip".
-		return nil, "", 0, false
-	}
-
-	v, vOk := extractVersionFromReverseMap(suffix, nsPrefix, ns)
-	if !vOk {
-		return nil, "", 0, false
-	}
-
-	return extractEntityIDFromReverseMap(suffix, nsPrefix, ns), metaKey, v, true
-}
-
-// extractVersionFromReverseMap returns the 4-byte big-endian
-// forward-encoding version embedded in a reverse map key suffix.
-// Returns (0, false) when the suffix is too short or malformed —
-// callers treat that as "skip this entry" rather than crash.
-//
-// Key layout (after stripping the PrefixReverseMap byte):
-//   - Account:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
-//   - Transaction: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey]
-func extractVersionFromReverseMap(key, nsPrefix []byte, ns string) (uint32, bool) {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		for i, b := range suffix {
-			if b == 0x00 {
-				rest := suffix[i+1:]
-				if len(rest) < 4 {
-					return 0, false
-				}
-
-				return binary.BigEndian.Uint32(rest[:4]), true
-			}
-		}
-
-		return 0, false
-	}
-	// Transaction: version sits at suffix[8:12].
-	if len(suffix) >= 12 {
-		return binary.BigEndian.Uint32(suffix[8:12]), true
-	}
-
-	return 0, false
 }

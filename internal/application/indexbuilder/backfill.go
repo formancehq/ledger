@@ -724,10 +724,25 @@ scan:
 		lastScannedKey = cloneBytes(k)
 		scanned++
 
-		entityID, metaKey, entryVersion, parsed := parseReverseMapKey(k, rmapPrefix, ns)
-		if !parsed || metaKey != task.key {
+		rk, err := readstore.ParseReverseMapKey(k)
+		if err != nil {
+			return false, fmt.Errorf("schema rewrite: parsing rmap key %x: %w", k, err)
+		}
+
+		// The prefix scan already fixes ledger+namespace, so this can
+		// only diverge if the stored key is corrupt in a way
+		// ParseReverseMapKey doesn't itself reject — treat it as the
+		// invariant violation it would be rather than silently
+		// rewriting the wrong entry.
+		if rk.Ledger != task.ledger || rk.Namespace != ns {
+			return false, fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, task.ledger, ns)
+		}
+
+		if rk.MetadataKey != task.key {
 			continue
 		}
+
+		entityID, entryVersion := rk.EntityID, rk.Version
 
 		// Skip rmap rows that don't belong to v_current. The rewrite
 		// reads from v_current and writes to v_pending; without this

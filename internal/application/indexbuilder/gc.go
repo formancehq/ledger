@@ -76,8 +76,21 @@ func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilde
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		_, mk, v, parsed := parseReverseMapKey(k, rmapPrefix, ns)
-		if !parsed || mk != metaKey || v != version {
+		rk, err := readstore.ParseReverseMapKey(k)
+		if err != nil {
+			return fmt.Errorf("gc rmap: parsing key %x: %w", k, err)
+		}
+
+		// The prefix scan already fixes ledger+namespace, so this can
+		// only diverge if the stored key is corrupt in a way
+		// ParseReverseMapKey doesn't itself reject — treat it as the
+		// invariant violation it would be rather than silently GC'ing
+		// (or skipping) the wrong entry.
+		if rk.Ledger != ledger || rk.Namespace != ns {
+			return fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, ledger, ns)
+		}
+
+		if rk.MetadataKey != metaKey || rk.Version != version {
 			continue
 		}
 
