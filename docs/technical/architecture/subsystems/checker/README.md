@@ -13,7 +13,7 @@ Two pages cover what the checker depends on and what it does.
 
 ## Why a dedicated subsystem
 
-The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope *by construction* since `Check()` never opens them. That carve-out is **not** a claim they are integrity-safe: the readstore's contents are a **current open integrity gap** until its per-replica detect/drop/rebuild is wired (`EN-1323`) — a rebuild-health concern of the index builder, not a main-store checker concern. And a primary-store projection is exempt only when it is rebuildable through a real, *wired* rebuild path or is purely informational (cf. `BuildStatus`). This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
+The audit chain and the checker are tightly coupled by an explicit invariant: **every persisted dataset is either hash-bound (the audit log itself) or derivable from the hash-bound data, in which case the checker must verify it on every `Check()` run** ([CLAUDE.md invariant #8](../../../../../AGENTS.md)). Two scope refinements from invariant #8 apply: the rule covers the **primary FSM store** that `Check()` opens and walks — **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope as a rule, with **exactly one narrow, deliberate exception**: the readstore **reverse map** (`0x03`), verified by `compareReverseMapOrphans` (EN-1458), which `Check()` opens the peer readstore read-only to scan. That is the only peer-store data any pass reads; `usagestore` stays out entirely. The carve-out is **not** a claim the rest is integrity-safe: the readstore's index *contents* are a **current open integrity gap** until its per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`) — a rebuild-health concern of the index builder, not a main-store checker concern. And a primary-store projection is exempt only when it is rebuildable through a real, *wired* rebuild path or is purely informational (cf. `BuildStatus`). This rule shapes design decisions across every other subsystem — what to refactor versus what to bind — so the checker's coverage is its own first-class architectural concern.
 
 For new persisted state, first classify whether it is business truth, governance
 truth, operational consensus state, or a rebuildable projection using
@@ -44,10 +44,13 @@ is technical replication state, not a gap; however the **advanced-cursor path**
 reports FOLLOWING, silently under-ingesting v2→v3) remains a **current open
 correctness gap** until worker/startup reconciliation is wired. And the
 **readstore inverted-index contents** are a peer secondary store, out of
-main-store checker scope *by construction* — but that is not a claim they are
+main-store checker scope as a rule — but that is not a claim they are
 integrity-safe: their contents are a current open integrity gap until per-replica
-detect/drop/rebuild is wired (`EN-1323`, not yet wired) —
-see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md).
+detect/drop/rebuild is wired (`EN-1514` / `EN-1323`, not yet wired). The one
+peer-store datum a pass does verify is reverse-map (`0x03`) row *presence*
+(`compareReverseMapOrphans`, EN-1458), which covers neither row values nor
+`DropIndex` residue (`EN-1621`) — see
+[Audit-Bound vs Technical State](../../audit-vs-technical-state.md).
 Persisted projections that are genuinely not yet covered — prepared
 queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive
 user-visible results and with no `compare*` pass), persisted bloom blocks on

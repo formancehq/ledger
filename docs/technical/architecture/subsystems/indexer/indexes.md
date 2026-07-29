@@ -69,7 +69,7 @@ A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilde
 - `handleCreatedIndexLog` — initialises `BuildStatus=BUILDING`, `PendingVersion=1`, `CurrentVersion=0`, persists the version-state row, then registers a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
 - `backfillTask` — opaque cursor that replays historical logs into `v_pending`, persisting progress in Pebble so a node restart resumes mid-rewrite (`internal/application/indexbuilder/backfill.go:21-32`).
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, `RewriteProgress ← nil`, all in one Pebble batch (`backfill.go:1197+`).
-- `handleDroppedIndexLog` — removes the index from the in-memory config, cancels any in-flight backfill / schema-rewrite task, and deletes the `IndexVersionState` row (`index_config.go:421-436`). **It does NOT purge the read-store keyspaces** (`0x01` / `0x02` / `0x03`) — those rows are reclaimed only on `RemovedMetadataFieldType` (`process_metadata_field_removal.go`) or `DeleteLedger`.
+- `handleDroppedIndexLog` — removes the index from the in-memory config, cancels any in-flight backfill / schema-rewrite task, and deletes the `IndexVersionState` row (`index_config.go:421-436`). **It does NOT purge the read-store keyspaces** (`0x01` / `0x02` / `0x03`) — those rows are reclaimed only on `RemovedMetadataFieldType` (`process_metadata_field_removal.go`) or `DeleteLedger`. Rows stranded this way survive indefinitely on an otherwise healthy cluster; the leak is tracked as `EN-1621`. It is **not** reported by the checker's reverse-map pass, which deliberately excludes `DropIndex` residue — see [Checker Coverage](#checker-coverage) below.
 
 A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Synchronisation across nodes is client-driven through `min_log_sequence` on the read API (note: that pins **log application**, not local rewrite completion — see `api-comparison.md`).
 
@@ -166,6 +166,20 @@ Because the index registry and the per-replica version state are projections (on
 
 In-flight `IndexVersionState` is NOT checked: by design it is per-replica and may legitimately differ across nodes while a rewrite is propagating.
 
+### Reverse-map rows are checker-visible
+
+The read store is a peer secondary store, and its index **contents** stay out of the main-store checker's scope (`EN-1514` / `EN-1323`). One limb is an exception: `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`, EN-1458) opens a read-only snapshot of the read store and scans the reverse map (`0x03`) for rows whose `(ledger, target, metadata key)` is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed `MetadataSchema`. Findings emit `CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN`, aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity.
+
+Why only this limb: `0x01` and `0x02` are keyed so that a whole field is covered by a prefix and can be dropped with one `DeleteRange`, which is atomic. In `0x03` the metadata key sits *after* the fixed-width version block, so no prefix covers "every row of this field" — removal has to scan the namespace and point-delete row by row (`purgeReverseMapForKey`), and a row that scan misses is a permanent divergence with no other detector.
+
+What it does **not** cover:
+
+- **`DropIndex` residue.** The oracle requires absence from the replayed schema as well as from the registry, and `DropIndex` leaves the schema field declared. Since `Check()` has no warning channel, a registry-only oracle would leave every cluster that has ever dropped a metadata index permanently red. The `DropIndex` leak is `EN-1621`, tracked separately. Once `EN-1621` makes `DropIndex` purge rows, a regression in that purge would strand rows while the schema field is still declared and this pass would not catch it — the oracle has to be revisited then.
+- **The encoding version.** Not validated: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
+- **Row values.** Only presence is judged, never the encoded value or the entity it points at.
+
+The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle, or when the read store's progress cursor has not reached the log sequence the checker verified (the registry is written at Raft apply while the reverse map is folded asynchronously, so an ungated check would false-positive mid-fold on a healthy cluster).
+
 ## Summary
 
 | Concern | Where it lives | Persisted? | Hash-bound? |
@@ -173,5 +187,6 @@ In-flight `IndexVersionState` is NOT checked: by design it is per-replica and ma
 | Index definition (presence + `IndexID`) | `commonpb.Index` in `SubAttrIndex` | Yes | No — projection of `CreateIndex` / `DropIndex` / `RemovedMetadataFieldType` / `DeleteLedger` logs (re-verified by `compareIndexes` — presence + identity only). |
 | Cluster-wide rewrite version | `Index.forward_encoding_version` | Yes (with the definition) | No — **not** re-verified by the checker. The version is informational at the registry level; the per-replica `IndexVersionState.CurrentVersion` is what queries gate on, and is also not checked across replicas (legitimately per-local). |
 | Per-replica rewrite state | `IndexVersionState` in `SubInternalIndexVersion` | Yes | No — purely local; not compared across replicas. |
+| Reverse-map row presence | `0x03` keyspace in the peer read store | Yes (peer store) | No — projection of the metadata logs. Row *presence* is re-verified by `compareReverseMapOrphans` against the registry and the replayed schema; row values are not, and `DropIndex` residue is out of that pass (`EN-1621`). |
 | Cardinality / Min / Max / null counts | Computed by `inspectSummary` on demand | **No** | N/A — derived from the live keyspace. |
 | Bloom counters | OTel | No | N/A — monitoring only. |
