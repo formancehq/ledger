@@ -33,9 +33,9 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 
 	md := miss.Metadata()
 	require.Equal(t, "ledgers", md["attribute"])
-	require.Equal(t, "deadbeef", md["canonical_hex"])
-	require.Equal(t, "0102", md["id_hex"])
-	require.Equal(t, strconv.FormatUint(42, 10), md["raft_index"])
+	require.Equal(t, "deadbeef", md["canonicalHex"])
+	require.Equal(t, "0102", md["idHex"])
+	require.Equal(t, strconv.FormatUint(42, 10), md["raftIndex"])
 
 	require.Contains(t, miss.Error(), "ledgers")
 	require.Contains(t, miss.Error(), "0102")
@@ -82,9 +82,9 @@ func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
 
 			md := got.Metadata()
 			require.Equal(t, "volumes", md["attribute"])
-			require.Equal(t, "deadbeef", md["canonical_hex"])
-			require.Equal(t, "0102", md["id_hex"])
-			require.Equal(t, "42", md["raft_index"])
+			require.Equal(t, "deadbeef", md["canonicalHex"])
+			require.Equal(t, "0102", md["idHex"])
+			require.Equal(t, "42", md["raftIndex"])
 		})
 	}
 }

@@ -44,12 +44,18 @@ func (e *ErrCoverageMiss) Error() string {
 }
 
 func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
+
+// Metadata keys are camelCase, matching every other Describable and the
+// repo-wide wire convention: since EN-1379 this map is no longer swallowed by
+// an ErrStorageOperation wrap, so it reaches the gRPC/HTTP ErrorInfo and the
+// AuditFailure context verbatim. The structured log emitted by coverageMiss
+// keeps its own snake_case field names — that is a log, not a wire payload.
 func (e *ErrCoverageMiss) Metadata() map[string]string {
 	return map[string]string{
-		"attribute":     e.Attribute,
-		"canonical_hex": e.CanonicalHex,
-		"id_hex":        e.IDHex,
-		"raft_index":    strconv.FormatUint(e.RaftIndex, 10),
+		"attribute":    e.Attribute,
+		"canonicalHex": e.CanonicalHex,
+		"idHex":        e.IDHex,
+		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
 	}
 }
 

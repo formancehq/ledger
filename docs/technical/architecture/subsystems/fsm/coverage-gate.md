@@ -75,6 +75,50 @@ The result is a value the apply path was never authorized to consult. Two failur
 
 Both are catastrophic for an FSM that is supposed to be a pure function of its declared inputs.
 
+## How a violation surfaces
+
+A coverage miss is an admission bug, not an infrastructure fault, and it is labelled that way on every surface it reaches:
+
+| Surface | Value |
+|---------|-------|
+| Hash-chained `AuditFailure.Reason` | `ERROR_REASON_COVERAGE_MISS` |
+| `AuditFailure.Context` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
+| Frozen idempotency outcome | the same reason and metadata |
+| gRPC / HTTP `ErrorInfo.reason` | `COVERAGE_MISS` (status `INTERNAL` — both reasons are `KindInternal`) |
+| Node-local log + OTel counter | `scope.go:374-378` (see [Metrics](#metrics)) |
+
+The `Metadata()` keys are camelCase, matching every other `Describable` and the repo-wide wire convention. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
+
+This holds because FSM read sites build their failure through `domain.StoreFailure(operation, err)` instead of constructing a `domain.ErrStorageOperation` directly:
+
+```go
+// internal/domain/coverage.go
+func StoreFailure(operation string, err error) Describable {
+	if violation := CoverageContractViolation(err); violation != nil {
+		return violation // propagated verbatim — reason and metadata intact
+	}
+
+	return &ErrStorageOperation{Operation: operation, Cause: err}
+}
+```
+
+The distinction is load-bearing. `buildAuditFailure` (`internal/infra/state/audit.go:19-29`) reads `Reason()` and `Metadata()` off the **outermost** `Describable` and never unwraps:
+
+```go
+failure.Reason = domain.ReasonCode(d.Reason())
+maps.Copy(failure.GetContext(), d.Metadata())
+```
+
+So wrapping a `*ErrCoverageMiss` would permanently record an admission bug as `STORAGE_OPERATION_FAILED`, with the context stripped to `{operation: "..."}` — in a chain that is immutable by construction. The same outermost-only read happens in `recordIdempotencyFailure` (`machine.go:1746-1748`), which freezes the outcome for the idempotency TTL, and in `businessErrorToGRPCStatus` (`internal/adapter/grpc/errors.go:86`).
+
+`CoverageContractViolation` matches on the stable domain `Reason()` string rather than the concrete type, because `internal/domain/processing` cannot import `internal/infra/state` — `state` imports `processing`, so a type-based `errors.As` would be an import cycle. It recognises both `COVERAGE_MISS` and `INVALID_EXECUTION_PLAN`, walking the `Unwrap` chain so a violation nested behind a numscript `QueryBalanceError` is still found. (It follows single-error `Unwrap` only; an `errors.Join` hides its members.)
+
+A `forbidigo` rule in `.golangci.yaml` forbids bare `ErrStorageOperation` construction, so a new read site cannot silently reintroduce the flattening.
+
+Technical-update handlers take a different route to the same place: they return plain `fmt.Errorf("...: %w", err)` and `applyTechnicalUpdates` extracts the violation via `planInvariantDescribable` (`machine.go:1133`), which uses `errors.As` because the `state` package *can* name the concrete type. Both routes end at the same reason code.
+
+Note that a violation is not only produced by reads. `gatedAccessor.Delete` (`internal/infra/state/accessor.go:113-118`) also calls `CheckCoverage`, so a staged tombstone flushed by `orderOverlayScope.Commit()` surfaces a coverage miss too — which is why `ProcessOrders` routes that error through `StoreFailure` rather than dropping it (`internal/domain/processing/processor.go:341-350`).
+
 ## The cascade-on-delete edge case
 
 Some operations naturally want to scan: "delete every metadata row attached to this account", "purge every volume belonging to a deleted ledger", etc. These are the cases where a naive implementation reaches for `Registry.X.KeyStore().M` — and where the rule has historically been challenged.

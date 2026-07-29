@@ -937,6 +937,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Invalid order type (protocol mismatch) | `INTERNAL` | `INVALID_ORDER_TYPE` | `typeName` |
 | Invalid apply type (protocol mismatch) | `INTERNAL` | `INVALID_APPLY_TYPE` | `typeName` |
 | Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
+| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
 | Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
 
 ### REST/HTTP Error Mapping
