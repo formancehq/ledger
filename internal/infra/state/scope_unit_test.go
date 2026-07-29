@@ -42,6 +42,67 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 	require.Contains(t, miss.Error(), "42")
 }
 
+// TestErrCoverageMissSurvivesStoreFailure pins the EN-1379 propagation
+// contract against the REAL *ErrCoverageMiss type. domain.StoreFailure matches
+// on the Reason string (internal/domain/processing cannot import this package
+// — import cycle), so this is the test that proves the string contract and the
+// concrete type actually agree.
+//
+// It matters because buildAuditFailure reads Reason()/Metadata() off the
+// OUTERMOST Describable and never unwraps: if StoreFailure wrapped the miss,
+// the hash-chained audit entry would permanently record
+// STORAGE_OPERATION_FAILED with the identifying key stripped.
+func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
+	t.Parallel()
+
+	miss := &ErrCoverageMiss{
+		Attribute:    "volumes",
+		CanonicalHex: "deadbeef",
+		IDHex:        "0102",
+		RaftIndex:    42,
+	}
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{name: "bare", err: miss},
+		{name: "wrapped once", err: fmt.Errorf("numscript: %w", miss)},
+		{name: "wrapped in a storage operation", err: &domain.ErrStorageOperation{Operation: "loading volume", Cause: miss}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := domain.StoreFailure("loading volume", tt.err)
+
+			require.Same(t, miss, got)
+			require.Equal(t, domain.ErrReasonCoverageMiss, got.Reason())
+
+			md := got.Metadata()
+			require.Equal(t, "volumes", md["attribute"])
+			require.Equal(t, "deadbeef", md["canonical_hex"])
+			require.Equal(t, "0102", md["id_hex"])
+			require.Equal(t, "42", md["raft_index"])
+		})
+	}
+}
+
+// TestGenuineStoreFaultStillWraps guards the other direction: a real IO failure
+// must keep the storage label, so the EN-1379 branch cannot silently
+// reclassify infrastructure faults as admission bugs.
+func TestGenuineStoreFaultStillWraps(t *testing.T) {
+	t.Parallel()
+
+	cause := errors.New("pebble: db closed")
+
+	got := domain.StoreFailure("loading volume", cause)
+
+	require.Equal(t, domain.ErrReasonStorageOperation, got.Reason())
+	require.ErrorIs(t, got, cause)
+}
+
 // TestKindLabel exhaustively pins the (sub-attribute byte → label)
 // mapping the gatedScope counter + structured log rely on. A new
 // SubAttrXxx that forgets to land here would surface as
