@@ -66,7 +66,16 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	batch := b.wb.Batch()
 
 	if batch == nil {
-		return nil
+		// handleRemovedMetadataFieldType is only ever reached through
+		// indexPayload, whose callers Init the WriteBatch before dispatching
+		// log payloads. A nil batch here means the call site is broken —
+		// surface it loudly per CLAUDE.md invariant #7, exactly as
+		// bumpPendingVersion does. Returning nil would report success while
+		// skipping all three limbs at once: the forward-index range delete,
+		// the entity-exists range delete and the reverse-map point deletes.
+		return fmt.Errorf(
+			"invariant: no readstore write batch bound during RemovedMetadataFieldType for ledger %q field %q",
+			ledgerName, key)
 	}
 
 	// Forward inverted index — every version in one range delete.
@@ -180,6 +189,18 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 		if err := deleteMatch(append([]byte(nil), k...)); err != nil {
 			return err
 		}
+	}
+
+	// !iter.Valid() is indistinguishable from normal exhaustion when the scan
+	// fails mid-way on an I/O error or a corrupt block. Without this check the
+	// function would fall through to the overlay pass and return nil, so
+	// handleRemovedMetadataFieldType would commit the batch and treat the field
+	// removal as complete — leaving the un-scanned rows undeleted and never
+	// retried. That is exactly the permanent orphan compareReverseMapOrphans
+	// exists to report, manufactured by the one function whose miss creates it.
+	// Propagating instead aborts the batch and lets the fold retry the log.
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("scanning rmap for purge: %w", err)
 	}
 
 	// In-flight rows from the same uncommitted batch. The callback has no

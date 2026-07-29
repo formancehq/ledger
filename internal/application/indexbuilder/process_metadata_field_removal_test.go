@@ -318,3 +318,39 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
 	})
 }
+
+// TestHandleRemovedMetadataFieldType_NoBatchFailsLoudly pins invariant #7 on the
+// purge entry point. Every path into handleRemovedMetadataFieldType runs
+// initBatch first, so an unbound batch is impossible by design — but the old
+// `return nil` reported success while skipping all three limbs at once: the
+// forward-index range delete, the entity-exists range delete and the reverse-map
+// point deletes. Neither 0x01 nor 0x02 has a detector of its own, so a refactor
+// that dropped an initBatch would have produced a fully unindexed removal with no
+// signal anywhere. It now mirrors bumpPendingVersion and fails loudly.
+func TestHandleRemovedMetadataFieldType_NoBatchFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger     = "L1"
+		removedKey = "role"
+	)
+
+	b := newTestBuilderWithStore(t)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey)
+	cfg := newLedgerIndexConfig()
+	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{Id: id}
+
+	// No initBatch: b.wb holds no session, so Batch() returns nil.
+	b.wb.Reset()
+	require.Nil(t, b.wb.Batch(), "precondition: the write batch must be unbound")
+
+	err := b.handleRemovedMetadataFieldType(b.kb, cfg, ledger, &commonpb.RemovedMetadataFieldTypeLog{
+		DroppedIndex: id,
+	})
+
+	require.Error(t, err, "a missing write batch must not be reported as a completed removal")
+	require.Contains(t, err.Error(), "invariant:")
+	require.Contains(t, err.Error(), ledger)
+	require.Contains(t, err.Error(), removedKey)
+}

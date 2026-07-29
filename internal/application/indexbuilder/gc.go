@@ -12,8 +12,8 @@ import (
 
 // parseScopedReverseMapKey decodes k and asserts it belongs to (ledger, ns).
 // Every caller scans a Pebble prefix built from exactly (ledger, ns) —
-// gcReverseMapVersion, processSchemaRewrite, indexSetMetadataFieldType, and
-// both scans in purgeReverseMapForKey — so a divergence between the decoded
+// gcReverseMapVersion, processSchemaRewrite, and both scans in
+// purgeReverseMapForKey — so a divergence between the decoded
 // key and the scope the caller iterated means the stored key is corrupt in a
 // way ParseReverseMapKey's own shape checks don't reject, not a runtime
 // condition. Per CLAUDE.md invariant #7 that gets a loud error, never a
@@ -113,6 +113,13 @@ func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilde
 		if err := batch.DeleteKey(cloneBytes(k)); err != nil {
 			return fmt.Errorf("gc rmap entry: %w", err)
 		}
+	}
+
+	// A truncated scan is indistinguishable from exhaustion on !iter.Valid(),
+	// and returning nil here would report the version as reclaimed while leaving
+	// rows behind — the same silent-truncation shape as purgeReverseMapForKey.
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("scanning rmap for gc: %w", err)
 	}
 
 	return nil
