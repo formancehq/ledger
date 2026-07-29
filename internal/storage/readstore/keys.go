@@ -218,8 +218,9 @@ type ReverseMapKey struct {
 // move MUST clone it.
 //
 // ok=false for any key that is not a well-formed reverse-map key: wrong
-// discriminator byte, truncated, unknown namespace, or an empty metadata key.
-// Callers must treat !ok as corruption, never as a silent skip.
+// discriminator byte, truncated, unknown namespace, a ledger-name block with
+// an embedded NUL (a valid name cannot contain one), or an empty metadata
+// key. Callers must treat !ok as corruption, never as a silent skip.
 func ParseReverseMapKey(key []byte) (ReverseMapKey, bool) {
 	const namespaceLen = 2
 
@@ -228,8 +229,17 @@ func ParseReverseMapKey(key []byte) (ReverseMapKey, bool) {
 		return ReverseMapKey{}, false
 	}
 
+	ledgerName := bytes.TrimRight(key[1:1+dal.LedgerNameFixedSize], "\x00")
+	if bytes.IndexByte(ledgerName, 0x00) >= 0 {
+		// A valid ledger name cannot contain a NUL byte
+		// (invariants.ValidateLedgerName restricts to [a-zA-Z0-9._:-]), so
+		// one surviving the trailing-zero trim means the fixed-width block
+		// is corrupted, not merely short.
+		return ReverseMapKey{}, false
+	}
+
 	parsed := ReverseMapKey{
-		Ledger:    string(bytes.TrimRight(key[1:1+dal.LedgerNameFixedSize], "\x00")),
+		Ledger:    string(ledgerName),
 		Namespace: string(key[1+dal.LedgerNameFixedSize : header]),
 	}
 
