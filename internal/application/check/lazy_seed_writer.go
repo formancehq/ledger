@@ -57,7 +57,23 @@ func (w *lazyTxSeedWriter) seedIfNeeded(canonicalKey []byte) error {
 		return fmt.Errorf("lazy-seeding transaction from baseline: %w", err)
 	}
 
+	// No baseline state (Attribute.Get returns (nil, nil) for an absent key):
+	// nothing to seed. Seeding nil would append an empty txOpFinalized that
+	// resets away whatever the fold accumulated before it.
+	if state == nil {
+		return nil
+	}
+
 	return w.SeedTransaction(canonicalKey, state)
+}
+
+// CreateTransaction is the genesis of a transaction: the create itself is the
+// merge base, so mark the key seeded to keep a later delta from appending a
+// baseline snapshot after it — a seed must only ever be the oldest operand.
+func (w *lazyTxSeedWriter) CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error {
+	w.seeded[string(canonicalKey)] = struct{}{}
+
+	return w.replayStore.CreateTransaction(canonicalKey, seq, timestamp, metadata, postings, revertsTransaction)
 }
 
 func (w *lazyTxSeedWriter) SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error {

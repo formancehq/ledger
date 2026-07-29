@@ -148,3 +148,73 @@ func TestCompareTransactions_ArchivedThenDelta(t *testing.T) {
 		})
 	}
 }
+
+// A transaction created after the archive boundary is absent from the baseline.
+// Its create and delta both flow through the lazy-seed writer; the delta's
+// baseline lookup finds nothing and must seed nothing — seeding a nil state
+// would append an empty txOpFinalized after the create, resetting away the
+// create's fields and flagging the correct live state as tampered.
+func TestCompareTransactions_PostArchiveCreateThenDelta(t *testing.T) {
+	t.Parallel()
+
+	logger := logging.Testing()
+	meter := noop.NewMeterProvider().Meter("test")
+	attrs := attributes.New()
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	// Baseline taken before the transaction exists.
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	baselinePath := filepath.Join(t.TempDir(), "baseline")
+	require.NoError(t, attributes.CreateBaselineSnapshot(handle, baselinePath))
+	require.NoError(t, handle.Close())
+
+	baselineDB, err := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baselineDB.Close() })
+
+	txKey := domain.TransactionKey{LedgerName: "L1", ID: 1}
+	postings := []*commonpb.Posting{newPosting("world", "acc", "USD", 100)}
+	ts := &commonpb.Timestamp{Data: 99}
+	metaK2 := map[string]*commonpb.MetadataValue{
+		"k2": {Type: &commonpb.MetadataValue_IntValue{IntValue: 42}},
+	}
+
+	// Live state after create (log 7) + metadata set.
+	batch := store.OpenWriteSession()
+	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
+		CreatedByLog: 7,
+		Timestamp:    ts,
+		Postings:     postings,
+		Metadata:     metaK2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logger)
+
+	r := newTestReplayStore(t)
+	w := newLazyTxSeedWriter(r, func(canonicalKey []byte) (*commonpb.TransactionState, error) {
+		return attrs.Transaction.Get(baselineDB, canonicalKey)
+	})
+	require.NoError(t, w.CreateTransaction(txKey.Bytes(), 7, ts, nil, postings, 0))
+	require.NoError(t, w.SaveTxMetadata(txKey.Bytes(), metaK2))
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	var msgs []string
+	checker.compareTransactions(context.Background(), reader, baselineDB, r, func(e *servicepb.CheckStoreEvent) {
+		if ev := e.GetError(); ev != nil &&
+			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
+			msgs = append(msgs, ev.GetMessage())
+		}
+	})
+
+	require.Empty(t, msgs,
+		"a post-archive transaction with no baseline state must not be flagged as tampered")
+}
