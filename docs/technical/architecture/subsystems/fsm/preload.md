@@ -96,7 +96,7 @@ func proposeTechnical(
 ) error
 ```
 
-in `internal/bootstrap/propose_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). It retries `plan.ErrStaleProposal` up to `maxTechnicalStaleRetries` before giving up.
+in `internal/bootstrap/propose_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). It retries `domain.ErrStaleProposal` up to `maxTechnicalStaleRetries` (5) before giving up — the sentinel lives in `internal/domain`, not in `plan`, whose only exported error is `ErrCacheHorizonExceeded`.
 
 ## Layers 2 and 3 — resolution and loading (typed)
 
@@ -114,13 +114,15 @@ The bloom filter is consulted **here**, at the resolution layer, not below it: `
 
 This is the surviving typed shape, and `loader.go` (plus its test) is the entire package — the loaders are the only thing `internal/infra/preload` contains. Everything upstream of them, including the parallel resolution that drives them, lives in `internal/infra/plan`.
 
-Each loader:
+The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
 
-1. resolves the requested keys against the cache (Gen0 → Gen1), sharded 256 ways to avoid contention;
-2. on a miss, falls back to a Pebble read snapshot;
-3. holds an in-flight refcount on the key so concurrent proposals at the same Raft index observe the same value.
+Each loader then:
 
-`Release()` decrements that refcount. The name is misleading in one direction worth spelling out: `Release` **evicts nothing** from the cache. It only ends the loader's hold; the cache entry itself survives for as long as the rotation policy allows.
+1. **single-flights** the load per key (`loading map[attributes.U128]chan struct{}`), so concurrent proposals resolving the same key perform one Pebble read and observe the same value;
+2. **memoizes** the loaded value (`loaded map[attributes.U128]*loadedEntry[T]`), validity keyed by `validFor(boundary, cacheEpoch)`, so a later proposal in the same generation reuses it;
+3. **shards its own two maps** 256 ways, keyed by `U128.Lo()`, to avoid mutex contention — the sharding is over the loader's maps, not over the cache.
+
+`Release()` deletes the memoized entry — it does **not** decrement a refcount, and it **evicts nothing** from the attribute cache, whose entry survives for as long as the rotation policy allows.
 
 ### `MirrorPreload` — two functions, one name
 
@@ -150,7 +152,7 @@ The discriminator between them: **only the `CacheSnapshotter` method takes `attr
 
 | Field | Meaning |
 |-------|---------|
-| `fixed64 lastPersistedIndex = 1` | last persisted index observed at admission |
+| `fixed64 lastPersistedIndex = 1` | cache-generation boundary index computed at propose time from the *predicted* next Raft index (`cache.BoundaryIndex(nextIndex, GenerationThreshold)`, `internal/infra/plan/builder.go`); `Machine.Preload` requires it to equal the base index of Gen0 or Gen1, else the seeds would target a generation that no longer exists (hard error + `assert.Unreachable`). Despite the name it is **not** a persistence cursor — that is `Machine.LastPersistedIndex()`, an unrelated value. |
 | `fixed64 cache_epoch = 4` | cache epoch at admission time; the FSM rejects on mismatch |
 | `repeated AttributeCoverage attributes = 6` | the resolved coverage entries |
 | `repeated ReloadIdempotencyKey idempotency_keys = 7` | the separate idempotency channel |
@@ -189,7 +191,7 @@ Idempotency keys are declared through `Coverage.AddIdempotencyKey` but are **not
 - They are emitted as `[]*raftcmdpb.ReloadIdempotencyKey` and ride on `ExecutionPlan.idempotency_keys`, deliberately outside the `AttributeCoverage` list so the wire makes the distinction visible.
 - At apply they go to the dedicated `IdempotencyStore`, not the attribute cache — hence "Reload" rather than pre-load — and the coverage gate does not track them.
 
-`Builder.Run` preserves them across a proposal-guard rebuild, precisely because an **idempotency-only proposal** declares no cache reads at all and yet still carries a plan the FSM must apply. Treating "no attribute coverage" as "no plan to apply" would drop the keys.
+`Builder.Run`'s **no-preload fast path** (`runWithoutPreload`, taken whenever `AttributeKeysCount() == 0`) strips `attributes` and `cache_epoch` from the plan but deliberately keeps `IdempotencyKeys`. This is the path an **idempotency-only proposal** actually takes, not the proposal-guard rebuild: `AttributeKeysCount` excludes idempotency keys (`internal/infra/plan/coverage.go`), so a proposal declaring no cache reads has a zero count and never reaches the guard's revalidation at all. Treating "no attribute coverage" as "no plan to apply" would drop the keys and let a duplicate order apply twice.
 
 ## Cache horizon and cache epoch
 
