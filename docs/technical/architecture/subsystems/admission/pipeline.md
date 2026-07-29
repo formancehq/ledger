@@ -86,7 +86,7 @@ This stage is the reason numscript is admission-time work, not FSM work: the FSM
 
 `builder.Build(operations)` (`internal/infra/plan/builder.go`) reads each `Needs` entry, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.
 
-The build also returns a `ProposalGuard` token that holds the loaders in scope and enforces the cache-generation boundary check at propose time.
+`Build` returns a `*BuildResult` holding the resolved `ExecutionPlan` and a loader cleanup token. A separate `AcquireProposalGuard(build)` (`internal/infra/plan/builder.go`) then takes the cache-rotation guard, re-checks the generation boundary — rebuilding the plan if a rotation intervened — and yields the `ProposalGuard` that keeps the loaders in scope for the propose call. The two-step split is the point: `Build` resolves coverage *without* holding the rotation lock, so the expensive work stays outside the critical section. On error paths where the guard was never acquired, `BuildResult.ReleaseLoaders()` releases the token.
 
 ### 8. Marshal + predicted-index trick
 

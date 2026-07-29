@@ -221,25 +221,29 @@ sequenceDiagram
     opt IdempotencyKeys present
         B->>Peb: dedicated slot, own read handle (no bloom, no cache)
     end
-    B-->>P: BuildResult (ExecutionPlan + loaders + guard)
+    B-->>P: BuildResult (ExecutionPlan + loader cleanup token)
     P->>P: Run: bitsForNeeds → coverage_bits per operation
+    P->>B: AcquireProposalGuard: take rotation guard, re-check boundary
+    B-->>P: ExecutionPlan (rebuilt if a rotation intervened) + ProposalGuard
     P->>P: marshal, AppendProposalPredictedIndex
     P->>P: Propose under the guard
     Note over P,FSM: Raft commit (no Pebble reads on the hot path)
-    FSM->>FSM: Machine.Preload: pre-validate ALL AttributeCoverage
-    alt entry carries a value
-        FSM->>C: MirrorPreload → both generations + 0xFF mirror
-    else coverage-only
-        FSM->>FSM: authorize the read, write nothing
-    end
-    FSM->>FSM: predictedIndex == raftIndex?
+    FSM->>FSM: checkStaleProposal: predictedIndex == raftIndex? cache_epoch match?
     alt mismatch
         FSM-->>P: ErrStaleProposal — rebuild and retry
     else match
+        FSM->>FSM: Machine.Preload: pre-validate ALL AttributeCoverage
+        alt entry carries a value
+            FSM->>C: MirrorPreload → both generations + 0xFF mirror
+        else coverage-only
+            FSM->>FSM: authorize the read, write nothing
+        end
         FSM->>C: Scope.GetX(...) gated by coverage_bits
         Note over FSM,C: see coverage-gate.md
     end
 ```
+
+The phase order in the diagram is load-bearing, and the code calls it out: `checkStaleProposal` runs **before** `Preload` (`internal/infra/state/machine.go`, with an explicit *"Phase ordering matters"* comment). A stale proposal must be rejected before it can seed the cache. Note also that `checkStaleProposal` gates **both** `predicted_index` and `cache_epoch` — the two are one gate, not two.
 
 `Machine.Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error` (`internal/infra/state/machine.go`) validates **every** `AttributeCoverage` entry before performing the first `MirrorPreload`. Doing it up front is deliberate: a malformed entry or an unknown `attr_code` discovered halfway through would leave the batch half-applied, and an unvalidated entry would otherwise silently zero-pad its way through `MirrorPreload`.
 
