@@ -73,7 +73,7 @@ operations := []plan.WriteOperation{{
 }}
 ```
 
-`Target` is nil only when the bitset is genuinely to be discarded. A nil `Coverage` is what makes `Builder.Run` take the no-preload fast path; it says nothing about where the bits land.
+`Target` is nil only when the bitset is genuinely to be discarded. A nil `Coverage` contributes nothing to the fast-path decision on its own: `Builder.Run` gates on the **aggregate** across the whole proposal (`build.aggregate.AttributeKeysCount() == 0`), so one operation's nil `Coverage` does not select the fast path if another operation contributes cache-attribute keys. Either way it says nothing about where the bits land.
 
 ## The producer owns its declaration
 
