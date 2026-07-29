@@ -935,3 +935,25 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 	require.Equal(t, ledger, err0.GetLedger())
 	require.Contains(t, err0.GetMessage(), `"role"`)
 }
+
+// TestRenderReverseMapKeyPrefix pins that a malformed-key finding's size does not
+// track the size of the key that produced it. The sample is copied verbatim into
+// the emitted event, so an arbitrarily long key would otherwise render an
+// arbitrarily long operator-facing message.
+func TestRenderReverseMapKeyPrefix(t *testing.T) {
+	t.Parallel()
+
+	short := []byte{readstore.PrefixReverseMap, 0x01, 0x02}
+	require.Equal(t, "030102", renderReverseMapKeyPrefix(short),
+		"a key within the bound must render in full, with no truncation marker")
+
+	long := make([]byte, reverseMapKeyHexPrefixBytes*4)
+	for i := range long {
+		long[i] = 0xAB
+	}
+
+	rendered := renderReverseMapKeyPrefix(long)
+	require.Contains(t, rendered, "(256 bytes total)", "truncation must report the original length")
+	require.Len(t, rendered, reverseMapKeyHexPrefixBytes*2+len("… (256 bytes total)"),
+		"the rendered prefix must be exactly the bound, regardless of input size")
+}

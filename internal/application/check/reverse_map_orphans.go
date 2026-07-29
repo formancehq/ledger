@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strconv"
@@ -294,8 +295,9 @@ func (c *Checker) compareReverseMapOrphans(
 		if err != nil {
 			// The sentinel names which shape check failed, so the operator
 			// learns *which* corruption this is — carry it in the sample
-			// alongside the raw key.
-			observeReverseMapRow(malformed, bestEffortReverseMapLedger(key), fmt.Sprintf("key %x: %v", key, err))
+			// alongside a bounded prefix of the raw key.
+			observeReverseMapRow(malformed, bestEffortReverseMapLedger(key),
+				fmt.Sprintf("key %s: %v", renderReverseMapKeyPrefix(key), err))
 
 			continue
 		}
@@ -335,7 +337,8 @@ func (c *Checker) compareReverseMapOrphans(
 			// instead of skipping, but keep it aggregated so a hypothetical
 			// mass occurrence cannot flood the run.
 			observeReverseMapRow(malformed, parsed.Ledger,
-				fmt.Sprintf("invariant: key %x decoded with unsupported namespace %q", key, parsed.Namespace))
+				fmt.Sprintf("invariant: key %s decoded with unsupported namespace %q",
+					renderReverseMapKeyPrefix(key), parsed.Namespace))
 
 			continue
 		}
@@ -550,6 +553,28 @@ func renderReverseMapEntity(parsed readstore.ParsedReverseMapKey) string {
 	}
 
 	return "account " + string(parsed.EntityID)
+}
+
+// reverseMapKeyHexPrefixBytes bounds how much of a malformed key is rendered into
+// a finding. Enough to identify the corrupted shape (prefix byte + the
+// fixed-width ledger-name block + the start of the namespace and entity) without
+// letting key length drive the message size.
+const reverseMapKeyHexPrefixBytes = 64
+
+// renderReverseMapKeyPrefix hex-renders at most reverseMapKeyHexPrefixBytes of a
+// key, appending the full byte length when it truncates.
+//
+// The malformed bucket keeps one sample per ledger, so an unbounded dump is not a
+// memory-blowup risk — but the sample is also copied verbatim into the emitted
+// event, and a key long enough to matter requires direct Pebble write access, at
+// which point message size is the least of the problems. This is about keeping the
+// operator-facing message readable and its size independent of the input.
+func renderReverseMapKeyPrefix(key []byte) string {
+	if len(key) <= reverseMapKeyHexPrefixBytes {
+		return hex.EncodeToString(key)
+	}
+
+	return fmt.Sprintf("%x… (%d bytes total)", key[:reverseMapKeyHexPrefixBytes], len(key))
 }
 
 // bestEffortReverseMapLedger extracts the ledger name from a reverse-map key
