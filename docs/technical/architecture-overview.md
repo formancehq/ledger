@@ -38,9 +38,9 @@ flowchart TB
         direction TB
         ExtractNeeds["extractPreloadNeeds"]
         ResolveScripts["resolveScriptsAndEnrichNeeds<br/>parse Numscript, discover dependencies"]
-        BuildPreloads["preloader.BuildPreloads<br/>cache + Pebble reads"]
+        Build["plan.Builder.Build<br/>cache + Pebble reads"]
         Guard["AcquireProposalGuard<br/>lock tracker, check generation boundary"]
-        ExtractNeeds --> ResolveScripts --> BuildPreloads --> Guard
+        ExtractNeeds --> ResolveScripts --> Build --> Guard
     end
 
     Guard --> Consensus
