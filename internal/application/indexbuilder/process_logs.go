@@ -554,7 +554,36 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		batch := b.readStore.NewBatch()
 		b.initBatch(batch) // re-init with a new batch after flush
 
-		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
+		if err := b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType); err != nil {
+			// This batch is rebound to b.wb above, not the caller's — a
+			// caller-side batch.Cancel() on error (e.g. processBackfill's
+			// per-round batch) targets the batch that existed BEFORE this
+			// case ran, which the Flush above already committed. Left
+			// uncancelled, this one would just be dropped, leaking the
+			// underlying Pebble indexed batch instead of releasing it.
+			// Cancel it here, where it's actually owned.
+			//
+			// Because the pre-scan Flush already made earlier writes in
+			// this round durable, Cancel cannot roll those back — a retry
+			// of this same log relies on indexSetMetadataFieldType being
+			// idempotent, which it is: it re-derives every rewritten value
+			// from the currently committed rmap state and the log's target
+			// type (no external counters, no dependency on a prior partial
+			// attempt), and this batch's own buffered ReplaceMetadataIndex
+			// writes are discarded uncommitted by the Cancel below, so a
+			// re-run starts from the same state as the first attempt.
+			//
+			// Reset too, not just Cancel: b.wb still points at this
+			// (now-closed) session otherwise, a dangling reference that
+			// would make a subsequent read/write through b.wb operate on
+			// an already-closed Pebble batch instead of failing loudly.
+			_ = batch.Cancel()
+			b.wb.Reset()
+
+			return err
+		}
+
+		return nil
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
@@ -1154,22 +1183,13 @@ func (b *Builder) indexSetMetadataFieldType(
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		rk, err := readstore.ParseReverseMapKey(k)
+		rk, err := parseScopedReverseMapKey(k, ledger, ns)
 		if err != nil {
 			// Mirrors the DecodeValue treatment below: a corrupt rmap key
 			// is fatal, not a silent skip, so the backfill replay of this
 			// SetMetadataFieldType log retries instead of leaving the
 			// index inconsistent for the entity it would have covered.
-			return fmt.Errorf("schema rewrite (backfill replay): parsing rmap key %x: %w", k, err)
-		}
-
-		// The prefix scan already fixes ledger+namespace, so this can
-		// only diverge if the stored key is corrupt in a way
-		// ParseReverseMapKey doesn't itself reject — treat it as the
-		// invariant violation it would be rather than silently
-		// rewriting the wrong entry.
-		if rk.Ledger != ledger || rk.Namespace != ns {
-			return fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, ledger, ns)
+			return fmt.Errorf("schema rewrite (backfill replay): %w", err)
 		}
 
 		if rk.MetadataKey != smft.GetKey() {
@@ -1182,8 +1202,8 @@ func (b *Builder) indexSetMetadataFieldType(
 		}
 
 		entries = append(entries, rmapEntry{
-			rmapKey:  cloneBytes(k),
-			entityID: rk.EntityID, // already a defensive copy — see ParseReverseMapKey's doc
+			rmapKey:  cloneBytes(k), // aliases iter.Key() directly — must clone
+			entityID: rk.EntityID,   // already a defensive copy — see ParseReverseMapKey's doc
 			oldValue: cloneBytes(v),
 		})
 	}

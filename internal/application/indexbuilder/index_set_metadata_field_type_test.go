@@ -117,6 +117,21 @@ func TestIndexSetMetadataFieldType_ReplaysReverseMapRewrite(t *testing.T) {
 // This test asserts every entity's rewritten forward-index entry lands under
 // its own, correct account — the aliasing bug this migration fixed would
 // have shown up here as entries keyed under the wrong (or corrupted) account.
+//
+// The authoritative guarantee that ParseReverseMapKey's EntityID is
+// independent of the source key is readstore/keys_test.go's
+// TestParseReverseMapKey_EntityIDIsIndependentOfSourceKey, which asserts the
+// clone directly against the source bytes and so cannot rot silently even if
+// Pebble ever stopped reusing its key buffer. This test is integration-level
+// defence on top of that unit pin: it proves the clone is actually load-
+// bearing at this specific call site, end to end through indexLogEntry.
+// numAcc = 12 is not tied to any verified Pebble internal buffer or block
+// size — the number itself isn't load-bearing, only that it's comfortably
+// more than one, so the scan loop is guaranteed to move the iterator several
+// times before entries is consumed. Reverting the EntityID clone to a raw
+// sub-slice of iter.Key() and re-running this test was checked during
+// development: it failed on all but the last-scanned account, confirming
+// the sensitivity this comment claims.
 func TestIndexSetMetadataFieldType_PreservesEntityIDAcrossManyRows(t *testing.T) {
 	t.Parallel()
 
@@ -207,18 +222,10 @@ func TestIndexSetMetadataFieldType_CorruptReverseMapKeyIsLoud(t *testing.T) {
 	b.wb.Init(b.readStore.NewBatch())
 	proposals := newTestAppliedProposalSync()
 
-	// indexLogEntry's SetMetadataFieldType case flushes the batch it was
-	// called with and rebinds b.wb to a fresh one before scanning the rmap;
-	// that fresh batch is left open (never committed nor cancelled) on the
-	// error path we're asserting here, so clean it up explicitly rather than
-	// leaking the underlying Pebble indexed batch across parallel tests.
-	t.Cleanup(func() {
-		if batch := b.wb.Batch(); batch != nil {
-			_ = batch.Cancel()
-			b.wb.Reset()
-		}
-	})
-
+	// indexLogEntry's SetMetadataFieldType case cancels and resets the fresh
+	// batch it rebinds b.wb to on its own error paths, so nothing is left
+	// open here for this test to clean up.
 	err := b.indexLogEntry(cfg, log, proposals)
-	require.Error(t, err, "a corrupt rmap row must fail the replay, not be silently skipped")
+	require.ErrorIs(t, err, readstore.ErrReverseMapKeyTruncated,
+		"a corrupt rmap row must fail the replay with the specific decode-failure sentinel, not be silently skipped")
 }

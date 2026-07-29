@@ -166,18 +166,9 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		rk, err := readstore.ParseReverseMapKey(k)
+		rk, err := parseScopedReverseMapKey(k, ledgerName, ns)
 		if err != nil {
-			return fmt.Errorf("purging rmap: parsing key %x: %w", k, err)
-		}
-
-		// The prefix scan already fixes ledger+namespace, so this can
-		// only diverge if the stored key is corrupt in a way
-		// ParseReverseMapKey doesn't itself reject — treat it as the
-		// invariant violation it would be rather than silently leaving
-		// a stale reverse-map row behind.
-		if rk.Ledger != ledgerName || rk.Namespace != ns {
-			return fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, ledgerName, ns)
+			return fmt.Errorf("purging rmap: %w", err)
 		}
 
 		if rk.MetadataKey != key {
@@ -194,6 +185,11 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 	// In-flight rows from the same uncommitted batch. The callback has no
 	// error return, so a parse failure or ledger/namespace divergence is
 	// captured in overlayErr and surfaced once ranging completes.
+	// RangeReverseMapOverlay iterates a Go map, so if more than one corrupt
+	// row is buffered in this batch, which one wins the race to set
+	// overlayErr is nondeterministic across runs — harmless here since any
+	// of them is an equally valid corruption signal, but worth knowing so a
+	// message that changes between runs isn't mistaken for something else.
 	var pending [][]byte
 	var overlayErr error
 	b.wb.RangeReverseMapOverlay(func(reverseKey []byte, value []byte) {
@@ -207,17 +203,9 @@ func (b *Builder) purgeReverseMapForKey(kb *dal.KeyBuilder, ledgerName string, n
 			return // different ledger / namespace
 		}
 
-		rk, err := readstore.ParseReverseMapKey(reverseKey)
+		rk, err := parseScopedReverseMapKey(reverseKey, ledgerName, ns)
 		if err != nil {
-			overlayErr = fmt.Errorf("purging rmap overlay: parsing key %x: %w", reverseKey, err)
-
-			return
-		}
-
-		// Same invariant as the committed-row scan above: the
-		// HasPrefix guard already fixes ledger+namespace.
-		if rk.Ledger != ledgerName || rk.Namespace != ns {
-			overlayErr = fmt.Errorf("invariant: rmap overlay key %x decoded to ledger %q ns %q, expected %q/%q", reverseKey, rk.Ledger, rk.Namespace, ledgerName, ns)
+			overlayErr = fmt.Errorf("purging rmap overlay: %w", err)
 
 			return
 		}

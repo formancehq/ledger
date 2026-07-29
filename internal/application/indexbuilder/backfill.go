@@ -724,18 +724,9 @@ scan:
 		lastScannedKey = cloneBytes(k)
 		scanned++
 
-		rk, err := readstore.ParseReverseMapKey(k)
+		rk, err := parseScopedReverseMapKey(k, task.ledger, ns)
 		if err != nil {
-			return false, fmt.Errorf("schema rewrite: parsing rmap key %x: %w", k, err)
-		}
-
-		// The prefix scan already fixes ledger+namespace, so this can
-		// only diverge if the stored key is corrupt in a way
-		// ParseReverseMapKey doesn't itself reject — treat it as the
-		// invariant violation it would be rather than silently
-		// rewriting the wrong entry.
-		if rk.Ledger != task.ledger || rk.Namespace != ns {
-			return false, fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, task.ledger, ns)
+			return false, fmt.Errorf("schema rewrite: %w", err)
 		}
 
 		if rk.MetadataKey != task.key {
