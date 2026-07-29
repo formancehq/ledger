@@ -96,7 +96,7 @@ func proposeTechnical(
 ) error
 ```
 
-in `internal/bootstrap/propose_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). It retries `domain.ErrStaleProposal` up to `maxTechnicalStaleRetries` (5) before giving up — the sentinel lives in `internal/domain`, not in `plan`, whose only exported error is `ErrCacheHorizonExceeded`.
+in `internal/bootstrap/propose_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). It retries `domain.ErrStaleProposal` up to `maxTechnicalStaleRetries` (5) before giving up. Note the package: the sentinel lives in `internal/domain`. The `plan` package exports no `ErrStaleProposal` — its own errors are `ErrCacheHorizonExceeded`, `ErrMarshalProposal` and `ErrAcquireProposalGuard`.
 
 ## Layers 2 and 3 — resolution and loading (typed)
 
@@ -223,9 +223,13 @@ sequenceDiagram
     end
     B-->>P: BuildResult (ExecutionPlan + loader cleanup token)
     P->>P: Run: bitsForNeeds → coverage_bits per operation
+    P->>P: marshal — outside the critical section
     P->>B: AcquireProposalGuard: take rotation guard, re-check boundary
-    B-->>P: ExecutionPlan (rebuilt if a rotation intervened) + ProposalGuard
-    P->>P: marshal, AppendProposalPredictedIndex
+    B-->>P: ProposalGuard
+    opt boundary shifted between Build and guard (rare)
+        B-->>P: rebuilt ExecutionPlan → re-apply bits, re-marshal under the guard
+    end
+    P->>P: AppendProposalPredictedIndex (index known under the lock)
     P->>P: Propose under the guard
     Note over P,FSM: Raft commit (no Pebble reads on the hot path)
     FSM->>FSM: checkStaleProposal: predictedIndex == raftIndex? cache_epoch match?
