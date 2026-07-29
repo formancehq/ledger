@@ -170,7 +170,10 @@ if value != nil {
     })
 }
 // ...
-ps.IdempotencyKeys = keys
+// The slot stores `keys` on its resolveResult; Build then folds every
+// slot's result into the plan:
+//     executionPlan.IdempotencyKeys = append(
+//         executionPlan.IdempotencyKeys, results[i].resolve.idempotencyKeys...)
 ```
 
 ## API Usage

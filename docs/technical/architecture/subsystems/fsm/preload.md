@@ -4,7 +4,9 @@
 
 The FSM apply path is forbidden from reading Pebble (see [CLAUDE.md invariant #3](../../../../../AGENTS.md)). Every attribute it consults during apply must therefore already be resident in the in-memory **attribute cache** by the time the proposal lands. The job of preload is to make that true.
 
-Preload runs at **propose time**, before the proposer takes the cache-rotation guard. It reads from the cache first, falls back to Pebble on a miss, and **mirrors** what it fetched back into the cache — so the FSM, on every replica, sees the same value when it later does `Scope.GetX(...)`.
+Preload **resolves** at propose time, before the proposer takes the cache-rotation guard: it reads the cache first and falls back to Pebble on a miss. What it produces is not a cache mutation but a set of **seed entries** carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends `AttributeCoverage` values).
+
+The cache write happens later, on the **FSM apply path**: `CacheSnapshotter.MirrorPreload`, called from `Machine.Preload` strictly after `checkStaleProposal` has passed. That ordering is what makes the mechanism deterministic — every replica seeds from the same committed bytes, and a stale proposal is rejected before it can touch the cache — so the FSM sees the same value on every replica when it later does `Scope.GetX(...)`.
 
 **Scope of this page.** It owns the propose side: how a producer *declares* what its apply path will read, how those declarations are *resolved* and *loaded*, and how the result is handed to the FSM through `ExecutionPlan`. It does **not** own:
 
