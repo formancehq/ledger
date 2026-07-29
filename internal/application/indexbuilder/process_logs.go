@@ -534,6 +534,18 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		}
 	}
 
+	// Schema logs are deliberately absent from this switch. The only caller,
+	// processBackfill, gates on isDataLog, which admits exactly
+	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
+	// / OrderSkipped and switches on the same discriminator used here — so a
+	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive.
+	// Schema handling belongs to the live path (indexPayload), where
+	// SetMetadataFieldType defers to addSchemaRewriteTask / processSchemaRewrite
+	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
+	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
+	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
+	// for them without also changing isDataLog: an unreachable second
+	// implementation of the schema rewrite is what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
@@ -543,47 +555,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
-	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		// Schema changes scan the reverse map with iterators — flush buffered
-		// writes first so the iterators see a consistent state, then create a
-		// new indexed batch for the rewrite.
-		if err := b.wb.Flush(); err != nil {
-			return err
-		}
-
-		batch := b.readStore.NewBatch()
-		b.initBatch(batch) // re-init with a new batch after flush
-
-		if err := b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType); err != nil {
-			// This batch is rebound to b.wb above, not the caller's — a
-			// caller-side batch.Cancel() on error (e.g. processBackfill's
-			// per-round batch) targets the batch that existed BEFORE this
-			// case ran, which the Flush above already committed. Left
-			// uncancelled, this one would just be dropped, leaking the
-			// underlying Pebble indexed batch instead of releasing it.
-			// Cancel it here, where it's actually owned.
-			//
-			// Because the pre-scan Flush already made earlier writes in
-			// this round durable, Cancel cannot roll those back — a retry
-			// of this same log relies on indexSetMetadataFieldType being
-			// idempotent, which it is: it re-derives every rewritten value
-			// from the currently committed rmap state and the log's target
-			// type (no external counters, no dependency on a prior partial
-			// attempt), and this batch's own buffered ReplaceMetadataIndex
-			// writes are discarded uncommitted by the Cancel below, so a
-			// re-run starts from the same state as the first attempt.
-			//
-			// Reset too, not just Cancel: b.wb still points at this
-			// (now-closed) session otherwise, a dangling reference that
-			// would make a subsequent read/write through b.wb operate on
-			// an already-closed Pebble batch instead of failing loudly.
-			_ = batch.Cancel()
-			b.wb.Reset()
-
-			return err
-		}
-
-		return nil
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
@@ -1116,126 +1087,6 @@ func (b *Builder) indexDeletedMetadata(
 				return readstore.TransactionReverseMapKeyV(kb, ledger, txID, metaKey, version)
 			},
 		)
-	}
-
-	return nil
-}
-
-// indexSetMetadataFieldType handles schema change logs by re-encoding all
-// inverted index entries for the affected key using the new type.
-//
-// Strategy: iterate the reverse map to find all entities that have this metadata key,
-// then for each entity: delete the old forward index entry, convert the value,
-// insert the new forward index entry, and update the reverse map.
-//
-// The WriteBatch must already be initialised with an indexed batch before calling
-// this function. The caller is responsible for flushing the batch afterward.
-func (b *Builder) indexSetMetadataFieldType(
-	cfg *ledgerIndexConfig,
-	kb *dal.KeyBuilder,
-	ledger string,
-	smft *commonpb.SetMetadataFieldTypeLog,
-) error {
-	// Only re-encode if this metadata key is indexed.
-	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
-		return nil
-	}
-
-	var ns string
-
-	switch smft.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		ns = readstore.NamespaceAccount
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		ns = readstore.NamespaceTransaction
-	default:
-		return nil
-	}
-
-	// Build the reverse map prefix for scanning: [0x03][ledger\x00][ns:]
-	rmapPrefix := readstore.ReverseMapPrefix(kb, ledger, ns)
-	upper := readstore.IncrementBytes(rmapPrefix)
-
-	// Use a Pebble snapshot so the scan sees committed data (not the
-	// in-flight batch writes). The WriteBatch operates on an indexed batch,
-	// but iterators from the batch would see partially applied state.
-	snap := b.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
-
-	iter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound: rmapPrefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	type rmapEntry struct {
-		rmapKey  []byte // full reverse map key
-		entityID []byte // account address or txID bytes
-		oldValue []byte // old MetadataValue encoded via EncodeMetadataValue (sortable format)
-	}
-
-	var entries []rmapEntry
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-
-		rk, err := parseScopedReverseMapKey(k, ledger, ns)
-		if err != nil {
-			// Mirrors the DecodeValue treatment below: a corrupt rmap key
-			// is fatal, not a silent skip, so the backfill replay of this
-			// SetMetadataFieldType log retries instead of leaving the
-			// index inconsistent for the entity it would have covered.
-			return fmt.Errorf("schema rewrite (backfill replay): %w", err)
-		}
-
-		if rk.MetadataKey != smft.GetKey() {
-			continue
-		}
-
-		v, verr := iter.ValueAndErr()
-		if verr != nil {
-			return verr
-		}
-
-		entries = append(entries, rmapEntry{
-			rmapKey:  cloneBytes(k), // aliases iter.Key() directly — must clone
-			entityID: rk.EntityID,   // already a defensive copy — see ParseReverseMapKey's doc
-			oldValue: cloneBytes(v),
-		})
-	}
-
-	// For each entity: delete old forward index, convert, insert new forward index, update reverse map.
-	// ReplaceMetadataIndex handles all four steps atomically within the batch.
-	for _, e := range entries {
-		// The reverse map stores values in the sortable EncodeMetadataValue
-		// format, not protobuf — decode with the matching decoder. A failure
-		// here means the stored bytes are corrupt; we treat it as fatal so
-		// the schema-change task is retried rather than silently skipping
-		// entries (which would leave inconsistent indexes).
-		oldMV, _, err := readstore.DecodeValue(e.oldValue)
-		if err != nil {
-			return fmt.Errorf("decoding reverse map value for key %q: %w", smft.GetKey(), err)
-		}
-
-		oldEncoded := e.oldValue
-
-		// Convert to new type.
-		newMV := commonpb.ConvertMetadataValue(oldMV, smft.GetType())
-		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
-
-		// ReplaceMetadataIndex deletes old midx+eidx, writes new midx+eidx,
-		// and updates the reverse map — all in one call.
-		if err := b.wb.ReplaceMetadataIndex(
-			kb, e.rmapKey,
-			ledger, ns, smft.GetKey(),
-			newEncoded, oldEncoded, e.entityID,
-		); err != nil {
-			return err
-		}
 	}
 
 	return nil

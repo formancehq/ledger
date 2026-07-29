@@ -13,7 +13,7 @@ import (
 // EncodeMetadataValue and DecodeValue are inverses for every scalar
 // MetadataValue type. The reverse map (`rmap` zone) stores bytes produced by
 // EncodeMetadataValue; the indexbuilder's schema-change rewrite path
-// (process_logs.go::indexSetMetadataFieldType and backfill.go::backfill)
+// (backfill.go::processSchemaRewrite and backfill.go::backfill)
 // reads those bytes back and must decode them with DecodeValue, not
 // protobuf UnmarshalVT. This test guards against silently re-introducing
 // the wrong decoder.
