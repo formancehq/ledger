@@ -129,6 +129,20 @@ const (
 	// or a latest pointer that is not the greatest saved semver is tampering. The
 	// audit chain is the source of truth.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH CheckStoreErrorType = 19
+	// A reverse-map (0x03) row in the peer read-index store references a
+	// metadata field that has no entry in the stored SubAttrIndex registry, or
+	// belongs to a ledger the audit chain does not list as live, or is not a
+	// well-formed reverse-map key at all. The reverse map is the only read-index
+	// limb that cannot be range-deleted by field — its metadata key sits after a
+	// fixed-width version block — so field removal must scan and point-delete,
+	// and a row missed by that scan is a permanent divergence no other pass can
+	// see. Reported per (ledger, namespace, metadata key) with a row count and a
+	// sample entity rather than per row: a field dropped on a large ledger can
+	// strand millions of rows. The encoding version block is deliberately NOT
+	// validated here — current and pending versions legitimately coexist during
+	// a per-replica rewrite, and stale versions are reclaimed at boot by
+	// purgeOrphanVersions.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN CheckStoreErrorType = 20
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -154,6 +168,7 @@ var (
 		17: "CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH",
 		18: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
 		19: "CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH",
+		20: "CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
@@ -176,6 +191,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          17,
 		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           18,
 		"CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH":          19,
+		"CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN":          20,
 	}
 )
 
@@ -9663,7 +9679,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xac\a\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xdb\a\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9685,7 +9701,8 @@ const file_bucket_proto_rawDesc = "" +
 	"'CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER\x10\x10\x12-\n" +
 	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x11\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x12\x12-\n" +
-	")CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH\x10\x13*W\n" +
+	")CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH\x10\x13\x12-\n" +
+	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
