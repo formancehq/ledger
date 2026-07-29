@@ -86,9 +86,9 @@ const (
 // errLedgerNameFixedCorrupt indicates a NUL byte survived trimming the
 // trailing zero padding of a fixed-width ledger-name block: the block is
 // corrupted, not merely short. Shared by every ledger-scoped key decoder in
-// this package (ParseBackfillKey, ParseReverseMapKey); each caller maps it
-// into its own public error vocabulary (a bool for ParseBackfillKey, a
-// dedicated sentinel for ParseReverseMapKey).
+// this package (ParseBackfillKey, ParseReverseMapKey); both surface it as a
+// non-nil error — ParseBackfillKey returns it directly, ParseReverseMapKey
+// wraps it in ErrReverseMapKeyLedgerName.
 //
 // This is an encoding-shape check only — it never calls
 // invariants.ValidateLedgerName, so a future charset tightening there
