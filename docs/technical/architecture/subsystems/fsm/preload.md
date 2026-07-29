@@ -4,7 +4,7 @@
 
 The FSM apply path is forbidden from reading Pebble (see [CLAUDE.md invariant #3](../../../../../AGENTS.md)). Every attribute it consults during apply must therefore already be resident in the in-memory **attribute cache** by the time the proposal lands. The job of preload is to make that true.
 
-Preload **resolves** at propose time, before the proposer takes the cache-rotation guard: it reads the cache first and falls back to Pebble on a miss. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends values). Those entries come in two kinds — **seeds**, carrying a value the resolver had to fetch from Pebble, and **coverage-only**, carrying no value because the cache already holds the key or it is confirmed absent. Only seeds are written into the cache; coverage-only entries just authorise the gated read. The distinction is spelled out under [seed vs coverage-only](#attributecoverage--seed-vs-coverage-only).
+Preload **resolves** at propose time, before the proposer acquires the proposal guard: it reads the cache first and falls back to Pebble on a miss. What it produces is not a cache mutation but a set of `AttributeCoverage` entries carried on the proposal's `ExecutionPlan` (`internal/infra/plan/resolve.go` only appends values). Those entries come in two kinds — **seeds**, carrying a value the resolver had to fetch from Pebble, and **coverage-only**, carrying no value because the cache already holds the key or it is confirmed absent. Only seeds are written into the cache; coverage-only entries just authorise the gated read. The distinction is spelled out under [seed vs coverage-only](#attributecoverage--seed-vs-coverage-only).
 
 The cache write happens later, on the **FSM apply path**: `CacheSnapshotter.MirrorPreload`, called from `Machine.Preload` strictly after `checkStaleProposal` has passed. That ordering is what makes the mechanism deterministic — every replica seeds from the same committed bytes, and a stale proposal is rejected before it can touch the cache — so the FSM sees the same value on every replica when it later does `Scope.GetX(...)`.
 
@@ -235,7 +235,7 @@ sequenceDiagram
     B-->>P: BuildResult (ExecutionPlan + loader cleanup token)
     P->>P: Run: bitsForNeeds → coverage_bits per operation
     P->>P: marshal — outside the critical section
-    P->>B: AcquireProposalGuard: take rotation guard, re-check boundary
+    P->>B: AcquireProposalGuard: lock IndexTracker, re-check Gen(nextIndex)
     B-->>P: ProposalGuard
     opt boundary shifted between Build and guard (rare)
         B-->>P: rebuilt ExecutionPlan → re-apply bits, re-marshal under the guard
