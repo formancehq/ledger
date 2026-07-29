@@ -51,7 +51,7 @@ Walk from the symptom toward the origin, one verified link at a time. This is "5
 ```
 Symptom:  API returns 500 on POST /transactions
   why? →  FSM apply returned ErrCacheMiss            [verified: log line]
-  why? →  the key was never preloaded                [verified: preload.Needs lacks the key]
+  why? →  the key was never preloaded                [verified: plan.Coverage lacks the key]
   why? →  the new proposal type declared no Needs    [verified: code review of the emitter]
   why? →  nothing forces an emitter to declare Needs [← root cause: missing enforcement]
 ```

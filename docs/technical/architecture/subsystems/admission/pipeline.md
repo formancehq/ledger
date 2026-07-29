@@ -74,7 +74,7 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 ### 5. Numscript resolution + Needs enrichment
 
-For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrichNeeds()` resolves the `NumscriptReference` against an intra-batch overlay (programs being created in the same batch) and falls back to the persisted numscript library. Each resolved program is parsed for its account / metadata / volume dependencies; those become additional `preload.Needs` for the order.
+For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrichNeeds()` resolves the `NumscriptReference` against an intra-batch overlay (programs being created in the same batch) and falls back to the persisted numscript library. Each resolved program is parsed for its account / metadata / volume dependencies; those become additional coverage entries on the order's `plan.Coverage`.
 
 This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `Needs` before consensus.
 

@@ -16,4 +16,4 @@ The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, 
 
 - [Consensus](../consensus/) — Raft commit pipeline that feeds the FSM.
 - [Attributes](../attributes/) — the cache the FSM reads through.
-- [Admission](../admission/) — declares the `preload.Needs` the FSM consumes.
+- [Admission](../admission/) — declares the `plan.Coverage` the FSM consumes.
