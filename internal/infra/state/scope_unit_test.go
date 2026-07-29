@@ -69,6 +69,10 @@ func TestErrCoverageMissSurvivesStoreFailure(t *testing.T) {
 		{name: "bare", err: miss},
 		{name: "wrapped once", err: fmt.Errorf("numscript: %w", miss)},
 		{name: "wrapped in a storage operation", err: &domain.ErrStorageOperation{Operation: "loading volume", Cause: miss}},
+		// A multi-error node reports no single cause, so errors.Unwrap stops
+		// there: the discriminator has to descend into the members explicitly.
+		{name: "joined with an unrelated error", err: errors.Join(errors.New("pebble: db closed"), miss)},
+		{name: "joined behind a wrap", err: fmt.Errorf("commit: %w", errors.Join(miss, errors.New("flush failed")))},
 	}
 
 	for _, tt := range tests {

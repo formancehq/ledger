@@ -18,18 +18,33 @@ import "errors"
 // wrappers — ErrStorageOperation, or the numscript library's QueryBalanceError /
 // QueryMetadataError — implement Unwrap.
 //
-// Limitation: the walk follows single-error Unwrap only. An error joined with
-// errors.Join hides its members from this check.
+// The walk also descends into multi-error nodes (errors.Join, or fmt.Errorf with
+// several %w verbs), which errors.Unwrap cannot follow. Members are visited in
+// slice order, so the Describable returned for a given tree is deterministic —
+// a requirement on the FSM apply path (invariant #2). Without this the forbidigo
+// rule guarding StoreFailure would not help: a future Join is a plain call the
+// linter cannot see, and it would silently relabel the violation as a storage
+// fault in the immutable audit chain.
 func CoverageContractViolation(err error) Describable {
 	for e := err; e != nil; e = errors.Unwrap(e) {
-		describable, ok := e.(Describable) //nolint:errorlint // deliberate per-node check; the loop unwraps the chain itself
+		if describable, ok := e.(Describable); ok { //nolint:errorlint // deliberate per-node check; the loop walks the chain itself
+			switch describable.Reason() {
+			case ErrReasonCoverageMiss, ErrReasonInvalidExecutionPlan:
+				return describable
+			}
+		}
+
+		// A multi-error node reports no single cause, so errors.Unwrap returns
+		// nil and this iteration is the last: recurse before the loop ends.
+		joined, ok := e.(interface{ Unwrap() []error })
 		if !ok {
 			continue
 		}
 
-		switch describable.Reason() {
-		case ErrReasonCoverageMiss, ErrReasonInvalidExecutionPlan:
-			return describable
+		for _, member := range joined.Unwrap() {
+			if violation := CoverageContractViolation(member); violation != nil {
+				return violation
+			}
 		}
 	}
 

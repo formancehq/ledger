@@ -95,8 +95,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// missing declaration). Downgrading only ErrCoverageMiss to stale would
 			// close the value-shift case but risks masking the latter as an infinite
 			// retry loop, so that refinement is deferred to an explicit design call.
-			if domain.CoverageContractViolation(resolveErr) != nil {
-				return nil, resolveErr
+			// Return the extracted violation rather than resolveErr: today
+			// convertNumscriptError has already flattened the chain to the bare
+			// Describable, so the two are the same value — but that flattening
+			// lives two packages away and nothing pins it here. Returning what
+			// the discriminator found keeps the reason intact regardless.
+			if violation := domain.CoverageContractViolation(resolveErr); violation != nil {
+				return nil, violation
 			}
 
 			// (3) Otherwise it is a genuine input-shift (a var origin now points
