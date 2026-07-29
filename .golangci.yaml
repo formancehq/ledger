@@ -139,6 +139,15 @@ linters:
           violation (coverage miss / invalid execution plan) verbatim so the audit chain
           records COVERAGE_MISS, and wraps everything else as a storage fault. See
           docs/technical/architecture/subsystems/fsm/coverage-gate.md.
+
+          analyze-types is on, so this rule fires on ANY reference whose type resolves
+          to ErrStorageOperation outside domain.StoreFailure — not only a composite
+          literal. An errors.As target declaration, a field read off such a target and
+          a type-switch case are all flagged. A construction-only pattern is not
+          expressible here: forbidigo renders the type expression and never the brace.
+          If you are legitimately CONSUMING a storage fault (reading Operation for a
+          log line, distinguishing an IO fault from a business outcome), the rule has
+          no alternative to offer — add //nolint:forbidigo with a justification.
   exclusions:
     rules:
     # I2 exceptions for OpenWriteSession / NewWriteSessionFromDB.
@@ -183,9 +192,12 @@ linters:
       linters: [forbidigo]
     # coverage.go owns the single legitimate ErrStorageOperation construction:
     # domain.StoreFailure is the wrapper every other site must go through, and
-    # it is the one place allowed to build the fallback. (EN-1379)
+    # it is the one place allowed to build the fallback. Pinned by source to that
+    # one construction — symmetric with the errors.go rule below — so a second,
+    # unintended reference in this file is still caught. (EN-1379)
     - path: internal/domain/coverage\.go
       linters: [forbidigo]
+      source: 'ErrStorageOperation\{'
     # ErrStorageOperation's own methods read its fields; with analyze-types the
     # receiver resolves to the forbidden type, so e.Operation / e.Cause are
     # flagged inside the declaration itself. Pinned to those field reads via
