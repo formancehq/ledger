@@ -286,3 +286,28 @@ func buildTestLog() *commonpb.Log {
 		},
 	}
 }
+
+// The LedgerLog volume-annotation lists feed the exclusion projection the
+// posting-index writes consult (excludedForLog). Proto3 unmarshal leaves a
+// repeated field untouched when the wire carries no entries for it, so a
+// reused message whose lists survive the reset makes the NEXT log inherit the
+// PREVIOUS log's purged/ephemeral tuples — the index builder then silently
+// skips that log's posting-index writes for the stale-excluded cells,
+// permanently losing account→tx, role, and has-asset rows (EN-1625 finding:
+// a drain purging (t-20:99, EUR/2) at log N excluded the same account's
+// force-drain at log N+1).
+func TestResetLogForReuse_ClearsVolumeAnnotationLists(t *testing.T) {
+	t.Parallel()
+
+	log := buildTestLog()
+	ll := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog()
+	ll.PurgedVolumes = []*commonpb.TouchedVolume{{Account: "t-20:99", Asset: "EUR/2"}}
+	ll.EphemeralVolumes = []*commonpb.TouchedVolume{{Account: "e:1", Asset: "USD"}}
+	ll.NewKeptVolumes = []*commonpb.TouchedVolume{{Account: "a:1", Asset: "USD"}}
+
+	resetLogForReuse(log)
+
+	assert.Empty(t, ll.GetPurgedVolumes())
+	assert.Empty(t, ll.GetEphemeralVolumes())
+	assert.Empty(t, ll.GetNewKeptVolumes())
+}
