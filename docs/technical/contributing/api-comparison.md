@@ -338,6 +338,11 @@ Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying
 
 If `type` is omitted, defaults to `"http"`.
 
+**Read responses:** `GET /v3/{ledgerName}` and `GET /v3/ledgers` return the
+mirror source as a read-only projection. OAuth client secrets and PostgreSQL
+password material are removed. A DSN whose form cannot be parsed safely is
+returned as `[redacted]`; the stored runtime configuration is unchanged.
+
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:

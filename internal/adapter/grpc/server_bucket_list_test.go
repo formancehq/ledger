@@ -80,6 +80,26 @@ func TestListLedgers(t *testing.T) {
 		require.Empty(t, stream.trailerCursor())
 	})
 
+	t.Run("routed exact page forwards upstream trailer", func(t *testing.T) {
+		t.Parallel()
+
+		impl, mockCtrl := newListHandlerHarness(t)
+		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(
+			&upstreamCursor[commonpb.LedgerInfo]{
+				items:      []*commonpb.LedgerInfo{{Name: "a"}, {Name: "b"}, {Name: "c"}},
+				nextCursor: "leader-next-page",
+			},
+			nil,
+		)
+
+		stream := newFakeServerStream[commonpb.LedgerInfo](t)
+		req := &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 3}}
+
+		require.NoError(t, impl.ListLedgers(req, stream))
+		require.Equal(t, []string{"a", "b", "c"}, sentLedgerNames(stream))
+		require.Equal(t, "leader-next-page", stream.trailerCursor())
+	})
+
 	t.Run("controller error wrapped", func(t *testing.T) {
 		t.Parallel()
 

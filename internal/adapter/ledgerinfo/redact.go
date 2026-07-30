@@ -8,6 +8,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+const redactedDSNPlaceholder = "[redacted]"
+
 // RedactSecrets returns a deep-cloned LedgerInfo safe for external read
 // responses. The stored value must retain the credentials used by mirror
 // workers, so redaction belongs at the adapter boundary and never mutates the
@@ -61,9 +63,21 @@ func (c *redactingCursor) Close() error {
 	return c.inner.Close()
 }
 
+// NextCursor preserves the optional routed-cursor trailer capability used by
+// the gRPC pagination layer. A local cursor has no upstream token.
+func (c *redactingCursor) NextCursor() string {
+	if provider, ok := c.inner.(interface{ NextCursor() string }); ok {
+		return provider.NextCursor()
+	}
+
+	return ""
+}
+
 // redactPostgresDSN removes password-bearing URI components while retaining
-// non-secret connection metadata. Unknown/non-URI forms are blanked so a
-// legacy value cannot bypass the response boundary through parser ambiguity.
+// non-secret connection metadata. Unknown/non-URI forms are replaced in full
+// so a legacy value cannot bypass the response boundary through parser
+// ambiguity. The returned value is a display projection, not a connectable
+// DSN; url.URL normalizes query ordering while removing secrets.
 func redactPostgresDSN(dsn string) string {
 	if dsn == "" {
 		return ""
@@ -71,7 +85,7 @@ func redactPostgresDSN(dsn string) string {
 
 	parsed, err := url.Parse(dsn)
 	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" {
-		return ""
+		return redactedDSNPlaceholder
 	}
 
 	changed := false
