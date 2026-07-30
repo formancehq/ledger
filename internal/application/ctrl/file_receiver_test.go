@@ -123,6 +123,30 @@ func TestScanCompletedFiles_RejectsNonLocalManifestPath(t *testing.T) {
 	require.Empty(t, completed)
 }
 
+func TestScanCompletedFiles_ReportsMissingTargetRoot(t *testing.T) {
+	t.Parallel()
+
+	manifest := &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{{Path: "data.txt"}}}
+	missingRoot := filepath.Join(t.TempDir(), "missing")
+
+	completed, err := scanCompletedFiles(missingRoot, manifest)
+	require.ErrorContains(t, err, "opening snapshot target directory")
+	require.Empty(t, completed)
+}
+
+func TestHashFileSHA256_ReportsConfinedOpenError(t *testing.T) {
+	t.Parallel()
+
+	root, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, root.Close())
+	})
+
+	_, err = hashFileSHA256(root, "missing.txt")
+	require.Error(t, err)
+}
+
 func TestManifestTotalSize(t *testing.T) {
 	t.Parallel()
 

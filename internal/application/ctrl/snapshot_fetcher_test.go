@@ -287,6 +287,22 @@ func TestGRPCSnapshotFetcher_RejectsSymlinkEscape(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(outsideDir, "written-outside.txt"))
 }
 
+func TestGRPCSnapshotFetcher_AcceptsNilManifestAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	client, csState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{SessionId: "test-session"},
+		nil,
+		nil,
+	)
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+
+	size, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
+	require.NoError(t, err)
+	require.Zero(t, size)
+	require.Equal(t, int32(0), csState.fetchFileCalls.Load())
+}
+
 func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
 	t.Parallel()
 
