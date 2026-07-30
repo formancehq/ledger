@@ -89,20 +89,18 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 type reverseMapOrphanScope struct {
 	// reader is the primary-store snapshot the index registry is read from.
 	reader dal.PebbleReader
-	// peer is the peer read-index snapshot, pinned by Check() alongside the
-	// primary one. nil when no readstore is attached.
+	// peer is the peer read-index snapshot, pinned by Check() BEFORE the primary
+	// one so the peer cursor can never appear ahead. nil when no readstore is
+	// attached.
 	peer *pebble.Snapshot
 	// lastSequence is the last log sequence the replay verified.
 	lastSequence uint64
-	// liveLedgers, pendingCleanupLedgers, replayedSchemas are absence-based
-	// oracle terms: all three are frozen at lastSequence.
+	// Every oracle term below is frozen at lastSequence, which is why the pass
+	// only reaches a verdict on an exactly aligned peer view.
 	liveLedgers           map[string]struct{}
 	pendingCleanupLedgers map[string]struct{}
 	replayedSchemas       map[string]*commonpb.MetadataSchema
-	// removedFields and deletedLedgers are the positive-evidence terms: logs
-	// the replay actually observed, so they are immune to cursor skew.
-	removedFields  map[removedSchemaFieldKey]struct{}
-	deletedLedgers map[string]struct{}
+	removedFields         map[removedSchemaFieldKey]struct{}
 }
 
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
@@ -122,28 +120,16 @@ type reverseMapOrphanScope struct {
 // projection compare: the primary store is the oracle here, and the read index
 // is the data being judged.
 //
-// A row is an orphan when its field is no longer indexed and no longer declared.
-// That verdict is reached one of two ways, and the distinction is load-bearing:
-//
-//   - POSITIVE EVIDENCE (skew-immune). The replay observed a
-//     RemovedMetadataFieldType for the field and nothing re-declared it. This is
-//     exactly EN-1458's bug: RemovedMetadataFieldType is the single log that both
-//     removes the schema field type and runs purgeReverseMapForKey, so "the audit
-//     says this field was removed + rows are still live" means "the point-delete
-//     scan missed rows". Because the verdict rests on a log the replay *saw*, it
-//     holds no matter where the peer cursor sits relative to lastSequence.
-//
-//   - ABSENCE (needs an exactly aligned view). The field is in neither the index
-//     registry nor the replayed schema. This catches removals whose log has been
-//     archived away, and rows for fields that were never audited at all — but it
-//     infers "removed" from "not present in a view frozen at lastSequence", so a
-//     field created *after* that point looks identical to a removed one. It is
-//     therefore evaluated only when the peer cursor is exactly aligned with the
-//     verified sequence. See the alignment discussion below.
-//
-// The same split applies to the unknown-ledger class: a replayed DeleteLedger is
-// positive evidence, while mere absence from liveLedgers requires alignment.
-// The malformed-key class needs no oracle at all and always runs.
+// A row is an orphan when its field is no longer indexed and no longer declared:
+// either the replay observed a RemovedMetadataFieldType for it, or it is present
+// in neither the index registry nor the replayed schema. The first term is
+// exactly EN-1458's bug — RemovedMetadataFieldType is the single log that both
+// removes the schema field type and runs purgeReverseMapForKey, so "the audit
+// says this field was removed + rows are still live" means "the point-delete scan
+// missed rows". The second catches removals whose log has been archived away, and
+// rows for fields that were never audited at all. Both are evaluated only on an
+// exactly aligned peer view; the malformed-key class needs no oracle at all and
+// always runs. See ALIGNMENT below.
 //
 // Residue from a plain DropIndex is deliberately NOT flagged. DropIndex removes
 // the registry entry but leaves the schema field declared, and
@@ -186,26 +172,35 @@ type reverseMapOrphanScope struct {
 //
 // ALIGNMENT. lastSequence is the last log sequence the checker verified, and
 // every oracle term — the index registry read off `reader`, the replayed schemas,
-// the live-ledger set — is frozen at exactly that point. The peer read index is
-// an independent store folded asynchronously by the index builder, so its cursor
-// can sit on either side of lastSequence:
+// the live-ledger set, the removed-field set — is frozen at exactly that point.
+// The peer read index is an independent store folded asynchronously by the index
+// builder, so a verdict is only sound when the peer has folded exactly that log
+// range: `indexedSequence == lastSequence`. The two other positions are skips,
+// and they are not symmetric.
 //
-//   - BEHIND. The registry is written at Raft apply while the rmap folds later,
-//     so between apply and fold a legitimately-removed field has no registry
-//     entry but still has live rmap rows. Both verdict paths are suppressed
-//     (positive evidence too: the peer has not folded the removal yet).
+//   - BEHIND is the ordinary state on a live cluster. The registry is written at
+//     Raft apply while the rmap folds later, so between apply and fold a
+//     legitimately-removed field has no registry entry but still has live rmap
+//     rows. Nothing can be concluded, so no verdict is reached.
 //
-//   - AHEAD. Check() runs on a live node — CheckStore passes the live readStore
-//     and there is no quiescing — so by the time the scan runs, the builder may
-//     have folded rows for a ledger or field created after lastSequence. Judging
-//     those against oracles pinned earlier reports a healthy cluster as corrupt.
-//     Positive-evidence verdicts are unaffected (a field created after the pin
-//     was never removed); absence-based verdicts are suppressed.
+//   - AHEAD cannot happen by race. The builder folds FROM the primary log stream
+//     and writes its cursor for logs it has already read out of the primary
+//     store, so progress(t) <= maxLogSeq(t) at every instant; Check() pins the
+//     peer snapshot BEFORE the primary one precisely so that ordering is
+//     inherited by the two pinned values. See the comment on the pins in Check().
 //
-// scope.peer is pinned by Check() next to the primary snapshot so the two views
-// are as close together as two separate Pebble stores allow, which keeps the
-// aligned case reachable. It is not atomic, which is precisely why correctness
-// rests on the evidence split above rather than on the cursors matching.
+//     It remains reachable one way only: a primary-store rollback beneath the
+//     cursor (RestoreCheckpoint on a follower restore) lowers maxLogSeq while the
+//     read index keeps its progress. Unlike usagebuilder, which detects this and
+//     calls usagestore.Reset(), the index builder has no rollback reset — so the
+//     read index legitimately holds rows for logs the restored primary never had.
+//     That is a real divergence, but it belongs to the missing rollback reset, not
+//     to the purge path this pass audits, and reporting it here would paint
+//     Check() red on a restore that never self-heals. It is logged loudly and
+//     skipped.
+//
+// This is why the pass needs no cross-store atomicity: an ordering that can only
+// leave the peer behind is sufficient, because behind is already a skip.
 //
 // Rows belonging to a ledger in pendingCleanupLedgers are skipped: like the
 // other passes, the deferred-purge window is tolerated rather than flagged.
@@ -230,25 +225,29 @@ func (c *Checker) compareReverseMapOrphans(
 		return
 	}
 
-	// See ALIGNMENT above. `folded` admits the positive-evidence verdicts,
-	// `aligned` additionally admits the absence-based ones. Malformed keys need
-	// no oracle and are reported whatever these say.
-	folded := indexedSequence >= scope.lastSequence
+	// See ALIGNMENT above. Every oracle term is frozen at lastSequence, so a
+	// verdict is only sound when the peer folded exactly that range. Malformed
+	// keys need no oracle and are reported whatever this says.
 	aligned := indexedSequence == scope.lastSequence
 
-	if !folded {
+	switch {
+	case indexedSequence < scope.lastSequence:
 		c.logger.WithFields(map[string]any{
 			"indexedSequence": indexedSequence,
 			"lastSequence":    scope.lastSequence,
 		}).Infof("Reverse-map orphan check limited to key decoding: the read index has not folded the whole verified log range")
-	} else if !aligned {
+	case indexedSequence > scope.lastSequence:
+		// Unreachable by race (Check() pins the peer snapshot first). Reachable
+		// only through a primary-store rollback beneath the read-index cursor,
+		// which the index builder does not reset — see ALIGNMENT.
 		c.logger.WithFields(map[string]any{
 			"indexedSequence": indexedSequence,
 			"lastSequence":    scope.lastSequence,
-		}).Infof("Reverse-map orphan check limited to audit-observed removals: the read index is ahead of the verified log range")
+		}).Infof("Reverse-map orphan check limited to key decoding: the read index is ahead of the verified log range, which means the primary store was rolled back beneath the read-index cursor")
 	}
 
-	// The registry is only consulted by the absence-based path.
+	// The registry is only consulted when a verdict can be reached at all, so an
+	// unaligned run does not pay for building the oracle.
 	indexedFields := map[domain.IndexKey]struct{}{}
 	if aligned {
 		var ok bool
@@ -306,22 +305,19 @@ func (c *Checker) compareReverseMapOrphans(
 			continue
 		}
 
-		if _, deleted := scope.deletedLedgers[parsed.Ledger]; deleted {
-			// Positive evidence: DeleteLedger range-deletes the whole
-			// [0x03][ledger] span unconditionally, the replay saw that log, and
-			// the peer has folded at least that far — so a survivor is a real
-			// leak whatever the cursor's exact position.
-			if folded {
-				observeReverseMapRow(unknownLedgers, parsed.Ledger, renderReverseMapEntity(parsed))
-			}
-
-			continue
-		}
-
 		if _, live := scope.liveLedgers[parsed.Ledger]; !live {
-			// Absence-based: a ledger created after lastSequence is missing from
-			// liveLedgers for a perfectly healthy reason, and is indistinguishable
-			// from a leaked one on an unaligned view.
+			// The live set is the single oracle for this class, and it is the
+			// audit-derived one: DeleteLedger removes the name from it (and
+			// range-deletes the whole [0x03][ledger] span at apply), a later
+			// CreateLedger of the same name puts it back. Deriving the verdict from
+			// liveness alone — rather than from a separate append-only "was
+			// deleted" set consulted first — is what keeps a recreated ledger's
+			// rows legitimate without depending on an external guarantee that the
+			// lifecycle is unreachable.
+			//
+			// It is absence-based, so it needs the aligned view: a ledger created
+			// after lastSequence is missing from liveLedgers for a perfectly
+			// healthy reason.
 			if aligned {
 				observeReverseMapRow(unknownLedgers, parsed.Ledger, renderReverseMapEntity(parsed))
 			}
@@ -365,15 +361,15 @@ func (c *Checker) compareReverseMapOrphans(
 				// re-declared the field. Checking this first is what makes the
 				// removal set safe to keep append-only.
 				orphan = false
-			case removed && folded:
-				// Positive evidence, see ALIGNMENT. Also the only path that
-				// survives an ahead cursor.
-				orphan = true
 			case aligned:
-				// Absence-based fallback: covers a removal whose log was archived
-				// away, and rows for a field the audit never declared at all.
+				// The replay observed the removal, OR the field is in neither
+				// oracle (a removal whose log was archived away, or a field the
+				// audit never declared at all). The removal term is kept even
+				// though absence subsumes it on a healthy store: it still fires
+				// when a RemovedMetadataFieldType is on record but the registry
+				// entry lingers, which absence alone would miss.
 				_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
-				orphan = !indexed
+				orphan = removed || !indexed
 			default:
 				orphan = false
 			}

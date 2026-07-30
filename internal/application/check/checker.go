@@ -102,6 +102,37 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 // 7. Archived chapter sealing hash decomposition
 // 8. Archived state via baseline checkpoint + 3-way merge comparison.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
+	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
+	// The order is load-bearing for compareReverseMapOrphans, which compares the
+	// peer's fold cursor against lastSequence (read off the primary snapshot
+	// below) and can only judge rows on an exactly aligned view.
+	//
+	// The index builder folds FROM the primary log stream: it writes
+	// WriteProgress(batch, lastSeq) for logs it has just read out of the primary
+	// store, so progress(t) <= maxLogSeq(t) at every instant, and both values are
+	// monotonically non-decreasing. Pinning the peer at t0 and the primary at
+	// t1 >= t0 therefore gives
+	//
+	//	indexedSequence = progress(t0) <= maxLogSeq(t0) <= maxLogSeq(t1) = lastSequence
+	//
+	// which makes a peer cursor AHEAD of the verified sequence impossible by
+	// construction rather than merely unlikely. Taken in the reverse order the
+	// gap admits logs applied and folded between the two pins, and the pass then
+	// judges rows for ledgers and fields created after the primary pin against
+	// oracles that predate them — reporting a healthy cluster as corrupt.
+	//
+	// The two snapshots still cannot be taken atomically across two Pebble
+	// stores, but atomicity is not what this needs: an ordering that can only
+	// ever leave the peer BEHIND is enough, because behind is a state the pass
+	// already handles by skipping. See ALIGNMENT in reverse_map_orphans.go.
+	var peerSnap *pebble.Snapshot
+
+	if c.readStore != nil {
+		peerSnap = c.readStore.NewSnapshot()
+
+		defer func() { _ = peerSnap.Close() }()
+	}
+
 	// Take a point-in-time snapshot so that log iteration and live attribute
 	// reads see the same committed state. Without this, entries committed
 	// between the log scan and the attribute scan cause false-positive
@@ -112,23 +143,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	defer func() { _ = snap.Close() }()
-
-	// Pin the peer read-index snapshot HERE, next to the primary one, rather
-	// than inside compareReverseMapOrphans at the end of the run. Every oracle
-	// term that pass compares against is frozen at this instant; opening the
-	// peer view minutes later let the index builder fold rows for ledgers and
-	// fields created after the pin, which the pass then judged against oracles
-	// that predate them. The two snapshots cannot be taken atomically across two
-	// Pebble stores, so this narrows the window rather than closing it — the
-	// pass stays correct under any remaining skew by construction. See
-	// ALIGNMENT in reverse_map_orphans.go.
-	var peerSnap *pebble.Snapshot
-
-	if c.readStore != nil {
-		peerSnap = c.readStore.NewSnapshot()
-
-		defer func() { _ = peerSnap.Close() }()
-	}
 
 	lastSequence, err := query.ReadLastSequence(snap)
 	if err != nil {
@@ -802,7 +816,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		pendingCleanupLedgers: pendingCleanupLedgers,
 		replayedSchemas:       expectedSchemas,
 		removedFields:         removedSchemaFields,
-		deletedLedgers:        deletedInReplay,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)

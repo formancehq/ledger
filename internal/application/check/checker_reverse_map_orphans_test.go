@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -624,13 +625,15 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 		"a malformed key needs no oracle, so the lag gate must not suppress it")
 }
 
-// TestCompareReverseMapOrphans_CursorAhead pins the other side of the gate.
-// Check() pins every oracle term — the index registry, the replayed schemas, the
-// live-ledger set — at lastSequence, but the peer read index is folded
-// asynchronously on a live node, so by scan time it can hold rows for ledgers and
-// fields created AFTER that pin. Judging those by absence reports a healthy
-// cluster as corrupt, so the absence-based verdicts require an exactly aligned
-// cursor while the positive-evidence ones do not.
+// TestCompareReverseMapOrphans_CursorAhead pins the other side of the gate. Every
+// oracle term is frozen at lastSequence, so an ahead peer holds rows the oracles
+// cannot speak about at all — no verdict of either kind may be reached.
+//
+// Check() makes this position unreachable by race — it pins the peer snapshot
+// before the primary one, so the peer cursor it reads can only ever trail the
+// verified sequence (see the comment on the two pins in Check()). A primary-store
+// rollback beneath the read-index cursor still reaches it, so the gate has to hold
+// on its own; TestCheck_ReverseMapOrphans_EndToEnd pins both sides through Check().
 func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 	t.Parallel()
 
@@ -656,30 +659,84 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 	require.Empty(t, newLedger.run(10, ledgerNameSet("L1"), nil),
 		"a ledger created after the pinned oracle must not be reported as absent from the live set")
 
-	// Positive evidence survives the same ahead cursor: the replay saw the
-	// removal, so the rows are orphans no matter where the peer cursor sits.
-	removed := newReverseMapFixture(t, reverseMapFixtureInput{
-		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "dropped", 1)},
+	// An observed removal is no exception. The removal set is append-only while
+	// the replayed schema is pinned, so a field removed at or before lastSequence
+	// and RE-DECLARED after the pin carries the removal on record forever while
+	// the re-declaration is invisible — and an ahead peer holds the new,
+	// legitimate rows. Treating the removal as skew-immune evidence reports those
+	// healthy rows as orphans.
+	redeclaredAfterPin := newReverseMapFixture(t, reverseMapFixtureInput{
+		// The registry entry the post-pin CreateIndex wrote is equally invisible to
+		// the pinned oracle, so neither term can vouch for the rows.
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
 		progress: 12,
 	})
 
-	require.Len(t, removed.runScope(reverseMapOrphanScope{
+	require.Empty(t, redeclaredAfterPin.runScope(reverseMapOrphanScope{
 		lastSequence:  10,
 		liveLedgers:   ledgerNameSet("L1"),
-		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "dropped"}),
-	}), 1, "an audit-observed removal must be reported even when the peer cursor is ahead")
+		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+	}), "a field re-declared after the pinned oracle must not be reported as an orphan on an ahead cursor")
 
-	// Same for a replayed DeleteLedger.
+	// The aligned twin proves the silence above is earned by the gate and not by
+	// the fixture: the very same removal evidence and rows, judged on an aligned
+	// view, must be reported.
+	aligned := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
+		progress: 10,
+	})
+
+	require.Len(t, aligned.runScope(reverseMapOrphanScope{
+		lastSequence:  10,
+		liveLedgers:   ledgerNameSet("L1"),
+		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+	}), 1, "the same removal must be reported on an aligned view")
+
+	// A ledger deleted in the replay is judged by absence from the live set like
+	// any other, so it is suppressed too. Rows for a ledger deleted and recreated
+	// after the pin are indistinguishable from leaked ones here.
 	deleted := newReverseMapFixture(t, reverseMapFixtureInput{
 		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "gone", "users:1", "role", 1)},
 		progress: 12,
 	})
 
-	require.Len(t, deleted.runScope(reverseMapOrphanScope{
-		lastSequence:   10,
-		liveLedgers:    ledgerNameSet("L1"),
-		deletedLedgers: ledgerNameSet("gone"),
-	}), 1, "an audit-observed DeleteLedger must be reported even when the peer cursor is ahead")
+	require.Empty(t, deleted.run(10, ledgerNameSet("L1"), nil),
+		"rows for a ledger absent from the pinned live set must not be reported on an ahead cursor")
+
+	// Malformed keys need no oracle, so the ahead position must not suppress them
+	// either — the same guarantee the lag gate carries on the behind side.
+	malformed := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: [][]byte{append([]byte{readstore.PrefixReverseMap}, 0x01, 0x02)},
+		progress: 12,
+	})
+
+	require.Len(t, malformed.run(10, ledgerNameSet("L1"), nil), 1,
+		"a malformed key needs no oracle, so an ahead cursor must not suppress it")
+}
+
+// TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent pins that the
+// unknown-ledger verdict is driven by liveness alone. A ledger deleted and later
+// recreated under the same name is live again in the audit-derived set, so its
+// fresh rows are legitimate. Deriving the verdict from a separate append-only
+// "was deleted in the replay" set consulted BEFORE the live set would report them,
+// and would leave correctness resting on the retained-tombstone guarantee that
+// makes the lifecycle unreachable rather than on the pass's own structure.
+func TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+
+	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
+		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
+		progress: 10,
+	})
+
+	// L1 is live: the replay saw DeleteLedger and then CreateLedger of the same
+	// name, and the second put the name back into knownLedgers.
+	require.Empty(t, fixture.run(10, ledgerNameSet("L1"), nil),
+		"rows of a recreated ledger must not be reported as absent from the live set")
 }
 
 // TestCompareReverseMapOrphans_RemovedThenRedeclared pins that the removal set
@@ -886,54 +943,87 @@ func removeMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key
 // of the bug is reproduced the same way the pass's own unit tests do it: the
 // orphaned row is seeded directly into a real peer readstore via its public
 // key/write API, standing in for a row the purge scan failed to reach.
+//
+// Both sides of the alignment gate are pinned here, because that gate is the one
+// thing the unit tests drive through a hand-built scope rather than through the
+// real snapshot pair Check() takes.
 func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 	t.Parallel()
 
 	const ledger = "L1"
 
-	engine := newTestEngine(t)
+	// runCheck seeds a peer read index holding one orphaned row, sets its fold
+	// cursor via aheadBy relative to the store's own verified sequence, and runs a
+	// full Check().
+	runCheck := func(t *testing.T, aheadBy uint64) []*servicepb.CheckStoreEvent {
+		t.Helper()
 
-	engine.processAndCommit(createLedgerOrder(ledger))
-	engine.processAndCommit(setMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role", commonpb.MetadataType_METADATA_TYPE_STRING))
-	engine.processAndCommit(removeMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
+		engine := newTestEngine(t)
 
-	logger := logging.Testing()
+		engine.processAndCommit(createLedgerOrder(ledger))
+		engine.processAndCommit(setMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role", commonpb.MetadataType_METADATA_TYPE_STRING))
+		engine.processAndCommit(removeMetadataFieldTypeOrder(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"))
 
-	peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = peer.Close() })
+		logger := logging.Testing()
 
-	kb := dal.NewKeyBuilder()
-	orphanRow := readstore.AccountReverseMapKeyV(kb, ledger, "users:1", "role", 1)
+		peer, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = peer.Close() })
 
-	batch := peer.NewBatch()
-	require.NoError(t, batch.SetBytes(orphanRow, []byte{0x01}))
-	// Progress is set far past the store's own last sequence, which does double
-	// duty: it keeps the test independent of exactly how many logs the three
-	// orders above produced, AND it pins the cursor-ahead case. Detection here
-	// therefore rests on the positive-evidence path — the replay saw a
-	// RemovedMetadataFieldType for this field — not on the absence-based one,
-	// which an unaligned cursor deliberately suppresses. A healthy row under the
-	// same ahead cursor must stay silent; that is
-	// TestCompareReverseMapOrphans_CursorAhead.
-	require.NoError(t, peer.WriteProgress(batch, 1_000_000))
-	require.NoError(t, batch.Commit())
+		kb := dal.NewKeyBuilder()
+		orphanRow := readstore.AccountReverseMapKeyV(kb, ledger, "users:1", "role", 1)
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, peer, logger)
+		// Read the store's own last sequence rather than hard-coding one, so the
+		// cursor is positioned relative to the real verified sequence whatever
+		// number of logs the three orders above produced.
+		handle, err := engine.store.NewReadHandle()
+		require.NoError(t, err)
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
-		if e.GetError() != nil {
-			events = append(events, e)
-		}
-	}))
+		lastSequence, err := query.ReadLastSequence(handle)
+		require.NoError(t, err)
+		require.NoError(t, handle.Close())
+		require.NotZero(t, lastSequence, "the three orders must have produced logs")
 
-	require.Len(t, events, 1, "the only integrity error in this store must be the reverse-map orphan")
+		batch := peer.NewBatch()
+		require.NoError(t, batch.SetBytes(orphanRow, []byte{0x01}))
+		require.NoError(t, peer.WriteProgress(batch, lastSequence+aheadBy))
+		require.NoError(t, batch.Commit())
 
-	err0 := events[0].GetError()
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
-	require.Equal(t, ledger, err0.GetLedger())
-	require.Contains(t, err0.GetMessage(), `"role"`)
+		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, peer, logger)
+
+		var events []*servicepb.CheckStoreEvent
+		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
+			if e.GetError() != nil {
+				events = append(events, e)
+			}
+		}))
+
+		return events
+	}
+
+	t.Run("aligned cursor reports the orphan", func(t *testing.T) {
+		t.Parallel()
+
+		events := runCheck(t, 0)
+		require.Len(t, events, 1, "the only integrity error in this store must be the reverse-map orphan")
+
+		err0 := events[0].GetError()
+		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, err0.GetErrorType())
+		require.Equal(t, ledger, err0.GetLedger())
+		require.Contains(t, err0.GetMessage(), `"role"`)
+	})
+
+	t.Run("ahead cursor reaches no verdict", func(t *testing.T) {
+		t.Parallel()
+
+		// Check() pins the peer snapshot first, so this position is unreachable by
+		// race; it models a primary-store rollback beneath the read-index cursor.
+		// The oracles cannot speak about logs past the verified sequence, so the
+		// pass must reach no verdict at all — not even on the row whose removal the
+		// replay did observe, since a re-declaration past the pin is invisible to it.
+		require.Empty(t, runCheck(t, 1_000),
+			"a read index ahead of the verified sequence must not be judged")
+	})
 }
 
 // TestRenderReverseMapKeyPrefix pins that a malformed-key finding's size does not

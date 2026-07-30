@@ -180,15 +180,30 @@ What it does **not** cover:
 
 The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle. An empty audit is **not** a skip: the read index folds from the log stream, so a reverse-map row over a zero-log store has nothing behind it.
 
-**Cursor skew.** The read store is folded asynchronously and independently of the primary store, so its progress cursor can sit on either side of the log sequence the checker pinned its oracles at. The two directions fail differently, so the pass separates its verdicts by the kind of evidence they rest on:
+**Cursor alignment.** The read store is folded asynchronously and independently of the primary store, while every oracle term the pass compares against is frozen at the log sequence the checker verified. A verdict is therefore only sound when the read store has folded exactly that range:
 
-| Evidence | Example | Requirement |
-|---|---|---|
-| Positive — a log the replay saw | replayed `RemovedMetadataFieldType` for the field, replayed `DeleteLedger` for the ledger | cursor has folded up to the verified sequence |
-| Absence — inferred from a pinned view | field in neither registry nor replayed schema; ledger missing from `knownLedgers` | cursor **exactly** at the verified sequence |
-| None | key does not decode | always reported |
+| Cursor position | What the pass does |
+|---|---|
+| `indexedSequence == lastSequence` | judges rows: reports a field the replay observed a `RemovedMetadataFieldType` for, or one absent from both the registry and the replayed schema |
+| `indexedSequence < lastSequence` | decodes keys only — no verdict |
+| `indexedSequence > lastSequence` | decodes keys only — no verdict |
+| any position | a key that does not decode is always reported; it needs no oracle |
 
-A cursor *behind* the verified sequence means a legitimately-removed field has no registry entry but still has live rows, so both verdict paths are suppressed. A cursor *ahead* means the builder may have folded rows for a field or ledger created after the pin, which absence cannot distinguish from a removed one — so only the positive-evidence path runs. `Check()` pins the peer snapshot next to the primary one to keep the aligned case reachable on a busy cluster; two snapshots across two Pebble stores are not atomic, which is why correctness rests on this split and not on the cursors matching.
+The two unaligned positions are skips, but they are not symmetric.
+
+*Behind* is the ordinary state on a live cluster: the registry is written at Raft apply while the reverse map folds later, so between apply and fold a legitimately-removed field has no registry entry but still has live rows.
+
+*Ahead* cannot happen by race. The builder folds **from** the primary log stream and writes its cursor for logs it has already read out of the primary store, so `progress(t) <= maxLogSeq(t)` at every instant, and both values are monotonically non-decreasing. `Check()` pins the peer snapshot **strictly before** the primary snapshot precisely so that ordering is inherited:
+
+```
+indexedSequence = progress(t_peer) <= maxLogSeq(t_peer) <= maxLogSeq(t_primary) = lastSequence
+```
+
+Taken in the reverse order, the gap between the two pins admits logs applied and folded in between, and the pass then judges rows for ledgers and fields created after the primary pin against oracles that predate them — reporting a healthy cluster as corrupt. The ordering is what makes cross-store snapshot atomicity unnecessary: an ordering that can only leave the peer *behind* is enough, because behind is already a skip.
+
+Ahead remains reachable one way only: a primary-store rollback beneath the cursor (`RestoreCheckpoint` on a follower restore) lowers `maxLogSeq` while the read index keeps its progress. Unlike `usagebuilder`, which detects this and calls `usagestore.Reset()`, the index builder has **no** rollback reset, so the read index legitimately holds rows for logs the restored primary never had. That is a real divergence, but it belongs to the missing reset rather than to the purge path this pass audits, and reporting it here would paint `Check()` red on a restore that never self-heals — so it is logged loudly and skipped.
+
+**Ledger liveness is the only oracle for the unknown-ledger class.** `DeleteLedger` removes the name from the audit-derived live set (and range-deletes the whole `[0x03][ledger]` span at apply); a later `CreateLedger` of the same name puts it back. Deriving the verdict from liveness alone — rather than from a separate append-only "was deleted in the replay" set consulted first — is what keeps a recreated ledger's rows legitimate by construction, instead of resting on the retained tombstone that makes that lifecycle unreachable today.
 
 ## Summary
 
