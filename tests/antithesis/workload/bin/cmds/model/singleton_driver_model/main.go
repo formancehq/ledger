@@ -187,7 +187,6 @@ func runWorker(
 			default:
 				runRead(ctx, client, c)
 			}
-			time.Sleep(workerLoopPause)
 			continue
 		}
 
@@ -238,8 +237,6 @@ func runWorker(
 			return
 		case c.incoming <- obs:
 		}
-
-		time.Sleep(workerLoopPause)
 	}
 }
 

@@ -141,8 +141,8 @@ const replayConflictOneIn = 6
 
 // --- Worker pacing ------------------------------------------------------
 
-// Sleep per worker iteration — CPU/server breathing room.
-const workerLoopPause = 100 * time.Millisecond
+// Workers run unpaced: each iteration blocks on a full RPC round-trip, and the
+// incoming channel back-pressures dispatch when the processor falls behind.
 
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
