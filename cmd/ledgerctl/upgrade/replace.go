@@ -100,7 +100,14 @@ func replaceExecutable(currentPath, replacementPath, goos string) error {
 
 	if err := os.Rename(replacementPath, currentPath); err != nil {
 		if rollbackErr := os.Rename(backupPath, currentPath); rollbackErr != nil {
-			return fmt.Errorf("installing replacement: %w; restoring current executable: %w", err, rollbackErr)
+			return fmt.Errorf(
+				"installing replacement: %w; restoring current executable from backup %q: %w; recover manually by renaming %q to %q",
+				err,
+				backupPath,
+				rollbackErr,
+				backupPath,
+				currentPath,
+			)
 		}
 
 		return fmt.Errorf("installing replacement: %w", err)

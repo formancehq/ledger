@@ -1,6 +1,11 @@
 package upgrade
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,12 +78,14 @@ func TestFindStableRelease(t *testing.T) {
 
 	releases := []releaseInfo{
 		{TagName: "v2.4.12"},
-		{TagName: "v3.0.0-alpha.13"},
+		{TagName: "v3.0.0-alpha.13", Prerelease: true},
+		{TagName: "v3.0.0-rc.1"},
+		{TagName: "v3.0.0", Draft: true},
 		{TagName: "v3.0.0"},
 	}
 
-	release, err := findStableRelease(releases)
-	require.NoError(t, err)
+	release := findStableRelease(releases, 3)
+	require.NotNil(t, release)
 	require.Equal(t, "v3.0.0", release.TagName)
 }
 
@@ -87,9 +94,47 @@ func TestFindStableReleaseRejectsOtherMajorsAndPrereleases(t *testing.T) {
 
 	releases := []releaseInfo{
 		{TagName: "v2.4.12"},
-		{TagName: "v3.0.0-alpha.13"},
+		{TagName: "v3.0.0-alpha.13", Prerelease: true},
 	}
 
-	_, err := findStableRelease(releases)
-	require.EqualError(t, err, "no stable v3 release found; use --channel nightly")
+	require.Nil(t, findStableRelease(releases, 3))
+}
+
+func TestFetchStableReleaseFromURLPaginates(t *testing.T) {
+	t.Parallel()
+
+	firstPage := make([]releaseInfo, 100)
+	for i := range firstPage {
+		firstPage[i] = releaseInfo{TagName: fmt.Sprintf("v2.4.%d", i)}
+	}
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		var releases []releaseInfo
+		switch r.URL.Query().Get("page") {
+		case "1":
+			releases = firstPage
+		case "2":
+			releases = []releaseInfo{{TagName: "v3.0.0"}}
+		default:
+			require.Fail(t, "unexpected releases page", r.URL.String())
+		}
+
+		require.NoError(t, json.NewEncoder(w).Encode(releases))
+	}))
+	t.Cleanup(server.Close)
+
+	release, err := fetchStableReleaseFromURL("v3.0.0-alpha.13", server.URL)
+	require.NoError(t, err)
+	require.Equal(t, "v3.0.0", release.TagName)
+	require.EqualValues(t, 2, requests.Load())
+}
+
+func TestFetchStableReleaseFromURLRejectsUnversionedBinary(t *testing.T) {
+	t.Parallel()
+
+	_, err := fetchStableReleaseFromURL("nightly-deadbeef", "unused")
+	require.ErrorContains(t, err, `cannot select a stable release for current version "nightly-deadbeef"`)
 }

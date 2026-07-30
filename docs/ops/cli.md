@@ -4956,12 +4956,12 @@ ledgerctl upgrade [flags]
 - Downloads the latest release from `formancehq/ledger` GitHub releases
 - Verifies the archive's SHA256 checksum against `checksums.txt`
 - Extracts `ledgerctl` from the Linux/macOS tarball or `ledgerctl.exe` from the Windows ZIP archive, then replaces the current binary
-- On Windows, keeps the previous executable as `ledgerctl.exe.old` because the running executable cannot be replaced in place
+- On Windows, keeps the previous executable as `ledgerctl.exe.old` because the running executable cannot be replaced in place. If an upgrade is interrupted and `ledgerctl.exe` is missing, rename `ledgerctl.exe.old` back to `ledgerctl.exe`.
 - If the current version is `dev` (built without ldflags), warns and requires `--force`
 
 **Channels:**
 - **`nightly`** (default): The rolling nightly build, tagged `nightly` on GitHub. Version format: `nightly-<shortcommit>`.
-- **`stable`**: The latest final Ledger v3 release matching `v3.*.*` (prereleases excluded).
+- **`stable`**: The latest final release matching the running binary's major version. Drafts and prereleases are excluded. Until the first final release for that major exists, the command returns an error and `nightly` must be used.
 
 **Example:**
 

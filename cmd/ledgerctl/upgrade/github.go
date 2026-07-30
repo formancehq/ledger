@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 const (
@@ -22,6 +23,8 @@ type releaseInfo struct {
 	TagName         string      `json:"tag_name"`
 	Name            string      `json:"name"`
 	TargetCommitish string      `json:"target_commitish"`
+	Draft           bool        `json:"draft"`
+	Prerelease      bool        `json:"prerelease"`
 	Assets          []assetInfo `json:"assets"`
 }
 
@@ -32,13 +35,14 @@ type assetInfo struct {
 
 // fetchRelease fetches the release info for the given channel.
 // For "nightly", it fetches the release tagged "nightly".
-// For "stable", it fetches the most recent release matching a semver tag.
-func fetchRelease(channel string) (*releaseInfo, error) {
+// For "stable", it fetches the most recent final release matching the running
+// binary's major version.
+func fetchRelease(channel, currentVersion string) (*releaseInfo, error) {
 	switch channel {
 	case "nightly":
 		return fetchNightlyRelease()
 	case "stable":
-		return fetchStableRelease()
+		return fetchStableRelease(currentVersion)
 	default:
 		return nil, fmt.Errorf("unknown channel %q; use \"nightly\" or \"stable\"", channel)
 	}
@@ -57,29 +61,65 @@ func fetchNightlyRelease() (*releaseInfo, error) {
 	return &release, nil
 }
 
-var semverTagRe = regexp.MustCompile(`^v3\.\d+\.\d+$`)
+func fetchStableRelease(currentVersion string) (*releaseInfo, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", githubRepo)
 
-func fetchStableRelease() (*releaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", githubRepo)
-
-	var releases []releaseInfo
-
-	err := githubGet(url, &releases)
-	if err != nil {
-		return nil, err
-	}
-
-	return findStableRelease(releases)
+	return fetchStableReleaseFromURL(currentVersion, url)
 }
 
-func findStableRelease(releases []releaseInfo) (*releaseInfo, error) {
-	for i := range releases {
-		if semverTagRe.MatchString(releases[i].TagName) {
-			return &releases[i], nil
+func fetchStableReleaseFromURL(currentVersion, releasesURL string) (*releaseInfo, error) {
+	current, err := semver.NewVersion(currentVersion)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cannot select a stable release for current version %q: %w; use --channel nightly",
+			currentVersion,
+			err,
+		)
+	}
+
+	const releasesPerPage = 100
+
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s?per_page=%d&page=%d", releasesURL, releasesPerPage, page)
+
+		var releases []releaseInfo
+		if err := githubGet(url, &releases); err != nil {
+			return nil, err
+		}
+
+		if release := findStableRelease(releases, current.Major()); release != nil {
+			return release, nil
+		}
+
+		if len(releases) < releasesPerPage {
+			break
 		}
 	}
 
-	return nil, errors.New("no stable v3 release found; use --channel nightly")
+	return nil, fmt.Errorf(
+		"no final release found for major v%d; use --channel nightly",
+		current.Major(),
+	)
+}
+
+func findStableRelease(releases []releaseInfo, currentMajor uint64) *releaseInfo {
+	for i := range releases {
+		release := &releases[i]
+		if release.Draft || release.Prerelease {
+			continue
+		}
+
+		releaseVersion, err := semver.StrictNewVersion(strings.TrimPrefix(release.TagName, "v"))
+		if err != nil || releaseVersion.Prerelease() != "" {
+			continue
+		}
+
+		if releaseVersion.Major() == currentMajor {
+			return release
+		}
+	}
+
+	return nil
 }
 
 var (
