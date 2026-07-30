@@ -135,14 +135,14 @@ func TestStreamOneFile_PathConfinement(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
+		name       string
+		path       string
+		wantErr    bool
+		errorCause string
 	}{
 		{name: "nested file", path: filepath.Join("nested", "data.txt")},
-		{name: "parent traversal", path: traversalPath, wantErr: true},
-		{name: "absolute path", path: outsidePath, wantErr: true},
-		{name: "symlink escape", path: filepath.Base(symlinkPath), wantErr: true},
+		{name: "parent traversal", path: traversalPath, wantErr: true, errorCause: "path escapes from parent"},
+		{name: "symlink escape", path: filepath.Base(symlinkPath), wantErr: true, errorCause: "path escapes from parent"},
 	}
 
 	for _, test := range tests {
@@ -157,7 +157,7 @@ func TestStreamOneFile_PathConfinement(t *testing.T) {
 			})
 
 			if test.wantErr {
-				require.Error(t, err)
+				require.ErrorContains(t, err, test.errorCause)
 				require.Empty(t, content)
 
 				return

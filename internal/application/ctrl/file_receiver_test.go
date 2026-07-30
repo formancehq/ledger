@@ -100,6 +100,29 @@ func TestScanCompletedFiles_IgnoresTmpFiles(t *testing.T) {
 	require.Empty(t, completed)
 }
 
+func TestScanCompletedFiles_RejectsNonLocalManifestPath(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	outsideDir := t.TempDir()
+	content := []byte("outside")
+	outsidePath := filepath.Join(outsideDir, "outside.txt")
+	require.NoError(t, os.WriteFile(outsidePath, content, 0644))
+
+	traversalPath, err := filepath.Rel(targetDir, outsidePath)
+	require.NoError(t, err)
+
+	manifest := &snapshotpb.SnapshotManifest{
+		Files: []*snapshotpb.FileEntry{
+			{Path: traversalPath, Size: uint64(len(content)), Sha256: sha256Hex(content)},
+		},
+	}
+
+	completed, err := scanCompletedFiles(targetDir, manifest)
+	require.ErrorContains(t, err, "invalid snapshot path")
+	require.Empty(t, completed)
+}
+
 func TestManifestTotalSize(t *testing.T) {
 	t.Parallel()
 

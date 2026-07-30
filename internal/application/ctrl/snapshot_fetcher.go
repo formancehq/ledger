@@ -184,6 +184,10 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 
 	sessionID := resp.GetSessionId()
 	manifest := resp.GetManifest()
+	if err := validateSnapshotManifest(manifest); err != nil {
+		return 0, fmt.Errorf("validating snapshot manifest: %w", err)
+	}
+
 	totalSize := manifestTotalSize(manifest)
 
 	logger.WithFields(map[string]any{

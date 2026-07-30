@@ -59,6 +59,19 @@ func (f *fileFetcher) fetchFile(ctx context.Context, entry *snapshotpb.FileEntry
 }
 
 func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileEntry, targetDir string, progress *state.SyncProgress) error {
+	if !filepath.IsLocal(entry.GetPath()) {
+		return fmt.Errorf("invalid snapshot path: %q", entry.GetPath())
+	}
+
+	root, err := os.OpenRoot(targetDir)
+	if err != nil {
+		return fmt.Errorf("opening snapshot target directory: %w", err)
+	}
+
+	defer func() {
+		_ = root.Close()
+	}()
+
 	stream, err := f.client.FetchFile(ctx, &snapshotpb.FetchFileRequest{
 		SessionId: f.sessionID,
 		Path:      entry.GetPath(),
@@ -67,12 +80,12 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		return fmt.Errorf("opening stream for %s: %w", entry.GetPath(), err)
 	}
 
-	tmpPath := filepath.Join(targetDir, entry.GetPath()+".tmp")
-	if err := os.MkdirAll(filepath.Dir(tmpPath), 0755); err != nil {
+	tmpPath := entry.GetPath() + ".tmp"
+	if err := root.MkdirAll(filepath.Dir(tmpPath), 0755); err != nil {
 		return fmt.Errorf("creating parent directory for %s: %w", entry.GetPath(), err)
 	}
 
-	tmpFile, err := os.Create(tmpPath)
+	tmpFile, err := root.Create(tmpPath)
 	if err != nil {
 		return fmt.Errorf("creating temp file for %s: %w", entry.GetPath(), err)
 	}
@@ -81,6 +94,7 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 
 	defer func() {
 		_ = tmpFile.Close()
+		_ = root.Remove(tmpPath)
 	}()
 
 	for {
@@ -117,8 +131,7 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", entry.GetPath(), entry.GetSha256(), gotHash)
 	}
 
-	finalPath := filepath.Join(targetDir, entry.GetPath())
-	if err := os.Rename(tmpPath, finalPath); err != nil {
+	if err := root.Rename(tmpPath, entry.GetPath()); err != nil {
 		return fmt.Errorf("renaming %s: %w", entry.GetPath(), err)
 	}
 

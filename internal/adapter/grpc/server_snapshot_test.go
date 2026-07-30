@@ -274,21 +274,27 @@ func TestSnapshotService_InvalidSessionID(t *testing.T) {
 func TestSnapshotService_FetchFileRejectsNonLocalPath(t *testing.T) {
 	t.Parallel()
 
-	sessions := newSnapshotSessionStore(nil, noopLogger{}, defaultSessionTTL)
-	t.Cleanup(sessions.stop)
+	for _, path := range []string{"../outside", filepath.Join(string(filepath.Separator), "outside")} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
 
-	sessionID, err := sessions.create("test-sync", t.TempDir())
-	require.NoError(t, err)
+			sessions := newSnapshotSessionStore(nil, noopLogger{}, defaultSessionTTL)
+			t.Cleanup(sessions.stop)
 
-	server := &SnapshotServiceServerImpl{sessions: sessions}
-	stream := newFakeServerStream[snapshotpb.FetchFileResponse](t)
-	err = server.FetchFile(&snapshotpb.FetchFileRequest{
-		SessionId: sessionID,
-		Path:      "../outside",
-	}, stream)
+			sessionID, err := sessions.create("test-sync", t.TempDir())
+			require.NoError(t, err)
 
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Empty(t, stream.sent)
+			server := &SnapshotServiceServerImpl{sessions: sessions}
+			stream := newFakeServerStream[snapshotpb.FetchFileResponse](t)
+			err = server.FetchFile(&snapshotpb.FetchFileRequest{
+				SessionId: sessionID,
+				Path:      path,
+			}, stream)
+
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.Empty(t, stream.sent)
+		})
+	}
 }
 
 func TestSnapshotService_EmptyCheckpoint(t *testing.T) {

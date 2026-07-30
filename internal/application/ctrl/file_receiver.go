@@ -3,6 +3,7 @@ package ctrl
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,12 +19,23 @@ func scanCompletedFiles(targetDir string, manifest *snapshotpb.SnapshotManifest)
 		return nil, nil
 	}
 
+	if err := validateSnapshotManifest(manifest); err != nil {
+		return nil, err
+	}
+
+	root, err := os.OpenRoot(targetDir)
+	if err != nil {
+		return nil, fmt.Errorf("opening snapshot target directory: %w", err)
+	}
+
+	defer func() {
+		_ = root.Close()
+	}()
+
 	var completed []string
 
 	for _, entry := range manifest.GetFiles() {
-		fullPath := filepath.Join(targetDir, entry.GetPath())
-
-		info, err := os.Stat(fullPath)
+		info, err := root.Stat(entry.GetPath())
 		if err != nil {
 			continue // file not present or not accessible
 		}
@@ -32,7 +44,7 @@ func scanCompletedFiles(targetDir string, manifest *snapshotpb.SnapshotManifest)
 			continue // size mismatch — incomplete or different file
 		}
 
-		hash, err := hashFileSHA256(fullPath)
+		hash, err := hashFileSHA256(root, entry.GetPath())
 		if err != nil {
 			continue // can't hash — treat as incomplete
 		}
@@ -47,6 +59,22 @@ func scanCompletedFiles(targetDir string, manifest *snapshotpb.SnapshotManifest)
 	return completed, nil
 }
 
+// validateSnapshotManifest rejects paths that would escape the follower's
+// staging root before any file is requested or written.
+func validateSnapshotManifest(manifest *snapshotpb.SnapshotManifest) error {
+	if manifest == nil {
+		return nil
+	}
+
+	for i, entry := range manifest.GetFiles() {
+		if !filepath.IsLocal(entry.GetPath()) {
+			return fmt.Errorf("invalid snapshot path at manifest entry %d: %q", i, entry.GetPath())
+		}
+	}
+
+	return nil
+}
+
 // manifestTotalSize returns the sum of all file sizes in the manifest.
 func manifestTotalSize(manifest *snapshotpb.SnapshotManifest) uint64 {
 	var total uint64
@@ -57,9 +85,9 @@ func manifestTotalSize(manifest *snapshotpb.SnapshotManifest) uint64 {
 	return total
 }
 
-// hashFileSHA256 computes the SHA256 hex digest of a file.
-func hashFileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+// hashFileSHA256 computes the SHA256 hex digest of a file beneath root.
+func hashFileSHA256(root *os.Root, path string) (string, error) {
+	f, err := root.Open(path)
 	if err != nil {
 		return "", err
 	}
