@@ -660,6 +660,21 @@ Trying to keep existing Pebble data and upgrade in-place is **unsafe**:
 
 Mixed-binary rolling upgrades are **not supported** across this change. Stop all nodes before deploying the new binary.
 
+### Upgrading across EN-1379 (coverage-miss reclassification)
+
+EN-1379 changes how the FSM labels one failure class. A preload coverage miss used to be flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED`; it now surfaces under its own `ERROR_REASON_COVERAGE_MISS` with the identifying context (`attribute`, `canonicalHex`, `idHex`, `raftIndex`) intact.
+
+That relabelling is **not hash-neutral**. `buildAuditFailurePayload` folds the failure reason, its message and every sorted context key *and value* into the audit hash pre-image, so for one and the same Raft entry an old binary and a new binary compute different `AuditEntry.Hash` values. `HashVersion` identifies the hash *algorithm* only and carries no notion of failure-projection semantics, so nothing lets a node recognise an entry written under the old classification.
+
+Mixed-binary rolling upgrades are **not supported** across this change. Restart every node onto the new binary; a coverage miss applied while the cluster straddles the two builds diverges the audit chain at that index, and `ledgerctl check` then reports `HASH_MISMATCH` on whichever node disagrees with the persisted chain.
+
+Unlike the pre-#400 upgrade above, **no data wipe is required**:
+
+- No persisted key layout or value encoding changed, so `storage-schema-version` is unaffected and existing entries stay verifiable byte-for-byte.
+- The exposure is confined to entries written *inside* the mixed-binary window, and only to this one failure class. A coverage miss is itself an admission-contract violation that should never fire (invariant #7), so in a healthy cluster the window is empty.
+
+The hazard generalises: **any** change to an FSM-emitted error's reason, message or metadata is observable in the hash chain, and should carry an upgrade note like this one. Making it structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes — a deliberate design change that EN-1379 does not take on. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

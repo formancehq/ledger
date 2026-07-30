@@ -106,6 +106,8 @@ Consequences to hold in mind:
 
 Making this structurally safe would mean carrying a failure-projection semantics version alongside `HashVersion` so old entries keep reproducing their original bytes. That is a deliberate design decision, not something EN-1379 took on.
 
+The operational consequence is declared where operators look for supported upgrade paths: [deployment.md — Upgrading across EN-1379](../../../../ops/deployment.md#upgrading-across-en-1379-coverage-miss-reclassification) states that mixed-binary rolling upgrades are not supported across this change, and that no data wipe is required because no persisted layout changed.
+
 This holds because FSM read sites build their failure through `domain.StoreFailure(operation, err)` instead of constructing a `domain.ErrStorageOperation` directly:
 
 ```go
