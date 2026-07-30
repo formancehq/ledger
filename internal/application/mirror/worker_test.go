@@ -94,6 +94,79 @@ func TestWorker_RestartAfterCommitResumesFromNewBoundary(t *testing.T) {
 	require.Equal(t, uint64(42), w2.lastAppliedV2LogID)
 }
 
+// A pending prefetch is only usable when it was issued from the position the
+// worker is actually resuming from. prefetchResult.afterID records that
+// position; these cases pin the three outcomes of the validity check
+// (EN-1513).
+func TestWorker_PrefetchValidity(t *testing.T) {
+	t.Parallel()
+
+	// The boundary the worker resumes from in every case below.
+	const boundary uint64 = 10
+
+	tests := []struct {
+		name string
+		// prefetch queued before processBatch runs.
+		prefetch prefetchResult
+		// whether the prefetch must be discarded and the source re-queried.
+		wantSyncFetch bool
+	}{
+		{
+			name:          "issued from the current position is consumed",
+			prefetch:      prefetchResult{logs: []v2.V2Log{}, afterID: boundary},
+			wantSyncFetch: false,
+		},
+		{
+			name:          "issued from a stale position is discarded",
+			prefetch:      prefetchResult{logs: []v2.V2Log{}, afterID: boundary - 1},
+			wantSyncFetch: true,
+		},
+		{
+			name:          "failed fetch is discarded even at the right position",
+			prefetch:      prefetchResult{err: context.DeadlineExceeded, afterID: boundary},
+			wantSyncFetch: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			builder, store := newTestBuilder(t)
+			writeBoundaries(t, store, "mirrored", &raftcmdpb.LedgerBoundaries{
+				LastMirrorV2LogId: boundary,
+			})
+
+			ctrl := gomock.NewController(t)
+			source := v2.NewMockSource(ctrl)
+
+			wantCalls := 0
+			if tt.wantSyncFetch {
+				wantCalls = 1
+			}
+
+			// A discarded prefetch must fall back to the source, and must do
+			// so from the boundary — never from the stale prefetch position.
+			source.EXPECT().
+				FetchLogs(gomock.Any(), boundary, gomock.Any()).
+				Return(nil, false, nil).
+				Times(wantCalls)
+
+			w := newWorkerForTest(t, "mirrored", source, store, builder)
+
+			w.prefetchCh = make(chan prefetchResult, 1)
+			w.prefetchCh <- tt.prefetch
+
+			_, err := w.processBatch(context.Background())
+			require.NoError(t, err)
+
+			require.Nil(t, w.prefetchCh, "the pending prefetch must be consumed either way")
+			require.Equal(t, boundary, w.lastAppliedV2LogID,
+				"an empty batch must not move the position")
+		})
+	}
+}
+
 // Invalidating the snapshot makes the next batch re-read the durable
 // authority rather than reusing a stale in-memory position (EN-1513).
 func TestWorker_InvalidatedSnapshotRereadsBoundary(t *testing.T) {
