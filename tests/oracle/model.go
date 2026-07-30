@@ -1,9 +1,7 @@
 package oracle
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"maps"
 	"sort"
 	"strconv"
@@ -61,102 +59,110 @@ func CompareVolumeKey(a, b VolumeKey) int {
 }
 
 // LedgerState is one ledger's slice of the model: its chart of account types and
-// per-cell volumes. Every mutation returns a NEW LedgerState (copy-on-write) so
-// the checker can fork it across hypothesized serializations without disturbing
-// shared state. Volume values are uint256.Int value types, so a shallow map copy
-// fully copies them — forks never alias.
+// per-cell volumes. Every field is a persistent, fingerprinted collection (see
+// pmap.go): a mutation rebinds the field to a new value sharing structure with
+// the old, so the checker forks a state across hypothesized serializations by
+// plain struct copy — forks never alias.
 type LedgerState struct {
-	types      map[string]TypeState
-	volumes    map[VolumeKey]VolumePair
-	metadata   map[MetaKey]*commonpb.MetadataValue
-	ledgerMeta map[string]*commonpb.MetadataValue
+	types      Map[string, TypeState]
+	volumes    Map[VolumeKey, VolumePair]
+	metadata   Map[MetaKey, *commonpb.MetadataValue]
+	ledgerMeta Map[string, *commonpb.MetadataValue]
 	// Declared metadata field types per key, driving value coercion. Keyed by
 	// metadata key (the schema is per (target, key), not per address).
-	accountFieldTypes map[string]commonpb.MetadataType
-	ledgerFieldTypes  map[string]commonpb.MetadataType
+	accountFieldTypes Map[string, commonpb.MetadataType]
+	ledgerFieldTypes  Map[string, commonpb.MetadataType]
 
 	// txs is the transaction log: index i holds the transaction with id i+1, so
 	// ids are dense and sequential, mirroring the server (first id is 1). Every
 	// committed create is appended — referenced and unreferenced alike (drains,
-	// transients, and reverts). The next id is len(txs)+1. Records are replaced,
-	// never mutated in place, so clones share the pointers.
-	txs []*txRecord
+	// transients, and reverts). The next id is txs.Len()+1. Records are replaced,
+	// never mutated in place, so forks share the pointers and the fingerprint
+	// terms stay valid.
+	txs List[*txRecord]
 	// txByRef indexes referenced transactions by reference -> id, for the
 	// generator (which targets by reference) and reference-keyed metadata writes.
-	txByRef               map[string]int
-	transactionFieldTypes map[string]commonpb.MetadataType
+	txByRef               Map[string, int]
+	transactionFieldTypes Map[string, commonpb.MetadataType]
+
+	// compiledChart memoizes compiled() for the current types value — nil means
+	// not yet compiled (an empty chart compiles to a non-nil empty slice). Every
+	// types rebind must reset it to nil. Derived state: never mutated in place
+	// (only replaced), so forks may share it, and it is no part of the state's
+	// identity (collections/Fingerprint exclude it).
+	compiledChart []accounttype.CompiledType
 }
 
 func NewLedgerState() LedgerState {
 	return LedgerState{
-		types:             map[string]TypeState{},
-		volumes:           map[VolumeKey]VolumePair{},
-		metadata:          map[MetaKey]*commonpb.MetadataValue{},
-		ledgerMeta:        map[string]*commonpb.MetadataValue{},
-		accountFieldTypes: map[string]commonpb.MetadataType{},
-		ledgerFieldTypes:  map[string]commonpb.MetadataType{},
+		types:             NewMap[string, TypeState](stringComparer{}, typeTerm),
+		volumes:           NewMap[VolumeKey, VolumePair](volumeKeyComparer{}, volumeTerm),
+		metadata:          NewMap[MetaKey, *commonpb.MetadataValue](metaKeyComparer{}, accountMetaTerm),
+		ledgerMeta:        NewMap[string, *commonpb.MetadataValue](stringComparer{}, ledgerMetaTerm),
+		accountFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("AF")),
+		ledgerFieldTypes:  NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("LF")),
 
-		txByRef:               map[string]int{},
-		transactionFieldTypes: map[string]commonpb.MetadataType{},
+		txs:                   NewList[*txRecord](txTerm),
+		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
+		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 	}
 }
 
-// clone returns a copy whose maps can be mutated independently. TypeState and
-// VolumePair are value types, so copying the map copies them. Metadata values are
-// *MetadataValue pointers shared across forks — safe because a stored value is
-// never mutated in place (a set replaces the entry, a delete removes it).
-func (s LedgerState) clone() LedgerState {
-	types := make(map[string]TypeState, len(s.types))
-	maps.Copy(types, s.types)
-
-	volumes := make(map[VolumeKey]VolumePair, len(s.volumes))
-	maps.Copy(volumes, s.volumes)
-
-	metadata := make(map[MetaKey]*commonpb.MetadataValue, len(s.metadata))
-	maps.Copy(metadata, s.metadata)
-
-	ledgerMeta := make(map[string]*commonpb.MetadataValue, len(s.ledgerMeta))
-	maps.Copy(ledgerMeta, s.ledgerMeta)
-
-	accountFieldTypes := make(map[string]commonpb.MetadataType, len(s.accountFieldTypes))
-	maps.Copy(accountFieldTypes, s.accountFieldTypes)
-
-	ledgerFieldTypes := make(map[string]commonpb.MetadataType, len(s.ledgerFieldTypes))
-	maps.Copy(ledgerFieldTypes, s.ledgerFieldTypes)
-
-	// Records are replaced (not mutated in place) on a metadata write or revert,
-	// so a shallow copy of the log lets clones share the pointers.
-	txs := make([]*txRecord, len(s.txs))
-	copy(txs, s.txs)
-
-	txByRef := make(map[string]int, len(s.txByRef))
-	maps.Copy(txByRef, s.txByRef)
-
-	transactionFieldTypes := make(map[string]commonpb.MetadataType, len(s.transactionFieldTypes))
-	maps.Copy(transactionFieldTypes, s.transactionFieldTypes)
-
-	return LedgerState{
-		types:                 types,
-		volumes:               volumes,
-		metadata:              metadata,
-		ledgerMeta:            ledgerMeta,
-		accountFieldTypes:     accountFieldTypes,
-		ledgerFieldTypes:      ledgerFieldTypes,
-		txs:                   txs,
-		txByRef:               txByRef,
-		transactionFieldTypes: transactionFieldTypes,
+// collections lists every fingerprinted collection a LedgerState carries —
+// the single source Fingerprint and IsEmpty derive from, so neither can fall
+// behind the struct's fields. txByRef is excluded: it is an index derived from
+// txs, whose fingerprint already covers the (reference, id) pairs.
+func (s *LedgerState) collections() []interface {
+	Fingerprint() Digest
+	Len() int
+} {
+	return []interface {
+		Fingerprint() Digest
+		Len() int
+	}{
+		s.types, s.volumes, s.metadata, s.ledgerMeta,
+		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
+		s.txs,
 	}
 }
 
-// compiled compiles the current chart into the server's matcher form. Recomputed
-// on demand because a chart op earlier in the same bulk can change it.
+// Fingerprint is the ledger state's 128-bit identity: a hash over its
+// collections' fingerprints in fixed field order.
+func (s LedgerState) Fingerprint() Digest {
+	t := newTerm("ledger-state")
+	for _, c := range s.collections() {
+		t.digest(c.Fingerprint())
+	}
+
+	return t.sum()
+}
+
+// IsEmpty reports whether the state holds nothing — the identity of a
+// fresh NewLedgerState.
+func (s LedgerState) IsEmpty() bool {
+	for _, c := range s.collections() {
+		if c.Len() > 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// compiled compiles the current chart into the server's matcher form, memoized
+// until the next chart op (which resets compiledChart — a chart op earlier in
+// the same bulk must recompile).
 func (s *LedgerState) compiled() []accounttype.CompiledType {
-	pb := make(map[string]*commonpb.AccountType, len(s.types))
-	for name, t := range s.types {
-		pb[name] = &commonpb.AccountType{Name: t.Name, Pattern: t.Pattern}
+	if s.compiledChart == nil {
+		pb := make(map[string]*commonpb.AccountType, s.types.Len())
+		for name, t := range s.types.All() {
+			pb[name] = &commonpb.AccountType{Name: t.Name, Pattern: t.Pattern}
+		}
+
+		s.compiledChart = accounttype.CompileTypes(pb)
 	}
 
-	return accounttype.CompileTypes(pb)
+	return s.compiledChart
 }
 
 // match resolves addr to the type the server would pick (highest specificity,
@@ -168,112 +174,111 @@ func (s *LedgerState) match(addr string, compiled []accounttype.CompiledType) *T
 		return nil
 	}
 
-	t := s.types[best.GetName()]
+	t, _ := s.types.Get(best.GetName())
 
 	return &t
 }
 
-// hash writes a canonical identity of the ledger's state into h.
-func (s LedgerState) Hash(h io.Writer) {
-	names := make([]string, 0, len(s.types))
-	for n := range s.types {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		t := s.types[n]
-		_, _ = fmt.Fprintf(h, "T|%s|%s|%d\n", t.Name, t.Pattern, t.Persistence)
-	}
+// Per-entry fingerprint terms. These are the model's canonical entry
+// identities: two collections hold the same state exactly when their entries'
+// terms form the same multiset (see pmap.go). Each starts with a distinct
+// domain tag so entries of different collections can never collide.
 
-	keys := make([]VolumeKey, 0, len(s.volumes))
-	for k := range s.volumes {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return CompareVolumeKey(keys[i], keys[j]) < 0 })
-	for _, k := range keys {
-		v := s.volumes[k]
-		_, _ = fmt.Fprintf(h, "V|%s|%s|%s|%s\n", k.Address, k.Asset, v.Input.Dec(), v.Output.Dec())
-	}
+func typeTerm(name string, ts TypeState) Digest {
+	t := newTerm("T")
+	t.str(name, ts.Name, ts.Pattern)
+	t.u64(uint64(ts.Persistence))
 
-	mkeys := make([]MetaKey, 0, len(s.metadata))
-	for k := range s.metadata {
-		mkeys = append(mkeys, k)
-	}
-	sort.Slice(mkeys, func(i, j int) bool { return CompareMetaKey(mkeys[i], mkeys[j]) < 0 })
-	for _, k := range mkeys {
-		_, _ = fmt.Fprintf(h, "M|%s|%s|%s\n", k.Address, k.Key, MetaValueString(s.metadata[k]))
-	}
+	return t.sum()
+}
 
-	lkeys := make([]string, 0, len(s.ledgerMeta))
-	for k := range s.ledgerMeta {
-		lkeys = append(lkeys, k)
-	}
-	sort.Strings(lkeys)
-	for _, k := range lkeys {
-		_, _ = fmt.Fprintf(h, "LM|%s|%s\n", k, MetaValueString(s.ledgerMeta[k]))
-	}
+func volumeTerm(k VolumeKey, v VolumePair) Digest {
+	t := newTerm("V")
+	t.str(k.Address, k.Asset)
+	t.u256(&v.Input)
+	t.u256(&v.Output)
 
-	hashFieldTypes(h, "AF", s.accountFieldTypes)
-	hashFieldTypes(h, "LF", s.ledgerFieldTypes)
-	hashFieldTypes(h, "TF", s.transactionFieldTypes)
+	return t.sum()
+}
 
-	// The log is already in id order; hash each tx's identity (id, reference,
-	// reverted, timestamp, revert relationships), postings, and metadata.
-	// Postings and timestamp belong in the fingerprint because two commuting
-	// unreferenced transactions can reach identical volumes and metadata under
-	// opposite serializations while differing only in which id holds which
-	// postings, or (for at-effective-date reverts) in the inherited timestamp —
-	// distinctions validateTransactionRead checks by id. The revert
-	// relationships (revertedBy, revertsTransaction, revertedAt) distinguish
-	// serializations where the same id is reverted by, or reverts, a different
-	// transaction.
-	var amt uint256.Int
-	for _, tx := range s.txs {
-		rev := ""
-		if tx.reverted {
-			rev = "R"
-		}
+func accountMetaTerm(k MetaKey, v *commonpb.MetadataValue) Digest {
+	t := newTerm("M")
+	t.str(k.Address, k.Key, MetaValueString(v))
 
-		// A nil timestamp (server-dated, unpredictable) must not collide with any
-		// concrete value: validateTransactionRead skips the check only when nil.
-		// Same for revertedAt.
-		ts := "-"
-		if tx.timestamp != nil {
-			ts = strconv.FormatUint(tx.timestamp.GetData(), 10)
-		}
+	return t.sum()
+}
 
-		ra := "-"
-		if tx.revertedAt != nil {
-			ra = strconv.FormatUint(tx.revertedAt.GetData(), 10)
-		}
-		_, _ = fmt.Fprintf(h, "TX|%d|%s|%s|%s|%d|%d|%s\n", tx.id, tx.reference, rev, ts, tx.revertedBy, tx.revertsTransaction, ra)
+func ledgerMetaTerm(k string, v *commonpb.MetadataValue) Digest {
+	t := newTerm("LM")
+	t.str(k, MetaValueString(v))
 
-		for _, p := range tx.postings {
-			p.GetAmount().IntoUint256(&amt)
-			_, _ = fmt.Fprintf(h, "TP|%d|%s|%s|%s|%s\n", tx.id, p.GetSource(), p.GetDestination(), p.GetAsset(), amt.Dec())
-		}
+	return t.sum()
+}
 
-		mkeys := make([]string, 0, len(tx.metadata))
-		for k := range tx.metadata {
-			mkeys = append(mkeys, k)
-		}
-		sort.Strings(mkeys)
-		for _, k := range mkeys {
-			_, _ = fmt.Fprintf(h, "TM|%d|%s|%s\n", tx.id, k, MetaValueString(tx.metadata[k]))
-		}
+// fieldTypeTerm builds the term function for one field-type table; the tag
+// keeps the account/ledger/transaction tables in disjoint term spaces.
+func fieldTypeTerm(tag string) func(string, commonpb.MetadataType) Digest {
+	return func(k string, mt commonpb.MetadataType) Digest {
+		t := newTerm(tag)
+		t.str(k)
+		t.u64(uint64(mt))
+
+		return t.sum()
 	}
 }
 
-// hashFieldTypes writes a tag-prefixed, key-sorted rendering of a field-type map.
-func hashFieldTypes(h io.Writer, tag string, types map[string]commonpb.MetadataType) {
-	keys := make([]string, 0, len(types))
-	for k := range types {
+func txRefTerm(ref string, id int) Digest {
+	t := newTerm("R")
+	t.str(ref)
+	t.u64(uint64(id))
+
+	return t.sum()
+}
+
+// txTerm fingerprints one log entry: the tx's identity (id, reference,
+// reverted, timestamp, revert relationships), postings, and metadata.
+// Postings and timestamp belong in the fingerprint because two commuting
+// unreferenced transactions can reach identical volumes and metadata under
+// opposite serializations while differing only in which id holds which
+// postings, or (for at-effective-date reverts) in the inherited timestamp —
+// distinctions validateTransactionRead checks by id. The revert
+// relationships (revertedBy, revertsTransaction, revertedAt) distinguish
+// serializations where the same id is reverted by, or reverts, a different
+// transaction.
+func txTerm(idx int, tx *txRecord) Digest {
+	t := newTerm("TX")
+	t.u64(uint64(idx), tx.id)
+	t.str(tx.reference)
+	t.boolean(tx.reverted)
+	t.u64(tx.revertedBy, tx.revertsTransaction)
+
+	// A nil timestamp (server-dated, unpredictable) must not collide with any
+	// concrete value: validateTransactionRead skips the check only when nil.
+	// Same for revertedAt.
+	t.boolean(tx.timestamp != nil)
+	t.u64(tx.timestamp.GetData())
+	t.boolean(tx.revertedAt != nil)
+	t.u64(tx.revertedAt.GetData())
+
+	var amt uint256.Int
+	t.u64(uint64(len(tx.postings)))
+	for _, p := range tx.postings {
+		p.GetAmount().IntoUint256(&amt)
+		t.str(p.GetSource(), p.GetDestination(), p.GetAsset())
+		t.u256(&amt)
+	}
+
+	keys := make([]string, 0, len(tx.metadata))
+	for k := range tx.metadata {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	t.u64(uint64(len(keys)))
 	for _, k := range keys {
-		_, _ = fmt.Fprintf(h, "%s|%s|%d\n", tag, k, types[k])
+		t.str(k, MetaValueString(tx.metadata[k]))
 	}
+
+	return t.sum()
 }
 
 // MetaValueString renders a metadata value as a canonical, type-tagged string,
@@ -306,13 +311,15 @@ func (s *LedgerState) MatchAddress(addr string) *TypeState {
 
 // vol returns the cell's volumes, or the zero pair (zero uint256s) if absent.
 func (s *LedgerState) vol(key VolumeKey) VolumePair {
-	return s.volumes[key]
+	v, _ := s.volumes.Get(key)
+
+	return v
 }
 
 // accountMetadata returns addr's metadata as a key→value map (empty if none).
 func (s *LedgerState) AccountMetadata(addr string) map[string]*commonpb.MetadataValue {
 	out := map[string]*commonpb.MetadataValue{}
-	for mk, v := range s.metadata {
+	for mk, v := range s.metadata.All() {
 		if mk.Address == addr {
 			out[mk.Key] = v
 		}
@@ -336,8 +343,8 @@ type GlobalState struct {
 	// bulk carrying the same key replays it (Apply). It spans ledgers because a
 	// bulk's key covers the whole atomic batch, whatever ledgers it touched.
 	// Entries are immutable once frozen (infinite TTL — the model never evicts),
-	// so forks share the pointers; only the map itself is copied.
-	idempotency map[string]*frozenOutcome
+	// so forks share the pointers.
+	idempotency Map[string, *frozenOutcome]
 }
 
 // frozenOutcome is a keyed bulk's recorded outcome: the exact requests it
@@ -348,25 +355,44 @@ type frozenOutcome struct {
 	orders   []OrderResult
 }
 
+// frozenOutcomeTerm fingerprints one frozen entry. Frozen idempotency outcomes
+// are observable through a replay, so bases that differ only in which id a key
+// froze must stay distinct — otherwise candidateBases collapses two commuting
+// keyed transactions (identical business state, opposite id assignments) and a
+// replay can no longer resolve to the id the server actually returned. Only the
+// outcome identity a replay reveals (per-order id) needs fingerprinting, not
+// the whole result.
+func frozenOutcomeTerm(key string, fo *frozenOutcome) Digest {
+	t := newTerm("IK")
+	t.str(key)
+	t.u64(uint64(len(fo.orders)))
+	for i, o := range fo.orders {
+		revertedID := uint64(0)
+		if o.Revert != nil {
+			revertedID = o.Revert.revertedID
+		}
+		t.u64(uint64(i), o.TxID, revertedID)
+	}
+
+	return t.sum()
+}
+
 func NewGlobalState() GlobalState {
 	return GlobalState{
 		ledgers:     map[string]LedgerState{},
-		idempotency: map[string]*frozenOutcome{},
+		idempotency: NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
 	}
 }
 
-// clone deep-copies each ledger so forks never share mutable state. The
-// idempotency map is copied shallowly — its entries are immutable once frozen.
+// clone returns a copy with its own ledgers table. A LedgerState is a value of
+// persistent collections, so the shallow copy is a full logical fork — forks
+// never share mutable state. The idempotency table is itself persistent and
+// carries over by value.
 func (g GlobalState) clone() GlobalState {
 	m := make(map[string]LedgerState, len(g.ledgers))
-	for name, ls := range g.ledgers {
-		m[name] = ls.clone()
-	}
+	maps.Copy(m, g.ledgers)
 
-	idem := make(map[string]*frozenOutcome, len(g.idempotency))
-	maps.Copy(idem, g.idempotency)
-
-	return GlobalState{ledgers: m, idempotency: idem}
+	return GlobalState{ledgers: m, idempotency: g.idempotency}
 }
 
 // ledger returns the named ledger's state, or an empty one if untouched.
@@ -378,54 +404,31 @@ func (g GlobalState) Ledger(name string) LedgerState {
 	return NewLedgerState()
 }
 
-// hash writes a canonical identity across all non-empty ledgers into h.
-// candidateBases dedups on the resulting 64-bit hash, collapsing bases reached
-// via different (commutative) serializations.
-func (g GlobalState) Hash(h io.Writer) {
-	names := make([]string, 0, len(g.ledgers))
-	for n := range g.ledgers {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
-	for _, n := range names {
-		// Apply materializes a ledger entry for any ledger a bulk touches, even
-		// when the operation stores nothing (e.g. removing an undeclared field), so
-		// a present-but-stateless entry must not change the fingerprint — otherwise
-		// candidateBases treats semantically-equal bases as distinct. Derive
-		// emptiness from LedgerState.Hash's own output rather than a field list, so
-		// the guard can never fall behind the fields Hash actually renders.
-		var buf bytes.Buffer
-		g.ledgers[n].Hash(&buf)
-		if buf.Len() == 0 {
+// Fingerprint is the state's 128-bit identity across all non-empty ledgers:
+// the multiset sum of one term per ledger, so ledger order is irrelevant.
+// candidateBases dedups on it, collapsing bases reached via different
+// (commutative) serializations. Empty ledgers are skipped: Apply materializes
+// a ledger entry for any ledger a bulk touches, even when the operation stores
+// nothing (e.g. removing an undeclared field), and a present-but-stateless
+// entry must not change the identity — otherwise candidateBases treats
+// semantically-equal bases as distinct.
+func (g GlobalState) Fingerprint() Digest {
+	var d Digest
+	for name, ls := range g.ledgers {
+		if ls.IsEmpty() {
 			continue
 		}
-		_, _ = fmt.Fprintf(h, "L|%s\n", n)
-		_, _ = h.Write(buf.Bytes())
+
+		t := newTerm("L")
+		t.str(name)
+		t.digest(ls.Fingerprint())
+		d = d.add(t.sum())
 	}
 
-	// Frozen idempotency outcomes are observable through a replay, so bases that
-	// differ only in which id a key froze must stay distinct — otherwise
-	// candidateBases collapses two commuting keyed transactions (identical
-	// business state, opposite id assignments) and a replay can no longer resolve
-	// to the id the server actually returned. Only the outcome identity a replay
-	// reveals (per-order id) needs hashing, not the whole result.
-	ikeys := make([]string, 0, len(g.idempotency))
-	for k := range g.idempotency {
-		ikeys = append(ikeys, k)
-	}
-	sort.Strings(ikeys)
-	for _, k := range ikeys {
-		fo := g.idempotency[k]
-		_, _ = fmt.Fprintf(h, "IK|%s|%d\n", k, len(fo.orders))
-		for i, o := range fo.orders {
-			revertedID := uint64(0)
-			if o.Revert != nil {
-				revertedID = o.Revert.revertedID
-			}
-			_, _ = fmt.Fprintf(h, "IO|%d|%d|%d\n", i, o.TxID, revertedID)
-		}
-	}
+	// The frozen idempotency table is part of the identity — see
+	// frozenOutcomeTerm. Its terms are domain-tagged, so the plain sum keeps
+	// them disjoint from the ledger terms.
+	return d.add(g.idempotency.Fingerprint())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the
@@ -552,7 +555,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// committed outcome: same body replays it verbatim with no new state; a
 	// different body under the same key is a conflict.
 	if bulk.IdempotencyKey != "" {
-		if fo, ok := g.idempotency[bulk.IdempotencyKey]; ok {
+		if fo, ok := g.idempotency.Get(bulk.IdempotencyKey); ok {
 			if !RequestsEqual(fo.requests, bulk.Requests) {
 				return ApplyResult{OK: false, Reason: domain.ErrReasonIdempotencyKeyConflict, State: g}
 			}
@@ -581,9 +584,8 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		oc := ls.applyOne(req, cells)
-		// ls is a value copy out of the map; its maps are shared with
-		// next.ledgers[name] (so map mutations already took effect), but value
-		// fields it mutates (nextTxID) must be written back explicitly.
+		// applyOne rebinds ls's persistent collections; write the updated value
+		// back so the working copy sees the mutation.
 		next.ledgers[name] = ls
 		orders = append(orders, oc)
 
@@ -605,16 +607,17 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		ls.purgeZeroBalance(cells)
+		next.ledgers[name] = ls
 	}
 
 	// Freeze the committed outcome so a later bulk with this key replays it. Only
 	// the success path records an entry; a rejected keyed bulk leaves no frozen
 	// outcome (the driver never replays a key whose bulk did not commit).
 	if bulk.IdempotencyKey != "" {
-		next.idempotency[bulk.IdempotencyKey] = &frozenOutcome{
+		next.idempotency = next.idempotency.Set(bulk.IdempotencyKey, &frozenOutcome{
 			requests: bulk.Requests,
 			orders:   orders,
-		}
+		})
 	}
 
 	return ApplyResult{OK: true, State: next, Orders: orders}
@@ -646,21 +649,23 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	case *servicepb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 		name := at.GetName()
-		if _, exists := s.types[name]; exists {
+		if s.types.Has(name) {
 			return OrderResult{Reason: domain.ErrReasonAccountTypeAlreadyExists}
 		}
 
-		s.types[name] = TypeState{Name: name, Pattern: at.GetPattern(), Persistence: at.GetPersistence()}
+		s.types = s.types.Set(name, TypeState{Name: name, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
+		s.compiledChart = nil
 
 		return OrderResult{OK: true}
 
 	case *servicepb.Request_RemoveAccountType:
 		name := r.RemoveAccountType.GetName()
-		if _, exists := s.types[name]; !exists {
+		if !s.types.Has(name) {
 			return OrderResult{Reason: domain.ErrReasonAccountTypeNotFound}
 		}
 
-		delete(s.types, name)
+		s.types = s.types.Delete(name)
+		s.compiledChart = nil
 
 		return OrderResult{OK: true}
 
@@ -717,10 +722,8 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 	// postings or enforcing the chart, so a duplicate wins over any floor/chart
 	// issue the same transaction might also have.
 	ref := ct.GetReference()
-	if ref != "" {
-		if _, exists := s.txByRef[ref]; exists {
-			return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
-		}
+	if ref != "" && s.txByRef.Has(ref) {
+		return OrderResult{Reason: domain.ErrReasonTransactionReferenceConflict}
 	}
 
 	pcv, reason := s.applyPostings(postings, ct.GetForce(), touched)
@@ -739,15 +742,15 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 	// posting chart check above, so no enforcement branch is needed.
 	for account, mm := range ct.GetAccountMetadata() {
 		for key, val := range mm.GetValues() {
-			s.metadata[MetaKey{Address: account, Key: key}] = val
+			s.metadata = s.metadata.Set(MetaKey{Address: account, Key: key}, val)
 		}
 	}
 
 	// Append to the log; the id is its 1-based position. Metadata is stored
 	// verbatim (the declared type is applied only on read) and echoed on the
 	// CreatedTransaction log.
-	id := uint64(len(s.txs)) + 1
-	s.txs = append(s.txs, &txRecord{
+	id := uint64(s.txs.Len()) + 1
+	s.txs = s.txs.Append(&txRecord{
 		id:        id,
 		reference: ref,
 		postings:  postings,
@@ -755,7 +758,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		timestamp: ct.GetTimestamp(),
 	})
 	if ref != "" {
-		s.txByRef[ref] = int(id)
+		s.txByRef = s.txByRef.Set(ref, int(id))
 	}
 
 	var meta *metaEffect
@@ -772,7 +775,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // original reverted, and consumes a new transaction id for the revert itself.
 func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
 	id := rt.GetTransactionId()
-	if id == 0 || id > uint64(len(s.txs)) {
+	if id == 0 || id > uint64(s.txs.Len()) {
 		// Unknown id (past the log frontier); the server rejects with
 		// TRANSACTION_NOT_FOUND. The generator targets committed transactions, so
 		// in commit order this is unreachable, but a candidate-base ordering may
@@ -780,7 +783,7 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
-	orig := s.txs[id-1]
+	orig := s.txs.Get(int(id - 1))
 
 	if orig.reverted {
 		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
@@ -814,7 +817,7 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		revertTS = orig.timestamp
 	}
 
-	revertID := uint64(len(s.txs)) + 1
+	revertID := uint64(s.txs.Len()) + 1
 
 	// Mark the original reverted (replace, don't mutate), then append the revert
 	// itself as a new unreferenced transaction carrying the reversed postings and
@@ -824,9 +827,9 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	reverted.reverted = true
 	reverted.revertedBy = revertID
 	reverted.revertedAt = revertTS
-	s.txs[id-1] = &reverted
+	s.txs = s.txs.Set(int(id-1), &reverted)
 
-	s.txs = append(s.txs, &txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS, revertsTransaction: orig.id})
+	s.txs = s.txs.Append(&txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS, revertsTransaction: orig.id})
 
 	return OrderResult{
 		OK:     true,
@@ -875,7 +878,7 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 		cur := s.vol(key)
 		cur.Input.Add(&cur.Input, addIn)
 		cur.Output.Add(&cur.Output, addOut)
-		s.volumes[key] = cur
+		s.volumes = s.volumes.Set(key, cur)
 		touched[key] = true
 		pcv[key] = cur
 	}
@@ -938,8 +941,7 @@ func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*common
 	saved := make(map[string]*commonpb.MetadataValue, len(md))
 
 	for key, val := range md {
-		mk := MetaKey{Address: addr, Key: key}
-		s.metadata[mk] = val
+		s.metadata = s.metadata.Set(MetaKey{Address: addr, Key: key}, val)
 		saved[key] = val
 	}
 
@@ -949,19 +951,19 @@ func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*common
 // applyAddTxMetadata sets transaction metadata last-writer-wins on a transaction
 // addressed by id. An unknown id rejects with TRANSACTION_NOT_FOUND.
 func (s *LedgerState) applyAddTxMetadata(id uint64, md map[string]*commonpb.MetadataValue) OrderResult {
-	if id == 0 || id > uint64(len(s.txs)) {
+	if id == 0 || id > uint64(s.txs.Len()) {
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
-	old := s.txs[id-1]
+	old := s.txs.Get(int(id - 1))
 	meta := make(map[string]*commonpb.MetadataValue, len(old.metadata)+len(md))
 	maps.Copy(meta, old.metadata)
 	maps.Copy(meta, md) // last-writer-wins
-	// Replace (don't mutate) so clones sharing the pointer are unaffected; a
+	// Replace (don't mutate) so forks sharing the pointer are unaffected; a
 	// value copy carries every field, including the revert relationships.
 	updated := *old
 	updated.metadata = meta
-	s.txs[id-1] = &updated
+	s.txs = s.txs.Set(int(id-1), &updated)
 
 	return OrderResult{OK: true, Meta: &metaEffect{saved: md}}
 }
@@ -973,20 +975,20 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 	switch t := cmd.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		mk := MetaKey{Address: t.Account.GetAddr(), Key: cmd.GetKey()}
-		if _, exists := s.metadata[mk]; !exists {
+		if !s.metadata.Has(mk) {
 			return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
 		}
 
-		delete(s.metadata, mk)
+		s.metadata = s.metadata.Delete(mk)
 
 		return OrderResult{OK: true}
 	case *commonpb.Target_TransactionId:
 		id := t.TransactionId
-		if id == 0 || id > uint64(len(s.txs)) {
+		if id == 0 || id > uint64(s.txs.Len()) {
 			return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 		}
 
-		old := s.txs[id-1]
+		old := s.txs.Get(int(id - 1))
 		if _, exists := old.metadata[cmd.GetKey()]; !exists {
 			return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
 		}
@@ -994,11 +996,11 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 		meta := make(map[string]*commonpb.MetadataValue, len(old.metadata))
 		maps.Copy(meta, old.metadata)
 		delete(meta, cmd.GetKey())
-		// Replace (don't mutate) so clones sharing the pointer are unaffected; a
+		// Replace (don't mutate) so forks sharing the pointer are unaffected; a
 		// value copy carries every field, including the revert relationships.
 		updated := *old
 		updated.metadata = meta
-		s.txs[id-1] = &updated
+		s.txs = s.txs.Set(int(id-1), &updated)
 
 		return OrderResult{OK: true}
 	default:
@@ -1013,7 +1015,7 @@ func (s *LedgerState) applySaveLedgerMetadata(req *servicepb.SaveLedgerMetadataR
 	saved := make(map[string]*commonpb.MetadataValue, len(req.GetMetadata()))
 
 	for key, val := range req.GetMetadata() {
-		s.ledgerMeta[key] = val
+		s.ledgerMeta = s.ledgerMeta.Set(key, val)
 		saved[key] = val
 	}
 
@@ -1024,11 +1026,11 @@ func (s *LedgerState) applySaveLedgerMetadata(req *servicepb.SaveLedgerMetadataR
 // ledger doesn't carry rejects the bulk with METADATA_NOT_FOUND.
 func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetadataRequest) OrderResult {
 	key := req.GetKey()
-	if _, exists := s.ledgerMeta[key]; !exists {
+	if !s.ledgerMeta.Has(key) {
 		return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
 	}
 
-	delete(s.ledgerMeta, key)
+	s.ledgerMeta = s.ledgerMeta.Delete(key)
 
 	return OrderResult{OK: true}
 }
@@ -1042,11 +1044,11 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetad
 func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldTypeRequest) OrderResult {
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		s.accountFieldTypes[req.GetKey()] = req.GetType()
+		s.accountFieldTypes = s.accountFieldTypes.Set(req.GetKey(), req.GetType())
 	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		s.ledgerFieldTypes[req.GetKey()] = req.GetType()
+		s.ledgerFieldTypes = s.ledgerFieldTypes.Set(req.GetKey(), req.GetType())
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		s.transactionFieldTypes[req.GetKey()] = req.GetType()
+		s.transactionFieldTypes = s.transactionFieldTypes.Set(req.GetKey(), req.GetType())
 	default:
 		panic(fmt.Sprintf("model: SetMetadataFieldType target %v is unmodeled", req.GetTargetType()))
 	}
@@ -1060,11 +1062,11 @@ func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldT
 func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadataFieldTypeRequest) OrderResult {
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		delete(s.accountFieldTypes, req.GetKey())
+		s.accountFieldTypes = s.accountFieldTypes.Delete(req.GetKey())
 	case commonpb.TargetType_TARGET_TYPE_LEDGER:
-		delete(s.ledgerFieldTypes, req.GetKey())
+		s.ledgerFieldTypes = s.ledgerFieldTypes.Delete(req.GetKey())
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		delete(s.transactionFieldTypes, req.GetKey())
+		s.transactionFieldTypes = s.transactionFieldTypes.Delete(req.GetKey())
 	default:
 		panic(fmt.Sprintf("model: RemoveMetadataFieldType target %v is unmodeled", req.GetTargetType()))
 	}
@@ -1081,7 +1083,7 @@ func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadata
 func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKey]bool) (string, bool) {
 	compiled := s.compiled()
 	for key := range touched {
-		vp, ok := s.volumes[key]
+		vp, ok := s.volumes.Get(key)
 		if !ok {
 			continue
 		}
@@ -1110,7 +1112,7 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
 	compiled := s.compiled()
 	for key := range touched {
-		vp, ok := s.volumes[key]
+		vp, ok := s.volumes.Get(key)
 		if !ok {
 			continue
 		}
@@ -1124,7 +1126,7 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
 		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			if vp.Input.Cmp(&vp.Output) == 0 {
-				delete(s.volumes, key)
+				s.volumes = s.volumes.Delete(key)
 			}
 		}
 	}

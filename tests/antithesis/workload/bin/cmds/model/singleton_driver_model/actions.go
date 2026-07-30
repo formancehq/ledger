@@ -171,7 +171,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]st
 // without bound. Counting only referenced transactions would miss the
 // unreferenced records (reverts, drains, transient helpers) that also accumulate.
 func rollTransaction(ls oracle.LedgerState) bool {
-	switch n := len(ls.Txs()); {
+	switch n := ls.Txs().Len(); {
 	case n < txEmitFull:
 		return true
 	case n < txEmitTaper:
@@ -257,8 +257,10 @@ func bulkSize() int {
 
 // randomTransientType returns a random TRANSIENT type from ls's chart, or nil.
 func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
-	names := make([]string, 0, len(ls.Types()))
-	for name, t := range ls.Types() {
+	// Types().All() iterates in key order, so names is already sorted —
+	// replayable / steerable via the Antithesis RNG.
+	var names []string
+	for name, t := range ls.Types().All() {
 		if t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			names = append(names, name)
 		}
@@ -268,9 +270,7 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 		return nil
 	}
 
-	slices.Sort(names)
-
-	t := ls.Types()[random.RandomChoice(names)]
+	t, _ := ls.Types().Get(random.RandomChoice(names))
 
 	return &t
 }
@@ -313,9 +313,9 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	// Every transaction gets a unique reference so it is targetable by later
 	// transaction-metadata writes. ~half also carry metadata at creation.
 	payload := &servicepb.CreateTransactionPayload{
-		Postings:      postings,
-		Reference:     txRef(),
-		Force:         force,
+		Postings:  postings,
+		Reference: txRef(),
+		Force:     force,
 	}
 
 	if random.RandomChoice([]uint8{0, 1}) == 0 {
@@ -388,8 +388,8 @@ func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servic
 	}
 
 	return applyCreate(ledger, &servicepb.CreateTransactionPayload{
-		Postings:      []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
-		Reference:     ref,
+		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
+		Reference: ref,
 	})
 }
 
@@ -457,7 +457,7 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 							Postings: []*commonpb.Posting{
 								commonpb.NewPosting(src, dest, asset, amount),
 							},
-							Force:         force,
+							Force: force,
 						},
 					},
 				},
@@ -470,15 +470,15 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 // Force=true so the cell lands at input==output and gets purged.
 // Returns nil if no eligible cell exists.
 func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	// Collect every drainable cell, then pick via the Antithesis RNG over a
-	// sorted slice — replayable / steerable, unlike map-iteration order.
+	// Volumes().All() iterates in key order, so candidates is already sorted —
+	// picking via the Antithesis RNG stays replayable / steerable.
 	type drainCandidate struct {
 		key     oracle.VolumeKey
 		balance uint256.Int
 	}
 
 	var candidates []drainCandidate
-	for key, vp := range ls.Volumes() {
+	for key, vp := range ls.Volumes().All() {
 		t := ls.MatchAddress(key.Address)
 		if t == nil {
 			continue
@@ -502,10 +502,6 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 		return nil
 	}
 
-	slices.SortFunc(candidates, func(a, b drainCandidate) int {
-		return oracle.CompareVolumeKey(a.key, b.key)
-	})
-
 	chosen := random.RandomChoice(candidates)
 	srcKey, balance := chosen.key, chosen.balance
 
@@ -519,7 +515,7 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 							Postings: []*commonpb.Posting{
 								commonpb.NewPosting(srcKey.Address, "world", srcKey.Asset, balance.ToBig()),
 							},
-							Force:         true,
+							Force: true,
 						},
 					},
 				},
@@ -639,8 +635,9 @@ func generateAddMetadata(ledger string) *servicepb.Request {
 // freshly-rolled key on that address to exercise METADATA_NOT_FOUND. Returns nil
 // when the model holds no metadata.
 func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	keys := make([]oracle.MetaKey, 0, len(ls.Metadata()))
-	for mk := range ls.Metadata() {
+	// Metadata().All() iterates in key order, so keys is already sorted.
+	keys := make([]oracle.MetaKey, 0, ls.Metadata().Len())
+	for mk := range ls.Metadata().All() {
 		keys = append(keys, mk)
 	}
 
@@ -648,7 +645,6 @@ func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Req
 		return nil
 	}
 
-	slices.SortFunc(keys, oracle.CompareMetaKey)
 	chosen := random.RandomChoice(keys)
 
 	addr, key := chosen.Address, chosen.Key
@@ -694,6 +690,8 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 		return nil
 	}
 
+	id, _ := ls.TxByRef().Get(ref)
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -701,7 +699,7 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_AddMetadata{
 						AddMetadata: &commonpb.SaveMetadataCommand{
-							Target:   txTarget(uint64(ls.TxByRef()[ref])),
+							Target:   txTarget(uint64(id)),
 							Metadata: randomMetaMap(),
 						},
 					},
@@ -722,8 +720,8 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 
 	var keys []refKey
 	txs := ls.Txs()
-	for ref, id := range ls.TxByRef() {
-		for k := range txs[id-1].Metadata() {
+	for ref, id := range ls.TxByRef().All() {
+		for k := range txs.Get(id - 1).Metadata() {
 			keys = append(keys, refKey{ref: ref, key: k})
 		}
 	}
@@ -745,6 +743,8 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 		key = metaKey()
 	}
 
+	id, _ := ls.TxByRef().Get(ref)
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -752,7 +752,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: txTarget(uint64(ls.TxByRef()[ref])),
+							Target: txTarget(uint64(id)),
 							Key:    key,
 						},
 					},
@@ -780,8 +780,9 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 		return nil
 	}
 
+	id, _ := ls.TxByRef().Get(ref)
 	payload := &servicepb.RevertTransactionPayload{
-		TransactionId: uint64(ls.TxByRef()[ref]),
+		TransactionId: uint64(id),
 		Force:         random.RandomChoice([]uint8{0, 1}) == 0,
 		// ~half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
@@ -819,16 +820,15 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 // pickTxRef returns a deterministically-chosen committed transaction reference,
 // or "" when the model holds none.
 func pickTxRef(ls oracle.LedgerState) string {
-	refs := make([]string, 0, len(ls.TxByRef()))
-	for r := range ls.TxByRef() {
+	// TxByRef().All() iterates in key order, so refs is already sorted.
+	refs := make([]string, 0, ls.TxByRef().Len())
+	for r := range ls.TxByRef().All() {
 		refs = append(refs, r)
 	}
 
 	if len(refs) == 0 {
 		return ""
 	}
-
-	slices.Sort(refs)
 
 	return random.RandomChoice(refs)
 }
@@ -868,8 +868,9 @@ func generateSaveLedgerMetadata(ledger string) *servicepb.Request {
 // freshly-rolled key to exercise METADATA_NOT_FOUND. Returns nil when the ledger
 // holds no metadata.
 func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	keys := make([]string, 0, len(ls.LedgerMeta()))
-	for k := range ls.LedgerMeta() {
+	// LedgerMeta().All() iterates in key order, so keys is already sorted.
+	keys := make([]string, 0, ls.LedgerMeta().Len())
+	for k := range ls.LedgerMeta().All() {
 		keys = append(keys, k)
 	}
 
@@ -877,7 +878,6 @@ func generateDeleteLedgerMetadata(ledger string, ls oracle.LedgerState) *service
 		return nil
 	}
 
-	slices.Sort(keys)
 	key := random.RandomChoice(keys)
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		key = metaKey()
@@ -930,14 +930,16 @@ func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *serv
 		key    string
 	}
 
+	// Each table iterates in key order and the tables are visited in a fixed
+	// sequence, so fields is deterministic.
 	var fields []fieldRef
-	for k := range ls.AccountFieldTypes() {
+	for k := range ls.AccountFieldTypes().All() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_ACCOUNT, k})
 	}
-	for k := range ls.LedgerFieldTypes() {
+	for k := range ls.LedgerFieldTypes().All() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_LEDGER, k})
 	}
-	for k := range ls.TransactionFieldTypes() {
+	for k := range ls.TransactionFieldTypes().All() {
 		fields = append(fields, fieldRef{commonpb.TargetType_TARGET_TYPE_TRANSACTION, k})
 	}
 
@@ -945,12 +947,6 @@ func generateRemoveMetadataFieldType(ledger string, ls oracle.LedgerState) *serv
 		return nil
 	}
 
-	slices.SortFunc(fields, func(a, b fieldRef) int {
-		if a.target != b.target {
-			return int(a.target) - int(b.target)
-		}
-		return strings.Compare(a.key, b.key)
-	})
 	chosen := random.RandomChoice(fields)
 
 	target, key := chosen.target, chosen.key

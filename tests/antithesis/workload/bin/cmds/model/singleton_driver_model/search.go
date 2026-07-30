@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -30,12 +29,13 @@ import (
 // So branching is driven by the (few) in-flight bulks, not by how many pending
 // are buffered — a pending bulk is at most one deterministic step. Dedup collapses
 // commutative orderings; success-gating (res.OK) prunes orders in which a bulk
-// could not have committed at that point. Dedup is keyed on a 256-bit hash of
-// (state, pendingIndex, remaining-inflight): collisions are infeasible (~2^-128),
-// so dedup is exact while the retained key stays 32 bytes rather than a full
-// serialized state. pendingIndex and remaining-inflight are folded in because a
-// state reachable with different continuations (e.g. a duplicate-effect in-flight
-// bulk landing on the same state as a pending one) must be explored under each.
+// could not have committed at that point. Dedup is keyed on the state's 128-bit
+// fingerprint (see pmap.go — maintained incrementally, so reading it is O(1))
+// plus the pending index and the remaining-inflight set: collisions are
+// infeasible for the model's non-adversarial inputs, so dedup is exact.
+// pendingIndex and remaining-inflight are folded in because a state reachable
+// with different continuations (e.g. a duplicate-effect in-flight bulk landing
+// on the same state as a pending one) must be explored under each.
 func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState) bool) {
 	// Only operations dispatched no later than maxTicket (the observation's
 	// high-water) can precede it; one dispatched after the observation's response
@@ -58,27 +58,24 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 		}
 	}
 
-	allIdx := make([]int, len(inflight))
-	for i := range inflight {
-		allIdx[i] = i
+	// The remaining-inflight set is a bitmask, so the dedup key stays a small
+	// comparable value.
+	if len(inflight) > 64 {
+		panic(fmt.Sprintf("candidateBases: %d in-flight bulks exceed the 64-bit set", len(inflight)))
 	}
+	allRem := uint64(1)<<len(inflight) - 1
 
-	seen := map[[sha256.Size]byte]bool{}
-	hasher := sha256.New()
-	key := func(base oracle.GlobalState, pIdx int, rem []int) [sha256.Size]byte {
-		hasher.Reset()
-		base.Hash(hasher)
-		fmt.Fprintf(hasher, "#%d#%v", pIdx, rem)
-
-		var k [sha256.Size]byte
-		hasher.Sum(k[:0])
-		return k
+	type dedupKey struct {
+		state oracle.Digest
+		pIdx  int
+		rem   uint64
 	}
+	seen := map[dedupKey]bool{}
 
-	var rec func(base oracle.GlobalState, pIdx int, rem []int) bool
+	var rec func(base oracle.GlobalState, pIdx int, rem uint64) bool
 
-	rec = func(base oracle.GlobalState, pIdx int, rem []int) bool {
-		k := key(base, pIdx, rem)
+	rec = func(base oracle.GlobalState, pIdx int, rem uint64) bool {
+		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: rem}
 		if seen[k] {
 			return false
 		}
@@ -98,18 +95,18 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 		}
 
 		// Fold in any one of the remaining in-flight bulks (unknown position).
-		for i, idx := range rem {
+		for idx := 0; idx < len(inflight); idx++ {
+			if rem&(1<<idx) == 0 {
+				continue
+			}
+
 			res := base.Apply(inflight[idx])
 			if !res.OK {
 				// Could not have committed at this point — not a predecessor.
 				continue
 			}
 
-			next := make([]int, 0, len(rem)-1)
-			next = append(next, rem[:i]...)
-			next = append(next, rem[i+1:]...)
-
-			if rec(res.State, pIdx, next) {
+			if rec(res.State, pIdx, rem&^(1<<idx)) {
 				return true
 			}
 		}
@@ -117,5 +114,5 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 		return false
 	}
 
-	rec(c.modelState, 0, allIdx)
+	rec(c.modelState, 0, allRem)
 }

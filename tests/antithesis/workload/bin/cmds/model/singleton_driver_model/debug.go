@@ -199,7 +199,7 @@ func (c *Checker) failureDiag(b oracle.Bulk, maxTicket uint64) (postings, modelT
 	var types []string
 	for l := range ledgers {
 		var names []string
-		for n, t := range c.modelState.Ledger(l).Types() {
+		for n, t := range c.modelState.Ledger(l).Types().All() {
 			names = append(names, fmt.Sprintf("%s(%s)", n, t.Pattern))
 		}
 		sort.Strings(names)
@@ -280,7 +280,7 @@ func (c *Checker) modelAccountMetaDump(ledger, addr string) string {
 	var parts []string
 	for k, v := range ls.AccountMetadata(addr) {
 		ft := "none"
-		if t, ok := ls.AccountFieldTypes()[k]; ok {
+		if t, ok := ls.AccountFieldTypes().Get(k); ok {
 			ft = fmt.Sprintf("%d", t)
 		}
 		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(v), ft))
@@ -298,9 +298,9 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	ls := c.modelState.Ledger(ledger)
 
 	var parts []string
-	for k, v := range ls.LedgerMeta() {
+	for k, v := range ls.LedgerMeta().All() {
 		ft := "none"
-		if t, ok := ls.LedgerFieldTypes()[k]; ok {
+		if t, ok := ls.LedgerFieldTypes().Get(k); ok {
 			ft = fmt.Sprintf("%d", t)
 		}
 		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(v), ft))
@@ -317,11 +317,11 @@ func (c *Checker) modelTxDump(ledger string, id uint64) string {
 	defer c.mu.Unlock()
 
 	txs := c.modelState.Ledger(ledger).Txs()
-	if id == 0 || id > uint64(len(txs)) {
+	if id == 0 || id > uint64(txs.Len()) {
 		return "<absent>"
 	}
 
-	tx := txs[id-1]
+	tx := txs.Get(int(id - 1))
 	parts := make([]string, 0, len(tx.Metadata()))
 	for k, v := range tx.Metadata() {
 		parts = append(parts, k+"="+oracle.MetaValueString(v))
@@ -340,12 +340,11 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 
 	ls := c.modelState.Ledger(ledger)
 
-	render := func(tag string, m map[string]commonpb.MetadataType) string {
-		parts := make([]string, 0, len(m))
-		for k, t := range m {
+	render := func(tag string, m oracle.Map[string, commonpb.MetadataType]) string {
+		parts := make([]string, 0, m.Len())
+		for k, t := range m.All() {
 			parts = append(parts, fmt.Sprintf("%s/%s=%d", tag, k, t))
 		}
-		sort.Strings(parts)
 
 		return strings.Join(parts, ",")
 	}

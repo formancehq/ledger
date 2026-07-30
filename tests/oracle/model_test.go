@@ -1,7 +1,6 @@
 package oracle
 
 import (
-	"bytes"
 	"math/big"
 	"testing"
 
@@ -14,11 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func hashState(g GlobalState) string {
-	var buf bytes.Buffer
-	g.Hash(&buf)
-
-	return buf.String()
+func hashState(g GlobalState) Digest {
+	return g.Fingerprint()
 }
 
 func keyedBulk(key string, reqs ...*servicepb.Request) Bulk {
@@ -38,9 +34,9 @@ func TestGlobalState_Apply_ChartOps(t *testing.T) {
 
 	added := base.Apply(bulkOf(oracletest.AddTypeReq("T")))
 	require.True(t, added.OK)
-	require.Contains(t, added.State.Ledger("L").types, "T")
+	require.True(t, added.State.Ledger("L").types.Has("T"))
 	// Immutability: deriving `added` never touched base.
-	require.NotContains(t, base.Ledger("L").types, "T")
+	require.False(t, base.Ledger("L").types.Has("T"))
 
 	dup := added.State.Apply(bulkOf(oracletest.AddTypeReq("T")))
 	require.False(t, dup.OK)
@@ -48,7 +44,7 @@ func TestGlobalState_Apply_ChartOps(t *testing.T) {
 
 	removed := added.State.Apply(bulkOf(oracletest.RemoveTypeReq("T")))
 	require.True(t, removed.OK)
-	require.NotContains(t, removed.State.Ledger("L").types, "T")
+	require.False(t, removed.State.Ledger("L").types.Has("T"))
 
 	gone := removed.State.Apply(bulkOf(oracletest.RemoveTypeReq("T")))
 	require.False(t, gone.OK)
@@ -62,13 +58,13 @@ func TestGlobalState_Apply_IdempotencyReplay(t *testing.T) {
 	first := NewGlobalState().Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
 	require.True(t, first.OK)
 	require.Equal(t, uint64(1), first.Orders[0].TxID)
-	require.Len(t, first.State.Ledger("L").txs, 1)
+	require.Equal(t, 1, first.State.Ledger("L").txs.Len())
 
 	// Replay: same key, same body -> the recorded outcome, no new transaction.
 	replay := first.State.Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 5)))
 	require.True(t, replay.OK)
 	require.Equal(t, uint64(1), replay.Orders[0].TxID)
-	require.Len(t, replay.State.Ledger("L").txs, 1, "replay must not append a second transaction")
+	require.Equal(t, 1, replay.State.Ledger("L").txs.Len(), "replay must not append a second transaction")
 	replayed := replay.State.Ledger("L")
 	require.Equal(t, "5", dec(replayed.vol(VolumeKey{"a:1", "USD"}).Input),
 		"replay must not move volumes again")
@@ -77,7 +73,7 @@ func TestGlobalState_Apply_IdempotencyReplay(t *testing.T) {
 	fresh := first.State.Apply(keyedBulk("k2", oracletest.TxReq("world", "a:1", "USD", 5)))
 	require.True(t, fresh.OK)
 	require.Equal(t, uint64(2), fresh.Orders[0].TxID)
-	require.Len(t, fresh.State.Ledger("L").txs, 2)
+	require.Equal(t, 2, fresh.State.Ledger("L").txs.Len())
 }
 
 func TestGlobalState_Apply_IdempotencyConflict(t *testing.T) {
@@ -90,7 +86,7 @@ func TestGlobalState_Apply_IdempotencyConflict(t *testing.T) {
 	conflict := first.State.Apply(keyedBulk("k1", oracletest.TxReq("world", "a:1", "USD", 6)))
 	require.False(t, conflict.OK)
 	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, conflict.Reason)
-	require.Len(t, conflict.State.Ledger("L").txs, 1)
+	require.Equal(t, 1, conflict.State.Ledger("L").txs.Len())
 }
 
 func TestGlobalState_Apply_IdempotencyFailureNotFrozen(t *testing.T) {
@@ -106,12 +102,12 @@ func TestGlobalState_Apply_IdempotencyFailureNotFrozen(t *testing.T) {
 	require.Equal(t, uint64(1), reuse.Orders[0].TxID)
 }
 
-func TestGlobalState_Hash_DistinguishesFrozenKeyAssignments(t *testing.T) {
+func TestGlobalState_Fingerprint_DistinguishesFrozenKeyAssignments(t *testing.T) {
 	t.Parallel()
 
 	// Two keyed bulks with IDENTICAL postings reach the same business state under
-	// either order (a's volume, both tx records), so LedgerState.Hash alone can't
-	// tell the orders apart. Idempotency makes the key->id assignment observable
+	// either order (a's volume, both tx records), so the ledger fingerprints alone
+	// can't tell the orders apart. Idempotency makes the key->id assignment observable
 	// via replay, so the frozen map must push the two orders to distinct hashes —
 	// else candidateBases collapses them and a replay can't resolve to the id the
 	// server actually returned.
@@ -135,7 +131,7 @@ func TestGlobalState_Apply_AtomicRejection(t *testing.T) {
 	res := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReq("A"), oracletest.RemoveTypeReq("missing")))
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonAccountTypeNotFound, res.Reason)
-	require.Empty(t, res.State.Ledger("L").types)
+	require.Zero(t, res.State.Ledger("L").types.Len())
 }
 
 func TestGlobalState_Apply_CrossLedgerAtomicRejection(t *testing.T) {
@@ -152,8 +148,8 @@ func TestGlobalState_Apply_CrossLedgerAtomicRejection(t *testing.T) {
 	require.Equal(t, domain.ErrReasonAccountTypeNotFound, res.Reason)
 
 	a := res.State.Ledger("A")
-	require.NotContains(t, a.volumes, VolumeKey{"x:1", "USD"})
-	require.NotContains(t, a.volumes, VolumeKey{"world", "USD"})
+	require.False(t, a.volumes.Has(VolumeKey{"x:1", "USD"}))
+	require.False(t, a.volumes.Has(VolumeKey{"world", "USD"}))
 }
 
 func TestGlobalState_Apply_CrossLedgerCommit(t *testing.T) {
@@ -170,7 +166,7 @@ func TestGlobalState_Apply_CrossLedgerCommit(t *testing.T) {
 	b := res.State.Ledger("B")
 	require.Equal(t, "5", dec(a.vol(VolumeKey{"x:1", "USD"}).Input))
 	require.Equal(t, "7", dec(b.vol(VolumeKey{"y:1", "USD"}).Input))
-	require.NotContains(t, a.volumes, VolumeKey{"y:1", "USD"})
+	require.False(t, a.volumes.Has(VolumeKey{"y:1", "USD"}))
 }
 
 func TestGlobalState_Apply_TxEnforcement(t *testing.T) {
@@ -223,7 +219,7 @@ func TestGlobalState_Apply_TransientNonZero(t *testing.T) {
 	// Balanced within the bulk (in then out) -> commits, and t:1 is purged.
 	good := s.Apply(bulkOf(oracletest.TxReq("world", "t:1", "USD", 5), oracletest.TxReq("t:1", "world", "USD", 5)))
 	require.True(t, good.OK)
-	require.NotContains(t, good.State.Ledger("L").volumes, VolumeKey{"t:1", "USD"})
+	require.False(t, good.State.Ledger("L").volumes.Has(VolumeKey{"t:1", "USD"}))
 }
 
 func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
@@ -260,7 +256,7 @@ func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 
 	zeroed := s.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5), oracletest.TxReq("e:1", "world", "USD", 5)))
 	require.True(t, zeroed.OK)
-	require.NotContains(t, zeroed.State.Ledger("L").volumes, VolumeKey{"e:1", "USD"})
+	require.False(t, zeroed.State.Ledger("L").volumes.Has(VolumeKey{"e:1", "USD"}))
 }
 
 // MetaValueString must render every MetadataValue wire kind with a distinct,
@@ -393,7 +389,7 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	)))
 	require.False(t, over.OK)
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
-	require.NotContains(t, over.State.Ledger("L").volumes, VolumeKey{"a:1", "USD"})
+	require.False(t, over.State.Ledger("L").volumes.Has(VolumeKey{"a:1", "USD"}))
 }
 
 func TestApplyTransaction_Timestamp(t *testing.T) {
@@ -404,20 +400,20 @@ func TestApplyTransaction_Timestamp(t *testing.T) {
 	req.GetApply().GetAction().GetCreateTransaction().Timestamp = &commonpb.Timestamp{Data: 12345}
 	res := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, res.OK)
-	require.Equal(t, uint64(12345), res.State.Ledger("L").Txs()[0].Timestamp().GetData())
+	require.Equal(t, uint64(12345), res.State.Ledger("L").Txs().Get(0).Timestamp().GetData())
 
 	// It survives a later metadata write — the reconstruction preserves it. (A
 	// lost timestamp would read back as nil, which reads skip, so only a unit
 	// test catches it.)
 	withMeta := res.State.Apply(bulkOf(oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("v")})))
 	require.True(t, withMeta.OK)
-	require.Equal(t, uint64(12345), withMeta.State.Ledger("L").Txs()[0].Timestamp().GetData())
+	require.Equal(t, uint64(12345), withMeta.State.Ledger("L").Txs().Get(0).Timestamp().GetData())
 
 	// A transaction with no user timestamp records nil (server stamps its own
 	// unpredictable date), so the read-back check is skipped for it.
 	noTs := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "y:1", "USD", 5)))
 	require.True(t, noTs.OK)
-	require.Nil(t, noTs.State.Ledger("L").Txs()[0].Timestamp())
+	require.Nil(t, noTs.State.Ledger("L").Txs().Get(0).Timestamp())
 }
 
 func TestApplyRevert_AtEffectiveDate(t *testing.T) {
@@ -435,12 +431,12 @@ func TestApplyRevert_AtEffectiveDate(t *testing.T) {
 	atEff.GetApply().GetAction().GetRevertTransaction().AtEffectiveDate = true
 	r1 := base.State.Apply(bulkOf(atEff))
 	require.True(t, r1.OK)
-	require.Equal(t, uint64(777), r1.State.Ledger("L").Txs()[1].Timestamp().GetData())
+	require.Equal(t, uint64(777), r1.State.Ledger("L").Txs().Get(1).Timestamp().GetData())
 
 	// Plain revert: the revert transaction is server-dated → nil in the model.
 	r2 := base.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, true)))
 	require.True(t, r2.OK)
-	require.Nil(t, r2.State.Ledger("L").Txs()[1].Timestamp())
+	require.Nil(t, r2.State.Ledger("L").Txs().Get(1).Timestamp())
 
 	// at_effective_date on an original that had no user timestamp: the server
 	// inherits its (unpredictable) command date, so the model still records nil.
@@ -450,7 +446,7 @@ func TestApplyRevert_AtEffectiveDate(t *testing.T) {
 	atEff2.GetApply().GetAction().GetRevertTransaction().AtEffectiveDate = true
 	r3 := base2.State.Apply(bulkOf(atEff2))
 	require.True(t, r3.OK)
-	require.Nil(t, r3.State.Ledger("L").Txs()[1].Timestamp())
+	require.Nil(t, r3.State.Ledger("L").Txs().Get(1).Timestamp())
 }
 
 func TestApplyTransaction_EmptyRejected(t *testing.T) {

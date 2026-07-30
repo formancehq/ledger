@@ -176,12 +176,12 @@ func pickCell(g oracle.GlobalState) (ledger, addr, asset string, ok bool) {
 
 	var cells []cellRef
 	for name, ls := range g.Ledgers() {
-		for k := range ls.Volumes() {
+		for k := range ls.Volumes().All() {
 			cells = append(cells, cellRef{ledger: name, key: k})
 		}
 
 		metaAddrs := map[string]bool{}
-		for mk := range ls.Metadata() {
+		for mk := range ls.Metadata().All() {
 			metaAddrs[mk.Address] = true
 		}
 		for a := range metaAddrs {
@@ -332,7 +332,7 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 
 	ledger = random.RandomChoice(ledgers)
 	const slack = 8
-	frontier := uint64(len(g.Ledger(ledger).Txs()))
+	frontier := uint64(g.Ledger(ledger).Txs().Len())
 	id = 1 + internal.Rand().Uint64()%(frontier+slack)
 
 	return ledger, id, false, true

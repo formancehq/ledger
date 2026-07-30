@@ -472,12 +472,13 @@ func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset stri
 // account's whole volume set in one linearizable snapshot, so a returned cell
 // the base lacks (a ghost row under ANY asset, e.g. a stranded zero-balance
 // row the base's purge sweep removed) and a base cell the server omitted are
-// both mismatches.
+// both mismatches. Seeks to addr's key range — O(log n + cells of addr), not a
+// table walk (this runs per candidate base).
 func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[string]oracle.VolumePair) bool {
 	cells := 0
-	for k, vp := range ls.Volumes() {
+	for k, vp := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
 		if k.Address != addr {
-			continue
+			break
 		}
 
 		g, ok := got[k.Asset]
@@ -532,11 +533,11 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 // chartMatches reports whether ls's chart equals the server's account types
 // exactly — same names, patterns, and persistence.
 func chartMatches(ls oracle.LedgerState, serverTypes map[string]*commonpb.AccountType) bool {
-	if len(ls.Types()) != len(serverTypes) {
+	if ls.Types().Len() != len(serverTypes) {
 		return false
 	}
 
-	for name, t := range ls.Types() {
+	for name, t := range ls.Types().All() {
 		st, ok := serverTypes[name]
 		if !ok || st.GetPattern() != t.Pattern || st.GetPersistence() != t.Persistence {
 			return false
@@ -550,11 +551,11 @@ func chartMatches(ls oracle.LedgerState, serverTypes map[string]*commonpb.Accoun
 // exactly — same keys, same verbatim values. Reads surface the stored value
 // as-written; the declared type is an index hint, not applied on read.
 func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.MetadataValue) bool {
-	if len(ls.LedgerMeta()) != len(serverMeta) {
+	if ls.LedgerMeta().Len() != len(serverMeta) {
 		return false
 	}
 
-	for k, v := range ls.LedgerMeta() {
+	for k, v := range ls.LedgerMeta().All() {
 		sv, ok := serverMeta[k]
 		if !ok || oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
 			return false
@@ -578,14 +579,14 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
 		txs := base.Ledger(ledger).Txs()
-		if id == 0 || id > uint64(len(txs)) {
+		if id == 0 || id > uint64(txs.Len()) {
 			return !found // no tx at this id in this base: consistent only with NotFound
 		}
 		if !found {
 			return false // base has a tx at this id, but the server returned NotFound
 		}
 
-		rec := txs[id-1]
+		rec := txs.Get(int(id - 1))
 		// A user-supplied timestamp is echoed verbatim; when the model has none
 		// (nil) the server stamped its own command date, which is unpredictable,
 		// so the timestamp is not checked for that record.
@@ -657,12 +658,12 @@ func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn,
 
 // fieldTypesMatch reports whether the model's declared field types equal the
 // server's for one target — same keys, same declared type.
-func fieldTypesMatch(model map[string]commonpb.MetadataType, server map[string]*servicepb.MetadataFieldStatus) bool {
-	if len(model) != len(server) {
+func fieldTypesMatch(model oracle.Map[string, commonpb.MetadataType], server map[string]*servicepb.MetadataFieldStatus) bool {
+	if model.Len() != len(server) {
 		return false
 	}
 
-	for k, t := range model {
+	for k, t := range model.All() {
 		st, ok := server[k]
 		if !ok || st.GetDeclaredType() != t {
 			return false

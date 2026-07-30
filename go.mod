@@ -82,6 +82,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
+require github.com/benbjohnson/immutable v0.4.3
+
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	atomicgo.dev/cursor v0.2.0 // indirect
