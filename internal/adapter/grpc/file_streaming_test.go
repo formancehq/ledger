@@ -168,3 +168,13 @@ func TestStreamOneFile_PathConfinement(t *testing.T) {
 		})
 	}
 }
+
+func TestStreamOneFile_MissingRoot(t *testing.T) {
+	t.Parallel()
+
+	err := streamOneFile(filepath.Join(t.TempDir(), "missing"), "data.txt", make([]byte, defaultChunkSize), func(*snapshotpb.FetchFileResponse) error {
+		return nil
+	})
+
+	require.Error(t, err)
+}
