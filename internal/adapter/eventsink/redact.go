@@ -4,6 +4,8 @@
 package eventsink
 
 import (
+	"strings"
+
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/redact"
@@ -54,6 +56,10 @@ func redactConfigInPlace(cfg *commonpb.SinkConfig) {
 		if sink.Kafka != nil {
 			sink.Kafka.SaslPassword = redact.Secret(sink.Kafka.GetSaslPassword())
 		}
+	case *commonpb.SinkConfig_Nats:
+		if sink.Nats != nil {
+			sink.Nats.Url = redactNATSURLs(sink.Nats.GetUrl())
+		}
 	case *commonpb.SinkConfig_Http:
 		if sink.Http != nil {
 			sink.Http.Secret = redact.Secret(sink.Http.GetSecret())
@@ -63,6 +69,42 @@ func redactConfigInPlace(cfg *commonpb.SinkConfig) {
 			redactDatabricksAuthInPlace(sink.Databricks)
 		}
 	}
+}
+
+// redactNATSURLs removes password and token userinfo from the comma-separated
+// server list accepted by the NATS client while preserving server addresses.
+func redactNATSURLs(value string) string {
+	servers := strings.Split(value, ",")
+	for index, server := range servers {
+		trimmed := strings.TrimSpace(server)
+		schemeEnd := strings.Index(trimmed, "://")
+		if schemeEnd == -1 {
+			continue
+		}
+
+		rest := trimmed[schemeEnd+3:]
+		userinfoEnd := strings.LastIndex(rest, "@")
+		if userinfoEnd == -1 {
+			continue
+		}
+
+		userinfo := rest[:userinfoEnd]
+		if userinfo == "" {
+			continue
+		}
+
+		if username, _, hasPassword := strings.Cut(userinfo, ":"); hasPassword {
+			userinfo = username + ":" + redact.SecretSet
+		} else {
+			userinfo = redact.SecretSet
+		}
+
+		leadingSpace := server[:len(server)-len(strings.TrimLeft(server, " \t"))]
+		trailingSpace := server[len(strings.TrimRight(server, " \t")):]
+		servers[index] = leadingSpace + trimmed[:schemeEnd+3] + userinfo + rest[userinfoEnd:] + trailingSpace
+	}
+
+	return strings.Join(servers, ",")
 }
 
 func redactDatabricksAuthInPlace(cfg *commonpb.DatabricksSinkConfig) {

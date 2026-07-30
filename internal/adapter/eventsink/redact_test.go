@@ -21,6 +21,8 @@ func TestRedactGetResponse_RemovesEverySinkCredential(t *testing.T) {
 		"webhook-secret",
 		"dapi-pat-plaintext",
 		"oauth-secret-plaintext",
+		"nats-password",
+		"nats-token",
 	}
 	response := &servicepb.GetEventsSinksResponse{
 		Sinks: []*commonpb.SinkConfig{
@@ -43,6 +45,12 @@ func TestRedactGetResponse_RemovesEverySinkCredential(t *testing.T) {
 				Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
 					Endpoint: "https://example.com/events",
 					Secret:   secrets[2],
+				}},
+			},
+			{
+				Name: "nats",
+				Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
+					Url: "nats://operator:" + secrets[5] + "@one.example:4222, nats://" + secrets[6] + "@two.example:4222,nats://three.example:4222",
 				}},
 			},
 			{
@@ -76,17 +84,20 @@ func TestRedactGetResponse_RemovesEverySinkCredential(t *testing.T) {
 	assert.Equal(t, "clickhouse://operator:****@example.com:9000/ledger", redacted.GetSinks()[0].GetClickhouse().GetDsn())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[1].GetKafka().GetSaslPassword())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[2].GetHttp().GetSecret())
-	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[3].GetDatabricks().GetToken())
-	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[4].GetDatabricks().GetOauthM2M().GetClientSecret())
-	assert.Equal(t, "operator-client", redacted.GetSinks()[4].GetDatabricks().GetOauthM2M().GetClientId())
+	assert.Equal(t, "nats://operator:(set)@one.example:4222, nats://(set)@two.example:4222,nats://three.example:4222", redacted.GetSinks()[3].GetNats().GetUrl())
+	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[4].GetDatabricks().GetToken())
+	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[5].GetDatabricks().GetOauthM2M().GetClientSecret())
+	assert.Equal(t, "operator-client", redacted.GetSinks()[5].GetDatabricks().GetOauthM2M().GetClientId())
 	assert.Equal(t, uint64(42), redacted.GetSinkStatuses()[0].GetCursor())
 
 	// Read-side projection must not corrupt the controller-owned runtime config.
 	assert.Contains(t, response.GetSinks()[0].GetClickhouse().GetDsn(), secrets[0])
 	assert.Equal(t, secrets[1], response.GetSinks()[1].GetKafka().GetSaslPassword())
 	assert.Equal(t, secrets[2], response.GetSinks()[2].GetHttp().GetSecret())
-	assert.Equal(t, secrets[3], response.GetSinks()[3].GetDatabricks().GetToken())
-	assert.Equal(t, secrets[4], response.GetSinks()[4].GetDatabricks().GetOauthM2M().GetClientSecret())
+	assert.Contains(t, response.GetSinks()[3].GetNats().GetUrl(), secrets[5])
+	assert.Contains(t, response.GetSinks()[3].GetNats().GetUrl(), secrets[6])
+	assert.Equal(t, secrets[3], response.GetSinks()[4].GetDatabricks().GetToken())
+	assert.Equal(t, secrets[4], response.GetSinks()[5].GetDatabricks().GetOauthM2M().GetClientSecret())
 }
 
 func TestRedactConfig_ReportsAbsentSecretWithoutMutatingInput(t *testing.T) {
