@@ -334,7 +334,7 @@ paths:
       description: |
         Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
         Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
-        Supports cursor pagination via the `after` query parameter. Requires `ledger:OpsRead` scope.
+        Supports cursor pagination via the `after` query parameter. Requires `ledger:read` scope.
       operationId: listLedgerLogs
       tags:
         - Logs
