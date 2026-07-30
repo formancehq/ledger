@@ -14,7 +14,7 @@ import (
 const redactedSecret = "***REDACTED***"
 
 // projectingCursor applies a read-only projection to each item while preserving
-// the underlying cursor's lifecycle and routed pagination trailer.
+// the underlying cursor's lifecycle.
 type projectingCursor[T any] struct {
 	inner   cursor.Cursor[T]
 	project func(T) (T, error)
@@ -33,16 +33,6 @@ func (c *projectingCursor[T]) Next() (T, error) {
 
 func (c *projectingCursor[T]) Close() error {
 	return c.inner.Close()
-}
-
-// NextCursor forwards routed gRPC pagination metadata when the wrapped cursor
-// provides it. Local cursors return an empty token.
-func (c *projectingCursor[T]) NextCursor() string {
-	if upstream, ok := c.inner.(interface{ NextCursor() string }); ok {
-		return upstream.NextCursor()
-	}
-
-	return ""
 }
 
 func newProjectingCursor[T any](inner cursor.Cursor[T], project func(T) (T, error)) cursor.Cursor[T] {
@@ -70,15 +60,17 @@ func projectAuditEntryForRead(entry *auditpb.AuditEntry) (*auditpb.AuditEntry, e
 	}
 
 	if signature := projected.GetSignature(); signature != nil && len(signature.GetPayload()) > 0 {
-		payload, err := projectSignedBatchPayloadForRead(signature.GetPayload())
+		payload, changed, err := projectSignedBatchPayloadForRead(signature.GetPayload())
 		if err != nil {
 			return nil, fmt.Errorf("projecting signed audit payload: %w", err)
 		}
 
-		// The original Ed25519 signature covers the unredacted payload. Keeping
-		// it beside projected bytes would falsely imply that those bytes verify.
-		signature.Signature = nil
-		signature.Payload = payload
+		if changed {
+			// The original Ed25519 signature covers the unredacted payload. Keeping
+			// it beside projected bytes would falsely imply that those bytes verify.
+			signature.Signature = nil
+			signature.Payload = payload
+		}
 	}
 
 	return projected, nil
@@ -94,45 +86,61 @@ func projectSerializedOrderForRead(serialized []byte) ([]byte, error) {
 		return nil, fmt.Errorf("unmarshaling serialized order: %w", err)
 	}
 
-	redactOrderSecrets(order)
+	if !redactOrderSecrets(order) {
+		// Preserve the exact hash-chain preimage whenever the order contains no
+		// credential. This includes legacy bytes whose representation may differ
+		// from the current business-intent marshaller.
+		return serialized, nil
+	}
 
-	// Use the same business-intent projection as current audit capture. This
-	// also safely handles pre-EN-1558 entries that embedded OrderTechnical.
+	// A credential-bearing response is deliberately a projection rather than
+	// the authoritative hash preimage. Use the current business-intent encoding
+	// so technical execution metadata is not reintroduced into projected bytes.
 	return processing.MarshalOrderBusinessIntent(order, nil), nil
 }
 
-func projectSignedBatchPayloadForRead(payload []byte) ([]byte, error) {
+func projectSignedBatchPayloadForRead(payload []byte) ([]byte, bool, error) {
 	batch := &servicepb.ApplyBatch{}
 	if err := batch.UnmarshalVT(payload); err != nil {
-		return nil, fmt.Errorf("unmarshaling ApplyBatch: %w", err)
+		return nil, false, fmt.Errorf("unmarshaling ApplyBatch: %w", err)
 	}
+
+	changed := false
 
 	for _, request := range batch.GetRequests() {
 		if addSink := request.GetAddEventsSink(); addSink != nil {
-			redactSinkConfigSecrets(addSink.GetConfig())
+			changed = redactSinkConfigSecrets(addSink.GetConfig()) || changed
 		}
 
 		if createLedger := request.GetCreateLedger(); createLedger != nil {
-			redactMirrorSourceSecrets(createLedger.GetMirrorSource())
+			changed = redactMirrorSourceSecrets(createLedger.GetMirrorSource()) || changed
 		}
+	}
+
+	if !changed {
+		return payload, false, nil
 	}
 
 	projected, err := batch.MarshalVT()
 	if err != nil {
-		return nil, fmt.Errorf("marshaling projected ApplyBatch: %w", err)
+		return nil, false, fmt.Errorf("marshaling projected ApplyBatch: %w", err)
 	}
 
-	return projected, nil
+	return projected, true, nil
 }
 
-func redactOrderSecrets(order *raftcmdpb.Order) {
+func redactOrderSecrets(order *raftcmdpb.Order) bool {
+	changed := false
+
 	if addSink := order.GetSystemScoped().GetAddEventsSink(); addSink != nil {
-		redactSinkConfigSecrets(addSink.GetConfig())
+		changed = redactSinkConfigSecrets(addSink.GetConfig()) || changed
 	}
 
 	if createLedger := order.GetLedgerScoped().GetCreateLedger(); createLedger != nil {
-		redactMirrorSourceSecrets(createLedger.GetMirrorSource())
+		changed = redactMirrorSourceSecrets(createLedger.GetMirrorSource()) || changed
 	}
+
+	return changed
 }
 
 func projectLogForRead(log *commonpb.Log) (*commonpb.Log, error) {
@@ -154,27 +162,33 @@ func projectLogForRead(log *commonpb.Log) (*commonpb.Log, error) {
 	return projected, nil
 }
 
-func redactSinkConfigSecrets(config *commonpb.SinkConfig) {
+func redactSinkConfigSecrets(config *commonpb.SinkConfig) bool {
 	if config == nil {
-		return
+		return false
 	}
+
+	changed := false
 
 	if nats := config.GetNats(); nats != nil && nats.GetUrl() != "" {
 		// A NATS URL may use either user:password or token userinfo. The URL
 		// is a single opaque field, so redact it as a unit to cover both forms.
 		nats.Url = redactedSecret
+		changed = true
 	}
 
 	if clickhouse := config.GetClickhouse(); clickhouse != nil && clickhouse.GetDsn() != "" {
 		clickhouse.Dsn = redactedSecret
+		changed = true
 	}
 
 	if kafka := config.GetKafka(); kafka != nil && kafka.GetSaslPassword() != "" {
 		kafka.SaslPassword = redactedSecret
+		changed = true
 	}
 
 	if httpConfig := config.GetHttp(); httpConfig != nil && httpConfig.GetSecret() != "" {
 		httpConfig.Secret = redactedSecret
+		changed = true
 	}
 
 	if databricks := config.GetDatabricks(); databricks != nil {
@@ -182,28 +196,38 @@ func redactSinkConfigSecrets(config *commonpb.SinkConfig) {
 		case *commonpb.DatabricksSinkConfig_Token:
 			if auth.Token != "" {
 				auth.Token = redactedSecret
+				changed = true
 			}
 		case *commonpb.DatabricksSinkConfig_OauthM2M:
 			if auth.OauthM2M != nil && auth.OauthM2M.GetClientSecret() != "" {
 				auth.OauthM2M.ClientSecret = redactedSecret
+				changed = true
 			}
 		}
 	}
+
+	return changed
 }
 
-func redactMirrorSourceSecrets(source *commonpb.MirrorSourceConfig) {
+func redactMirrorSourceSecrets(source *commonpb.MirrorSourceConfig) bool {
 	if source == nil {
-		return
+		return false
 	}
+
+	changed := false
 
 	if httpSource := source.GetHttp(); httpSource != nil {
 		credentials := httpSource.GetOauth2ClientCredentials()
 		if credentials != nil && credentials.GetClientSecret() != "" {
 			credentials.ClientSecret = redactedSecret
+			changed = true
 		}
 	}
 
 	if postgres := source.GetPostgres(); postgres != nil && postgres.GetDsn() != "" {
 		postgres.Dsn = redactedSecret
+		changed = true
 	}
+
+	return changed
 }

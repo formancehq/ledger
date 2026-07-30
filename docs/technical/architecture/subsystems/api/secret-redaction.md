@@ -6,10 +6,12 @@ sources. Those persisted records remain authoritative and unchanged: mutating
 them would invalidate the audit hash chain, idempotency evidence, or signed
 client payloads.
 
-Public read APIs therefore return a deep-cloned, secret-safe projection from
-the controller boundary. This boundary is shared by gRPC and the HTTP
-compatibility API, including local-leader reads, follower-routed reads,
-checkpoint reads, and cold-storage log reads.
+The historical audit and system-log APIs therefore return a deep-cloned,
+secret-safe projection from the controller boundary. The projected controller
+methods are `GetAuditEntry`, `ListAuditEntriesFrom`, `GetLog`, and `ListLogs`.
+This covers HTTP and gRPC reads served locally, checkpoint audit reads, and
+cold-storage log reads. For a follower-routed request, the serving node applies
+the projection before its gRPC response leaves that node.
 
 ## Covered fields
 
@@ -35,11 +37,13 @@ the controller are never mutated.
 ## Integrity semantics
 
 `AuditEntry.hash` continues to identify and protect the authoritative persisted
-entry. A redacted response is deliberately not the original hash preimage.
-Likewise, an Ed25519 signature covers the original unredacted `ApplyBatch`, not
-the projected payload. The read projection keeps the signer key ID and a
-parseable redacted payload, but omits the signature bytes so clients cannot
-mistake the projection for independently verifiable signed evidence.
+entry. When credentials are replaced, the response is deliberately not the
+original hash preimage. Likewise, when a signed `ApplyBatch` contains replaced
+credentials, the read projection keeps the signer key ID and a parseable
+redacted payload but omits the Ed25519 signature bytes so clients cannot mistake
+the projection for independently verifiable signed evidence. Entries without
+credentials retain their exact serialized order bytes, signed payload, and
+signature, so their evidence remains independently verifiable.
 
 Integrity checking and rebuild paths read the authoritative store directly and
 are not projected. Operators who need offline verification of raw audit
@@ -52,3 +56,13 @@ If a stored order or signed batch cannot be decoded, the read fails loudly. It
 must never fall back to returning opaque bytes that might contain a secret.
 This fail-closed behavior also surfaces corrupted or schema-incompatible audit
 data instead of silently weakening redaction.
+
+## Related live read boundaries
+
+This mechanism is intentionally limited to historical audit and system-log
+records. Live event-sink configuration reads are protected separately by
+[PR #1651](https://github.com/formancehq/ledger/pull/1651), and live
+`LedgerInfo.mirror_source` reads by
+[PR #1653](https://github.com/formancehq/ledger/pull/1653). Those adapter-level
+projections cover both HTTP and gRPC without coupling their live response
+models to the historical audit projection in this package.

@@ -523,7 +523,9 @@ paths:
         `items` populated (the list endpoint omits `items` for compactness).
         Credentials inside serialized orders and signed batch payloads are
         replaced with `***REDACTED***`. Projected bytes are not the original
-        audit-hash or Ed25519-signature preimage; the signature bytes are omitted.
+        audit-hash or Ed25519-signature preimage; signature bytes are omitted
+        only when the signed payload was redacted. Entries without credentials
+        retain their original payload and signature.
         Requires `ledger:AuditRead` scope.
       operationId: getAuditEntry
       tags:
@@ -5491,8 +5493,9 @@ components:
           type: object
           description: |
             Signed-batch metadata (protobuf JSON); absent for unsigned batches.
-            On public reads the payload is redacted and the signature bytes are
-            omitted because they cover the original unredacted payload.
+            When credentials are present, public reads redact the payload and
+            omit the signature bytes because they cover the original unredacted
+            payload. Otherwise the exact payload and signature are preserved.
 
     AuditItem:
       type: object

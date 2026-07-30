@@ -181,6 +181,39 @@ func TestProjectAuditEntryForReadRedactsOrdersAndSignedPayload(t *testing.T) {
 	}
 }
 
+func TestProjectAuditEntryForReadPreservesVerifiableEvidenceWithoutCredentials(t *testing.T) {
+	t.Parallel()
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+		Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{Name: "sink"}},
+	}}, Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{0x01}}}
+	// Model a legacy audit item that still contains OrderTechnical. A no-op
+	// secret projection must preserve these exact historical bytes rather than
+	// normalizing them through the current business-intent marshaller.
+	serializedOrder := order.MarshalDeterministicVT(nil)
+	batchPayload, err := (&servicepb.ApplyBatch{Requests: []*servicepb.Request{{
+		Type: &servicepb.Request_RemoveEventsSink{RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: "sink"}},
+	}}}).MarshalVT()
+	require.NoError(t, err)
+
+	entry := &auditpb.AuditEntry{
+		Sequence: 43,
+		Items:    []*auditpb.AuditItem{{SerializedOrder: serializedOrder}},
+		Signature: &signaturepb.SignedApplyBatch{
+			KeyId:     "signer-key",
+			Signature: []byte("original-signature"),
+			Payload:   batchPayload,
+		},
+	}
+
+	projected, err := projectAuditEntryForRead(entry)
+	require.NoError(t, err)
+	require.Equal(t, entry, projected)
+	require.Equal(t, serializedOrder, projected.GetItems()[0].GetSerializedOrder())
+	require.Equal(t, batchPayload, projected.GetSignature().GetPayload())
+	require.Equal(t, []byte("original-signature"), projected.GetSignature().GetSignature())
+}
+
 func TestProjectAuditEntryForReadRejectsUnparseableSecretContainers(t *testing.T) {
 	t.Parallel()
 
@@ -227,10 +260,10 @@ func TestProjectLogForReadRedactsEveryCredentialVariant(t *testing.T) {
 	}
 }
 
-func TestProjectingCursorPreservesItemsErrorsAndPagination(t *testing.T) {
+func TestProjectingCursorPreservesItemsAndClose(t *testing.T) {
 	t.Parallel()
 
-	upstream := &projectionTestCursor{items: []*commonpb.Log{{Sequence: 1}}, nextCursor: "next-page"}
+	upstream := &projectionTestCursor{items: []*commonpb.Log{{Sequence: 1}}}
 	projected := newProjectingCursor[*commonpb.Log](upstream, projectLogForRead)
 
 	item, err := projected.Next()
@@ -239,15 +272,13 @@ func TestProjectingCursorPreservesItemsErrorsAndPagination(t *testing.T) {
 
 	_, err = projected.Next()
 	require.ErrorIs(t, err, io.EOF)
-	require.Equal(t, "next-page", projected.(interface{ NextCursor() string }).NextCursor())
 	require.NoError(t, projected.Close())
 	require.True(t, upstream.closed)
 }
 
 type projectionTestCursor struct {
-	items      []*commonpb.Log
-	nextCursor string
-	closed     bool
+	items  []*commonpb.Log
+	closed bool
 }
 
 func (c *projectionTestCursor) Next() (*commonpb.Log, error) {
@@ -265,10 +296,6 @@ func (c *projectionTestCursor) Close() error {
 	c.closed = true
 
 	return nil
-}
-
-func (c *projectionTestCursor) NextCursor() string {
-	return c.nextCursor
 }
 
 var _ cursor.Cursor[*commonpb.Log] = (*projectionTestCursor)(nil)
