@@ -719,7 +719,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence |
 | `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
 | `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
-| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`; credentials redacted) |
+| `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`; configured secret fields and URL userinfo redacted) |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |

@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/redact"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -84,7 +85,7 @@ func TestRedactGetResponse_RemovesEverySinkCredential(t *testing.T) {
 	assert.Equal(t, "clickhouse://operator:****@example.com:9000/ledger", redacted.GetSinks()[0].GetClickhouse().GetDsn())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[1].GetKafka().GetSaslPassword())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[2].GetHttp().GetSecret())
-	assert.Equal(t, "nats://operator:(set)@one.example:4222, nats://(set)@two.example:4222,nats://three.example:4222", redacted.GetSinks()[3].GetNats().GetUrl())
+	assert.Equal(t, "nats://operator:****@one.example:4222, nats://****@two.example:4222,nats://three.example:4222", redacted.GetSinks()[3].GetNats().GetUrl())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[4].GetDatabricks().GetToken())
 	assert.Equal(t, redact.SecretSet, redacted.GetSinks()[5].GetDatabricks().GetOauthM2M().GetClientSecret())
 	assert.Equal(t, "operator-client", redacted.GetSinks()[5].GetDatabricks().GetOauthM2M().GetClientId())
@@ -115,4 +116,65 @@ func TestRedactConfig_ReportsAbsentSecretWithoutMutatingInput(t *testing.T) {
 	assert.Empty(t, config.GetHttp().GetSecret())
 	assert.Nil(t, RedactConfig(nil))
 	assert.Nil(t, RedactGetResponse(nil))
+}
+
+func TestRedactConfig_RedactsURLCredentialShapesAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		config   *commonpb.SinkConfig
+		secrets  []string
+		expected string
+	}{
+		{
+			name: "ClickHouse query password",
+			config: &commonpb.SinkConfig{Type: &commonpb.SinkConfig_Clickhouse{
+				Clickhouse: &commonpb.ClickHouseSinkConfig{Dsn: "clickhouse://host:9000/ledger?username=operator&password=query-secret"},
+			}},
+			secrets:  []string{"query-secret"},
+			expected: "clickhouse://host:9000/ledger?password=****&username=operator",
+		},
+		{
+			name: "NATS password and token server list",
+			config: &commonpb.SinkConfig{Type: &commonpb.SinkConfig_Nats{
+				Nats: &commonpb.NatsSinkConfig{Url: "nats://operator:nats-password@one:4222, nats://nats-token@two:4222"},
+			}},
+			secrets:  []string{"nats-password", "nats-token"},
+			expected: "nats://operator:****@one:4222, nats://****@two:4222",
+		},
+		{
+			name: "HTTP endpoint basic auth",
+			config: &commonpb.SinkConfig{Type: &commonpb.SinkConfig_Http{
+				Http: &commonpb.HttpSinkConfig{Endpoint: "https://operator:http-password@example.com/hooks@v2"},
+			}},
+			secrets:  []string{"http-password"},
+			expected: "https://operator:****@example.com/hooks@v2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			original := test.config.CloneVT()
+			redacted := RedactConfig(test.config)
+			repeated := RedactConfig(redacted)
+
+			assert.True(t, proto.Equal(original, test.config))
+			assert.True(t, proto.Equal(redacted, repeated))
+			for _, secret := range test.secrets {
+				assert.NotContains(t, redacted.String(), secret)
+			}
+
+			switch sink := redacted.GetType().(type) {
+			case *commonpb.SinkConfig_Clickhouse:
+				assert.Equal(t, test.expected, sink.Clickhouse.GetDsn())
+			case *commonpb.SinkConfig_Nats:
+				assert.Equal(t, test.expected, sink.Nats.GetUrl())
+			case *commonpb.SinkConfig_Http:
+				assert.Equal(t, test.expected, sink.Http.GetEndpoint())
+			}
+		})
+	}
 }

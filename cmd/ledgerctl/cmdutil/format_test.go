@@ -106,9 +106,9 @@ func TestObfuscateDSN(t *testing.T) {
 			expected: "clickhouse://default:****@ch-host:9000/events",
 		},
 		{
-			name:     "password with special chars",
+			name:     "malformed URL with password fails closed",
 			input:    "postgres://formance:YCA[sRR-~X]Pqdv|Ms3?hzc0u#f_@host:5432/db",
-			expected: "postgres://formance:****@host:5432/db",
+			expected: "(set)",
 		},
 		{
 			name:     "no password",

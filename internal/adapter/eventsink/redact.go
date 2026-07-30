@@ -62,6 +62,7 @@ func redactConfigInPlace(cfg *commonpb.SinkConfig) {
 		}
 	case *commonpb.SinkConfig_Http:
 		if sink.Http != nil {
+			sink.Http.Endpoint = redact.URLUserinfo(sink.Http.GetEndpoint())
 			sink.Http.Secret = redact.Secret(sink.Http.GetSecret())
 		}
 	case *commonpb.SinkConfig_Databricks:
@@ -77,31 +78,9 @@ func redactNATSURLs(value string) string {
 	servers := strings.Split(value, ",")
 	for index, server := range servers {
 		trimmed := strings.TrimSpace(server)
-		schemeEnd := strings.Index(trimmed, "://")
-		if schemeEnd == -1 {
-			continue
-		}
-
-		rest := trimmed[schemeEnd+3:]
-		userinfoEnd := strings.LastIndex(rest, "@")
-		if userinfoEnd == -1 {
-			continue
-		}
-
-		userinfo := rest[:userinfoEnd]
-		if userinfo == "" {
-			continue
-		}
-
-		if username, _, hasPassword := strings.Cut(userinfo, ":"); hasPassword {
-			userinfo = username + ":" + redact.SecretSet
-		} else {
-			userinfo = redact.SecretSet
-		}
-
 		leadingSpace := server[:len(server)-len(strings.TrimLeft(server, " \t"))]
 		trailingSpace := server[len(strings.TrimRight(server, " \t")):]
-		servers[index] = leadingSpace + trimmed[:schemeEnd+3] + userinfo + rest[userinfoEnd:] + trailingSpace
+		servers[index] = leadingSpace + redact.URLUserinfo(trimmed) + trailingSpace
 	}
 
 	return strings.Join(servers, ",")

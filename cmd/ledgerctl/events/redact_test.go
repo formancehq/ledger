@@ -171,7 +171,7 @@ func TestRedactSinkConfig_NilSafe(t *testing.T) {
 // check: it serializes the whole response through protojson (what
 // EncodeStructured uses for --json and --yaml) and asserts that no plaintext
 // secret survives. Any future field added to a SinkConfig that carries a
-// secret must be added to redactSinkConfigInPlace, or this test will catch the
+// secret must be added to eventsink.RedactConfig, or this test will catch the
 // regression.
 func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	t.Parallel()

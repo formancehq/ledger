@@ -160,7 +160,9 @@ Key formats:
 
 When a sink publish fails, the emitter reports the error via Raft by proposing an `EventsSinkUpdate` with the error details. The FSM stores a `SinkStatus` protobuf under `[0x06][0x0A][sink_name]` (`ZoneGlobal` + `SubGlobSinkStatus`). On subsequent successful publish, the emitter proposes an update with `clear_error = true`, which deletes the status entry.
 
-The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. The read projection is cloned before serialization and replaces all reusable credentials with non-reusable markers: opaque secrets use `(set)` or `(none)`, while URL-shaped DSN passwords use `****`. The runtime configuration remains unchanged. HTTP `GET /v3/_/events-sinks` uses the same projection, so callers must not reuse either read response as a sink mutation payload.
+The `GetEventsSinks` gRPC endpoint returns all sink configs and their statuses, allowing operators to monitor sink health cluster-wide. The read projection is cloned before serialization. Kafka SASL passwords, HTTP HMAC secrets, Databricks PATs, and Databricks OAuth client secrets use `(set)` or `(none)`. ClickHouse userinfo passwords and credential-bearing DSN query values use `****`; NATS and HTTP URL userinfo passwords or tokens also use `****`. Usernames, client IDs, hosts, paths, topics, and other operational fields remain visible, while sink statuses are cloned unchanged. The runtime configuration remains unchanged. HTTP `GET /v3/_/events-sinks` and `ledgerctl events list` use the same projection, so callers must not reuse a read response as a sink mutation payload.
+
+Historical copies of sink configuration in system logs and audit records require a separate read projection because persisted audit bytes remain authoritative and hash-chain-bound. That projection is implemented independently by EN-1634 / PR #1654; this endpoint projection does not mutate or reinterpret historical records.
 
 ```protobuf
 message SinkStatus {

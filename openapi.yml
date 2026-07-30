@@ -2348,9 +2348,18 @@ paths:
       summary: List configured event sinks
       description: |
         Returns every event sink configured on the cluster. Requires
-        `ledger:OpsRead` scope. Credential-bearing fields are redacted: opaque
-        secrets use `(set)` or `(none)`, and URL-shaped DSN passwords use
-        `****`. Read responses must not be reused as sink mutation payloads.
+        `ledger:OpsRead` scope. The response applies these field-level
+        projections:
+
+        - `kafka.saslPassword`, `http.secret`, `databricks.token`, and
+          `databricks.oauthM2m.clientSecret` use `(set)` or `(none)`;
+        - password and credential-query values in `clickhouse.dsn` use `****`;
+        - password or token userinfo in `nats.url` and `http.endpoint` uses
+          `****`.
+
+        Usernames, client IDs, hosts, paths, topics, and other operational
+        fields remain visible. `sinkStatuses` are returned unchanged. Read
+        responses must not be reused as sink mutation payloads.
       operationId: getEventsSinks
       tags:
         - Ops
@@ -2379,7 +2388,8 @@ paths:
                           type: object
                           description: >
                             Redacted SinkConfig (protobuf JSON representation).
-                            Non-secret operational fields remain visible.
+                            The endpoint description defines the projected
+                            credential fields; operational fields remain visible.
                       sinkStatuses:
                         type: array
                         items:
