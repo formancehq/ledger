@@ -89,15 +89,21 @@ func isShutdownError(err error) bool {
 	}
 }
 
+// percentChance reports true with probability pct/100, drawing from the
+// Antithesis-controlled source so the fuzzer steers how often the branch is taken.
+func percentChance(pct uint64) bool {
+	return internal.Rand().Uint64()%100 < pct
+}
+
 // pickReadTarget chooses what GetAccount reads back. Most reads hit a known
-// account (pickCell); ~1-in-4 probe an account the model has no state for
+// account (pickCell); ~5% probe an account the model has no state for
 // (pickAbsentAccount, absent=true). Without the absent probe pickCell can only
 // ever target accounts the model already holds, so GetAccount is structurally
 // blind to server state the model lacks — e.g. an account or cell the server
 // retained but the model doesn't have. Falls back to pickCell when no absent
 // address is found. Caller holds c.mu.
 func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absent, ok bool) {
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+	if percentChance(5) {
 		if ledger, addr, asset, ok = pickAbsentAccount(g, ledgers); ok {
 			return ledger, addr, asset, true, true
 		}
@@ -236,12 +242,12 @@ func absentLedgerName(ledgers []string) string {
 }
 
 // pickLedgerReadTarget chooses a ledger for a ledger-scoped read: usually a known
-// fleet ledger, ~1-in-4 an absent one (absent=true). The absent probe closes the
-// blind spot a known-only pick leaves — a ledger-scoped read can never otherwise
-// detect the server serving a ledger the model never created. An absent ledger
-// must answer NotFound; a served snapshot is a finding.
-func pickLedgerReadTarget(ledgers []string) (ledger string, absent bool) {
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+// fleet ledger, else an absent one (absent=true) with probability absentPct. The
+// absent probe closes the blind spot a known-only pick leaves — a ledger-scoped
+// read can never otherwise detect the server serving a ledger the model never
+// created. An absent ledger must answer NotFound; a served snapshot is a finding.
+func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, absent bool) {
+	if percentChance(absentPct) {
 		return absentLedgerName(ledgers), true
 	}
 
@@ -253,7 +259,7 @@ func pickLedgerReadTarget(ledgers []string) (ledger string, absent bool) {
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
 func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -358,7 +364,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
 func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 3)
 
 	c.mu.Lock()
 	readID := c.registerRead()

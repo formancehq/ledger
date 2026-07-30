@@ -56,7 +56,8 @@ func TestPickLedgerReadTarget(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		require.False(t, known[absentLedgerName(fleet)], "absent name collided with fleet")
 
-		ledger, absent := pickLedgerReadTarget(fleet)
+		// 50% here just to exercise both branches; runLedgerRead/runSchemaRead use 2%/3%.
+		ledger, absent := pickLedgerReadTarget(fleet, 50)
 		if absent {
 			require.False(t, known[ledger], "absent target is a fleet ledger: %s", ledger)
 		} else {
