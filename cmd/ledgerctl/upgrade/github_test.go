@@ -126,15 +126,59 @@ func TestFetchStableReleaseFromURLPaginates(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	release, err := fetchStableReleaseFromURL("v3.0.0-alpha.13", server.URL)
+	release, err := fetchStableReleaseFromURL(
+		"nightly-deadbeef",
+		"github.com/formancehq/ledger/v3",
+		server.URL,
+	)
 	require.NoError(t, err)
 	require.Equal(t, "v3.0.0", release.TagName)
 	require.EqualValues(t, 2, requests.Load())
 }
 
-func TestFetchStableReleaseFromURLRejectsUnversionedBinary(t *testing.T) {
+func TestVersionMajor(t *testing.T) {
 	t.Parallel()
 
-	_, err := fetchStableReleaseFromURL("nightly-deadbeef", "unused")
-	require.ErrorContains(t, err, `cannot select a stable release for current version "nightly-deadbeef"`)
+	tests := []struct {
+		name           string
+		currentVersion string
+		modulePath     string
+		want           uint64
+		wantErr        string
+	}{
+		{
+			name:           "semantic prerelease",
+			currentVersion: "v4.0.0-alpha.1",
+			modulePath:     "github.com/formancehq/ledger/v3",
+			want:           4,
+		},
+		{
+			name:           "nightly module fallback",
+			currentVersion: "nightly-deadbeef",
+			modulePath:     "github.com/formancehq/ledger/v3",
+			want:           3,
+		},
+		{
+			name:           "missing module major",
+			currentVersion: "nightly-deadbeef",
+			modulePath:     "github.com/formancehq/ledger",
+			wantErr:        "has no major suffix",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			major, err := versionMajor(test.currentVersion, test.modulePath)
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.want, major)
+		})
+	}
 }

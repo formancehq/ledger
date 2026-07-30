@@ -8,10 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
+	"golang.org/x/mod/module"
 )
 
 const (
@@ -63,12 +66,16 @@ func fetchNightlyRelease() (*releaseInfo, error) {
 
 func fetchStableRelease(currentVersion string) (*releaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", githubRepo)
+	modulePath := ""
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		modulePath = buildInfo.Main.Path
+	}
 
-	return fetchStableReleaseFromURL(currentVersion, url)
+	return fetchStableReleaseFromURL(currentVersion, modulePath, url)
 }
 
-func fetchStableReleaseFromURL(currentVersion, releasesURL string) (*releaseInfo, error) {
-	current, err := semver.NewVersion(currentVersion)
+func fetchStableReleaseFromURL(currentVersion, modulePath, releasesURL string) (*releaseInfo, error) {
+	currentMajor, err := versionMajor(currentVersion, modulePath)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"cannot select a stable release for current version %q: %w; use --channel nightly",
@@ -87,7 +94,7 @@ func fetchStableReleaseFromURL(currentVersion, releasesURL string) (*releaseInfo
 			return nil, err
 		}
 
-		if release := findStableRelease(releases, current.Major()); release != nil {
+		if release := findStableRelease(releases, currentMajor); release != nil {
 			return release, nil
 		}
 
@@ -98,8 +105,31 @@ func fetchStableReleaseFromURL(currentVersion, releasesURL string) (*releaseInfo
 
 	return nil, fmt.Errorf(
 		"no final release found for major v%d; use --channel nightly",
-		current.Major(),
+		currentMajor,
 	)
+}
+
+func versionMajor(currentVersion, modulePath string) (uint64, error) {
+	current, versionErr := semver.NewVersion(currentVersion)
+	if versionErr == nil {
+		return current.Major(), nil
+	}
+
+	_, pathMajor, ok := module.SplitPathVersion(modulePath)
+	if !ok || pathMajor == "" {
+		return 0, fmt.Errorf(
+			"version is not semantic and module path %q has no major suffix: %w",
+			modulePath,
+			versionErr,
+		)
+	}
+
+	major, err := strconv.ParseUint(strings.TrimPrefix(pathMajor, "/v"), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing module major %q: %w", pathMajor, err)
+	}
+
+	return major, nil
 }
 
 func findStableRelease(releases []releaseInfo, currentMajor uint64) *releaseInfo {

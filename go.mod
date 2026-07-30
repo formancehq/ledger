@@ -75,6 +75,7 @@ require (
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.1
 	go.yaml.in/yaml/v3 v3.0.4
+	golang.org/x/mod v0.35.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.43.0
@@ -304,7 +305,6 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
-	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260409153401-be6f6cb8b1fa // indirect
