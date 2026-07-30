@@ -59,5 +59,9 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("save-numscript", logEntry, details))
 	}
 
+	if saved.GetInfo() == nil {
+		panic(emptyLogPayload("save-numscript", logEntry, details))
+	}
+
 	writeCreated(w, saved.GetInfo())
 }

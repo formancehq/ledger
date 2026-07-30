@@ -68,6 +68,9 @@ func TestHandleSaveNumscript_LogContractViolations(t *testing.T) {
 	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
 	}}
+	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{Info: nil}},
+	}}
 
 	cases := []struct {
 		name    string
@@ -78,6 +81,7 @@ func TestHandleSaveNumscript_LogContractViolations(t *testing.T) {
 		{"two logs", []*commonpb.Log{saved, saved}, "apply did not return exactly one log"},
 		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
 		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
 	}
 
 	for _, tc := range cases {

@@ -82,7 +82,24 @@ func TestUnexpectedLogPayload(t *testing.T) {
 	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_CreateLedger")
 }
 
-func TestPayloadMismatchDetails(t *testing.T) {
+func TestEmptyLogPayload(t *testing.T) {
+	t.Parallel()
+
+	// Correct outer type, but the Apply log carries no inner ledger-log payload.
+	log := &commonpb.Log{Sequence: 4, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil},
+		}}},
+	}}}
+
+	got := emptyLogPayload("create-transaction", log, map[string]any{"ledger": "l"})
+
+	require.Contains(t, got, "create-transaction apply returned a log with no payload body")
+	require.Contains(t, got, "ledger:l")
+	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_Apply")
+}
+
+func TestObservedPayloadDetails(t *testing.T) {
 	t.Parallel()
 
 	createLedger := &commonpb.Log{Sequence: 7, Payload: &commonpb.LogPayload{
@@ -140,7 +157,7 @@ func TestPayloadMismatchDetails(t *testing.T) {
 
 			baseSnapshot := maps.Clone(tc.base)
 
-			got := payloadMismatchDetails(tc.log, tc.base)
+			got := observedPayloadDetails(tc.log, tc.base)
 
 			require.Equal(t, tc.want, got)
 			require.Equal(t, baseSnapshot, tc.base, "base map must not be mutated")

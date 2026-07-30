@@ -32,14 +32,22 @@ func exactlyOneLog(operation string, logs []*commonpb.Log, details map[string]an
 // type is not the one the request implies, and returns the value the caller must
 // raise: panic(unexpectedLogPayload(...)).
 func unexpectedLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
-	return unreachable(operation+" apply returned an unexpected log payload type", payloadMismatchDetails(log, details))
+	return unreachable(operation+" apply returned an unexpected log payload type", observedPayloadDetails(log, details))
 }
 
-// payloadMismatchDetails merges the observed payload types of log into a copy of
+// emptyLogPayload builds the invariant signal for a correctly-typed sole log
+// whose meaningful body is nil — an impossible backend response that would
+// otherwise serialize to a 2xx with a null data body. Returns the value the
+// caller must raise: panic(emptyLogPayload(...)).
+func emptyLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
+	return unreachable(operation+" apply returned a log with no payload body", observedPayloadDetails(log, details))
+}
+
+// observedPayloadDetails merges the observed payload types of log into a copy of
 // base: the outer payload type always, and — for an Apply log — the inner
 // ledger-log payload type. Kept a pure function so the diagnostics are unit
 // testable without raising a panic.
-func payloadMismatchDetails(log *commonpb.Log, base map[string]any) map[string]any {
+func observedPayloadDetails(log *commonpb.Log, base map[string]any) map[string]any {
 	extra := map[string]any{
 		"sequence":           log.GetSequence(),
 		"outer_payload_type": fmt.Sprintf("%T", log.GetPayload().GetType()),

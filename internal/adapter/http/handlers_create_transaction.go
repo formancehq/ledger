@@ -62,5 +62,9 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		panic(unexpectedLogPayload("create-transaction", logEntry, details))
 	}
 
+	if created.CreatedTransaction == nil {
+		panic(emptyLogPayload("create-transaction", logEntry, details))
+	}
+
 	writeCreated(w, created.CreatedTransaction)
 }

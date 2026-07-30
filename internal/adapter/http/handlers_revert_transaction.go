@@ -101,5 +101,9 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		panic(unexpectedLogPayload("revert-transaction", logEntry, details))
 	}
 
+	if rt.RevertedTransaction == nil {
+		panic(emptyLogPayload("revert-transaction", logEntry, details))
+	}
+
 	writeCreated(w, rt.RevertedTransaction)
 }

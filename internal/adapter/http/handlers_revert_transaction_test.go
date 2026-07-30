@@ -82,6 +82,11 @@ func TestHandleRevertTransaction_LogContractViolations(t *testing.T) {
 			},
 		}}},
 	}}}
+	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+		Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: nil},
+		}}},
+	}}}
 
 	cases := []struct {
 		name    string
@@ -93,6 +98,7 @@ func TestHandleRevertTransaction_LogContractViolations(t *testing.T) {
 		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
 		{"wrong outer payload", []*commonpb.Log{wrongOuter}, "apply returned an unexpected log payload type"},
 		{"wrong inner payload", []*commonpb.Log{wrongInner}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
 	}
 
 	for _, tc := range cases {
