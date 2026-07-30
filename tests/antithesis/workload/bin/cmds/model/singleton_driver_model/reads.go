@@ -25,7 +25,7 @@ import (
 // model (see validateAccountRead).
 func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, addr, asset, absent, ok := pickReadTarget(c.modelState, c.ledgerNames)
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(c.modelState, c.ledgerNames)
 	if !ok {
 		c.mu.Unlock()
 		return
@@ -34,11 +34,17 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	if absent {
-		// Coverage: GetAccount is probing the negative space pickCell can't reach —
-		// an account the model holds no state for. The server must report it empty;
-		// a returned cell or metadata no candidate base explains is how this path
-		// catches server state the model lacks (validateAccountRead).
+	// Both probes flow through the same validateAccountRead: the model models an
+	// absent ledger as an empty ledger and an absent account as an empty account,
+	// so the server must report empty (NotFound), and any cell or metadata no
+	// candidate base explains is a finding.
+	switch {
+	case absentLedger:
+		// Coverage: probing a ledger outside the fleet — the account cannot exist.
+		assert.Reachable("singleton_driver_model: GetAccount probing an absent ledger", internal.Details{"ledger": ledger})
+	case absentAccount:
+		// Coverage: probing the negative space pickCell can't reach — an account the
+		// model holds no state for, in a known ledger.
 		assert.Reachable("singleton_driver_model: GetAccount probing a model-absent account", internal.Details{"ledger": ledger})
 	}
 
@@ -96,22 +102,27 @@ func percentChance(pct uint64) bool {
 }
 
 // pickReadTarget chooses what GetAccount reads back. Most reads hit a known
-// account (pickCell); ~5% probe an account the model has no state for
-// (pickAbsentAccount, absent=true). Without the absent probe pickCell can only
-// ever target accounts the model already holds, so GetAccount is structurally
-// blind to server state the model lacks — e.g. an account or cell the server
-// retained but the model doesn't have. Falls back to pickCell when no absent
-// address is found. Caller holds c.mu.
-func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absent, ok bool) {
+// account (pickCell); ~5% probe an account the model has no state for in a known
+// ledger (pickAbsentAccount, absentAccount=true); ~2% probe any account in a
+// ledger outside the fleet (absentLedger=true). Both probes close blind spots
+// pickCell can't reach — it only ever targets accounts the model already holds,
+// so GetAccount is otherwise structurally blind to server state the model lacks
+// (a retained cell, or an account in a ledger the model never created). Falls
+// back to pickCell when no absent account is found. Caller holds c.mu.
+func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absentAccount, absentLedger, ok bool) {
+	if len(ledgers) > 0 && percentChance(2) {
+		return absentLedgerName(ledgers), poolAddress(), random.RandomChoice(assets), false, true, true
+	}
+
 	if percentChance(5) {
 		if ledger, addr, asset, ok = pickAbsentAccount(g, ledgers); ok {
-			return ledger, addr, asset, true, true
+			return ledger, addr, asset, true, false, true
 		}
 	}
 
 	ledger, addr, asset, ok = pickCell(g)
 
-	return ledger, addr, asset, false, ok
+	return ledger, addr, asset, false, false, ok
 }
 
 // pickAbsentAccount returns a (ledger, address, asset) the model holds no volume
@@ -301,13 +312,19 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata())
 }
 
-// pickTransactionID picks a ledger and a transaction id to read back, probing up
-// to a small slack past the committed frontier so the id may land on a committed
-// transaction, an in-flight one, or an unassigned id (a legal NotFound).
-// ok=false only before any ledger exists.
-func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, id uint64, ok bool) {
+// pickTransactionID picks a ledger and a transaction id to read back. Usually a
+// fleet ledger, probing up to a small slack past the committed frontier so the id
+// may land on a committed transaction, an in-flight one, or an unassigned id (a
+// legal NotFound). ~2% target a ledger outside the fleet (absentLedger=true),
+// where no transaction can exist and any id must resolve NotFound. ok=false only
+// before any ledger exists.
+func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, id uint64, absentLedger, ok bool) {
 	if len(ledgers) == 0 {
-		return "", 0, false
+		return "", 0, false, false
+	}
+
+	if percentChance(2) {
+		return absentLedgerName(ledgers), 1 + internal.Rand().Uint64()%64, true, true
 	}
 
 	ledger = random.RandomChoice(ledgers)
@@ -315,7 +332,7 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 	frontier := uint64(len(g.Ledger(ledger).Txs()))
 	id = 1 + internal.Rand().Uint64()%(frontier+slack)
 
-	return ledger, id, true
+	return ledger, id, false, true
 }
 
 // runTransactionRead issues a linearizable GetTransaction on a probed id and
@@ -324,7 +341,7 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 // accumulated transaction metadata back.
 func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, id, ok := pickTransactionID(c.modelState, c.ledgerNames)
+	ledger, id, absentLedger, ok := pickTransactionID(c.modelState, c.ledgerNames)
 	if !ok {
 		c.mu.Unlock()
 		return
@@ -332,6 +349,13 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+
+	if absentLedger {
+		// Coverage: probing a ledger outside the fleet — no transaction can exist,
+		// so the server must answer NotFound (validateTransactionRead treats the
+		// absent ledger as empty); a returned transaction is a finding.
+		assert.Reachable("singleton_driver_model: GetTransaction probing an absent ledger", internal.Details{"ledger": ledger})
+	}
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
