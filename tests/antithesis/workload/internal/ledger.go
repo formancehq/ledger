@@ -55,6 +55,7 @@ const (
 	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
 	PrefixMinLogSeq        OwnedLedgerPrefix = "minseq"
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
+	PrefixPITScope         OwnedLedgerPrefix = "pitscope"
 
 	// PrefixSentinel covers the witness-ledger family used by the
 	// operational singletons (scaling_structured, rolling_restart,
@@ -91,6 +92,7 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixTimestampOrder,
 	PrefixMinLogSeq,
 	PrefixStaleReads,
+	PrefixPITScope,
 	PrefixSentinel,
 	PrefixModel,
 }

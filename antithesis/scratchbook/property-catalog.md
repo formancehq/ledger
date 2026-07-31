@@ -108,6 +108,7 @@ faults move the primary/history boundary or alter temporal state.
 |---|---|
 | **Priority** | P1 |
 | **Type** | Safety |
+| **Implementation** | Partially implemented in `first_default_ledger`, `parallel_driver_pit_scope_equivalence`, `eventually_pit_scope_equivalence`, and the shared trailer/canonicalization helpers. Paired-success correctness is covered; physical compaction/tiering/cold/restart reachability still needs dedicated signals. |
 | **Property** | At one immutable view, the unfiltered ledger-wide asset summary equals an exhaustive fold of every per-account historical row after identical precision/color options. |
 | **Invariant** | `AlwaysOrUnreachable(sameViewPair => canonical(summary) == canonical(accountFold))`, paired with `Sometimes(sameViewPairCompared)` for meaningful coverage. |
 | **Antithesis Angle** | Exercise distinct key ranges and cold parts across publication, compaction, tiering, cancellation and restart. |

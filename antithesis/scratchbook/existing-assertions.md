@@ -16,22 +16,25 @@ the Go AST so multiline calls and helper packages also count. Testify calls
 were excluded by resolving the import path, rather than matching only the
 package name.
 
-The checked-in baseline contains 369 Antithesis assertion calls:
+The research baseline contained 369 Antithesis assertion calls. The first PIT
+workload property adds seven unique callsites, for a current total of 376:
 
 | Assertion | Calls |
 |---|---:|
 | `Always` | 43 |
 | `AlwaysGreaterThan` | 1 |
 | `AlwaysGreaterThanOrEqualTo` | 2 |
-| `AlwaysOrUnreachable` | 61 |
+| `AlwaysOrUnreachable` | 64 |
 | `Reachable` | 59 |
-| `Sometimes` | 92 |
-| `Unreachable` | 111 |
+| `Sometimes` | 93 |
+| `Unreachable` | 114 |
 
-Of these calls, 42 are inside the SUT and 327 are in the workload. There are
-no PIT-specific SDK assertions in `internal/application/balancehistory`,
-`internal/storage/balancehistorystore`, `internal/storage/balancehistoryarchive`,
-or `tests/antithesis`.
+Of these calls, 42 are inside the SUT and 334 are in the workload. There are
+still no PIT-specific SDK assertions in `internal/application/balancehistory`,
+`internal/storage/balancehistorystore`, or
+`internal/storage/balancehistoryarchive`. The seven workload callsites partially
+implement `unfiltered-fast-path-equals-account-fold`; maintenance reachability
+signals remain separate work.
 
 ## SUT-side assertion coverage
 

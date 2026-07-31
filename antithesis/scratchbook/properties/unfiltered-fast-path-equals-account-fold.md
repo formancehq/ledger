@@ -45,14 +45,40 @@ Canonical comparison uses arbitrary-precision integers and keys each public buck
 
 ## Instrumentation status
 
-- **Existing SDK instrumentation:** none for PIT summary-versus-row equivalence. The live aggregate double-entry assertion checks input versus output, which would not detect equal-and-opposite drift affecting both sides of one summary bucket.
+- **Partially implemented SDK instrumentation:**
+  `parallel_driver_pit_scope_equivalence` samples one axis/transform case during
+  faults; `eventually_pit_scope_equivalence` requires all eight axis/transform
+  cases after quiescence. Both call the single assertion callsite in
+  `internal.ComparePITScopeCase`. These assertions cover paired-success
+  correctness, but do not prove that a sample crossed compaction, tiering, a
+  cold fetch, multipart I/O, cancellation, or restart.
+- **Implemented fixture:** `first_default_ledger` creates the fixed
+  `pitscope-oracle` ledger, backdated colored/multi-precision/multi-asset
+  postings and an at-effective-date reversal. `PrefixPITScope` isolates it from
+  generic drivers; `pitscope:never-created` is reserved and never written.
+- **Implemented public oracle:** `AggregatePointInTime` decodes and validates
+  exactly one `x-point-in-time-view-bin` trailer. The comparator uses
+  `NOT(address == pitscope:never-created)` to force the unbounded row path,
+  discards different-token pairs, rejects duplicate buckets and compares
+  arbitrary-precision input/output by `(asset, color)`.
 - **Existing deterministic coverage:** publication and store tests cover construction and simple reads; semantic verification covers record integrity and authoritative replay. There is no explicit metamorphic comparison of the two stored scopes.
 - **Non-duplicate boundary:** `integrity-dual-axis-reversal-exactness` is the stronger audit-oracle property when it checks both account and ledger-wide results. This candidate is retained only as the cheaper same-view metamorphic check that can localize divergence between the two materializations without replaying authority.
 - **Chosen placement — workload only:** do not add a production-side all-account scan. The relationship is fully public, the controlled ledger bounds the expensive row path, and the existing full verifier already performs the stronger authoritative semantic comparison. SUT-side assertions remain more valuable for invisible maintenance transitions.
-- **Shared helper:** add a workload helper that invokes raw `AggregateVolumes` with `grpc.Trailer`, decodes `servicepb.PointInTimeView`, validates selector/ledger/token completeness, and returns a canonical duplicate-free bucket map. The E2E trailer helper is the direct pattern.
-- **Drivers:** add a typed `PrefixPITScope`, a `first_` seeder for its fixed ledger, a `parallel_driver_pit_scope_equivalence` for fault-time sampling, and an `eventually_pit_scope_equivalence` for quiescent all-mode reachability. The parallel command should make a small fixed number of immediate pairing attempts rather than sleeping.
-- **Assertion details:** include replica address/node ID, ledger, axis, cutoff, both option booleans, both audit/log watermarks, manifest versions/tokens, and the first duplicate/missing/divergent bucket.
-- **Harness prerequisite:** at commit `fb3f9f833`, `tests/antithesis/k8s/cluster.yaml:40-47` configures MinIO-backed cold storage but never enables balance history; the Compose environment is likewise missing the feature flag. Enable `--balance-history-enabled` for all ledgers and `--balance-history-cold-tier`, then use a small local-run retention/segment size and accelerated maintenance/tier intervals so the existing parallel cadence spans hot, compacted, and cold layouts.
+- **Shared helper:** implemented in `tests/antithesis/workload/internal/point_in_time.go`
+  and `pit_scope.go`; unit tests cover trailer completeness, canonical ordering,
+  duplicate rejection and the eight-case menu.
+- **Drivers:** implemented with the existing sole `first_default_ledger` setup
+  command so every `main` timeline receives the fixture. Adding a second
+  `first_` command would be unsound because the Composer selects exactly one.
+- **Assertion details:** include replica address/node ID, authenticated ledger
+  ID, axis, cutoff, both option booleans, both audit/log watermarks, manifest
+  versions/tokens, canonicalization errors, and both canonical result slices on
+  divergence.
+- **Harness prerequisite:** implemented in both Compose and Kubernetes with
+  balance history and the cold tier enabled, small retained runs/segments, and
+  accelerated maintenance, tiering, verification, and remote-GC cadences.
+  Kubernetes MinIO now has a PVC. Dedicated reachability properties still need
+  to prove that the target physical transitions actually occurred in a run.
 - **Scheduling decision:** evaluate the safety check periodically through the parallel command and once after quiescence. Do not gate it only on observed maintenance boundaries: no public response identifies a compaction/tier event, and separate maintenance reachability properties are responsible for proving those transitions occurred.
 
 ## Assumptions

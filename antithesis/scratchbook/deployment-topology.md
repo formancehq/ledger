@@ -143,16 +143,11 @@ These profiles must not be collapsed into one global set of assumptions.
 
 ### MinIO durability
 
-The existing Kubernetes MinIO deployment has no PVC. Add one before enabling
-MinIO termination faults. Without it, a pod replacement erases authoritative
-chapter archives as well as PIT runs; the correct outcome is permanent
-fail-closed, not automatic reconstruction.
-
-For the first data-path campaign either:
-
-- add a small persistent volume and allow termination; or
-- keep the current ephemeral volume, disable MinIO termination and use only
-  network/hang/throttle faults.
+The Kubernetes MinIO deployment now mounts the `minio-data` 2 GiB PVC at
+`/data`. Pod replacement therefore preserves authoritative chapter archives
+and PIT runs within the lifetime of the test namespace. MinIO termination can
+be enabled for the first data-path campaign; namespace/PVC deletion remains a
+destructive source-loss scenario and must stay outside that campaign.
 
 ### PIT local storage
 
@@ -271,13 +266,13 @@ remain the ones already consumed by the repository:
 - `ANTITHESIS_PASSWORD`
 - `ANTITHESIS_REPORT_RECIPIENT`
 
-Targeted development run, after the planned drivers exist:
+Targeted development run for the implemented redundant-scope property:
 
 ```bash
 cd tests/antithesis
 just k8s-run 2 \
   'ledger v3 PIT focused smoke' \
-  'main/first_point_in_time,main/parallel_driver_point_in_time,main/eventually_point_in_time_convergence'
+  'main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence'
 ```
 
 Six-hour cold/recovery campaign:
@@ -286,7 +281,7 @@ Six-hour cold/recovery campaign:
 cd tests/antithesis
 just k8s-run 6 \
   'ledger v3 PIT cold tier and recovery' \
-  'main/first_point_in_time,main/parallel_driver_point_in_time,main/parallel_driver_point_in_time_cold,main/singleton_driver_point_in_time_archive,main/singleton_driver_rolling_restart,main/eventually_point_in_time_convergence'
+  'main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/singleton_driver_rolling_restart,main/eventually_pit_scope_equivalence'
 ```
 
 An empty include argument ships the entire existing `main` and `model` driver
@@ -304,8 +299,8 @@ preferable while establishing PIT signals.
 ## Open Questions
 
 - Are Ledger/MinIO node termination and clock faults enabled by the tenant?
-- Should the first campaign add a MinIO PVC or deliberately avoid MinIO
-  termination?
+- Does the tenant preserve dynamically provisioned PVCs across every MinIO pod
+  termination fault it injects?
 - Can the operator gain a dedicated balance-history PVC before resource-fault
   testing?
 - Is a test-only MinIO helper acceptable for removing/restoring exact objects,

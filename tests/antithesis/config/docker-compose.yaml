@@ -46,6 +46,27 @@ x-ledger-common: &ledger-common
     AWS_ACCESS_KEY_ID: "minioadmin"
     AWS_SECRET_ACCESS_KEY: "minioadmin"
 
+    # PIT/cold-profile cadence, kept in parity with the Kubernetes harness.
+    BALANCE_HISTORY_ENABLED: "true"
+    BALANCE_HISTORY_COLD_TIER: "true"
+    BALANCE_HISTORY_BUILDER_BATCH_SIZE: "32"
+    BALANCE_HISTORY_BACKFILL_YIELD: "1ms"
+    BALANCE_HISTORY_COMPACTION_THRESHOLD: "2"
+    BALANCE_HISTORY_MAINTENANCE_INTERVAL: "200ms"
+    BALANCE_HISTORY_MAX_COMPACTIONS_PER_PASS: "1"
+    BALANCE_HISTORY_WAL_SYNC_INTERVAL: "5s"
+    BALANCE_HISTORY_VERIFIER_INTERVAL: "2s"
+    BALANCE_HISTORY_VERIFIER_REPLAY_EVERY: "4"
+    BALANCE_HISTORY_RETAIN_LOCAL_RUNS: "1"
+    BALANCE_HISTORY_ARCHIVE_CACHE_MAX_BYTES: "8Mi"
+    BALANCE_HISTORY_MAX_SEGMENT_BYTES: "64Ki"
+    BALANCE_HISTORY_MAX_RUNS_PER_TIER_PASS: "4"
+    BALANCE_HISTORY_TIER_INTERVAL: "1s"
+    BALANCE_HISTORY_REMOTE_GC_INTERVAL: "1s"
+    BALANCE_HISTORY_REMOTE_GC_GRACE_PERIOD: "5s"
+    BALANCE_HISTORY_REMOTE_GC_SCAN_LIMIT: "100"
+    BALANCE_HISTORY_REMOTE_GC_DELETE_LIMIT: "10"
+
 services:
   etcd-0:
     <<: *etcd-common
@@ -160,7 +181,7 @@ services:
         if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
-          JOIN_FLAG="--join ledger-0:8888"
+          JOIN_FLAG="--join ledger-0:7777"
         fi
         exec ./ledger-server run \
           --node-id 2 \
@@ -185,7 +206,7 @@ services:
         if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
-          JOIN_FLAG="--join ledger-0:8888"
+          JOIN_FLAG="--join ledger-0:7777"
         fi
         exec ./ledger-server run \
           --node-id 3 \

@@ -21,6 +21,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("error creating ledger default: %s", err)
 	}
+	if err := internal.SeedPITScopeFixture(ctx, client); err != nil {
+		log.Fatalf("error creating point-in-time scope fixture: %s", err)
+	}
 
 	log.Println("composer: first_default_ledger: done")
 }
