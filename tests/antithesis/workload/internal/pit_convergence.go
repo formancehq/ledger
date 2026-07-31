@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	pitConvergencePreFaultAsset   = "PIT-CONVERGENCE-1-PRE"
-	pitConvergencePostFaultAsset  = "PIT-CONVERGENCE-2-POST"
+	pitConvergencePreFaultAsset   = "PITCVGPRE"
+	pitConvergencePostFaultAsset  = "PITCVGPOST"
 	pitConvergencePreFaultAmount  = "18446744073709551617"                    // 2^64 + 1
 	pitConvergencePostFaultAmount = "340282366920938463463374607431768211457" // 2^128 + 1
 )
