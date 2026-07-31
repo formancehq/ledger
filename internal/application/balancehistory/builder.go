@@ -882,6 +882,16 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 				batch.Head.AuditSequence,
 			)}
 		}
+		if !manifest.SourceComplete && after.equal(Position{}) && batch.Head.equal(after) {
+			nextManifest, err := b.store.Publish(balancehistorystore.Publication{
+				Coverage:     balancehistorystore.Coverage{SourceComplete: true},
+				ReducerState: reducer.State(),
+			})
+			if err != nil {
+				return false, fmt.Errorf("publishing complete empty balance history source: %w", err)
+			}
+			b.lastProcessedAuditSequence.Store(nextManifest.AuditWatermark)
+		}
 
 		return true, nil
 	}

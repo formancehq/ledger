@@ -8,6 +8,19 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+func TestReducerEmptyStateIsCanonical(t *testing.T) {
+	t.Parallel()
+
+	state := NewReducer().State()
+	require.Equal(t, State{}, state)
+	require.Nil(t, state.Active)
+	require.Nil(t, state.Seen)
+
+	restored, err := NewReducerFromState(State{})
+	require.NoError(t, err)
+	require.Equal(t, State{}, restored.State())
+}
+
 func TestReducerStateRoundTrip(t *testing.T) {
 	t.Parallel()
 

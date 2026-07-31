@@ -89,6 +89,20 @@ func TestHistoryVerifierAcceptsCompleteProjection(t *testing.T) {
 	require.Positive(t, verifier.LastSuccessUnix())
 }
 
+func TestHistoryVerifierAcceptsCompleteEmptyProjection(t *testing.T) {
+	t.Parallel()
+
+	primary := newHotSourceTestStore(t)
+	source := NewHotSource(primary)
+	history := newBuilderTestHistoryStore(t)
+	require.NoError(t, newBuilderForTest(t, source, history, nil).boot(context.Background()))
+
+	verifier := newHistoryVerifierForTest(t, source, history)
+	require.NoError(t, verifier.Verify(context.Background()))
+	require.Zero(t, verifier.Failures())
+	require.Positive(t, verifier.LastSuccessUnix())
+}
+
 func TestDefaultVerifierConfigRunsFullSemanticReplayDaily(t *testing.T) {
 	t.Parallel()
 

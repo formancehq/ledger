@@ -231,22 +231,31 @@ func TestBuilderBuildsGenesisAndMonetaryEffects(t *testing.T) {
 	require.Zero(t, volumes[0].Output.Sign())
 }
 
-func TestBuilderInitialAndPartialStoresRemainBuilding(t *testing.T) {
+func TestBuilderReconcilesEmptyAndPartialStores(t *testing.T) {
 	t.Parallel()
 
-	t.Run("initial", func(t *testing.T) {
+	t.Run("empty authoritative source becomes ready", func(t *testing.T) {
 		t.Parallel()
 
 		primary := newHotSourceTestStore(t)
 		history := newBuilderTestHistoryStore(t)
-		require.NoError(t, newBuilderForTest(t, NewHotSource(primary), history, nil).boot(context.Background()))
+		builder := newBuilderForTest(t, NewHotSource(primary), history, nil)
+		require.NoError(t, builder.boot(context.Background()))
+		require.True(t, builder.Ready())
 
-		_, err := history.OpenView(1)
-		var building *balancehistorystore.ErrBuilding
-		require.ErrorAs(t, err, &building)
+		manifest, err := history.Manifest()
+		require.NoError(t, err)
+		require.True(t, manifest.SourceComplete)
+		require.Zero(t, manifest.AuditWatermark)
+		require.Zero(t, manifest.LogWatermark)
+		require.Empty(t, manifest.Runs)
+
+		view, err := history.OpenView(0)
+		require.NoError(t, err)
+		require.NoError(t, view.Close())
 	})
 
-	t.Run("partial projection is reset before retry", func(t *testing.T) {
+	t.Run("partial projection is reset to the authoritative empty source", func(t *testing.T) {
 		t.Parallel()
 
 		primary := newHotSourceTestStore(t)
@@ -259,15 +268,20 @@ func TestBuilderInitialAndPartialStoresRemainBuilding(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		require.NoError(t, newBuilderForTest(t, NewHotSource(primary), history, nil).boot(context.Background()))
+		builder := newBuilderForTest(t, NewHotSource(primary), history, nil)
+		require.NoError(t, builder.boot(context.Background()))
+		require.True(t, builder.Ready())
 
-		_, err = history.OpenView(1)
-		var building *balancehistorystore.ErrBuilding
-		require.ErrorAs(t, err, &building)
 		manifest, err := history.Manifest()
 		require.NoError(t, err)
-		require.Zero(t, manifest.Version)
+		require.True(t, manifest.SourceComplete)
 		require.Zero(t, manifest.AuditWatermark)
+		require.Zero(t, manifest.LogWatermark)
+		require.Empty(t, manifest.Runs)
+
+		view, err := history.OpenView(0)
+		require.NoError(t, err)
+		require.NoError(t, view.Close())
 	})
 }
 

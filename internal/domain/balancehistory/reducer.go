@@ -125,13 +125,17 @@ func (r *Reducer) State() State {
 	}
 
 	state := State{Last: r.last, HasLast: r.hasLast}
-	state.Active = make([]IncarnationState, 0, len(r.activeByName))
-	for name, id := range r.activeByName {
-		state.Active = append(state.Active, IncarnationState{Name: name, ID: id})
+	if len(r.activeByName) > 0 {
+		state.Active = make([]IncarnationState, 0, len(r.activeByName))
+		for name, id := range r.activeByName {
+			state.Active = append(state.Active, IncarnationState{Name: name, ID: id})
+		}
 	}
-	state.Seen = make([]IncarnationState, 0, len(r.seenIDs))
-	for id, name := range r.seenIDs {
-		state.Seen = append(state.Seen, IncarnationState{Name: name, ID: id})
+	if len(r.seenIDs) > 0 {
+		state.Seen = make([]IncarnationState, 0, len(r.seenIDs))
+		for id, name := range r.seenIDs {
+			state.Seen = append(state.Seen, IncarnationState{Name: name, ID: id})
+		}
 	}
 	sort.Slice(state.Active, func(i, j int) bool { return state.Active[i].ID < state.Active[j].ID })
 	sort.Slice(state.Seen, func(i, j int) bool { return state.Seen[i].ID < state.Seen[j].ID })
