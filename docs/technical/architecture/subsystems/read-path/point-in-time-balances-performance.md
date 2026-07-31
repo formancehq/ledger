@@ -438,34 +438,47 @@ allowed 30-minute limit, both while executing grouped hot reads through
 complete JSON and no assertions. No third attempt was made. This is a **failed
 shape/capacity result**, not generic pending work; the harness or query path
 had to be partitioned/profiled before claiming support for that matrix. The
-harness now supports the phase-partitioned procedure above, but no publishable
-`full` phase set has been captured yet; the historical timeout therefore
-remains the authoritative full-shape result.
+harness now supports the phase-and-case-partitioned procedure above. The
+effective-axis grouped cases below supersede the timeout for that bounded slice;
+the historical timeout remains authoritative for the unpartitioned full suite.
 
-### Full grouped case after phase partitioning
+### Full grouped effective-age matrix after case partitioning
 
-The first case-level rerun was captured on 2026-07-31 at commit
-`47aabec256d1d7143f5b35a9d9ddaeefaca54187`. The five dirty paths were the
+The comparable case-level series was captured on 2026-07-31 at commit
+`30208aa1c153b54b9f73db8d470932b4e4c1c3db`. The five dirty paths were the
 pre-existing instruction and local-environment files outside the PIT build;
-the harness itself was committed. The ignored raw artifact is
-`build/perf/pit-store-full-hot-grouped-effective-1d-2026-07-31.json`, bound by
-SHA-256 `5a2beb440f5c0c374957abfc231f6da6430abce26827c664289015e543459fe8`.
+the harness itself was committed. The ignored raw artifacts and SHA-256 values
+are:
 
-The selected case used the complete 731-day, 512-account, 16-asset, eight-color,
+| Case | Artifact | SHA-256 |
+|---|---|---|
+| Effective 1 day | `build/perf/pit-store-full-hot-grouped-effective-1d-30208aa1c.json` | `7af3cb751082508e0c36d48015f5725c1429a7477482775d66d4be80694f1999` |
+| Effective 6 months | `build/perf/pit-store-full-hot-grouped-effective-6mo-30208aa1c.json` | `dac11e94e3fe6e49a97b33f1ab7020c8ed9e64a842ed0f1ad407044c7a513d44` |
+| Effective 2 years | `build/perf/pit-store-full-hot-grouped-effective-2y-30208aa1c.json` | `b79f07f1ff72743c68f28f1f0a4fa50e95ccd98092e597c42d180b91c12835f0` |
+
+Each case used the complete 731-day, 512-account, 16-asset, eight-color,
 256-postings/day dataset. It retained 11 logical runs and occupied 91.8 MB
-before the measurement. Only the effective-axis, one-day, grouped query ran:
+before the measurement. Each artifact contains 200 samples of one effective-axis
+grouped cutoff:
 
-| Samples | p50 | p95 | p99 | Max | Operations/s |
-|---:|---:|---:|---:|---:|---:|
-| 200 | 1.444 s | 1.603 s | 2.322 s | 2.914 s | 0.676 |
+| Age | Harness elapsed | p50 | p95 | p99 | Max | Operations/s |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 day | 341.0 s | 1.469 s | 1.817 s | 2.260 s | 3.826 s | 0.655 |
+| 6 months | 314.5 s | 1.381 s | 1.467 s | 1.494 s | 1.502 s | 0.718 |
+| 2 years | 314.0 s | 1.376 s | 1.445 s | 1.486 s | 1.565 s | 0.722 |
 
-The case completed in 334.0 seconds, so case-level partitioning fixes the
-all-or-nothing evidence problem for this shape. It does not establish acceptable
-interactive latency: each operation allocated 179.2 MB across approximately
-3.12 million allocations, and the measurement observed 92.5 million Pebble
-block-cache misses in aggregate. The five other grouped axis/age cases and the
-other full phases remain unmeasured. In particular, this one-day result cannot
-answer the age-ratio question for the full-cardinality grouped shape.
+The six-month/one-day p95 ratio is **0.807**, and the two-year/one-day ratio is
+**0.795**. At this cardinality, older effective cutoffs were about 19-20% faster
+at p95; there is no linear age penalty. This is not an age speedup guarantee:
+the one-day tail was more variable, and the requested cutoff changes how many
+effects and values intersect the query.
+
+Case-level partitioning fixes the all-or-nothing evidence problem for this
+shape, but it does not establish acceptable interactive latency. The cases
+allocated 171.6-179.2 MB and approximately 2.78-3.12 million objects per
+operation, with roughly 92-94 million Pebble block-cache misses per 200-sample
+artifact. Query shape and cardinality dominate timestamp age. The three
+insertion-axis grouped cases and the other full phases remain unmeasured.
 
 ## Full-verifier interference
 
@@ -499,8 +512,8 @@ and deterministic logical convergence. It does **not** support broad GA:
 - the current steady-write rerun passes at -1.22%, but an earlier valid run
   failed at +6.02%, so production-topology variance is not closed;
 - the historical monolithic full profile and the six-case grouped phase both
-  time out at 30 minutes; one isolated grouped case now completes, but at
-  1.603-second p95 with the other cases still pending;
+  time out at 30 minutes; the partitioned effective grouped matrix completes,
+  but at 1.445-1.817-second p95 with the insertion matrix still pending;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
 - the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
@@ -519,9 +532,9 @@ not add historical storage or write work.
 | Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Current hot six-month/one-day effective p95 ratio 1.0745; no linear age penalty observed | Pass local |
+| PIT age | Current local unfiltered ratio 1.0745; full grouped effective ratio 0.807; no linear age penalty observed | Pass local / grouped capacity warning |
 | PIT axis | Effective and insertion measured at 1d/6mo/2y | Pass local |
-| PIT shape | Local shapes measured; full grouped effective/1d p95 1.603 s, five grouped cases and other full phases pending | Partial / capacity warning |
+| PIT shape | Local shapes measured; full grouped effective p95 1.445-1.817 s, insertion grouped and other full phases pending | Partial / capacity warning |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
