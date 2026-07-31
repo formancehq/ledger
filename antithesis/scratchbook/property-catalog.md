@@ -1,6 +1,6 @@
 ---
 sut_path: /Users/flemzord/Developer/Formance/ledger
-commit: 05e5bc6453388af5d223c21351d3ff787823908f
+commit: c6bc00fe418454406e6f720565b1cea9bcd40045
 updated: 2026-07-31
 external_references: []
 ---
@@ -482,6 +482,7 @@ availability after faults stop.
 |---|---|
 | **Priority** | P0 |
 | **Type** | Liveness |
+| **Implementation** | Implemented in `first_default_ledger` and the dedicated `eventually_pit_convergence`: a fixed ledger records a `2^64 + 1` pre-fault bucket, the eventual command idempotently appends a `2^128 + 1` post-fault bucket, reuses the shared two-barrier quiet-index helper, retains every voter/learner from equal leader snapshots, requires each direct no-configured-retry node to report that exact durable index before and after reads, and accepts only complete stale PIT views matching the two-bucket oracle through the acknowledged marker. Membership or index movement restarts the proof. |
 | **Property** | After writers/faults stop and replicas share a durable Raft prefix, every participating replica eventually serves the same exact monetary result at a sufficient watermark. |
 | **Invariant** | `Sometimes(quietCommonPrefix && allParticipatingReplicasExactAndEqual)`. |
 | **Antithesis Angle** | Accumulate independent batching/compaction/tiering layouts under partitions, restarts and leadership changes before quiescence. |

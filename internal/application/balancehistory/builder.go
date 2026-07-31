@@ -776,6 +776,7 @@ func (b *Builder) markReadyAfterReconciliation() error {
 	}
 
 	b.ready.Store(true)
+	reachAntithesisBalanceHistoryReconciled(manifest.Version, headAudit, headLog)
 
 	return nil
 }

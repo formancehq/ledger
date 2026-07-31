@@ -89,6 +89,28 @@ This is intentionally partial coverage of the catalog property. Selective
 Raft-only leader/minority/majority link cuts remain pending confirmation that
 the tenant fault controller can preserve workload gRPC and MinIO connectivity.
 
+The P0 `coordination-quiescent-pit-convergence` property runs in the dedicated
+`eventually_pit_convergence` command. It shares only the exact two-barrier
+helper with `eventually_cross_node_identity`, so the older cache oracle cannot
+consume the PIT command's ten-minute liveness budget:
+
+- `first_default_ledger` commits an isolated `2^64 + 1` pre-fault bucket;
+- after faults and competing writers stop, the eventual command idempotently
+  commits a distinct `2^128 + 1` bucket and keeps its acknowledged log sequence;
+- two-barrier quiescence supplies an exact durable Raft index, while two equal
+  leader snapshots define the full voter/learner denominator;
+- every member must have a direct connection, report `normal` at that exact
+  index, and return a complete stale PIT view through the marker floor using a
+  client with configured retries disabled;
+- the two canonical buckets must equal the independent oracle on every member;
+  index and membership are checked again after reads, and a final `B+1` barrier
+  rejects any moving window.
+
+The tagged SUT also emits `pit: balance history reconciled to exact source
+head` only when the builder reopens readiness at equal manifest/source
+audit-and-log watermarks. It guides Antithesis toward recovery completions but
+does not replace the public all-member monetary assertion.
+
 `Dockerfile.antithesis` enables the `antithesis` Go build tag for these
 test-only checkpoints. The ordinary production build compiles no-op helpers and
 does not interpret the workload probe metadata.
@@ -313,6 +335,28 @@ instrumented Ledger, operator, K8s config and filtered workload images before
 launching `basic_k8s_test`. Keep the returned run ID for triage; the campaign is
 successful only when both the fail-closed coverage signal and the three-voter
 post-repair convergence signal are reached without an `Always` violation.
+
+## Launching the targeted PIT replica-convergence campaign
+
+Use the K8s profile so process faults and the scaling driver exercise voter and
+learner recovery before the terminal `eventually_` command:
+
+```sh
+cd tests/antithesis
+export ANTITHESIS_REPOSITORY='<tenant registry repository>'
+export ANTITHESIS_PASSWORD='<tenant API password>'
+export ANTITHESIS_REPORT_RECIPIENT='<report email>'
+
+include='main/first_default_ledger,main/parallel_driver_transactions,main/singleton_driver_scaling,main/eventually_pit_convergence'
+just k8s-run "$DURATION_HOURS" \
+  'PIT replicas converge exactly after coordination faults' \
+  "$include"
+```
+
+`DURATION_HOURS` is explicit. Success requires
+`pit: all quiescent raft members converge exactly`; a missing learner, a member
+stuck behind/building, a wrong bucket or membership movement cannot shrink the
+denominator into a passing sample.
 
 ## Adding a new driver
 

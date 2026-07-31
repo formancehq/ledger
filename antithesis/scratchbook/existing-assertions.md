@@ -1,6 +1,6 @@
 ---
 sut_path: /Users/flemzord/Developer/Formance/ledger
-commit: 05e5bc6453388af5d223c21351d3ff787823908f
+commit: c6bc00fe418454406e6f720565b1cea9bcd40045
 updated: 2026-07-31
 external_references: []
 ---
@@ -17,8 +17,9 @@ were excluded by resolving the import path, rather than matching only the
 package name.
 
 The research baseline contained 369 Antithesis assertion calls. The implemented
-PIT scope-equivalence and idempotency properties plus the repository-controlled
-linearizable no-quorum variant bring the current total to 396:
+PIT scope-equivalence, idempotency, repository-controlled linearizable
+no-quorum and quiescent replica-convergence properties bring the current total
+to 398:
 
 | Assertion | Calls |
 |---|---:|
@@ -26,16 +27,17 @@ linearizable no-quorum variant bring the current total to 396:
 | `AlwaysGreaterThan` | 1 |
 | `AlwaysGreaterThanOrEqualTo` | 2 |
 | `AlwaysOrUnreachable` | 66 |
-| `Reachable` | 63 |
-| `Sometimes` | 96 |
+| `Reachable` | 64 |
+| `Sometimes` | 97 |
 | `Unreachable` | 122 |
 
-Of these calls, 46 are inside the SUT and 350 are in the workload. PIT now has
+Of these calls, 47 are inside the SUT and 351 are in the workload. PIT now has
 SUT-side signals at the post-commit response boundary, keyed FSM replay,
-balance-history publication and the default linearizable read barrier. The
-scope-equivalence and idempotency workload properties are implemented; the
-linearizable partition property has repository-controlled no-quorum coverage,
-while selective-link, maintenance, cold-tier and recovery signals remain
+balance-history publication, exact source-head reconciliation and the default
+linearizable read barrier. The scope-equivalence, idempotency and quiescent
+cross-replica convergence workload properties are implemented; the linearizable
+partition property has repository-controlled no-quorum coverage, while
+selective-link, maintenance, cold-tier and destructive recovery signals remain
 separate work.
 
 ## SUT-side assertion coverage
@@ -47,9 +49,10 @@ separate work.
 | Health and sentinel | Disk thresholds and committed sentinel survival are asserted | Live health is intentionally independent of PIT readiness, so these cannot be used as a PIT-ready oracle. |
 | HTTP helper | Unexpected adapter states can be reported through a dynamic `Unreachable` wrapper | PIT should keep stable, dedicated property names rather than route all failures through this helper. |
 
-The SUT now guards repeated publication of one keyed audit/log identity, but it
-still has no reachability signal for general publication, quarantine, certified
-repair, compaction, tier upload, cold fetch, cache lease, or remote-GC deletion.
+The SUT now guards repeated publication of one keyed audit/log identity and
+signals when the builder reopens readiness at the exact source audit/log head.
+It still has no reachability signal for general publication, quarantine,
+compaction, tier upload, cold fetch, cache lease, or remote-GC deletion.
 Black-box workload assertions prove the public monetary result; those remaining
 maintenance transitions need their dedicated probes.
 

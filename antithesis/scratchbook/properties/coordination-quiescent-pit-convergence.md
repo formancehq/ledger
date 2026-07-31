@@ -10,10 +10,20 @@
 | **Why It Matters / Impact** | Replica-local lag is expected during faults, but permanent non-convergence leaves PIT availability dependent on which pod a client reaches. It can also mask a one-node semantic divergence behind leader routing. |
 | **Confidence** | High. The existing workload establishes the quiescence and exact-index gate, the leader exposes the current Raft membership, and PIT readiness requires exact source-head reconciliation. The 10-minute bound is an Antithesis campaign budget, not a production latency guarantee. |
 
+**Implementation:** Implemented. `first_default_ledger` seeds the pre-fault
+half of a fixed two-bucket oracle; the dedicated `eventually_pit_convergence`
+command appends an
+idempotent post-fault marker and accepts only a stable, all-member, exact-index
+sample whose direct stale PIT views match that oracle. The builder emits a
+tagged reachability signal only after readiness reopens at the exact source
+audit/log head.
+
 ## Code evidence
 
-- `tests/antithesis/workload/bin/cmds/main/eventually_cross_node_identity/main.go:1-42` explains the two-barrier quiescence proof, exact common index requirement, and why only `eventually_` provides a stable comparison window.
-- The command asserts quiescence and at least two nodes at a common index at lines 96-117; `waitNodeAtIndex` gates on each node's own `last_persisted_index` and normal sync status at lines 215-267. Lines 39-42 explicitly include learners at the exact index because snapshot-restore equivalence applies to them too.
+- `tests/antithesis/workload/bin/cmds/main/eventually_pit_convergence/main.go:18-43` gives the property an independent ten-minute `eventually_` context and owns the single `pit: all quiescent raft members converge exactly` liveness assertion.
+- `tests/antithesis/workload/internal/quiescence.go:10-55` is the shared exact two-barrier proof used by both PIT convergence and the older cache oracle; two committed barriers exactly one index apart establish `B` without duplicating a weaker gate.
+- `tests/antithesis/workload/internal/pit_convergence_coordination.go:38-203` commits the post-fault marker, establishes `B`, retains equal pre/post leader memberships, requires the full direct-member set, rechecks exact indexes after PIT, and accepts only a final `B+1` barrier.
+- `tests/antithesis/workload/internal/pit_convergence_coordination.go:248-365` derives the complete sorted voter/learner denominator from leader state and resolves it all-or-nothing against direct addresses; lines 367-469 implement the 60-second exact-index phases and per-member monetary observations.
 - `internal/infra/node/node.go:1955-2044` samples `LastPersistedIndex` with Raft status and, on the leader, builds the current node list directly from `status.Progress`, labeling every entry `Voter` or `Learner`.
 - `tests/antithesis/workload/internal/pernode.go:58-94,135-173` shows that configured per-node addresses are only dial targets and that node IDs are resolved from the leader's node list. An unresolved or unreachable address is not evidence of membership, and a current member must not be discarded merely because resolution initially failed.
 - `misc/operator/internal/controller/reconcile_statefulset.go:751-756` and `docs/ops/deployment.md:355-369` document that Kubernetes `/readyz` only means the local Raft loop started; it deliberately does not prove quorum, source synchronization, or PIT readiness.
@@ -21,28 +31,29 @@
 - `internal/application/balancehistory/builder.go:556-591` retries one build pass on its ticker, keeps readiness false while behind, and reopens only after caught-up repair/certification.
 - `internal/application/balancehistory/builder.go:751-779` requires exact equality between manifest and sampled source audit/log heads before setting `ready=true`.
 - `internal/bootstrap/balance_history_provider.go:59-66` turns non-ready local state into a fail-closed PIT response.
-- `antithesis/scratchbook/deployment-topology.md:73-111` sets the campaign builder batch/yield to 32/1 ms and the verifier interval to 2 seconds. `tests/antithesis/workload/internal/driver.go:11-14` gives ordinary workload commands a 10-minute hang bound, while the existing exact-index oracle uses 60 seconds per node (`eventually_cross_node_identity/main.go:64-75`).
+- `antithesis/scratchbook/deployment-topology.md:73-111` sets the campaign builder batch/yield to 32/1 ms and the verifier interval to 2 seconds. `eventually_pit_convergence/main.go:18-24` fixes the property budget at ten minutes, while `pit_convergence_coordination.go:14-20,367-421` fixes direct RPCs at five seconds and each all-member exact-index phase at 60 seconds.
 - `internal/application/balancehistory/performance_evidence_test.go:795-806,1321-1343` bounds a 100,000-proposal default-cadence backfill at 90 seconds. This is useful headroom evidence, but it is not a cold-source SLA: the composite source may fetch archived primary chapters (`internal/bootstrap/balance_history.go:121-140`), so the campaign must also keep its generated source volume bounded.
 
 ## Proposed oracle sequence
 
-1. Give the whole `eventually_` command a 10-minute context. Keep each direct PIT RPC short and no-retry so one blocked replica or S3 call cannot consume the command budget.
-2. Establish two consecutive barriers exactly one Raft index apart, producing exact durable target `B`.
-3. Through `GetClusterState{NodeId: 0}`, snapshot the leader's complete `(node ID, suffrage, service address)` list. Include voters and learners. Ignore configured addresses and Kubernetes-ready pods absent from that list.
-4. Resolve a direct connection for every snapshotted member and require each to report `sync_progress.status == normal` and `last_persisted_index == B`, using the existing 60-second per-node phase bound. Unlike the equality oracle, do not silently drop a syncing, unreachable, or initially unresolved current member; keep retrying it within the overall liveness budget.
-5. Discover the common primary log head and poll direct stale PIT requests with that `minLogSequence`. Retry exact `HISTORY_BUILDING`/`HISTORY_BEHIND` progress outcomes and transient reachability failures while the member remains in the current membership. Treat `HISTORY_SOURCE_MISSING` or `HISTORY_CORRUPT` after dependencies are healed as non-convergence, not an acceptable terminal result.
-6. Re-read the leader membership and issue the final barrier after collecting views. If the member IDs/suffrage or durable target changed, discard the sample and restart from quiescence; a scale or learner-promotion change must not create a moving denominator.
-7. Pass only when the stable snapshot is non-empty and every member returns a complete view covering the common head whose canonical aggregate equals both the independent oracle and every other member. A stable current member that remains unavailable or divergent at the 10-minute deadline fails this liveness property.
+1. Give the whole `eventually_` command a 10-minute context. Keep each direct PIT RPC short and no-configured-retry so one blocked replica or S3 call cannot consume the command budget.
+2. Seed a fixed `2^64 + 1` bucket before faults, then idempotently append a distinct `2^128 + 1` bucket after faults and writers stop. Its acknowledged log sequence is the PIT floor and its two canonical buckets are the independent oracle.
+3. Establish two consecutive barriers exactly one Raft index apart, producing exact durable target `B`.
+4. Through `GetClusterState{NodeId: 0}`, take two equal leader snapshots of the complete `(node ID, suffrage, service address)` list. Include voters and learners. Ignore configured addresses and Kubernetes-ready pods absent from that list.
+5. Resolve one direct connection for every snapshotted member and require each to report `sync_progress.status == normal` and `last_persisted_index == B`, using the existing 60-second phase bound. Unlike the older equality oracle, do not silently drop a syncing, unreachable or unresolved current member.
+6. Poll direct stale PIT requests with the acknowledged marker as `minLogSequence`. Every success must authenticate the ledger incarnation and selector, cover the marker, contain no duplicate buckets, and equal both the independent oracle and every other member. Any error, including `HISTORY_SOURCE_MISSING` or `HISTORY_CORRUPT`, remains non-convergence.
+7. Recheck every member at exact index `B`, take two equal post-read membership snapshots and issue the final barrier. If membership/suffrage/leader changed or the barrier is not exactly `B+1`, discard the sample and restart from quiescence.
+8. Pass only when the stable snapshot is non-empty and every member satisfied the complete proof. A stable current member that remains unavailable or divergent at the 10-minute deadline fails this liveness property.
 
 The 10-minute deadline is deliberately the repository's ordinary Antithesis command bound. The accelerated PIT cadence and the 90-second 100,000-proposal backfill test provide substantial hot-source headroom, while ten minutes leaves space for bounded archived-chapter fetches and restart recovery. Because cold replay time also depends on generated bytes and object-store behavior, do not derive the bound from ticker intervals alone or extend it indefinitely: cap the campaign's retained history/object volume, and treat a miss under that fixed profile as the counterexample.
 
 ## Instrumentation candidates and existing coverage
 
-- **Partial — quiescence:** `"cross-node oracle reaches quiescence"` and `"at least two nodes converge to a common applied index"` already exist (`eventually_cross_node_identity/main.go:96-112`). Reuse their gate; do not duplicate it with a weaker `>=` comparison.
-- **Partial — membership and learner scope:** the leader already reports every current voter and learner, and the existing cross-node oracle intentionally includes learners. The current equality helper drops unresolved/syncing nodes, so the new liveness workload must retain the full stable membership denominator.
-- **Missing — builder catch-up:** add `Reachable("pit: replica reconciled history after coordination fault")` after `markReadyAfterReconciliation`, with node ID and audit/log head. A plain publication signal is insufficient because it does not prove catch-up; the workload's `Sometimes` remains the liveness assertion.
-- **Missing — follower restore completion to PIT readiness:** correlate existing lifecycle `sync_with_leader_complete` (`internal/infra/state/synchronizer.go:82-85`) with a later builder-ready reachability signal.
-- **Missing — PIT result equality:** the assertion inventory confirms the current cross-node checks do not include PIT (`existing-assertions.md:50-69`). The new workload must canonicalize and compare the complete bounded aggregate on every stable member; readiness alone cannot satisfy the property.
+- **Implemented — quiescence:** `eventually_cross_node_identity` and `eventually_pit_convergence` both call the shared `WaitForQuiescentCommitIndex` helper. The PIT command owns an independent ten-minute context, so the older cache/account/audit oracle cannot consume its liveness budget.
+- **Implemented — membership and learner scope:** equal pre/post leader snapshots carry every voter and learner. Resolution is all-or-nothing and each member is checked at `last_persisted_index == B` both before and after PIT reads.
+- **Implemented — builder catch-up:** the tagged SUT emits `Reachable("pit: balance history reconciled to exact source head")` after `markReadyAfterReconciliation`, with manifest version and exact audit/log watermarks. The workload's `Sometimes` remains the liveness assertion and provides node identity through the stable direct-member map.
+- **Implemented — follower restore completion to PIT readiness:** existing `sync_with_leader_complete` lifecycle events can be correlated in the same timeline with the builder-ready signal; the workload still requires the restored member's direct exact PIT result rather than accepting the internal event alone.
+- **Implemented — PIT result equality:** the two-bucket pre/post-fault fixture is checked through the acknowledged post-fault log floor on every member. Canonical results must equal the independent oracle and one another; physical manifest versions and view tokens may differ.
 
 ## Open questions
 
