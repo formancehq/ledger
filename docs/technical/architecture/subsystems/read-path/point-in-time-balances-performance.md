@@ -442,7 +442,9 @@ harness now supports the phase-and-case-partitioned procedure above. The
 effective-axis grouped cases below supersede the timeout for that bounded slice;
 the historical timeout remains authoritative for the unpartitioned full suite.
 
-### Full grouped effective-age matrix after case partitioning
+### Full grouped age matrices after case partitioning
+
+#### Effective axis
 
 The comparable case-level series was captured on 2026-07-31 at commit
 `30208aa1c153b54b9f73db8d470932b4e4c1c3db`. The five dirty paths were the
@@ -477,8 +479,32 @@ Case-level partitioning fixes the all-or-nothing evidence problem for this
 shape, but it does not establish acceptable interactive latency. The cases
 allocated 171.6-179.2 MB and approximately 2.78-3.12 million objects per
 operation, with roughly 92-94 million Pebble block-cache misses per 200-sample
-artifact. Query shape and cardinality dominate timestamp age. The three
-insertion-axis grouped cases and the other full phases remain unmeasured.
+artifact. Query shape and cardinality dominate timestamp age.
+
+#### Insertion axis
+
+The insertion-axis series was captured on 2026-07-31 at commit
+`6c8237c4adcda98e19a6df3b94fcfd2831b5b440`, with the same machine and
+five unrelated dirty paths. Its raw artifacts are:
+
+| Case | Artifact | SHA-256 |
+|---|---|---|
+| Insertion 1 day | `build/perf/pit-store-full-hot-grouped-insertion-1d-6c8237c4a.json` | `3a77afde43880de0b4f22ac568d47856d69c141e6fd758123fe9bc83d950ff5e` |
+| Insertion 6 months | `build/perf/pit-store-full-hot-grouped-insertion-6mo-6c8237c4a.json` | `73493d0ca14edda6871183f88c10d24f977f9404ab929cf79de4977b3997f37c` |
+| Insertion 2 years | `build/perf/pit-store-full-hot-grouped-insertion-2y-6c8237c4a.json` | `a3d1c7205b7ca111d3399922eddbe690543c926dfc5388b1c0d7b10e1b1bb66e` |
+
+| Age | Harness elapsed | p50 | p95 | p99 | Max | Operations/s |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 day | 404.5 s | 1.790 s | 2.188 s | 2.329 s | 2.371 s | 0.550 |
+| 6 months | 461.4 s | 2.019 s | 2.362 s | 2.510 s | 2.831 s | 0.492 |
+| 2 years | 423.2 s | 1.862 s | 2.363 s | 2.568 s | 3.342 s | 0.528 |
+
+The insertion six-month/one-day p95 ratio is **1.080**, and the
+two-year/one-day ratio is also **1.080**. Older insertion cutoffs were about 8%
+slower at p95 in this series, and remain below the same `<=1.20x` comparison
+used by the unfiltered age gate. Together with the effective matrix's opposite ordering,
+this reinforces the supported claim: age is not a monotonic cost driver and
+does not guarantee identical latency. The other full phases remain unmeasured.
 
 ## Full-verifier interference
 
@@ -512,8 +538,8 @@ and deterministic logical convergence. It does **not** support broad GA:
 - the current steady-write rerun passes at -1.22%, but an earlier valid run
   failed at +6.02%, so production-topology variance is not closed;
 - the historical monolithic full profile and the six-case grouped phase both
-  time out at 30 minutes; the partitioned effective grouped matrix completes,
-  but at 1.445-1.817-second p95 with the insertion matrix still pending;
+  time out at 30 minutes; all six partitioned grouped cases complete, but at
+  1.445-2.363-second p95;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
 - the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
@@ -532,9 +558,9 @@ not add historical storage or write work.
 | Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Current local unfiltered ratio 1.0745; full grouped effective ratio 0.807; no linear age penalty observed | Pass local / grouped capacity warning |
-| PIT axis | Effective and insertion measured at 1d/6mo/2y | Pass local |
-| PIT shape | Local shapes measured; full grouped effective p95 1.445-1.817 s, insertion grouped and other full phases pending | Partial / capacity warning |
+| PIT age | Current local unfiltered ratio 1.0745; full grouped effective ratio 0.807 and insertion ratio 1.080; no linear age penalty observed | Pass local / grouped capacity warning |
+| PIT axis | Effective and insertion measured at 1d/6mo/2y locally and for the full grouped shape | Pass local / full grouped |
+| PIT shape | Local shapes measured; full grouped p95 1.445-2.363 s, other full phases pending | Partial / capacity warning |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
