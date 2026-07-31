@@ -8,7 +8,7 @@ func main() {
 	ctx, cancel := internal.DriverContext()
 	defer cancel()
 
-	perNode, err := internal.DialPerNode(ctx)
+	perNode, err := internal.DialPerNode(ctx, true)
 	if err != nil || len(perNode) == 0 {
 		return
 	}

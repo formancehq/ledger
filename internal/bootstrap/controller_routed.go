@@ -278,8 +278,23 @@ func (b *RoutedController) AggregateVolumes(
 	opts query.AggregateOptions,
 	read ctrl.AggregateVolumesReadOptions,
 ) (*ctrl.AggregateVolumesResult, error) {
-	c, _, err := b.readCtrl(ctx)
+	routingCtx := ctx
+	cancelRouting := func() {}
+	if read.PointInTime != nil {
+		routingCtx, cancelRouting = antithesisLinearizablePITBarrierContext(ctx)
+	}
+	defer cancelRouting()
+
+	c, _, err := b.readCtrl(routingCtx)
 	if err != nil {
+		if read.PointInTime != nil {
+			reachAntithesisLinearizablePITBarrierFailure(
+				ctx,
+				b.Node,
+				err,
+			)
+		}
+
 		return nil, err
 	}
 

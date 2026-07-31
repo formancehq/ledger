@@ -1,6 +1,6 @@
 ---
 sut_path: /Users/flemzord/Developer/Formance/ledger
-commit: fb3f9f8334c7fbbcc27c2c211c77da36762e6aaf
+commit: 05e5bc6453388af5d223c21351d3ff787823908f
 updated: 2026-07-31
 external_references: []
 ---
@@ -17,23 +17,26 @@ were excluded by resolving the import path, rather than matching only the
 package name.
 
 The research baseline contained 369 Antithesis assertion calls. The implemented
-PIT scope-equivalence and idempotency properties bring the current total to 391:
+PIT scope-equivalence and idempotency properties plus the repository-controlled
+linearizable no-quorum variant bring the current total to 396:
 
 | Assertion | Calls |
 |---|---:|
-| `Always` | 45 |
+| `Always` | 46 |
 | `AlwaysGreaterThan` | 1 |
 | `AlwaysGreaterThanOrEqualTo` | 2 |
 | `AlwaysOrUnreachable` | 66 |
-| `Reachable` | 62 |
-| `Sometimes` | 93 |
+| `Reachable` | 63 |
+| `Sometimes` | 96 |
 | `Unreachable` | 122 |
 
-Of these calls, 45 are inside the SUT and 346 are in the workload. PIT now has
-SUT-side signals at the post-commit response boundary, keyed FSM replay and
-balance-history publication. The scope-equivalence and idempotency workload
-properties are implemented; maintenance, cold-tier and recovery reachability
-signals remain separate work.
+Of these calls, 46 are inside the SUT and 350 are in the workload. PIT now has
+SUT-side signals at the post-commit response boundary, keyed FSM replay,
+balance-history publication and the default linearizable read barrier. The
+scope-equivalence and idempotency workload properties are implemented; the
+linearizable partition property has repository-controlled no-quorum coverage,
+while selective-link, maintenance, cold-tier and recovery signals remain
+separate work.
 
 ## SUT-side assertion coverage
 

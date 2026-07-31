@@ -81,7 +81,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), overallTimeout)
 	defer cancel()
 
-	conns, err := internal.DialPerNode(ctx)
+	conns, err := internal.DialPerNode(ctx, true)
 	if err != nil || len(conns) == 0 {
 		log.Printf("composer: could not dial per-node connections: %v", err)
 

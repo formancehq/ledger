@@ -31,12 +31,23 @@ func AggregatePointInTime(
 	request *servicepb.AggregateVolumesRequest,
 	expectedLedgerID uint32,
 ) (*commonpb.AggregateResult, *servicepb.PointInTimeView, error) {
+	return aggregatePointInTime(ctx, client, request, expectedLedgerID)
+}
+
+func aggregatePointInTime(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	request *servicepb.AggregateVolumesRequest,
+	expectedLedgerID uint32,
+	callOptions ...grpc.CallOption,
+) (*commonpb.AggregateResult, *servicepb.PointInTimeView, error) {
 	if request.GetPointInTime() == nil || request.GetPointInTime().GetAt() == nil {
 		return nil, nil, fmt.Errorf("point-in-time selector is required")
 	}
 
 	var trailer metadata.MD
-	result, err := client.AggregateVolumes(ctx, request, grpc.Trailer(&trailer))
+	callOptions = append(callOptions, grpc.Trailer(&trailer))
+	result, err := client.AggregateVolumes(ctx, request, callOptions...)
 	if err != nil {
 		return nil, nil, err
 	}

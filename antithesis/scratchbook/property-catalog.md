@@ -1,6 +1,6 @@
 ---
 sut_path: /Users/flemzord/Developer/Formance/ledger
-commit: f023dedec0f7f54439dea392a896aad9ee8861f4
+commit: 05e5bc6453388af5d223c21351d3ff787823908f
 updated: 2026-07-31
 external_references: []
 ---
@@ -464,6 +464,7 @@ availability after faults stop.
 |---|---|
 | **Priority** | P0 |
 | **Type** | Safety and liveness |
+| **Implementation** | Partial: `singleton_driver_quorum_recovery` now covers the repository-controlled live-node/no-quorum window with one direct default-consistency PIT attempt with configured retries disabled, pre/post three-voter samples, a strict trailer plus monetary oracle, and an authenticated Antithesis-only SUT barrier header/signal that prevents a transparent pre-processing retry from satisfying coverage. Post-repair PIT checks are bracketed by equal stable voter snapshots. Selective leader/minority/majority Raft-link cuts remain pending tenant fault-controller support. |
 | **Property** | Default PIT reads never bypass `ReadIndex` under partition: quorum-confirmed requests are exact, isolated nodes return narrow transient failures, and stable voters recover exact progress after heal. |
 | **Invariant** | `Always(partitionOutcome.success ? exactAtTrailer : narrowRaftTransient(error))` plus `Sometimes(healedStableMembership && allVotersExact)`. |
 | **Antithesis Angle** | Probe one no-retry node while isolating Raft links, preserve workload gRPC where possible, then heal and run the exact-index gate. |

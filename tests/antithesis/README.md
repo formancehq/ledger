@@ -64,6 +64,31 @@ The P0 `idempotency-keyed-apply-changes-pit-once` property extends
 - effective and insertion PIT views covering that log must each contain exactly
   one property-owned monetary input.
 
+The P0 `linearizable-pit-partition-fails-closed` property has a
+repository-controlled no-quorum variant in `singleton_driver_quorum_recovery`:
+
+- a fresh ledger containing one `2^64 + 1` posting supplies a complete,
+  independent unfiltered monetary oracle;
+- direct per-node clients use `grpc.WithDisableRetry` and disable both the gRPC
+  service retry policy and workload retry interceptors; grpc-go can still
+  transparently retry before server processing, so coverage additionally
+  requires the exact SUT acknowledgement and stable pre/post membership;
+- after both non-leaders are deleted, the probe begins only when Kubernetes
+  exposes the original leader as the sole Ledger pod while it still reports a
+  three-voter Raft membership;
+- the request omits `x-consistency`; pre/post local membership samples must
+  both remain at three voters, and an authenticated response header proves the
+  SUT stopped at `ReadIndexAndWait` before the narrow transient counts for
+  coverage — any successful local history result in that interval fails;
+- after force-removal and scale-up, two consecutive membership snapshots must
+  agree, every voter ID in that snapshot must serve the exact fixture through
+  its acknowledged log floor, and a post-probe stable snapshot must still
+  match; otherwise the bounded recovery loop restarts.
+
+This is intentionally partial coverage of the catalog property. Selective
+Raft-only leader/minority/majority link cuts remain pending confirmation that
+the tenant fault controller can preserve workload gRPC and MinIO connectivity.
+
 `Dockerfile.antithesis` enables the `antithesis` Go build tag for these
 test-only checkpoints. The ordinary production build compiles no-op helpers and
 does not interpret the workload probe metadata.
@@ -264,6 +289,30 @@ snouty launch \
 
 Do not launch when image build or validation fails. Keep the returned `run_id`;
 it is the input for report triage and multiverse debugging.
+
+## Launching the targeted PIT no-quorum campaign
+
+This property drives the Kubernetes API and therefore must use the K8s
+Antithesis profile, not the legacy Compose webhook. It reuses an existing
+singleton driver and needs no `first_` setup command:
+
+```sh
+cd tests/antithesis
+export ANTITHESIS_REPOSITORY='<tenant registry repository>'
+export ANTITHESIS_PASSWORD='<tenant API password>'
+export ANTITHESIS_REPORT_RECIPIENT='<report email>'
+
+include='main/singleton_driver_quorum_recovery'
+just k8s-run "$DURATION_HOURS" \
+  'PIT default linearizable reads fail closed without quorum' \
+  "$include"
+```
+
+`DURATION_HOURS` must be supplied explicitly. The recipe builds and pushes the
+instrumented Ledger, operator, K8s config and filtered workload images before
+launching `basic_k8s_test`. Keep the returned run ID for triage; the campaign is
+successful only when both the fail-closed coverage signal and the three-voter
+post-repair convergence signal are reached without an `Always` violation.
 
 ## Adding a new driver
 

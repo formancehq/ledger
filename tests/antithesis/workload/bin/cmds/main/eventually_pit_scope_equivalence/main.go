@@ -11,7 +11,7 @@ func main() {
 	ctx, cancel := internal.DriverContext()
 	defer cancel()
 
-	perNode, err := internal.DialPerNode(ctx)
+	perNode, err := internal.DialPerNode(ctx, true)
 	testCases := internal.PITScopeCases()
 	paired := make(map[string]struct{}, len(testCases))
 	var nodeAddress string
