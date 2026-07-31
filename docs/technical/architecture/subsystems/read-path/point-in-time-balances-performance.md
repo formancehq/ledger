@@ -14,6 +14,10 @@ corresponding before/after and percentile run appears here.
 - Report hot and cold sources separately; a warmed cold cache is a hot result.
 - Use the same primary-store dataset and write workload for before/after write
   comparisons.
+- Run the `full` profile as explicit `PIT_PERF_PHASES` partitions when the
+  monolithic profile cannot finish inside the declared test timeout. Keep one
+  JSON artifact per partition; never concatenate samples from different
+  machines, commits, profiles, or dataset parameters.
 - Preserve raw machine-readable output alongside the summary when running the
   full performance suite.
 - Do not use account, asset, ledger, or requested timestamp as metric labels.
@@ -112,7 +116,7 @@ go test ./internal/application/balancehistory \
   -run '^TestBuilderLocalPerformanceEvidence$' -count=1
 
 # Store matrix. The full profile needs an explicit timeout above 30 minutes or
-# a phase-splitting redesign; the captured unchanged full profile timed out.
+# phase partitioning; the captured unchanged monolithic full profile timed out.
 PIT_PERF=1 PIT_PERF_PROFILE=local PIT_PERF_ENFORCE=1 \
 PIT_PERF_OUTPUT="$PWD/build/perf/pit-store-local-YYYY-MM-DD.json" \
 go test ./internal/storage/balancehistorystore \
@@ -124,6 +128,42 @@ PIT_BUILDER_PERF_OUTPUT="$PWD/build/perf/pit-builder-full-phase-only-YYYY-MM-DD.
 go test ./internal/application/balancehistory \
   -run '^TestBuilderLocalPerformanceEvidence$' -count=1
 ```
+
+The store harness schema version 2 accepts a comma-separated
+`PIT_PERF_PHASES` selection. An unset value (or `all`) preserves the original
+complete sequential run. The available phases are:
+
+```text
+hot-unfiltered  hot-filtered  hot-grouped  hot-shapes
+compaction      replica-digest
+cold-unfiltered cold-filtered cold-grouped
+cardinality     backdating    write
+```
+
+Each artifact records `complete`, `selectedPhases`, and `harnessElapsedMs`.
+Partial artifacts also carry an explicit warning in `pending`. For the `full`
+profile, run each phase independently so an expensive grouped matrix cannot
+erase already completed evidence:
+
+```bash
+for phase in \
+  hot-unfiltered hot-filtered hot-grouped hot-shapes \
+  compaction replica-digest \
+  cold-unfiltered cold-filtered cold-grouped \
+  cardinality backdating write
+do
+  PIT_PERF=1 PIT_PERF_PROFILE=full PIT_PERF_PHASES="$phase" \
+  PIT_PERF_ENFORCE=1 \
+  PIT_PERF_OUTPUT="$PWD/build/perf/pit-store-full-${phase}-YYYY-MM-DD.json" \
+  go test ./internal/storage/balancehistorystore \
+    -run '^TestPITLocalPerformanceEvidence$' -count=1 -timeout=30m || exit 1
+done
+```
+
+The phase artifacts form one evidence set only when their code provenance,
+machine identity, profile, and dataset parameters are identical. The phase
+split removes the all-or-nothing reporting failure; it does not make a slow
+query faster or turn a timed-out phase into a passing result.
 
 Machine identity and the three `PIT_PERF_GIT_*` values should be supplied as
 environment variables for a publishable run; the harness writes `unknown` when
@@ -372,14 +412,17 @@ published daily, compacted, and retained six runs. Their logical effect digest
 and served semantic digest were equal. This proves deterministic local logical
 convergence across physical layouts, not networked multi-replica recovery.
 
-The unchanged `full` store profile used 731 days, 512 accounts, 16 asset
+The historical unchanged monolithic `full` store profile used 731 days, 512 accounts, 16 asset
 buckets, eight colors, 256 postings/day, 1,000 primary samples, and 200 shape
 samples. It timed out first at the Go default 10 minutes and once more at the
 allowed 30-minute limit, both while executing grouped hot reads through
 `AggregateHistoricalVolumes` and Pebble block decompression. It produced no
 complete JSON and no assertions. No third attempt was made. This is a **failed
 shape/capacity result**, not generic pending work; the harness or query path
-must be partitioned/profiled before claiming support for that matrix.
+had to be partitioned/profiled before claiming support for that matrix. The
+harness now supports the phase-partitioned procedure above, but no publishable
+`full` phase set has been captured yet; the historical timeout therefore
+remains the authoritative full-shape result.
 
 ## Full-verifier interference
 

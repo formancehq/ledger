@@ -14,6 +14,7 @@ import (
 	runtimemetrics "runtime/metrics"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -427,23 +428,26 @@ type perfColdSummary struct {
 }
 
 type perfEvidenceReport struct {
-	SchemaVersion int                 `json:"schemaVersion"`
-	GeneratedAt   string              `json:"generatedAt"`
-	Profile       string              `json:"profile"`
-	GitCommit     string              `json:"gitCommit"`
-	GitTree       string              `json:"gitTree"`
-	WorkingTree   string              `json:"workingTree"`
-	Machine       string              `json:"machine"`
-	GoVersion     string              `json:"goVersion"`
-	GOOS          string              `json:"goos"`
-	GOARCH        string              `json:"goarch"`
-	Datasets      []perfDatasetResult `json:"datasets"`
-	Measurements  []perfLatency       `json:"measurements"`
-	Compaction    perfCompaction      `json:"compaction"`
-	Cold          perfColdSummary     `json:"cold"`
-	ReplicaDigest perfReplicaDigest   `json:"simulatedReplicaDigest"`
-	Assertions    []perfAssertion     `json:"assertions"`
-	Pending       []string            `json:"pending"`
+	SchemaVersion    int                 `json:"schemaVersion"`
+	GeneratedAt      string              `json:"generatedAt"`
+	Profile          string              `json:"profile"`
+	Complete         bool                `json:"complete"`
+	SelectedPhases   []string            `json:"selectedPhases"`
+	HarnessElapsedMS float64             `json:"harnessElapsedMs"`
+	GitCommit        string              `json:"gitCommit"`
+	GitTree          string              `json:"gitTree"`
+	WorkingTree      string              `json:"workingTree"`
+	Machine          string              `json:"machine"`
+	GoVersion        string              `json:"goVersion"`
+	GOOS             string              `json:"goos"`
+	GOARCH           string              `json:"goarch"`
+	Datasets         []perfDatasetResult `json:"datasets"`
+	Measurements     []perfLatency       `json:"measurements"`
+	Compaction       perfCompaction      `json:"compaction"`
+	Cold             perfColdSummary     `json:"cold"`
+	ReplicaDigest    perfReplicaDigest   `json:"simulatedReplicaDigest"`
+	Assertions       []perfAssertion     `json:"assertions"`
+	Pending          []string            `json:"pending"`
 }
 
 type seededHistory struct {
@@ -462,23 +466,36 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 		t.Skip("set PIT_PERF=1 to run the local PIT performance evidence harness")
 	}
 
+	harnessStarted := time.Now()
+	phaseSelection, err := parsePerfPhaseSelection(os.Getenv("PIT_PERF_PHASES"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	profile := selectedPerfProfile(t)
 	report := perfEvidenceReport{
-		SchemaVersion: 1,
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339Nano),
-		Profile:       profile.Name,
-		GitCommit:     valueOrUnknown(os.Getenv("PIT_PERF_GIT_COMMIT")),
-		GitTree:       valueOrUnknown(os.Getenv("PIT_PERF_GIT_TREE")),
-		WorkingTree:   valueOrUnknown(os.Getenv("PIT_PERF_WORKTREE")),
-		Machine:       valueOrUnknown(os.Getenv("PIT_PERF_MACHINE")),
-		GoVersion:     runtime.Version(),
-		GOOS:          runtime.GOOS,
-		GOARCH:        runtime.GOARCH,
+		SchemaVersion:  2,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+		Profile:        profile.Name,
+		Complete:       phaseSelection.all,
+		SelectedPhases: phaseSelection.Names(),
+		GitCommit:      valueOrUnknown(os.Getenv("PIT_PERF_GIT_COMMIT")),
+		GitTree:        valueOrUnknown(os.Getenv("PIT_PERF_GIT_TREE")),
+		WorkingTree:    valueOrUnknown(os.Getenv("PIT_PERF_WORKTREE")),
+		Machine:        valueOrUnknown(os.Getenv("PIT_PERF_MACHINE")),
+		GoVersion:      runtime.Version(),
+		GOOS:           runtime.GOOS,
+		GOARCH:         runtime.GOARCH,
 		Pending: []string{
 			"production object-store network latency remains deployment-specific; the cold matrix uses the real composite view over a local-filesystem backend",
 			"real multi-node lag and recovery convergence require a cluster harness; deterministic two-store digest convergence is measured locally",
 			"end-to-end HTTP/gRPC and Raft admission latency require the deployed k6 suite",
 		},
+	}
+	if !report.Complete {
+		report.Pending = append(report.Pending, fmt.Sprintf(
+			"partial performance artifact: only phases %s were executed; combine phase artifacts only when profile, dataset parameters, code provenance, and machine identity match",
+			strings.Join(report.SelectedPhases, ","),
+		))
 	}
 
 	mainConfig := perfDatasetConfig{
@@ -492,201 +509,56 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 		BackdatedRate:          1,
 		CompactEachPublication: true,
 	}
-	main := seedPerfHistory(t, mainConfig)
-	defer func() {
-		if err := main.store.Close(); err != nil {
-			t.Errorf("closing main PIT performance store: %v", err)
-		}
-	}()
-	report.Datasets = append(report.Datasets, main.result)
-
-	view, err := main.store.OpenView(uint64(main.result.Config.Days + 1))
-	if err != nil {
-		t.Fatalf("opening main PIT performance view: %v", err)
-	}
-
-	ages := []struct {
-		name string
-		days int
-	}{
-		{name: "1d", days: 1},
-		{name: "6mo", days: min(180, profile.Days-1)},
-		{name: "2y", days: min(730, profile.Days-1)},
-	}
-	filteredAccounts := main.accountIDs[:min(16, len(main.accountIDs))]
-	coreShapes := []struct {
-		name     string
-		accounts []string
-		opts     query.AggregateOptions
-	}{
-		{name: "filtered_16", accounts: filteredAccounts},
-		{name: "grouped", opts: query.AggregateOptions{GroupByPrefixes: []string{"users:", "merchants:"}}},
-	}
-	for _, axis := range []struct {
-		name  string
-		value balancehistorystore.Axis
-	}{
-		{name: "effective", value: balancehistorystore.AxisEffective},
-		{name: "insertion", value: balancehistorystore.AxisInsertion},
-	} {
-		for _, age := range ages {
-			at := main.head - uint64(age.days)*perfDayMicros
-			measurement := measurePerfHistoryLatency(
-				t,
-				main.store,
-				"pit_hot_"+axis.name+"_age_"+age.name+"_unfiltered",
-				"pit-read",
-				profile.Samples,
-				map[string]any{
-					"axis": axis.name, "ageDays": age.days, "shape": "unfiltered",
-					"accounts": profile.Accounts, "assetBuckets": profile.AssetBuckets, "colors": profile.Colors,
-				},
-				func() error {
-					result, queryErr := query.AggregateHistoricalVolumes(view, perfLedgerID, axis.value, at, nil, query.AggregateOptions{})
-					perfResultSink = result
-
-					return queryErr
-				},
-			)
-			report.Measurements = append(report.Measurements, measurement)
-			for _, shape := range coreShapes {
-				shapeMeasurement := measurePerfHistoryLatency(
-					t,
-					main.store,
-					"pit_hot_"+axis.name+"_age_"+age.name+"_"+shape.name,
-					"pit-read-matrix",
-					profile.ShapeSamples,
-					map[string]any{
-						"axis": axis.name, "ageDays": age.days, "shape": shape.name,
-						"accounts": profile.Accounts, "assetBuckets": profile.AssetBuckets, "colors": profile.Colors,
-					},
-					func() error {
-						result, queryErr := query.AggregateHistoricalVolumes(
-							view, perfLedgerID, axis.value, at, shape.accounts, shape.opts,
-						)
-						perfResultSink = result
-
-						return queryErr
-					},
-				)
-				report.Measurements = append(report.Measurements, shapeMeasurement)
-			}
-		}
-	}
-
-	recentAt := main.head - perfDayMicros
-	shapeCases := []struct {
-		name     string
-		accounts []string
-		opts     query.AggregateOptions
-	}{
-		{name: "grouped_max_precision_collapsed_colors", opts: query.AggregateOptions{
-			GroupByPrefixes: []string{"users:", "merchants:"}, UseMaxPrecision: true, CollapseColors: true,
-		}},
-		{name: "unfiltered_collapsed_colors", opts: query.AggregateOptions{CollapseColors: true}},
-	}
-	for _, shape := range shapeCases {
-		measurement := measurePerfHistoryLatency(
-			t,
-			main.store,
-			"pit_hot_effective_shape_"+shape.name,
-			"pit-read-shape",
-			profile.ShapeSamples,
-			map[string]any{"axis": "effective", "ageDays": 1, "shape": shape.name},
-			func() error {
-				result, queryErr := query.AggregateHistoricalVolumes(
-					view, perfLedgerID, balancehistorystore.AxisEffective, recentAt, shape.accounts, shape.opts,
-				)
-				perfResultSink = result
-
-				return queryErr
-			},
-		)
-		report.Measurements = append(report.Measurements, measurement)
-	}
-
-	if err := view.Close(); err != nil {
-		t.Fatalf("closing pre-compaction view: %v", err)
-	}
-	report.Compaction = measurePerfCompaction(t, main.store, recentAt, profile.ShapeSamples)
-	report.ReplicaDigest = measurePerfReplicaDigest(t, profile)
-	coldConfig := mainConfig
-	coldConfig.Name = "two-year-cold-history"
-	coldDataset, coldMeasurements, coldSummary := measurePerfColdMatrix(
-		t,
-		profile,
-		coldConfig,
-		main.result.DiskBytes,
+	needsMainDataset := phaseSelection.IncludesAny(
+		perfPhaseHotUnfiltered,
+		perfPhaseHotFiltered,
+		perfPhaseHotGrouped,
+		perfPhaseHotShapes,
+		perfPhaseCompaction,
+		perfPhaseColdUnfiltered,
+		perfPhaseColdFiltered,
+		perfPhaseColdGrouped,
 	)
-	report.Datasets = append(report.Datasets, coldDataset)
-	report.Measurements = append(report.Measurements, coldMeasurements...)
-	report.Cold = coldSummary
-
-	for _, cardinality := range []struct {
-		accounts int
-		assets   int
-		colors   int
-	}{
-		{accounts: 64, assets: 1, colors: 1},
-		{accounts: 256, assets: 8, colors: 1},
-		{accounts: 256, assets: 8, colors: 4},
-	} {
-		config := perfDatasetConfig{
-			Name:           fmt.Sprintf("cardinality-a%d-s%d-c%d", cardinality.accounts, cardinality.assets, cardinality.colors),
-			Days:           2,
-			Accounts:       cardinality.accounts,
-			AssetBuckets:   cardinality.assets,
-			Colors:         cardinality.colors,
-			PostingsPerDay: 1,
-			Runs:           1,
-		}
-		seeded := seedPerfHistory(t, config)
-		view, openErr := seeded.store.OpenView(uint64(config.Days + 1))
-		if openErr != nil {
-			t.Fatalf("opening cardinality view %s: %v", config.Name, openErr)
-		}
-		measurement := measurePerfHistoryLatency(
-			t,
-			seeded.store,
-			"pit_hot_cardinality_"+config.Name,
-			"pit-cardinality",
-			profile.CardinalitySamples,
-			map[string]any{"accounts": config.Accounts, "assetBuckets": config.AssetBuckets, "colors": config.Colors},
-			func() error {
-				result, queryErr := query.AggregateHistoricalVolumes(
-					view, perfLedgerID, balancehistorystore.AxisEffective, seeded.head, nil, query.AggregateOptions{},
-				)
-				perfResultSink = result
-
-				return queryErr
-			},
-		)
-		report.Measurements = append(report.Measurements, measurement)
-		report.Datasets = append(report.Datasets, seeded.result)
-		if err := view.Close(); err != nil {
-			t.Fatalf("closing cardinality view %s: %v", config.Name, err)
-		}
-		if err := seeded.store.Close(); err != nil {
-			t.Fatalf("closing cardinality store %s: %v", config.Name, err)
-		}
+	var main *seededHistory
+	if needsMainDataset {
+		seeded := seedPerfHistory(t, mainConfig)
+		main = &seeded
+		defer func() {
+			if err := main.store.Close(); err != nil {
+				t.Errorf("closing main PIT performance store: %v", err)
+			}
+		}()
+		report.Datasets = append(report.Datasets, main.result)
 	}
 
-	for _, backdatedRate := range []int{0, 1, 50} {
-		config := perfDatasetConfig{
-			Name:           fmt.Sprintf("backdated-%d-percent", backdatedRate),
-			Days:           min(180, profile.Days),
-			Accounts:       min(64, profile.Accounts),
-			AssetBuckets:   min(4, profile.AssetBuckets),
-			Colors:         min(2, profile.Colors),
-			PostingsPerDay: min(16, profile.PostingsPerDay),
-			Runs:           min(6, profile.Runs),
-			BackdatedRate:  backdatedRate,
-		}
-		seeded := seedPerfHistory(t, config)
-		report.Datasets = append(report.Datasets, seeded.result)
-		view, openErr := seeded.store.OpenView(uint64(config.Days + 1))
+	if phaseSelection.IncludesAny(
+		perfPhaseHotUnfiltered,
+		perfPhaseHotFiltered,
+		perfPhaseHotGrouped,
+		perfPhaseHotShapes,
+	) {
+		view, openErr := main.store.OpenView(uint64(main.result.Config.Days + 1))
 		if openErr != nil {
-			t.Fatalf("opening backdating view %s: %v", config.Name, openErr)
+			t.Fatalf("opening main PIT performance view: %v", openErr)
+		}
+
+		ages := []struct {
+			name string
+			days int
+		}{
+			{name: "1d", days: 1},
+			{name: "6mo", days: min(180, profile.Days-1)},
+			{name: "2y", days: min(730, profile.Days-1)},
+		}
+		filteredAccounts := main.accountIDs[:min(16, len(main.accountIDs))]
+		coreShapes := []struct {
+			phase    string
+			name     string
+			accounts []string
+			opts     query.AggregateOptions
+		}{
+			{phase: perfPhaseHotFiltered, name: "filtered_16", accounts: filteredAccounts},
+			{phase: perfPhaseHotGrouped, name: "grouped", opts: query.AggregateOptions{GroupByPrefixes: []string{"users:", "merchants:"}}},
 		}
 		for _, axis := range []struct {
 			name  string
@@ -695,16 +567,149 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 			{name: "effective", value: balancehistorystore.AxisEffective},
 			{name: "insertion", value: balancehistorystore.AxisInsertion},
 		} {
+			for _, age := range ages {
+				at := main.head - uint64(age.days)*perfDayMicros
+				if phaseSelection.Includes(perfPhaseHotUnfiltered) {
+					measurement := measurePerfHistoryLatency(
+						t,
+						main.store,
+						"pit_hot_"+axis.name+"_age_"+age.name+"_unfiltered",
+						"pit-read",
+						profile.Samples,
+						map[string]any{
+							"axis": axis.name, "ageDays": age.days, "shape": "unfiltered",
+							"accounts": profile.Accounts, "assetBuckets": profile.AssetBuckets, "colors": profile.Colors,
+						},
+						func() error {
+							result, queryErr := query.AggregateHistoricalVolumes(view, perfLedgerID, axis.value, at, nil, query.AggregateOptions{})
+							perfResultSink = result
+
+							return queryErr
+						},
+					)
+					report.Measurements = append(report.Measurements, measurement)
+				}
+				for _, shape := range coreShapes {
+					if !phaseSelection.Includes(shape.phase) {
+						continue
+					}
+					shapeMeasurement := measurePerfHistoryLatency(
+						t,
+						main.store,
+						"pit_hot_"+axis.name+"_age_"+age.name+"_"+shape.name,
+						"pit-read-matrix",
+						profile.ShapeSamples,
+						map[string]any{
+							"axis": axis.name, "ageDays": age.days, "shape": shape.name,
+							"accounts": profile.Accounts, "assetBuckets": profile.AssetBuckets, "colors": profile.Colors,
+						},
+						func() error {
+							result, queryErr := query.AggregateHistoricalVolumes(
+								view, perfLedgerID, axis.value, at, shape.accounts, shape.opts,
+							)
+							perfResultSink = result
+
+							return queryErr
+						},
+					)
+					report.Measurements = append(report.Measurements, shapeMeasurement)
+				}
+			}
+		}
+
+		if phaseSelection.Includes(perfPhaseHotShapes) {
+			recentAt := main.head - perfDayMicros
+			shapeCases := []struct {
+				name     string
+				accounts []string
+				opts     query.AggregateOptions
+			}{
+				{name: "grouped_max_precision_collapsed_colors", opts: query.AggregateOptions{
+					GroupByPrefixes: []string{"users:", "merchants:"}, UseMaxPrecision: true, CollapseColors: true,
+				}},
+				{name: "unfiltered_collapsed_colors", opts: query.AggregateOptions{CollapseColors: true}},
+			}
+			for _, shape := range shapeCases {
+				measurement := measurePerfHistoryLatency(
+					t,
+					main.store,
+					"pit_hot_effective_shape_"+shape.name,
+					"pit-read-shape",
+					profile.ShapeSamples,
+					map[string]any{"axis": "effective", "ageDays": 1, "shape": shape.name},
+					func() error {
+						result, queryErr := query.AggregateHistoricalVolumes(
+							view, perfLedgerID, balancehistorystore.AxisEffective, recentAt, shape.accounts, shape.opts,
+						)
+						perfResultSink = result
+
+						return queryErr
+					},
+				)
+				report.Measurements = append(report.Measurements, measurement)
+			}
+		}
+
+		if err := view.Close(); err != nil {
+			t.Fatalf("closing pre-compaction view: %v", err)
+		}
+	}
+
+	if phaseSelection.Includes(perfPhaseCompaction) {
+		report.Compaction = measurePerfCompaction(t, main.store, main.head-perfDayMicros, profile.ShapeSamples)
+	}
+	if phaseSelection.Includes(perfPhaseReplicaDigest) {
+		report.ReplicaDigest = measurePerfReplicaDigest(t, profile)
+	}
+	if phaseSelection.IncludesAny(perfPhaseColdUnfiltered, perfPhaseColdFiltered, perfPhaseColdGrouped) {
+		coldConfig := mainConfig
+		coldConfig.Name = "two-year-cold-history"
+		coldDataset, coldMeasurements, coldSummary := measurePerfColdMatrix(
+			t,
+			profile,
+			coldConfig,
+			main.result.DiskBytes,
+			phaseSelection,
+		)
+		report.Datasets = append(report.Datasets, coldDataset)
+		report.Measurements = append(report.Measurements, coldMeasurements...)
+		report.Cold = coldSummary
+	}
+
+	if phaseSelection.Includes(perfPhaseCardinality) {
+		for _, cardinality := range []struct {
+			accounts int
+			assets   int
+			colors   int
+		}{
+			{accounts: 64, assets: 1, colors: 1},
+			{accounts: 256, assets: 8, colors: 1},
+			{accounts: 256, assets: 8, colors: 4},
+		} {
+			config := perfDatasetConfig{
+				Name:           fmt.Sprintf("cardinality-a%d-s%d-c%d", cardinality.accounts, cardinality.assets, cardinality.colors),
+				Days:           2,
+				Accounts:       cardinality.accounts,
+				AssetBuckets:   cardinality.assets,
+				Colors:         cardinality.colors,
+				PostingsPerDay: 1,
+				Runs:           1,
+			}
+			seeded := seedPerfHistory(t, config)
+			view, openErr := seeded.store.OpenView(uint64(config.Days + 1))
+			if openErr != nil {
+				t.Fatalf("opening cardinality view %s: %v", config.Name, openErr)
+			}
 			measurement := measurePerfHistoryLatency(
 				t,
 				seeded.store,
-				"pit_hot_"+axis.name+"_"+config.Name,
-				"pit-backdating",
+				"pit_hot_cardinality_"+config.Name,
+				"pit-cardinality",
 				profile.CardinalitySamples,
-				map[string]any{"axis": axis.name, "backdatedPercent": backdatedRate},
+				map[string]any{"accounts": config.Accounts, "assetBuckets": config.AssetBuckets, "colors": config.Colors},
 				func() error {
 					result, queryErr := query.AggregateHistoricalVolumes(
-						view, perfLedgerID, axis.value, seeded.head-perfDayMicros, nil, query.AggregateOptions{},
+						view, perfLedgerID, balancehistorystore.AxisEffective, seeded.head, nil, query.AggregateOptions{},
 					)
 					perfResultSink = result
 
@@ -712,56 +717,118 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 				},
 			)
 			report.Measurements = append(report.Measurements, measurement)
-		}
-		if err := view.Close(); err != nil {
-			t.Fatalf("closing backdating view %s: %v", config.Name, err)
-		}
-		if err := seeded.store.Close(); err != nil {
-			t.Fatalf("closing backdating store %s: %v", config.Name, err)
+			report.Datasets = append(report.Datasets, seeded.result)
+			if err := view.Close(); err != nil {
+				t.Fatalf("closing cardinality view %s: %v", config.Name, err)
+			}
+			if err := seeded.store.Close(); err != nil {
+				t.Fatalf("closing cardinality store %s: %v", config.Name, err)
+			}
 		}
 	}
 
-	live, writeBaseline, writeSteadyState, writeBackfillSaturation := measureLiveAndWriteInterference(t, profile)
-	report.Measurements = append(
-		report.Measurements,
-		live,
-		writeBaseline,
-		writeSteadyState,
-		writeBackfillSaturation,
-	)
+	if phaseSelection.Includes(perfPhaseBackdating) {
+		for _, backdatedRate := range []int{0, 1, 50} {
+			config := perfDatasetConfig{
+				Name:           fmt.Sprintf("backdated-%d-percent", backdatedRate),
+				Days:           min(180, profile.Days),
+				Accounts:       min(64, profile.Accounts),
+				AssetBuckets:   min(4, profile.AssetBuckets),
+				Colors:         min(2, profile.Colors),
+				PostingsPerDay: min(16, profile.PostingsPerDay),
+				Runs:           min(6, profile.Runs),
+				BackdatedRate:  backdatedRate,
+			}
+			seeded := seedPerfHistory(t, config)
+			report.Datasets = append(report.Datasets, seeded.result)
+			view, openErr := seeded.store.OpenView(uint64(config.Days + 1))
+			if openErr != nil {
+				t.Fatalf("opening backdating view %s: %v", config.Name, openErr)
+			}
+			for _, axis := range []struct {
+				name  string
+				value balancehistorystore.Axis
+			}{
+				{name: "effective", value: balancehistorystore.AxisEffective},
+				{name: "insertion", value: balancehistorystore.AxisInsertion},
+			} {
+				measurement := measurePerfHistoryLatency(
+					t,
+					seeded.store,
+					"pit_hot_"+axis.name+"_"+config.Name,
+					"pit-backdating",
+					profile.CardinalitySamples,
+					map[string]any{"axis": axis.name, "backdatedPercent": backdatedRate},
+					func() error {
+						result, queryErr := query.AggregateHistoricalVolumes(
+							view, perfLedgerID, axis.value, seeded.head-perfDayMicros, nil, query.AggregateOptions{},
+						)
+						perfResultSink = result
 
-	oneDay := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_1d_unfiltered")
-	sixMonths := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_6mo_unfiltered")
-	ageRatio := sixMonths.P95 / oneDay.P95
-	report.Assertions = append(report.Assertions, perfAssertion{
-		Name: "hot_6mo_p95_vs_1d", Target: "<= 1.20x", Observed: ageRatio, Unit: "ratio", Satisfied: ageRatio <= 1.20,
-		Scope: "warm local Pebble, equal cardinality, effective axis, unfiltered, daily Publish+Compact aging",
-	})
-	report.Assertions = append(report.Assertions, perfAssertion{
-		Name:      "simulated_replica_digest_convergence",
-		Target:    "logical and served semantic digests equal across different publication/compaction layouts",
-		Observed:  1,
-		Unit:      "boolean",
-		Satisfied: report.ReplicaDigest.LogicalDigestEqual && report.ReplicaDigest.SemanticDigestEqual && report.ReplicaDigest.DifferentPhysicalShape,
-		Scope:     "two independent local stores ingest identical effects with one large publication versus daily publications plus compaction; not a networked replica test",
-	})
-	report.Assertions = append(report.Assertions, perfAssertion{
-		Name:      "cold_logical_run_count_after_aging",
-		Target:    fmt.Sprintf("<= %d runs from %s", report.Cold.RunCountBound, report.Cold.RunCountFormula),
-		Observed:  float64(report.Cold.FinalLogicalRuns),
-		Unit:      "runs",
-		Satisfied: report.Cold.RunCountBounded,
-		Scope:     "same two-year cardinality; daily Publish+Compact+Tier; catches O(history) cold-run growth",
-	})
-	report.Assertions = append(report.Assertions, perfAssertion{
-		Name:      "cold_runs_per_level_after_aging",
-		Target:    fmt.Sprintf("< %d hot+cold runs at every level", balancehistorystore.DefaultRunCompactionThreshold),
-		Observed:  float64(perfMaxRunsAtLevel(report.Cold.RunLevels)),
-		Unit:      "runs",
-		Satisfied: report.Cold.RunsPerLevelBounded,
-		Scope:     "combined hot+cold logical runs; each level must remain below the compaction threshold",
-	})
+						return queryErr
+					},
+				)
+				report.Measurements = append(report.Measurements, measurement)
+			}
+			if err := view.Close(); err != nil {
+				t.Fatalf("closing backdating view %s: %v", config.Name, err)
+			}
+			if err := seeded.store.Close(); err != nil {
+				t.Fatalf("closing backdating store %s: %v", config.Name, err)
+			}
+		}
+	}
 
+	if phaseSelection.Includes(perfPhaseWrite) {
+		live, writeBaseline, writeSteadyState, writeBackfillSaturation := measureLiveAndWriteInterference(t, profile)
+		report.Measurements = append(
+			report.Measurements,
+			live,
+			writeBaseline,
+			writeSteadyState,
+			writeBackfillSaturation,
+		)
+	}
+
+	if phaseSelection.Includes(perfPhaseHotUnfiltered) {
+		oneDay := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_1d_unfiltered")
+		sixMonths := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_6mo_unfiltered")
+		ageRatio := sixMonths.P95 / oneDay.P95
+		report.Assertions = append(report.Assertions, perfAssertion{
+			Name: "hot_6mo_p95_vs_1d", Target: "<= 1.20x", Observed: ageRatio, Unit: "ratio", Satisfied: ageRatio <= 1.20,
+			Scope: "warm local Pebble, equal cardinality, effective axis, unfiltered, daily Publish+Compact aging",
+		})
+	}
+	if phaseSelection.Includes(perfPhaseReplicaDigest) {
+		report.Assertions = append(report.Assertions, perfAssertion{
+			Name:      "simulated_replica_digest_convergence",
+			Target:    "logical and served semantic digests equal across different publication/compaction layouts",
+			Observed:  1,
+			Unit:      "boolean",
+			Satisfied: report.ReplicaDigest.LogicalDigestEqual && report.ReplicaDigest.SemanticDigestEqual && report.ReplicaDigest.DifferentPhysicalShape,
+			Scope:     "two independent local stores ingest identical effects with one large publication versus daily publications plus compaction; not a networked replica test",
+		})
+	}
+	if phaseSelection.IncludesAny(perfPhaseColdUnfiltered, perfPhaseColdFiltered, perfPhaseColdGrouped) {
+		report.Assertions = append(report.Assertions, perfAssertion{
+			Name:      "cold_logical_run_count_after_aging",
+			Target:    fmt.Sprintf("<= %d runs from %s", report.Cold.RunCountBound, report.Cold.RunCountFormula),
+			Observed:  float64(report.Cold.FinalLogicalRuns),
+			Unit:      "runs",
+			Satisfied: report.Cold.RunCountBounded,
+			Scope:     "same two-year cardinality; daily Publish+Compact+Tier; catches O(history) cold-run growth",
+		})
+		report.Assertions = append(report.Assertions, perfAssertion{
+			Name:      "cold_runs_per_level_after_aging",
+			Target:    fmt.Sprintf("< %d hot+cold runs at every level", balancehistorystore.DefaultRunCompactionThreshold),
+			Observed:  float64(perfMaxRunsAtLevel(report.Cold.RunLevels)),
+			Unit:      "runs",
+			Satisfied: report.Cold.RunsPerLevelBounded,
+			Scope:     "combined hot+cold logical runs; each level must remain below the compaction threshold",
+		})
+	}
+
+	report.HarnessElapsedMS = float64(time.Since(harnessStarted)) / float64(time.Millisecond)
 	writePerfEvidence(t, report)
 	if os.Getenv("PIT_PERF_ENFORCE") == "1" {
 		for _, assertion := range report.Assertions {
@@ -1039,6 +1106,7 @@ func measurePerfColdMatrix(
 	profile perfProfile,
 	config perfDatasetConfig,
 	equivalentHotDiskBytes uint64,
+	phaseSelection perfPhaseSelection,
 ) (perfDatasetResult, []perfLatency, perfColdSummary) {
 	t.Helper()
 
@@ -1158,13 +1226,14 @@ func measurePerfColdMatrix(
 	}
 	accounts := seeded.accountIDs[:min(16, len(seeded.accountIDs))]
 	shapes := []struct {
+		phase    string
 		name     string
 		accounts []string
 		opts     query.AggregateOptions
 	}{
-		{name: "unfiltered"},
-		{name: "filtered_16", accounts: accounts},
-		{name: "grouped", opts: query.AggregateOptions{GroupByPrefixes: []string{"users:", "merchants:"}}},
+		{phase: perfPhaseColdUnfiltered, name: "unfiltered"},
+		{phase: perfPhaseColdFiltered, name: "filtered_16", accounts: accounts},
+		{phase: perfPhaseColdGrouped, name: "grouped", opts: query.AggregateOptions{GroupByPrefixes: []string{"users:", "merchants:"}}},
 	}
 	missSamples := 20
 	switch profile.Name {
@@ -1184,6 +1253,9 @@ func measurePerfColdMatrix(
 		for _, age := range ages {
 			at := seeded.head - uint64(age.days)*perfDayMicros
 			for _, shape := range shapes {
+				if !phaseSelection.Includes(shape.phase) {
+					continue
+				}
 				operation := func() error {
 					view, openErr := seeded.store.OpenViewContext(context.Background(), manifest.LogWatermark)
 					if openErr != nil {
@@ -1282,6 +1354,9 @@ func measurePerfColdMatrix(
 		for _, age := range ages {
 			at := seeded.head - uint64(age.days)*perfDayMicros
 			for _, shape := range shapes {
+				if !phaseSelection.Includes(shape.phase) {
+					continue
+				}
 				objectBefore := coldBackend.snapshot()
 				measurement := measurePerfLatency(
 					t,
