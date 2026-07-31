@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -221,4 +224,98 @@ func TestGetLog_RequiresOpsReadScope(t *testing.T) {
 		_, err := impl.GetLog(context.Background(), &servicepb.GetLogRequest{Sequence: 1})
 		require.Error(t, err)
 	})
+}
+
+// TestApply_RequiresBusinessScopes guards EN-1506 at the gate. The per-request
+// scope loop in Apply (server_bucket.go:141-162) must admit a business
+// operation on its business scope and reject it on ledger:OpsWrite alone.
+//
+// Granular scopes only: the aggregate "ledger:write" expands to OpsWrite AND
+// MetadataWrite (scopes.go:78-85), so it would pass regardless of which the
+// classifier returns — masking exactly the bug under test.
+func TestApply_RequiresBusinessScopes(t *testing.T) {
+	t.Parallel()
+
+	anonCfg := func(scopes ...internalauth.Scope) internalauth.AuthConfig {
+		return internalauth.AuthConfig{
+			Enabled: true,
+			ScopeMapping: internalauth.ScopeMapping{
+				internalauth.ScopeMappingAnonymousKey: scopes,
+			},
+		}
+	}
+
+	// newImpl wires a BucketServiceServerImpl to a MockController. When
+	// expectApply is false the gate must short-circuit before the controller,
+	// so any call fails gomock's expectations.
+	//
+	// applyDuration must be non-nil: Apply records it unconditionally on the
+	// success path (server_bucket.go:191) and a zero-value Int64Histogram
+	// panics. receiptSigner and responseSigner stay nil — both are nil-guarded.
+	newImpl := func(t *testing.T, cfg internalauth.AuthConfig, expectApply bool) *BucketServiceServerImpl {
+		t.Helper()
+
+		controller := NewMockController(gomock.NewController(t))
+		if expectApply {
+			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, nil)
+		}
+
+		histogram, err := noop.NewMeterProvider().Meter("test").Int64Histogram("grpc.apply.duration")
+		require.NoError(t, err)
+
+		return &BucketServiceServerImpl{
+			ctrl:          controller,
+			authCfg:       cfg,
+			logger:        logging.Testing(),
+			applyDuration: histogram,
+		}
+	}
+
+	cases := []struct {
+		name string
+		req  *servicepb.Request
+		// granted is the ONLY granular scope the caller holds.
+		granted internalauth.Scope
+		allowed bool
+		// wantScope is the scope the rejection message must name, proving the
+		// gate consulted the classifier rather than rejecting for some other
+		// reason. Only meaningful when allowed is false.
+		wantScope internalauth.Scope
+	}{
+		{"numscript save with LedgerWrite", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, internalauth.ScopeLedgersWrite, true, ""},
+		{"numscript save with OpsWrite only", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, internalauth.ScopeOpsWrite, false, internalauth.ScopeLedgersWrite},
+		{"add account type with MetadataWrite", &servicepb.Request{Type: &servicepb.Request_AddAccountType{}}, internalauth.ScopeMetadataWrite, true, ""},
+		{"add account type with OpsWrite only", &servicepb.Request{Type: &servicepb.Request_AddAccountType{}}, internalauth.ScopeOpsWrite, false, internalauth.ScopeMetadataWrite},
+		{"save ledger metadata with MetadataWrite", &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{}}, internalauth.ScopeMetadataWrite, true, ""},
+		// The escalation guard: an admin-only cluster operation must not be
+		// reachable with the ops scope a plain ledger:write token carries.
+		{"create query checkpoint with ClusterWrite", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}, internalauth.ScopeClusterWrite, true, ""},
+		{"create query checkpoint with OpsWrite only", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}, internalauth.ScopeOpsWrite, false, internalauth.ScopeClusterWrite},
+		{"delete query checkpoint with OpsWrite only", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}, internalauth.ScopeOpsWrite, false, internalauth.ScopeClusterWrite},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			impl := newImpl(t, anonCfg(tc.granted), tc.allowed)
+
+			_, err := impl.Apply(context.Background(), servicepb.UnsignedApplyRequest("", tc.req))
+
+			if tc.allowed {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			// Unauthenticated rather than PermissionDenied: the anonymous
+			// mapping grants scopes without a token being presented, so
+			// AuthPresentedFromContext is false (server_bucket.go:154-157).
+			require.Equal(t, codes.Unauthenticated, status.Code(err))
+			require.Contains(t, status.Convert(err).Message(),
+				"requires scope "+string(tc.wantScope),
+				"the gate must reject naming the scope the classifier chose")
+		})
+	}
 }
