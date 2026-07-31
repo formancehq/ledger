@@ -442,6 +442,31 @@ harness now supports the phase-partitioned procedure above, but no publishable
 `full` phase set has been captured yet; the historical timeout therefore
 remains the authoritative full-shape result.
 
+### Full grouped case after phase partitioning
+
+The first case-level rerun was captured on 2026-07-31 at commit
+`47aabec256d1d7143f5b35a9d9ddaeefaca54187`. The five dirty paths were the
+pre-existing instruction and local-environment files outside the PIT build;
+the harness itself was committed. The ignored raw artifact is
+`build/perf/pit-store-full-hot-grouped-effective-1d-2026-07-31.json`, bound by
+SHA-256 `5a2beb440f5c0c374957abfc231f6da6430abce26827c664289015e543459fe8`.
+
+The selected case used the complete 731-day, 512-account, 16-asset, eight-color,
+256-postings/day dataset. It retained 11 logical runs and occupied 91.8 MB
+before the measurement. Only the effective-axis, one-day, grouped query ran:
+
+| Samples | p50 | p95 | p99 | Max | Operations/s |
+|---:|---:|---:|---:|---:|---:|
+| 200 | 1.444 s | 1.603 s | 2.322 s | 2.914 s | 0.676 |
+
+The case completed in 334.0 seconds, so case-level partitioning fixes the
+all-or-nothing evidence problem for this shape. It does not establish acceptable
+interactive latency: each operation allocated 179.2 MB across approximately
+3.12 million allocations, and the measurement observed 92.5 million Pebble
+block-cache misses in aggregate. The five other grouped axis/age cases and the
+other full phases remain unmeasured. In particular, this one-day result cannot
+answer the age-ratio question for the full-cardinality grouped shape.
+
 ## Full-verifier interference
 
 The semantic verifier is intentionally outside the interactive query path, but
@@ -473,8 +498,9 @@ and deterministic logical convergence. It does **not** support broad GA:
 
 - the current steady-write rerun passes at -1.22%, but an earlier valid run
   failed at +6.02%, so production-topology variance is not closed;
-- the full grouped/cardinality store profile does not complete within 30
-  minutes;
+- the historical monolithic full profile and the six-case grouped phase both
+  time out at 30 minutes; one isolated grouped case now completes, but at
+  1.603-second p95 with the other cases still pending;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
 - the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
@@ -495,7 +521,7 @@ not add historical storage or write work.
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
 | PIT age | Current hot six-month/one-day effective p95 ratio 1.0745; no linear age penalty observed | Pass local |
 | PIT axis | Effective and insertion measured at 1d/6mo/2y | Pass local |
-| PIT shape | Local shapes measured; full grouped profile timed out at 30m | **Fail / timeout** |
+| PIT shape | Local shapes measured; full grouped effective/1d p95 1.603 s, five grouped cases and other full phases pending | Partial / capacity warning |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
