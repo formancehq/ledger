@@ -433,6 +433,7 @@ type perfEvidenceReport struct {
 	Profile          string              `json:"profile"`
 	Complete         bool                `json:"complete"`
 	SelectedPhases   []string            `json:"selectedPhases"`
+	SelectedCases    []string            `json:"selectedCases"`
 	HarnessElapsedMS float64             `json:"harnessElapsedMs"`
 	GitCommit        string              `json:"gitCommit"`
 	GitTree          string              `json:"gitTree"`
@@ -471,13 +472,18 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	caseSelection, err := parsePerfCaseSelection(os.Getenv("PIT_PERF_CASES"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	profile := selectedPerfProfile(t)
 	report := perfEvidenceReport{
 		SchemaVersion:  2,
 		GeneratedAt:    time.Now().UTC().Format(time.RFC3339Nano),
 		Profile:        profile.Name,
-		Complete:       phaseSelection.all,
+		Complete:       phaseSelection.all && caseSelection.all,
 		SelectedPhases: phaseSelection.Names(),
+		SelectedCases:  caseSelection.Names(),
 		GitCommit:      valueOrUnknown(os.Getenv("PIT_PERF_GIT_COMMIT")),
 		GitTree:        valueOrUnknown(os.Getenv("PIT_PERF_GIT_TREE")),
 		WorkingTree:    valueOrUnknown(os.Getenv("PIT_PERF_WORKTREE")),
@@ -493,8 +499,9 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 	}
 	if !report.Complete {
 		report.Pending = append(report.Pending, fmt.Sprintf(
-			"partial performance artifact: only phases %s were executed; combine phase artifacts only when profile, dataset parameters, code provenance, and machine identity match",
+			"partial performance artifact: only phases %s and matrix cases %s were executed; combine artifacts only when profile, dataset parameters, code provenance, and machine identity match",
 			strings.Join(report.SelectedPhases, ","),
+			strings.Join(report.SelectedCases, ","),
 		))
 	}
 
@@ -568,6 +575,9 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 			{name: "insertion", value: balancehistorystore.AxisInsertion},
 		} {
 			for _, age := range ages {
+				if !caseSelection.Includes(axis.name + "-" + age.name) {
+					continue
+				}
 				at := main.head - uint64(age.days)*perfDayMicros
 				if phaseSelection.Includes(perfPhaseHotUnfiltered) {
 					measurement := measurePerfHistoryLatency(
@@ -670,6 +680,7 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 			coldConfig,
 			main.result.DiskBytes,
 			phaseSelection,
+			caseSelection,
 		)
 		report.Datasets = append(report.Datasets, coldDataset)
 		report.Measurements = append(report.Measurements, coldMeasurements...)
@@ -790,7 +801,9 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 		)
 	}
 
-	if phaseSelection.Includes(perfPhaseHotUnfiltered) {
+	if phaseSelection.Includes(perfPhaseHotUnfiltered) &&
+		caseSelection.Includes(perfCaseEffective1D) &&
+		caseSelection.Includes(perfCaseEffective6Mo) {
 		oneDay := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_1d_unfiltered")
 		sixMonths := findPerfMeasurement(t, report.Measurements, "pit_hot_effective_age_6mo_unfiltered")
 		ageRatio := sixMonths.P95 / oneDay.P95
@@ -1106,7 +1119,8 @@ func measurePerfColdMatrix(
 	profile perfProfile,
 	config perfDatasetConfig,
 	equivalentHotDiskBytes uint64,
-	phaseSelection perfPhaseSelection,
+	phaseSelection perfSelection,
+	caseSelection perfSelection,
 ) (perfDatasetResult, []perfLatency, perfColdSummary) {
 	t.Helper()
 
@@ -1251,6 +1265,9 @@ func measurePerfColdMatrix(
 		{name: "insertion", value: balancehistorystore.AxisInsertion},
 	} {
 		for _, age := range ages {
+			if !caseSelection.Includes(axis.name + "-" + age.name) {
+				continue
+			}
 			at := seeded.head - uint64(age.days)*perfDayMicros
 			for _, shape := range shapes {
 				if !phaseSelection.Includes(shape.phase) {
@@ -1352,6 +1369,9 @@ func measurePerfColdMatrix(
 		{name: "insertion", value: balancehistorystore.AxisInsertion},
 	} {
 		for _, age := range ages {
+			if !caseSelection.Includes(axis.name + "-" + age.name) {
+				continue
+			}
 			at := seeded.head - uint64(age.days)*perfDayMicros
 			for _, shape := range shapes {
 				if !phaseSelection.Includes(shape.phase) {

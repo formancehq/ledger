@@ -129,9 +129,9 @@ go test ./internal/application/balancehistory \
   -run '^TestBuilderLocalPerformanceEvidence$' -count=1
 ```
 
-The store harness schema version 2 accepts a comma-separated
-`PIT_PERF_PHASES` selection. An unset value (or `all`) preserves the original
-complete sequential run. The available phases are:
+The store harness schema version 2 accepts comma-separated `PIT_PERF_PHASES`
+and `PIT_PERF_CASES` selections. An unset value (or `all`) preserves the
+original complete sequential run. The available phases are:
 
 ```text
 hot-unfiltered  hot-filtered  hot-grouped  hot-shapes
@@ -140,23 +140,41 @@ cold-unfiltered cold-filtered cold-grouped
 cardinality     backdating    write
 ```
 
-Each artifact records `complete`, `selectedPhases`, and `harnessElapsedMs`.
-Partial artifacts also carry an explicit warning in `pending`. For the `full`
-profile, run each phase independently so an expensive grouped matrix cannot
-erase already completed evidence:
+The case selector applies to the hot/cold age matrices and accepts:
+
+```text
+effective-1d  effective-6mo  effective-2y
+insertion-1d  insertion-6mo  insertion-2y
+```
+
+Each artifact records `complete`, `selectedPhases`, `selectedCases`, and
+`harnessElapsedMs`. Partial artifacts also carry an explicit warning in
+`pending`. For the `full` profile, run every hot/cold shape one matrix case at
+a time so an expensive grouped read cannot erase another completed case:
 
 ```bash
-for phase in \
-  hot-unfiltered hot-filtered hot-grouped hot-shapes \
-  compaction replica-digest \
-  cold-unfiltered cold-filtered cold-grouped \
-  cardinality backdating write
+for phase in hot-unfiltered hot-filtered hot-grouped \
+             cold-unfiltered cold-filtered cold-grouped
+do
+  for matrix_case in effective-1d effective-6mo effective-2y \
+                     insertion-1d insertion-6mo insertion-2y
+  do
+    PIT_PERF=1 PIT_PERF_PROFILE=full \
+    PIT_PERF_PHASES="$phase" PIT_PERF_CASES="$matrix_case" \
+    PIT_PERF_ENFORCE=1 \
+    PIT_PERF_OUTPUT="$PWD/build/perf/pit-store-full-${phase}-${matrix_case}-YYYY-MM-DD.json" \
+    go test ./internal/storage/balancehistorystore \
+      -run '^TestPITLocalPerformanceEvidence$' -count=1 -timeout=30m || exit 1
+  done
+done
+
+for phase in hot-shapes compaction replica-digest cardinality backdating write
 do
   PIT_PERF=1 PIT_PERF_PROFILE=full PIT_PERF_PHASES="$phase" \
-  PIT_PERF_ENFORCE=1 \
-  PIT_PERF_OUTPUT="$PWD/build/perf/pit-store-full-${phase}-YYYY-MM-DD.json" \
-  go test ./internal/storage/balancehistorystore \
-    -run '^TestPITLocalPerformanceEvidence$' -count=1 -timeout=30m || exit 1
+    PIT_PERF_ENFORCE=1 \
+    PIT_PERF_OUTPUT="$PWD/build/perf/pit-store-full-${phase}-YYYY-MM-DD.json" \
+    go test ./internal/storage/balancehistorystore \
+      -run '^TestPITLocalPerformanceEvidence$' -count=1 -timeout=30m || exit 1
 done
 ```
 
