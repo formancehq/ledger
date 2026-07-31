@@ -24,7 +24,7 @@ func TestAccountVolumesMatch(t *testing.T) {
 	ls := c.modelState.Ledger("L")
 
 	exact := map[string]oracle.VolumePair{}
-	for k, vp := range ls.Volumes() {
+	for k, vp := range ls.Volumes().All() {
 		if k.Address == "t-0:5" {
 			exact[k.Asset] = vp
 		}

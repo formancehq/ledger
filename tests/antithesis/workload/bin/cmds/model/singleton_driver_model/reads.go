@@ -149,12 +149,12 @@ func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, as
 
 // modelKnowsAccount reports whether ls holds any volume cell or metadata for addr.
 func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
-	for k := range ls.Volumes() {
+	for k := range ls.Volumes().All() {
 		if k.Address == addr {
 			return true
 		}
 	}
-	for k := range ls.Metadata() {
+	for k := range ls.Metadata().All() {
 		if k.Address == addr {
 			return true
 		}
