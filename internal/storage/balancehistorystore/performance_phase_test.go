@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -166,4 +167,23 @@ func TestParsePerfCaseSelectionRejectsUnknownCase(t *testing.T) {
 
 	_, err := parsePerfCaseSelection("effective-1d,unknown")
 	require.ErrorContains(t, err, "unknown PIT performance case")
+}
+
+func TestOverlappingPerfDurations(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_000, 0)
+	samples := []perfTimedSample{
+		{started: base, ended: base.Add(time.Millisecond), elapsed: int64(time.Millisecond)},
+		{started: base.Add(2 * time.Millisecond), ended: base.Add(4 * time.Millisecond), elapsed: int64(2 * time.Millisecond)},
+		{started: base.Add(5 * time.Millisecond), ended: base.Add(7 * time.Millisecond), elapsed: int64(2 * time.Millisecond)},
+	}
+
+	require.Equal(t, []int64{int64(2 * time.Millisecond), int64(2 * time.Millisecond)}, overlappingPerfDurations(
+		samples,
+		[]perfTimeInterval{
+			{started: base.Add(3 * time.Millisecond), ended: base.Add(5 * time.Millisecond)},
+			{started: base.Add(6 * time.Millisecond), ended: base.Add(8 * time.Millisecond)},
+		},
+	))
 }

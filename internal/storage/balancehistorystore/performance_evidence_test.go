@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -383,21 +384,25 @@ type perfReplicaDigest struct {
 }
 
 type perfCompaction struct {
-	Operations                 int         `json:"operations"`
-	ElapsedMS                  float64     `json:"elapsedMs"`
-	RunsBefore                 int         `json:"runsBefore"`
-	RunsAfter                  int         `json:"runsAfter"`
-	DiskBytesBefore            uint64      `json:"diskBytesBefore"`
-	DiskBytesAfterImmediate    uint64      `json:"diskBytesAfterImmediate"`
-	DiskBytesAfterFlush        uint64      `json:"diskBytesAfterFlush"`
-	DebtBytesBefore            uint64      `json:"debtBytesBefore"`
-	DebtBytesAfterImmediate    uint64      `json:"debtBytesAfterImmediate"`
-	DebtBytesAfterFlush        uint64      `json:"debtBytesAfterFlush"`
-	WALBytesWrittenBefore      uint64      `json:"walBytesWrittenBefore"`
-	WALBytesWrittenAfter       uint64      `json:"walBytesWrittenAfter"`
-	PebbleCumulativeWriteAmp   float64     `json:"pebbleCumulativeWriteAmp"`
-	UnfilteredBeforeCompaction perfLatency `json:"unfilteredBeforeCompaction"`
-	UnfilteredAfterCompaction  perfLatency `json:"unfilteredAfterCompaction"`
+	BacklogRunsAdded                   int         `json:"backlogRunsAdded"`
+	BacklogEffectsAdded                int         `json:"backlogEffectsAdded"`
+	Operations                         int         `json:"operations"`
+	ElapsedMS                          float64     `json:"elapsedMs"`
+	RunsBefore                         int         `json:"runsBefore"`
+	RunsAfter                          int         `json:"runsAfter"`
+	DiskBytesBefore                    uint64      `json:"diskBytesBefore"`
+	DiskBytesAfterImmediate            uint64      `json:"diskBytesAfterImmediate"`
+	DiskBytesAfterFlush                uint64      `json:"diskBytesAfterFlush"`
+	DebtBytesBefore                    uint64      `json:"debtBytesBefore"`
+	DebtBytesAfterImmediate            uint64      `json:"debtBytesAfterImmediate"`
+	DebtBytesAfterFlush                uint64      `json:"debtBytesAfterFlush"`
+	WALBytesWrittenBefore              uint64      `json:"walBytesWrittenBefore"`
+	WALBytesWrittenAfter               uint64      `json:"walBytesWrittenAfter"`
+	PebbleCumulativeWriteAmp           float64     `json:"pebbleCumulativeWriteAmp"`
+	ConcurrentReadP95RegressionPercent float64     `json:"concurrentReadP95RegressionPercent"`
+	UnfilteredBeforeCompaction         perfLatency `json:"unfilteredBeforeCompaction"`
+	UnfilteredDuringActiveCompaction   perfLatency `json:"unfilteredDuringActiveCompaction"`
+	UnfilteredAfterCompaction          perfLatency `json:"unfilteredAfterCompaction"`
 }
 
 type perfColdSummary struct {
@@ -666,7 +671,32 @@ func TestPITLocalPerformanceEvidence(t *testing.T) {
 	}
 
 	if phaseSelection.Includes(perfPhaseCompaction) {
-		report.Compaction = measurePerfCompaction(t, main.store, main.head-perfDayMicros, profile.ShapeSamples)
+		report.Compaction = measurePerfCompaction(
+			t,
+			main.store,
+			mainConfig,
+			main.head-perfDayMicros,
+			profile.ShapeSamples,
+		)
+		report.Assertions = append(
+			report.Assertions,
+			perfAssertion{
+				Name:      "active_logical_compaction_exercised",
+				Target:    ">= 2 successful logical merges",
+				Observed:  float64(report.Compaction.Operations),
+				Unit:      "operations",
+				Satisfied: report.Compaction.Operations >= 2,
+				Scope:     "forced L0 backlog on the real history store; compactor streams and atomically publishes replacement runs",
+			},
+			perfAssertion{
+				Name:      "pit_reads_overlap_active_compaction",
+				Target:    fmt.Sprintf(">= %d successful reads whose wall-clock interval intersects active compaction", min(10, profile.ShapeSamples)),
+				Observed:  float64(report.Compaction.UnfilteredDuringActiveCompaction.Samples),
+				Unit:      "samples",
+				Satisfied: report.Compaction.UnfilteredDuringActiveCompaction.Samples >= min(10, profile.ShapeSamples),
+				Scope:     "one pre-compaction pinned view remains readable while the same runs are verified, merged, published, and lease-aware garbage collection executes",
+			},
+		)
 	}
 	if phaseSelection.Includes(perfPhaseReplicaDigest) {
 		report.ReplicaDigest = measurePerfReplicaDigest(t, profile)
@@ -1796,14 +1826,40 @@ func durationMicros(nanoseconds int64) float64 {
 	return float64(nanoseconds) / float64(time.Microsecond)
 }
 
+type perfTimedSample struct {
+	started time.Time
+	ended   time.Time
+	elapsed int64
+}
+
+type perfTimeInterval struct {
+	started time.Time
+	ended   time.Time
+}
+
+type perfCompactionExecution struct {
+	operations     int
+	started        time.Time
+	ended          time.Time
+	mergeIntervals []perfTimeInterval
+	err            error
+}
+
 func measurePerfCompaction(
 	t *testing.T,
 	store *balancehistorystore.Store,
+	dataset perfDatasetConfig,
 	at uint64,
 	samples int,
 ) perfCompaction {
 	t.Helper()
 
+	const backlogRuns = balancehistorystore.DefaultRunCompactionThreshold * 2
+
+	backlogEffects, err := addPerfCompactionBacklog(store, dataset, backlogRuns)
+	if err != nil {
+		t.Fatalf("adding active PIT compaction backlog: %v", err)
+	}
 	beforeManifest, err := store.Manifest()
 	if err != nil {
 		t.Fatalf("reading pre-compaction manifest: %v", err)
@@ -1813,11 +1869,26 @@ func measurePerfCompaction(
 	if err != nil {
 		t.Fatalf("opening pre-compaction measurement view: %v", err)
 	}
+	expectedResult, err := query.AggregateHistoricalVolumes(
+		beforeView,
+		perfLedgerID,
+		balancehistorystore.AxisEffective,
+		at,
+		nil,
+		query.AggregateOptions{},
+	)
+	if err != nil {
+		_ = beforeView.Close()
+		t.Fatalf("computing pre-compaction reference result: %v", err)
+	}
 	beforeRead := measurePerfHistoryLatency(t, store, "pit_hot_unfiltered_before_compaction", "pit-compaction", samples, nil, func() error {
 		result, queryErr := query.AggregateHistoricalVolumes(
 			beforeView, perfLedgerID, balancehistorystore.AxisEffective, at, nil, query.AggregateOptions{},
 		)
 		perfResultSink = result
+		if queryErr == nil && !proto.Equal(result, expectedResult) {
+			return errors.New("pre-compaction PIT result diverged from the reference result")
+		}
 
 		return queryErr
 	})
@@ -1825,19 +1896,24 @@ func measurePerfCompaction(
 		t.Fatalf("closing pre-compaction measurement view: %v", err)
 	}
 
-	started := time.Now()
-	operations := 0
-	for {
-		compacted, compactErr := store.Compact(balancehistorystore.DefaultRunCompactionThreshold)
-		if compactErr != nil {
-			t.Fatalf("compacting PIT performance store: %v", compactErr)
-		}
-		if !compacted {
-			break
-		}
-		operations++
+	concurrentView, err := store.OpenView(beforeManifest.LogWatermark)
+	if err != nil {
+		t.Fatalf("opening active-compaction measurement view: %v", err)
 	}
-	elapsed := time.Since(started)
+	concurrentRead, execution := measurePerfReadsDuringCompaction(
+		t,
+		store,
+		concurrentView,
+		at,
+		samples,
+		expectedResult,
+	)
+	if err := concurrentView.Close(); err != nil {
+		t.Fatalf("closing active-compaction measurement view: %v", err)
+	}
+	if execution.err != nil {
+		t.Fatalf("compacting PIT performance store: %v", execution.err)
+	}
 	afterManifest, err := store.Manifest()
 	if err != nil {
 		t.Fatalf("reading post-compaction manifest: %v", err)
@@ -1852,6 +1928,9 @@ func measurePerfCompaction(
 			afterView, perfLedgerID, balancehistorystore.AxisEffective, at, nil, query.AggregateOptions{},
 		)
 		perfResultSink = result
+		if queryErr == nil && !proto.Equal(result, expectedResult) {
+			return errors.New("post-compaction PIT result diverged from the reference result")
+		}
 
 		return queryErr
 	})
@@ -1863,18 +1942,186 @@ func measurePerfCompaction(
 	}
 	afterFlushMetrics := store.DB().Metrics()
 	totalMetrics := afterFlushMetrics.Total()
+	concurrentRegression := 0.0
+	if beforeRead.P95 > 0 {
+		concurrentRegression = (concurrentRead.P95 - beforeRead.P95) / beforeRead.P95 * 100
+	}
 
 	return perfCompaction{
-		Operations: operations, ElapsedMS: float64(elapsed) / float64(time.Millisecond),
+		BacklogRunsAdded: backlogRuns, BacklogEffectsAdded: backlogEffects,
+		Operations: execution.operations, ElapsedMS: float64(execution.ended.Sub(execution.started)) / float64(time.Millisecond),
 		RunsBefore: len(beforeManifest.Runs), RunsAfter: len(afterManifest.Runs),
 		DiskBytesBefore: beforeMetrics.DiskSpaceUsage(), DiskBytesAfterImmediate: afterMetrics.DiskSpaceUsage(),
 		DiskBytesAfterFlush: afterFlushMetrics.DiskSpaceUsage(),
 		DebtBytesBefore:     beforeMetrics.Compact.EstimatedDebt, DebtBytesAfterImmediate: afterMetrics.Compact.EstimatedDebt,
 		DebtBytesAfterFlush:   afterFlushMetrics.Compact.EstimatedDebt,
 		WALBytesWrittenBefore: beforeMetrics.WAL.BytesWritten, WALBytesWrittenAfter: afterMetrics.WAL.BytesWritten,
-		PebbleCumulativeWriteAmp:   totalMetrics.WriteAmp(),
-		UnfilteredBeforeCompaction: beforeRead, UnfilteredAfterCompaction: afterRead,
+		PebbleCumulativeWriteAmp:           totalMetrics.WriteAmp(),
+		ConcurrentReadP95RegressionPercent: concurrentRegression,
+		UnfilteredBeforeCompaction:         beforeRead, UnfilteredDuringActiveCompaction: concurrentRead,
+		UnfilteredAfterCompaction: afterRead,
 	}
+}
+
+func addPerfCompactionBacklog(
+	store *balancehistorystore.Store,
+	dataset perfDatasetConfig,
+	runs int,
+) (int, error) {
+	manifest, err := store.Manifest()
+	if err != nil {
+		return 0, err
+	}
+	dataset.Accounts = max(dataset.Accounts, 256)
+	dataset.AssetBuckets = max(dataset.AssetBuckets, 8)
+	dataset.Colors = max(dataset.Colors, 4)
+	totalEffects := 0
+	for run := range runs {
+		auditSequence := manifest.AuditWatermark + uint64(run) + 1
+		logSequence := manifest.LogWatermark + uint64(run) + 1
+		effects := perfBaselineEffects(dataset, auditSequence, logSequence)
+		if _, err := store.Publish(balancehistorystore.Publication{
+			Effects: effects,
+			Coverage: balancehistorystore.Coverage{
+				AuditSequence:  auditSequence,
+				LogSequence:    logSequence,
+				SourceComplete: true,
+			},
+		}); err != nil {
+			return 0, fmt.Errorf("publishing compaction backlog run %d: %w", run, err)
+		}
+		totalEffects += len(effects)
+	}
+
+	return totalEffects, nil
+}
+
+func measurePerfReadsDuringCompaction(
+	t *testing.T,
+	store *balancehistorystore.Store,
+	view *balancehistorystore.View,
+	at uint64,
+	samples int,
+	expectedResult *commonpb.AggregateResult,
+) (perfLatency, perfCompactionExecution) {
+	t.Helper()
+
+	compactorReady := make(chan struct{})
+	beginCompaction := make(chan struct{})
+	done := make(chan perfCompactionExecution, 1)
+	go func() {
+		execution := perfCompactionExecution{}
+		close(compactorReady)
+		<-beginCompaction
+		for {
+			interval := perfTimeInterval{started: time.Now()}
+			compacted, err := store.Compact(balancehistorystore.DefaultRunCompactionThreshold)
+			interval.ended = time.Now()
+			if err != nil {
+				execution.err = err
+
+				break
+			}
+			if !compacted {
+				break
+			}
+			execution.mergeIntervals = append(execution.mergeIntervals, interval)
+			execution.operations++
+		}
+		if len(execution.mergeIntervals) > 0 {
+			execution.started = execution.mergeIntervals[0].started
+			execution.ended = execution.mergeIntervals[len(execution.mergeIntervals)-1].ended
+		} else {
+			execution.started = time.Now()
+			execution.ended = execution.started
+		}
+		done <- execution
+	}()
+
+	<-compactorReady
+	close(beginCompaction)
+	runtime.Gosched()
+	maxScheduledSamples := max(samples, 100)
+	timedSamples := make([]perfTimedSample, 0, maxScheduledSamples)
+	var (
+		execution     perfCompactionExecution
+		executionDone bool
+		queryErr      error
+	)
+	for len(timedSamples) < maxScheduledSamples {
+		if len(timedSamples) > 0 {
+			select {
+			case execution = <-done:
+				executionDone = true
+			default:
+			}
+			if executionDone {
+				break
+			}
+		}
+		sample := perfTimedSample{started: time.Now()}
+		result, err := query.AggregateHistoricalVolumes(
+			view,
+			perfLedgerID,
+			balancehistorystore.AxisEffective,
+			at,
+			nil,
+			query.AggregateOptions{},
+		)
+		sample.ended = time.Now()
+		sample.elapsed = sample.ended.Sub(sample.started).Nanoseconds()
+		perfResultSink = result
+		timedSamples = append(timedSamples, sample)
+		if err == nil && !proto.Equal(result, expectedResult) {
+			err = errors.New("PIT result during active compaction diverged from the reference result")
+		}
+		if err != nil {
+			queryErr = err
+
+			break
+		}
+	}
+	if !executionDone {
+		execution = <-done
+	}
+	if queryErr != nil {
+		t.Fatalf("reading PIT view during active compaction: %v", queryErr)
+	}
+	if execution.err != nil {
+		return perfLatency{}, execution
+	}
+	overlapping := overlappingPerfDurations(timedSamples, execution.mergeIntervals)
+	if len(overlapping) == 0 {
+		t.Fatal("successful PIT compaction merges completed without an overlapping read sample")
+	}
+	measurement := summarizePerfDurations(
+		"pit_hot_unfiltered_during_active_compaction",
+		"pit-compaction-active",
+		overlapping,
+		map[string]any{
+			"axis": "effective", "shape": "unfiltered", "pinnedPreCompactionView": true,
+			"requestedSamples": samples, "sampleBudget": maxScheduledSamples,
+			"scheduledSamples": len(timedSamples), "overlappingSamples": len(overlapping),
+			"resourceAttribution": "latency only; allocation, CPU, and DB IO are omitted because the compactor shares the measurement interval",
+		},
+	)
+
+	return measurement, execution
+}
+
+func overlappingPerfDurations(samples []perfTimedSample, intervals []perfTimeInterval) []int64 {
+	overlapping := make([]int64, 0, len(samples))
+	for _, sample := range samples {
+		for _, interval := range intervals {
+			if sample.started.Before(interval.ended) && sample.ended.After(interval.started) {
+				overlapping = append(overlapping, sample.elapsed)
+
+				break
+			}
+		}
+	}
+
+	return overlapping
 }
 
 func measureLiveAndWriteInterference(t *testing.T, profile perfProfile) (perfLatency, perfLatency, perfLatency, perfLatency) {
