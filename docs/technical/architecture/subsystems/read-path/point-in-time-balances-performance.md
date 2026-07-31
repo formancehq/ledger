@@ -409,6 +409,109 @@ The independent full archive profile encoded, published, and verified a
 profile measured 42.0 ms and 13.7 ms respectively. These are codec/cache
 measurements, not end-to-end PIT API latency.
 
+### Full cold matrices after case partitioning
+
+The complete full-profile cold matrix was captured on 2026-07-31 at commit
+`b38a18e106a54433287ede9929f27dc0617800f7`, tree
+`c05b700ed498063ba68a895a593f705d9b707b0c`, on Apple M5 Pro,
+darwin/arm64, Go 1.26.5. The five dirty paths were the same unrelated
+instruction and local-environment files. Every case used the same 731-day,
+512-account, 16-asset, eight-color, 256-postings/day dataset. It contained
+505,344 effects and retained 11 logical runs: seven hot and four cold. The
+archive held 32 immutable parts; every cold-miss sample opened eight
+intersecting parts sequentially.
+
+Each artifact is one intentionally partial phase/case selection
+(`complete=false`), not an incomplete execution. All 18 artifacts are valid
+schema-version-2 JSON, contain 50 cold-miss and 200 verified cache-hit samples,
+and have matching provenance and dataset parameters. Their filename pattern is
+`build/perf/pit-store-full-cold-<shape>-<axis>-<age>-b38a18e10.json`:
+
+| Shape | Axis / age | SHA-256 |
+|---|---|---|
+| Unfiltered | Effective / 1 day | `b5aceec94e7ec55733d4be897741a10d48859b57aaa3775fb4c8a797e4a8f526` |
+| Unfiltered | Effective / 6 months | `cd9a7b733df897f827b5f1cbdcae24856c63d858fc1af5f7724f3deb45501455` |
+| Unfiltered | Effective / 2 years | `6aa0a19f13cf9abe5d441c29bc05d4c4785f40fd8aed9751f380940000412ca5` |
+| Unfiltered | Insertion / 1 day | `8138955ab4c5a3b137ebcefd07f8b0ca20af5b6991759a5122ac8abc91efb985` |
+| Unfiltered | Insertion / 6 months | `9c464c69224a3c76a06c8c3ea22ad7796a8011f3059ef5e6e95ea414ca7445a3` |
+| Unfiltered | Insertion / 2 years | `e5faa681ec8b8a5c84ee427a7ad0aa4ded40b86bd69fd7acbbc7eec6ef7991fb` |
+| Filtered, 16 accounts | Effective / 1 day | `fe53726c167f3418248ca62fdea684ac90f2d1d25ed50a2dee8297ddc3d3d573` |
+| Filtered, 16 accounts | Effective / 6 months | `de64b81ea23d9b23c29014f5eecdabf3c74ad8da98efa209e70ed6c0c1a31307` |
+| Filtered, 16 accounts | Effective / 2 years | `dcf76a54b08b04a5a465bd46e93c853136159589f230831100ca209d8fba6f01` |
+| Filtered, 16 accounts | Insertion / 1 day | `53bf4eb22bbaabec26efb47233ba889a8551505d2d62afbc2317a46701ee5985` |
+| Filtered, 16 accounts | Insertion / 6 months | `6ac4add3f807a2d5c6656b5bd68f9580ce62c97eead531839a45cda55301bf93` |
+| Filtered, 16 accounts | Insertion / 2 years | `165675e4c25d23db4f4a35fa6577eb47722ab01f40aaf5b741b32c9dd0499949` |
+| Grouped | Effective / 1 day | `976d6fb161a37524bb5ff1d3b372459e3ccfcda62b8831340bc9bc4ae7451a0c` |
+| Grouped | Effective / 6 months | `358fae779318bb4fc089c920d42f907885f193260257927cfff49a3ae3b52730` |
+| Grouped | Effective / 2 years | `f4a43a8418155f940f0cb32f41381bb0c2e4e0033d58bba7edcf27464fc84aaa` |
+| Grouped | Insertion / 1 day | `77f223720b038d18209e4ea6ced3309fc869ec51f36c4a406107c2b8f21e1fe1` |
+| Grouped | Insertion / 6 months | `5bb6b71300b134429ff97d197641d384e120ff80b77498a9c8ec24d10bc6269c` |
+| Grouped | Insertion / 2 years | `eb2665b99e902a328ee980a3457f25a49879bb12575ee2ba0471fe10758db37f` |
+
+The unfiltered case harnesses completed in 77.3-83.6 seconds, filtered cases
+in 205.1-210.5 seconds, and grouped cases in 695.7-782.3 seconds:
+
+| Shape | Axis | Age | Cold miss p50 | p95 | p99 | Cache hit p50 | p95 | p99 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Unfiltered | Effective | 1 day | 291.904 ms | 306.043 ms | 310.007 ms | 115.332 ms | 119.930 ms | 134.365 ms |
+| Unfiltered | Effective | 6 months | 273.123 ms | 282.912 ms | 298.934 ms | 103.440 ms | 107.839 ms | 121.503 ms |
+| Unfiltered | Effective | 2 years | 290.104 ms | 298.943 ms | 307.003 ms | 115.771 ms | 121.662 ms | 132.944 ms |
+| Unfiltered | Insertion | 1 day | 293.029 ms | 299.014 ms | 302.902 ms | 121.062 ms | 132.461 ms | 146.072 ms |
+| Unfiltered | Insertion | 6 months | 275.918 ms | 282.071 ms | 288.996 ms | 107.821 ms | 112.750 ms | 121.280 ms |
+| Unfiltered | Insertion | 2 years | 292.963 ms | 319.091 ms | 336.909 ms | 119.052 ms | 131.234 ms | 134.706 ms |
+| Filtered, 16 accounts | Effective | 1 day | 1.057 s | 1.101 s | 1.139 s | 516.163 ms | 546.494 ms | 584.583 ms |
+| Filtered, 16 accounts | Effective | 6 months | 1.073 s | 1.189 s | 1.206 s | 516.312 ms | 545.734 ms | 854.947 ms |
+| Filtered, 16 accounts | Effective | 2 years | 1.059 s | 1.102 s | 1.138 s | 514.935 ms | 568.229 ms | 585.322 ms |
+| Filtered, 16 accounts | Insertion | 1 day | 1.063 s | 1.095 s | 1.129 s | 516.218 ms | 545.277 ms | 586.964 ms |
+| Filtered, 16 accounts | Insertion | 6 months | 1.064 s | 1.098 s | 1.123 s | 517.200 ms | 600.476 ms | 685.805 ms |
+| Filtered, 16 accounts | Insertion | 2 years | 1.057 s | 1.116 s | 1.138 s | 505.824 ms | 529.299 ms | 544.466 ms |
+| Grouped | Effective | 1 day | 2.915 s | 3.303 s | 3.391 s | 2.348 s | 2.559 s | 2.606 s |
+| Grouped | Effective | 6 months | 3.404 s | 4.012 s | 5.084 s | 2.327 s | 2.878 s | 2.911 s |
+| Grouped | Effective | 2 years | 3.385 s | 3.966 s | 4.374 s | 2.805 s | 3.023 s | 3.130 s |
+| Grouped | Insertion | 1 day | 2.903 s | 3.415 s | 3.438 s | 2.327 s | 2.548 s | 2.679 s |
+| Grouped | Insertion | 6 months | 3.192 s | 3.264 s | 3.512 s | 2.317 s | 2.780 s | 2.933 s |
+| Grouped | Insertion | 2 years | 3.172 s | 3.235 s | 3.250 s | 2.311 s | 2.684 s | 2.727 s |
+
+The p95 age ratios make the supported claim precise:
+
+| Shape / axis | Miss 6mo/1d | Miss 2y/1d | Hit 6mo/1d | Hit 2y/1d |
+|---|---:|---:|---:|---:|
+| Unfiltered / effective | 0.924 | 0.977 | 0.899 | 1.014 |
+| Unfiltered / insertion | 0.943 | 1.067 | 0.851 | 0.991 |
+| Filtered / effective | 1.080 | 1.000 | 0.999 | 1.040 |
+| Filtered / insertion | 1.002 | 1.019 | 1.101 | 0.971 |
+| Grouped / effective | 1.215 | 1.201 | 1.125 | 1.182 |
+| Grouped / insertion | 0.956 | 0.947 | 1.091 | 1.053 |
+
+There is no monotonic or linear age penalty: some older cutoffs are faster,
+and the largest observed age effect is the grouped effective six-month cold
+miss at 1.215x the one-day p95. That comparison is not the formal hot
+unfiltered age gate, and it is evidence that arbitrary shapes cannot promise
+identical latency. Query shape dominates age. Across both axes and all ages,
+cold-miss p95 is 282-319 ms unfiltered, 1.095-1.189 seconds filtered, and
+3.235-4.012 seconds grouped. Cache-hit p95 is 108-132 ms, 529-600 ms, and
+2.548-3.023 seconds respectively.
+
+The shape cost is also visible in allocations. Cold misses allocate
+21.1-21.3 MB unfiltered, 136.7-137.1 MB filtered, and 485.2-501.1 MB grouped
+per operation. Verified cache hits still allocate 10.7-10.9 MB, 71.8-72.3 MB,
+and 420.4-436.2 MB respectively. Cold-miss object-fetch p95 was 1.35-1.42 ms
+for unfiltered reads and 7.2-7.6 ms for filtered/grouped reads, far below the
+end-to-end grouped latency. Fetch caching therefore removes most backend I/O
+but not archive decoding, historical merge, transformation, or result
+materialization. Cold-miss p95 uses 50 query samples while cache-hit p95 uses
+200, so the two distributions do not have equal statistical confidence. Most
+cache-hit cases still observed eight backend fetches across 200 samples after
+cache churn; their per-fetch percentile is an eight-sample diagnostic, not a
+network-latency estimate.
+
+This remains a local-filesystem result. The OS page cache was not flushed, and
+there is no S3 request, TLS, network, throttling, or cross-AZ latency. A real
+object store adds deployment-specific behavior around the same decode and
+merge work; these local results do not predict its total latency. It cannot
+eliminate the measured grouped CPU/allocation cost. Production cold acceptance
+still requires the deployment-specific object-store matrix.
+
 ## Storage, compaction, and replica convergence
 
 The two-year hot dataset occupied 54.4 MB: 2,139 bytes per posting or
@@ -642,12 +745,15 @@ and deterministic logical convergence. It does **not** support broad GA:
 
 - the current steady-write rerun passes at -1.22%, but an earlier valid run
   failed at +6.02%, so production-topology variance is not closed;
-- the historical monolithic full profile and the six-case grouped phase both
-  time out at 30 minutes; all six partitioned grouped cases complete, but at
-  1.445-2.363-second p95;
+- the historical monolithic full profile and the six-case hot grouped phase
+  both time out at 30 minutes; all six partitioned hot grouped cases complete,
+  but at 1.445-2.363-second p95;
 - the full current-filtered matrix completes at 89.360-123.116 ms p95, while
   grouped max-precision color collapse reaches 9.716 seconds p95 and 24.584
   seconds p99;
+- the full local-filesystem cold matrix completes, but cold-miss p95 rises from
+  282-319 ms unfiltered to 1.095-1.189 seconds filtered and 3.235-4.012
+  seconds grouped; a real object store remains unmeasured;
 - the full store-stress phase is +4.56% p99 at steady history cadence, but
   +22.45% under forced history-store saturation;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
@@ -668,10 +774,10 @@ not add historical storage or write work.
 | Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Full unfiltered effective ratio 0.550; insertion 6mo ratio 1.165 and 2y ratio 1.382; full grouped ratios 0.807/1.080; full filtered effective 6mo/2y ratios 0.901/1.061 and insertion ratios 1.257/1.378 | Effective gate pass / insertion age-sensitive |
-| PIT axis | Effective and insertion measured at 1d/6mo/2y locally for full unfiltered, filtered, and grouped shapes | Pass local / full hot matrix |
-| PIT shape | Full unfiltered p95 15.135-29.637 ms; filtered p95 89.360-123.116 ms; grouped p95 1.445-2.363 s; grouped max-precision color collapse p95 9.716 s | Complete local hot shapes / severe grouped capacity warning |
-| PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
+| PIT age | Hot full ratios vary by shape/axis; cold full ratios span 0.851-1.215 with no monotonic growth | Effective hot gate pass / shape and axis dependent |
+| PIT axis | Effective and insertion measured at 1d/6mo/2y locally for full unfiltered, filtered, and grouped shapes | Pass local / full hot and cold matrices |
+| PIT shape | Hot full p95 ranges from 15.135 ms unfiltered to 9.716 s grouped transform; cold full miss p95 ranges from 282 ms unfiltered to 4.012 s grouped | Complete local hot/cold shapes / severe grouped capacity warning |
+| PIT source | Full local-filesystem cold miss and verified cache hit matrices complete; real object network absent | Pass local / pending deployment |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
 | Capacity | Local bytes/effect measured; cold physical reclamation and production formula absent | Partial |
