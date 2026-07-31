@@ -281,16 +281,27 @@ just k8s-push-images
 property drivers under `main/` are tested exclusively by the Antithesis
 hypervisor.
 
-## Launching the targeted PIT idempotency campaign
+## Launching targeted PIT Compose campaigns
 
 Use a filtered workload image so the composer can schedule only the setup and
-property driver relevant to this campaign. Build, validate and launch must use
-the same rendered Compose directory:
+property drivers relevant to one campaign. Build, validate and launch must use
+the same rendered Compose directory. Select one of these repository-owned
+campaigns:
+
+| Campaign | Included commands | Test name | Description |
+|---|---|---|---|
+| Scope equivalence | `main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence` | `ledger-pit-scope-equivalence` | `PIT fast path equals exhaustive account fold on both time axes` |
+| Idempotent retry | `main/first_default_ledger,main/parallel_driver_idempotency` | `ledger-pit-idempotency` | `PIT keyed retry changes monetary history exactly once` |
+
+Set `include`, `test_name`, and `description` from exactly one row, then run:
 
 ```sh
 cd tests/antithesis
 export ANTITHESIS_REPOSITORY='<tenant registry repository>'
-include='main/first_default_ledger,main/parallel_driver_idempotency'
+
+include='main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence'
+test_name='ledger-pit-scope-equivalence'
+description='PIT fast path equals exhaustive account fold on both time axes'
 
 just push-images "$include"
 
@@ -305,8 +316,8 @@ snouty launch \
   --config "$config_dir" \
   --duration "$DURATION_MINUTES" \
   --source ledger \
-  --test-name ledger-pit-idempotency \
-  --description 'PIT keyed retry changes monetary history exactly once'
+  --test-name "$test_name" \
+  --description "$description"
 ```
 
 Do not launch when image build or validation fails. Keep the returned `run_id`;
