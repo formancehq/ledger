@@ -7,7 +7,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
-	"github.com/holiman/uint256"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -64,9 +63,9 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		// NotFound = no entries server-side; validate as zero volumes / no metadata.
+		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, uint256.Int{}, uint256.Int{}, false, nil)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
@@ -78,8 +77,8 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		return
 	}
 
-	gotIn, gotOut, found := accountAssetVolumes(acct, asset)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotIn, gotOut, found, acct.GetMetadata())
+	gotVols, wellFormed := accountVolumeSet(acct)
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata())
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what
@@ -209,29 +208,33 @@ func pickCell(g oracle.GlobalState) (ledger, addr, asset string, ok bool) {
 	return c.ledger, c.key.Address, c.key.Asset, true
 }
 
-// accountAssetVolumes extracts (input, output) for one asset from a GetAccount
-// response. The workload only ever exercises uncolored postings, so we look
-// up the uncolored bucket (color="") explicitly — colored buckets are out of
-// scope for this driver model. found=false when the bucket is missing.
-func accountAssetVolumes(acct *commonpb.Account, asset string) (in, out uint256.Int, found bool) {
+// accountVolumeSet extracts the account's full volume set as asset -> volumes,
+// so validation covers every returned cell — a ghost row under any asset is
+// caught, not just the probed one. The workload only ever exercises uncolored
+// postings, so ok=false marks a response shape no model state explains — a
+// colored bucket, or an unparseable amount — and the caller's validation fails
+// it outright rather than mistaking it for an empty reading.
+func accountVolumeSet(acct *commonpb.Account) (map[string]oracle.VolumePair, bool) {
 	if acct == nil {
-		return in, out, false
+		return nil, true
 	}
 
-	v := acct.FindVolume(asset, "")
-	if v == nil {
-		return in, out, false
+	out := make(map[string]oracle.VolumePair, len(acct.GetVolumes()))
+	for _, entry := range acct.GetVolumes() {
+		if entry.GetColor() != "" {
+			return nil, false
+		}
+
+		var vp oracle.VolumePair
+		if vp.Input.SetFromDecimal(entry.GetVolumes().GetInput()) != nil ||
+			vp.Output.SetFromDecimal(entry.GetVolumes().GetOutput()) != nil {
+			return nil, false
+		}
+
+		out[entry.GetAsset()] = vp
 	}
 
-	if err := in.SetFromDecimal(v.GetInput()); err != nil {
-		in.Clear()
-	}
-
-	if err := out.SetFromDecimal(v.GetOutput()); err != nil {
-		out.Clear()
-	}
-
-	return in, out, true
+	return out, true
 }
 
 // absentLedgerName returns a ledger name outside the fixed fleet — the

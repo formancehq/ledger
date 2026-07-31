@@ -448,43 +448,46 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, gotIn, gotOut uint256.Int, found bool, serverMeta map[string]*commonpb.MetadataValue) {
-	key := oracle.VolumeKey{Address: addr, Asset: asset}
-
-	if c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
-		return volumeCellMatches(ls, key, gotIn, gotOut, found) && metadataMatches(ls, addr, serverMeta)
+		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
 	}
 
 	assert.Unreachable("singleton_driver_model: account read outside model", internal.Details{
-		"ledger":         ledger,
-		"address":        addr,
-		"asset":          asset,
-		"serverIn":       gotIn.Dec(),
-		"serverOut":      gotOut.Dec(),
-		"serverHadAsset": found,
-		"serverMeta":     renderMetaMap(serverMeta),
-		"modelMeta":      c.modelAccountMetaDump(ledger, addr),
+		"ledger":     ledger,
+		"address":    addr,
+		"asset":      asset,
+		"serverVols": renderVolumeSet(serverVols),
+		"wellFormed": wellFormed,
+		"serverMeta": renderMetaMap(serverMeta),
+		"modelMeta":  c.modelAccountMetaDump(ledger, addr),
 	})
 }
 
-// volumeCellMatches reports whether ls holds exactly the (gotIn, gotOut, found)
-// reading for cell key: present with matching volumes, or absent when the server
-// returned no row (the base's purge sweep already removed zero-balance
-// EPHEMERAL/TRANSIENT cells). An empty asset — a metadata-only pick — is never a
-// present cell, so it imposes no volume constraint.
-func volumeCellMatches(ls oracle.LedgerState, key oracle.VolumeKey, gotIn, gotOut uint256.Int, found bool) bool {
-	vp, present := ls.Volumes()[key]
-	switch {
-	case found && present && vp.Input.Cmp(&gotIn) == 0 && vp.Output.Cmp(&gotOut) == 0:
-		return true
-	case !found && !present:
-		return true
+// accountVolumesMatch reports whether ls holds exactly the returned volume set
+// for addr — same assets, same cumulative volumes. GetAccount returns the
+// account's whole volume set in one linearizable snapshot, so a returned cell
+// the base lacks (a ghost row under ANY asset, e.g. a stranded zero-balance
+// row the base's purge sweep removed) and a base cell the server omitted are
+// both mismatches.
+func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[string]oracle.VolumePair) bool {
+	cells := 0
+	for k, vp := range ls.Volumes() {
+		if k.Address != addr {
+			continue
+		}
+
+		g, ok := got[k.Asset]
+		if !ok || g.Input.Cmp(&vp.Input) != 0 || g.Output.Cmp(&vp.Output) != 0 {
+			return false
+		}
+		cells++
 	}
 
-	return false
+	return cells == len(got)
 }
 
 // metadataMatches reports whether ls holds exactly serverMeta for addr — same

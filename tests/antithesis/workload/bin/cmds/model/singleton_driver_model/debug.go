@@ -258,6 +258,17 @@ func renderMetaMap(m map[string]*commonpb.MetadataValue) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
+// renderVolumeSet renders a returned volume set as {asset=(in,out),...}, sorted.
+func renderVolumeSet(vols map[string]oracle.VolumePair) string {
+	parts := make([]string, 0, len(vols))
+	for asset, vp := range vols {
+		parts = append(parts, fmt.Sprintf("%s=(%s,%s)", asset, vp.Input.Dec(), vp.Output.Dec()))
+	}
+	sort.Strings(parts)
+
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
 // modelAccountMetaDump renders the committed model's metadata for addr as
 // {k=value[ft],...} — for diagnosing read mismatches. Acquires c.mu.
 func (c *Checker) modelAccountMetaDump(ledger, addr string) string {
