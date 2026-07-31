@@ -8,10 +8,18 @@
 | **Type** | Safety |
 | **Property** | At every queried timestamp, effective-time and insertion-time PIT aggregates equal an independent fold of resolved postings and compensating reversal postings, with boundary timestamps included atomically and no double inversion. |
 | **Invariant** | `Always(pit_result == oracle_fold(axis, timestamp, returned_watermark), "pit: effective and insertion axes exactly fold resolved postings and reversals")`. Every successful monetary response must be exact; eventual or reachability semantics would be too weak. |
-| **Antithesis Angle** | Reorder effective time relative to insertion time, commit reversals while builders lag, kill around same-timestamp multi-effect publication, and compare replicas with different publication/compaction layouts at a common source watermark. |
+| **Antithesis Angle** | Reorder effective time relative to insertion time, commit reversals while builders lag, and kill around same-timestamp multi-effect publication. Explicit common-watermark cross-replica comparison and observed compaction/tiering coverage remain follow-up extensions. |
 | **Why It Matters** | The two axes answer different accounting questions. Applying a reversal on the wrong axis, exposing half of a same-timestamp pair, or reversing an already-compensating posting changes historical balances without any storage error. |
 | **Confidence** | High |
 | **Focus** | Data Integrity |
+
+**Implementation:** Implemented. `first_default_ledger` seeds the isolated
+`pitaxis-oracle` corpus before faults; `parallel_driver_pit_dual_axis` samples
+one direct-replica boundary during chaos; `eventually_pit_dual_axis` exhausts
+every boundary and account on every resolved replica through the complete log
+watermark after writers stop. This first implementation deliberately freezes
+the effect corpus before chaos; mutations and ambiguous retries during faults
+remain an incremental extension and are not claimed by the current campaign.
 
 **Open Questions:**
 
@@ -33,14 +41,45 @@
 
 ## Failure scenario to explore
 
-1. Generate direct, Numscript, and mirror-resolved transactions with insertion times after/before varied effective timestamps.
+1. Generate one property-owned batch containing backdated, future and same-insertion-time direct transactions. Add Numscript and mirror variants only after authenticating their resolved public transactions.
 2. Revert some normally and some at the original effective date.
 3. Query immediately before, exactly at, and immediately after every effective/insertion boundary while faults interrupt builder progress.
 4. Compare account and ledger-wide asset totals to an independent committed-log oracle through the response watermark; also require total inputs equal total outputs per asset/color.
-5. Repeat after compaction/tiering and across replicas at a common watermark.
+5. Future extension: prove compaction/tiering occurred, then repeat across
+   replicas pinned to one explicit common watermark.
 
 ## Instrumentation status
 
-- **Existing SDK instrumentation:** missing. Compatibility and store tests are deterministic Go assertions only.
-- **Missing SUT-side guidance:** workload-side `Always` is authoritative. Add SUT `Reachable` markers for backdated effect, normal reversal, and at-effective-date reversal reduction so Antithesis can seek the semantic boundaries.
-- **Workload-side check:** volume consistency helpers exist, but no dual-axis resolved-log oracle or PIT trailer-aware comparison exists.
+- **Implemented fixture and reachability:** `SeedPITDualAxisFixture` commits four
+  explicit transactions in one proposal, including backdated and future
+  effective timestamps, then commits one normal reversal and one
+  `at_effective_date` reversal. Three unique `Reachable` assertions prove all
+  semantic forms were accepted before chaos starts.
+- **Implemented independent oracle:** `LoadPITDualAxisOracle` authenticates the
+  property-owned postings, reversal directions, contiguous ledger-local IDs,
+  effective timestamps, the shared insertion timestamp of the four-order
+  proposal, and the six outer global log sequences through `ListLogs`, without
+  calling the SUT reducer or reading the balance-history store.
+  `FoldPITDualAxis` includes a proposal only after its actual global end
+  watermark; unrelated global logs before, between or after the three property
+  proposals remain legal cutoffs. Compensating postings are treated as already
+  reversed.
+- **Implemented fault-time safety:** `parallel_driver_pit_dual_axis` samples a
+  direct replica, both axes, every `t-1/t/t+1` neighborhood and either the full
+  ledger or one exact account. Every successful response fires
+  `Always(..., "pit: effective and insertion axes exactly fold resolved postings and reversals")`;
+  classified fail-closed responses are inconclusive.
+- **Implemented quiescent completeness:** `eventually_pit_dual_axis` requires
+  every generated boundary/scope case on every resolved replica with
+  `minLogSequence=oracle.MaxLogSequence()`, the authenticated global sequence
+  of the final property log. Each replica may legitimately return a later
+  watermark; this is a per-replica exact fold, not yet an explicit
+  common-watermark comparison. Ledger-wide samples additionally assert
+  input/output conservation independently for every asset/color bucket.
+- **Future maintenance coverage:** the current command does not assert that a
+  compaction or tiering event occurred. A later campaign must add independent
+  maintenance evidence before claiming layout-transition coverage.
+- **Optional SUT-side guidance:** reducer-side markers are no longer required
+  for coverage because the fault-free first command deterministically commits
+  all three semantic forms. They may still improve search localization in a
+  future campaign, but the public workload `Always` remains authoritative.

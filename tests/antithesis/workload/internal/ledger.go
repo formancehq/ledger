@@ -57,6 +57,7 @@ const (
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
 	PrefixPITScope         OwnedLedgerPrefix = "pitscope"
 	PrefixPITIdempotency   OwnedLedgerPrefix = "pitidem"
+	PrefixPITDualAxis      OwnedLedgerPrefix = "pitaxis"
 
 	// PrefixSentinel covers the witness-ledger family used by the
 	// operational singletons (scaling_structured, rolling_restart,
@@ -95,6 +96,7 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixStaleReads,
 	PrefixPITScope,
 	PrefixPITIdempotency,
+	PrefixPITDualAxis,
 	PrefixSentinel,
 	PrefixModel,
 }

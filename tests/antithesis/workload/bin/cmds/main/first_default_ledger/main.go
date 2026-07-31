@@ -27,6 +27,9 @@ func main() {
 	if err := internal.SeedPITConvergenceFixture(ctx, client); err != nil {
 		log.Fatalf("error creating point-in-time convergence fixture: %s", err)
 	}
+	if err := internal.SeedPITDualAxisFixture(ctx, client); err != nil {
+		log.Fatalf("error creating point-in-time dual-axis fixture: %s", err)
+	}
 
 	log.Println("composer: first_default_ledger: done")
 }

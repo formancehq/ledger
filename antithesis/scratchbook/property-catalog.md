@@ -47,8 +47,14 @@ faults move the primary/history boundary or alter temporal state.
 | **Type** | Safety |
 | **Property** | Backdated/future transactions and both reversal modes affect effective and insertion cutoffs exactly once according to their documented timestamps. |
 | **Invariant** | `Always(success => aggregate == independentEffectOracle(axis, requestedAt, trailer.logWatermark))`; `Always` matches a monetary invariant on every success. |
-| **Antithesis Angle** | Reorder timestamps and commits, retry ambiguous writes, reverse during leader changes, and read both axes at boundary timestamps. |
+| **Antithesis Angle** | Seed deliberately reordered effective/commit timestamps, then fault builder publication, compaction, tiering and direct-replica reads at every boundary timestamp. Chaos-time mutation and ambiguous-retry variants remain a later expansion. |
 | **Why It Matters** | Applying a correction on the wrong axis silently rewrites financial history. |
+
+**Implementation:** Implemented by the isolated `pitaxis-oracle` fixture,
+`parallel_driver_pit_dual_axis`, and `eventually_pit_dual_axis`. Successful
+responses are folded independently through their returned log watermark; the
+quiescent phase exhausts both axes, every boundary neighborhood, ledger/account
+scope and every resolved replica.
 
 **Open Questions:**
 

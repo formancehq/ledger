@@ -111,6 +111,22 @@ head` only when the builder reopens readiness at equal manifest/source
 audit-and-log watermarks. It guides Antithesis toward recovery completions but
 does not replace the public all-member monetary assertion.
 
+The P0 `integrity-dual-axis-reversal-exactness` property uses a separate
+`pitaxis-oracle` ledger:
+
+- `first_default_ledger` commits a property-owned batch with backdated, future
+  and same-insertion-time effects, followed by normal and
+  `at_effective_date` reversals;
+- `parallel_driver_pit_dual_axis` samples direct stale reads while faults are
+  active, and treats classified history failures as inconclusive;
+- `eventually_pit_dual_axis` crosses every distinct effective/insertion
+  timestamp's `t-1`, `t` and `t+1` values with the ledger-wide scope and each
+  exact property-owned account on every resolved replica;
+- the independent fold uses only the explicit postings plus public commit
+  timestamps, caps effects at the response trailer's log watermark, and never
+  imports the production reducer; ledger-wide results must also conserve input
+  and output per asset/color.
+
 `Dockerfile.antithesis` enables the `antithesis` Go build tag for these
 test-only checkpoints. The ordinary production build compiles no-op helpers and
 does not interpret the workload probe metadata.
@@ -292,6 +308,7 @@ campaigns:
 |---|---|---|---|
 | Scope equivalence | `main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence` | `ledger-pit-scope-equivalence` | `PIT fast path equals exhaustive account fold on both time axes` |
 | Idempotent retry | `main/first_default_ledger,main/parallel_driver_idempotency` | `ledger-pit-idempotency` | `PIT keyed retry changes monetary history exactly once` |
+| Dual-axis reversal exactness | `main/first_default_ledger,main/parallel_driver_pit_dual_axis,main/eventually_pit_dual_axis` | `ledger-pit-dual-axis` | `PIT effective and insertion axes exactly fold atomic postings and reversals` |
 
 Set `include`, `test_name`, and `description` from exactly one row, then run:
 
