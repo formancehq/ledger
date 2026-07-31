@@ -68,6 +68,13 @@ func resetLogPayload(p *commonpb.LogPayload) {
 
 func resetLedgerLog(ll *commonpb.LedgerLog) {
 	ll.Id = 0
+	// The volume-annotation lists are absent from the wire on most logs, so a
+	// leftover would survive the next unmarshal and poison excludedForLog —
+	// the exclusion set that gates every posting-index write. Truncate to keep
+	// the backing arrays (same idiom as Transaction.Postings).
+	ll.PurgedVolumes = ll.GetPurgedVolumes()[:0]
+	ll.NewKeptVolumes = ll.GetNewKeptVolumes()[:0]
+	ll.EphemeralVolumes = ll.GetEphemeralVolumes()[:0]
 	// Preserve ll.Date (always present in apply logs).
 	// Preserve ll.Data (always present).
 
