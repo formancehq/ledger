@@ -129,6 +129,24 @@ Machine identity and the three `PIT_PERF_GIT_*` values should be supplied as
 environment variables for a publishable run; the harness writes `unknown` when
 they are omitted.
 
+### Current-branch post-bootstrap rerun
+
+The local profile was rerun on 2026-07-31 after the empty-source bootstrap fix
+and the Antithesis PIT workload landed. The source commit was `dbec9ee6f` on
+`feat/point-in-time-balances-v3`; the only dirty paths were pre-existing user
+files outside the PIT scope. The machine was an Apple M5 Pro running
+darwin/arm64 and Go 1.26.5.
+
+| Artifact | SHA-256 | Test duration |
+|---|---|---:|
+| `build/perf/pit-store-local-2026-07-31-post-bootstrap.json` | `94d31c8328d23af00b733740e2f92d30cef2190faf7dab3b70b887be523d7f91` | 325.66 s |
+| `build/perf/pit-builder-local-2026-07-31-post-bootstrap.json` | `c788fd19a3ac7fa5661ce278bb92829ba81ad7cbb7cfc59cc035ff67bd605266` | 214.31 s |
+
+Both tests ran with `PIT_PERF_ENFORCE=1` and passed every acceptance
+assertion. The raw artifacts are intentionally ignored build outputs; the
+checksums above bind the summarized local evidence without treating generated
+samples as source files.
+
 ## Synchronous write path and asynchronous lag
 
 PIT does not add a fifth synchronous notification target. The production
@@ -171,11 +189,31 @@ result must not be rounded into a pass. PIT should remain opt-in and should not
 be enabled broadly until a production-like canary confirms the write p99 on the
 actual storage topology.
 
+The current-branch rerun used the same five-trial A/B/A method and produced a
+valid, passing bracket:
+
+| Primary write sample | Samples | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| Combined A baseline | 10,000 | 3.627 ms | 4.333 ms | 5.347 ms |
+| PIT steady state | 5,000 | 3.431 ms | 4.155 ms | 5.281 ms |
+
+The rerun's pooled p99 change is **-1.22%**, passing the `<5%` target, and its
+before/after baseline drift is 1.63%, inside the 10% validity bound. Per-trial
+p99 changes ranged from -9.00% to +1.92%, with a -0.15% median. This newer run
+supersedes the local acceptance state for the current commit, but does not
+erase the earlier +6.02% failure: together they show why a production-like
+canary remains a rollout gate rather than allowing a broad default enablement.
+
 Builder publication lag passes its local gate:
 
 | Tail metric | p50 | p95 | p99 | Target |
 |---|---:|---:|---:|---:|
 | Audit append to published manifest | 199.87 ms | 201.85 ms | 213.52 ms | p99 `<500 ms` |
+
+The current-branch rerun measured 199.98 ms p50, 201.41 ms p95, and 206.84 ms
+p99 over 60 samples, also passing the `<500 ms` gate. Its 2,000-audit local
+backfill processed 21,590 audits/s, rebuild processed 28,871 audits/s, and
+restart verify/resume measured 4.90 ms p99 over 50 samples.
 
 At 200 source proposals per second, the maximum transient run count observed at
 one level was four, below the calculated burst bound of eight. After producer
@@ -241,6 +279,24 @@ speedup guarantee. The configured account/asset/color cardinality is equal,
 but the timestamp changes included effects, materialized values, and cache
 behavior. The intended invariant is bounded run topology, not equal clock time.
 
+The current-branch rerun confirms the bounded-age conclusion with a different
+latency ordering:
+
+| Axis | Timestamp age | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| Effective | 1 day | 8.638 ms | 10.312 ms | 13.300 ms |
+| Effective | 6 months | 5.205 ms | 11.081 ms | 14.819 ms |
+| Effective | 2 years | 3.183 ms | 4.261 ms | 6.704 ms |
+| Insertion | 1 day | 3.751 ms | 4.424 ms | 5.258 ms |
+| Insertion | 6 months | 5.540 ms | 9.402 ms | 12.320 ms |
+| Insertion | 2 years | 3.824 ms | 5.431 ms | 8.925 ms |
+
+For the effective axis, six months is 1.0745x the one-day p95, or 7.45% slower,
+and still passes the `<=1.20x` gate. Therefore the supported claim is not
+"identical latency regardless of age". It is "no linear age penalty while the
+logical run topology remains bounded". Query shape, intersecting runs, cache
+state, and result cardinality remain the primary latency variables.
+
 Query shape dominates age in the same hot dataset:
 
 | Effective query shape | 1-day p95 | 6-month p95 | 2-year p95 |
@@ -281,6 +337,13 @@ the current fetch path is sequential, remote round-trip latency can dominate
 the result roughly once per intersecting part; “yesterday equals six months”
 cannot be promised for a real cold deployment until its object store is
 measured.
+
+The current-branch rerun again opened eight parts per unfiltered cold miss. Its
+effective-axis p95 was 168.2 ms at one day, 217.3 ms at six months, and 164.0 ms
+at two years. Verified cache-hit p95 was 49.0 ms, 28.6 ms, and 22.6 ms
+respectively. This local-filesystem variance reinforces that cold latency is
+driven by intersecting object reads and cache behavior, not by timestamp age
+alone; it is not an S3 latency claim.
 
 The independent full archive profile encoded, published, and verified a
 33.85 MB immutable object in 136.5 ms. Its 200 local-filesystem reads measured
@@ -324,11 +387,16 @@ The semantic verifier is intentionally outside the interactive query path, but
 it reads authoritative history, builds a scratch Pebble projection, and streams
 both timelines. Its scratch directory is below `--balance-history-dir`.
 
-The final local diagnostic measured primary-write p99 rising from 5.896 ms to
+The original local diagnostic measured primary-write p99 rising from 5.896 ms to
 7.720 ms, or **+30.95%**, while a 2,000-proposal full verification took
 280.6 ms. `overlappedAllWrites=false`: the verifier completed before all 300
 writes, so this is not acceptance evidence and may underestimate or distort a
 fully overlapping run. It is nevertheless a real contention signal.
+
+The current-branch diagnostic measured +28.97% p99 interference and completed
+the verifier in 263.7 ms, again with `overlappedAllWrites=false`. It confirms
+the contention signal but still does not qualify as a fully overlapping
+acceptance test.
 
 Production rollout should put balance-history/verifier I/O on a dedicated
 volume where possible, schedule full replay away from peak write traffic, and
@@ -342,11 +410,12 @@ The local implementation evidence supports bounded age behavior, both time
 axes, hot/cold/cache paths, 100k audit reconstruction, logical run boundedness,
 and deterministic logical convergence. It does **not** support broad GA:
 
-- the final steady write p99 gate fails at +6.02% versus a `<5%` target;
+- the current steady-write rerun passes at -1.22%, but an earlier valid run
+  failed at +6.02%, so production-topology variance is not closed;
 - the full grouped/cardinality store profile does not complete within 30
   minutes;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
-- the verifier shows +30.95% local p99 interference in a partial-overlap
+- the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
 - real object-store, multi-node, HTTP/gRPC, Raft admission, crash recovery,
   and deployed-volume measurements remain outstanding.
@@ -359,11 +428,11 @@ not add historical storage or write work.
 
 | Evidence | Result | Status |
 |---|---|---|
-| Synchronous writes | Final local A/B/A p99 +6.02%; target `<5%` | **Fail** |
-| Builder tail | Local p99 213.52 ms; target `<500 ms` | Pass local |
+| Synchronous writes | Current A/B/A p99 -1.22%; earlier valid run +6.02%; target `<5%` | Pass current local / canary pending |
+| Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
-| Full verifier | Local partial-overlap p99 +30.95%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Hot six-month/one-day effective p95 ratio 0.436; no linear age penalty observed | Pass local |
+| Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
+| PIT age | Current hot six-month/one-day effective p95 ratio 1.0745; no linear age penalty observed | Pass local |
 | PIT axis | Effective and insertion measured at 1d/6mo/2y | Pass local |
 | PIT shape | Local shapes measured; full grouped profile timed out at 30m | **Fail / timeout** |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
