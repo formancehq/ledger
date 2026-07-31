@@ -144,7 +144,7 @@ The backup is a complete Pebble database that contains:
 | Idempotency | `0x05` | Idempotency keys |
 | Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, chapters, sink configs, sink cursors, sink statuses |
 
-> **Note**: If chapters have been archived before the backup, the archived logs and audit entries are no longer in the backup (they have been purged to cold storage). Attributes remain.
+> **Note**: If chapters have been archived before the **full** backup, the archived logs and audit entries are not in the checkpoint (they have been purged to cold storage). Attributes remain. An **incremental** backup, however, backfills from cold storage any part of its export window that archival purged, so the log/audit chain since the last full checkpoint is always complete in the backup — see [Relationship with Chapters and Cold Storage](#relationship-with-chapters-and-cold-storage).
 
 ### Sequence Diagram
 
@@ -583,9 +583,10 @@ Chapters partition the ledger's history into sealed segments. Each chapter cover
 
 **Impact on backups**:
 
-- A backup always contains the **current hot storage state**. If chapters have been archived before the backup, the archived logs and audit entries are no longer present — they live in cold storage.
+- A **full** backup contains the **current hot storage state**. If chapters have been archived before it, the archived logs and audit entries are not in the checkpoint — they live in cold storage.
+- An **incremental** backup stays complete across archival: if a chapter covering part of its export window was archived (and therefore purged from hot storage) since the previous backup, the incremental reads that range back from the chapter's cold SST and exports it like any hot range. The backup chain since the last full checkpoint is therefore self-contained — a restore never depends on cold storage being reachable. If the window overlaps an archived chapter and no cold storage is configured (or the archive is truncated), the incremental backup **fails loudly** rather than advancing its cursor past entries it did not export.
 - **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of chapter archival.
-- To obtain a complete historical record, you need both the backup (hot data) and the cold storage archives (archived chapters).
+- To obtain a complete historical record older than the last full checkpoint, you need both the backup and the cold storage archives (archived chapters).
 
 See [Chapters](../technical/architecture/subsystems/chapters/lifecycle.md) for the full chapter lifecycle and cold storage documentation.
 

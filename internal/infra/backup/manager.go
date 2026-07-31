@@ -395,7 +395,10 @@ func listKeySet(ctx context.Context, storage Storage, prefix string) (map[string
 
 // RunIncrementalBackup exports new log and audit entries since the last backup.
 // It reads the manifest to determine the starting sequences, streams new entries
-// as KV stream segments to S3, and updates the manifest.
+// as KV stream segments to S3, and updates the manifest. Ranges that chapter
+// archival purged from the hot store are backfilled from cold storage through
+// coldReader (nil when cold storage is disabled; the run then fails if an
+// export window overlaps an archived chapter — see backfillArchivedRanges).
 //
 // maxSegmentBytes caps the on-storage size of each export segment; a range
 // larger than that splits into multiple segments. 0 selects the default
@@ -404,6 +407,7 @@ func RunIncrementalBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
+	coldReader ColdChapterReader,
 	storage Storage,
 	bucketID string,
 	maxSegmentBytes int64,
@@ -491,7 +495,26 @@ func RunIncrementalBackup(
 		segmentsUploaded     int
 	)
 
-	// 6. Export new log entries
+	// 6. Backfill window ranges that chapter archival purged from the hot
+	// store. These segments go into the manifest BEFORE the hot ones:
+	// LastExportLogSequence / LastExportAuditSequence take the last segment of
+	// each type as the next run's floor, and the hot tail always carries the
+	// highest sequences.
+	coldSegs, coldLogCount, coldAuditCount, err := backfillArchivedRanges(
+		ctx, logger, storage, readHandle, coldReader, bucketID,
+		afterLogSeq, currentLogSeq, afterAuditSeq, currentAuditSeq,
+		maxSegmentBytes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("backfilling archived ranges from cold storage: %w", err)
+	}
+
+	manifest.Exports = append(manifest.Exports, coldSegs...)
+	segmentsUploaded += len(coldSegs)
+	logEntriesExported += coldLogCount
+	auditEntriesExported += coldAuditCount
+
+	// 7. Export new log entries
 	if currentLogSeq > afterLogSeq {
 		segs, count, err := exportEntries(
 			ctx, storage, readHandle,
@@ -503,12 +526,12 @@ func RunIncrementalBackup(
 			return nil, fmt.Errorf("exporting log entries: %w", err)
 		}
 
-		logEntriesExported = count
+		logEntriesExported += count
 		manifest.Exports = append(manifest.Exports, segs...)
 		segmentsUploaded += len(segs)
 	}
 
-	// 7. Export new audit entries
+	// 8. Export new audit entries
 	if currentAuditSeq > afterAuditSeq {
 		segs, count, err := exportEntries(
 			ctx, storage, readHandle,
@@ -520,7 +543,7 @@ func RunIncrementalBackup(
 			return nil, fmt.Errorf("exporting audit entries: %w", err)
 		}
 
-		auditEntriesExported = count
+		auditEntriesExported += count
 		manifest.Exports = append(manifest.Exports, segs...)
 		segmentsUploaded += len(segs)
 
@@ -573,12 +596,12 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(appliedSegs)
 	}
 
-	// 8. Write updated manifest
+	// 9. Write updated manifest
 	if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
-	// 9. Prune orphan export segments — anything under exports/ that the manifest
+	// 10. Prune orphan export segments — anything under exports/ that the manifest
 	// no longer references (typically leaked by earlier failed incremental runs).
 	// Checkpoint files under data/ are owned by the full backup and untouched here.
 	orphansDeleted := pruneOrphanExports(ctx, logger, storage, bucketID, manifest.Exports)

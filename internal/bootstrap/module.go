@@ -45,6 +45,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	infrabackup "github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
@@ -597,9 +598,16 @@ func Module() fx.Option {
 					cfg.ServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
-			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
-			},
+			fx.Annotate(func(builder *plan.Builder, n *node.Node, store *dal.Store, coldReader *coldstorage.ColdReader, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
+				// Assign only a non-nil pointer: a typed-nil interface would
+				// pass the backfill's nil check and be dereferenced.
+				var cold infrabackup.ColdChapterReader
+				if coldReader != nil {
+					cold = coldReader
+				}
+
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, cold, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
+			}, fx.ParamTags(``, ``, ``, `optional:"true"`, ``, ``)),
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
 			},
