@@ -326,6 +326,11 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	}
 
 	c.modelState = res.State
+
+	// A committed keyed bulk is frozen in modelState; remember it (with the
+	// sequences it committed at) so runReplay can re-send it and check the server
+	// replays this same outcome.
+	c.rememberReplayable(bulk, resp.GetLogs())
 }
 
 // validateFailure accepts the observed failure of failedBulk iff some
@@ -363,6 +368,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: volume-overflow rejection exercised", internal.Details{})
 		case domain.ErrReasonValidation:
 			assert.Reachable("singleton_driver_model: validation rejection exercised", internal.Details{})
+		case domain.ErrReasonIdempotencyKeyConflict:
+			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
 		}
 
 		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)

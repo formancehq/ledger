@@ -118,6 +118,27 @@ const (
 	txEmitStop  = 4000 // below this: ~1-in-8; at or above: stop creating new ones
 )
 
+// --- Idempotency replay -------------------------------------------------
+
+// A generated bulk becomes a replayable original — stamped with a tracked
+// idempotency key so runReplay can re-send it — with probability
+// 1/replayTrackOneIn, but only while the registry has room. Capping the count
+// of tracked keys bounds the model's frozen idempotency map, which is never
+// evicted (the model assumes an infinite TTL).
+const replayTrackOneIn = 4
+
+// Max remembered replayable bulks. The server's idempotency TTL (24h default,
+// unset in the antithesis cluster) dwarfs any run, so keys frozen early stay
+// replayable throughout — including across a restore cycle, which is the point.
+// Bounds the model's never-evicted frozen map; kept well under the transaction
+// log the search already clones/hashes each fold, so it is not the cost driver.
+const replayRegistryCap = 2048
+
+// Once the registry is non-empty, a generated bulk reuses a committed key with
+// its own (different) body — forcing an IDEMPOTENCY_KEY_CONFLICT — with
+// probability 1/replayConflictOneIn.
+const replayConflictOneIn = 6
+
 // --- Worker pacing ------------------------------------------------------
 
 // Sleep per worker iteration — CPU/server breathing room.

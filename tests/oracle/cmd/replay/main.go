@@ -85,7 +85,7 @@ func replaySubmits(submits []batch, target string) {
 			fmt.Fprintf(os.Stderr, "seq=%d PeekBatch: %v\n", b.seq, err)
 			os.Exit(1)
 		}
-		bulk := oracle.Bulk{Requests: ab.GetRequests()}
+		bulk := oracle.Bulk{Requests: ab.GetRequests(), IdempotencyKey: ab.GetIdempotencyKey()}
 
 		touchesTarget := false
 		for _, r := range bulk.Requests {
@@ -154,7 +154,7 @@ func replayCommitted(batches []batch, target string) {
 			fmt.Fprintf(os.Stderr, "seq=%d PeekBatch: %v\n", b.seq, err)
 			os.Exit(1)
 		}
-		bulk := oracle.Bulk{Requests: ab.GetRequests()}
+		bulk := oracle.Bulk{Requests: ab.GetRequests(), IdempotencyKey: ab.GetIdempotencyKey()}
 
 		hitsTarget := false
 		for _, r := range bulk.Requests {

@@ -332,20 +332,41 @@ func (s *LedgerState) AccountMetadata(addr string) map[string]*commonpb.Metadata
 // observations) so it can be unit-tested and forked.
 type GlobalState struct {
 	ledgers map[string]LedgerState
+	// idempotency freezes the committed outcome of every keyed bulk, so a later
+	// bulk carrying the same key replays it (Apply). It spans ledgers because a
+	// bulk's key covers the whole atomic batch, whatever ledgers it touched.
+	// Entries are immutable once frozen (infinite TTL — the model never evicts),
+	// so forks share the pointers; only the map itself is copied.
+	idempotency map[string]*frozenOutcome
+}
+
+// frozenOutcome is a keyed bulk's recorded outcome: the exact requests it
+// committed (to tell a genuine replay from a same-key/different-body conflict)
+// and the per-order results the server will echo on every replay.
+type frozenOutcome struct {
+	requests []*servicepb.Request
+	orders   []OrderResult
 }
 
 func NewGlobalState() GlobalState {
-	return GlobalState{ledgers: map[string]LedgerState{}}
+	return GlobalState{
+		ledgers:     map[string]LedgerState{},
+		idempotency: map[string]*frozenOutcome{},
+	}
 }
 
-// clone deep-copies each ledger so forks never share mutable state.
+// clone deep-copies each ledger so forks never share mutable state. The
+// idempotency map is copied shallowly — its entries are immutable once frozen.
 func (g GlobalState) clone() GlobalState {
 	m := make(map[string]LedgerState, len(g.ledgers))
 	for name, ls := range g.ledgers {
 		m[name] = ls.clone()
 	}
 
-	return GlobalState{ledgers: m}
+	idem := make(map[string]*frozenOutcome, len(g.idempotency))
+	maps.Copy(idem, g.idempotency)
+
+	return GlobalState{ledgers: m, idempotency: idem}
 }
 
 // ledger returns the named ledger's state, or an empty one if untouched.
@@ -381,6 +402,29 @@ func (g GlobalState) Hash(h io.Writer) {
 		}
 		_, _ = fmt.Fprintf(h, "L|%s\n", n)
 		_, _ = h.Write(buf.Bytes())
+	}
+
+	// Frozen idempotency outcomes are observable through a replay, so bases that
+	// differ only in which id a key froze must stay distinct — otherwise
+	// candidateBases collapses two commuting keyed transactions (identical
+	// business state, opposite id assignments) and a replay can no longer resolve
+	// to the id the server actually returned. Only the outcome identity a replay
+	// reveals (per-order id) needs hashing, not the whole result.
+	ikeys := make([]string, 0, len(g.idempotency))
+	for k := range g.idempotency {
+		ikeys = append(ikeys, k)
+	}
+	sort.Strings(ikeys)
+	for _, k := range ikeys {
+		fo := g.idempotency[k]
+		_, _ = fmt.Fprintf(h, "IK|%s|%d\n", k, len(fo.orders))
+		for i, o := range fo.orders {
+			revertedID := uint64(0)
+			if o.Revert != nil {
+				revertedID = o.Revert.revertedID
+			}
+			_, _ = fmt.Fprintf(h, "IO|%d|%d|%d\n", i, o.TxID, revertedID)
+		}
 	}
 }
 
@@ -501,6 +545,22 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 	}
 
+	// Per-batch idempotency, checked after admission's structural gate (the
+	// empty-create above) and before any FSM outcome — mirroring the server,
+	// where the dedup runs in the apply path ahead of ProcessOrders. Only
+	// successes are frozen (see the commit return below), so a hit is always a
+	// committed outcome: same body replays it verbatim with no new state; a
+	// different body under the same key is a conflict.
+	if bulk.IdempotencyKey != "" {
+		if fo, ok := g.idempotency[bulk.IdempotencyKey]; ok {
+			if !RequestsEqual(fo.requests, bulk.Requests) {
+				return ApplyResult{OK: false, Reason: domain.ErrReasonIdempotencyKeyConflict, State: g}
+			}
+
+			return ApplyResult{OK: true, State: g, Orders: fo.orders}
+		}
+	}
+
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
@@ -547,7 +607,36 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		ls.purgeZeroBalance(cells)
 	}
 
+	// Freeze the committed outcome so a later bulk with this key replays it. Only
+	// the success path records an entry; a rejected keyed bulk leaves no frozen
+	// outcome (the driver never replays a key whose bulk did not commit).
+	if bulk.IdempotencyKey != "" {
+		next.idempotency[bulk.IdempotencyKey] = &frozenOutcome{
+			requests: bulk.Requests,
+			orders:   orders,
+		}
+	}
+
 	return ApplyResult{OK: true, State: next, Orders: orders}
+}
+
+// RequestsEqual reports whether two request slices are element-wise equal,
+// telling a genuine replay (same body) from a same-key/different-body conflict.
+// It is a faithful proxy for the server's idempotency hash: every request field
+// rides on the hashed order, and only admission's OrderTechnical is excluded —
+// so equal requests hash identically (replay) and any difference conflicts.
+func RequestsEqual(a, b []*servicepb.Request) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if !a[i].EqualVT(b[i]) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // applyOne mutates the (already-forked) working state for one request and
