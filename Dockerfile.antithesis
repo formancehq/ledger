@@ -2,8 +2,10 @@
 FROM golang:1.26-trixie AS compiler
 # nats is included so the NATS event-sink implementation actually exists in
 # the tested binary: the workload's parallel_driver_event_sinks creates NATS
-# sinks against the nats container started by the Antithesis config.
-ARG BUILD_TAGS="s3,nats"
+# sinks against the nats container started by the Antithesis config. The
+# antithesis tag also enables test-only deterministic fault checkpoints; the
+# ordinary production image does not compile those checkpoints.
+ARG BUILD_TAGS="s3,nats,antithesis"
 
 RUN apt-get update && apt-get install -y bash git gcc
 

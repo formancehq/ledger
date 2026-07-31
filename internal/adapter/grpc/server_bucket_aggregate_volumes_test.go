@@ -19,7 +19,9 @@ import (
 )
 
 type aggregateVolumesTransportStream struct {
-	trailer metadata.MD
+	header     metadata.MD
+	headerSent chan struct{}
+	trailer    metadata.MD
 }
 
 func (s *aggregateVolumesTransportStream) Method() string {
@@ -30,7 +32,15 @@ func (s *aggregateVolumesTransportStream) SetHeader(metadata.MD) error {
 	return nil
 }
 
-func (s *aggregateVolumesTransportStream) SendHeader(metadata.MD) error {
+func (s *aggregateVolumesTransportStream) SendHeader(md metadata.MD) error {
+	s.header = metadata.Join(s.header, md)
+	if s.headerSent != nil {
+		select {
+		case s.headerSent <- struct{}{}:
+		default:
+		}
+	}
+
 	return nil
 }
 

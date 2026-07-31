@@ -16,39 +16,39 @@ the Go AST so multiline calls and helper packages also count. Testify calls
 were excluded by resolving the import path, rather than matching only the
 package name.
 
-The research baseline contained 369 Antithesis assertion calls. The first PIT
-workload property adds seven unique callsites, for a current total of 376:
+The research baseline contained 369 Antithesis assertion calls. The implemented
+PIT scope-equivalence and idempotency properties bring the current total to 391:
 
 | Assertion | Calls |
 |---|---:|
-| `Always` | 43 |
+| `Always` | 45 |
 | `AlwaysGreaterThan` | 1 |
 | `AlwaysGreaterThanOrEqualTo` | 2 |
-| `AlwaysOrUnreachable` | 64 |
-| `Reachable` | 59 |
+| `AlwaysOrUnreachable` | 66 |
+| `Reachable` | 62 |
 | `Sometimes` | 93 |
-| `Unreachable` | 114 |
+| `Unreachable` | 122 |
 
-Of these calls, 42 are inside the SUT and 334 are in the workload. There are
-still no PIT-specific SDK assertions in `internal/application/balancehistory`,
-`internal/storage/balancehistorystore`, or
-`internal/storage/balancehistoryarchive`. The seven workload callsites partially
-implement `unfiltered-fast-path-equals-account-fold`; maintenance reachability
+Of these calls, 45 are inside the SUT and 346 are in the workload. PIT now has
+SUT-side signals at the post-commit response boundary, keyed FSM replay and
+balance-history publication. The scope-equivalence and idempotency workload
+properties are implemented; maintenance, cold-tier and recovery reachability
 signals remain separate work.
 
 ## SUT-side assertion coverage
 
 | Area | Existing signal | Reuse for PIT |
 |---|---|---|
-| Admission and FSM | Impossible order/preload/coverage states are `Unreachable`; cache/FSM recovery paths emit `Reachable` | Retain unchanged. PIT is asynchronous and must not add an FSM edge. |
+| Admission and FSM | Impossible order/preload/coverage states are `Unreachable`; cache/FSM recovery paths emit `Reachable`; keyed success replay emits original log-reference evidence | The replay signal proves no new FSM audit/log edge was taken. PIT remains asynchronous. |
 | Raft applier and WAL | Leadership, spool replay/prune, recovery and WAL edge cases are instrumented | These faults create valuable PIT lag and replay interleavings, but they do not verify the history projection. |
 | Health and sentinel | Disk thresholds and committed sentinel survival are asserted | Live health is intentionally independent of PIT readiness, so these cannot be used as a PIT-ready oracle. |
 | HTTP helper | Unexpected adapter states can be reported through a dynamic `Unreachable` wrapper | PIT should keep stable, dedicated property names rather than route all failures through this helper. |
 
-The SUT currently has no reachability signal for balance-history publication,
-quarantine, certified repair, compaction, tier upload, cold fetch, cache lease,
-or remote-GC deletion. Black-box workload assertions can prove public monetary
-correctness, but cannot prove that these internal transitions were reached.
+The SUT now guards repeated publication of one keyed audit/log identity, but it
+still has no reachability signal for general publication, quarantine, certified
+repair, compaction, tier upload, cold fetch, cache lease, or remote-GC deletion.
+Black-box workload assertions prove the public monetary result; those remaining
+maintenance transitions need their dedicated probes.
 
 ## Workload-side assertion coverage
 

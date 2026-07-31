@@ -171,6 +171,11 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
+	// The default build is a no-op. The Antithesis build can hold a
+	// workload-tagged keyed response after the commit future resolved, creating
+	// the exact ambiguous-response window needed to validate idempotent replay.
+	awaitAntithesisIdempotencyCommitProbe(ctx, batch.GetIdempotencyKey(), logs)
+
 	skipResponse := req.GetSkipResponse()
 
 	if !skipResponse {

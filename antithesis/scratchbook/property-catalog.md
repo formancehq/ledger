@@ -1,6 +1,6 @@
 ---
 sut_path: /Users/flemzord/Developer/Formance/ledger
-commit: fb3f9f8334c7fbbcc27c2c211c77da36762e6aaf
+commit: f023dedec0f7f54439dea392a896aad9ee8861f4
 updated: 2026-07-31
 external_references: []
 ---
@@ -533,6 +533,7 @@ availability after faults stop.
 |---|---|
 | **Priority** | P0 |
 | **Type** | Safety |
+| **Implementation** | Implemented in `parallel_driver_idempotency` with an Antithesis-only post-commit/pre-response checkpoint, exact keyed audit/log correlation, bounded fail-closed convergence, and effective plus insertion PIT checks. |
 | **Property** | Retrying an ambiguous keyed Apply produces exactly one monetary effect in both PIT axes. |
 | **Invariant** | `Always(reconciledKeyedOutcome => effectMultiplicity == 1 && pit == oracle)` plus `Sometimes(postCommitPreResponseReached && ambiguousRetryReconciled)`. |
 | **Antithesis Angle** | Pause after the keyed proposal future resolves but before response serialization, terminate or time out the RPC, transfer leadership and retry the same key while builders process independently. |

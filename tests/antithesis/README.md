@@ -50,6 +50,24 @@ Each comparable pair must come from one direct replica and carry the same
 decoded immutable view token. Different-token or classified fail-closed pairs
 are inconclusive, never compared numerically.
 
+The P0 `idempotency-keyed-apply-changes-pit-once` property extends
+`parallel_driver_idempotency`:
+
+- a direct no-retry Apply carries a unique probe ID and a 64, 255 or 256-byte
+  key;
+- the Antithesis-tagged server sends a post-commit header and holds the response
+  until the client deadline, producing an authenticated ambiguous outcome;
+- two multi-node retries must return the original transaction and exactly one
+  detailed audit/log outcome;
+- classified fail-closed history samples are retried as a bounded two-axis pair
+  and recorded separately for coverage;
+- effective and insertion PIT views covering that log must each contain exactly
+  one property-owned monetary input.
+
+`Dockerfile.antithesis` enables the `antithesis` Go build tag for these
+test-only checkpoints. The ordinary production build compiles no-op helpers and
+does not interpret the workload probe metadata.
+
 ## Driver naming convention
 
 The prefix encodes **how Antithesis schedules the binary**:
@@ -215,6 +233,37 @@ just k8s-push-images
 `run_model_test.sh` only exercises `singleton_driver_model` — the 60+
 property drivers under `main/` are tested exclusively by the Antithesis
 hypervisor.
+
+## Launching the targeted PIT idempotency campaign
+
+Use a filtered workload image so the composer can schedule only the setup and
+property driver relevant to this campaign. Build, validate and launch must use
+the same rendered Compose directory:
+
+```sh
+cd tests/antithesis
+export ANTITHESIS_REPOSITORY='<tenant registry repository>'
+include='main/first_default_ledger,main/parallel_driver_idempotency'
+
+just push-images "$include"
+
+config_dir="$(mktemp -d)"
+just config/build-config "$config_dir/docker-compose.yaml"
+docker compose -f "$config_dir/docker-compose.yaml" build
+snouty validate "$config_dir"
+
+snouty launch \
+  --json \
+  --webhook basic_test \
+  --config "$config_dir" \
+  --duration "$DURATION_MINUTES" \
+  --source ledger \
+  --test-name ledger-pit-idempotency \
+  --description 'PIT keyed retry changes monetary history exactly once'
+```
+
+Do not launch when image build or validation fails. Keep the returned `run_id`;
+it is the input for report triage and multiverse debugging.
 
 ## Adding a new driver
 

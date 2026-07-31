@@ -77,6 +77,7 @@ type Builder struct {
 	durabilitySync     func() error
 	durabilityNow      func() time.Time
 	processingMetrics  builderProcessingMetrics
+	idempotencyProbe   idempotencyReductionProbe
 
 	tw   *tailworker.TailWorker
 	regs []metric.Registration
@@ -835,6 +836,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 		}
 		b.lastProcessedAuditSequence.Store(0)
 		b.lastDurableAuditSequence.Store(0)
+		b.idempotencyProbe.Reset()
 	}
 
 	manifest, reset, err := b.resetIfRolledBack(manifest, head)
@@ -844,6 +846,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	if reset {
 		b.lastProcessedAuditSequence.Store(0)
 		b.lastDurableAuditSequence.Store(0)
+		b.idempotencyProbe.Reset()
 	}
 
 	reducer, err := reducerFromManifest(manifest)
@@ -926,6 +929,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("publishing balance history through audit %d: %w", next.AuditSequence, err)
 	}
+	b.idempotencyProbe.RecordPublished(batch.Proposals)
 
 	b.lastProcessedAuditSequence.Store(nextManifest.AuditWatermark)
 	publishedProposals = len(batch.Proposals)
