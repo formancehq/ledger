@@ -595,6 +595,7 @@ phase (`complete=false`), with the same five unrelated dirty paths:
 | Phase | Artifact | SHA-256 |
 |---|---|---|
 | Compaction | `build/perf/pit-store-full-compaction-3390e3415.json` | `762fd5b0ec95e5b85e059b77e21a066125e3b18fada7aed3a1d4cff9aebf34c7` |
+| Active compaction | `build/perf/pit-store-full-active-compaction-a20765832.json` | `0e2b5b160ee79c1c98d45e4e2f94335287464223c161830c41f6ddfc9810e4bf` |
 | Replica digest | `build/perf/pit-store-full-replica-digest-3390e3415.json` | `87d545e89c8e9697964cb8ef952fb21084e1ea6a6b215bc3bbb68a6b743265e6` |
 | Cardinality | `build/perf/pit-store-full-cardinality-3390e3415.json` | `4a6afcb4bfe2f286df97e7b0129cc8c7c02ccf8c2711f9b168d822075714853f` |
 | Backdating | `build/perf/pit-store-full-backdating-3390e3415.json` | `5e412c6214d9b34c658174bfe5c56912efc9cae82c739aa99ed9d36d38f12278` |
@@ -607,7 +608,32 @@ cumulative Pebble write amplification was 1.577. Unfiltered p95 was 26.046 ms
 before and 26.955 ms after the flush (+3.49%); p99 was 26.763 ms and 27.597 ms
 (+3.12%). This measures converged-state flush/cleanup, not logical compaction
 throughput or read interference while real merges are active, so the
-concurrent-compaction rollout gate remains open.
+concurrent-compaction rollout gate was still open at that point.
+
+The active-compaction phase was then rerun on 2026-07-31 at commit
+`a2076583299ed204a0eb81d00875cefd9c6b1e67`, tree
+`d58ac4f3698484af9f01903e63638f80916f27c7`, with the same machine and five
+unrelated dirty paths. It forced eight additional L0 runs containing 1,048,576
+effects. The real compactor completed three logical merges in 2.301 seconds,
+reducing the manifest from 19 to 10 runs. One pre-compaction pinned view
+returned the exact reference protobuf result before, during, and after those
+merges; 31 successful read-call intervals overlapped successful `Compact`
+calls.
+
+| State | Samples | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| Before compaction | 200 | 41.023 ms | 49.103 ms | 73.692 ms |
+| During active logical merges | 31 | 76.610 ms | 105.704 ms | 118.705 ms |
+| After compaction | 200 | 16.070 ms | 26.050 ms | 29.444 ms |
+
+Active compaction increased p95 by 115.27% relative to the pre-compaction
+backlog. Once the run count had converged, p95 was 46.95% below that same
+backlog baseline. This concurrent distribution is deliberately wall-clock
+latency only: allocation, Go CPU, and database I/O are omitted because the
+reader and compactor share the measurement interval and those resources cannot
+be attributed honestly per read. The result closes the local active-merge
+evidence gap, but it does not predict interference on deployed shared or
+dedicated volumes.
 
 The replica-digest phase used 90 identical days. Replica A published once and
 retained one run; replica B published daily, compacted, and retained six runs.
@@ -863,6 +889,9 @@ and deterministic logical convergence. It does **not** support broad GA:
   seconds grouped; a real object store remains unmeasured;
 - the full store-stress phase is +4.56% p99 at steady history cadence, but
   +22.45% under forced history-store saturation;
+- active logical compaction raises local unfiltered p95 from 49.103 ms to
+  105.704 ms (+115.27%) while it merges a forced backlog, then reduces p95 to
+  26.050 ms after convergence; deployed-volume interference remains open;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
 - the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
@@ -887,6 +916,6 @@ not add historical storage or write work.
 | PIT source | Full local-filesystem cold miss and verified cache hit matrices complete; real object network absent | Pass local / pending deployment |
 | PIT cardinality | One-run p95 grows from 9.750 us at 64 x 1 x 1 to 71.167 us at 256 x 8 x 4 | Diagnostic local |
 | Backdating | Full 0%, 1%, and 50% matrix remains in a 76.8-93.1 us p95 band | Pass local |
-| Compaction | Full converged fixture has zero eligible merges; flush clears 15.1 MB debt with +3.49% read p95, but active-merge interference is unmeasured | Partial |
+| Compaction | Forced full backlog completes 3 logical merges; 31 overlapping reads preserve exact results, with p95 +115.27% during merges and -46.95% after convergence versus the backlog baseline | Pass local / pending deployed-volume interference |
 | Capacity | Full tiering reduces flushed primary bytes 7.50-12.68% but adds 156.70 MB of archive objects; production retention formula remains open | Partial |
 | Multi-replica | Equal 90-day logical/semantic digests across one-run and six-run local layouts; real cluster absent | Partial |
