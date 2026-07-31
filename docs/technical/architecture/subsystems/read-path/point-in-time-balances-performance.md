@@ -205,6 +205,47 @@ assertion. The raw artifacts are intentionally ignored build outputs; the
 checksums above bind the summarized local evidence without treating generated
 samples as source files.
 
+### Current-branch functional validation
+
+The completed local implementation was revalidated on 2026-07-31 at source
+commit `63328307d6d9ca1e89447b4aa89deaf14c8c209e`, on the same branch and
+five-unrelated-dirty-path boundary. Every command below passed:
+
+```bash
+# Entire default-feature root module.
+nix develop --command bash -c \
+  'go test ./... -count=1 -timeout=20m'
+
+# Operator module.
+nix develop --command bash -c \
+  'cd misc/operator && go test ./... -count=1 -timeout=20m'
+
+# Every Antithesis workload command plus its shared-unit tests.
+nix develop --command bash -c \
+  'cd tests/antithesis/workload && go test ./... -count=1 -timeout=20m'
+
+# Native business contract: both axes, reversal timing, transformations,
+# provenance trailer, read-after-write floor, allowlist and failure modes.
+nix develop --command bash -c \
+  'go test -tags e2e ./tests/e2e/business -run "^TestBusiness$" \
+    -count=1 -timeout=10m -ginkgo.focus="Point-in-time balances" -ginkgo.v'
+
+# Three-node forwarding and follower-local convergence.
+nix develop --command bash -c \
+  'go test -tags e2e ./tests/e2e/cluster -run "^TestCluster$" \
+    -count=1 -timeout=10m \
+    -ginkgo.focus="Point-in-time balances forwarding" -ginkgo.v'
+
+# Required repository checks and compilation.
+nix develop --command bash -c 'just pre-commit && GOROOT= go build ./...'
+```
+
+The local Compose configuration was also rendered against the filtered PIT
+workload images and `snouty validate` observed a ready three-node cluster,
+`setup_complete`, one `first_`, two driver, and one `eventually_` command. This
+proves packaging and bootstrap only. It is not an Antithesis fault-search
+result, and no remote `run_id` exists for this branch yet.
+
 ## Synchronous write path and asynchronous lag
 
 PIT does not add a fifth synchronous notification target. The production
