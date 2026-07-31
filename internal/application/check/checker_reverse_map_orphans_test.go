@@ -448,6 +448,62 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	require.Contains(t, err.GetMessage(), "rows=2")
 }
 
+// TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans is the regression
+// for the masking channel found in review of EN-1458.
+//
+// Setup: the field's RemovedMetadataFieldType sits behind the archive boundary,
+// so the audit-derived schema (baseline-seeded, therefore already post-removal)
+// no longer declares the field AND removedFields carries no evidence for it —
+// but a stale or tampered SubAttrIndex row survived. Orphaned reverse-map rows
+// are live.
+//
+// The test asserts both halves, because the fix deliberately lands in the other
+// pass rather than in this one.
+func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
+	t.Parallel()
+
+	kb := dal.NewKeyBuilder()
+
+	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
+		// Stale registry entry for a field the replayed schema no longer
+		// declares — the archived-removal shape.
+		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		schemas:  nil,
+		rmapKeys: [][]byte{
+			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1),
+		},
+		progress: 10,
+	})
+
+	// Half one — unchanged by design. The registry term does suppress the orphan
+	// verdict, and the conjunction is deliberately kept: dropping it would report
+	// healthy rows if validateIndexTarget's indexed-implies-declared guarantee
+	// ever broke. Suppression here is only safe because the registry it trusts is
+	// itself verified, which is half two.
+	require.Empty(t, fixture.run(10, ledgerNameSet("L1"), nil),
+		"the registry term still suppresses this verdict; the masking is closed in compareIndexes, not here")
+
+	// Half two — the fix. The very entry that suppressed the orphan verdict is
+	// unaccounted for in the audit-derived registry set, because under archiving
+	// that set is seeded from the baseline (foldBaselineIndexes) instead of
+	// tolerating any entry the replay never touched. Check() is therefore NOT
+	// clean on this store: the two corrupted projections can no longer mask each
+	// other, which is what the review required.
+	var events []*servicepb.CheckStoreEvent
+
+	fixture.checker.compareIndexes(compareIndexesScope{
+		reader:   fixture.reader,
+		expected: map[domain.IndexKey]*commonpb.Index{},
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+
+	require.Len(t, events, 1,
+		"the stale registry row that suppressed the orphan verdict must itself be reported")
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		events[0].GetError().GetErrorType())
+	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
 // TestCompareReverseMapOrphans_UnknownLedger covers the leak class:
 // DeleteLedger range-deletes the whole [0x03][ledger] span unconditionally, so
 // with the lag gate satisfied a surviving row for an unknown ledger is real.

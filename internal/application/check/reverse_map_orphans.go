@@ -157,12 +157,24 @@ type reverseMapOrphanScope struct {
 // rather than from stored LedgerInfo rows — an oracle must never come from the
 // data it judges.
 //
-// The registry term is, today, redundant: validateIndexTarget requires
-// SetMetadataFieldType before a metadata index can be created, so
+// The registry term is, today, redundant: validateIndexTarget requires the
+// metadata field to be declared in the schema (via SetMetadataFieldType or
+// CreateLedger.initial_schema) before an index on it can be created, so
 // schema-declared is a superset of indexed. It is written as an explicit
 // conjunction anyway because it degrades safely — toward FEWER false positives —
 // if that guarantee ever breaks, whereas a bare schema check would start
 // flagging rows of genuinely-indexed fields.
+//
+// That safe degradation is only acceptable because the registry it reads is
+// itself verified. An `indexed == true` term can suppress an orphan verdict, so a
+// stale or tampered SubAttrIndex entry would otherwise be a masking channel:
+// orphaned rmap rows plus a lingering registry row would pass Check() together.
+// compareIndexes closes it — under archiving `expectedIndexes` is seeded from the
+// baseline snapshot (foldBaselineIndexes) instead of tolerating any entry the
+// replay never touched, so the lingering row is reported as INDEX_MISMATCH in its
+// own right. Keep that seeding in place: reinstating an archive-orphan tolerance
+// in compareIndexes silently re-opens this suppression path, and the orphan
+// verdict here would go quiet with no other pass covering it.
 //
 // Version is deliberately ignored. Current and pending forward-encoding
 // versions legitimately coexist while a per-replica schema rewrite runs, and

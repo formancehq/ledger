@@ -1939,9 +1939,9 @@ func TestCompareIndexes_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "compareIndexes must stay silent on matching sets")
 }
@@ -1964,7 +1964,7 @@ func TestCompareIndexes_ExtraInStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -1990,9 +1990,9 @@ func TestCompareIndexes_MissingFromStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
 		key: {Id: id, Ledger: "L2"},
-	}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2020,9 +2020,9 @@ func TestCompareIndexes_LedgerDrift(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2052,21 +2052,24 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "bucket-scoped entries must be silently skipped until a producer lands")
 }
 
-// TestCompareIndexes_ArchiveOrphanIgnored anchors the archive-boundary
-// guard: when a stored entry has no matching CreateIndex / DropIndex /
-// RemovedMetadataFieldType in the verified replay range (empty
-// replayActivity), AND archives exist, the CreateIndex log may live in an
-// archived chapter — we cannot re-derive it. Mirror
-// compareIdempotencyOutcomes' verifiedRangeStartTs trade-off and silently
-// skip instead of flagging the stored entry as tampering. The same key
-// MUST flag once any replay activity touches it (covered by
-// TestCompareIndexes_PostArchiveDropFlagged).
-func TestCompareIndexes_ArchiveOrphanIgnored(t *testing.T) {
+// TestCompareIndexes_UnseededEntryFlaggedUnderArchiving inverts what used to be
+// TestCompareIndexes_ArchiveOrphanIgnored. The pass no longer has an
+// archive-orphan tolerance: under archiving the pre-archive registry state is
+// seeded from the baseline snapshot by foldBaselineIndexes, so an entry absent
+// from `expected` is genuinely unaccounted for and must be flagged rather than
+// excused.
+//
+// This is the masking channel the EN-1458 review found: the old skip accepted a
+// stale or tampered metadata-index row, and compareReverseMapOrphans' registry
+// term then treated that row as proof the field was still indexed, silencing the
+// orphan verdict on its reverse-map rows. Both corrupted projections passed
+// Check() together. Keep this assertion: restoring the tolerance re-opens it.
+func TestCompareIndexes_UnseededEntryFlaggedUnderArchiving(t *testing.T) {
 	t.Parallel()
 
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
@@ -2081,42 +2084,74 @@ func TestCompareIndexes_ArchiveOrphanIgnored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, true, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
-	require.Empty(t, events, "stored entry with no replay activity and archives present must be treated as archive-orphan")
-}
-
-// TestCompareIndexes_PostArchiveDropFlagged pins the tightening that
-// fixes the per-ledger archive guard's blind spot: even when archives
-// exist, a stored entry whose key DID see replay activity (typically a
-// DropIndex or RemovedMetadataFieldType cascade in the verified range)
-// is no longer an archive-orphan — the replay decided the projection
-// should not hold it, so a surviving stored row is tampering and must
-// surface as INDEX_MISMATCH.
-func TestCompareIndexes_PostArchiveDropFlagged(t *testing.T) {
-	t.Parallel()
-
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
-
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
-		key: {Id: id, Ledger: "L1"},
-	})
-
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = reader.Close() })
-
-	replayActivity := map[domain.IndexKey]struct{}{key: {}}
-
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, replayActivity, nil, true, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
-
-	require.Len(t, events, 1)
+	require.Len(t, events, 1, "a stored entry the baseline seed did not account for must be flagged even under archiving")
 	require.Equal(t,
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
+}
+
+// TestFoldBaselineIndexes_SeedSilencesArchivedEntry covers the other direction:
+// the legitimate archive case the removed tolerance used to cover. A pre-archive
+// CreateIndex whose log has been purged is still represented, because
+// foldBaselineIndexes reads it back out of the boundary-time baseline snapshot —
+// so compareIndexes stays silent without needing to excuse anything.
+//
+// It also pins the liveness filter: index rows belonging to a ledger the
+// baseline does not list as live are NOT seeded. Seeding those would expect rows
+// that the deferred purge legitimately removes later, turning a normal cleanup
+// into a phantom "registry has no matching row" event.
+func TestFoldBaselineIndexes_SeedSilencesArchivedEntry(t *testing.T) {
+	t.Parallel()
+
+	liveID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	liveKey := domain.IndexKey{LedgerName: "live", Canonical: indexes.Canonical(liveID)}
+
+	goneID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	goneKey := domain.IndexKey{LedgerName: "deleted", Canonical: indexes.Canonical(goneID)}
+
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+		liveKey: {Id: liveID, Ledger: "live"},
+		goneKey: {Id: goneID, Ledger: "deleted"},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	dest, err := store.BaselineSnapshotDir()
+	require.NoError(t, err)
+	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
+	_ = reader.Close()
+
+	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baseline.Close() })
+
+	// Only "live" survives in the baseline's live-ledger set; "deleted" was
+	// removed before the boundary and its rows merely await the deferred purge.
+	knownLedgers := map[string]struct{}{"live": {}}
+	expectedIndexes := map[domain.IndexKey]*commonpb.Index{}
+	require.NoError(t, checker.foldBaselineIndexes(baseline, knownLedgers, expectedIndexes))
+
+	require.Contains(t, expectedIndexes, liveKey, "a live ledger's pre-archive entry must be seeded from the baseline")
+	require.NotContains(t, expectedIndexes, goneKey, "rows of a ledger the baseline does not list as live must not be seeded")
+	require.Equal(t, "live", expectedIndexes[liveKey].GetLedger())
+	require.True(t, indexes.Equal(liveID, expectedIndexes[liveKey].GetId()))
+
+	// The seeded expectation is what makes the live entry legitimate; the
+	// unseeded one is still reported, which is the correct verdict for a row
+	// belonging to a ledger the audit does not list as live.
+	verifyReader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = verifyReader.Close() })
+
+	var events []*servicepb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: verifyReader, expected: expectedIndexes}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+
+	require.Len(t, events, 1)
+	require.Equal(t, "deleted", events[0].GetError().GetLedger())
 }
 
 // TestCompareIndexes_PendingCleanupIgnored anchors the deferred-purge
@@ -2142,7 +2177,7 @@ func TestCompareIndexes_PendingCleanupIgnored(t *testing.T) {
 	pending := map[string]struct{}{"doomed": {}}
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, false, pending, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}, pendingCleanupLedgers: pending}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "stored entry for a ledger awaiting deferred purge must not trigger a mismatch")
 }
@@ -2167,9 +2202,9 @@ func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "compareIndexes must stay silent when account-asset registry matches audit-derived set")
 }
@@ -2194,7 +2229,7 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 
 	// Pass an empty expected map (no CreateIndex in audit chain).
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, nil, false, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
@@ -2232,7 +2267,7 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	deleted := map[string]struct{}{"L1": {}}
 
 	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(reader, map[domain.IndexKey]*commonpb.Index{}, nil, deleted, true, nil, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}, deletedInReplay: deleted}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
