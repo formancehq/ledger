@@ -502,9 +502,54 @@ five unrelated dirty paths. Its raw artifacts are:
 The insertion six-month/one-day p95 ratio is **1.080**, and the
 two-year/one-day ratio is also **1.080**. Older insertion cutoffs were about 8%
 slower at p95 in this series, and remain below the same `<=1.20x` comparison
-used by the unfiltered age gate. Together with the effective matrix's opposite ordering,
-this reinforces the supported claim: age is not a monotonic cost driver and
-does not guarantee identical latency. The other full phases remain unmeasured.
+used by the unfiltered age gate. Together with the effective matrix's opposite
+ordering, this reinforces the supported claim: age is not a monotonic cost
+driver and does not guarantee identical latency.
+
+### Full unfiltered fast path and write stress
+
+The full unfiltered and write-only phases were captured on 2026-07-31 at
+commit `9763d1667e40de2220075dd48970ee39bd475120`, with the same machine
+and unrelated dirty-path boundary as the grouped matrices:
+
+| Phase | Artifact | SHA-256 |
+|---|---|---|
+| Hot unfiltered | `build/perf/pit-store-full-hot-unfiltered-9763d1667.json` | `8d1e0d0fe4fa63da1dc716f17ac7c9fa17ebbf0a27e108e2075ec5df83c026bd` |
+| Write stress | `build/perf/pit-store-full-write-9763d1667.json` | `c8ab6ccdf8ca3110d95ab4dd5b91b9bc8ce152398c42115e59c6a2ea007f6ee2` |
+
+The unfiltered phase ran 1,000 samples per case and completed in 115.1 seconds:
+
+| Axis | Age | p50 | p95 | p99 | Operations/s |
+|---|---:|---:|---:|---:|---:|
+| Effective | 1 day | 14.304 ms | 29.637 ms | 35.438 ms | 56.7 |
+| Effective | 6 months | 13.996 ms | 16.295 ms | 20.307 ms | 69.5 |
+| Effective | 2 years | 13.562 ms | 15.135 ms | 16.246 ms | 72.6 |
+| Insertion | 1 day | 13.906 ms | 15.936 ms | 18.061 ms | 70.4 |
+| Insertion | 6 months | 14.796 ms | 18.570 ms | 23.220 ms | 65.2 |
+| Insertion | 2 years | 16.988 ms | 22.027 ms | 29.701 ms | 56.6 |
+
+The effective six-month/one-day p95 ratio is **0.550**, so the enforced
+`<=1.20x` gate passes. Insertion orders differently: six months is **1.165x**
+and two years **1.382x** the one-day p95. The insertion two-year comparison is
+not part of the current enforced gate, but it is material evidence against any
+claim of age-independent latency across both axes. The growth is not linear in
+history length; it is nevertheless a real 38.2% tail increase for this shape.
+
+The write-only phase completed in 32.4 seconds and used 1,000 samples per row:
+
+| Primary-store case | p50 | p95 | p99 | Throughput |
+|---|---:|---:|---:|---:|
+| Durable-write baseline | 3.013 ms | 4.045 ms | 4.966 ms | 316.7/s |
+| Manual steady history cadence | 3.010 ms | 3.999 ms | 5.193 ms | 318.9/s |
+| Manual history-store saturation | 3.003 ms | 3.998 ms | 6.081 ms | 317.8/s |
+
+Steady cadence changes p99 by **+4.56%**, p95 by -1.14%, and throughput by
++0.70% versus the baseline. This is just inside the 5% comparison, but it is a
+single manual-cadence diagnostic rather than the builder harness's bracketed
+A/B/A acceptance gate. Forced store saturation changes p99 by **+22.45%** and
+raises allocations per operation by 256.6x. It is not a steady-state rollout
+result; it quantifies why uncontrolled backfill/catch-up and verifier overlap
+must remain canary and scheduling concerns.
 
 ## Full-verifier interference
 
@@ -540,6 +585,8 @@ and deterministic logical convergence. It does **not** support broad GA:
 - the historical monolithic full profile and the six-case grouped phase both
   time out at 30 minutes; all six partitioned grouped cases complete, but at
   1.445-2.363-second p95;
+- the full store-stress phase is +4.56% p99 at steady history cadence, but
+  +22.45% under forced history-store saturation;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
 - the verifier shows roughly +29-31% local p99 interference in partial-overlap
   diagnostic;
@@ -554,13 +601,13 @@ not add historical storage or write work.
 
 | Evidence | Result | Status |
 |---|---|---|
-| Synchronous writes | Current A/B/A p99 -1.22%; earlier valid run +6.02%; target `<5%` | Pass current local / canary pending |
+| Synchronous writes | Current A/B/A p99 -1.22%; earlier valid run +6.02%; full store stress +4.56% steady and +22.45% saturated | Pass current local / saturation and canary pending |
 | Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Current local unfiltered ratio 1.0745; full grouped effective ratio 0.807 and insertion ratio 1.080; no linear age penalty observed | Pass local / grouped capacity warning |
-| PIT axis | Effective and insertion measured at 1d/6mo/2y locally and for the full grouped shape | Pass local / full grouped |
-| PIT shape | Local shapes measured; full grouped p95 1.445-2.363 s, other full phases pending | Partial / capacity warning |
+| PIT age | Full unfiltered effective ratio 0.550; insertion 6mo ratio 1.165 and 2y ratio 1.382; full grouped ratios 0.807/1.080 | Effective gate pass / insertion age-sensitive |
+| PIT axis | Effective and insertion measured at 1d/6mo/2y locally and for the full unfiltered/grouped shapes | Pass local / full hot shapes |
+| PIT shape | Full unfiltered p95 15.135-29.637 ms; full grouped p95 1.445-2.363 s; filtered/transform full phases pending | Partial / grouped capacity warning |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
