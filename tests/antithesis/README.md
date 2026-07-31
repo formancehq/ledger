@@ -327,6 +327,7 @@ just config/build-config "$config_dir/docker-compose.yaml"
 docker compose -f "$config_dir/docker-compose.yaml" build
 snouty validate "$config_dir"
 
+DURATION_MINUTES="${DURATION_MINUTES:-120}"
 snouty launch \
   --json \
   --webhook basic_test \
@@ -339,6 +340,39 @@ snouty launch \
 
 Do not launch when image build or validation fails. Keep the returned `run_id`;
 it is the input for report triage and multiverse debugging.
+
+The repository launch recipes also default to two hours: `just run` sends
+`custom.duration=2`, while `just k8s-run` converts its default
+`duration_hours=2` to `antithesis.duration=120`. Passing an explicit duration
+still overrides either default.
+
+### Recorded 120-minute PIT campaigns
+
+The first cloud campaigns completed on 2026-07-31:
+
+| Campaign | Run ID | Triage |
+|---|---|---|
+| Pre-fix scope-equivalence baseline | `dd4951b02c3adea9de3a066efdbb816c-58-10` | 69/89 passing; invalid convergence assets abort setup, so this is not PIT correctness evidence |
+| Corrected dual-axis reversal exactness | `93d98919f9f174b5ab20109b8cf00314-58-10` | 82/100 passing; every targeted PIT property passes with zero safety counterexamples |
+
+The corrected campaign used config tag
+`pit-dual-axis-20260731-d8b65cf`, workload commit `a3c179468` plus fixture
+fix `566268741`, and exercised one setup, one fault-time driver, and one
+quiescent eventual driver. Its main signals were:
+
+- 28,746 exact effective/insertion folds across postings and reversals;
+- 28,749 views on acknowledged atomic log boundaries;
+- 10,492 conserved ledger-wide asset/color aggregates;
+- 21,862 successful fault-time immutable-view comparisons;
+- 7,042 complete every-boundary/every-scope/every-replica passes;
+- 4,865 successful `main/first_default_ledger` commands;
+- no unexpected container exit.
+
+The report's 18 other failures are one image-age metaproperty, fourteen
+unreached repository-wide coverage assertions, and three unrelated generic
+`Sometimes` probes. None is a PIT safety counterexample. Open a report with
+`snouty runs show <run_id> --web`; do not copy its signed URL into durable
+documentation.
 
 ## Launching the targeted PIT no-quorum campaign
 

@@ -244,7 +244,56 @@ The local Compose configuration was also rendered against the filtered PIT
 workload images and `snouty validate` observed a ready three-node cluster,
 `setup_complete`, one `first_`, two driver, and one `eventually_` command. This
 proves packaging and bootstrap only. It is not an Antithesis fault-search
-result, and no remote `run_id` exists for this branch yet.
+result.
+
+### Current-branch Antithesis fault-search evidence
+
+Two two-hour cloud campaigns completed on 2026-07-31. Antithesis records the
+requested 120-minute duration as `custom.duration="2"`; the completion times
+include approximately nine minutes of finalization after fault exploration.
+Use `snouty runs show <run_id> --web` to open either report without copying its
+signed URL.
+
+| Role | Run ID | Result |
+|---|---|---|
+| Pre-fix scope-equivalence baseline | `dd4951b02c3adea9de3a066efdbb816c-58-10` | Completed; 69/89 properties passing, but setup is invalid |
+| Corrected dual-axis campaign | `93d98919f9f174b5ab20109b8cf00314-58-10` | Completed; 82/100 properties passing and every targeted PIT property passing |
+
+The baseline is not PIT correctness evidence. Its `first_default_ledger`
+command failed 6,289 times because the old convergence assets
+`PIT-CONVERGENCE-1-PRE` and `PIT-CONVERGENCE-2-POST` violate the v3 asset
+grammar. The resulting setup abort also made the scope fixture ledger absent.
+Commit `566268741` replaced those assets with valid identifiers before the
+targeted image was built. The same baseline also observed two shutdowns with
+`closing store: leaked iterators: current`; this is a distinct, non-attributed
+shutdown signal to investigate separately, not a demonstrated PIT result.
+
+The corrected campaign used workload commit `a3c179468` plus fixture fix
+`566268741`, config tag `pit-dual-axis-20260731-d8b65cf`, Ledger image digest
+`sha256:a88f0f1afa141df669eff291b0d42f4514d17bb5a6db1ddefe5cf22528af26d5`,
+and workload digest
+`sha256:9ea4a56d7fd6948d0ccf30bbad7511fa4b22d215f851191f7c1dbaee1588f76c`.
+Its targeted observations were:
+
+| Property | Passing evaluations | Counterexamples |
+|---|---:|---:|
+| Exact effective/insertion fold across postings and reversals | 28,746 | 0 |
+| View watermark is an acknowledged atomic log boundary | 28,749 | 0 |
+| Canonical flat volume buckets | 28,746 | 0 |
+| Per-asset and per-color monetary conservation | 10,492 | 0 |
+| Fault-time immutable view reached | 21,862 | Property passed; 8,252 inconclusive evaluations |
+| Every boundary and scope covered on every replica | 7,042 | Property passed; 68 incomplete evaluations |
+| Backdated effect, effective-date reversal, and normal reversal fixtures | 4,740 each | 0 |
+
+`first_default_ledger` completed successfully 4,865 times and the report's
+unexpected-container-exit property passed. The 18 report-level failures do not
+contain a PIT safety counterexample: one is the environment image-age
+metaproperty, fourteen are unrelated assertion sites that were never reached,
+and three are generic `Sometimes` coverage probes that never became true. The
+campaign therefore closes the targeted three-node Antithesis fault-search gate for the
+dual-axis monetary projection; it does not close real object-store latency,
+production-volume interference, or every unrelated repository-wide coverage
+probe.
 
 ## Synchronous write path and asynchronous lag
 

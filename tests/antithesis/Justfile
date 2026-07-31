@@ -16,11 +16,12 @@ ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 
 # --- Docker Compose mode (legacy) ---
 
+# duration defaults to two hours (120 minutes).
 # include: optional comma-separated list of <template>/<driver> paths to ship
 # in the workload image. Empty ships every driver (the default). Use the
 # filtered mode for dev-loop runs where the Antithesis composer should focus
 # on a specific subset (e.g. "main/parallel_driver_bulk,main/first_default_ledger").
-run duration description='ledger-v3 manual run' include='' *ARGS:
+run duration='2' description='ledger-v3 manual run' include='' *ARGS:
     just tag={{tag}} push-images {{quote(include)}} {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
@@ -70,12 +71,13 @@ deploy-local: build-images
 # --- Kubernetes mode (uses operator) ---
 
 # Launch a test run on Antithesis using the k8s environment.
-# Duration is in hours (converted to minutes for the Antithesis API).
+# Duration is in hours (converted to minutes for the Antithesis API) and
+# defaults to two hours (120 minutes).
 # include: optional comma-separated list of <template>/<driver> paths to ship
 # in the workload image. Empty ships every driver. Use the filtered mode for
 # dev-loop runs where the composer should focus on a specific subset (e.g.
 # "main/parallel_driver_bulk,main/first_default_ledger").
-k8s-run duration_hours description='ledger-v3 k8s run' include='' *ARGS:
+k8s-run duration_hours='2' description='ledger-v3 k8s run' include='' *ARGS:
     just tag={{tag}} k8s-push-images {{quote(include)}} {{ARGS}}
     curl --fail \
         --user "formance:$ANTITHESIS_PASSWORD" \
