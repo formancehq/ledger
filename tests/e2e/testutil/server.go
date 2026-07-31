@@ -109,6 +109,13 @@ func WithSentinelMode() MultiNodeOption {
 	}
 }
 
+// WithBalanceHistory enables the opt-in PIT projection on every cluster node.
+func WithBalanceHistory() MultiNodeOption {
+	return func(o *MultiNodeOptions) {
+		o.ExtraInstruments = append(o.ExtraInstruments, testserver.WithBalanceHistoryEnabled())
+	}
+}
+
 // WithNodeInstruments applies instruments only to the node at the given 0-based
 // index (on top of the common ones), for heterogeneous per-node configuration.
 func WithNodeInstruments(nodeIndex int, instruments ...testservice.Instrumentation) MultiNodeOption {

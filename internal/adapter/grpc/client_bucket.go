@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -379,14 +380,45 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
-func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+func (g *BucketGrpcClient) AggregateVolumes(
+	ctx context.Context,
+	ledgerName string,
+	filter *commonpb.QueryFilter,
+	opts query.AggregateOptions,
+	read ctrl.AggregateVolumesReadOptions,
+) (*ctrl.AggregateVolumesResult, error) {
+	pointInTime, err := selectorToProto(read.PointInTime)
+	if err != nil {
+		return nil, err
+	}
+	request := &servicepb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
+		MinLogSequence:  read.MinLogSequence,
 		UseMaxPrecision: opts.UseMaxPrecision,
 		CollapseColors:  opts.CollapseColors,
 		GroupByPrefixes: opts.GroupByPrefixes,
-	})
+		PointInTime:     pointInTime,
+	}
+
+	var trailer metadata.MD
+	result, err := g.client.AggregateVolumes(ctx, request, ggrpc.Trailer(&trailer))
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ctrl.AggregateVolumesResult{Aggregate: result}
+	if read.PointInTime != nil {
+		response.View, err = pointInTimeViewFromMetadata(trailer)
+		if err != nil {
+			return nil, err
+		}
+		if err := validatePointInTimeView(read.PointInTime, response.View); err != nil {
+			return nil, err
+		}
+	}
+
+	return response, nil
 }
 
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {

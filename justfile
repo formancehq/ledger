@@ -458,10 +458,13 @@ _generate-demo tapes:
     trap cleanup EXIT
     "$DEMO_DIR/ledger-server" run \
         --node-id 1 \
+        --cluster-id local-demo \
         --bootstrap \
         --bind-addr 127.0.0.1:7777 \
         --wal-dir "$DEMO_DIR/wal" \
         --data-dir "$DEMO_DIR/data" \
+        --health-wal-threshold 0.999 \
+        --health-data-threshold 0.999 \
         --grpc-port 8888 \
         &
     SERVER_PID=$!

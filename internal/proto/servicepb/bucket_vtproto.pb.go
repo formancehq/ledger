@@ -2923,6 +2923,48 @@ func (m *GetLedgerStatsRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *PointInTimeSelector) CloneVT() *PointInTimeSelector {
+	if m == nil {
+		return (*PointInTimeSelector)(nil)
+	}
+	r := new(PointInTimeSelector)
+	r.At = m.At.CloneVT()
+	r.Axis = m.Axis
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *PointInTimeSelector) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *PointInTimeView) CloneVT() *PointInTimeView {
+	if m == nil {
+		return (*PointInTimeView)(nil)
+	}
+	r := new(PointInTimeView)
+	r.RequestedAt = m.RequestedAt.CloneVT()
+	r.Axis = m.Axis
+	r.LedgerId = m.LedgerId
+	r.AuditWatermark = m.AuditWatermark
+	r.LogWatermark = m.LogWatermark
+	r.ManifestVersion = m.ManifestVersion
+	r.HistoryAvailableFrom = m.HistoryAvailableFrom.CloneVT()
+	r.ViewToken = m.ViewToken
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *PointInTimeView) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	if m == nil {
 		return (*AggregateVolumesRequest)(nil)
@@ -2934,6 +2976,7 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	r.UseMaxPrecision = m.UseMaxPrecision
 	r.CheckpointId = m.CheckpointId
 	r.CollapseColors = m.CollapseColors
+	r.PointInTime = m.PointInTime.CloneVT()
 	if rhs := m.GroupByPrefixes; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -7768,6 +7811,68 @@ func (this *GetLedgerStatsRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *PointInTimeSelector) EqualVT(that *PointInTimeSelector) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.At.EqualVT(that.At) {
+		return false
+	}
+	if this.Axis != that.Axis {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *PointInTimeSelector) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PointInTimeSelector)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *PointInTimeView) EqualVT(that *PointInTimeView) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.RequestedAt.EqualVT(that.RequestedAt) {
+		return false
+	}
+	if this.Axis != that.Axis {
+		return false
+	}
+	if this.LedgerId != that.LedgerId {
+		return false
+	}
+	if this.AuditWatermark != that.AuditWatermark {
+		return false
+	}
+	if this.LogWatermark != that.LogWatermark {
+		return false
+	}
+	if this.ManifestVersion != that.ManifestVersion {
+		return false
+	}
+	if !this.HistoryAvailableFrom.EqualVT(that.HistoryAvailableFrom) {
+		return false
+	}
+	if this.ViewToken != that.ViewToken {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *PointInTimeView) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*PointInTimeView)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool {
 	if this == that {
 		return true
@@ -7799,6 +7904,9 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 		return false
 	}
 	if this.CollapseColors != that.CollapseColors {
+		return false
+	}
+	if !this.PointInTime.EqualVT(that.PointInTime) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -15569,6 +15677,142 @@ func (m *GetLedgerStatsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
+func (m *PointInTimeSelector) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PointInTimeSelector) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *PointInTimeSelector) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Axis != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Axis))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.At != nil {
+		size, err := m.At.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PointInTimeView) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PointInTimeView) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *PointInTimeView) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.ViewToken) > 0 {
+		i -= len(m.ViewToken)
+		copy(dAtA[i:], m.ViewToken)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ViewToken)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if m.HistoryAvailableFrom != nil {
+		size, err := m.HistoryAvailableFrom.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if m.ManifestVersion != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ManifestVersion))
+		i--
+		dAtA[i] = 0x31
+	}
+	if m.LogWatermark != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogWatermark))
+		i--
+		dAtA[i] = 0x29
+	}
+	if m.AuditWatermark != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AuditWatermark))
+		i--
+		dAtA[i] = 0x21
+	}
+	if m.LedgerId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LedgerId))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Axis != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Axis))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.RequestedAt != nil {
+		size, err := m.RequestedAt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *AggregateVolumesRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -15598,6 +15842,16 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PointInTime != nil {
+		size, err := m.PointInTime.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
 	}
 	if m.CollapseColors {
 		i--
@@ -19339,6 +19593,60 @@ func (m *GetLedgerStatsRequest) SizeVT() (n int) {
 	return n
 }
 
+func (m *PointInTimeSelector) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.At != nil {
+		l = m.At.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Axis != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Axis))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *PointInTimeView) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.RequestedAt != nil {
+		l = m.RequestedAt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Axis != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Axis))
+	}
+	if m.LedgerId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerId))
+	}
+	if m.AuditWatermark != 0 {
+		n += 9
+	}
+	if m.LogWatermark != 0 {
+		n += 9
+	}
+	if m.ManifestVersion != 0 {
+		n += 9
+	}
+	if m.HistoryAvailableFrom != nil {
+		l = m.HistoryAvailableFrom.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.ViewToken)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -19370,6 +19678,10 @@ func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	}
 	if m.CollapseColors {
 		n += 2
+	}
+	if m.PointInTime != nil {
+		l = m.PointInTime.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -36376,6 +36688,335 @@ func (m *GetLedgerStatsRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PointInTimeSelector: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PointInTimeSelector: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field At", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.At == nil {
+				m.At = &commonpb.Timestamp{}
+			}
+			if err := m.At.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Axis", wireType)
+			}
+			m.Axis = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Axis |= PointInTimeAxis(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PointInTimeView: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PointInTimeView: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RequestedAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.RequestedAt == nil {
+				m.RequestedAt = &commonpb.Timestamp{}
+			}
+			if err := m.RequestedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Axis", wireType)
+			}
+			m.Axis = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Axis |= PointInTimeAxis(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LedgerId", wireType)
+			}
+			m.LedgerId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LedgerId |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuditWatermark", wireType)
+			}
+			m.AuditWatermark = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuditWatermark = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogWatermark", wireType)
+			}
+			m.LogWatermark = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LogWatermark = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ManifestVersion", wireType)
+			}
+			m.ManifestVersion = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ManifestVersion = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HistoryAvailableFrom", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.HistoryAvailableFrom == nil {
+				m.HistoryAvailableFrom = &commonpb.Timestamp{}
+			}
+			if err := m.HistoryAvailableFrom.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ViewToken", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ViewToken = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -36565,6 +37206,42 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.CollapseColors = bool(v != 0)
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PointInTime", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.PointInTime == nil {
+				m.PointInTime = &PointInTimeSelector{}
+			}
+			if err := m.PointInTime.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

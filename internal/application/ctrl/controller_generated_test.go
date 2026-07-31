@@ -44,18 +44,18 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions, read AggregateVolumesReadOptions) (*AggregateVolumesResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts, read)
+	ret0, _ := ret[0].(*AggregateVolumesResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AggregateVolumes indicates an expected call of AggregateVolumes.
-func (mr *MockControllerMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts any) *gomock.Call {
+func (mr *MockControllerMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts, read any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockController)(nil).AggregateVolumes), ctx, ledgerName, filter, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockController)(nil).AggregateVolumes), ctx, ledgerName, filter, opts, read)
 }
 
 // AnalyzeAccounts mocks base method.

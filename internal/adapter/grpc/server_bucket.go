@@ -1391,6 +1391,13 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
+	if req.GetCheckpointId() != 0 && req.GetPointInTime() != nil {
+		return nil, status.Error(codes.InvalidArgument, "checkpoint_id and point_in_time are mutually exclusive")
+	}
+	selector, err := selectorFromProto(req.GetPointInTime())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
@@ -1399,7 +1406,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	defer cleanup()
 
 	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if req.GetCheckpointId() == 0 {
+	if req.GetCheckpointId() == 0 && selector == nil {
 		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 			return nil, err
 		}
@@ -1411,10 +1418,31 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		UseMaxPrecision: req.GetUseMaxPrecision(),
 		GroupByPrefixes: req.GetGroupByPrefixes(),
 		CollapseColors:  req.GetCollapseColors(),
+	}, ctrl.AggregateVolumesReadOptions{
+		PointInTime:    selector,
+		MinLogSequence: req.GetMinLogSequence(),
 	})
 	impl.emitProfile(ctx, profile)
+	if err != nil {
+		return nil, err
+	}
+	if selector != nil {
+		if result == nil || result.View == nil {
+			return nil, status.Error(codes.Internal, "point-in-time aggregation returned no immutable view token")
+		}
+		if err := validatePointInTimeView(selector, result.View); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		trailer, trailerErr := pointInTimeViewMetadata(result.View)
+		if trailerErr != nil {
+			return nil, trailerErr
+		}
+		if trailerErr := ggrpc.SetTrailer(ctx, trailer); trailerErr != nil {
+			return nil, fmt.Errorf("setting point-in-time view trailer: %w", trailerErr)
+		}
+	}
 
-	return result, err
+	return result.Aggregate, nil
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {

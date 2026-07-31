@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -74,6 +75,33 @@ func setupMinIO(t *testing.T) (*s3.Client, string) {
 	require.NoError(t, err)
 
 	return client, endpoint
+}
+
+func TestS3StorageDestinationIdentityBindsEndpointRegionAndBucket(t *testing.T) {
+	t.Parallel()
+
+	storage := func(endpoint, region, bucket string) *S3Storage {
+		client := s3.New(s3.Options{
+			BaseEndpoint: aws.String(endpoint),
+			Region:       region,
+		})
+
+		return NewS3Storage(client, bucket)
+	}
+	base, err := storage("https://s3.example.test", "eu-west-1", "archives").DestinationIdentity()
+	require.NoError(t, err)
+	same, err := storage("https://s3.example.test", "eu-west-1", "archives").DestinationIdentity()
+	require.NoError(t, err)
+	require.Equal(t, base, same)
+	differentEndpoint, err := storage("https://other.example.test", "eu-west-1", "archives").DestinationIdentity()
+	require.NoError(t, err)
+	differentRegion, err := storage("https://s3.example.test", "us-east-1", "archives").DestinationIdentity()
+	require.NoError(t, err)
+	differentBucket, err := storage("https://s3.example.test", "eu-west-1", "other").DestinationIdentity()
+	require.NoError(t, err)
+	require.NotEqual(t, base, differentEndpoint)
+	require.NotEqual(t, base, differentRegion)
+	require.NotEqual(t, base, differentBucket)
 }
 
 func TestS3Storage_ArchiveAndExists(t *testing.T) {
@@ -429,4 +457,125 @@ func TestS3Storage_NewS3ColdStorage(t *testing.T) {
 	data, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.Equal(t, "data", string(data))
+}
+
+func TestS3StorageObjectCatalogPaginatesAndDeletesExactObject(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+	prefix := "cluster/balance-history/nodes/node-1/runs"
+	wantBuckets := []string{
+		prefix + "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		prefix + "/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		prefix + "/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+	}
+	for index, bucketID := range wantBuckets {
+		content := fmt.Appendf(nil, "owned-%d", index)
+		require.NoError(t, storage.Archive(ctx, bucketID, 0, bytes.NewReader(content), ComputeSHA256OrPanic(content)))
+	}
+
+	incompleteBucket := prefix + "/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(minioBucket),
+		Key:    aws.String(storage.archiveKey(incompleteBucket, 0)),
+		Body:   strings.NewReader("no checksum metadata"),
+	})
+	require.NoError(t, err)
+	foreignBucket := "cluster/balance-history/nodes/node-2/runs/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	require.NoError(t, storage.Archive(ctx, foreignBucket, 0, strings.NewReader("foreign"), ComputeSHA256OrPanic([]byte("foreign"))))
+	_, err = client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(minioBucket),
+		Key:    aws.String(prefix + "/malformed"),
+		Body:   strings.NewReader("ignored"),
+	})
+	require.NoError(t, err)
+
+	var (
+		cursor string
+		got    []ArchiveObject
+	)
+	for {
+		page, err := storage.List(ctx, prefix, cursor, 2)
+		require.NoError(t, err)
+		got = append(got, page.Objects...)
+		if page.NextCursor == "" {
+			break
+		}
+		require.NotEqual(t, cursor, page.NextCursor)
+		cursor = page.NextCursor
+	}
+	require.Len(t, got, 4, "the metadata-less object is still an owned capacity object")
+	for _, object := range got {
+		require.NotEqual(t, foreignBucket, object.BucketID)
+		require.Positive(t, object.Size)
+		require.False(t, object.LastModified.IsZero())
+	}
+	require.Equal(t, incompleteBucket, got[3].BucketID)
+
+	// S3 stores the checksum in the data object's metadata rather than a
+	// separate sidecar, so one exact DeleteObject removes the complete object.
+	require.NoError(t, storage.Delete(ctx, wantBuckets[0], 0))
+	require.NoError(t, storage.Delete(ctx, wantBuckets[0], 0), "delete must be idempotent")
+	_, ok, err := storage.headObject(ctx, storage.archiveKey(wantBuckets[0], 0))
+	require.NoError(t, err)
+	require.False(t, ok)
+	exists, err := storage.Exists(ctx, wantBuckets[1], 0)
+	require.NoError(t, err)
+	require.True(t, exists, "deletion must not affect a sibling content address")
+}
+
+func TestS3StorageObjectCatalogRejectsInvalidScopeAndPropagatesCancellation(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+
+	_, err := storage.List(ctx, "../foreign", "", 10)
+	require.Error(t, err)
+	require.Error(t, storage.Delete(ctx, "../foreign", 0))
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = storage.List(canceled, "cluster/balance-history", "", 10)
+	require.ErrorIs(t, err, context.Canceled)
+	err = storage.Delete(canceled, "cluster/balance-history/object", 0)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestS3StorageObjectCatalogCursorSurvivesDeletionBetweenPages(t *testing.T) {
+	t.Parallel()
+
+	client, _ := setupMinIO(t)
+	storage := NewS3Storage(client, minioBucket)
+	ctx := context.Background()
+	prefix := "cluster/balance-history/nodes/node-1/runs"
+	buckets := []string{
+		prefix + "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		prefix + "/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		prefix + "/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+	}
+	for _, bucketID := range buckets {
+		require.NoError(t, storage.Archive(ctx, bucketID, 0, strings.NewReader(bucketID), ComputeSHA256OrPanic([]byte(bucketID))))
+	}
+
+	first, err := storage.List(ctx, prefix, "", 1)
+	require.NoError(t, err)
+	require.Len(t, first.Objects, 1)
+	require.Equal(t, buckets[0], first.Objects[0].BucketID)
+	require.NotEmpty(t, first.NextCursor)
+	require.NoError(t, storage.Delete(ctx, buckets[0], 0), "deleting the cursor object must not invalidate the next page")
+
+	second, err := storage.List(ctx, prefix, first.NextCursor, 1)
+	require.NoError(t, err)
+	require.Len(t, second.Objects, 1)
+	require.Equal(t, buckets[1], second.Objects[0].BucketID)
+	require.NotEmpty(t, second.NextCursor)
+	third, err := storage.List(ctx, prefix, second.NextCursor, 1)
+	require.NoError(t, err)
+	require.Len(t, third.Objects, 1)
+	require.Equal(t, buckets[2], third.Objects[0].BucketID)
+	require.Empty(t, third.NextCursor)
 }

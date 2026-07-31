@@ -188,13 +188,7 @@ func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
 			},
 		),
 		fx.Invoke(
-			func(lc fx.Lifecycle, coldReader *coldstorage.ColdReader) {
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						return coldReader.Close()
-					},
-				})
-			},
+			registerColdReaderLifecycle,
 			func(lc fx.Lifecycle, archiver *state.Archiver) {
 				lc.Append(worker.FxHook(archiver))
 			},
@@ -206,6 +200,7 @@ func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
 		attributes.Module(),
+		balanceHistoryModule(),
 		// Decorate the upstream MeterProvider so every instrument
 		// our code creates is renamed according to --metrics-naming.
 		// The decorator has no per-meter allowlist: anything the
@@ -412,6 +407,9 @@ func Module() fx.Option {
 
 				// Fan-out: Machine emits to a single Notifier; FanOut dispatches
 				// to the per-consumer Notifications (events, mirror, index, usage).
+				// Balance history is intentionally ticker-driven so the FSM hot
+				// path keeps the original four-target fan-out and the builder
+				// coalesces immutable publications at a bounded 200 ms cadence.
 				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications, usageNotifications)
 
 				// Sub-objects built in-line so NewMachine receives them pre-built.
@@ -834,18 +832,19 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				us *usagestore.Store,
+				volumeViews ctrl.VolumeViewProvider,
 				coldReader *coldstorage.ColdReader,
 				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, volumeViews, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -915,6 +914,11 @@ func Module() fx.Option {
 					},
 				})
 			},
+			// Registered after the primary-store close hooks but before the API
+			// server hooks below. Fx stops in reverse order, so API handlers drain
+			// and release pinned history Views before history resources close,
+			// while the primary authoritative store remains available throughout.
+			registerBalanceHistoryCloseLifecycle,
 			// Bloom-rebuild dispatcher: the Machine signals on its
 			// BloomRebuildCh when a cluster-config change requires a rebuild;
 			// Recovery (which owns the Pebble reader) consumes that signal and
@@ -1371,6 +1375,10 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, usageBuilder *usagebuilder.Builder) {
 				lc.Append(worker.FxHook(usageBuilder))
 			},
+			// Registered last so reverse-order shutdown first closes the PIT read
+			// gate and drains every history worker. API servers then gracefully
+			// drain before the earlier history-close hook releases peer resources.
+			registerBalanceHistoryQuiesceLifecycle,
 		),
 	)
 }

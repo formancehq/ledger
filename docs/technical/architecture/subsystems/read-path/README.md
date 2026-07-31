@@ -10,7 +10,10 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `intern
 | [iterator-seek-contract.md](iterator-seek-contract.md) | Absolute SeekGE/SeekLE semantics across the iterator algebra, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, bloom acceleration. |
-| [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
+| [query-checkpoints.md](query-checkpoints.md) | Pre-created applied-state snapshots of the main store and read index. |
+| [point-in-time-balances.md](point-in-time-balances.md) | Contract and architecture for exact effective/insertion-time monetary history, current metadata filters, immutable view tokens, and fail-closed reads. |
+| [point-in-time-balances-performance.md](point-in-time-balances-performance.md) | Measured baselines, benchmark matrix, and acceptance status for PIT read, write, lag, rebuild, and hot/cold performance. |
+| [balance-history-remote-gc.md](balance-history-remote-gc.md) | Node-owned cold-object lifecycle, destination binding, durable reachability protocol, crash windows, S3 policy, and remote-GC observability. |
 | [typed-metadata.md](typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
 

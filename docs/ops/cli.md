@@ -1781,9 +1781,24 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--filter` | | Filter expression (same DSL as account list) |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
+| `--pit` | | RFC3339 point in time at which to aggregate balances |
+| `--use-insertion-date` | `false` | Apply `--pit` to the insertion-date axis instead of the effective-date axis |
 | `--analyze` | `false` | Display query execution profile |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+
+`--pit` defaults to the effective-date axis. Add `--use-insertion-date` to
+reconstruct the state according to when transactions were inserted instead.
+`--use-insertion-date` is invalid without `--pit`, and a point-in-time read
+cannot be combined with `--checkpoint-id`. Timestamps must be RFC3339 and at or
+after `1970-01-01T00:00:00Z`.
+
+Every successful point-in-time read emits the immutable view selected by the
+server on stderr as a single `point_in_time_view=<json>` line. The JSON includes
+the requested timestamp and axis, ledger ID, audit and log watermarks, manifest
+version, history floor, and opaque `viewToken`. Keeping it on stderr preserves
+the existing table, JSON, and YAML result shape on stdout. The command fails
+closed if the server omits or returns an incomplete view trailer.
 
 **Example:**
 
@@ -1796,6 +1811,14 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
 
 # Aggregate with filter
 ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[category] == premium"
+
+# Aggregate balances by their effective date at a point in time
+ledgerctl accounts aggregate-volumes --ledger my-ledger --pit 2026-01-15T12:00:00Z
+
+# Aggregate balances by insertion date at the same point in time
+ledgerctl accounts aggregate-volumes --ledger my-ledger \
+  --pit 2026-01-15T12:00:00Z \
+  --use-insertion-date
 
 # Output as JSON
 ledgerctl accounts aggregate-volumes --ledger my-ledger --json
@@ -4018,6 +4041,110 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 ```
 
 Clients can also discover the server's public key via the `Discovery` RPC.
+
+---
+
+### Server Point-in-Time Balance History Flags
+
+The point-in-time (PIT) balance projection is an explicit opt-in on every
+replica. When enabled, it tails the authoritative audit history asynchronously into the
+dedicated `<data-dir>/balance-history` peer store, so none of these settings
+adds work to the synchronous Raft/FSM apply path.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--balance-history-dir` | string | `""` | Directory for the peer store (default: `<data-dir>/balance-history`). Put it on a dedicated volume to isolate backfill/compaction I/O. |
+| `--balance-history-enabled` | bool | `false` | Enable PIT projection workers and reads. When false, PIT reads fail closed while live reads remain available. |
+| `--balance-history-ledgers` | string slice | `[]` | Exact, case-sensitive ledger names allowed to use PIT reads. Empty means every ledger once the feature is enabled. |
+| `--balance-history-builder-batch-size` | int | `200` | Maximum number of complete audit proposals published in one immutable run. |
+| `--balance-history-compaction-threshold` | int | `4` | Number of logical runs at one level before asynchronous compaction. Must be at least 2. |
+| `--balance-history-maintenance-interval` | duration | `1s` | Interval between bounded local compaction passes. Maintenance runs independently from the builder. |
+| `--balance-history-max-compactions-per-pass` | int | `2` | Maximum compactions per maintenance pass. Must be between 1 and 1000. Together with the compaction threshold and maintenance interval, it must retire runs at least as fast as the fixed 200 ms builder ticker can publish them. |
+| `--balance-history-backfill-yield` | duration | `5ms` | Cooperative pause between bounded boot-time backfill batches. Steady-state tailing does not sleep. |
+| `--balance-history-wal-sync-interval` | duration | `5s` | Maximum durability window for asynchronously published history. A crash may replay this suffix from audit; committed ledger data is unaffected. |
+| `--balance-history-verifier-interval` | duration | `15m` | Interval between physical/source-integrity verification passes. |
+| `--balance-history-verifier-replay-every` | uint64 | `96` | Run the expensive full source replay every N verifier passes (daily at the default 15-minute interval); physical/head checks still run every pass. |
+| `--balance-history-cold-tier` | bool | `false` | Archive sealed immutable history runs to the configured filesystem or S3 cold-storage destination. Requires `--balance-history-enabled`. |
+| `--balance-history-retain-local-runs` | int | `8` | Number of successfully archived runs kept in the local hot set outside the hydration cache. |
+| `--balance-history-archive-cache-max-bytes` | ByteSize | `1Gi` | Maximum local bytes used by verified runs hydrated from cold storage. |
+| `--balance-history-max-segment-bytes` | ByteSize | `128Mi` | Maximum encoded size of one content-addressed cold segment. Larger logical runs are split into independently verified fetch units. |
+| `--balance-history-max-runs-per-tier-pass` | int | `4` | Maximum immutable runs uploaded by one cold-tier pass. Must be between 1 and 1000. |
+| `--balance-history-tier-interval` | duration | `5m` | Interval between bounded cold-tier upload passes. |
+| `--balance-history-remote-gc-interval` | duration | `1h` | Interval between bounded inventories and remote-GC passes in the replica-owned namespace. |
+| `--balance-history-remote-gc-grace-period` | duration | `24h` | Minimum age and observation window before an unreferenced remote object may be deleted. |
+| `--balance-history-remote-gc-scan-limit` | int | `1000` | Maximum remote objects listed by one GC pass. Must be between 1 and 100000. |
+| `--balance-history-remote-gc-delete-limit` | int | `100` | Maximum remote objects deleted by one GC pass. Must be between 1 and 10000. |
+
+Passing `0` for a duration/count whose shipped default is non-zero selects the
+shipped default; negative values and a compaction threshold below 2 are
+rejected at startup. Enabling the cold tier requires the existing cold-storage
+driver to be `filesystem` or `s3`. Each replica writes only below its stable
+`<cluster>/balance-history/nodes/<nodeID>/runs/` namespace. Upload, hydration,
+and remote garbage collection are background maintenance; the history builder
+never performs cold I/O.
+
+`--balance-history-ledgers` is a read-availability canary, not a storage filter.
+The asynchronous builder still projects every ledger in the cluster so adding
+or removing a name does not create a history gap or require a second backfill.
+History keys remain isolated by the FSM-assigned numeric ledger ID; deleting
+and recreating an allowed name therefore cannot expose the prior incarnation.
+
+The segment limit bounds a single cold miss without changing logical run or
+manifest semantics. A record larger than the configured unit is rejected and
+the local run remains intact; the tierer never removes bytes it cannot later
+hydrate exactly.
+
+```bash
+# Enable local PIT history with a five-second replayable durability suffix
+ledger run --balance-history-enabled [other flags...]
+
+# Reduce boot-time disk contention and sample a full verifier replay daily
+# when the verifier itself runs every 15 minutes (96 passes/day).
+ledger run \
+  --balance-history-enabled \
+  --balance-history-ledgers canary-ledger,shadow-ledger \
+  --balance-history-builder-batch-size 100 \
+  --balance-history-backfill-yield 20ms \
+  --balance-history-verifier-replay-every 96 \
+  [other flags...]
+
+# Enable bounded cold tiering with the existing S3 cold-storage destination.
+ledger run \
+  --balance-history-enabled \
+  --balance-history-cold-tier \
+  --cold-storage-driver s3 \
+  --balance-history-retain-local-runs 8 \
+  --balance-history-max-runs-per-tier-pass 4 \
+  [other flags...]
+
+```
+
+As with other server flags, each option is available through its upper-case,
+underscore-separated environment variable, for example
+`BALANCE_HISTORY_BUILDER_BATCH_SIZE`, `BALANCE_HISTORY_WAL_SYNC_INTERVAL`,
+`BALANCE_HISTORY_MAINTENANCE_INTERVAL`, `BALANCE_HISTORY_COLD_TIER`,
+`BALANCE_HISTORY_REMOTE_GC_INTERVAL`, `BALANCE_HISTORY_LEDGERS`, and
+`BALANCE_HISTORY_ENABLED`.
+
+The Ledger operator intentionally does not add a second typed copy of these
+advanced controls. Set them through `spec.extraEnv` when required:
+
+```yaml
+spec:
+  extraEnv:
+    - name: BALANCE_HISTORY_ENABLED
+      value: "true"
+    - name: BALANCE_HISTORY_LEDGERS
+      value: canary-ledger,shadow-ledger
+    - name: BALANCE_HISTORY_VERIFIER_REPLAY_EVERY
+      value: "96"
+    - name: BALANCE_HISTORY_ARCHIVE_CACHE_MAX_BYTES
+      value: 2Gi
+```
+
+The complete architecture, fail-closed states, cold-cache behavior, and
+performance acceptance matrix are documented in
+[Point-in-Time Balances](../technical/architecture/subsystems/read-path/point-in-time-balances.md).
 
 ---
 

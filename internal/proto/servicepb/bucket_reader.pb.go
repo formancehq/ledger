@@ -9488,6 +9488,192 @@ func NewGetLedgerStatsRequestListReader(s []*GetLedgerStatsRequest) GetLedgerSta
 	return getLedgerStatsRequestListReadonly(s)
 }
 
+// PointInTimeSelectorReader provides read-only access to PointInTimeSelector.
+// Call Mutate() to obtain a mutable clone.
+type PointInTimeSelectorReader interface {
+	GetAt() commonpb.TimestampReader
+	GetAxis() PointInTimeAxis
+	Mutate() *PointInTimeSelector
+}
+
+type pointInTimeSelectorReadonly PointInTimeSelector
+
+func (r *pointInTimeSelectorReadonly) GetAt() commonpb.TimestampReader {
+	v := (*PointInTimeSelector)(r).GetAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *pointInTimeSelectorReadonly) GetAxis() PointInTimeAxis {
+	return (*PointInTimeSelector)(r).GetAxis()
+}
+
+func (r *pointInTimeSelectorReadonly) Mutate() *PointInTimeSelector {
+	return (*PointInTimeSelector)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PointInTimeSelector.
+func (m *PointInTimeSelector) AsReader() PointInTimeSelectorReader {
+	if m == nil {
+		return nil
+	}
+	return (*pointInTimeSelectorReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PointInTimeSelector.
+func (m *PointInTimeSelector) Mutate() *PointInTimeSelector {
+	return m.CloneVT()
+}
+
+// PointInTimeSelectorListReader provides read-only iteration over []*PointInTimeSelector.
+type PointInTimeSelectorListReader interface {
+	Len() int
+	Get(i int) PointInTimeSelectorReader
+	Range(yield func(int, PointInTimeSelectorReader) bool)
+}
+
+type pointInTimeSelectorListReadonly []*PointInTimeSelector
+
+func (l pointInTimeSelectorListReadonly) Len() int { return len(l) }
+
+func (l pointInTimeSelectorListReadonly) Get(i int) PointInTimeSelectorReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l pointInTimeSelectorListReadonly) Range(yield func(int, PointInTimeSelectorReader) bool) {
+	for i, v := range l {
+		var r PointInTimeSelectorReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPointInTimeSelectorListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPointInTimeSelectorListReader(s []*PointInTimeSelector) PointInTimeSelectorListReader {
+	return pointInTimeSelectorListReadonly(s)
+}
+
+// PointInTimeViewReader provides read-only access to PointInTimeView.
+// Call Mutate() to obtain a mutable clone.
+type PointInTimeViewReader interface {
+	GetRequestedAt() commonpb.TimestampReader
+	GetAxis() PointInTimeAxis
+	GetLedgerId() uint32
+	GetAuditWatermark() uint64
+	GetLogWatermark() uint64
+	GetManifestVersion() uint64
+	GetHistoryAvailableFrom() commonpb.TimestampReader
+	GetViewToken() string
+	Mutate() *PointInTimeView
+}
+
+type pointInTimeViewReadonly PointInTimeView
+
+func (r *pointInTimeViewReadonly) GetRequestedAt() commonpb.TimestampReader {
+	v := (*PointInTimeView)(r).GetRequestedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *pointInTimeViewReadonly) GetAxis() PointInTimeAxis {
+	return (*PointInTimeView)(r).GetAxis()
+}
+
+func (r *pointInTimeViewReadonly) GetLedgerId() uint32 {
+	return (*PointInTimeView)(r).GetLedgerId()
+}
+
+func (r *pointInTimeViewReadonly) GetAuditWatermark() uint64 {
+	return (*PointInTimeView)(r).GetAuditWatermark()
+}
+
+func (r *pointInTimeViewReadonly) GetLogWatermark() uint64 {
+	return (*PointInTimeView)(r).GetLogWatermark()
+}
+
+func (r *pointInTimeViewReadonly) GetManifestVersion() uint64 {
+	return (*PointInTimeView)(r).GetManifestVersion()
+}
+
+func (r *pointInTimeViewReadonly) GetHistoryAvailableFrom() commonpb.TimestampReader {
+	v := (*PointInTimeView)(r).GetHistoryAvailableFrom()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *pointInTimeViewReadonly) GetViewToken() string {
+	return (*PointInTimeView)(r).GetViewToken()
+}
+
+func (r *pointInTimeViewReadonly) Mutate() *PointInTimeView {
+	return (*PointInTimeView)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PointInTimeView.
+func (m *PointInTimeView) AsReader() PointInTimeViewReader {
+	if m == nil {
+		return nil
+	}
+	return (*pointInTimeViewReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PointInTimeView.
+func (m *PointInTimeView) Mutate() *PointInTimeView {
+	return m.CloneVT()
+}
+
+// PointInTimeViewListReader provides read-only iteration over []*PointInTimeView.
+type PointInTimeViewListReader interface {
+	Len() int
+	Get(i int) PointInTimeViewReader
+	Range(yield func(int, PointInTimeViewReader) bool)
+}
+
+type pointInTimeViewListReadonly []*PointInTimeView
+
+func (l pointInTimeViewListReadonly) Len() int { return len(l) }
+
+func (l pointInTimeViewListReadonly) Get(i int) PointInTimeViewReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l pointInTimeViewListReadonly) Range(yield func(int, PointInTimeViewReader) bool) {
+	for i, v := range l {
+		var r PointInTimeViewReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPointInTimeViewListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPointInTimeViewListReader(s []*PointInTimeView) PointInTimeViewListReader {
+	return pointInTimeViewListReadonly(s)
+}
+
 // AggregateVolumesRequestReader provides read-only access to AggregateVolumesRequest.
 // Call Mutate() to obtain a mutable clone.
 type AggregateVolumesRequestReader interface {
@@ -9498,6 +9684,7 @@ type AggregateVolumesRequestReader interface {
 	GetGroupByPrefixes() []string
 	GetCheckpointId() uint64
 	GetCollapseColors() bool
+	GetPointInTime() PointInTimeSelectorReader
 	Mutate() *AggregateVolumesRequest
 }
 
@@ -9533,6 +9720,14 @@ func (r *aggregateVolumesRequestReadonly) GetCheckpointId() uint64 {
 
 func (r *aggregateVolumesRequestReadonly) GetCollapseColors() bool {
 	return (*AggregateVolumesRequest)(r).GetCollapseColors()
+}
+
+func (r *aggregateVolumesRequestReadonly) GetPointInTime() PointInTimeSelectorReader {
+	v := (*AggregateVolumesRequest)(r).GetPointInTime()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *aggregateVolumesRequestReadonly) Mutate() *AggregateVolumesRequest {

@@ -1234,6 +1234,30 @@ message GetLedgerStatsRequest {
   fixed64 checkpoint_id = 2;
 }
 
+enum PointInTimeAxis {
+  POINT_IN_TIME_AXIS_EFFECTIVE = 0;
+  POINT_IN_TIME_AXIS_INSERTION = 1;
+}
+
+message PointInTimeSelector {
+  common.Timestamp at = 1;
+  PointInTimeAxis axis = 2;
+}
+
+// PointInTimeView identifies the immutable historical projection used to
+// answer a point-in-time read. history_available_from is the availability
+// floor for the selected axis.
+message PointInTimeView {
+  common.Timestamp requested_at = 1;
+  PointInTimeAxis axis = 2;
+  uint32 ledger_id = 3;
+  fixed64 audit_watermark = 4;
+  fixed64 log_watermark = 5;
+  fixed64 manifest_version = 6;
+  common.Timestamp history_available_from = 7;
+  string view_token = 8;
+}
+
 message AggregateVolumesRequest {
   string ledger = 1;
   common.QueryFilter filter = 2;
@@ -1250,6 +1274,7 @@ message AggregateVolumesRequest {
   // ("" color). Result entries are produced with color = "". By default each
   // (asset, color) bucket yields its own AggregatedVolume entry.
   bool collapse_colors = 7;
+  PointInTimeSelector point_in_time = 8;
 }
 
 // ============================================================================
