@@ -505,6 +505,14 @@ cache-hit cases still observed eight backend fetches across 200 samples after
 cache churn; their per-fetch percentile is an eight-sample diagnostic, not a
 network-latency estimate.
 
+The equivalent all-hot stores occupied 91.82-91.89 MB. After tiering and
+flushing, the primary history stores occupied 80.19-84.99 MB, a 7.50-12.68%
+local reduction, while the immutable cold objects occupied 156.70 MB. Tiering
+therefore removes local hot-run bytes, but the combined retained footprint is
+larger for this fixture. Capacity planning still needs a production retention
+formula covering primary data, object encoding, cache, obsolete-file cleanup,
+and replication.
+
 This remains a local-filesystem result. The OS page cache was not flushed, and
 there is no S3 request, TLS, network, throttling, or cross-AZ latency. A real
 object store adds deployment-specific behavior around the same decode and
@@ -517,10 +525,12 @@ still requires the deployment-specific object-store matrix.
 The two-year hot dataset occupied 54.4 MB: 2,139 bytes per posting or
 1,069 bytes per effect. These values include Pebble representation and the
 specific synthetic account/asset/color distribution; they are not a universal
-retention formula. The cold lifecycle produced 17.1 MB of archive objects but
-did not reduce the immediate local Pebble footprint in this run. Logical
-tiering is therefore proven, while physical local-disk reclamation remains to
-be measured after obsolete-file cleanup.
+retention formula. The initial smaller cold lifecycle produced 17.1 MB of
+archive objects but did not reduce its immediate local Pebble footprint. The
+later full cold matrix does show a 7.50-12.68% flushed primary-store reduction,
+together with a 156.70 MB archive. Logical tiering and some local reclamation
+are therefore measured, while production retention and obsolete-file cleanup
+remain open.
 
 Daily aging already left no threshold-eligible run, so the final explicit
 compaction diagnostic performed zero logical merges. Pebble reported cumulative
@@ -532,6 +542,62 @@ publication layouts: one store published once and retained one run; the other
 published daily, compacted, and retained six runs. Their logical effect digest
 and served semantic digest were equal. This proves deterministic local logical
 convergence across physical layouts, not networked multi-replica recovery.
+
+### Current full auxiliary phases
+
+The remaining full-profile store phases were rerun on 2026-07-31 at commit
+`3390e3415a826a52c92b9df594c2c5d38026f36f`, tree
+`cea6078d9027653341fe78ba60dc1c769c1b573e`, on the same Apple M5 Pro,
+darwin/arm64, Go 1.26.5 boundary. Each artifact is an intentionally selected
+phase (`complete=false`), with the same five unrelated dirty paths:
+
+| Phase | Artifact | SHA-256 |
+|---|---|---|
+| Compaction | `build/perf/pit-store-full-compaction-3390e3415.json` | `762fd5b0ec95e5b85e059b77e21a066125e3b18fada7aed3a1d4cff9aebf34c7` |
+| Replica digest | `build/perf/pit-store-full-replica-digest-3390e3415.json` | `87d545e89c8e9697964cb8ef952fb21084e1ea6a6b215bc3bbb68a6b743265e6` |
+| Cardinality | `build/perf/pit-store-full-cardinality-3390e3415.json` | `4a6afcb4bfe2f286df97e7b0129cc8c7c02ccf8c2711f9b168d822075714853f` |
+| Backdating | `build/perf/pit-store-full-backdating-3390e3415.json` | `5e412c6214d9b34c658174bfe5c56912efc9cae82c739aa99ed9d36d38f12278` |
+
+The full compaction phase rebuilt the 731-day, 505,344-effect fixture and
+again found zero threshold-eligible logical merges: the 11-run topology was
+already converged. The explicit Pebble flush reduced physical bytes from
+91,827,365 to 90,226,084 and compaction debt from 15,051,391 bytes to zero;
+cumulative Pebble write amplification was 1.577. Unfiltered p95 was 26.046 ms
+before and 26.955 ms after the flush (+3.49%); p99 was 26.763 ms and 27.597 ms
+(+3.12%). This measures converged-state flush/cleanup, not logical compaction
+throughput or read interference while real merges are active, so the
+concurrent-compaction rollout gate remains open.
+
+The replica-digest phase used 90 identical days. Replica A published once and
+retained one run; replica B published daily, compacted, and retained six runs.
+Both the logical effect digest and the served semantic digest were exactly
+equal while the physical shapes differed. The
+`simulated_replica_digest_convergence` assertion passed. This is deterministic
+two-store evidence, not a networked lag, crash, or recovery test.
+
+The cardinality phase used one-run probes with 300 samples each:
+
+| Accounts x assets x colors | p50 | p95 | p99 |
+|---:|---:|---:|---:|
+| 64 x 1 x 1 | 6.208 us | 9.750 us | 15.083 us |
+| 256 x 8 x 1 | 11.959 us | 13.875 us | 26.083 us |
+| 256 x 8 x 4 | 57.459 us | 71.167 us | 108.375 us |
+
+These probes isolate in-run identity lookup and materialization. They do not
+represent the multi-run, filtered, grouped, cold, or end-to-end API costs.
+
+The backdating phase also used 300 samples per row on its bounded fixture:
+
+| Backdated rate | Effective p95 | Insertion p95 |
+|---:|---:|---:|
+| 0% | 77.875 us | 82.500 us |
+| 1% | 76.833 us | 93.083 us |
+| 50% | 81.625 us | 82.792 us |
+
+The 76.8-93.1 microsecond p95 band shows no monotonic read penalty from the
+backdated percentage in this fixture. It supports the no-rewrite
+read-scalability hypothesis, but it is not a production write-saturation or
+adversarial backdating result.
 
 The historical unchanged monolithic `full` store profile used 731 days, 512 accounts, 16 asset
 buckets, eight colors, 256 postings/day, 1,000 primary samples, and 200 shape
@@ -778,7 +844,8 @@ not add historical storage or write work.
 | PIT axis | Effective and insertion measured at 1d/6mo/2y locally for full unfiltered, filtered, and grouped shapes | Pass local / full hot and cold matrices |
 | PIT shape | Hot full p95 ranges from 15.135 ms unfiltered to 9.716 s grouped transform; cold full miss p95 ranges from 282 ms unfiltered to 4.012 s grouped | Complete local hot/cold shapes / severe grouped capacity warning |
 | PIT source | Full local-filesystem cold miss and verified cache hit matrices complete; real object network absent | Pass local / pending deployment |
-| Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
-| Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
-| Capacity | Local bytes/effect measured; cold physical reclamation and production formula absent | Partial |
-| Multi-replica | Equal local logical/semantic digests across layouts; real cluster absent | Partial |
+| PIT cardinality | One-run p95 grows from 9.750 us at 64 x 1 x 1 to 71.167 us at 256 x 8 x 4 | Diagnostic local |
+| Backdating | Full 0%, 1%, and 50% matrix remains in a 76.8-93.1 us p95 band | Pass local |
+| Compaction | Full converged fixture has zero eligible merges; flush clears 15.1 MB debt with +3.49% read p95, but active-merge interference is unmeasured | Partial |
+| Capacity | Full tiering reduces flushed primary bytes 7.50-12.68% but adds 156.70 MB of archive objects; production retention formula remains open | Partial |
+| Multi-replica | Equal 90-day logical/semantic digests across one-run and six-run local layouts; real cluster absent | Partial |
