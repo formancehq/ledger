@@ -535,6 +535,66 @@ not part of the current enforced gate, but it is material evidence against any
 claim of age-independent latency across both axes. The growth is not linear in
 history length; it is nevertheless a real 38.2% tail increase for this shape.
 
+### Full filtered and transformed shapes
+
+The remaining hot filtered and transformed phases were captured on 2026-07-31
+at commit `1120a3ec4ae40c57101efcd1a1842bb18f644875`, tree
+`67c087ddfda166292fae8e6f009df5e1748860ba`, on the same Apple M5 Pro,
+darwin/arm64, Go 1.26.5 boundary. The five dirty paths were the same unrelated
+instruction and local-environment files. The dataset contained 731 days, 512
+accounts, 16 assets, eight colors, 256 postings/day, 505,344 effects, and 11
+final logical runs.
+
+The current-filtered phase selected 16 accounts and ran 200 samples per
+case. Each case completed independently in 34.1-39.0 seconds:
+
+| Case | Artifact | SHA-256 |
+|---|---|---|
+| Effective 1 day | `build/perf/pit-store-full-hot-filtered-effective-1d-1120a3ec4.json` | `2aaf87dba684df02addefc680f2573e6788c198c7d175b70a48502a25fe03d4d` |
+| Effective 6 months | `build/perf/pit-store-full-hot-filtered-effective-6mo-1120a3ec4.json` | `4f2c3ca68fe2b08450edd8761c1c4cd712167a29262a7145996f87c546fde16b` |
+| Effective 2 years | `build/perf/pit-store-full-hot-filtered-effective-2y-1120a3ec4.json` | `60077e62fa727dd5b362fa4d2a753262752500c535877a4820afb48fc1e982a1` |
+| Insertion 1 day | `build/perf/pit-store-full-hot-filtered-insertion-1d-1120a3ec4.json` | `745cfb78b48df2146710458ae0e163781261aa644a7ea8677459ebbcaf11e628` |
+| Insertion 6 months | `build/perf/pit-store-full-hot-filtered-insertion-6mo-1120a3ec4.json` | `0a10f56e2daa443fde9ae7bcd442e7163493f04475dfe8e66d9afee023015094` |
+| Insertion 2 years | `build/perf/pit-store-full-hot-filtered-insertion-2y-1120a3ec4.json` | `f4da36c0f3a673100e73be6c5a99faf572f43b2fe4bdf51e17792d4eb33766aa` |
+
+| Axis | Age | p50 | p95 | p99 | Max | Operations/s |
+|---|---:|---:|---:|---:|---:|---:|
+| Effective | 1 day | 57.711 ms | 106.284 ms | 124.098 ms | 137.644 ms | 14.89 |
+| Effective | 6 months | 45.929 ms | 95.783 ms | 104.134 ms | 110.587 ms | 17.27 |
+| Effective | 2 years | 87.899 ms | 112.774 ms | 120.719 ms | 125.626 ms | 12.56 |
+| Insertion | 1 day | 50.865 ms | 89.360 ms | 94.955 ms | 96.190 ms | 16.57 |
+| Insertion | 6 months | 63.258 ms | 112.316 ms | 121.788 ms | 151.880 ms | 13.88 |
+| Insertion | 2 years | 85.112 ms | 123.116 ms | 130.517 ms | 152.571 ms | 12.47 |
+
+For effective time, the six-month/one-day p95 ratio is **0.901** and the
+two-year/one-day ratio is **1.061**. For insertion time, the corresponding
+ratios are **1.257** and **1.378**. This is the same qualitative result as the
+unfiltered matrix: the bounded run topology avoids a linear history scan, but
+age is not latency-neutral and the insertion axis has a material older-cutoff
+tail in this dataset. The filtered cases allocated 4.73-4.96 MB and
+88.7-99.1 thousand objects per operation.
+
+The transformed-shape artifact is
+`build/perf/pit-store-full-hot-shapes-1120a3ec4.json`, SHA-256
+`72019c629bed678d042ad0641ffdf3f9599a1ce699072c156cdf970f863b64d0`.
+It completed in 1,098.3 seconds and ran 200 one-day effective-time samples for
+each shape:
+
+| Effective one-day shape | p50 | p95 | p99 | Max | Operations/s | Bytes/op | Allocs/op |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Grouped + max precision + collapsed colors | 3.551 s | 9.716 s | 24.584 s | 93.018 s | 0.190 | 179.2 MB | 3.12 M |
+| Unfiltered + collapsed colors | 35.326 ms | 54.314 ms | 60.878 ms | 81.264 ms | 24.52 | 0.775 MB | 18.7 k |
+
+The combined grouped transform is **178.9x** slower at p95 and **403.8x**
+slower at p99 than unfiltered color collapse. It allocates 231.2x more bytes
+and 167.1x more objects per operation, and caused 92.5 million Pebble block
+cache misses over 200 samples versus 0.88 million for unfiltered collapse.
+This is a severe shape/capacity warning, not evidence that old timestamps are
+intrinsically slow. These partial-phase artifacts have no shape-specific
+acceptance assertion: `PIT_PERF_ENFORCE=1` verifies applicable gates, while
+successful completion alone does not make multi-second interactive latency
+acceptable.
+
 The write-only phase completed in 32.4 seconds and used 1,000 samples per row:
 
 | Primary-store case | p50 | p95 | p99 | Throughput |
@@ -585,6 +645,9 @@ and deterministic logical convergence. It does **not** support broad GA:
 - the historical monolithic full profile and the six-case grouped phase both
   time out at 30 minutes; all six partitioned grouped cases complete, but at
   1.445-2.363-second p95;
+- the full current-filtered matrix completes at 89.360-123.116 ms p95, while
+  grouped max-precision color collapse reaches 9.716 seconds p95 and 24.584
+  seconds p99;
 - the full store-stress phase is +4.56% p99 at steady history cadence, but
   +22.45% under forced history-store saturation;
 - a 100k boot/rebuild leaves 500 runs before background maintenance;
@@ -605,9 +668,9 @@ not add historical storage or write work.
 | Builder tail | Current local p99 206.84 ms; target `<500 ms` | Pass local |
 | Builder backfill/rebuild | 100k audits in 5.17/5.06 s; 500-run convergence debt remains | Partial |
 | Full verifier | Local partial-overlap p99 roughly +29-31%; deployed shared/dedicated volumes unmeasured | Diagnostic / pending deployment |
-| PIT age | Full unfiltered effective ratio 0.550; insertion 6mo ratio 1.165 and 2y ratio 1.382; full grouped ratios 0.807/1.080 | Effective gate pass / insertion age-sensitive |
-| PIT axis | Effective and insertion measured at 1d/6mo/2y locally and for the full unfiltered/grouped shapes | Pass local / full hot shapes |
-| PIT shape | Full unfiltered p95 15.135-29.637 ms; full grouped p95 1.445-2.363 s; filtered/transform full phases pending | Partial / grouped capacity warning |
+| PIT age | Full unfiltered effective ratio 0.550; insertion 6mo ratio 1.165 and 2y ratio 1.382; full grouped ratios 0.807/1.080; full filtered effective 6mo/2y ratios 0.901/1.061 and insertion ratios 1.257/1.378 | Effective gate pass / insertion age-sensitive |
+| PIT axis | Effective and insertion measured at 1d/6mo/2y locally for full unfiltered, filtered, and grouped shapes | Pass local / full hot matrix |
+| PIT shape | Full unfiltered p95 15.135-29.637 ms; filtered p95 89.360-123.116 ms; grouped p95 1.445-2.363 s; grouped max-precision color collapse p95 9.716 s | Complete local hot shapes / severe grouped capacity warning |
 | PIT source | Hot, local-filesystem cold miss, verified cache hit measured; real object network absent | Partial |
 | Backdating | 0%, 1%, and 50% local matrices measured | Pass local |
 | Compaction | Run-count bounds pass; explicit final merge had zero work | Partial |
