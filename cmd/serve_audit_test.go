@@ -3,8 +3,9 @@ package cmd
 import (
 	"testing"
 
-	"github.com/formancehq/go-libs/v5/pkg/audit"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v5/pkg/audit"
 )
 
 func TestAuditDefaultsToDisabled(t *testing.T) {
