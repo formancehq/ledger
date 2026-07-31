@@ -72,6 +72,25 @@ func poolAddress() string {
 	return fmt.Sprintf("%s:%d", poolName(), internal.Rand().Uint64()%numIDsPerPrefix)
 }
 
+// pickAtOrAfter returns the first entry at or after probe, wrapping to the
+// smallest key — an O(log n) near-uniform random pick when probe is drawn
+// uniformly over the key space, in place of collecting every entry.
+func pickAtOrAfter[K, V any](m oracle.Map[K, V], probe K) (K, V, bool) {
+	for k, v := range m.From(probe) {
+		return k, v, true
+	}
+	for k, v := range m.All() {
+		return k, v, true
+	}
+
+	var (
+		k K
+		v V
+	)
+
+	return k, v, false
+}
+
 // sourceAddress picks a debit source without filtering on balance: "world"
 // (overdraftable) about half the time to keep accounts funded, otherwise any
 // pool address — most of which are underfunded, so a non-forced debit exercises
@@ -86,9 +105,10 @@ func sourceAddress() string {
 
 // generateBulk plans the next bulk. Most bulks target a single ledger;
 // occasionally a bulk spreads its requests across a few, exercising the
-// server's atomic-across-ledgers semantics. Reads the committed state but
-// never mutates it.
-func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]string) oracle.Bulk {
+// server's atomic-across-ledgers semantics. Runs lock-free on a state
+// snapshot (a published GlobalState is never mutated — Apply forks first);
+// receiptFor resolves a reference's captured receipt under its own lock.
+func generateBulk(g oracle.GlobalState, ledgers []string, receiptFor func(string) string) oracle.Bulk {
 	picks := pickLedgers(ledgers)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
@@ -141,7 +161,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receipts map[string]st
 		}
 
 		if rollRevert() {
-			if req := generateRevert(ledger, ls, receipts); req != nil {
+			if req := generateRevert(ledger, ls, receiptFor); req != nil {
 				requests = append(requests, req)
 				continue
 			}
@@ -382,8 +402,8 @@ func emptyTransaction(ledger string) *servicepb.Request {
 // with TRANSACTION_REFERENCE_CONFLICT before any floor/chart check. Nil when the
 // ledger holds no committed reference yet.
 func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	ref := pickTxRef(ls)
-	if ref == "" {
+	ref, _, ok := pickTxRef(ls)
+	if !ok {
 		return nil
 	}
 
@@ -468,42 +488,51 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 
 // Drains the exact balance of some EPHEMERAL cell to "world" with
 // Force=true so the cell lands at input==output and gets purged.
-// Returns nil if no eligible cell exists.
+// Seeks to a random pool cell and scans forward (wrapping once) for a
+// drainable one — a positive balance (input > output) on an EPHEMERAL-matched
+// address — so the pick costs O(scan window), not a volume-table walk.
+// Returns nil if the window holds no eligible cell.
 func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	// Volumes().All() iterates in key order, so candidates is already sorted —
-	// picking via the Antithesis RNG stays replayable / steerable.
-	type drainCandidate struct {
-		key     oracle.VolumeKey
+	const scanCap = 64
+
+	probe := oracle.VolumeKey{Address: poolAddress(), Asset: random.RandomChoice(assets)}
+
+	var (
+		srcKey  oracle.VolumeKey
 		balance uint256.Int
+		found   bool
+	)
+
+	scanned := 0
+	consider := func(key oracle.VolumeKey, vp oracle.VolumePair) bool {
+		scanned++
+		if vp.Input.Cmp(&vp.Output) > 0 {
+			if t := ls.MatchAddress(key.Address); t != nil && t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+				srcKey = key
+				balance.Sub(&vp.Input, &vp.Output)
+				found = true
+			}
+		}
+
+		return !found && scanned < scanCap
 	}
 
-	var candidates []drainCandidate
-	for key, vp := range ls.Volumes().All() {
-		t := ls.MatchAddress(key.Address)
-		if t == nil {
-			continue
+	for key, vp := range ls.Volumes().From(probe) {
+		if !consider(key, vp) {
+			break
 		}
-		if t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
-			continue
+	}
+	if !found && scanned < scanCap {
+		for key, vp := range ls.Volumes().All() {
+			if !consider(key, vp) {
+				break
+			}
 		}
-
-		// Drainable only with a positive balance (input > output).
-		if vp.Input.Cmp(&vp.Output) <= 0 {
-			continue
-		}
-
-		var bal uint256.Int
-		bal.Sub(&vp.Input, &vp.Output)
-
-		candidates = append(candidates, drainCandidate{key: key, balance: bal})
 	}
 
-	if len(candidates) == 0 {
+	if !found {
 		return nil
 	}
-
-	chosen := random.RandomChoice(candidates)
-	srcKey, balance := chosen.key, chosen.balance
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -635,17 +664,10 @@ func generateAddMetadata(ledger string) *servicepb.Request {
 // freshly-rolled key on that address to exercise METADATA_NOT_FOUND. Returns nil
 // when the model holds no metadata.
 func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	// Metadata().All() iterates in key order, so keys is already sorted.
-	keys := make([]oracle.MetaKey, 0, ls.Metadata().Len())
-	for mk := range ls.Metadata().All() {
-		keys = append(keys, mk)
-	}
-
-	if len(keys) == 0 {
+	chosen, _, ok := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()})
+	if !ok {
 		return nil
 	}
-
-	chosen := random.RandomChoice(keys)
 
 	addr, key := chosen.Address, chosen.Key
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
@@ -685,12 +707,10 @@ func generateTxMetadataOp(ledger string, ls oracle.LedgerState) *servicepb.Reque
 // generateAddTxMetadata sets 1-2 metadata keys on a committed transaction picked
 // by reference. Returns nil when no transaction exists yet.
 func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	ref := pickTxRef(ls)
-	if ref == "" {
+	_, id, ok := pickTxRef(ls)
+	if !ok {
 		return nil
 	}
-
-	id, _ := ls.TxByRef().Get(ref)
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -711,55 +731,52 @@ func generateAddTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Requ
 
 // generateDeleteTxMetadata deletes a metadata key from a committed transaction —
 // occasionally a freshly-rolled key on a known reference to exercise
-// METADATA_NOT_FOUND. Returns nil when the model holds no transaction metadata.
+// METADATA_NOT_FOUND. Seek-picks a few transactions and returns nil when none
+// of them carries metadata.
 func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
-	type refKey struct {
-		ref string
-		key string
-	}
-
-	var keys []refKey
 	txs := ls.Txs()
-	for ref, id := range ls.TxByRef().All() {
-		for k := range txs.Get(id - 1).Metadata() {
-			keys = append(keys, refKey{ref: ref, key: k})
+	for range 8 {
+		_, id, ok := pickTxRef(ls)
+		if !ok {
+			return nil
 		}
-	}
 
-	if len(keys) == 0 {
-		return nil
-	}
-
-	slices.SortFunc(keys, func(a, b refKey) int {
-		if a.ref != b.ref {
-			return strings.Compare(a.ref, b.ref)
+		md := txs.Get(id - 1).Metadata()
+		if len(md) == 0 {
+			continue
 		}
-		return strings.Compare(a.key, b.key)
-	})
-	chosen := random.RandomChoice(keys)
 
-	ref, key := chosen.ref, chosen.key
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		key = metaKey()
-	}
+		// Per-record map, a couple of entries: collect+sort keeps the pick
+		// Antithesis-steerable at negligible cost.
+		keys := make([]string, 0, len(md))
+		for k := range md {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
 
-	id, _ := ls.TxByRef().Get(ref)
+		key := random.RandomChoice(keys)
+		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+			key = metaKey()
+		}
 
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: ledger,
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_DeleteMetadata{
-						DeleteMetadata: &commonpb.DeleteMetadataCommand{
-							Target: txTarget(uint64(id)),
-							Key:    key,
+		return &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_DeleteMetadata{
+							DeleteMetadata: &commonpb.DeleteMetadataCommand{
+								Target: txTarget(uint64(id)),
+								Key:    key,
+							},
 						},
 					},
 				},
 			},
-		},
+		}
 	}
+
+	return nil
 }
 
 // generateRevert reverts a committed transaction by reference, ~half with force
@@ -774,13 +791,12 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 // validation. Targeting any committed reference exercises both the success path
 // and the TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a
 // prior revert committed).
-func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]string) *servicepb.Request {
-	ref := pickTxRef(ls)
-	if ref == "" {
+func generateRevert(ledger string, ls oracle.LedgerState, receiptFor func(string) string) *servicepb.Request {
+	ref, id, ok := pickTxRef(ls)
+	if !ok {
 		return nil
 	}
 
-	id, _ := ls.TxByRef().Get(ref)
 	payload := &servicepb.RevertTransactionPayload{
 		TransactionId: uint64(id),
 		Force:         random.RandomChoice([]uint8{0, 1}) == 0,
@@ -793,7 +809,7 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 	// receipt path: it verifies the JWT and reverses the receipt's claimed
 	// postings, bypassing the transaction-state store fetch. Outcome matches the
 	// store path for a valid receipt, so the model needs no change.
-	if receipt := receipts[ref]; receipt != "" && random.RandomChoice([]uint8{0, 1}) == 0 {
+	if receipt := receiptFor(ref); receipt != "" && random.RandomChoice([]uint8{0, 1}) == 0 {
 		payload.Receipt = receipt
 	}
 
@@ -817,20 +833,12 @@ func generateRevert(ledger string, ls oracle.LedgerState, receipts map[string]st
 	}
 }
 
-// pickTxRef returns a deterministically-chosen committed transaction reference,
-// or "" when the model holds none.
-func pickTxRef(ls oracle.LedgerState) string {
-	// TxByRef().All() iterates in key order, so refs is already sorted.
-	refs := make([]string, 0, ls.TxByRef().Len())
-	for r := range ls.TxByRef().All() {
-		refs = append(refs, r)
-	}
-
-	if len(refs) == 0 {
-		return ""
-	}
-
-	return random.RandomChoice(refs)
+// pickTxRef returns a random committed transaction as (reference, id), or
+// ok=false when the model holds none. References carry uniform random hex
+// suffixes, so seeking to a freshly-rolled one lands on an existing entry
+// near-uniformly in O(log n).
+func pickTxRef(ls oracle.LedgerState) (ref string, id int, ok bool) {
+	return pickAtOrAfter(ls.TxByRef(), txRef())
 }
 
 // txRef returns a globally-unique transaction reference, so no two transactions

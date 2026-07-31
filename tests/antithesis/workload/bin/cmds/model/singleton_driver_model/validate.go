@@ -47,9 +47,12 @@ func coverReceiptReverts(bulk oracle.Bulk) {
 // captureReceipts records the signed receipt the server returned for each newly
 // created, referenced transaction, keyed by reference, so generateRevert can
 // exercise the receipt-carried revert path. The response log at index i pairs
-// with bulk.Requests[i]; receipts sign CreatedTransaction logs only. Caller
-// holds c.mu.
+// with bulk.Requests[i]; receipts sign CreatedTransaction logs only. Takes
+// receiptsMu itself (a leaf lock — safe under c.mu).
 func (c *Checker) captureReceipts(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+	c.receiptsMu.Lock()
+	defer c.receiptsMu.Unlock()
+
 	logs := resp.GetLogs()
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {

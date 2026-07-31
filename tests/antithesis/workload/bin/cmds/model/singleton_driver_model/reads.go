@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -24,14 +23,17 @@ import (
 // model (see validateAccountRead).
 func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(c.modelState, c.ledgerNames)
-	if !ok {
-		c.mu.Unlock()
-		return
-	}
+	state := c.modelState
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+
+	// Picking runs lock-free on the snapshot; registering the read first only
+	// holds the drain gate a little longer, never less.
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, c.ledgerNames)
+	if !ok {
+		return
+	}
 
 	// Both probes flow through the same validateAccountRead: the model models an
 	// absent ledger as an empty ledger and an absent account as an empty account,
@@ -107,7 +109,8 @@ func percentChance(pct uint64) bool {
 // pickCell can't reach — it only ever targets accounts the model already holds,
 // so GetAccount is otherwise structurally blind to server state the model lacks
 // (a retained cell, or an account in a ledger the model never created). Falls
-// back to pickCell when no absent account is found. Caller holds c.mu.
+// back to pickCell when no absent account is found. Runs lock-free on a state
+// snapshot.
 func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, absentAccount, absentLedger, ok bool) {
 	if len(ledgers) > 0 && percentChance(2) {
 		return absentLedgerName(ledgers), poolAddress(), random.RandomChoice(assets), false, true, true
@@ -119,7 +122,7 @@ func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset
 		}
 	}
 
-	ledger, addr, asset, ok = pickCell(g)
+	ledger, addr, asset, ok = pickCell(g, ledgers)
 
 	return ledger, addr, asset, false, false, ok
 }
@@ -129,7 +132,7 @@ func pickReadTarget(g oracle.GlobalState, ledgers []string) (ledger, addr, asset
 // but has not touched. It reads a random workload asset so a server cell in any
 // asset can be caught. ok=false when no ledger exists or no absent address turned
 // up in a few tries (the pool space is far larger than what is touched, so this is
-// rare). Caller holds c.mu.
+// rare). Runs lock-free on a state snapshot.
 func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
 	if len(ledgers) == 0 {
 		return "", "", "", false
@@ -147,65 +150,57 @@ func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, as
 	return "", "", "", false
 }
 
-// modelKnowsAccount reports whether ls holds any volume cell or metadata for addr.
+// modelKnowsAccount reports whether ls holds any volume cell or metadata for
+// addr — an O(log n) seek to the start of addr's key range in each table (an
+// empty asset/key sorts before any real one, so the first entry at or after
+// the probe shares addr's address iff the account has state).
 func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
-	for k := range ls.Volumes().All() {
-		if k.Address == addr {
-			return true
-		}
+	for k := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
+		return k.Address == addr
 	}
-	for k := range ls.Metadata().All() {
-		if k.Address == addr {
-			return true
-		}
+	for k := range ls.Metadata().From(oracle.MetaKey{Address: addr}) {
+		return k.Address == addr
 	}
 
 	return false
 }
 
-// pickCell returns a random readable account across all ledgers as
-// (ledger, address, asset), or ok=false if there are none. Each volume cell is a
-// candidate (carrying its asset); each metadata-bearing address is also a
-// candidate with an empty asset, so a metadata-only account is still reachable —
-// the read validates that account's metadata regardless of the asset.
-func pickCell(g oracle.GlobalState) (ledger, addr, asset string, ok bool) {
-	type cellRef struct {
-		ledger string
-		key    oracle.VolumeKey
-	}
-
-	var cells []cellRef
-	for name, ls := range g.Ledgers() {
-		for k := range ls.Volumes().All() {
-			cells = append(cells, cellRef{ledger: name, key: k})
-		}
-
-		metaAddrs := map[string]bool{}
-		for mk := range ls.Metadata().All() {
-			metaAddrs[mk.Address] = true
-		}
-		for a := range metaAddrs {
-			cells = append(cells, cellRef{ledger: name, key: oracle.VolumeKey{Address: a}})
-		}
-	}
-
-	if len(cells) == 0 {
+// pickCell returns a random readable account as (ledger, address, asset), or
+// ok=false if the model holds nothing readable. It seeks a random pool-space
+// probe into a random ledger's tables — O(log n) per pick, no table walk.
+// ~1/4 of picks target a metadata-bearing address with an empty asset, so a
+// metadata-only account is still reachable — the read validates that account's
+// whole metadata map regardless of the asset. Ledgers are tried round-robin
+// from a random start so an empty one doesn't blind the pick.
+func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset string, ok bool) {
+	if len(ledgers) == 0 {
 		return "", "", "", false
 	}
 
-	slices.SortFunc(cells, func(a, b cellRef) int {
-		if a.ledger != b.ledger {
-			if a.ledger < b.ledger {
-				return -1
+	start := int(internal.Rand().Uint64() % uint64(len(ledgers)))
+	metaPick := percentChance(25)
+
+	for i := 0; i < len(ledgers); i++ {
+		name := ledgers[(start+i)%len(ledgers)]
+		ls := g.Ledger(name)
+
+		if metaPick {
+			if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()}); found {
+				return name, mk.Address, "", true
 			}
-			return 1
 		}
-		return oracle.CompareVolumeKey(a.key, b.key)
-	})
 
-	c := random.RandomChoice(cells)
+		if k, _, found := pickAtOrAfter(ls.Volumes(), oracle.VolumeKey{Address: poolAddress(), Asset: random.RandomChoice(assets)}); found {
+			return name, k.Address, k.Asset, true
+		}
 
-	return c.ledger, c.key.Address, c.key.Asset, true
+		// No volumes in this ledger: a metadata-only account still qualifies.
+		if mk, _, found := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()}); found {
+			return name, mk.Address, "", true
+		}
+	}
+
+	return "", "", "", false
 }
 
 // accountVolumeSet extracts the account's full volume set as asset -> volumes,
@@ -344,14 +339,15 @@ func pickTransactionID(g oracle.GlobalState, ledgers []string) (ledger string, i
 // accumulated transaction metadata back.
 func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	ledger, id, absentLedger, ok := pickTransactionID(c.modelState, c.ledgerNames)
-	if !ok {
-		c.mu.Unlock()
-		return
-	}
+	state := c.modelState
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+
+	ledger, id, absentLedger, ok := pickTransactionID(state, c.ledgerNames)
+	if !ok {
+		return
+	}
 
 	if absentLedger {
 		// Coverage: probing a ledger outside the fleet — no transaction can exist,

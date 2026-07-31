@@ -53,8 +53,11 @@ type Checker struct {
 
 	// receiptByRef maps a committed transaction's reference to the signed receipt
 	// the server returned for it, so generateRevert can exercise the
-	// receipt-carried revert path. Populated at commit (captureReceipts) and read
-	// during generation, both under mu.
+	// receipt-carried revert path. Guarded by its own leaf mutex (receiptsMu, never
+	// held together with anything else) so lock-free generation can look receipts
+	// up without touching mu. Populated at commit (captureReceipts), read through
+	// receiptFor.
+	receiptsMu   sync.Mutex
 	receiptByRef map[string]string
 
 	// replayable holds committed bulks that carried a tracked idempotency key —
@@ -125,4 +128,13 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		modelState:   modelState,
 		receiptByRef: map[string]string{},
 	}
+}
+
+// receiptFor returns the captured receipt for ref ("" when none). Safe without
+// c.mu — see receiptByRef.
+func (c *Checker) receiptFor(ref string) string {
+	c.receiptsMu.Lock()
+	defer c.receiptsMu.Unlock()
+
+	return c.receiptByRef[ref]
 }

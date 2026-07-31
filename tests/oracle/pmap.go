@@ -160,6 +160,22 @@ func (m Map[K, V]) All() iter.Seq2[K, V] {
 	}
 }
 
+// From iterates entries in key order starting at the first key >= k. Seeking
+// to a randomly drawn key gives an O(log n) near-uniform random pick — the
+// generator's alternative to collecting every entry.
+func (m Map[K, V]) From(k K) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		itr := m.tree.Iterator()
+		itr.Seek(k)
+		for !itr.Done() {
+			k, v, _ := itr.Next()
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
+}
+
 // List is an immutable dense list carrying the multiset fingerprint of its
 // (index, value) entries. The zero List is unusable — construct with NewList.
 type List[V any] struct {
