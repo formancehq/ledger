@@ -8,8 +8,11 @@ import "errors"
 //
 // Both mean the FSM apply path read a key the proposer never declared, or was
 // handed a plan that cannot be applied: "should not happen" bugs (invariant #7)
-// that must reach the audit chain, the frozen idempotency outcome and the client
-// under their own reason, never relabelled as a storage fault.
+// that must reach the audit chain and the client under their own reason, never
+// relabelled as a storage fault. They never reach a frozen idempotency outcome:
+// KindForReason maps both reasons to KindInternal, which IsFreezableFailure
+// excludes, so recordIdempotencyFailure returns early — see
+// docs/technical/architecture/subsystems/fsm/coverage-gate.md.
 //
 // It matches on the stable domain Reason string rather than the concrete type so
 // callers need not import internal/infra/state, which owns *ErrCoverageMiss and
