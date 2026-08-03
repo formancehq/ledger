@@ -1,6 +1,8 @@
 package check
 
 import (
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -463,4 +465,319 @@ func TestVerifyAuditStructure(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestLogRangeSetGapsIn covers the interval subtraction compareLogs uses to
+// derive missing log ranges. The last case is the load-bearing one: an
+// enormous uncovered range must come back as ONE logRange, since the whole
+// point is that the reverse pass never iterates a store-supplied width.
+func TestLogRangeSetGapsIn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		covered [][2]uint64
+		r       logRange
+		want    []logRange
+	}{
+		{
+			name: "empty covered set yields the whole range",
+			r:    logRange{min: 5, max: 9},
+			want: []logRange{{min: 5, max: 9}},
+		},
+		{
+			name:    "full overlap yields nothing",
+			covered: [][2]uint64{{1, 20}},
+			r:       logRange{min: 5, max: 9},
+			want:    nil,
+		},
+		{
+			name:    "exact cover yields nothing",
+			covered: [][2]uint64{{5, 9}},
+			r:       logRange{min: 5, max: 9},
+			want:    nil,
+		},
+		{
+			name:    "covered set entirely above the range",
+			covered: [][2]uint64{{100, 200}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 5, max: 9}},
+		},
+		{
+			name:    "covered set entirely below the range",
+			covered: [][2]uint64{{1, 4}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 5, max: 9}},
+		},
+		{
+			name:    "covered prefix",
+			covered: [][2]uint64{{5, 6}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 7, max: 9}},
+		},
+		{
+			name:    "covered prefix overlapping the lower edge",
+			covered: [][2]uint64{{1, 6}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 7, max: 9}},
+		},
+		{
+			name:    "covered suffix",
+			covered: [][2]uint64{{8, 9}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 5, max: 7}},
+		},
+		{
+			name:    "covered suffix overlapping the upper edge",
+			covered: [][2]uint64{{8, 20}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 5, max: 7}},
+		},
+		{
+			name:    "covered middle produces two gaps",
+			covered: [][2]uint64{{7, 7}},
+			r:       logRange{min: 5, max: 9},
+			want:    []logRange{{min: 5, max: 6}, {min: 8, max: 9}},
+		},
+		{
+			name:    "multiple covered intervals inside one range",
+			covered: [][2]uint64{{2, 3}, {6, 6}, {9, 10}},
+			r:       logRange{min: 1, max: 12},
+			want:    []logRange{{min: 1, max: 1}, {min: 4, max: 5}, {min: 7, max: 8}, {min: 11, max: 12}},
+		},
+		{
+			name:    "single sequence range uncovered",
+			covered: [][2]uint64{{1, 4}, {6, 9}},
+			r:       logRange{min: 5, max: 5},
+			want:    []logRange{{min: 5, max: 5}},
+		},
+		{
+			name:    "single sequence range covered",
+			covered: [][2]uint64{{1, 9}},
+			r:       logRange{min: 5, max: 5},
+			want:    nil,
+		},
+		{
+			name:    "inverted range yields nothing",
+			covered: nil,
+			r:       logRange{min: 9, max: 5},
+			want:    nil,
+		},
+		{
+			name:    "covered range ending at the maximum uint64 does not overflow",
+			covered: [][2]uint64{{10, math.MaxUint64}},
+			r:       logRange{min: 5, max: math.MaxUint64},
+			want:    []logRange{{min: 5, max: 9}},
+		},
+		{
+			name:    "an enormous uncovered range is a single gap",
+			covered: nil,
+			r:       logRange{min: 1, max: 1 << 62},
+			want:    []logRange{{min: 1, max: 1 << 62}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var s logRangeSet
+			for _, c := range tc.covered {
+				s.add(c[0], c[1])
+			}
+
+			require.Equal(t, tc.want, s.gapsIn(tc.r))
+		})
+	}
+}
+
+// TestReportMissingLogs pins the emission contract: individual events up to the
+// cap, then exactly one summary event naming the residual range. A range whose
+// width comes from a forged AuditSuccess.max_log_sequence must not be
+// enumerated.
+func TestReportMissingLogs(t *testing.T) {
+	t.Parallel()
+
+	collect := func(gap logRange) []*servicepb.CheckStoreError {
+		var errs []*servicepb.CheckStoreError
+
+		reportMissingLogs(gap, func(e *servicepb.CheckStoreEvent) {
+			require.NotNil(t, e.GetError())
+			require.Equal(t,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+				e.GetError().GetErrorType(),
+				"a collapsed report is still a divergence report and must keep the SEQUENCE_GAP type")
+
+			errs = append(errs, e.GetError())
+		})
+
+		return errs
+	}
+
+	t.Run("a small gap is fully enumerated", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: 1, max: 3})
+
+		require.Len(t, errs, 3)
+		require.Equal(t, []uint64{1, 2, 3}, []uint64{
+			errs[0].GetLogSequence(), errs[1].GetLogSequence(), errs[2].GetLogSequence(),
+		})
+
+		for _, e := range errs {
+			require.NotContains(t, e.GetMessage(), "individual reporting stopped")
+		}
+	})
+
+	t.Run("a gap exactly at the cap emits no summary", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: 1, max: maxEnumeratedGapSequences})
+
+		require.Len(t, errs, maxEnumeratedGapSequences)
+		require.Equal(t, uint64(maxEnumeratedGapSequences), errs[len(errs)-1].GetLogSequence())
+		require.NotContains(t, errs[len(errs)-1].GetMessage(), "individual reporting stopped")
+	})
+
+	t.Run("one sequence past the cap is collapsed into a summary", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: 1, max: maxEnumeratedGapSequences + 1})
+
+		require.Len(t, errs, maxEnumeratedGapSequences+1)
+
+		summary := errs[len(errs)-1]
+		require.Equal(t, uint64(maxEnumeratedGapSequences+1), summary.GetLogSequence(),
+			"the summary must point at the first un-enumerated sequence")
+		require.Contains(t, summary.GetMessage(), "logs 1025-1025 (1 sequences)")
+	})
+
+	t.Run("an enormous gap terminates with a bounded event count", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: 1, max: 1 << 62})
+
+		require.Len(t, errs, maxEnumeratedGapSequences+1,
+			"a forged max_log_sequence must not be enumerated")
+
+		summary := errs[len(errs)-1]
+		require.Equal(t, uint64(maxEnumeratedGapSequences+1), summary.GetLogSequence())
+		require.Contains(t, summary.GetMessage(), "4611686018427387904")
+		require.Contains(t, summary.GetMessage(), "sequences) are authenticated by the audit chain but absent")
+	})
+
+	t.Run("a gap ending at the maximum uint64 does not overflow", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: math.MaxUint64 - 1, max: math.MaxUint64})
+
+		require.Len(t, errs, 2)
+		require.Equal(t, uint64(math.MaxUint64-1), errs[0].GetLogSequence())
+		require.Equal(t, uint64(math.MaxUint64), errs[1].GetLogSequence())
+	})
+
+	t.Run("a single missing sequence emits one event", func(t *testing.T) {
+		t.Parallel()
+
+		errs := collect(logRange{min: math.MaxUint64, max: math.MaxUint64})
+
+		require.Len(t, errs, 1)
+		require.Equal(t, uint64(math.MaxUint64), errs[0].GetLogSequence())
+	})
+}
+
+// TestCompareLogsBoundsForgedAuthenticatedRange is the regression test for the
+// hang: authenticated is fed a range as wide as a tampered
+// AuditSuccess.max_log_sequence would make it, and compareLogs must still
+// return with a bounded number of events. Against the pre-fix per-sequence
+// reverse pass this test never terminates.
+func TestCompareLogsBoundsForgedAuthenticatedRange(t *testing.T) {
+	t.Parallel()
+
+	// compareLogs reads only the SubColdLog prefix, so an empty store is the
+	// worst case: nothing is covered and the whole forged range is missing.
+	store := createTestStore(t)
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = reader.Close() })
+
+	c := &Checker{}
+
+	t.Run("one forged interval emits at most the cap plus one summary", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			authenticated logRangeSet
+			purged        logRangeSet
+			unverifiable  logRangeSet
+			count         int
+			summaries     int
+		)
+
+		authenticated.add(1, 1<<62)
+
+		require.NoError(t, c.compareLogs(reader, &authenticated, &purged, &unverifiable,
+			func(e *servicepb.CheckStoreEvent) {
+				require.Equal(t,
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+					e.GetError().GetErrorType())
+
+				count++
+
+				if strings.Contains(e.GetError().GetMessage(), "individual reporting stopped") {
+					summaries++
+				}
+			}))
+
+		require.Equal(t, maxEnumeratedGapSequences+1, count)
+		require.Equal(t, 1, summaries)
+	})
+
+	t.Run("an unverifiable span splits the forged interval into two bounded gaps", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			authenticated logRangeSet
+			purged        logRangeSet
+			unverifiable  logRangeSet
+			count         int
+			summaries     int
+		)
+
+		authenticated.add(1, 1<<62)
+		unverifiable.add(1<<40, 1<<41)
+
+		require.NoError(t, c.compareLogs(reader, &authenticated, &purged, &unverifiable,
+			func(e *servicepb.CheckStoreEvent) {
+				count++
+
+				if strings.Contains(e.GetError().GetMessage(), "individual reporting stopped") {
+					summaries++
+				}
+			}))
+
+		require.Equal(t, 2*(maxEnumeratedGapSequences+1), count,
+			"each of the two gaps is bounded independently")
+		require.Equal(t, 2, summaries)
+	})
+
+	t.Run("a fully covered authenticated range reports nothing", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			authenticated logRangeSet
+			purged        logRangeSet
+			unverifiable  logRangeSet
+		)
+
+		authenticated.add(1, 1<<62)
+		unverifiable.add(1, 1<<62)
+
+		require.NoError(t, c.compareLogs(reader, &authenticated, &purged, &unverifiable,
+			func(*servicepb.CheckStoreEvent) {
+				t.Fatal("no event expected when every authenticated sequence is accounted for")
+			}))
+	})
 }

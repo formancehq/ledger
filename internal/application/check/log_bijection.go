@@ -137,6 +137,54 @@ func (s *logRangeSet) empty() bool {
 	return len(s.ranges) == 0
 }
 
+// gapsIn returns the sub-ranges of r that the set does NOT cover, ascending.
+// An empty result means r is fully covered.
+//
+// Interval arithmetic, never per-sequence iteration: a 2^62-wide uncovered span
+// yields ONE logRange, not 2^62 loop turns. That is what lets compareLogs
+// enumerate missing logs without trusting the width of a store-supplied range
+// (see maxEnumeratedGapSequences).
+//
+// O(log(intervals) + overlapping intervals): the binary search skips the
+// intervals below r, and after it every remaining interval either overlaps r or
+// ends the walk.
+func (s *logRangeSet) gapsIn(r logRange) []logRange {
+	if r.min > r.max {
+		return nil
+	}
+
+	s.normalize()
+
+	var gaps []logRange
+
+	cursor := r.min
+
+	// First interval that can possibly reach into r. normalize() leaves the
+	// intervals sorted, disjoint and non-adjacent, so from here on every
+	// interval starts at or after cursor.
+	i := sort.Search(len(s.ranges), func(i int) bool { return s.ranges[i].max >= r.min })
+
+	for _, iv := range s.ranges[i:] {
+		if iv.min > r.max {
+			break
+		}
+
+		if iv.min > cursor {
+			gaps = append(gaps, logRange{min: cursor, max: iv.min - 1})
+		}
+
+		// Returning here rather than advancing keeps cursor from overflowing
+		// when iv.max is the maximum uint64.
+		if iv.max >= r.max {
+			return gaps
+		}
+
+		cursor = iv.max + 1
+	}
+
+	return append(gaps, logRange{min: cursor, max: r.max})
+}
+
 // chainVerification bundles what verifyAuditHashChain derives from the
 // hash-verified audit range. A struct rather than extra out-parameters: the
 // function already takes 7 arguments, and its five direct test call sites
@@ -466,10 +514,16 @@ func buildPurgedLogSet(
 // not hash-bound, and before EN-1526 the only log-set check compared the log
 // stream against itself.
 //
-// One ascending pass over the SubColdLog iterator plus one pass over the
-// authenticated intervals; each membership test is a binary search over an
-// interval list that a healthy store collapses to a single entry. Time is
-// O((logs + intervals) * log(intervals)), memory O(intervals).
+// One ascending pass over the SubColdLog iterator, then a reverse pass that
+// SUBTRACTS the accounted-for sequences (stored plus unverifiable) from each
+// authenticated interval by interval arithmetic — never by walking the interval
+// sequence by sequence, since its upper edge is a store-supplied uint64 that a
+// Pebble-level adversary can inflate (see maxEnumeratedGapSequences). Each
+// membership test and each subtraction is a binary search over an interval list
+// that a healthy store collapses to a single entry. Time is
+// O((logs + intervals) * log(intervals)) plus at most
+// maxEnumeratedGapSequences + 1 emissions per missing range, memory
+// O(intervals).
 //
 //   - authenticated, absent from the store -> SEQUENCE_GAP
 //   - stored, inside an ARCHIVED chapter's purged range -> LOG_PURGE_RESIDUE
@@ -551,20 +605,75 @@ func (c *Checker) compareLogs(
 		return fmt.Errorf("log iterator error during bijection: %w", err)
 	}
 
-	// Reverse direction: authenticated but absent.
-	for _, r := range authenticated.intervals() {
-		for seq := r.min; seq <= r.max; seq++ {
-			if unverifiable.contains(seq) || stored.contains(seq) {
-				continue
-			}
+	// Reverse direction: authenticated but absent. Derived as a range
+	// DIFFERENCE against everything the checker accounts for — the stored rows
+	// plus the spans it can prove nothing about — so an authenticated interval
+	// is never walked sequence by sequence.
+	covered := &logRangeSet{}
 
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
-				fmt.Sprintf("log %d is authenticated by the audit chain but absent from the store", seq),
-				seq, "", "", "",
-			))
+	for _, iv := range stored.intervals() {
+		covered.add(iv.min, iv.max)
+	}
+
+	for _, iv := range unverifiable.intervals() {
+		covered.add(iv.min, iv.max)
+	}
+
+	for _, r := range authenticated.intervals() {
+		for _, gap := range covered.gapsIn(r) {
+			reportMissingLogs(gap, callback)
 		}
 	}
 
 	return nil
+}
+
+// maxEnumeratedGapSequences bounds how many individual SEQUENCE_GAP events a
+// single missing range may emit. The remainder is collapsed into one summary
+// event.
+//
+// The bound exists because the range's upper edge comes from a stored
+// AuditSuccess.max_log_sequence: chain-verified, but forgeable by anyone who
+// can write Pebble and knows the cluster ID (the chain is keyed by cluster ID,
+// not by a secret). Without it, a crafted max_log_sequence makes Check() hang
+// instead of report — a strictly worse outcome than reporting. A store that
+// legitimately lost a long trailing run of logs hits the same path benignly.
+//
+// Deliberately NOT derived from any stored value: bounding this by
+// LedgerBoundaries.NextLogId or the highest stored log sequence would gate
+// verification on a projection, which is the defect EN-1526 removes.
+const maxEnumeratedGapSequences = 1024
+
+// reportMissingLogs emits one SEQUENCE_GAP per sequence in gap, up to
+// maxEnumeratedGapSequences, then a single summary SEQUENCE_GAP carrying the
+// residual range and its width.
+//
+// The summary keeps the SEQUENCE_GAP type so it still counts toward errorCount:
+// a collapsed report is still a divergence report, and the range it names is
+// fully accounted for even though it is not enumerated.
+func reportMissingLogs(gap logRange, callback func(*servicepb.CheckStoreEvent)) {
+	seq := gap.min
+
+	for range maxEnumeratedGapSequences {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			fmt.Sprintf("log %d is authenticated by the audit chain but absent from the store", seq),
+			seq, "", "", "",
+		))
+
+		// Checked here rather than in a loop condition so seq never advances
+		// past the maximum uint64.
+		if seq == gap.max {
+			return
+		}
+
+		seq++
+	}
+
+	callback(errorEvent(
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+		fmt.Sprintf("logs %d-%d (%d sequences) are authenticated by the audit chain but absent from the store; individual reporting stopped after %d sequences",
+			seq, gap.max, gap.max-seq+1, maxEnumeratedGapSequences),
+		seq, "", "", "",
+	))
 }
