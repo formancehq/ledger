@@ -178,7 +178,7 @@ func TestLogRangeSetNormalizeIdempotent(t *testing.T) {
 	require.Equal(t, []logRange{{min: 1, max: 6}}, first)
 
 	// Repeated reads must return identical state.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		require.Equal(t, []logRange{{min: 1, max: 6}}, s.intervals())
 		require.Equal(t, uint64(6), s.total())
 		require.False(t, s.empty())
