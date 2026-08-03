@@ -492,7 +492,12 @@ func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, do
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_PromoteLedger{
 			PromoteLedger: &commonpb.PromotedLedgerLog{
-				Name: info.GetName(),
+				// The log carries the command-envelope name, never the loaded
+				// projection's mutable one: backup/rebuild.go replays this log
+				// by name to resolve the LedgerInfo it promotes, so a divergent
+				// projection name would either abort the rebuild on its
+				// "invariant: PromoteLedger …" guard or promote another ledger.
+				Name: ledger,
 			},
 		},
 	}, nil
