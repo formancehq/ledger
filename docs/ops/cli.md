@@ -1929,17 +1929,27 @@ ledgerctl store check [flags]
 | `--timeout` | `50s` | Request timeout |
 
 **Behavior:**
-- Iterates all logs and verifies the BLAKE3 hash chain
-- Replays logs to compute expected volumes and metadata
-- Compares expected state against actual stored state
-- Streams progress and errors in real-time
+- Verifies the BLAKE3 audit hash chain first — always, even when the store holds no logs at all
+- Replays the audited orders and compares every persisted projection against the re-derived value
+- Compares the stored log-sequence set against what the audit chain authenticates, in both directions
+- Streams progress, errors and unverifiable ranges in real-time
 - Exits non-zero when integrity errors are found so it can gate scripts (the `--json` output instead reports `valid: false` and exits zero)
 
-**Checks performed:**
-- **SEQUENCE_GAP**: Missing log entries in the sequence
-- **HASH_MISMATCH**: Log hash does not match expected hash chain value
-- **VOLUME_MISMATCH**: Stored volume (input/output) does not match expected value from log replay
-- **METADATA_MISMATCH**: Stored account metadata does not match expected value from log replay
+**Checks performed:** see [Log Integrity and Correctness](correctness.md#error-types) for the full error-type list. The most common:
+- **SEQUENCE_GAP**: A log the audit chain authenticates is absent from the store
+- **LOG_UNAUDITED**: A stored log row no audit entry authenticates (injection, or audit-tail truncation)
+- **LOG_PURGE_RESIDUE**: A stored log row surviving inside an archived chapter's purged range
+- **HASH_MISMATCH**: An audit entry's hash does not match the recomputed chain value
+- **AUDIT_STRUCTURE_INVALID**: A verified audit entry is internally inconsistent, or audit items exist with no audit entry
+- **VOLUME_MISMATCH** / **METADATA_MISMATCH**: Stored volume or metadata does not match the audit replay
+
+**Unverifiable ranges:**
+
+Beyond errors, the check reports log-sequence ranges it could not authenticate — for example a range covered by a structurally malformed audit entry, or an archived chapter whose log bounds are unusable. Each one marks a defect: a healthy cluster, archived or not, reports none.
+
+These are **warnings, not failures**. They print as `WARNING` lines, appear under the `unverifiableRanges` key in `--json` output (omitted when empty), and affect neither `valid` nor the exit code. Their purpose is to make explicit that the absence of an error inside such a range is not proof of integrity, so scripts that gate on the exit code should still surface them to an operator.
+
+Each entry carries a typed `reason` (route on it, never on the human-readable `message`) and the inclusive log-sequence bounds of the range. Log sequences are 1-based, so a zero bound — or a start greater than the end — means the bounds could not be determined; read that as unknown, not as a literal range. See `CheckStoreUnverifiableRange` in `misc/proto/bucket.proto` for the exact field set.
 
 **Example:**
 
@@ -1949,6 +1959,9 @@ ledgerctl store check
 
 # Output as JSON (for scripting)
 ledgerctl store check --json
+
+# Surface unverifiable ranges even when the check passes
+ledgerctl store check --json | jq '.unverifiableRanges'
 ```
 
 #### store primary compact
@@ -2196,7 +2209,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 2. Downloads backup files from the configured backend into a staging directory
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
-5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
+5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found. The gate currently keys on integrity errors alone: the checker's unverifiable-range warnings (see [store check](#store-check)) are not yet consumed on this path, so a backup containing a range the checker could not authenticate can still pass `--validate`. Run `ledgerctl store check --json` against the restored node and inspect `unverifiableRanges` before trusting foreign data.
 6. Prompts for confirmation (unless `--yes`)
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker

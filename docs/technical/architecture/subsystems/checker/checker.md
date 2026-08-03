@@ -15,13 +15,16 @@ rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
 
 message CheckStoreEvent {
   oneof type {
-    CheckStoreError    error    = 1;
+    CheckStoreError error = 1;
     CheckStoreProgress progress = 2;
+    CheckStoreUnverifiableRange unverifiable_range = 3;
   }
 }
 ```
 
 The request is empty (the check always runs over the entire cluster state, single-pass). The response is streamed so errors surface immediately and large clusters don't have to wait for completion to see early signal. A single hash mismatch stops the walk for that branch (the chain is irrecoverably broken from that point); all other mismatches are non-fatal and the pass continues.
+
+An `unverifiable_range` event reports a log-sequence range the checker could not authenticate; it is deliberately off the error arm, so it does not affect the exit code. It exists so that the absence of an error inside an unauthenticated range is never mistaken for proof of integrity — see [Unverifiable ranges](#unverifiable-ranges).
 
 Entry point: `NewChecker(...).Check(ctx, callback)` (`internal/application/check/checker.go:68-546`). The checker takes a single Pebble read handle (`store.NewReadHandle()`) on the **main store**, so every pass observes a consistent point-in-time snapshot of it. One pass — `compareReverseMapOrphans` — additionally opens a read-only snapshot of the **peer readstore**; it is the single, deliberate exception to the main-store-only scope of invariant #8 and is described in the table below.
 
@@ -44,6 +47,15 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 11 | `compareReversions` | Stored reversion bitsets (`ZonePerLedger`/`SubPLReversions`, the rows the already-reverted gate reads) equal the audit-derived reverted set, both ways; stored rows for non-live ledgers and undecodable rows are flagged | Baseline tx-row markers + replayed `RevertedTransaction` logs | `REVERTED_MISMATCH` |
 | 12 | `compareNumscripts` | `SubAttrNumscriptContent` immutable version entries and `SubAttrNumscriptVersion` latest pointers (the greatest stored semver) match the saved versions | Replay of `SavedNumscript` / `DeleteLedger` logs | `NUMSCRIPT_MISMATCH` |
 | 13 | `compareReverseMapOrphans` | Reverse-map (`0x03`) rows in the **peer readstore** whose `(ledger, target, metadata key)` is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed `MetadataSchema`; also rows belonging to a ledger the audit does not list as live, and keys that do not decode | Stored index registry **and** the replayed schema (`CreateLedger.initial_schema` + `SetMetadataFieldType` / `RemovedMetadataFieldType`) | `REVERSE_MAP_ORPHAN` |
+| 14 | `compareLogs` | The persisted `SubColdLog` key set against the log sequences the audit chain authenticates, both ways | `AuditSuccess.[min,max]_log_sequence` + `AuditItem.log_sequence` collected during `verifyAuditHashChain` | `SEQUENCE_GAP` (authenticated but absent), `LOG_UNAUDITED` (stored, no audit backing), `LOG_PURGE_RESIDUE` (stored inside an archived purged range) |
+| 15 | `verifyAuditStructure` + `scanOrphanAuditItems` | Internal consistency of each verified `AuditEntry`, and `AuditItem` groups with no entry | The entry and its items | `AUDIT_STRUCTURE_INVALID` |
+| 16 | `compareTransactionPostCommitVolumes` | The immutable `Transaction.post_commit_volumes` snapshot against the replayed volume state at the transaction's log sequence | Baseline checkpoint + replayed pre-purge delta, compared inline in the replay loop before the buffered ephemeral purge flushes | `VOLUME_MISMATCH` |
+| 17 | `compareSchema` | Per-ledger `LedgerInfo.MetadataSchema` | Replay of `CreateLedger.initial_schema` + `SetMetadataFieldType` / `RemovedMetadataFieldType` logs, baseline-seeded under archiving | `SCHEMA_MISMATCH` |
+| 18 | `compareAccountTypes` | Per-ledger `LedgerInfo.AccountTypes` | Replay of `AddAccountType` / `RemoveAccountType` logs, baseline-seeded under archiving | `ACCOUNT_TYPE_MISMATCH` |
+| 19 | `compareLedgerPresence` | The live ledger set in the store equals the audit-derived live set, both ways | `CreateLedger` with no later `DeleteLedger`, or a non-deleted baseline ledger under archiving — never seeded from the live store | `MISSING_LEDGER`, `UNAUDITED_LEDGER` |
+| 20 | `compareReferences` | The `SubAttrReference` reference→txID uniqueness index, both ways (missing, unaudited and retargeted rows) | Replay of `CreatedTransaction` / `RevertedTransaction` logs, baseline-seeded under archiving | `REFERENCE_MISMATCH` |
+| 21 | `compareBoundaries` | Per-ledger `LedgerBoundaries.NextTransactionId` / `NextLogId` | Replayed logs plus the chain-bound `AuditItem` order effects (mirror fill-gap advances live on the orders, not the ledger-log stream), baseline-seeded under archiving | `BOUNDARY_MISMATCH` |
+| 22 | Skip-log validation (inside the chain walk) | Every `LedgerLogPayload.OrderSkipped` reason is allowed by the audit-bound `Order.skippable_reasons` whitelist and is not `KindInternal` | The whitelist on the chain-bound order | `INVALID_SKIP` |
 
 Notes:
 
@@ -60,7 +72,10 @@ Notes:
   - **A verdict requires an exactly aligned peer cursor.** Every oracle term is pinned at the verified log sequence, so the pass only judges rows when the read index has folded exactly that range (`indexedSequence == lastSequence`). Malformed keys need no oracle and are always reported. The two unaligned positions are skips and are not symmetric. *Behind* is the ordinary state on a live cluster — the registry is written at Raft apply while the rmap folds later — so nothing can be concluded. *Ahead* cannot happen by race, because the builder folds from the primary log stream and writes its cursor only for logs it has already read out of the primary store (`progress(t) <= maxLogSeq(t)` at every instant) and **`Check()` pins the peer snapshot strictly before the primary one** so the two pinned values inherit that ordering. That ordering is what removes the need for cross-store atomicity: an ordering that can only leave the peer behind is sufficient, since behind is already a skip. Ahead remains reachable through a primary-store rollback beneath the read-index cursor (`RestoreCheckpoint` on a follower restore), which the index builder — unlike `usagebuilder` — does not reset; that divergence belongs to the missing reset rather than to the purge path this pass audits, so it is logged loudly and skipped.
   - **The unknown-ledger verdict is driven by liveness alone.** A ledger recreated under the same name is live again in the audit-derived set, so its fresh rows are legitimate. Deriving the verdict from a separate append-only "was deleted in the replay" set consulted *before* the live set would report them, and would leave correctness resting on the retained tombstone that makes the lifecycle unreachable rather than on the pass's own structure.
   - Findings are aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity — a field dropped on a large ledger can strand millions of rows, and the pass must stay `O(distinct fields)` in both memory and emitted events.
-- **Order matters**: `verifyAuditHashChain` runs **first**. A broken chain stops the walk before any downstream pass — running them with a tampered chain would produce noise from already-detected corruption.
+- **`compareLogs` closed the gap that made `Log` an unmonitored projection** (EN-1526). Two things used to be true: `Check()` returned success before any verification ran when the store held no `Log` rows (a history of only rejected proposals, a fully-archived history, or a store whose log rows had been deleted), and the only log-set check compared the log stream against itself — walking the rows and comparing each sequence to `seq + 1` from the previous one, which could report a hole between two rows while proving nothing about either, and could detect neither tail truncation nor an injected row. Neither the structural checks in pass 15 nor `compareLogs` require `Log` to be hash-bound: the chain already binds `AuditSuccess.[min,max]_log_sequence` and `AuditItem.log_sequence`.
+- **Pass 15 is writer-bug detection, not anti-tampering.** `order_count`, `order_index` and `log_sequence` are all hash-bound, and `query.ReadAuditItems` folds every row in an entry's prefix into the hash, so mutating, deleting or injecting an item already yields `HASH_MISMATCH`. The checks exist because `compareLogs` consumes those fields — an internally inconsistent entry would yield a wrong authenticated set and therefore false missing/extra findings. The count and index checks apply to **both** outcomes: `buildAuditItems` runs in the closure shared by the success and failure paths and sizes its slice on the full submitted order set, so a failure entry carries `order_count = N` **with N items**; the failure path merely leaves every item's `log_sequence` at 0. The failure-specific rule is therefore "no item may claim a log sequence", never "no items exist" — asserting the latter would flag every rejected proposal in a production cluster.
+- **Orphan `AuditItem` groups are the one structural gap the chain does not cover**, because the chain walk iterates entries: an injected group at an unused audit sequence is never read and never hashed. The scan is bounded to audit sequences strictly above the archived boundary — `executePurge` purges `SubColdAudit` and `SubColdLog` but **not** `SubColdAuditItem`, so archived item rows legitimately persist without their entry.
+- **Order matters**: `verifyAuditHashChain` runs **first**. A broken chain stops the walk before any downstream pass — running them with a tampered chain would produce noise from already-detected corruption. Authentication is **never** gated on a projection: before EN-1526 the chain walk was skipped entirely when `query.ReadLastSequence` (a read of `SubColdLog`, itself a projection) reported no logs.
 
 ## Replay machinery
 
@@ -80,9 +95,11 @@ The transaction merge operator is associative. On a partial merge — Pebble com
 
 ```mermaid
 flowchart TB
-    A[NewReadHandle: point-in-time snapshot] --> B[verifyAuditHashChain]
+    A[NewReadHandle: point-in-time snapshot] --> B["verifyAuditHashChain + verifyAuditStructure per entry"]
     B -->|on hash break| Z((stop))
     B -->|on success: build expectedIdempotency| C[compareIdempotencyOutcomes]
+    B -->|authenticated + purged + unverifiable log ranges| O[compareLogs]
+    B -->|verified audit sequences| P[scanOrphanAuditItems]
     B --> D[compareVolumes]
     B --> E[compareMetadata]
     B --> F[compareTransactions]
@@ -93,8 +110,8 @@ flowchart TB
     B --> L[compareMirrorV2LogID]
     B --> M[compareReversions]
     B --> N[compareNumscripts]
-    B --> O["compareReverseMapOrphans (peer readstore snapshot)"]
-    D & E & F & G & H & I & J & L & M & N & O --> K[stream errors as they happen]
+    B --> Q["compareReverseMapOrphans (peer readstore snapshot)"]
+    D & E & F & G & H & I & J & L & M & N & O & P & Q --> K[stream errors as they happen]
     C --> K
 ```
 
@@ -102,7 +119,7 @@ All non-chain passes are independent of each other (each replays the subset of o
 
 ## Error event shape
 
-`misc/proto/bucket.proto:699-753`:
+`misc/proto/bucket.proto` (comments elided — the proto carries the authoritative per-value rationale):
 
 ```proto
 message CheckStoreError {
@@ -116,6 +133,7 @@ message CheckStoreError {
 }
 
 enum CheckStoreErrorType {
+  UNSPECIFIED                 = 0;
   HASH_MISMATCH               = 1;
   SEQUENCE_GAP                = 2;
   VOLUME_MISMATCH             = 3;
@@ -136,12 +154,45 @@ enum CheckStoreErrorType {
   BOUNDARY_MISMATCH           = 18;
   NUMSCRIPT_MISMATCH          = 19;
   REVERSE_MAP_ORPHAN          = 20;
+  LOG_UNAUDITED               = 21;
+  LOG_PURGE_RESIDUE           = 22;
+  AUDIT_STRUCTURE_INVALID     = 23;
 }
 ```
 
 (Names are shown without the `CHECK_STORE_ERROR_TYPE_` prefix the proto carries.)
 
 Adding a new persisted projection requires adding a new pass *and* a new error type — both are part of the same invariant.
+
+## Unverifiable ranges
+
+Not every finding is a divergence. When the checker cannot *authenticate* a log-sequence range at all, it says so on its own arm of the oneof rather than inventing an error:
+
+```proto
+enum CheckStoreUnverifiableReason {
+  CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED = 0;
+  CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE = 1;
+  CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY = 2;
+}
+
+message CheckStoreUnverifiableRange {
+  CheckStoreUnverifiableReason reason = 1;
+  string message = 2;
+  fixed64 range_start = 3;
+  fixed64 range_end = 4;
+}
+```
+
+Design rules:
+
+- **"Cannot prove" is not "diverges."** Routing an unverifiable range through `CheckStoreError` would double-count a single defect: a malformed entry already emits its own `AUDIT_STRUCTURE_INVALID`, and the unverifiable event only declares the log span that entry's corruption made unprovable.
+- **Sequences inside an unverifiable span are skipped in both directions of `compareLogs`**, so the pass reports neither a false gap nor a false injection across them. The event is what makes that skip visible instead of silent.
+- **Every occurrence marks a defect.** A healthy cluster, archived or not, emits none.
+- **Route on `reason`, never on `message`.** The two causes carry different runbooks: a chapter-lifecycle defect versus a corrupt or tampered audit entry.
+- **Bounds are inclusive and 1-based.** A zero bound, or `range_start > range_end`, means the bounds could not be determined; consumers must render that as unknown, never as a literal `0-0`.
+- **Old clients stay fail-safe.** A consumer whose type switch predates this arm ignores it and keeps its existing pass/fail semantics.
+
+`ledgerctl store check` prints these as `WARNING` lines and reports them under the `unverifiableRanges` JSON key; they do not affect `valid` nor the exit code. See [docs/ops/cli.md / store check](../../../../ops/cli.md#store-check).
 
 ## What is **not** verified
 
@@ -152,6 +203,7 @@ A short list, because it matters for the threat model:
 - **Bloom filters**: a probabilistic cache; correctness is a function of the underlying attribute store, which the checker *does* verify.
 - **Read store index *contents* (inverted index for queries)**: rebuildable from scratch by the [indexer](../indexer/), so a divergence is recoverable without an audit — but the *source* attributes the indexer projects from are checked. Whether any index row holds the right *value* is unverified, tracked under `EN-1514` / `EN-1323`. **Not** in this list: reverse-map (`0x03`) row *presence*, which `compareReverseMapOrphans` does detect — see pass 13 above. That pass covers presence in one limb against one oracle, and explicitly does not cover `DropIndex` residue (`EN-1621`).
 - **Snapshot files and the spool**: transient transport artefacts, not persisted projections.
+- **`Log` payload contents**: `compareLogs` verifies the log *sequence set* against the audit, not each payload's bytes. Reconstructing canonical payloads by re-running business processing is tracked as EN-1531.
 
 ## Performance
 

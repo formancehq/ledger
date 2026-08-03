@@ -36,38 +36,44 @@ The `store check` command performs a comprehensive offline verification of the e
 
 ### Verification Process
 
-The check runs in three passes:
+The check verifies the audit hash chain first, then re-derives and compares every persisted projection. The authoritative pass-by-pass list lives in
+[docs/technical/architecture/subsystems/checker/checker.md](../technical/architecture/subsystems/checker/checker.md); it is maintained there rather than duplicated here.
 
-**Pass 1 — Log replay and state verification:**
+Two properties matter operationally:
 
-For each log from sequence 1 to the last sequence:
-
-1. **Sequence continuity**: Verifies that no log sequence numbers are missing (gaps)
-2. **State replay**: Replays each log payload to build expected state:
-   - `CreateLedger` logs register ledger name-to-ID mappings
-   - `CreatedTransaction` logs accumulate expected input/output volumes per account/asset, and track account metadata set during the transaction
-   - `RevertedTransaction` logs accumulate reversed posting volumes
-   - `SavedMetadata` logs track expected metadata values per account/key
-   - `DeletedMetadata` logs mark metadata as deleted
-
-**Pass 2 — Volume comparison:**
-
-For each account/asset pair encountered during replay, the checker compares the expected cumulative input and output volumes against the actual values computed from the attribute store. Any mismatch is reported as a `VOLUME_MISMATCH` error.
-
-**Pass 3 — Metadata comparison:**
-
-For each account metadata key/value encountered during replay (excluding deleted keys), the checker compares the expected value against the actual value from the attribute store. Any mismatch is reported as a `METADATA_MISMATCH` error.
+1. **The audit chain is always verified**, including for a store that holds no logs at all — a history of only rejected proposals, or a fully-archived history. Before EN-1526 such a store returned success without verifying anything.
+2. **The persisted log set is compared against the audit chain in both directions**, so a missing, truncated or injected log row is detected even though `Log` rows are not hash-bound.
 
 ### Error Types
 
 | Error Type | Description |
 |------------|-------------|
-| `HASH_MISMATCH` | Audit entry hash does not match recomputed hash (corruption or tampering) |
-| `SEQUENCE_GAP` | A log sequence number is missing |
-| `VOLUME_MISMATCH` | Account input or output volume does not match log replay |
-| `METADATA_MISMATCH` | Account metadata value does not match log replay |
+| `HASH_MISMATCH` | Audit entry hash does not match the recomputed hash (corruption or tampering) |
+| `SEQUENCE_GAP` | A log the audit chain authenticates is absent from the store |
+| `VOLUME_MISMATCH` | Account input or output volume, or a transaction's `post_commit_volumes` snapshot, does not match the audit replay |
+| `METADATA_MISMATCH` | Account or transaction metadata value does not match the audit replay |
 | `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
-| `TRANSACTION_UPDATE_MISMATCH` | Transaction updates in Pebble do not match log replay |
+| `TRANSACTION_UPDATE_MISMATCH` | Transaction state in Pebble does not match the audit replay |
+| `REVERTED_MISMATCH` | A reversion invariant is broken, or a stored reversion bitset diverges from the audit-derived reverted set |
+| `EXCLUSION_RECORD_MISMATCH` | `AppliedProposal.TransientVolumes` or `LedgerLog.PurgedVolumes` diverge from the replayed ephemeral purge |
+| `IDEMPOTENCY_MISMATCH` | A frozen idempotency outcome diverges from the audit entry that froze it |
+| `INDEX_MISMATCH` | The index registry diverges from the audited index lifecycle |
+| `INVALID_SKIP` | A skip log records a reason the audit-bound order never allowed |
+| `MIRROR_V2LOGID_MISMATCH` | A ledger's stored mirror high-water mark is not exactly the max audited `v2_log_id` |
+| `SCHEMA_MISMATCH` | A ledger's stored metadata schema diverges from the audited field-type declarations |
+| `ACCOUNT_TYPE_MISMATCH` | A ledger's stored account types diverge from the audited chart |
+| `MISSING_LEDGER` | The audit says a ledger is live but the store has no live entry for it |
+| `UNAUDITED_LEDGER` | The store holds a live ledger the audit never created |
+| `REFERENCE_MISMATCH` | The reference uniqueness index diverges from the audited references |
+| `BOUNDARY_MISMATCH` | A ledger's stored boundaries diverge from the checker's re-derivation |
+| `NUMSCRIPT_MISMATCH` | A numscript content entry or latest-version pointer diverges from the audited saves |
+| `LOG_UNAUDITED` | A stored log row is not authenticated by the audit chain (injection or a forged row) |
+| `LOG_PURGE_RESIDUE` | A stored log row survives inside an archived chapter's purged range (the purge did not run, or the row was reintroduced) |
+| `AUDIT_STRUCTURE_INVALID` | A verified audit entry is internally inconsistent, or audit items exist with no audit entry |
+
+### Unverifiable ranges
+
+Alongside errors, the check can emit `unverifiable` events for a range it could not authenticate. These are **warnings, not failures**: they do not affect `valid` in the JSON output nor the exit code. They exist so that the absence of an error in an unauthenticated range is never mistaken for proof of integrity.
 
 ### CLI Usage
 
@@ -90,6 +96,7 @@ rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
 Events are streamed in real-time:
 - `CheckStoreProgress` events report the number of logs checked vs total
 - `CheckStoreError` events report each integrity error as it is found
+- `CheckStoreUnverifiableRange` events report a log-sequence range that could not be authenticated (warning only — see [Unverifiable ranges](#unverifiable-ranges))
 
 ### Implementation
 
@@ -195,6 +202,6 @@ The SST produced by `buildSSTArchive` is a deterministic function of the chapter
 3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same audit hash chain is produced
 4. **Crash recovery**: The audit hash chain survives node restarts — recovered from the last audit entry in Pebble
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
-6. **Full store verification**: The `store check` command validates the entire log sequence and all derived data (volumes, metadata) against the source of truth (logs)
+6. **Full store verification**: The `store check` command validates every persisted projection — including the log sequence set itself — against the source of truth (the audit hash chain)
 7. **Timestamp monotonicity**: The Hybrid Logical Clock guarantees that every log has a strictly increasing timestamp, even across leader changes and clock skew
 8. **Archive integrity at confirm time**: A cold archive is only confirmed after its SHA-256 matches the value persisted alongside the data. Truncated or bit-rotted archives surface as integrity errors and never trigger source-data purge
