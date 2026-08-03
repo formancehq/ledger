@@ -20,13 +20,19 @@ import (
 // backward SeekGE rather than latch on exhaustion (EN-1597). Each filter here
 // is a contradiction (`and(not(F), F)`, spelled with an extra NOT to force the
 // exhaust-then-seek-back path) and must return nothing.
-var _ = Describe("Nested-NOT filter reposition", Ordered, ContinueOnFailure, func() {
+var _ = Describe("Nested-NOT filter reposition", Ordered, func() {
 	const ledgerName = "nested-not-reposition-ledger"
 
 	tripleNot := func(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 		return actions.NotFilter(actions.NotFilter(actions.NotFilter(f)))
 	}
 
+	// The trailing guard aborts the container on failure (a BeforeAll failure
+	// skips every spec), so the BeEmpty contradictions below can never pass
+	// vacuously against a view that lost the seeded data. Both bare leaves read
+	// the main store's attributes zone, written synchronously by the FSM before
+	// Apply returns — neither touches the asynchronously-built read index — so
+	// the Eventually is a freshness backstop, not an indexing wait.
 	BeforeAll(func() {
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
@@ -37,13 +43,7 @@ var _ = Describe("Nested-NOT filter reposition", Ordered, ContinueOnFailure, fun
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 		}
-	})
 
-	// Guard against vacuous passes: an empty result is only meaningful once the
-	// bare leaves see the data. The Pebble read index is populated
-	// asynchronously by the index builder, so wait for both leaf shapes to
-	// return the seeded rows before testing the contradictions.
-	It("baseline: the bare leaves return the seeded data", func() {
 		Eventually(func(g Gomega) {
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.TxIDRangeFilter(3, 5))
 			g.Expect(err).To(Succeed())

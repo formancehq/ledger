@@ -27,6 +27,19 @@ type EntityIterator interface {
 
 	// SeekGE positions the iterator at the first entity >= target.
 	// Returns false if no such entity exists OR on I/O error — see Err().
+	//
+	// SeekGE is an ABSOLUTE reposition (see
+	// docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md):
+	//   - the result is computed from target alone, never from the iterator's
+	//     position, direction of travel, or exhaustion state;
+	//   - it is idempotent: repeating SeekGE with the same target yields the
+	//     same entity, and must not consume it;
+	//   - it is well-defined after exhaustion (a false Next/SeekGE) — a later
+	//     seek to a smaller target repositions normally;
+	//   - a failed seek leaves the iterator un-positioned (Next returns false)
+	//     but still re-seekable.
+	// Composite iterators (AND/OR/NOT) re-seek children freely under this
+	// contract; a latch or a consuming seek silently drops rows (EN-1597).
 	SeekGE(target []byte) bool
 
 	// Err returns the first storage error encountered during iteration, or
@@ -208,7 +221,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
-		it.floor.fail(target)
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -227,7 +240,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.floor.fail(target)
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -400,14 +413,14 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 		// Past target, step back
 		if !it.iter.Prev() {
 			it.exhausted = true
-			it.ceil.fail(target)
+			it.ceil.fail(target, it.iter.Error())
 
 			return false
 		}
 	} else if !it.iter.Last() {
 		// Past end, go to last
 		it.exhausted = true
-		it.ceil.fail(target)
+		it.ceil.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -426,7 +439,7 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.ceil.fail(target)
+	it.ceil.fail(target, it.iter.Error())
 
 	return false
 }
@@ -560,7 +573,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
-		it.floor.fail(target)
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -573,7 +586,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.floor.fail(target)
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -711,14 +724,14 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	if it.iter.SeekGE(seekKey) {
 		if !it.iter.Prev() {
 			it.exhausted = true
-			it.ceil.fail(target)
+			it.ceil.fail(target, it.iter.Error())
 
 			return false
 		}
 	} else {
 		if !it.iter.Last() {
 			it.exhausted = true
-			it.ceil.fail(target)
+			it.ceil.fail(target, it.iter.Error())
 
 			return false
 		}
@@ -738,7 +751,7 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.ceil.fail(target)
+	it.ceil.fail(target, it.iter.Error())
 
 	return false
 }
@@ -906,7 +919,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
-		it.floor.fail(target)
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -919,7 +932,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.floor.fail(target)
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }

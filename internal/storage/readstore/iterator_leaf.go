@@ -111,7 +111,7 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
-		it.floor.fail(target)
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -131,7 +131,7 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.floor.fail(target)
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -266,7 +266,7 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekPrefixGE(seekKey) {
 		it.exhausted = true
-		it.floor.fail(target)
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -285,7 +285,7 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.floor.fail(target)
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }

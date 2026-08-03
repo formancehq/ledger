@@ -119,14 +119,14 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 		// Key is > target, step back
 		if !it.iter.Prev() {
 			it.exhausted = true
-			it.ceil.fail(target)
+			it.ceil.fail(target, it.iter.Error())
 
 			return false
 		}
 	} else if !it.iter.Last() {
 		// Past the end — go to last key
 		it.exhausted = true
-		it.ceil.fail(target)
+		it.ceil.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -145,7 +145,7 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
-	it.ceil.fail(target)
+	it.ceil.fail(target, it.iter.Error())
 
 	return false
 }
