@@ -63,10 +63,15 @@ func (b *WriteSet) partitionVolumes(
 		if !ok {
 			info, err := b.getLedgerData(update.Key.LedgerName)
 			if errors.Is(err, domain.ErrNotFound) {
-				// Expected soft outcome: the ledger carries no
-				// account-type info (never created, or the volume belongs
-				// to a ledger deleted earlier in this batch). Default
-				// persistence is "kept".
+				// Expected soft outcome: no account-type info is reachable
+				// for this ledger — either it was never created, or its key
+				// is absent from the Derived cache (partitionVolumes runs at
+				// Merge time, outside the per-order coverage gate, and
+				// getLedgerData reads Derived.Ledgers directly). A ledger
+				// deleted earlier in this batch does NOT land here:
+				// DeleteLedger soft-deletes by Putting the row back with
+				// DeletedAt set, so getLedgerData still returns it with its
+				// account types intact. Default persistence is "kept".
 				result.kept = append(result.kept, update)
 
 				continue
