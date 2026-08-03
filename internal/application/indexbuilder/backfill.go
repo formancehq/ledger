@@ -724,10 +724,16 @@ scan:
 		lastScannedKey = cloneBytes(k)
 		scanned++
 
-		entityID, metaKey, entryVersion, parsed := parseReverseMapKey(k, rmapPrefix, ns)
-		if !parsed || metaKey != task.key {
+		rk, err := parseScopedReverseMapKey(k, task.ledger, ns)
+		if err != nil {
+			return false, fmt.Errorf("schema rewrite: %w", err)
+		}
+
+		if rk.MetadataKey != task.key {
 			continue
 		}
+
+		entityID, entryVersion := rk.EntityID, rk.Version
 
 		// Skip rmap rows that don't belong to v_current. The rewrite
 		// reads from v_current and writes to v_pending; without this

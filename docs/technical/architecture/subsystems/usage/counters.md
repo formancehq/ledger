@@ -2,7 +2,7 @@
 
 This page documents the projections the usagebuilder materialises: what each counter counts, how the FSM plumbs the source data through the log payload, and how the counters are keyed in the usagestore.
 
-These counters live in the **usagestore**, a peer secondary store. Per the checker-scope framing (CLAUDE.md invariant #8), a peer secondary store is out of the **main-store checker's** scope *by construction* — `Check()` never opens the usagestore — so the checker does **not** verify these counters. Their integrity is a per-replica rebuild-health concern (rebuildable from the audit on demand), not a main-store invariant-#8 projection.
+These counters live in the **usagestore**, a peer secondary store. Per the checker-scope framing (CLAUDE.md invariant #8), a peer secondary store is out of the **main-store checker's** scope as a rule, and the usagestore is out of it entirely — `Check()` never opens the usagestore — so the checker does **not** verify these counters. (The rule has exactly one exception, the readstore reverse map (`0x03`) verified by `compareReverseMapOrphans`; it does not extend to the usagestore.) Their integrity is a per-replica rebuild-health concern (rebuildable from the audit on demand), not a main-store invariant-#8 projection.
 
 For the pipeline that populates these keys, see [usagebuilder.md](usagebuilder.md).
 

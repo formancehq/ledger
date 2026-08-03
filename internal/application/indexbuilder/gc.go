@@ -10,6 +10,31 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+// parseScopedReverseMapKey decodes k and asserts it belongs to (ledger, ns).
+// Every caller scans a Pebble prefix built from exactly (ledger, ns) —
+// gcReverseMapVersion, processSchemaRewrite, and both scans in
+// purgeReverseMapForKey — so a divergence between the decoded
+// key and the scope the caller iterated means the stored key is corrupt in a
+// way ParseReverseMapKey's own shape checks don't reject, not a runtime
+// condition. Per CLAUDE.md invariant #7 that gets a loud error, never a
+// silent skip. This is the single chokepoint for that assertion: callers
+// wrap the returned error with their own site-specific context and keep
+// their own soft continue/return for a legitimate metadata-key or version
+// mismatch (that check stays out of this helper — it isn't a corruption
+// signal).
+func parseScopedReverseMapKey(k []byte, ledger, ns string) (readstore.ParsedReverseMapKey, error) {
+	rk, err := readstore.ParseReverseMapKey(k)
+	if err != nil {
+		return readstore.ParsedReverseMapKey{}, err
+	}
+
+	if rk.Ledger != ledger || rk.Namespace != ns {
+		return readstore.ParsedReverseMapKey{}, fmt.Errorf("invariant: rmap key %x decoded to ledger %q ns %q, expected %q/%q", k, rk.Ledger, rk.Namespace, ledger, ns)
+	}
+
+	return rk, nil
+}
+
 // gcVersionAt purges every readstore key tied to (ledger, ns, metaKey,
 // version): the forward index range and the eidx range via DeleteRange,
 // and the rmap rows via iter+DeleteKey.
@@ -76,14 +101,25 @@ func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilde
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
-		_, mk, v, parsed := parseReverseMapKey(k, rmapPrefix, ns)
-		if !parsed || mk != metaKey || v != version {
+		rk, err := parseScopedReverseMapKey(k, ledger, ns)
+		if err != nil {
+			return fmt.Errorf("gc rmap: %w", err)
+		}
+
+		if rk.MetadataKey != metaKey || rk.Version != version {
 			continue
 		}
 
 		if err := batch.DeleteKey(cloneBytes(k)); err != nil {
 			return fmt.Errorf("gc rmap entry: %w", err)
 		}
+	}
+
+	// A truncated scan is indistinguishable from exhaustion on !iter.Valid(),
+	// and returning nil here would report the version as reclaimed while leaving
+	// rows behind — the same silent-truncation shape as purgeReverseMapForKey.
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("scanning rmap for gc: %w", err)
 	}
 
 	return nil

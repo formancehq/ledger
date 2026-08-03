@@ -113,7 +113,7 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 	}
 
 	collectMismatches := func() []*servicepb.CheckStoreError {
-		checker := NewChecker(store, attributes.New(), clusterID, coldReader, nil, logging.Testing())
+		checker := NewChecker(store, attributes.New(), clusterID, coldReader, nil, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -223,7 +223,7 @@ func TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory(t *testi
 	}
 
 	collectMismatches := func() []*servicepb.CheckStoreError {
-		checker := NewChecker(store, attributes.New(), clusterID, coldReader, nil, logging.Testing())
+		checker := NewChecker(store, attributes.New(), clusterID, coldReader, nil, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -293,14 +293,14 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 	t.Run("no archived chapters is fully covered without a cold reader", func(t *testing.T) {
 		t.Parallel()
 
-		c := NewChecker(store, attributes.New(), "x", nil, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", nil, nil, nil, logging.Testing())
 		require.True(t, c.reDeriveArchivedIdempotency(ctx, nil, 0, map[idemExpectedKey]expectedIdempotency{}))
 	})
 
 	t.Run("archived data with no cold reader is not covered", func(t *testing.T) {
 		t.Parallel()
 
-		c := NewChecker(store, attributes.New(), "x", nil, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", nil, nil, nil, logging.Testing())
 		require.False(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(1, 2)}, 0, map[idemExpectedKey]expectedIdempotency{}))
 	})
 
@@ -309,7 +309,7 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 
 		// Cold reader over an empty store: GetReader fails for the chapter.
 		reader := coldReaderWithChapters(t, bucketID, nil)
-		c := NewChecker(store, attributes.New(), "x", reader, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", reader, nil, nil, logging.Testing())
 		require.False(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(99, 2)}, 0, map[idemExpectedKey]expectedIdempotency{}))
 	})
 
@@ -333,7 +333,7 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 		}, map[uint64][]*auditpb.AuditItem{4: {{OrderIndex: 0, SerializedOrder: serialized}}})
 
 		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{20: newer, 10: older})
-		c := NewChecker(store, attributes.New(), "x", reader, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", reader, nil, nil, logging.Testing())
 
 		expected := map[idemExpectedKey]expectedIdempotency{}
 		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(20, 6), archived(10, 4)}, cutoff, expected))
@@ -358,7 +358,7 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 		}, map[uint64][]*auditpb.AuditItem{5: {{OrderIndex: 0, SerializedOrder: serialized}}})
 
 		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{30: sst})
-		c := NewChecker(store, attributes.New(), "x", reader, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", reader, nil, nil, logging.Testing())
 
 		expected := map[idemExpectedKey]expectedIdempotency{}
 		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(30, 5)}, 2000, expected))
@@ -379,7 +379,7 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 		sst := writeSSTBytes(t, [][2][]byte{{logKey, []byte("x")}})
 
 		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{40: sst})
-		c := NewChecker(store, attributes.New(), "x", reader, nil, logging.Testing())
+		c := NewChecker(store, attributes.New(), "x", reader, nil, nil, logging.Testing())
 
 		expected := map[idemExpectedKey]expectedIdempotency{}
 		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(40, 2)}, 2000, expected))

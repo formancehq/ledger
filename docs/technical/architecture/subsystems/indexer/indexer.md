@@ -86,7 +86,7 @@ flowchart TB
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |
 | `SetMetadataFieldType` | `addSchemaRewriteTask` | Schedules a deferred rewrite that re-encodes the existing values under a new type tag (see [Schema Rewrite](#schema-rewrite)). |
-| `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory `indexVersions` map and writes the initial / cleared `IndexVersionState`. |
+| `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory `indexVersions` map and writes the initial / cleared `IndexVersionState`. `DropIndex` reclaims **no** read-store rows (`0x01` / `0x02` / `0x03`); the stranded rows are tracked as `EN-1621` and are deliberately outside the checker's reverse-map pass. |
 
 ### Dual-write while a rewrite is in flight
 
@@ -104,7 +104,7 @@ The read store partitions its keyspace by a single leading byte:
 |--------|---------|--------|
 | `0x01` | Metadata index (forward) | `MetadataIndexPrefixV` / `MetadataIndexKeyV` |
 | `0x02` | Entity existence (null / non-null counters) | `EntityExistsKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
-| `0x03` | Reverse map (entity → metadata values, for rewrites) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV` |
+| `0x03` | Reverse map (entity → metadata values, for rewrites). The only limb that cannot be range-deleted by field, and the only one the checker scans — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV` |
 | `0x04` | Account → transaction mapping | `AccountTxKey` |
 | `0x05` | Source-account → transaction | dedicated key builder |
 | `0x06` | Destination-account → transaction | dedicated key builder |
@@ -239,6 +239,8 @@ The GC step (`gcVersionAt` → `gc.go:30-95`) reclaims the old forward-index ran
 ### Cancellation: `RemovedMetadataFieldType`
 
 If the field type is removed mid-rewrite (`RemovedMetadataFieldType`), the indexer purges every versioned namespace for that key (`process_metadata_field_removal.go:37-111`) and `removeSchemaRewriteTaskByField` (`backfill.go`) drops the in-flight task. Any orphan `v_pending` rows are reclaimed by the same purge. No special end-state is needed: the entire key is gone.
+
+The `0x01` and `0x02` limbs go in one `DeleteRange` each. The reverse map cannot: its metadata key sits after the fixed-width version block, so no prefix covers "every row of this field" and `purgeReverseMapForKey` (`process_metadata_field_removal.go:121+`) has to scan the namespace and point-delete row by row. A row that scan misses is a permanent orphan — the range deletes cannot half-succeed, this scan can. The scan therefore checks `iter.Error()` before reporting success: a mid-scan I/O failure is indistinguishable from exhaustion on `!iter.Valid()`, and swallowing it would commit the batch with rows left behind and never retry. Propagating aborts the batch so the fold retries the log. A missing write batch is likewise a hard error (invariant #7), since a silent skip there would strand all three limbs at once and `0x01`/`0x02` have no detector of their own. That asymmetry is why the checker scans `0x03` and no other limb: `compareReverseMapOrphans` flags rows whose field is absent from both the index registry and the audit-replayed schema, which is exactly the signature of a missed point-delete. See [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) for the oracle and its limits.
 
 ### Recovery and observability
 

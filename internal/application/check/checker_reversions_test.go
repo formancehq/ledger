@@ -29,7 +29,7 @@ func writeReversionWord(t *testing.T, store *dal.Store, ledger string, wordIndex
 func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), "reversions-cluster", nil, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), "reversions-cluster", nil, nil, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

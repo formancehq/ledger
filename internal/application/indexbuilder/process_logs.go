@@ -2,7 +2,6 @@ package indexbuilder
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -535,6 +534,18 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		}
 	}
 
+	// Schema logs are deliberately absent from this switch. The only caller,
+	// processBackfill, gates on isDataLog, which admits exactly
+	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
+	// / OrderSkipped and switches on the same discriminator used here — so a
+	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive.
+	// Schema handling belongs to the live path (indexPayload), where
+	// SetMetadataFieldType defers to addSchemaRewriteTask / processSchemaRewrite
+	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
+	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
+	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
+	// for them without also changing isDataLog: an unreachable second
+	// implementation of the schema rewrite is what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
@@ -544,18 +555,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
-	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		// Schema changes scan the reverse map with iterators — flush buffered
-		// writes first so the iterators see a consistent state, then create a
-		// new indexed batch for the rewrite.
-		if err := b.wb.Flush(); err != nil {
-			return err
-		}
-
-		batch := b.readStore.NewBatch()
-		b.initBatch(batch) // re-init with a new batch after flush
-
-		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
@@ -1093,162 +1092,12 @@ func (b *Builder) indexDeletedMetadata(
 	return nil
 }
 
-// indexSetMetadataFieldType handles schema change logs by re-encoding all
-// inverted index entries for the affected key using the new type.
-//
-// Strategy: iterate the reverse map to find all entities that have this metadata key,
-// then for each entity: delete the old forward index entry, convert the value,
-// insert the new forward index entry, and update the reverse map.
-//
-// The WriteBatch must already be initialised with an indexed batch before calling
-// this function. The caller is responsible for flushing the batch afterward.
-func (b *Builder) indexSetMetadataFieldType(
-	cfg *ledgerIndexConfig,
-	kb *dal.KeyBuilder,
-	ledger string,
-	smft *commonpb.SetMetadataFieldTypeLog,
-) error {
-	// Only re-encode if this metadata key is indexed.
-	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
-		return nil
-	}
-
-	var ns string
-
-	switch smft.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		ns = readstore.NamespaceAccount
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		ns = readstore.NamespaceTransaction
-	default:
-		return nil
-	}
-
-	// Build the reverse map prefix for scanning: [0x03][ledger\x00][ns:]
-	rmapPrefix := readstore.ReverseMapPrefix(kb, ledger, ns)
-	upper := readstore.IncrementBytes(rmapPrefix)
-
-	// Use a Pebble snapshot so the scan sees committed data (not the
-	// in-flight batch writes). The WriteBatch operates on an indexed batch,
-	// but iterators from the batch would see partially applied state.
-	snap := b.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
-
-	iter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound: rmapPrefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	type rmapEntry struct {
-		rmapKey  []byte // full reverse map key
-		entityID []byte // account address or txID bytes
-		oldValue []byte // old MetadataValue encoded via EncodeMetadataValue (sortable format)
-	}
-
-	var entries []rmapEntry
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-
-		// Strip the prefix byte (0x03) to get the portion after the prefix
-		// that the extract helpers expect.
-		suffixAfterByte := k[1:] // skip PrefixReverseMap byte
-		metaKey := extractMetadataKeyFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
-
-		if metaKey != smft.GetKey() {
-			continue
-		}
-
-		v, verr := iter.ValueAndErr()
-		if verr != nil {
-			return verr
-		}
-
-		entries = append(entries, rmapEntry{
-			rmapKey:  cloneBytes(k),
-			entityID: extractEntityIDFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns),
-			oldValue: cloneBytes(v),
-		})
-	}
-
-	// For each entity: delete old forward index, convert, insert new forward index, update reverse map.
-	// ReplaceMetadataIndex handles all four steps atomically within the batch.
-	for _, e := range entries {
-		// The reverse map stores values in the sortable EncodeMetadataValue
-		// format, not protobuf — decode with the matching decoder. A failure
-		// here means the stored bytes are corrupt; we treat it as fatal so
-		// the schema-change task is retried rather than silently skipping
-		// entries (which would leave inconsistent indexes).
-		oldMV, _, err := readstore.DecodeValue(e.oldValue)
-		if err != nil {
-			return fmt.Errorf("decoding reverse map value for key %q: %w", smft.GetKey(), err)
-		}
-
-		oldEncoded := e.oldValue
-
-		// Convert to new type.
-		newMV := commonpb.ConvertMetadataValue(oldMV, smft.GetType())
-		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
-
-		// ReplaceMetadataIndex deletes old midx+eidx, writes new midx+eidx,
-		// and updates the reverse map — all in one call.
-		if err := b.wb.ReplaceMetadataIndex(
-			kb, e.rmapKey,
-			ledger, ns, smft.GetKey(),
-			newEncoded, oldEncoded, e.entityID,
-		); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // cloneBytes returns a copy of the given byte slice.
 func cloneBytes(b []byte) []byte {
 	c := make([]byte, len(b))
 	copy(c, b)
 
 	return c
-}
-
-// extractMetadataKeyFromReverseMap extracts the metadata key name from a
-// reverse map key, given the prefix up to the namespace.
-// For accounts:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
-// For transactions: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey].
-//
-// The 4-byte forward-encoding version sitting between the entity
-// delimiter and the metadata key was introduced as part of EN-1323's
-// per-replica versioning; the entity scan helpers skip past it.
-func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		// Find the null terminator after the account address, then
-		// skip the 4-byte version prefix that precedes metadataKey.
-		for i, b := range suffix {
-			if b == 0x00 {
-				rest := suffix[i+1:]
-				if len(rest) < 4 {
-					return ""
-				}
-
-				return string(rest[4:])
-			}
-		}
-
-		return ""
-	}
-	// Transaction: skip 8-byte txID then 4-byte version.
-	if len(suffix) > 12 {
-		return string(suffix[12:])
-	}
-
-	return ""
 }
 
 // isExcluded returns true if the (account, asset, color) tuple is in the
@@ -1264,93 +1113,4 @@ func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset, co
 	_, ok := excluded[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}]
 
 	return ok
-}
-
-// extractEntityIDFromReverseMap extracts the entity ID portion from a reverse map key.
-func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		// Entity ID is the account address (up to \x00)
-		for i, b := range suffix {
-			if b == 0x00 {
-				return suffix[:i]
-			}
-		}
-
-		return suffix
-	}
-	// Transaction: entity ID is first 8 bytes
-	if len(suffix) >= 8 {
-		return suffix[:8]
-	}
-
-	return suffix
-}
-
-// parseReverseMapKey parses a full reverse-map key (including the
-// PrefixReverseMap discriminator byte) and returns the (entityID,
-// metaKey, version) tuple it encodes. ok=false when the key shape is
-// incompatible with the namespace (corrupt key, scanning past a fresh
-// version frontier with truncated tails).
-//
-// This is the single chokepoint for "the rmap key offset math" — any
-// caller that needs more than one of the three fields should route
-// through here instead of calling the individual extractors. The
-// extract* helpers are kept as-is for callers that want only one
-// field cheaply, but the multi-field sites (schema rewrite, GC, field
-// removal) all read from this helper so an offset bug only has one
-// place to break.
-func parseReverseMapKey(k, rmapPrefix []byte, ns string) (entityID []byte, metaKey string, version uint32, ok bool) {
-	if len(k) < 1 || len(rmapPrefix) < 1 {
-		return nil, "", 0, false
-	}
-
-	suffix := k[1:]
-	nsPrefix := rmapPrefix[1:]
-
-	metaKey = extractMetadataKeyFromReverseMap(suffix, nsPrefix, ns)
-	if metaKey == "" {
-		// Either the key is corrupt or the suffix is too short to hold
-		// a non-empty metaKey — caller treats both as "skip".
-		return nil, "", 0, false
-	}
-
-	v, vOk := extractVersionFromReverseMap(suffix, nsPrefix, ns)
-	if !vOk {
-		return nil, "", 0, false
-	}
-
-	return extractEntityIDFromReverseMap(suffix, nsPrefix, ns), metaKey, v, true
-}
-
-// extractVersionFromReverseMap returns the 4-byte big-endian
-// forward-encoding version embedded in a reverse map key suffix.
-// Returns (0, false) when the suffix is too short or malformed —
-// callers treat that as "skip this entry" rather than crash.
-//
-// Key layout (after stripping the PrefixReverseMap byte):
-//   - Account:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
-//   - Transaction: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey]
-func extractVersionFromReverseMap(key, nsPrefix []byte, ns string) (uint32, bool) {
-	suffix := key[len(nsPrefix):]
-	if ns == readstore.NamespaceAccount {
-		for i, b := range suffix {
-			if b == 0x00 {
-				rest := suffix[i+1:]
-				if len(rest) < 4 {
-					return 0, false
-				}
-
-				return binary.BigEndian.Uint32(rest[:4]), true
-			}
-		}
-
-		return 0, false
-	}
-	// Transaction: version sits at suffix[8:12].
-	if len(suffix) >= 12 {
-		return binary.BigEndian.Uint32(suffix[8:12]), true
-	}
-
-	return 0, false
 }

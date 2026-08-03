@@ -2,6 +2,9 @@ package readstore
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -59,6 +62,9 @@ const (
 	NamespaceAccount     = "a:"
 	NamespaceTransaction = "t:"
 	NamespaceLog         = "l:"
+
+	// namespaceSize is the fixed byte width of every namespace prefix above.
+	namespaceSize = 2
 )
 
 // Null flag bytes for the entity-ordered existence index (eidx).
@@ -77,6 +83,36 @@ const (
 	BackfillKindSchemaRewrite = byte('S') // schema rewrite task: [ledgerName padded 64B]S[targetType_byte][key]
 )
 
+// errLedgerNameFixedCorrupt indicates a NUL byte survived trimming the
+// trailing zero padding of a fixed-width ledger-name block: the block is
+// corrupted, not merely short. Shared by every ledger-scoped key decoder in
+// this package (ParseBackfillKey, ParseReverseMapKey); both surface it as a
+// non-nil error — ParseBackfillKey returns it directly, ParseReverseMapKey
+// wraps it in ErrReverseMapKeyLedgerName.
+//
+// This is an encoding-shape check only — it never calls
+// invariants.ValidateLedgerName, so a future charset tightening there
+// cannot retroactively reclassify an already-stored key as corrupt.
+var errLedgerNameFixedCorrupt = errors.New("ledger name block: embedded NUL byte")
+
+// parseLedgerNameFixed decodes a fixed-width, zero-padded ledger-name block
+// (dal.LedgerNameFixedSize bytes) into its trimmed name. A NUL byte found
+// after trimming the trailing zero padding means the block itself is
+// corrupted (a valid ledger name cannot contain one — see
+// errLedgerNameFixedCorrupt).
+func parseLedgerNameFixed(block []byte) (string, error) {
+	name := bytes.TrimRight(block, "\x00")
+	if bytes.IndexByte(name, 0x00) >= 0 {
+		return "", errLedgerNameFixedCorrupt
+	}
+
+	return string(name), nil
+}
+
+// ErrBackfillKeyTruncated indicates a backfill key shorter than the minimum
+// ledger-name-block-plus-kind-byte length.
+var ErrBackfillKeyTruncated = errors.New("backfill key: truncated")
+
 // ParseBackfillKey decodes a backfill key into its components.
 // The key does NOT include the PrefixBackfill bytes — that prefix is stripped by the caller.
 // Format:
@@ -87,21 +123,24 @@ const (
 //	AcctMetadata: [ledgerName padded 64B]a[key]
 //	LogBuiltin:   [ledgerName padded 64B]l[builtin_byte]
 //
-// Returns the ledger name (trimmed of zero padding), kind byte, remaining details, and ok.
-func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte, ok bool) {
+// Returns the ledger name (trimmed of zero padding), kind byte, and remaining
+// details. A non-nil error means the key is not well-formed: either
+// ErrBackfillKeyTruncated (shorter than the minimum length) or the fixed-width
+// ledger-name block being corrupted (a NUL byte surviving the zero-padding
+// trim — see parseLedgerNameFixed). Callers must treat a non-nil error as
+// corruption, never as a silent skip.
+func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte, err error) {
 	// Need at least LedgerNameFixedSize bytes for the name + 1 byte for kind.
 	if len(key) < dal.LedgerNameFixedSize+1 {
-		return "", 0, nil, false
+		return "", 0, nil, ErrBackfillKeyTruncated
 	}
 
-	raw := key[:dal.LedgerNameFixedSize]
-
-	end := bytes.IndexByte(raw, 0)
-	if end < 0 {
-		end = dal.LedgerNameFixedSize
+	name, nameErr := parseLedgerNameFixed(key[:dal.LedgerNameFixedSize])
+	if nameErr != nil {
+		return "", 0, nil, nameErr
 	}
 
-	return string(raw[:end]), key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], true
+	return name, key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], nil
 }
 
 // MetadataIndexPrefix returns the prefix for scanning all entries of a
@@ -194,6 +233,131 @@ func TransactionReverseMapKeyV(kb *dal.KeyBuilder, ledgerName string, txID uint6
 		PutUint32(version).
 		PutString(metadataKey).
 		Build()
+}
+
+// ParsedReverseMapKey is the decoded form of a reverse-map (0x03) key.
+type ParsedReverseMapKey struct {
+	Ledger      string
+	Namespace   string // NamespaceAccount or NamespaceTransaction
+	EntityID    []byte // account address, or 8-byte BE transaction ID — a private copy, independent of the source key
+	Version     uint32
+	MetadataKey string
+}
+
+// Sentinel errors returned by ParseReverseMapKey. Every one signals key
+// corruption, never an expected runtime condition (invariant #7): use
+// errors.Is to identify which shape check failed, e.g. to name the cause in
+// a checker event message.
+var (
+	ErrReverseMapKeyPrefix      = errors.New("reverse map key: wrong or missing discriminator byte")
+	ErrReverseMapKeyTruncated   = errors.New("reverse map key: truncated")
+	ErrReverseMapKeyNamespace   = errors.New("reverse map key: unknown namespace")
+	ErrReverseMapKeyLedgerName  = errors.New("reverse map key: malformed ledger name")
+	ErrReverseMapKeyEntityID    = errors.New("reverse map key: empty entity id")
+	ErrReverseMapKeyMetadataKey = errors.New("reverse map key: malformed metadata key")
+)
+
+// ParseReverseMapKey decodes a full reverse-map key, including the
+// PrefixReverseMap discriminator byte. It is the single chokepoint for the
+// rmap key offset math: callers needing more than one field MUST route
+// through here rather than recomputing offsets.
+//
+//	account:     [0x03][ledgerName padded 64B][a:][account\x00][version:4B BE][metadataKey]
+//	transaction: [0x03][ledgerName padded 64B][t:][txID(8B)]   [version:4B BE][metadataKey]
+//
+// EntityID is a copy (via bytes.Clone), independent of key — safe for
+// callers to retain past an iterator move.
+//
+// A non-nil error means the key is not well-formed:
+//
+//   - ErrReverseMapKeyPrefix — wrong or missing discriminator byte
+//   - ErrReverseMapKeyTruncated — too short at any point (header, account
+//     terminator, transaction id, or version block)
+//   - ErrReverseMapKeyNamespace — neither NamespaceAccount nor NamespaceTransaction
+//   - ErrReverseMapKeyLedgerName — an embedded NUL surviving the fixed-width
+//     block's zero-padding trim, or an empty ledger name
+//   - ErrReverseMapKeyEntityID — an empty account address
+//   - ErrReverseMapKeyMetadataKey — an empty metadata key, or one containing
+//     a NUL byte. The NUL case is deliberately not delegated to
+//     invariants.ValidateMetadataKey (an encoding-shape check must not
+//     retroactively track a future charset tightening there): it exists to
+//     catch a mis-split entity ID. An account address containing a stray
+//     NUL (e.g. "us\x00ers") makes the IndexByte terminator search above
+//     stop early, so the *real* terminator and the 4-byte version block end
+//     up swallowed into what this function would otherwise decode as
+//     MetadataKey — a plausible-looking but wrong triple, not a decode
+//     failure. Rejecting any NUL in the decoded MetadataKey is what turns
+//     that silent mis-decode into a surfaced error.
+//
+// Use errors.Is to test for a specific cause. Callers must treat a non-nil
+// error as corruption, never as a silent skip.
+func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
+	if len(key) < 1 || key[0] != PrefixReverseMap {
+		return ParsedReverseMapKey{}, ErrReverseMapKeyPrefix
+	}
+
+	header := ledgerScopedPrefixLen + namespaceSize
+	if len(key) < header {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: need %d bytes, got %d", ErrReverseMapKeyTruncated, header, len(key))
+	}
+
+	ledgerName, err := parseLedgerNameFixed(key[1:ledgerScopedPrefixLen])
+	if err != nil {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: %w", ErrReverseMapKeyLedgerName, err)
+	}
+
+	if ledgerName == "" {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyLedgerName)
+	}
+
+	parsed := ParsedReverseMapKey{
+		Ledger:    ledgerName,
+		Namespace: string(key[ledgerScopedPrefixLen:header]),
+	}
+
+	rest := key[header:]
+
+	switch parsed.Namespace {
+	case NamespaceAccount:
+		end := bytes.IndexByte(rest, 0x00)
+		if end < 0 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: account address missing its 0x00 terminator", ErrReverseMapKeyTruncated)
+		}
+
+		if end == 0 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyEntityID)
+		}
+
+		parsed.EntityID = bytes.Clone(rest[:end])
+		rest = rest[end+1:]
+	case NamespaceTransaction:
+		if len(rest) < 8 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: transaction id shorter than 8 bytes", ErrReverseMapKeyTruncated)
+		}
+
+		parsed.EntityID = bytes.Clone(rest[:8])
+		rest = rest[8:]
+	default:
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: %q", ErrReverseMapKeyNamespace, parsed.Namespace)
+	}
+
+	if len(rest) < 4 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: version block shorter than 4 bytes", ErrReverseMapKeyTruncated)
+	}
+
+	metadataKey := rest[4:]
+	if len(metadataKey) == 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyMetadataKey)
+	}
+
+	if idx := bytes.IndexByte(metadataKey, 0x00); idx >= 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: contains NUL at offset %d", ErrReverseMapKeyMetadataKey, idx)
+	}
+
+	parsed.Version = binary.BigEndian.Uint32(rest[:4])
+	parsed.MetadataKey = string(metadataKey)
+
+	return parsed, nil
 }
 
 // AccountTxKey builds an account-to-transaction mapping key.

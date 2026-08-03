@@ -20,7 +20,7 @@ record, or a read-side projection:
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
 | Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
-| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection **in the main store** that is trusted between rebuilds and can shape a business-visible result (e.g. persisted bloom blocks reloaded on restart — see below) additionally needs main-store checker coverage, because nothing rebuilds it before it is served. A projection in a *peer* per-replica store (the readstore inverted index) is instead the index builder's rebuild-health concern, out of main-store checker scope — see "Readstore and Indexes" below. |
+| Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection **in the main store** that is trusted between rebuilds and can shape a business-visible result (e.g. persisted bloom blocks reloaded on restart — see below) additionally needs main-store checker coverage, because nothing rebuilds it before it is served. A projection in a *peer* per-replica store (the readstore inverted index) is instead the index builder's rebuild-health concern, out of main-store checker scope as a rule — with one narrow exception, the readstore reverse map (`0x03`), which `compareReverseMapOrphans` does verify. See "Readstore and Indexes" below. |
 
 The boundary is about impact, not package location. A value under a technical
 keyspace can become business-impacting if future code starts using it to decide
@@ -275,11 +275,55 @@ independently in `internal/storage/readstore`), **not** written through the FSM
 apply path. Each node's index builder (`internal/application/indexbuilder`)
 populates it **locally** from the replicated log/audit stream, and
 `IndexVersionState.CurrentVersion` (readiness) is explicitly per-replica. It is
-therefore a **peer secondary store, out of the main-store checker's scope by
-construction** (invariant #8) — the same category as the forthcoming
-`usagestore` counter cache (EN-1334). `Check()` opens and walks the main store; it never opens the readstore, so
-`compareIndexes` deliberately verifies only the registry (which lives in the main
-store) and not the inverted-index contents (which do not).
+therefore a **peer secondary store, out of the main-store checker's scope as a
+rule** (invariant #8) — the same category as the forthcoming `usagestore` counter
+cache (EN-1334). That rule has **exactly one narrow, deliberate exception**: the
+reverse map (`0x03`), verified by `compareReverseMapOrphans` (EN-1458). `Check()`
+therefore *does* open the peer readstore — read-only, one snapshot, for that
+single pass — so the earlier "`Check()` never opens the readstore" formulation no
+longer holds and must not be re-asserted. Everything else about the readstore
+stays out: `compareIndexes` still verifies only the registry (which lives in the
+main store), and index **contents** remain unverified (`EN-1514` / `EN-1323`).
+
+### The one exception: reverse-map orphans
+
+`compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`)
+scans the `0x03` keyspace and reports rows whose `(ledger, target, metadata key)`
+is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed
+`MetadataSchema`. The exception is justified by a property no other read-index
+limb has: `0x03` is the only limb that cannot be range-deleted by field, because
+its metadata key sits *after* a fixed-width version block (see
+`internal/storage/readstore/keys.go`). Removing a field therefore has to scan the
+namespace and point-delete row by row (`purgeReverseMapForKey`), and a row that
+scan misses is a permanent divergence with no other detector — whereas the `0x01`
+forward index and the `0x02` existence counters are dropped by a range delete,
+which is atomic and self-healing.
+
+The oracle is a conjunction because that is what makes the pass precise for its
+target: `RemovedMetadataFieldType` is the one log that both removes the schema
+field type and runs the point-delete scan, so "absent from the replayed schema and
+still has live rows" means exactly "the scan missed rows". The schema must be the
+**replayed** one, never the stored `LedgerInfo`, or the pass would be
+self-referential. Residue from a plain `DropIndex` is deliberately **not** flagged:
+`DropIndex` removes the registry entry, leaves the schema field declared, and
+purges no readstore rows at all, so a registry-only oracle would make every cluster
+that has ever dropped a metadata index permanently red on a check that has no
+warning channel. That leak is real and tracked as `EN-1621`; **this pass does not
+cover it**. Two further classes share the same error type — rows for a ledger the
+audit does not list as live, and malformed keys — and the 4-byte encoding version
+is deliberately not validated, since current and pending versions legitimately
+coexist during a per-replica rewrite.
+
+The pass is skipped — loudly, via an INFO log, never reported as a clean result —
+when no readstore handle is attached (restore / CLI validating a staged main store
+that has no peer readstore) or when the readstore has not folded up to the replayed
+log sequence: the registry is written at Raft apply while the reverse map is folded
+asynchronously, so an ungated check would false-positive on every healthy cluster
+mid-fold.
+
+This is not a general widening of the checker's mandate to peer-store contents. Do
+not extend it to further peer-store data without the same argument: a divergence
+that no other mechanism can detect.
 
 Once a per-replica index is READY (`IndexVersionState.CurrentVersion` non-zero)
 the query compiler in `internal/query/compile.go` compiles reference, metadata,
@@ -302,11 +346,14 @@ readstore-contents integrity as a current open gap on the peer-store side — th
 "rebuildable cache" classification is what keeps it out of the *main-store*
 checker's scope, not a claim that automated corruption recovery already exists.
 
-This is deliberately **not** folded into `compareIndexes` or any other main-store
-checker pass. The checker's mandate is the authoritative main store; the readstore
-is a rebuildable peer read-model reached only through its own recovery path.
-Extending audit-derived verification to per-replica index contents belongs to the
-indexbuilder's rebuild-health effort (`EN-1323`), not to invariant #8.
+Index **contents** are deliberately **not** folded into `compareIndexes` or any
+other main-store checker pass. The reverse-map exception above covers row
+*presence* in a single limb, on a single oracle; it says nothing about whether any
+index row holds the right value. The checker's mandate is the authoritative main
+store; the readstore is a rebuildable peer read-model reached only through its own
+recovery path. Extending audit-derived verification to per-replica index contents
+belongs to the indexbuilder's rebuild-health effort (`EN-1514` / `EN-1323`), not to
+invariant #8.
 
 A note on what cross-replica identity actually means for main-store projections,
 so the contrast is precise. Raft plus the deterministic FSM guarantee that every

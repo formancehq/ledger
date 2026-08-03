@@ -588,9 +588,12 @@ func decodeBackfillProgress(all map[string]uint64, err error) ([]BackfillEntry, 
 	var entries []BackfillEntry
 
 	for key, cursor := range all {
-		ledgerName, kind, details, ok := ParseBackfillKey([]byte(key))
-		if !ok {
-			continue
+		ledgerName, kind, details, parseErr := ParseBackfillKey([]byte(key))
+		if parseErr != nil {
+			// A corrupt backfill cursor is corruption, not a legitimate
+			// runtime skip (invariant #7) — surface it rather than silently
+			// dropping the entry.
+			return nil, fmt.Errorf("backfill key %x: %w", key, parseErr)
 		}
 
 		entries = append(entries, BackfillEntry{
