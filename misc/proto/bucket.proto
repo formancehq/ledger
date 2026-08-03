@@ -783,10 +783,13 @@ message CheckStoreEvent {
   oneof type {
     CheckStoreError error = 1;
     CheckStoreProgress progress = 2;
-    // A range the checker could not authenticate. NOT a divergence: it must
-    // never set valid:false nor a non-zero exit code, otherwise every
-    // archived cluster would report failure (see EN-1526).
-    CheckStoreUnverifiable unverifiable = 3;
+    // A range the checker could not authenticate. Deliberately NOT on the
+    // error arm: "cannot prove" is not "diverges", and the corrupt-entry case
+    // already emits its own AUDIT_STRUCTURE_INVALID, so routing it through
+    // errors would double-count one defect. Keeping it off the error arm also
+    // makes old clients fail-safe: a consumer whose type switch predates this
+    // arm ignores it and preserves its existing pass/fail semantics.
+    CheckStoreUnverifiableRange unverifiable_range = 3;
   }
 }
 
@@ -906,16 +909,23 @@ enum CheckStoreErrorType {
   // a per-replica rewrite, and stale versions are reclaimed at boot by
   // purgeOrphanVersions.
   CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN = 20;
-  // A persisted SubColdLog row diverges from the log-sequence topology the
-  // audit hash chain authenticates: stored but unaudited, or stored inside an
-  // archived chapter's purged range. A log the audit authenticates but the
-  // store lacks is reported as CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP instead,
-  // reusing the name operators already know.
-  CHECK_STORE_ERROR_TYPE_LOG_MISMATCH = 21;
+  // A log row is stored but no audit entry authenticates it. Injection or a
+  // forged row. A log the audit authenticates but the store lacks is reported
+  // as CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP instead, reusing the name
+  // operators already know. Split from LOG_PURGE_RESIDUE because injection and
+  // a failed purge carry different severities and runbooks, following the
+  // MISSING_LEDGER / UNAUDITED_LEDGER precedent.
+  CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 21;
+  // A log row survives inside an ARCHIVED chapter's purged range. Archiving
+  // deletes that range atomically with the status transition, so a surviving
+  // row means the purge did not run or the row was reintroduced.
+  CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE = 22;
   // A hash-verified AuditEntry is internally inconsistent, or an AuditItem
-  // group exists with no AuditEntry. These states are impossible by design;
-  // per invariant #7 they must surface loudly rather than be tolerated.
-  CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_MISMATCH = 22;
+  // group exists with no AuditEntry. Named INVALID rather than MISMATCH
+  // because nothing is compared against a projection here: the audit
+  // contradicts itself. Per invariant #8 the audit is the sole authority, so
+  // this must surface rather than be tolerated.
+  CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID = 23;
 }
 
 message CheckStoreError {
@@ -933,14 +943,35 @@ message CheckStoreProgress {
   fixed64 total_logs = 2;
 }
 
-// CheckStoreUnverifiable reports a log-sequence range the checker could not
-// authenticate, so that the absence of an error is never mistaken for proof.
-message CheckStoreUnverifiable {
-  // Human-readable explanation of why the range could not be authenticated.
-  string reason = 1;
-  // Inclusive log-sequence bounds of the unverifiable range.
-  fixed64 range_start = 2;
-  fixed64 range_end = 3;
+// CheckStoreUnverifiableReason identifies WHY a range could not be
+// authenticated. Typed rather than free text because the two causes need
+// different operator runbooks: a chapter-lifecycle defect versus a corrupt or
+// tampered audit entry. Mirrors the enum-plus-prose convention of
+// CheckStoreError{error_type,message} and AuditFailure{reason,message}.
+enum CheckStoreUnverifiableReason {
+  CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED = 0;
+  // An ARCHIVED chapter's start/close log bounds are unusable, so logs cannot
+  // be attributed to its purged range.
+  CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE = 1;
+  // A hash-verified AuditEntry is internally inconsistent, so the log span it
+  // claims cannot be proven either way.
+  CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY = 2;
+}
+
+// CheckStoreUnverifiableRange reports a log-sequence range the checker could
+// not authenticate, so that the absence of an error is never mistaken for
+// proof. Every occurrence indicates a defect: a healthy cluster, archived or
+// not, emits none.
+message CheckStoreUnverifiableRange {
+  CheckStoreUnverifiableReason reason = 1;
+  // Human-readable detail. Diagnostic only; route on reason, never on this.
+  string message = 2;
+  // Inclusive log-sequence bounds. Log sequences are 1-based, so a zero bound
+  // or an inverted range (range_start > range_end) means the bounds could not
+  // be determined. Consumers MUST render that as unknown/unbounded and MUST
+  // NOT display it as a literal range such as "0-0".
+  fixed64 range_start = 3;
+  fixed64 range_end = 4;
 }
 
 // ============================================================================

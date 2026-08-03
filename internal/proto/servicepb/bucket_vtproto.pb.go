@@ -1978,12 +1978,12 @@ func (m *CheckStoreEvent_Progress) CloneVT() isCheckStoreEvent_Type {
 	return r
 }
 
-func (m *CheckStoreEvent_Unverifiable) CloneVT() isCheckStoreEvent_Type {
+func (m *CheckStoreEvent_UnverifiableRange) CloneVT() isCheckStoreEvent_Type {
 	if m == nil {
-		return (*CheckStoreEvent_Unverifiable)(nil)
+		return (*CheckStoreEvent_UnverifiableRange)(nil)
 	}
-	r := new(CheckStoreEvent_Unverifiable)
-	r.Unverifiable = m.Unverifiable.CloneVT()
+	r := new(CheckStoreEvent_UnverifiableRange)
+	r.UnverifiableRange = m.UnverifiableRange.CloneVT()
 	return r
 }
 
@@ -2028,12 +2028,13 @@ func (m *CheckStoreProgress) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CheckStoreUnverifiable) CloneVT() *CheckStoreUnverifiable {
+func (m *CheckStoreUnverifiableRange) CloneVT() *CheckStoreUnverifiableRange {
 	if m == nil {
-		return (*CheckStoreUnverifiable)(nil)
+		return (*CheckStoreUnverifiableRange)(nil)
 	}
-	r := new(CheckStoreUnverifiable)
+	r := new(CheckStoreUnverifiableRange)
 	r.Reason = m.Reason
+	r.Message = m.Message
 	r.RangeStart = m.RangeStart
 	r.RangeEnd = m.RangeEnd
 	if len(m.unknownFields) > 0 {
@@ -2043,7 +2044,7 @@ func (m *CheckStoreUnverifiable) CloneVT() *CheckStoreUnverifiable {
 	return r
 }
 
-func (m *CheckStoreUnverifiable) CloneMessageVT() proto.Message {
+func (m *CheckStoreUnverifiableRange) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6394,8 +6395,8 @@ func (this *CheckStoreEvent_Progress) EqualVT(thatIface isCheckStoreEvent_Type) 
 	return true
 }
 
-func (this *CheckStoreEvent_Unverifiable) EqualVT(thatIface isCheckStoreEvent_Type) bool {
-	that, ok := thatIface.(*CheckStoreEvent_Unverifiable)
+func (this *CheckStoreEvent_UnverifiableRange) EqualVT(thatIface isCheckStoreEvent_Type) bool {
+	that, ok := thatIface.(*CheckStoreEvent_UnverifiableRange)
 	if !ok {
 		return false
 	}
@@ -6405,12 +6406,12 @@ func (this *CheckStoreEvent_Unverifiable) EqualVT(thatIface isCheckStoreEvent_Ty
 	if this == nil && that != nil || this != nil && that == nil {
 		return false
 	}
-	if p, q := this.Unverifiable, that.Unverifiable; p != q {
+	if p, q := this.UnverifiableRange, that.UnverifiableRange; p != q {
 		if p == nil {
-			p = &CheckStoreUnverifiable{}
+			p = &CheckStoreUnverifiableRange{}
 		}
 		if q == nil {
-			q = &CheckStoreUnverifiable{}
+			q = &CheckStoreUnverifiableRange{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -6478,13 +6479,16 @@ func (this *CheckStoreProgress) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CheckStoreUnverifiable) EqualVT(that *CheckStoreUnverifiable) bool {
+func (this *CheckStoreUnverifiableRange) EqualVT(that *CheckStoreUnverifiableRange) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
 	if this.Reason != that.Reason {
+		return false
+	}
+	if this.Message != that.Message {
 		return false
 	}
 	if this.RangeStart != that.RangeStart {
@@ -6496,8 +6500,8 @@ func (this *CheckStoreUnverifiable) EqualVT(that *CheckStoreUnverifiable) bool {
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *CheckStoreUnverifiable) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CheckStoreUnverifiable)
+func (this *CheckStoreUnverifiableRange) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CheckStoreUnverifiableRange)
 	if !ok {
 		return false
 	}
@@ -13299,15 +13303,15 @@ func (m *CheckStoreEvent_Progress) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	}
 	return len(dAtA) - i, nil
 }
-func (m *CheckStoreEvent_Unverifiable) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CheckStoreEvent_UnverifiableRange) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CheckStoreEvent_Unverifiable) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CheckStoreEvent_UnverifiableRange) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.Unverifiable != nil {
-		size, err := m.Unverifiable.MarshalToSizedBufferVT(dAtA[:i])
+	if m.UnverifiableRange != nil {
+		size, err := m.UnverifiableRange.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -13441,7 +13445,7 @@ func (m *CheckStoreProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CheckStoreUnverifiable) MarshalVT() (dAtA []byte, err error) {
+func (m *CheckStoreUnverifiableRange) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -13454,12 +13458,12 @@ func (m *CheckStoreUnverifiable) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CheckStoreUnverifiable) MarshalToVT(dAtA []byte) (int, error) {
+func (m *CheckStoreUnverifiableRange) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CheckStoreUnverifiable) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *CheckStoreUnverifiableRange) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -13475,20 +13479,25 @@ func (m *CheckStoreUnverifiable) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RangeEnd))
 		i--
-		dAtA[i] = 0x19
+		dAtA[i] = 0x21
 	}
 	if m.RangeStart != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RangeStart))
 		i--
-		dAtA[i] = 0x11
+		dAtA[i] = 0x19
 	}
-	if len(m.Reason) > 0 {
-		i -= len(m.Reason)
-		copy(dAtA[i:], m.Reason)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Reason)))
+	if len(m.Message) > 0 {
+		i -= len(m.Message)
+		copy(dAtA[i:], m.Message)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Message)))
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x12
+	}
+	if m.Reason != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Reason))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -18549,14 +18558,14 @@ func (m *CheckStoreEvent_Progress) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *CheckStoreEvent_Unverifiable) SizeVT() (n int) {
+func (m *CheckStoreEvent_UnverifiableRange) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Unverifiable != nil {
-		l = m.Unverifiable.SizeVT()
+	if m.UnverifiableRange != nil {
+		l = m.UnverifiableRange.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -18612,13 +18621,16 @@ func (m *CheckStoreProgress) SizeVT() (n int) {
 	return n
 }
 
-func (m *CheckStoreUnverifiable) SizeVT() (n int) {
+func (m *CheckStoreUnverifiableRange) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	l = len(m.Reason)
+	if m.Reason != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Reason))
+	}
+	l = len(m.Message)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -31095,7 +31107,7 @@ func (m *CheckStoreEvent) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Unverifiable", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field UnverifiableRange", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -31122,16 +31134,16 @@ func (m *CheckStoreEvent) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Type.(*CheckStoreEvent_Unverifiable); ok {
-				if err := oneof.Unverifiable.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Type.(*CheckStoreEvent_UnverifiableRange); ok {
+				if err := oneof.UnverifiableRange.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &CheckStoreUnverifiable{}
+				v := &CheckStoreUnverifiableRange{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Type = &CheckStoreEvent_Unverifiable{Unverifiable: v}
+				m.Type = &CheckStoreEvent_UnverifiableRange{UnverifiableRange: v}
 			}
 			iNdEx = postIndex
 		default:
@@ -31445,7 +31457,7 @@ func (m *CheckStoreProgress) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CheckStoreUnverifiable) UnmarshalVT(dAtA []byte) error {
+func (m *CheckStoreUnverifiableRange) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -31468,15 +31480,34 @@ func (m *CheckStoreUnverifiable) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CheckStoreUnverifiable: wiretype end group for non-group")
+			return fmt.Errorf("proto: CheckStoreUnverifiableRange: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CheckStoreUnverifiable: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CheckStoreUnverifiableRange: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
+			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+			}
+			m.Reason = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Reason |= CheckStoreUnverifiableReason(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -31504,9 +31535,9 @@ func (m *CheckStoreUnverifiable) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Reason = string(dAtA[iNdEx:postIndex])
+			m.Message = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
+		case 3:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RangeStart", wireType)
 			}
@@ -31516,7 +31547,7 @@ func (m *CheckStoreUnverifiable) UnmarshalVT(dAtA []byte) error {
 			}
 			m.RangeStart = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 3:
+		case 4:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RangeEnd", wireType)
 			}
