@@ -239,6 +239,19 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 					Message: t.Error.GetMessage(),
 				},
 			}
+		case *servicepb.CheckStoreEvent_UnverifiableRange:
+			// Flatten the typed reason into the message: the restore path
+			// blocks regardless of cause, so it does not route on it.
+			reasonName := strings.TrimPrefix(
+				t.UnverifiableRange.GetReason().String(), "CHECK_STORE_UNVERIFIABLE_REASON_")
+
+			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Unverifiable{
+				Unverifiable: &restorepb.ValidateRestoreUnverifiable{
+					Message:    reasonName + ": " + t.UnverifiableRange.GetMessage(),
+					RangeStart: t.UnverifiableRange.GetRangeStart(),
+					RangeEnd:   t.UnverifiableRange.GetRangeEnd(),
+				},
+			}
 		}
 
 		err := stream.Send(&restoreEvent)

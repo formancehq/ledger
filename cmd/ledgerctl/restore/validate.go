@@ -72,6 +72,20 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 			errorCount++
 
 			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
+		case *restorepb.ValidateRestoreEvent_Unverifiable:
+			// Counts toward errorCount deliberately: a range that could not be
+			// authenticated must not pass a restore gate (EN-1526).
+			errorCount++
+
+			// Log sequences are 1-based, so a zero or inverted range means the
+			// bounds could not be determined.
+			details := "logs=undetermined"
+			if start, end := t.Unverifiable.GetRangeStart(), t.Unverifiable.GetRangeEnd(); start > 0 && end >= start {
+				details = fmt.Sprintf("logs=%d-%d", start, end)
+			}
+
+			pterm.Printf("  %s [UNVERIFIABLE %s] %s\n",
+				pterm.Red("ERROR"), details, t.Unverifiable.GetMessage())
 		}
 	}
 

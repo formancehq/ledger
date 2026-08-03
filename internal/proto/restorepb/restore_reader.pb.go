@@ -722,6 +722,83 @@ func NewValidateRestoreProgressListReader(s []*ValidateRestoreProgress) Validate
 	return validateRestoreProgressListReadonly(s)
 }
 
+// ValidateRestoreUnverifiableReader provides read-only access to ValidateRestoreUnverifiable.
+// Call Mutate() to obtain a mutable clone.
+type ValidateRestoreUnverifiableReader interface {
+	GetMessage() string
+	GetRangeStart() uint64
+	GetRangeEnd() uint64
+	Mutate() *ValidateRestoreUnverifiable
+}
+
+type validateRestoreUnverifiableReadonly ValidateRestoreUnverifiable
+
+func (r *validateRestoreUnverifiableReadonly) GetMessage() string {
+	return (*ValidateRestoreUnverifiable)(r).GetMessage()
+}
+
+func (r *validateRestoreUnverifiableReadonly) GetRangeStart() uint64 {
+	return (*ValidateRestoreUnverifiable)(r).GetRangeStart()
+}
+
+func (r *validateRestoreUnverifiableReadonly) GetRangeEnd() uint64 {
+	return (*ValidateRestoreUnverifiable)(r).GetRangeEnd()
+}
+
+func (r *validateRestoreUnverifiableReadonly) Mutate() *ValidateRestoreUnverifiable {
+	return (*ValidateRestoreUnverifiable)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ValidateRestoreUnverifiable.
+func (m *ValidateRestoreUnverifiable) AsReader() ValidateRestoreUnverifiableReader {
+	if m == nil {
+		return nil
+	}
+	return (*validateRestoreUnverifiableReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ValidateRestoreUnverifiable.
+func (m *ValidateRestoreUnverifiable) Mutate() *ValidateRestoreUnverifiable {
+	return m.CloneVT()
+}
+
+// ValidateRestoreUnverifiableListReader provides read-only iteration over []*ValidateRestoreUnverifiable.
+type ValidateRestoreUnverifiableListReader interface {
+	Len() int
+	Get(i int) ValidateRestoreUnverifiableReader
+	Range(yield func(int, ValidateRestoreUnverifiableReader) bool)
+}
+
+type validateRestoreUnverifiableListReadonly []*ValidateRestoreUnverifiable
+
+func (l validateRestoreUnverifiableListReadonly) Len() int { return len(l) }
+
+func (l validateRestoreUnverifiableListReadonly) Get(i int) ValidateRestoreUnverifiableReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l validateRestoreUnverifiableListReadonly) Range(yield func(int, ValidateRestoreUnverifiableReader) bool) {
+	for i, v := range l {
+		var r ValidateRestoreUnverifiableReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewValidateRestoreUnverifiableListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewValidateRestoreUnverifiableListReader(s []*ValidateRestoreUnverifiable) ValidateRestoreUnverifiableListReader {
+	return validateRestoreUnverifiableListReadonly(s)
+}
+
 // PreviewRestoreRequestReader provides read-only access to PreviewRestoreRequest.
 // Call Mutate() to obtain a mutable clone.
 type PreviewRestoreRequestReader interface {

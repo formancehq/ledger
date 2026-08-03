@@ -104,6 +104,11 @@ message ValidateRestoreEvent {
   oneof type {
     ValidateRestoreError error = 1;
     ValidateRestoreProgress progress = 2;
+    // A range the checker could not authenticate in the staged backup. Unlike
+    // `store check`, this BLOCKS the restore: adopting a backup with an
+    // unprovable range is the "absence of a finding read as proof" failure the
+    // checker exists to prevent (EN-1526).
+    ValidateRestoreUnverifiable unverifiable = 3;
   }
 }
 
@@ -114,6 +119,22 @@ message ValidateRestoreError {
 message ValidateRestoreProgress {
   fixed64 logs_checked = 1;
   fixed64 total_logs = 2;
+}
+
+// ValidateRestoreUnverifiable reports a range the checker could not
+// authenticate in the staged backup.
+//
+// The typed CheckStoreUnverifiableReason is flattened into message rather than
+// re-declared here, matching how ValidateRestoreError already flattens
+// CheckStoreError. That is sound because the restore path does not route on the
+// cause — it fails either way — so a cross-proto enum dependency would buy
+// nothing.
+message ValidateRestoreUnverifiable {
+  string message = 1;
+  // Inclusive bounds; zero or inverted means undetermined (see
+  // CheckStoreUnverifiableRange).
+  fixed64 range_start = 2;
+  fixed64 range_end = 3;
 }
 
 // ============================================================================

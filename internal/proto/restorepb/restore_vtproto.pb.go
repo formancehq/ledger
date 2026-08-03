@@ -186,6 +186,15 @@ func (m *ValidateRestoreEvent_Progress) CloneVT() isValidateRestoreEvent_Type {
 	return r
 }
 
+func (m *ValidateRestoreEvent_Unverifiable) CloneVT() isValidateRestoreEvent_Type {
+	if m == nil {
+		return (*ValidateRestoreEvent_Unverifiable)(nil)
+	}
+	r := new(ValidateRestoreEvent_Unverifiable)
+	r.Unverifiable = m.Unverifiable.CloneVT()
+	return r
+}
+
 func (m *ValidateRestoreError) CloneVT() *ValidateRestoreError {
 	if m == nil {
 		return (*ValidateRestoreError)(nil)
@@ -218,6 +227,25 @@ func (m *ValidateRestoreProgress) CloneVT() *ValidateRestoreProgress {
 }
 
 func (m *ValidateRestoreProgress) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *ValidateRestoreUnverifiable) CloneVT() *ValidateRestoreUnverifiable {
+	if m == nil {
+		return (*ValidateRestoreUnverifiable)(nil)
+	}
+	r := new(ValidateRestoreUnverifiable)
+	r.Message = m.Message
+	r.RangeStart = m.RangeStart
+	r.RangeEnd = m.RangeEnd
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ValidateRestoreUnverifiable) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -531,6 +559,31 @@ func (this *ValidateRestoreEvent_Progress) EqualVT(thatIface isValidateRestoreEv
 	return true
 }
 
+func (this *ValidateRestoreEvent_Unverifiable) EqualVT(thatIface isValidateRestoreEvent_Type) bool {
+	that, ok := thatIface.(*ValidateRestoreEvent_Unverifiable)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Unverifiable, that.Unverifiable; p != q {
+		if p == nil {
+			p = &ValidateRestoreUnverifiable{}
+		}
+		if q == nil {
+			q = &ValidateRestoreUnverifiable{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *ValidateRestoreError) EqualVT(that *ValidateRestoreError) bool {
 	if this == that {
 		return true
@@ -567,6 +620,31 @@ func (this *ValidateRestoreProgress) EqualVT(that *ValidateRestoreProgress) bool
 
 func (this *ValidateRestoreProgress) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*ValidateRestoreProgress)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *ValidateRestoreUnverifiable) EqualVT(that *ValidateRestoreUnverifiable) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Message != that.Message {
+		return false
+	}
+	if this.RangeStart != that.RangeStart {
+		return false
+	}
+	if this.RangeEnd != that.RangeEnd {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ValidateRestoreUnverifiable) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ValidateRestoreUnverifiable)
 	if !ok {
 		return false
 	}
@@ -1076,6 +1154,25 @@ func (m *ValidateRestoreEvent_Progress) MarshalToSizedBufferVT(dAtA []byte) (int
 	}
 	return len(dAtA) - i, nil
 }
+func (m *ValidateRestoreEvent_Unverifiable) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ValidateRestoreEvent_Unverifiable) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Unverifiable != nil {
+		size, err := m.Unverifiable.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *ValidateRestoreError) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -1157,6 +1254,58 @@ func (m *ValidateRestoreProgress) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogsChecked))
 		i--
 		dAtA[i] = 0x9
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ValidateRestoreUnverifiable) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ValidateRestoreUnverifiable) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ValidateRestoreUnverifiable) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RangeEnd != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RangeEnd))
+		i--
+		dAtA[i] = 0x19
+	}
+	if m.RangeStart != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RangeStart))
+		i--
+		dAtA[i] = 0x11
+	}
+	if len(m.Message) > 0 {
+		i -= len(m.Message)
+		copy(dAtA[i:], m.Message)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Message)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -1515,6 +1664,18 @@ func (m *ValidateRestoreEvent_Progress) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *ValidateRestoreEvent_Unverifiable) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Unverifiable != nil {
+		l = m.Unverifiable.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ValidateRestoreError) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -1539,6 +1700,26 @@ func (m *ValidateRestoreProgress) SizeVT() (n int) {
 		n += 9
 	}
 	if m.TotalLogs != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ValidateRestoreUnverifiable) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Message)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.RangeStart != 0 {
+		n += 9
+	}
+	if m.RangeEnd != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -2394,6 +2575,47 @@ func (m *ValidateRestoreEvent) UnmarshalVT(dAtA []byte) error {
 				m.Type = &ValidateRestoreEvent_Progress{Progress: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Unverifiable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*ValidateRestoreEvent_Unverifiable); ok {
+				if err := oneof.Unverifiable.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ValidateRestoreUnverifiable{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &ValidateRestoreEvent_Unverifiable{Unverifiable: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2547,6 +2769,109 @@ func (m *ValidateRestoreProgress) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.TotalLogs = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ValidateRestoreUnverifiable) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ValidateRestoreUnverifiable: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ValidateRestoreUnverifiable: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Message = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RangeStart", wireType)
+			}
+			m.RangeStart = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RangeStart = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RangeEnd", wireType)
+			}
+			m.RangeEnd = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RangeEnd = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

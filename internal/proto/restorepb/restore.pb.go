@@ -451,6 +451,7 @@ type ValidateRestoreEvent struct {
 	//
 	//	*ValidateRestoreEvent_Error
 	//	*ValidateRestoreEvent_Progress
+	//	*ValidateRestoreEvent_Unverifiable
 	Type          isValidateRestoreEvent_Type `protobuf_oneof:"type"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -511,6 +512,15 @@ func (x *ValidateRestoreEvent) GetProgress() *ValidateRestoreProgress {
 	return nil
 }
 
+func (x *ValidateRestoreEvent) GetUnverifiable() *ValidateRestoreUnverifiable {
+	if x != nil {
+		if x, ok := x.Type.(*ValidateRestoreEvent_Unverifiable); ok {
+			return x.Unverifiable
+		}
+	}
+	return nil
+}
+
 type isValidateRestoreEvent_Type interface {
 	isValidateRestoreEvent_Type()
 }
@@ -523,9 +533,19 @@ type ValidateRestoreEvent_Progress struct {
 	Progress *ValidateRestoreProgress `protobuf:"bytes,2,opt,name=progress,proto3,oneof"`
 }
 
+type ValidateRestoreEvent_Unverifiable struct {
+	// A range the checker could not authenticate in the staged backup. Unlike
+	// `store check`, this BLOCKS the restore: adopting a backup with an
+	// unprovable range is the "absence of a finding read as proof" failure the
+	// checker exists to prevent (EN-1526).
+	Unverifiable *ValidateRestoreUnverifiable `protobuf:"bytes,3,opt,name=unverifiable,proto3,oneof"`
+}
+
 func (*ValidateRestoreEvent_Error) isValidateRestoreEvent_Type() {}
 
 func (*ValidateRestoreEvent_Progress) isValidateRestoreEvent_Type() {}
+
+func (*ValidateRestoreEvent_Unverifiable) isValidateRestoreEvent_Type() {}
 
 type ValidateRestoreError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -623,6 +643,76 @@ func (x *ValidateRestoreProgress) GetTotalLogs() uint64 {
 	return 0
 }
 
+// ValidateRestoreUnverifiable reports a range the checker could not
+// authenticate in the staged backup.
+//
+// The typed CheckStoreUnverifiableReason is flattened into message rather than
+// re-declared here, matching how ValidateRestoreError already flattens
+// CheckStoreError. That is sound because the restore path does not route on the
+// cause — it fails either way — so a cross-proto enum dependency would buy
+// nothing.
+type ValidateRestoreUnverifiable struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Message string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	// Inclusive bounds; zero or inverted means undetermined (see
+	// CheckStoreUnverifiableRange).
+	RangeStart    uint64 `protobuf:"fixed64,2,opt,name=range_start,json=rangeStart,proto3" json:"range_start,omitempty"`
+	RangeEnd      uint64 `protobuf:"fixed64,3,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidateRestoreUnverifiable) Reset() {
+	*x = ValidateRestoreUnverifiable{}
+	mi := &file_restore_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateRestoreUnverifiable) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateRestoreUnverifiable) ProtoMessage() {}
+
+func (x *ValidateRestoreUnverifiable) ProtoReflect() protoreflect.Message {
+	mi := &file_restore_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateRestoreUnverifiable.ProtoReflect.Descriptor instead.
+func (*ValidateRestoreUnverifiable) Descriptor() ([]byte, []int) {
+	return file_restore_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ValidateRestoreUnverifiable) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ValidateRestoreUnverifiable) GetRangeStart() uint64 {
+	if x != nil {
+		return x.RangeStart
+	}
+	return 0
+}
+
+func (x *ValidateRestoreUnverifiable) GetRangeEnd() uint64 {
+	if x != nil {
+		return x.RangeEnd
+	}
+	return 0
+}
+
 type PreviewRestoreRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -631,7 +721,7 @@ type PreviewRestoreRequest struct {
 
 func (x *PreviewRestoreRequest) Reset() {
 	*x = PreviewRestoreRequest{}
-	mi := &file_restore_proto_msgTypes[10]
+	mi := &file_restore_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +733,7 @@ func (x *PreviewRestoreRequest) String() string {
 func (*PreviewRestoreRequest) ProtoMessage() {}
 
 func (x *PreviewRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[10]
+	mi := &file_restore_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +746,7 @@ func (x *PreviewRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRestoreRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{10}
+	return file_restore_proto_rawDescGZIP(), []int{11}
 }
 
 type PreviewRestoreResponse struct {
@@ -676,7 +766,7 @@ type PreviewRestoreResponse struct {
 
 func (x *PreviewRestoreResponse) Reset() {
 	*x = PreviewRestoreResponse{}
-	mi := &file_restore_proto_msgTypes[11]
+	mi := &file_restore_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +778,7 @@ func (x *PreviewRestoreResponse) String() string {
 func (*PreviewRestoreResponse) ProtoMessage() {}
 
 func (x *PreviewRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[11]
+	mi := &file_restore_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +791,7 @@ func (x *PreviewRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRestoreResponse.ProtoReflect.Descriptor instead.
 func (*PreviewRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{11}
+	return file_restore_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PreviewRestoreResponse) GetLastAppliedIndex() uint64 {
@@ -775,7 +865,7 @@ type FinalizeRestoreRequest struct {
 
 func (x *FinalizeRestoreRequest) Reset() {
 	*x = FinalizeRestoreRequest{}
-	mi := &file_restore_proto_msgTypes[12]
+	mi := &file_restore_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +877,7 @@ func (x *FinalizeRestoreRequest) String() string {
 func (*FinalizeRestoreRequest) ProtoMessage() {}
 
 func (x *FinalizeRestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[12]
+	mi := &file_restore_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -800,7 +890,7 @@ func (x *FinalizeRestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeRestoreRequest.ProtoReflect.Descriptor instead.
 func (*FinalizeRestoreRequest) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{12}
+	return file_restore_proto_rawDescGZIP(), []int{13}
 }
 
 type FinalizeRestoreResponse struct {
@@ -812,7 +902,7 @@ type FinalizeRestoreResponse struct {
 
 func (x *FinalizeRestoreResponse) Reset() {
 	*x = FinalizeRestoreResponse{}
-	mi := &file_restore_proto_msgTypes[13]
+	mi := &file_restore_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -824,7 +914,7 @@ func (x *FinalizeRestoreResponse) String() string {
 func (*FinalizeRestoreResponse) ProtoMessage() {}
 
 func (x *FinalizeRestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_restore_proto_msgTypes[13]
+	mi := &file_restore_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -837,7 +927,7 @@ func (x *FinalizeRestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeRestoreResponse.ProtoReflect.Descriptor instead.
 func (*FinalizeRestoreResponse) Descriptor() ([]byte, []int) {
-	return file_restore_proto_rawDescGZIP(), []int{13}
+	return file_restore_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *FinalizeRestoreResponse) GetMessage() string {
@@ -874,17 +964,23 @@ const file_restore_proto_rawDesc = "" +
 	"\x15CancelDownloadRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\x18\n" +
 	"\x16CancelDownloadResponse\"\x18\n" +
-	"\x16ValidateRestoreRequest\"\x95\x01\n" +
+	"\x16ValidateRestoreRequest\"\xe1\x01\n" +
 	"\x14ValidateRestoreEvent\x125\n" +
 	"\x05error\x18\x01 \x01(\v2\x1d.restore.ValidateRestoreErrorH\x00R\x05error\x12>\n" +
-	"\bprogress\x18\x02 \x01(\v2 .restore.ValidateRestoreProgressH\x00R\bprogressB\x06\n" +
+	"\bprogress\x18\x02 \x01(\v2 .restore.ValidateRestoreProgressH\x00R\bprogress\x12J\n" +
+	"\funverifiable\x18\x03 \x01(\v2$.restore.ValidateRestoreUnverifiableH\x00R\funverifiableB\x06\n" +
 	"\x04type\"0\n" +
 	"\x14ValidateRestoreError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\"[\n" +
 	"\x17ValidateRestoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"\x17\n" +
+	"total_logs\x18\x02 \x01(\x06R\ttotalLogs\"u\n" +
+	"\x1bValidateRestoreUnverifiable\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\x12\x1f\n" +
+	"\vrange_start\x18\x02 \x01(\x06R\n" +
+	"rangeStart\x12\x1b\n" +
+	"\trange_end\x18\x03 \x01(\x06R\brangeEnd\"\x17\n" +
 	"\x15PreviewRestoreRequest\"\x8b\x03\n" +
 	"\x16PreviewRestoreResponse\x12,\n" +
 	"\x12last_applied_index\x18\x01 \x01(\x06R\x10lastAppliedIndex\x124\n" +
@@ -928,7 +1024,7 @@ func file_restore_proto_rawDescGZIP() []byte {
 }
 
 var file_restore_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_restore_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_restore_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_restore_proto_goTypes = []any{
 	(DownloadState)(0),                  // 0: restore.DownloadState
 	(*StartDownloadBackupRequest)(nil),  // 1: restore.StartDownloadBackupRequest
@@ -941,34 +1037,36 @@ var file_restore_proto_goTypes = []any{
 	(*ValidateRestoreEvent)(nil),        // 8: restore.ValidateRestoreEvent
 	(*ValidateRestoreError)(nil),        // 9: restore.ValidateRestoreError
 	(*ValidateRestoreProgress)(nil),     // 10: restore.ValidateRestoreProgress
-	(*PreviewRestoreRequest)(nil),       // 11: restore.PreviewRestoreRequest
-	(*PreviewRestoreResponse)(nil),      // 12: restore.PreviewRestoreResponse
-	(*FinalizeRestoreRequest)(nil),      // 13: restore.FinalizeRestoreRequest
-	(*FinalizeRestoreResponse)(nil),     // 14: restore.FinalizeRestoreResponse
-	(*commonpb.BackupStorage)(nil),      // 15: common.BackupStorage
+	(*ValidateRestoreUnverifiable)(nil), // 11: restore.ValidateRestoreUnverifiable
+	(*PreviewRestoreRequest)(nil),       // 12: restore.PreviewRestoreRequest
+	(*PreviewRestoreResponse)(nil),      // 13: restore.PreviewRestoreResponse
+	(*FinalizeRestoreRequest)(nil),      // 14: restore.FinalizeRestoreRequest
+	(*FinalizeRestoreResponse)(nil),     // 15: restore.FinalizeRestoreResponse
+	(*commonpb.BackupStorage)(nil),      // 16: common.BackupStorage
 }
 var file_restore_proto_depIdxs = []int32{
-	15, // 0: restore.StartDownloadBackupRequest.storage:type_name -> common.BackupStorage
+	16, // 0: restore.StartDownloadBackupRequest.storage:type_name -> common.BackupStorage
 	0,  // 1: restore.GetDownloadStatusResponse.state:type_name -> restore.DownloadState
 	9,  // 2: restore.ValidateRestoreEvent.error:type_name -> restore.ValidateRestoreError
 	10, // 3: restore.ValidateRestoreEvent.progress:type_name -> restore.ValidateRestoreProgress
-	1,  // 4: restore.RestoreService.StartDownloadBackup:input_type -> restore.StartDownloadBackupRequest
-	3,  // 5: restore.RestoreService.GetDownloadStatus:input_type -> restore.GetDownloadStatusRequest
-	5,  // 6: restore.RestoreService.CancelDownload:input_type -> restore.CancelDownloadRequest
-	7,  // 7: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
-	11, // 8: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
-	13, // 9: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
-	2,  // 10: restore.RestoreService.StartDownloadBackup:output_type -> restore.StartDownloadBackupResponse
-	4,  // 11: restore.RestoreService.GetDownloadStatus:output_type -> restore.GetDownloadStatusResponse
-	6,  // 12: restore.RestoreService.CancelDownload:output_type -> restore.CancelDownloadResponse
-	8,  // 13: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
-	12, // 14: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
-	14, // 15: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
-	10, // [10:16] is the sub-list for method output_type
-	4,  // [4:10] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	11, // 4: restore.ValidateRestoreEvent.unverifiable:type_name -> restore.ValidateRestoreUnverifiable
+	1,  // 5: restore.RestoreService.StartDownloadBackup:input_type -> restore.StartDownloadBackupRequest
+	3,  // 6: restore.RestoreService.GetDownloadStatus:input_type -> restore.GetDownloadStatusRequest
+	5,  // 7: restore.RestoreService.CancelDownload:input_type -> restore.CancelDownloadRequest
+	7,  // 8: restore.RestoreService.ValidateRestore:input_type -> restore.ValidateRestoreRequest
+	12, // 9: restore.RestoreService.PreviewRestore:input_type -> restore.PreviewRestoreRequest
+	14, // 10: restore.RestoreService.FinalizeRestore:input_type -> restore.FinalizeRestoreRequest
+	2,  // 11: restore.RestoreService.StartDownloadBackup:output_type -> restore.StartDownloadBackupResponse
+	4,  // 12: restore.RestoreService.GetDownloadStatus:output_type -> restore.GetDownloadStatusResponse
+	6,  // 13: restore.RestoreService.CancelDownload:output_type -> restore.CancelDownloadResponse
+	8,  // 14: restore.RestoreService.ValidateRestore:output_type -> restore.ValidateRestoreEvent
+	13, // 15: restore.RestoreService.PreviewRestore:output_type -> restore.PreviewRestoreResponse
+	15, // 16: restore.RestoreService.FinalizeRestore:output_type -> restore.FinalizeRestoreResponse
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_restore_proto_init() }
@@ -979,6 +1077,7 @@ func file_restore_proto_init() {
 	file_restore_proto_msgTypes[7].OneofWrappers = []any{
 		(*ValidateRestoreEvent_Error)(nil),
 		(*ValidateRestoreEvent_Progress)(nil),
+		(*ValidateRestoreEvent_Unverifiable)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -986,7 +1085,7 @@ func file_restore_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_restore_proto_rawDesc), len(file_restore_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
