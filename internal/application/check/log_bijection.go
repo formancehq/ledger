@@ -1,6 +1,10 @@
 package check
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+)
 
 // logRange is a contiguous, inclusive log-sequence interval.
 type logRange struct {
@@ -103,4 +107,58 @@ func (s *logRangeSet) empty() bool {
 	s.normalize()
 
 	return len(s.ranges) == 0
+}
+
+// chainVerification bundles everything verifyAuditHashChain derives from the
+// hash-verified audit range. A struct rather than extra out-parameters: the
+// function already takes 7 arguments, and its five direct test call sites
+// discard this return with `_`, so widening the type costs no test churn.
+type chainVerification struct {
+	// skippable is the per-log-sequence skippable_reasons whitelist consumed
+	// by verifySkippedOrder during log replay.
+	skippable map[uint64]*expectedSkippableOrder
+	// authenticated holds the log sequences the chain proves must exist in
+	// the store. Fed by every verified AuditSuccess range.
+	authenticated logRangeSet
+	// unverifiable holds log spans the checker can prove nothing about,
+	// because the entry covering them is structurally malformed. compareLogs
+	// skips these rather than reporting false gaps across them.
+	unverifiable logRangeSet
+}
+
+// newChainVerification returns a chainVerification with its maps ready.
+func newChainVerification() *chainVerification {
+	return &chainVerification{
+		skippable: make(map[uint64]*expectedSkippableOrder),
+	}
+}
+
+// unverifiableEvent builds a CheckStoreUnverifiableRange event. It is NOT an
+// error: it must never affect the CLI exit code or the JSON `valid` flag. It
+// exists so that a range the checker could not authenticate is declared rather
+// than silently passed over — the absence of a finding in an unauthenticated
+// range is not proof.
+//
+// Every occurrence marks a defect; a healthy cluster, archived or not, emits
+// none. reason is typed so operators route on it rather than string-matching
+// message, since the two causes need different runbooks.
+//
+// rangeStart/rangeEnd are inclusive. Log sequences are 1-based, so pass 0/0
+// when the bounds genuinely could not be determined — consumers render that as
+// unknown, never as a literal "0-0".
+func unverifiableEvent(
+	reason servicepb.CheckStoreUnverifiableReason,
+	message string,
+	rangeStart, rangeEnd uint64,
+) *servicepb.CheckStoreEvent {
+	return &servicepb.CheckStoreEvent{
+		Type: &servicepb.CheckStoreEvent_UnverifiableRange{
+			UnverifiableRange: &servicepb.CheckStoreUnverifiableRange{
+				Reason:     reason,
+				Message:    message,
+				RangeStart: rangeStart,
+				RangeEnd:   rangeEnd,
+			},
+		},
+	}
 }

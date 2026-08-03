@@ -288,10 +288,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// every non-archived audit entry and recomputes each hash from the
 	// stored orders, chaining from archiveLastAuditHash. Populates
 	// expectedSkippable + layers live mutations onto chainBound.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, callback)
+	verification, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
+
+	expectedSkippable := verification.skippable
 
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
@@ -2314,9 +2316,9 @@ func compareTransactionPostCommitVolumes(
 // `serialized_order` so a tampered LedgerLog projection cannot forge a
 // "prior claim" for a fake skip.
 //
-// Returns expectedSkippable: the per-log-seq skippable_reasons whitelist +
-// reason correlator re-derived from the chain-bound Orders, consumed by
-// verifySkippedOrder.
+// Returns a *chainVerification whose skippable field holds the per-log-seq
+// skippable_reasons whitelist + reason correlator re-derived from the
+// chain-bound Orders, consumed by verifySkippedOrder.
 //
 // The LedgerLog projection is not hash-chain bound, so without these
 // checks a tampered skip log could let a fabricated outcome slip past
@@ -2329,7 +2331,7 @@ func (c *Checker) verifyAuditHashChain(
 	chainBound *chainBoundState,
 	idempotencyTTLMicros *uint64,
 	callback func(*servicepb.CheckStoreEvent),
-) (map[uint64]*expectedSkippableOrder, error) {
+) (*chainVerification, error) {
 	// Find the last archived audit sequence to start iteration after it.
 	//
 	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
@@ -2364,11 +2366,6 @@ func (c *Checker) verifyAuditHashChain(
 		// Frozen idempotency outcomes the projection should hold, re-derived
 		// from each verified audit entry and compared to SubIdempKeys below.
 		expectedIdem = make(map[idemExpectedKey]expectedIdempotency)
-		// Per-log-sequence skippable_reasons whitelist plus reason-specific
-		// correlator (e.g. reference for TRANSACTION_REFERENCE_CONFLICT),
-		// re-derived from the chain-bound Order. Consumed by
-		// verifySkippedOrder during the log iteration loop.
-		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
 		// chainBound is passed in by the caller — Check() pre-folds the
 		// baseline snapshot into it so ledgers whose CreateLedger sits
 		// in an archived chapter have their nextTxID counter and
@@ -2386,6 +2383,13 @@ func (c *Checker) verifyAuditHashChain(
 		verifiedRangeStartTs uint64
 		verifiedRangeEndTs   uint64
 	)
+
+	verification := newChainVerification()
+	// Per-log-sequence skippable_reasons whitelist plus reason-specific
+	// correlator (e.g. reference for TRANSACTION_REFERENCE_CONFLICT),
+	// re-derived from the chain-bound Order. Consumed by
+	// verifySkippedOrder during the log iteration loop.
+	expectedSkippable := verification.skippable
 
 	for {
 		entry, err := auditCursor.Next()
@@ -2429,7 +2433,7 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
-			return expectedSkippable, nil
+			return verification, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -2459,7 +2463,7 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
-			return expectedSkippable, nil
+			return verification, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -2494,7 +2498,7 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
-			return expectedSkippable, nil
+			return verification, nil
 		}
 
 		lastHash = entry.GetHash()
@@ -2569,7 +2573,7 @@ func (c *Checker) verifyAuditHashChain(
 		return nil, err
 	}
 
-	return expectedSkippable, nil
+	return verification, nil
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults
