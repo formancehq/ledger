@@ -17,6 +17,18 @@ import (
 // error loudly (invariant #7). The fault is injected as a genuine
 // storage/cache fault (tag collision) via injectTagCollision.
 
+// injectTagCollision forces the next KeyStore.Get for canonical to return a
+// non-ErrNotFound *ErrCollisionDetected by storing an entry under the key's
+// U128 id but with a deliberately mismatched tag. This is the state-package
+// fault-injection seam for the invariant-#7 error-classification tests below:
+// a genuine storage/cache fault, distinct from an absence.
+func injectTagCollision[K attributes.Key, V any](t *testing.T, ks *attributes.KeyStore[K, V], canonical []byte, data V) {
+	t.Helper()
+
+	id, tag := attributes.NewKeyHasher().MakeKey(canonical)
+	ks.M.Put(id, attributes.Entry[V]{Tag: tag ^ 0xBEEF, Data: data})
+}
+
 // --- C1: partitionVolumes ---------------------------------------------------
 
 // TestPartitionVolumes_MissingLedgerIsSoftKept pins the documented soft
