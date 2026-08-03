@@ -3069,3 +3069,89 @@ func TestCheckerLogBijection(t *testing.T) {
 			"a failed proposal allocates no log sequence, so this row is unaudited")
 	})
 }
+
+// saveArchivedChapter persists a chapter in ARCHIVED status covering the given
+// inclusive log-sequence range. The sealing hash is deliberately left nil: the
+// resulting HASH_MISMATCH finding is collateral the assertions filter out, and
+// a dummy hash would fail verifySealingHash the same way.
+func (e *testEngine) saveArchivedChapter(id, startSeq, closeSeq uint64) {
+	e.t.Helper()
+
+	batch := e.store.OpenWriteSession()
+
+	defer func() { _ = batch.Cancel() }()
+
+	require.NoError(e.t, state.StoreChapter(batch, &commonpb.Chapter{
+		Id:            id,
+		StartSequence: startSeq,
+		CloseSequence: closeSeq,
+		Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+	}))
+	require.NoError(e.t, batch.Commit())
+}
+
+// unverifiableRangesForReason returns the unverifiable events carrying reason,
+// so an assertion can inspect their bounds without tripping on the events the
+// other passes emit.
+func unverifiableRangesForReason(
+	unproven []*servicepb.CheckStoreUnverifiableRange,
+	reason servicepb.CheckStoreUnverifiableReason,
+) []*servicepb.CheckStoreUnverifiableRange {
+	var out []*servicepb.CheckStoreUnverifiableRange
+
+	for _, u := range unproven {
+		if u.GetReason() == reason {
+			out = append(out, u)
+		}
+	}
+
+	return out
+}
+
+// TestCheckerLogBijectionArchiveBounding covers EN-1526: a log row inside an
+// ARCHIVED chapter's range is provably anomalous, because executePurge removes
+// the range atomically with the ARCHIVED status transition.
+func TestCheckerLogBijectionArchiveBounding(t *testing.T) {
+	t.Parallel()
+
+	t.Run("log inside a purged range is reported", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+
+		// Mark sequences 1-5 archived, then plant a row inside that range.
+		engine.saveArchivedChapter(1, 1, 5)
+		engine.injectStoredLog(3)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{3},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE),
+			"a log inside an archived chapter's purged range must be reported")
+		require.Empty(t,
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			"the purged-range classification is the more specific claim and must win")
+	})
+
+	t.Run("chapter with unusable bounds is declared unverifiable", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+		engine.saveArchivedChapter(1, 30, 10)
+
+		_, unproven := collectCheckEvents(t, engine.store, engine.attrs)
+
+		unusable := unverifiableRangesForReason(unproven,
+			servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE)
+		require.Len(t, unusable, 1,
+			"an unusable archived range must be declared, not silently skipped")
+
+		// The inverted [30,10] must never be echoed back: a client renders
+		// range_start/range_end as a literal span, so garbage bounds are
+		// reported as undetermined instead.
+		require.Zero(t, unusable[0].GetRangeStart())
+		require.Zero(t, unusable[0].GetRangeEnd())
+		require.Contains(t, unusable[0].GetMessage(), "unusable log bounds")
+	})
+}
