@@ -111,6 +111,8 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 
 	log.Printf("scenario_blocks: %d blocks active, entering loop", len(allBlocks))
 
+	registerBlockProperties(allBlocks)
+
 	randFn := scenario.RandFunc(func() uint64 { return internal.Rand().Uint64() })
 
 	for {
@@ -124,7 +126,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 		resp, err := b.Run(ctx, client, randFn)
 		switch {
 		case err == nil:
-			assert.Reachable(fmt.Sprintf("block %s succeeded", b.Name), details)
+			emitBlockSucceeded(b.Name, wasHit, details)
 			CheckPostCommitVolumes(resp, details)
 		case errors.Is(err, scenario.ErrSkip):
 		case internal.IsUnavailable(err):
@@ -134,10 +136,46 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			// (e.g. reverting an already-reverted transaction).
 			log.Printf("scenario_blocks: %s precondition failed (expected): %v", b.Name, err)
 		default:
-			assert.Unreachable(fmt.Sprintf("block %s failed", b.Name), details.With(internal.Details{"error": err}))
+			emitBlockFailed(b.Name, wasHit, details.With(internal.Details{"error": err}))
 			log.Printf("scenario_blocks: %s failed: %v", b.Name, err)
 		}
 	}
+}
+
+// The per-block properties are data-driven, so the antithesis-go-instrumentor
+// cannot catalogue them (it only resolves literal message arguments). They are
+// instead registered at runtime through assert.AssertRaw — the same not-hit
+// emission the generated catalog performs for literal assertions — and the
+// hit-time emissions reuse the identical message/ID so they land on the
+// registered property. AssertRaw is invisible to the instrumentor's scanner,
+// so these call sites produce no anonymous catalog entries.
+const (
+	blockClass = "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block"
+	blockFile  = "tests/antithesis/workload/internal/block/block.go"
+
+	wasHit = true
+	notHit = false
+)
+
+// registerBlockProperties pre-registers both properties of every block about
+// to enter the run loop: "block X succeeded" is a must-hit Reachable — a block
+// that never succeeds during the run fails it — and "block X failed" is an
+// Unreachable that stands passing until a failure fires it.
+func registerBlockProperties(blocks []*scenario.Block) {
+	for _, b := range blocks {
+		emitBlockSucceeded(b.Name, notHit, nil)
+		emitBlockFailed(b.Name, notHit, nil)
+	}
+}
+
+func emitBlockSucceeded(name string, hit bool, details internal.Details) {
+	msg := fmt.Sprintf("block %s succeeded", name)
+	assert.AssertRaw(true, msg, details, blockClass, "RunLoop", blockFile, 0, hit, true, "reachability", "Reachable", msg)
+}
+
+func emitBlockFailed(name string, hit bool, details internal.Details) {
+	msg := fmt.Sprintf("block %s failed", name)
+	assert.AssertRaw(false, msg, details, blockClass, "RunLoop", blockFile, 0, hit, false, "reachability", "Unreachable", msg)
 }
 
 // isAlreadyExists checks if the gRPC error code is AlreadyExists.
