@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -2893,4 +2894,178 @@ func TestCheckerOrphanAuditItems(t *testing.T) {
 	}
 
 	require.True(t, found, "an orphan audit item group must be reported")
+}
+
+// collectCheckEvents runs Check and returns both errors and unverifiable
+// events, so tests can assert that a range was declared unprovable rather
+// than silently passed.
+func collectCheckEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes) (
+	[]*servicepb.CheckStoreError, []*servicepb.CheckStoreUnverifiableRange,
+) {
+	t.Helper()
+
+	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logging.Testing())
+
+	var (
+		errs     []*servicepb.CheckStoreError
+		unproven []*servicepb.CheckStoreUnverifiableRange
+	)
+
+	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+		switch e := event.GetType().(type) {
+		case *servicepb.CheckStoreEvent_Error:
+			errs = append(errs, e.Error)
+		case *servicepb.CheckStoreEvent_UnverifiableRange:
+			unproven = append(unproven, e.UnverifiableRange)
+		}
+	})
+	require.NoError(t, err)
+
+	return errs, unproven
+}
+
+// deleteStoredLog removes the Log row at the given sequence, simulating
+// truncation or targeted deletion.
+func (e *testEngine) deleteStoredLog(sequence uint64) {
+	e.t.Helper()
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(sequence)
+
+	batch := e.store.OpenWriteSession()
+
+	defer func() { _ = batch.Cancel() }()
+
+	require.NoError(e.t, batch.DeleteKey(kb.Build()))
+	require.NoError(e.t, batch.Commit())
+}
+
+// injectStoredLog writes a Log row at a sequence the audit never authorized.
+func (e *testEngine) injectStoredLog(sequence uint64) {
+	e.t.Helper()
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(sequence)
+
+	batch := e.store.OpenWriteSession()
+
+	defer func() { _ = batch.Cancel() }()
+
+	require.NoError(e.t, batch.SetProto(kb.Build(), &commonpb.Log{Sequence: sequence}))
+	require.NoError(e.t, batch.Commit())
+}
+
+// logSequencesForType returns, in ascending order, the log sequences reported
+// under errorType. Filtering by type keeps an assertion insensitive to the
+// collateral findings a tampered store produces in the other passes (a deleted
+// log shortens the replay, so VOLUME_MISMATCH and friends fire too), while
+// still pinning WHICH sequences the pass under test named.
+func logSequencesForType(
+	errs []*servicepb.CheckStoreError,
+	errorType servicepb.CheckStoreErrorType,
+) []uint64 {
+	var out []uint64
+
+	for _, e := range errs {
+		if e.GetErrorType() == errorType {
+			out = append(out, e.GetLogSequence())
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// TestCheckerLogBijection covers EN-1526: the persisted SubColdLog key set is
+// compared against the audit-authenticated topology in both directions.
+func TestCheckerLogBijection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("healthy store reports nothing", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+		engine.processAndCommit(createTransactionOrder("trading", true,
+			newPosting("world", "alice", "USD", 100)))
+
+		errs, unproven := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Empty(t, errs)
+		require.Empty(t, unproven)
+	})
+
+	t.Run("every log deleted is reported as missing", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+		engine.processAndCommit(createLedgerOrder("payments"))
+
+		engine.deleteStoredLog(1)
+		engine.deleteStoredLog(2)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{1, 2},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			"deleting every log must be reported, not treated as an empty store")
+	})
+
+	t.Run("truncated log tail is reported", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+		engine.processAndCommit(createLedgerOrder("payments"))
+		engine.processAndCommit(createLedgerOrder("savings"))
+
+		engine.deleteStoredLog(3)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{3},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			"tail truncation was undetectable before EN-1526")
+	})
+
+	t.Run("interior log hole is reported", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+		engine.processAndCommit(createLedgerOrder("payments"))
+		engine.processAndCommit(createLedgerOrder("savings"))
+
+		engine.deleteStoredLog(2)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{2},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP))
+	})
+
+	t.Run("injected log past the tail is reported", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.processAndCommit(createLedgerOrder("trading"))
+
+		engine.injectStoredLog(500)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{500},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			"an unaudited log row must be reported")
+	})
+
+	t.Run("failure-only history with an injected log", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.appendFailureAuditEntry(1, commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, "nope")
+		engine.injectStoredLog(1)
+
+		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
+		require.Equal(t, []uint64{1},
+			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			"a failed proposal allocates no log sequence, so this row is unaudited")
+	})
 }
