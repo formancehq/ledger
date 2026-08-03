@@ -158,3 +158,98 @@ func TestPebbleReverseTxIterator_SeekLERepositioning(t *testing.T) {
 	require.False(t, empty.SeekLE(txIDBytes(3)), "covered by the ceil")
 	require.NoError(t, empty.Err())
 }
+
+// The floor short-circuit and reposition-after-exhaustion behavior is
+// mechanically identical across the forward Pebble leaves; the three tests
+// below mirror TestPrefixIterator_SeekFloorKeepsRepositioning for the
+// remaining leaves.
+
+func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	for _, id := range []uint64{1, 2, 3} {
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+	}
+
+	it, err := NewPebbleTxIterator(s.DB(), "l")
+	require.NoError(t, err)
+	defer it.Close()
+
+	require.False(t, it.SeekGE(txIDBytes(5)), "no entity >= 5")
+	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
+	require.False(t, it.SeekGE(txIDBytes(7)), "covered by the floor")
+
+	require.True(t, it.SeekGE(txIDBytes(2)), "below the floor: real reposition")
+	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
+	require.True(t, it.Next())
+	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
+	require.False(t, it.Next())
+
+	require.True(t, it.SeekGE(txIDBytes(1)), "reposition after Next-exhaustion")
+	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
+	require.NoError(t, it.Err())
+}
+
+func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	for _, id := range []uint64{1, 2, 3} {
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+	}
+
+	it, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(1), txIDBytes(4))
+	require.NoError(t, err)
+	defer it.Close()
+
+	require.False(t, it.SeekGE(txIDBytes(5)), "past the upper bound")
+	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
+	require.False(t, it.SeekGE(txIDBytes(9)), "covered by the floor")
+
+	require.True(t, it.SeekGE(txIDBytes(2)), "below the floor: real reposition")
+	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
+	require.True(t, it.Next())
+	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
+	require.False(t, it.Next())
+
+	require.True(t, it.SeekGE(txIDBytes(1)), "reposition after Next-exhaustion")
+	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
+	require.NoError(t, it.Err())
+}
+
+func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
+	prefix[0] = dal.ZoneAttributes
+	prefix[1] = dal.SubAttrVolume
+	copy(prefix[2:], "l")
+
+	for _, addr := range []string{"a:1", "a:2", "a:3"} {
+		key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	it, err := newSingleTypeAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
+	require.NoError(t, err)
+	defer it.Close()
+
+	require.False(t, it.SeekGE([]byte("b")), "no address >= b")
+	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
+	require.False(t, it.SeekGE([]byte("c")), "covered by the floor")
+
+	require.True(t, it.SeekGE([]byte("a:2")), "below the floor: real reposition")
+	require.Equal(t, "a:2", string(it.Current()))
+	require.True(t, it.Next())
+	require.Equal(t, "a:3", string(it.Current()))
+	require.False(t, it.Next())
+
+	require.True(t, it.SeekGE([]byte("a:1")), "reposition after Next-exhaustion")
+	require.Equal(t, "a:1", string(it.Current()))
+	require.NoError(t, it.Err())
+}
