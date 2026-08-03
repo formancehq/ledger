@@ -287,6 +287,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
+	// Bijection between the audit-authenticated log-sequence topology and the
+	// persisted SubColdLog keys. Replaces the former self-referential gap scan
+	// (EN-1526).
+	purgedLogs := buildPurgedLogSet(chapters, callback)
+
+	if err := c.compareLogs(snap, &verification.authenticated, purgedLogs, &verification.unverifiable, callback); err != nil {
+		return err
+	}
+
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
@@ -479,9 +488,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = logIter.Close() }()
 
-	// Start after archived sequences (archived logs are purged from Pebble).
-	expectedSeq := archiveEndSeq + 1
-
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -511,16 +517,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				return fmt.Errorf("reading next proposal log boundary: %w", err)
 			}
 		}
-
-		// 1. Detect gaps
-		for expectedSeq < seq {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
-				fmt.Sprintf("log sequence %d is missing", expectedSeq), expectedSeq, "", "", ""))
-
-			expectedSeq++
-		}
-
-		expectedSeq = seq + 1
 
 		value, err := logIter.ValueAndErr()
 		if err != nil {

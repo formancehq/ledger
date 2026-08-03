@@ -1136,8 +1136,22 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")
 }
 
-// TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
-func TestCheckerDetectsSequenceGap(t *testing.T) {
+// TestCheckerDetectsUnauditedLogs pins the diagnosis for log rows that no audit
+// entry authenticates. The fixture writes SubColdLog rows directly and no
+// AuditEntry at all, so under invariant #8 every row is unaudited.
+//
+// This test previously asserted SEQUENCE_GAP on the skipped sequence 2. That
+// finding came from the self-referential scan EN-1526 removed: it compared the
+// log stream against itself (expectedSeq = seq + 1), so it could report a hole
+// between two rows while proving nothing about either row. Here it named a
+// missing sequence 2 in a store where sequences 1 and 3 are themselves
+// unauthenticated — a strictly weaker claim than the truth.
+//
+// SEQUENCE_GAP now means "the audit chain authenticates this sequence but the
+// store does not hold it", which requires a hash-chained AuditEntry to assert;
+// that direction is covered by the bijection integration tests, not by this
+// fixture, which has no audit chain to be missing rows against.
+func TestCheckerDetectsUnauditedLogs(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -1157,7 +1171,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	}
 	// Hash chain is now verified via audit entries, not per-log.
 
-	// Skip sequence 2 and write log at sequence 3
+	// Skip sequence 2: the hole is irrelevant now, both stored rows are unaudited.
 	log3 := &commonpb.Log{
 		Sequence: 3,
 		Payload: &commonpb.LogPayload{
@@ -1169,8 +1183,6 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 			},
 		},
 	}
-	// Even with correct chaining from log1, the gap will be detected
-
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
@@ -1179,17 +1191,24 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 
 	errors := collectCheckErrors(t, store, attrs)
 
-	// Should detect the gap at sequence 2
-	var gapErrors []*servicepb.CheckStoreError
+	var (
+		unaudited []uint64
+		gaps      []uint64
+	)
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP {
-			gapErrors = append(gapErrors, e)
+		switch e.GetErrorType() {
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED:
+			unaudited = append(unaudited, e.GetLogSequence())
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP:
+			gaps = append(gaps, e.GetLogSequence())
 		}
 	}
 
-	require.NotEmpty(t, gapErrors, "should detect sequence gap")
-	require.Equal(t, uint64(2), gapErrors[0].GetLogSequence())
+	// One event per stored row, and only for the rows that exist.
+	require.Equal(t, []uint64{1, 3}, unaudited, "every stored log must be reported unaudited")
+	require.Empty(t, gaps,
+		"an empty audit chain authenticates no sequence, so nothing can be reported missing")
 }
 
 // TestCheckerProgressEvents verifies that progress events are emitted.

@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -42,6 +43,27 @@ type logRangeSet struct {
 // Intervals may be added in any order.
 func (s *logRangeSet) add(minSeq, maxSeq uint64) {
 	if minSeq == 0 || maxSeq == 0 || minSeq > maxSeq {
+		return
+	}
+
+	// Coalesce eagerly when the incoming range starts inside the previous one or
+	// immediately after it. This is what makes the O(anomalies) memory claim
+	// above true: every caller feeds ranges in ascending order over the whole
+	// history — one per audit entry in verifyAuditStructure, one per stored log
+	// in compareLogs — so a plain append would grow the slice to O(history) and
+	// hand normalize() a sort of that size, exactly the accumulation the
+	// Pebble-backed replay store exists to avoid. normalize() would merge these
+	// anyway, so the result is unchanged; only the peak footprint differs.
+	//
+	// Safe with out-of-order adds too: the guard requires minSeq >= the last
+	// range's min, so a range that belongs earlier is appended and left for
+	// normalize() to sort.
+	if n := len(s.ranges); n > 0 && minSeq >= s.ranges[n-1].min && minSeq <= s.ranges[n-1].max+1 {
+		if maxSeq > s.ranges[n-1].max {
+			s.ranges[n-1].max = maxSeq
+			s.normalized = false
+		}
+
 		return
 	}
 
@@ -384,4 +406,165 @@ func (c *Checker) scanOrphanAuditItems(
 	}
 
 	return iter.Error()
+}
+
+// buildPurgedLogSet returns the log sequences that archiving has removed from
+// Pebble: the union of [start_sequence, close_sequence] over every ARCHIVED
+// chapter. It also declares chapters whose bounds are unusable.
+//
+// Per-chapter ranges rather than a single max(close_sequence) floor: if
+// chapter 3 reaches ARCHIVED while chapter 2 is still ARCHIVING, that max
+// would wrongly treat chapter 2's still-live logs as purged.
+//
+// The purge is atomic with the status transition — processConfirmArchiveChapter
+// sets ARCHIVED and Absorb registers the purge range, and executePurge's
+// DeleteRange lands in the same Pebble batch — so no legitimate Log row can
+// survive inside a purged range.
+//
+// This set REFINES which error compareLogs reports; it never suppresses one. A
+// stored log is wrong whether it sits in a purged range (LOG_PURGE_RESIDUE, the
+// purge did not run) or outside every one (LOG_UNAUDITED, injection). So a
+// chapter with unusable bounds cannot produce a false positive — it only costs
+// the ability to name the more specific cause, and the log is then reported as
+// LOG_UNAUDITED, the conservative claim. That is why nothing is added to an
+// unverifiable set here: when the bounds are corrupt the covered range is
+// unknown by definition, so there is no range to record. The event is the
+// signal; suppression would be both impossible and wrong.
+func buildPurgedLogSet(
+	chapters []*commonpb.Chapter,
+	callback func(*servicepb.CheckStoreEvent),
+) *logRangeSet {
+	purged := &logRangeSet{}
+
+	for _, ch := range chapters {
+		if ch.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVED {
+			continue
+		}
+
+		start, closeSeq := ch.GetStartSequence(), ch.GetCloseSequence()
+
+		if start == 0 || closeSeq == 0 || start > closeSeq {
+			callback(unverifiableEvent(
+				servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE,
+				fmt.Sprintf("archived chapter %d has unusable log bounds [%d,%d]; logs cannot be attributed to its purged range",
+					ch.GetId(), start, closeSeq),
+				0, 0,
+			))
+
+			continue
+		}
+
+		purged.add(start, closeSeq)
+	}
+
+	return purged
+}
+
+// compareLogs verifies the persisted SubColdLog key set against the log
+// sequences the audit hash chain authenticated, in BOTH directions. It is the
+// pass that makes Log a checked projection under invariant #8: the rows are
+// not hash-bound, and before EN-1526 the only log-set check compared the log
+// stream against itself.
+//
+// One ascending pass over the SubColdLog iterator plus one pass over the
+// authenticated intervals; each membership test is a binary search over an
+// interval list that a healthy store collapses to a single entry. Time is
+// O((logs + intervals) * log(intervals)), memory O(intervals).
+//
+//   - authenticated, absent from the store -> SEQUENCE_GAP
+//   - stored, inside an ARCHIVED chapter's purged range -> LOG_PURGE_RESIDUE
+//   - stored, unauthenticated, outside every purged range -> LOG_UNAUDITED
+//     (this also catches audit-TAIL truncation: deleting trailing AuditEntry
+//     rows orphans the logs they produced, which surface here)
+//
+// PRECEDENCE: the purged-range check runs FIRST and wins. The two conditions
+// are not mutually exclusive — archiving purges a chapter's AuditEntry rows and
+// its Log rows in the same batch, so a row surviving in a purged range is
+// necessarily also unauthenticated (its audit entry is gone by design, not by
+// tampering). Reporting LOG_UNAUDITED there would be technically true but
+// misdiagnose a purge-lifecycle failure as an injection. LOG_PURGE_RESIDUE is
+// the more specific claim, so it takes precedence; exactly one event is emitted
+// per stored sequence.
+//
+// Sequences inside an unverifiable span are skipped in both directions.
+//
+// There is deliberately no duplicate category (SubColdLog is keyed by
+// sequence, so two rows at one sequence are physically impossible) and no
+// failure-associated category (a failed proposal allocates no log sequence at
+// all, so such a row is indistinguishable from any other unaudited row).
+// Detecting a forged PAYLOAD at an otherwise valid sequence is EN-1531.
+func (c *Checker) compareLogs(
+	reader dal.PebbleReader,
+	authenticated *logRangeSet,
+	purged *logRangeSet,
+	unverifiable *logRangeSet,
+	callback func(*servicepb.CheckStoreEvent),
+) error {
+	stored := &logRangeSet{}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdLog},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+	})
+	if err != nil {
+		return fmt.Errorf("creating log iterator for bijection: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+
+		if len(key) < 10 {
+			return fmt.Errorf("invariant: log key %x is shorter than the 10-byte prefix", key)
+		}
+
+		seq := binary.BigEndian.Uint64(key[2:10])
+		stored.add(seq, seq)
+
+		if unverifiable.contains(seq) {
+			continue
+		}
+
+		if authenticated.contains(seq) {
+			continue
+		}
+
+		if purged.contains(seq) {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE,
+				fmt.Sprintf("log %d lies inside an archived chapter's purged range; archiving removes it atomically, so no legitimate row can be here", seq),
+				seq, "", "", "",
+			))
+
+			continue
+		}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+			fmt.Sprintf("log %d is stored but no audit entry authenticates it", seq),
+			seq, "", "", "",
+		))
+	}
+
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("log iterator error during bijection: %w", err)
+	}
+
+	// Reverse direction: authenticated but absent.
+	for _, r := range authenticated.intervals() {
+		for seq := r.min; seq <= r.max; seq++ {
+			if unverifiable.contains(seq) || stored.contains(seq) {
+				continue
+			}
+
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+				fmt.Sprintf("log %d is authenticated by the audit chain but absent from the store", seq),
+				seq, "", "", "",
+			))
+		}
+	}
+
+	return nil
 }

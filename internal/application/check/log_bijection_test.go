@@ -189,6 +189,114 @@ func TestLogRangeSetNormalizeIdempotent(t *testing.T) {
 	}
 }
 
+// TestLogRangeSetAscendingAddsStayCompact pins the memory contract the type doc
+// asserts: callers feed ascending ranges over the whole history (one per stored
+// log in compareLogs, one per audit entry in verifyAuditStructure), so the
+// backing slice must stay O(anomalies) as they arrive — not grow to O(history)
+// and only collapse when a read triggers normalize().
+func TestLogRangeSetAscendingAddsStayCompact(t *testing.T) {
+	t.Parallel()
+
+	var contiguous logRangeSet
+	for seq := uint64(1); seq <= 1000; seq++ {
+		contiguous.add(seq, seq)
+	}
+
+	require.Len(t, contiguous.ranges, 1, "a contiguous ascending run must coalesce as it is added")
+	require.Equal(t, []logRange{{min: 1, max: 1000}}, contiguous.intervals())
+	require.Equal(t, uint64(1000), contiguous.total())
+
+	// One gap must cost exactly one extra interval, no more.
+	var withGap logRangeSet
+	for seq := uint64(1); seq <= 1000; seq++ {
+		if seq == 500 {
+			continue
+		}
+
+		withGap.add(seq, seq)
+	}
+
+	require.Len(t, withGap.ranges, 2)
+	require.Equal(t, []logRange{{min: 1, max: 499}, {min: 501, max: 1000}}, withGap.intervals())
+	require.False(t, withGap.contains(500))
+}
+
+func TestBuildPurgedLogSet(t *testing.T) {
+	t.Parallel()
+
+	// closeSeq, not close: `close` is a builtin.
+	chapter := func(id, start, closeSeq uint64, status commonpb.ChapterStatus) *commonpb.Chapter {
+		return &commonpb.Chapter{Id: id, StartSequence: start, CloseSequence: closeSeq, Status: status}
+	}
+
+	t.Run("only archived chapters contribute", func(t *testing.T) {
+		t.Parallel()
+
+		purged := buildPurgedLogSet([]*commonpb.Chapter{
+			chapter(1, 1, 10, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+			chapter(2, 11, 20, commonpb.ChapterStatus_CHAPTER_ARCHIVING),
+		}, func(*servicepb.CheckStoreEvent) {
+			t.Fatal("no unverifiable event expected")
+		})
+
+		require.True(t, purged.contains(10))
+		require.False(t, purged.contains(11), "an ARCHIVING chapter's logs are still live")
+	})
+
+	t.Run("out of order archival is handled", func(t *testing.T) {
+		t.Parallel()
+
+		purged := buildPurgedLogSet([]*commonpb.Chapter{
+			chapter(3, 21, 30, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+			chapter(2, 11, 20, commonpb.ChapterStatus_CHAPTER_ARCHIVING),
+			chapter(1, 1, 10, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+		}, func(*servicepb.CheckStoreEvent) {
+			t.Fatal("no unverifiable event expected")
+		})
+
+		require.True(t, purged.contains(5))
+		require.False(t, purged.contains(15), "chapter 2 is not archived, so its logs are live")
+		require.True(t, purged.contains(25))
+	})
+
+	t.Run("unusable bounds are declared with undetermined range", func(t *testing.T) {
+		t.Parallel()
+
+		cases := map[string]*commonpb.Chapter{
+			"inverted":   chapter(1, 30, 10, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+			"zero close": chapter(2, 5, 0, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+			"zero start": chapter(3, 0, 5, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+		}
+
+		for name, ch := range cases {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				var events []*servicepb.CheckStoreEvent
+
+				purged := buildPurgedLogSet([]*commonpb.Chapter{ch}, func(e *servicepb.CheckStoreEvent) {
+					events = append(events, e)
+				})
+
+				require.True(t, purged.empty(), "an unusable chapter must contribute no purged range")
+				require.Len(t, events, 1)
+
+				u := events[0].GetUnverifiableRange()
+				require.NotNil(t, u)
+				require.Equal(t,
+					servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE,
+					u.GetReason())
+
+				// The bounds must be reported as undetermined, never echoed
+				// back — the rejected values are garbage by construction and a
+				// client would render them as a literal range.
+				require.Zero(t, u.GetRangeStart())
+				require.Zero(t, u.GetRangeEnd())
+			})
+		}
+	})
+}
+
 func TestVerifyAuditStructure(t *testing.T) {
 	t.Parallel()
 
