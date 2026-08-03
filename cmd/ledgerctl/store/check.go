@@ -122,12 +122,16 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	if err := cmdutil.IntegrityResult("store validation", errorCount); err != nil {
-		return err
-	}
-
+	// Printed before IntegrityResult, which returns a non-nil error as soon as
+	// errorCount > 0: a store with both divergences and unverifiable ranges is
+	// exactly where the caveat matters most, and placing this after the gate
+	// would drop it on that path.
 	if len(unverifiableRanges) > 0 {
 		pterm.Warning.Printfln("%d range(s) could not be authenticated; absence of errors there is not proof", len(unverifiableRanges))
+	}
+
+	if err := cmdutil.IntegrityResult("store validation", errorCount); err != nil {
+		return err
 	}
 
 	pterm.Success.Println("Store is valid - no integrity errors found")
