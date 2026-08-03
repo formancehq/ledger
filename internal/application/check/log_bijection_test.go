@@ -117,3 +117,70 @@ func TestLogRangeSetContainsEmpty(t *testing.T) {
 	require.False(t, s.contains(1))
 	require.True(t, s.empty())
 }
+
+// TestLogRangeSetAddAfterNormalize pins the cache-invalidation contract: a read
+// normalizes and sets the flag, so a subsequent add MUST clear it or every
+// later read returns state frozen at the first read.
+func TestLogRangeSetAddAfterNormalize(t *testing.T) {
+	t.Parallel()
+
+	var s logRangeSet
+	s.add(1, 3)
+
+	// Force normalization via a read.
+	require.True(t, s.contains(2))
+	require.Equal(t, uint64(3), s.total())
+
+	// Add after that read must be visible to every subsequent read.
+	s.add(10, 12)
+
+	require.True(t, s.contains(11), "an add after a read must be visible to contains")
+	require.Equal(t, uint64(6), s.total(), "an add after a read must be counted by total")
+	require.Equal(t, []logRange{{min: 1, max: 3}, {min: 10, max: 12}}, s.intervals())
+
+	// An add that extends an existing interval must also invalidate.
+	s.add(4, 5)
+
+	require.True(t, s.contains(4))
+	require.Equal(t, []logRange{{min: 1, max: 5}, {min: 10, max: 12}}, s.intervals())
+}
+
+// TestLogRangeSetChainedCoalesce covers three or more ranges collapsing
+// transitively — the healthy-store shape, where every successful proposal's
+// range is adjacent to the previous one and the whole set must become a single
+// interval.
+func TestLogRangeSetChainedCoalesce(t *testing.T) {
+	t.Parallel()
+
+	var s logRangeSet
+	s.add(1, 2)
+	s.add(3, 4)
+	s.add(5, 6)
+	s.add(7, 7)
+
+	require.Equal(t, []logRange{{min: 1, max: 7}}, s.intervals(),
+		"adjacent ranges must collapse transitively, not just pairwise")
+	require.Equal(t, uint64(7), s.total())
+}
+
+// TestLogRangeSetNormalizeIdempotent verifies repeated reads do not corrupt the
+// set. normalize() coalesces in place over its own backing array, so a second
+// pass over already-merged state must be a no-op rather than re-processing it.
+func TestLogRangeSetNormalizeIdempotent(t *testing.T) {
+	t.Parallel()
+
+	var s logRangeSet
+	s.add(5, 6)
+	s.add(1, 2)
+	s.add(3, 4)
+
+	first := s.intervals()
+	require.Equal(t, []logRange{{min: 1, max: 6}}, first)
+
+	// Repeated reads must return identical state.
+	for i := 0; i < 3; i++ {
+		require.Equal(t, []logRange{{min: 1, max: 6}}, s.intervals())
+		require.Equal(t, uint64(6), s.total())
+		require.False(t, s.empty())
+	}
+}
