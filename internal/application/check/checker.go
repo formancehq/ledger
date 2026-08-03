@@ -386,6 +386,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
+	// Under archiving, seed each touched transaction's baseline state lazily on
+	// its first post-archive delta, so the delta merges onto the full pre-archive
+	// state whose create log is purged. Only touched transactions are materialized
+	// (keeping the replay store O(touched)); untouched ones fall back to the
+	// baseline in compareTransactions.
+	var replayWriter domainreplay.Writer = replay
+	if hasArchivedChapters {
+		replayWriter = newLazyTxSeedWriter(replay, func(canonicalKey []byte) (*commonpb.TransactionState, error) {
+			return c.attrs.Transaction.Get(baselineDB, canonicalKey)
+		})
+	}
+
 	// Pre-load baseline volumes so compareTransactionPostCommitVolumes can add
 	// pre-archive state to the replayed post-archive delta (expected = baseline +
 	// delta), matching compareVolumes. Empty on a non-archived run (baselineDB
@@ -417,6 +429,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
+
+		// At or below the archive boundary the baseline checkpoint and the audit
+		// hash chain are authoritative, not replay. Such logs are normally purged,
+		// but out-of-order archiving (an un-archived chapter below the max archived
+		// close-sequence) can leave them retained — replaying one would fold a
+		// partial pre-boundary log onto a seeded transaction row, and would drop the
+		// gap counter below the archive floor. The audit-order pass applies the same
+		// boundary (collectAuditOrderBoundaryEffects).
+		if seq <= archiveEndSeq {
+			continue
+		}
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
@@ -528,7 +551,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -1861,7 +1884,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		}
 
 		// Values are prefixed with txOpFinalized tag from the merger's Finish output.
-		if len(valBytes) == 0 || valBytes[0] != 0x00 {
+		if len(valBytes) == 0 || valBytes[0] != txOpFinalized {
 			_ = replayIter.Close()
 			emitErr(fmt.Sprintf("malformed replay transaction tag at key %x", canonicalKey))
 
@@ -1938,8 +1961,10 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			continue
 		}
 
-		// Expected: replay overrides baseline. Stays nil when only the live
-		// store has the entry (fabricated/corrupted state).
+		// Expected: a replay entry (a tx touched by a post-archive delta, seeded
+		// from its baseline on first touch) overrides the baseline; an untouched
+		// pre-archive tx has no replay entry and falls back to its baseline state.
+		// Stays nil when only the live store has the entry (fabricated state).
 		var expected *commonpb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs

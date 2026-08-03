@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -394,4 +395,63 @@ func TestReplayStoreMetadataNotFound(t *testing.T) {
 
 	_, _, err := rs.db.Get(replayKey(replayPrefixMetadata, []byte("nonexistent")))
 	require.ErrorIs(t, err, pebble.ErrNotFound)
+}
+
+// A metadata delete has no snapshot representation. When Pebble compacts the
+// delete operand without the base (a partial merge, includesBase=false), the
+// merger must defer the ops as a txOpBatch rather than collapse them into a
+// finalized snapshot — collapsing silently drops the delete, and the later
+// base-inclusive fold (UnmarshalVT overlay) cannot undo it. This pins the
+// compaction-associativity bug: seeded baseline metadata + a post-archive delete.
+func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
+	t.Parallel()
+
+	base := &commonpb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
+	baseData, err := base.MarshalVT()
+	require.NoError(t, err)
+	finalizedOp := append([]byte{txOpFinalized}, baseData...)
+	deleteOp := append([]byte{txOpDeleteMeta}, []byte("k0")...)
+
+	// Pebble compacts the delete operand alone, without the base.
+	partialMerger, err := newTxMerger(deleteOp)
+	require.NoError(t, err)
+	partial, _, err := partialMerger.Finish(false)
+	require.NoError(t, err)
+	require.Equal(t, byte(txOpBatch), partial[0],
+		"a partial merge must defer ops as a batch, not collapse a delete into a snapshot")
+
+	// Read time: the base-inclusive fold combines the base with the deferred delete.
+	readMerger, err := newTxMerger(finalizedOp)
+	require.NoError(t, err)
+	require.NoError(t, readMerger.MergeNewer(partial))
+	result, _, err := readMerger.Finish(true)
+	require.NoError(t, err)
+	require.Equal(t, byte(txOpFinalized), result[0])
+
+	var got commonpb.TransactionState
+	require.NoError(t, got.UnmarshalVT(result[1:]))
+	require.Empty(t, got.GetMetadata(), "the post-archive delete of k0 must survive the partial merge")
+}
+
+// End-to-end counterpart: a baseline seed carrying k0 followed by a post-archive
+// delete of k0 must read back with k0 gone across a flush + compaction cycle.
+func TestReplayStoreDeleteSurvivesCompaction(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	txKey := []byte("ledger\x00tx1")
+
+	require.NoError(t, rs.SeedTransaction(txKey, &commonpb.TransactionState{
+		CreatedByLog: 5,
+		Metadata:     strMetaMap("k0", "v0"),
+	}))
+	require.NoError(t, rs.db.Flush())
+
+	require.NoError(t, rs.DeleteTxMetadata(txKey, "k0"))
+	require.NoError(t, rs.db.Flush())
+
+	require.NoError(t, rs.db.Compact(context.Background(), []byte{replayPrefixTransaction}, []byte{replayPrefixTransaction + 1}, true))
+
+	state := readTransaction(t, rs, txKey)
+	require.Empty(t, state.GetMetadata(), "the delete of k0 must survive flush + compaction")
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"os"
 
@@ -41,6 +42,7 @@ const (
 	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId][uint8 hasRevertedAt][uint64 revertedAt]
 	txOpSetMeta    = 0x03 // [txOpSetMeta][key\x00][marshaledMetadataValue]
 	txOpDeleteMeta = 0x04 // [txOpDeleteMeta][key string]
+	txOpBatch      = 0x05 // [txOpBatch][(uint32 len)(op)]* — ordered ops deferred by a partial merge (includesBase=false)
 )
 
 // replayStore is a temporary Pebble DB that stores replay state (volumes,
@@ -87,6 +89,21 @@ func replayKey(prefix byte, canonicalKey []byte) []byte {
 	copy(key[1:], canonicalKey)
 
 	return key
+}
+
+// deleteKey issues a Pebble tombstone, refusing the transaction prefix: the tx
+// merge operator trusts includesBase to signal a resolvable base, and a
+// tombstone under a MERGE falsifies it — Pebble folds MERGE-over-DEL with
+// includesBase=true but no base value (kind SETWITHDEL), silently collapsing a
+// deferred metadata delete into an empty snapshot. If transaction deletion is
+// ever needed, model it as an absolute merge op that resets the accumulator
+// (like txOpCreate/txOpFinalized), never as a tombstone.
+func (s *replayStore) deleteKey(key []byte) error {
+	if len(key) > 0 && key[0] == replayPrefixTransaction {
+		return fmt.Errorf("invariant: tombstone on replay transaction key %x would break the txOpBatch deferral", key)
+	}
+
+	return s.db.Delete(key, pebble.NoSync)
 }
 
 // addVolumeDelta merges a volume delta without reading existing state.
@@ -139,7 +156,7 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 func (s *replayStore) DeleteVolume(canonicalKey []byte) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
-	return s.db.Delete(key, pebble.NoSync)
+	return s.deleteKey(key)
 }
 
 // moveVolume transfers accumulated volume from oldKey to newKey:
@@ -186,7 +203,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 		return err
 	}
 
-	return s.db.Delete(oldKey, pebble.NoSync)
+	return s.deleteKey(oldKey)
 }
 
 // setMetadata stores a metadata value in the replay store (pure write). The
@@ -271,6 +288,26 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	copy(buf[off:], postingsBytes)
 
 	return s.db.Merge(key, buf, pebble.NoSync)
+}
+
+// SeedTransaction pre-loads a finalized transaction state (from the baseline
+// checkpoint) as the merge base for a key, so that post-archive delta operands
+// (SaveTxMetadata / DeleteTxMetadata / SetRevertedBy) combine on top of the full
+// pre-archive state. Under archiving the create log is purged, so without this
+// the replay would hold only the delta and compareTransactions would flag the
+// correct live state as tampered. Must be called before any delta operand for
+// the key so the merger sees the base first.
+func (s *replayStore) SeedTransaction(canonicalKey []byte, state *commonpb.TransactionState) error {
+	data, err := state.MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshaling seeded tx state: %w", err)
+	}
+
+	buf := make([]byte, 1+len(data))
+	buf[0] = txOpFinalized
+	copy(buf[1:], data)
+
+	return s.db.Merge(replayKey(replayPrefixTransaction, canonicalKey), buf, pebble.NoSync)
 }
 
 // SetTransactionReference records an expected reference→txID assignment.
@@ -477,14 +514,29 @@ func (m *txMerger) MergeOlder(value []byte) error {
 	return nil
 }
 
-func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
-	state := &commonpb.TransactionState{}
+func (m *txMerger) Finish(includesBase bool) ([]byte, io.Closer, error) {
+	ops := make([][]byte, 0, len(m.ops))
+	if err := flattenTxOps(m.ops, &ops); err != nil {
+		return nil, nil, err
+	}
 
-	for _, op := range m.ops {
-		if len(op) == 0 {
-			continue
+	// A partial merge may not include the base value, and a delta op — a metadata
+	// delete has no snapshot representation — cannot be resolved without it. Defer by
+	// re-emitting the ordered ops; a base-inclusive fold resolves them. This trusts
+	// includesBase, which holds only while no tombstone is ever written under the
+	// transaction prefix (enforced by deleteKey).
+	if !includesBase {
+		batch, err := encodeTxBatch(ops)
+		if err != nil {
+			return nil, nil, err
 		}
 
+		return batch, nil, nil
+	}
+
+	state := &commonpb.TransactionState{}
+
+	for _, op := range ops {
 		switch op[0] {
 		case txOpCreate:
 			// [txOpCreate][uint64 seq][uint64 revertsTransaction][uint8 hasTimestamp]
@@ -573,7 +625,12 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 			delete(state.GetMetadata(), metaKey)
 
 		case txOpFinalized:
-			// Re-ingesting a previously finalized state (from a prior compaction).
+			// A resolved snapshot supersedes every older operand, so reset before
+			// ingesting rather than relying on the accumulator being empty:
+			// UnmarshalVT into a non-empty message overlays (repeated fields append,
+			// maps merge, zero scalars don't clear), so an out-of-order finalized
+			// operand would otherwise duplicate postings or resurrect deleted keys.
+			state.Reset()
 			if err := state.UnmarshalVT(op[1:]); err != nil {
 				return nil, nil, fmt.Errorf("unmarshaling finalized tx state: %w", err)
 			}
@@ -588,10 +645,90 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	// Prefix with txOpFinalized so a subsequent compaction can re-ingest this result.
+	// Prefix with txOpFinalized so a later fold can re-ingest this resolved snapshot.
 	result := make([]byte, 1+len(data))
 	result[0] = txOpFinalized
 	copy(result[1:], data)
 
 	return result, nil, nil
+}
+
+// flattenTxOps expands any txOpBatch operand into its constituent ops in order,
+// so both the fold and the re-emit paths operate on a flat ordered op sequence.
+func flattenTxOps(ops [][]byte, out *[][]byte) error {
+	for _, op := range ops {
+		if len(op) == 0 {
+			continue
+		}
+
+		if op[0] == txOpBatch {
+			sub, err := decodeTxBatch(op)
+			if err != nil {
+				return err
+			}
+
+			if err := flattenTxOps(sub, out); err != nil {
+				return err
+			}
+
+			continue
+		}
+
+		*out = append(*out, op)
+	}
+
+	return nil
+}
+
+// decodeTxBatch splits a [txOpBatch][(uint32 len)(op)]* buffer into its ops. The
+// returned slices alias op's backing array and are read-only.
+func decodeTxBatch(op []byte) ([][]byte, error) {
+	var ops [][]byte
+
+	buf := op[1:]
+	for len(buf) > 0 {
+		if len(buf) < 4 {
+			return nil, fmt.Errorf("txOpBatch: truncated length prefix, %d bytes left", len(buf))
+		}
+
+		n := int(binary.BigEndian.Uint32(buf[:4]))
+		buf = buf[4:]
+		// A zero-length op would be silently dropped by flattenTxOps — the encoder
+		// never frames one, so this is corruption, not a soft skip.
+		if n == 0 {
+			return nil, errors.New("txOpBatch: zero-length op")
+		}
+		if len(buf) < n {
+			return nil, fmt.Errorf("txOpBatch: op length %d overruns %d remaining bytes", n, len(buf))
+		}
+
+		ops = append(ops, buf[:n])
+		buf = buf[n:]
+	}
+
+	return ops, nil
+}
+
+// encodeTxBatch frames ordered ops into a single [txOpBatch][(uint32 len)(op)]* buffer.
+func encodeTxBatch(ops [][]byte) ([]byte, error) {
+	size := 1
+	for _, op := range ops {
+		size += 4 + len(op)
+	}
+
+	out := make([]byte, 1, size)
+	out[0] = txOpBatch
+
+	var lenBuf [4]byte
+	for _, op := range ops {
+		if len(op) > math.MaxUint32 {
+			return nil, fmt.Errorf("txOpBatch: op of %d bytes overflows the uint32 length frame", len(op))
+		}
+
+		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(op)))
+		out = append(out, lenBuf[:]...)
+		out = append(out, op...)
+	}
+
+	return out, nil
 }
