@@ -48,9 +48,10 @@ func TestExactlyOneLog(t *testing.T) {
 		})
 	})
 
-	// The details map is the point of the change: it must survive into the panic
-	// value so the jsonRecoverer logs it server-side (assert.Unreachable is a
-	// no-op outside Antithesis).
+	// The details map must survive into the panic value so the jsonRecoverer
+	// logs it server-side (assert.Unreachable is a no-op outside Antithesis).
+	// operation must be part of it: the Antithesis property message is a
+	// shared literal, so details are what tie a failure to its endpoint.
 	t.Run("panic value carries diagnostics", func(t *testing.T) {
 		t.Parallel()
 
@@ -62,6 +63,7 @@ func TestExactlyOneLog(t *testing.T) {
 			require.Contains(t, msg, "op apply did not return exactly one log")
 			require.Contains(t, msg, "ledger:l")
 			require.Contains(t, msg, "log_count:2")
+			require.Contains(t, msg, "operation:op")
 		}()
 
 		exactlyOneLog("op", []*commonpb.Log{log, log}, map[string]any{"ledger": "l"})
@@ -79,6 +81,7 @@ func TestUnexpectedLogPayload(t *testing.T) {
 
 	require.Contains(t, got, "create-transaction apply returned an unexpected log payload type")
 	require.Contains(t, got, "ledger:l")
+	require.Contains(t, got, "operation:create-transaction")
 	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_CreateLedger")
 }
 
@@ -96,6 +99,7 @@ func TestEmptyLogPayload(t *testing.T) {
 
 	require.Contains(t, got, "create-transaction apply returned a log with no payload body")
 	require.Contains(t, got, "ledger:l")
+	require.Contains(t, got, "operation:create-transaction")
 	require.Contains(t, got, "outer_payload_type:*commonpb.LogPayload_Apply")
 }
 

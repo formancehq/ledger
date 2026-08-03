@@ -55,8 +55,8 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 // contract: a successful save always emits exactly one non-nil SavedNumscript log
 // (processSaveNumscript returns either an error or that log). Any other
 // cardinality, a nil sole log, or a mismatched payload type must fail loudly
-// through unreachable (the jsonRecoverer turns the panic into a sanitized 500 in
-// production) — never a silent 2xx.
+// through assert.Unreachable and a panic (the jsonRecoverer turns the panic
+// into a sanitized 500 in production) — never a silent 2xx.
 func TestHandleSaveNumscript_LogContractViolations(t *testing.T) {
 	t.Parallel()
 

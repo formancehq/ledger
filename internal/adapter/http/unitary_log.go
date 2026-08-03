@@ -4,25 +4,35 @@ import (
 	"fmt"
 	"maps"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // exactlyOneLog enforces the unitary-handler backend contract: one admitted
 // request yields exactly one non-nil log, whose payload type is fixed by the
 // request type. Zero logs, several logs, or a nil sole log are impossible
-// backend responses; each panics through unreachable, so jsonRecoverer surfaces
-// a sanitized JSON 500 while Antithesis flags the run (CLAUDE.md invariant #7).
-// operation names the endpoint and details carries the stable request context
-// (ledger, transaction id, ...) threaded into the signal.
+// backend responses; each fails loudly: assert.Unreachable flags the run under
+// Antithesis (CLAUDE.md invariant #7) and the panic makes jsonRecoverer answer
+// a sanitized JSON 500. operation names the endpoint and details carries the
+// stable request context (ledger, transaction id, ...) threaded into the signal.
+//
+// Every assert.Unreachable message in this file must stay a string literal at
+// the call site: the antithesis-go-instrumentor catalogues assertions by
+// statically resolving that argument, and anything else degrades to a single
+// anonymous catalog entry. Per-operation context therefore travels in the
+// details map and in the panic value's message prefix.
 func exactlyOneLog(operation string, logs []*commonpb.Log, details map[string]any) *commonpb.Log {
 	if len(logs) != 1 {
-		panic(unreachable(operation+" apply did not return exactly one log", mergeDetails(details, map[string]any{
-			"log_count": len(logs),
-		})))
+		d := mergeDetails(details, map[string]any{"operation": operation, "log_count": len(logs)})
+		assert.Unreachable("unitary apply did not return exactly one log", d)
+		panic(invariantPanicValue(operation+" apply did not return exactly one log", d))
 	}
 
 	if logs[0] == nil {
-		panic(unreachable(operation+" apply returned a nil log", details))
+		d := mergeDetails(details, map[string]any{"operation": operation})
+		assert.Unreachable("unitary apply returned a nil log", d)
+		panic(invariantPanicValue(operation+" apply returned a nil log", d))
 	}
 
 	return logs[0]
@@ -32,7 +42,10 @@ func exactlyOneLog(operation string, logs []*commonpb.Log, details map[string]an
 // type is not the one the request implies, and returns the value the caller must
 // raise: panic(unexpectedLogPayload(...)).
 func unexpectedLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
-	return unreachable(operation+" apply returned an unexpected log payload type", observedPayloadDetails(log, details))
+	d := observedPayloadDetails(log, mergeDetails(details, map[string]any{"operation": operation}))
+	assert.Unreachable("unitary apply returned an unexpected log payload type", d)
+
+	return invariantPanicValue(operation+" apply returned an unexpected log payload type", d)
 }
 
 // emptyLogPayload builds the invariant signal for a correctly-typed sole log
@@ -40,7 +53,21 @@ func unexpectedLogPayload(operation string, log *commonpb.Log, details map[strin
 // otherwise serialize to a 2xx with a null data body. Returns the value the
 // caller must raise: panic(emptyLogPayload(...)).
 func emptyLogPayload(operation string, log *commonpb.Log, details map[string]any) string {
-	return unreachable(operation+" apply returned a log with no payload body", observedPayloadDetails(log, details))
+	d := observedPayloadDetails(log, mergeDetails(details, map[string]any{"operation": operation}))
+	assert.Unreachable("unitary apply returned a log with no payload body", d)
+
+	return invariantPanicValue(operation+" apply returned a log with no payload body", d)
+}
+
+// invariantPanicValue renders an invariant-violation message plus its diagnostic
+// details into the panic value the handler raises. jsonRecoverer logs that value
+// server-side (with a stack trace) and records it on the OTel span before
+// answering a sanitized JSON 500; assert.Unreachable is a no-op outside the
+// Antithesis environment, so the panic value is how the details reach an
+// operator's logs. The rendering is deterministic (fmt sorts map keys). The
+// value can embed internal state, so it must never reach the client (#375).
+func invariantPanicValue(message string, details map[string]any) string {
+	return fmt.Sprintf("%s %v", message, details)
 }
 
 // observedPayloadDetails merges the observed payload types of log into a copy of

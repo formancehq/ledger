@@ -155,8 +155,9 @@ func TestHandleCreateLedger_MissingName(t *testing.T) {
 // TestHandleCreateLedger_LogContractViolations locks in the exact-one typed-log
 // contract: a create-ledger request yields exactly one non-nil CreateLedger log.
 // Any other cardinality, a nil sole log, or a mismatched payload type is an
-// impossible backend response and must fail loudly through unreachable (the
-// jsonRecoverer middleware turns the panic into a sanitized 500 in production).
+// impossible backend response and must fail loudly through assert.Unreachable
+// and a panic (the jsonRecoverer middleware turns the panic into a sanitized
+// 500 in production).
 func TestHandleCreateLedger_LogContractViolations(t *testing.T) {
 	t.Parallel()
 

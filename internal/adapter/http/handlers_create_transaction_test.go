@@ -59,8 +59,9 @@ func TestHandleCreateTransaction_Success(t *testing.T) {
 // TestHandleCreateTransaction_LogContractViolations locks in the exact-one
 // typed-log contract: exactly one non-nil Apply log carrying a CreatedTransaction
 // inner payload. Any other cardinality, a nil sole log, a non-Apply outer
-// payload, or a mismatched inner payload must fail loudly through unreachable
-// (the jsonRecoverer turns the panic into a sanitized 500 in production).
+// payload, or a mismatched inner payload must fail loudly through
+// assert.Unreachable and a panic (the jsonRecoverer turns the panic into a
+// sanitized 500 in production).
 func TestHandleCreateTransaction_LogContractViolations(t *testing.T) {
 	t.Parallel()
 

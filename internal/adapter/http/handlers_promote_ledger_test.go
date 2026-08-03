@@ -82,8 +82,8 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 // TestHandlePromoteLedger_LogContractViolations locks in the exact-one
 // typed-log contract for promote: exactly one non-nil PromoteLedger log. Any
 // other cardinality, a nil sole log, or a mismatched payload type must fail
-// loudly through unreachable (the jsonRecoverer turns the panic into a
-// sanitized 500 in production).
+// loudly through assert.Unreachable and a panic (the jsonRecoverer turns the
+// panic into a sanitized 500 in production).
 func TestHandlePromoteLedger_LogContractViolations(t *testing.T) {
 	t.Parallel()
 

@@ -60,8 +60,8 @@ func TestHandleRevertTransaction_Success(t *testing.T) {
 // typed-log contract: exactly one non-nil Apply log carrying a
 // RevertedTransaction inner payload. Any other cardinality, a nil sole log, a
 // non-Apply outer payload, or a mismatched inner payload must fail loudly
-// through unreachable (the jsonRecoverer turns the panic into a sanitized 500 in
-// production).
+// through assert.Unreachable and a panic (the jsonRecoverer turns the panic
+// into a sanitized 500 in production).
 func TestHandleRevertTransaction_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
