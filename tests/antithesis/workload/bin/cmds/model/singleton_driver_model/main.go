@@ -150,8 +150,8 @@ func main() {
 	processors.Wait()
 }
 
-// Holds c.mu only to generate + register the bulk, releases before the Apply
-// round-trip, then pushes the observation to the processor.
+// Holds c.mu only to snapshot the state and register the bulk; generation and
+// the Apply round-trip run lock-free, then the observation goes to the processor.
 func runWorker(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -187,19 +187,29 @@ func runWorker(
 			default:
 				runRead(ctx, client, c)
 			}
-			time.Sleep(workerLoopPause)
 			continue
 		}
 
+		// Snapshot the committed state (O(1): persistent collections) and
+		// generate outside the lock — a published GlobalState is never mutated,
+		// the processor only rebinds c.modelState to a fork.
 		c.mu.Lock()
-		// A pause committed after the gate opened: back out without dispatching,
-		// so no bulk commits between the drain and the backup.
 		if c.paused {
 			c.mu.Unlock()
 			continue
 		}
-		bulk := generateBulk(c.modelState, c.ledgerNames, c.receiptByRef)
+		state := c.modelState
+		c.mu.Unlock()
+
+		bulk := generateBulk(state, c.ledgerNames, c.receiptFor)
 		if len(bulk.Requests) == 0 {
+			continue
+		}
+
+		c.mu.Lock()
+		// A pause committed while generating: back out without dispatching,
+		// so no bulk commits between the drain and the backup.
+		if c.paused {
 			c.mu.Unlock()
 			continue
 		}
@@ -238,8 +248,6 @@ func runWorker(
 			return
 		case c.incoming <- obs:
 		}
-
-		time.Sleep(workerLoopPause)
 	}
 }
 

@@ -4,25 +4,32 @@ import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 // Exported read accessors over the model's internal state. The driver and the
 // replay tool inspect a committed state (chart, volumes, metadata, declared
-// field types) to generate operations and compare against the SUT; the maps are
-// never mutated through these — every model mutation goes through Apply.
+// field types) to generate operations and compare against the SUT. The
+// collections are persistent (see pmap.go), so handing them out cannot expose
+// the model to mutation — every model mutation goes through Apply. Their
+// iteration order is sorted, so callers may draw Antithesis-reproducible
+// decisions while ranging.
 
 func (g GlobalState) Ledgers() map[string]LedgerState { return g.ledgers }
 
-func (s LedgerState) Types() map[string]TypeState                         { return s.types }
-func (s LedgerState) Volumes() map[VolumeKey]VolumePair                   { return s.volumes }
-func (s LedgerState) Metadata() map[MetaKey]*commonpb.MetadataValue       { return s.metadata }
-func (s LedgerState) LedgerMeta() map[string]*commonpb.MetadataValue      { return s.ledgerMeta }
-func (s LedgerState) AccountFieldTypes() map[string]commonpb.MetadataType { return s.accountFieldTypes }
-func (s LedgerState) LedgerFieldTypes() map[string]commonpb.MetadataType  { return s.ledgerFieldTypes }
-func (s LedgerState) TransactionFieldTypes() map[string]commonpb.MetadataType {
+func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }
+func (s LedgerState) Volumes() Map[VolumeKey, VolumePair]              { return s.volumes }
+func (s LedgerState) Metadata() Map[MetaKey, *commonpb.MetadataValue]  { return s.metadata }
+func (s LedgerState) LedgerMeta() Map[string, *commonpb.MetadataValue] { return s.ledgerMeta }
+func (s LedgerState) AccountFieldTypes() Map[string, commonpb.MetadataType] {
+	return s.accountFieldTypes
+}
+func (s LedgerState) LedgerFieldTypes() Map[string, commonpb.MetadataType] {
+	return s.ledgerFieldTypes
+}
+func (s LedgerState) TransactionFieldTypes() Map[string, commonpb.MetadataType] {
 	return s.transactionFieldTypes
 }
 
 // Txs is the transaction log; index i holds the transaction with id i+1. TxByRef
 // indexes referenced transactions by reference -> id.
-func (s LedgerState) Txs() []*txRecord        { return s.txs }
-func (s LedgerState) TxByRef() map[string]int { return s.txByRef }
+func (s LedgerState) Txs() List[*txRecord]      { return s.txs }
+func (s LedgerState) TxByRef() Map[string, int] { return s.txByRef }
 
 // txRecord accessors expose one committed transaction from the log: its
 // server-assigned id, its reference ("" for drains/transients/reverts), its

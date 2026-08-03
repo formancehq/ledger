@@ -123,10 +123,9 @@ func replaySubmits(submits []batch, target string) {
 
 func typeNames(gs oracle.GlobalState, ledger string) string {
 	var names []string
-	for n := range gs.Ledger(ledger).Types() {
+	for n := range gs.Ledger(ledger).Types().All() {
 		names = append(names, n)
 	}
-	sort.Strings(names)
 
 	return "[" + strings.Join(names, ",") + "]"
 }
@@ -176,7 +175,7 @@ func replayCommitted(batches []batch, target string) {
 
 		if hitsTarget {
 			ls := gs.Ledger(target)
-			fmt.Printf("seq=%-6d %s meta=%s types=%d\n", b.seq, target, renderMeta(ls.LedgerMeta()), len(ls.Types()))
+			fmt.Printf("seq=%-6d %s meta=%s types=%d\n", b.seq, target, renderMeta(ls.LedgerMeta()), ls.Types().Len())
 		}
 	}
 
@@ -188,7 +187,7 @@ func replayCommitted(batches []batch, target string) {
 	sort.Strings(names)
 	for _, l := range names {
 		ls := gs.Ledger(l)
-		fmt.Printf("  %s meta=%s types=%d\n", l, renderMeta(ls.LedgerMeta()), len(ls.Types()))
+		fmt.Printf("  %s meta=%s types=%d\n", l, renderMeta(ls.LedgerMeta()), ls.Types().Len())
 	}
 }
 
@@ -302,10 +301,9 @@ func renderTypes(gs oracle.GlobalState, b oracle.Bulk) string {
 	var out []string
 	for l := range ledgers {
 		var names []string
-		for n := range gs.Ledger(l).Types() {
+		for n := range gs.Ledger(l).Types().All() {
 			names = append(names, n)
 		}
-		sort.Strings(names)
 		out = append(out, l+"=["+strings.Join(names, ",")+"]")
 	}
 	sort.Strings(out)
@@ -313,16 +311,10 @@ func renderTypes(gs oracle.GlobalState, b oracle.Bulk) string {
 	return "[" + strings.Join(out, " ") + "]"
 }
 
-func renderMeta(m map[string]*commonpb.MetadataValue) string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	parts := make([]string, len(keys))
-	for i, k := range keys {
-		parts[i] = k + "=" + oracle.MetaValueString(m[k])
+func renderMeta(m oracle.Map[string, *commonpb.MetadataValue]) string {
+	parts := make([]string, 0, m.Len())
+	for k, v := range m.All() {
+		parts = append(parts, k+"="+oracle.MetaValueString(v))
 	}
 
 	return "{" + strings.Join(parts, ",") + "}"

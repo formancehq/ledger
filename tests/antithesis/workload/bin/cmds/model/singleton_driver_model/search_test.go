@@ -102,7 +102,7 @@ func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 	}
 
 	for _, b := range collectBases(c) {
-		_, present := b.Ledger("L").Volumes()[oracle.VolumeKey{Address: "a:1", Asset: "USD"}]
+		_, present := b.Ledger("L").Volumes().Get(oracle.VolumeKey{Address: "a:1", Asset: "USD"})
 		require.False(t, present, "a:1 must be absent in every candidate base (reordered prefix is illegal)")
 	}
 }
