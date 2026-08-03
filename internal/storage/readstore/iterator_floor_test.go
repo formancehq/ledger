@@ -253,3 +253,49 @@ func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.Equal(t, "a:1", string(it.Current()))
 	require.NoError(t, it.Err())
 }
+
+// The account mirror of TestPebbleReverseTxIterator_SeekLERepositioning:
+// same seek-then-step-back shape over address extraction, covering the
+// Prev()-fails and Last()-fails branches plus reposition after exhaustion.
+func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
+	prefix[0] = dal.ZoneAttributes
+	prefix[1] = dal.SubAttrVolume
+	copy(prefix[2:], "l")
+
+	for _, addr := range []string{"a:2", "a:3"} {
+		key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l")
+	require.NoError(t, err)
+	defer it.Close()
+
+	// Prev()-fails branch: the seek lands on a:2's key, stepping back leaves
+	// the bounded range.
+	require.False(t, it.SeekLE([]byte("a:1")), "no address <= a:1")
+	require.False(t, it.SeekLE([]byte("a:0")), "covered by the ceil")
+
+	require.True(t, it.SeekLE([]byte("a:2")), "above the ceil: real reposition")
+	require.Equal(t, "a:2", string(it.Current()))
+	require.False(t, it.Next())
+
+	require.True(t, it.SeekLE([]byte("a:9")), "reposition after Next-exhaustion")
+	require.Equal(t, "a:3", string(it.Current()))
+	require.NoError(t, it.Err())
+
+	// Last()-fails branch: an empty view records the ceil on the first seek,
+	// covering every later target below it.
+	empty, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "empty")
+	require.NoError(t, err)
+	defer empty.Close()
+
+	require.False(t, empty.SeekLE([]byte("z")), "empty view")
+	require.False(t, empty.SeekLE([]byte("a")), "covered by the ceil")
+	require.NoError(t, empty.Err())
+}
