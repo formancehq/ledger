@@ -1,10 +1,6 @@
 package check
 
-import (
-	"sort"
-
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-)
+import "sort"
 
 // logRange is a contiguous, inclusive log-sequence interval.
 type logRange struct {
@@ -130,35 +126,5 @@ type chainVerification struct {
 func newChainVerification() *chainVerification {
 	return &chainVerification{
 		skippable: make(map[uint64]*expectedSkippableOrder),
-	}
-}
-
-// unverifiableEvent builds a CheckStoreUnverifiableRange event. It is NOT an
-// error: it must never affect the CLI exit code or the JSON `valid` flag. It
-// exists so that a range the checker could not authenticate is declared rather
-// than silently passed over — the absence of a finding in an unauthenticated
-// range is not proof.
-//
-// Every occurrence marks a defect; a healthy cluster, archived or not, emits
-// none. reason is typed so operators route on it rather than string-matching
-// message, since the two causes need different runbooks.
-//
-// rangeStart/rangeEnd are inclusive. Log sequences are 1-based, so pass 0/0
-// when the bounds genuinely could not be determined — consumers render that as
-// unknown, never as a literal "0-0".
-func unverifiableEvent(
-	reason servicepb.CheckStoreUnverifiableReason,
-	message string,
-	rangeStart, rangeEnd uint64,
-) *servicepb.CheckStoreEvent {
-	return &servicepb.CheckStoreEvent{
-		Type: &servicepb.CheckStoreEvent_UnverifiableRange{
-			UnverifiableRange: &servicepb.CheckStoreUnverifiableRange{
-				Reason:     reason,
-				Message:    message,
-				RangeStart: rangeStart,
-				RangeEnd:   rangeEnd,
-			},
-		},
 	}
 }
