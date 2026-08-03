@@ -2810,3 +2810,37 @@ func TestCheckerFailureOnlyHistoryVerifiesChain(t *testing.T) {
 			errors[0].GetErrorType())
 	})
 }
+
+// TestCheckerOrphanAuditItems covers EN-1526: AuditItem rows under an audit
+// sequence with no AuditEntry are never read by the chain walk, so the hash
+// chain cannot detect them.
+func TestCheckerOrphanAuditItems(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("trading"))
+
+	// Inject an item group at an audit sequence far past the chain head.
+	batch := engine.store.OpenWriteSession()
+	batch.KeyBuilder.
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+		PutUint64(9999).
+		PutUint32(0)
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(),
+		&auditpb.AuditItem{OrderIndex: 0, LogSequence: 4242}))
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+
+	var found bool
+
+	for _, e := range errors {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID {
+			found = true
+
+			require.Contains(t, e.GetMessage(), "9999")
+		}
+	}
+
+	require.True(t, found, "an orphan audit item group must be reported")
+}

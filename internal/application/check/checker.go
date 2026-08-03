@@ -283,6 +283,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	expectedSkippable := verification.skippable
 
+	if err := c.scanOrphanAuditItems(snap, verification, callback); err != nil {
+		return err
+	}
+
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
@@ -2346,6 +2350,15 @@ func (c *Checker) verifyAuditHashChain(
 
 	defer func() { _ = auditCursor.Close() }()
 
+	verification := newChainVerification()
+
+	// archiveEndAuditSeq bounds scanOrphanAuditItems: executePurge deliberately
+	// leaves archived AuditItem rows in Pebble, so orphans at or below the
+	// highest archived audit sequence are legitimate.
+	if afterAuditSeq != nil {
+		verification.archiveEndAuditSeq = *afterAuditSeq
+	}
+
 	var (
 		lastHash   = archiveLastAuditHash
 		hashBuf    []byte
@@ -2372,7 +2385,6 @@ func (c *Checker) verifyAuditHashChain(
 		verifiedRangeEndTs   uint64
 	)
 
-	verification := newChainVerification()
 	// Per-log-sequence skippable_reasons whitelist plus reason-specific
 	// correlator (e.g. reference for TRANSACTION_REFERENCE_CONFLICT),
 	// re-derived from the chain-bound Order. Consumed by
@@ -2491,6 +2503,8 @@ func (c *Checker) verifyAuditHashChain(
 
 		lastHash = entry.GetHash()
 		checked++
+
+		verification.sequences[entry.GetSequence()] = struct{}{}
 
 		// Now that the entry is chain-verified, re-derive the idempotency
 		// outcome a keyed proposal would have frozen under it. items carries
