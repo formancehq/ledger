@@ -6358,6 +6358,83 @@ func NewCheckStoreProgressListReader(s []*CheckStoreProgress) CheckStoreProgress
 	return checkStoreProgressListReadonly(s)
 }
 
+// CheckStoreUnverifiableReader provides read-only access to CheckStoreUnverifiable.
+// Call Mutate() to obtain a mutable clone.
+type CheckStoreUnverifiableReader interface {
+	GetReason() string
+	GetRangeStart() uint64
+	GetRangeEnd() uint64
+	Mutate() *CheckStoreUnverifiable
+}
+
+type checkStoreUnverifiableReadonly CheckStoreUnverifiable
+
+func (r *checkStoreUnverifiableReadonly) GetReason() string {
+	return (*CheckStoreUnverifiable)(r).GetReason()
+}
+
+func (r *checkStoreUnverifiableReadonly) GetRangeStart() uint64 {
+	return (*CheckStoreUnverifiable)(r).GetRangeStart()
+}
+
+func (r *checkStoreUnverifiableReadonly) GetRangeEnd() uint64 {
+	return (*CheckStoreUnverifiable)(r).GetRangeEnd()
+}
+
+func (r *checkStoreUnverifiableReadonly) Mutate() *CheckStoreUnverifiable {
+	return (*CheckStoreUnverifiable)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this CheckStoreUnverifiable.
+func (m *CheckStoreUnverifiable) AsReader() CheckStoreUnverifiableReader {
+	if m == nil {
+		return nil
+	}
+	return (*checkStoreUnverifiableReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this CheckStoreUnverifiable.
+func (m *CheckStoreUnverifiable) Mutate() *CheckStoreUnverifiable {
+	return m.CloneVT()
+}
+
+// CheckStoreUnverifiableListReader provides read-only iteration over []*CheckStoreUnverifiable.
+type CheckStoreUnverifiableListReader interface {
+	Len() int
+	Get(i int) CheckStoreUnverifiableReader
+	Range(yield func(int, CheckStoreUnverifiableReader) bool)
+}
+
+type checkStoreUnverifiableListReadonly []*CheckStoreUnverifiable
+
+func (l checkStoreUnverifiableListReadonly) Len() int { return len(l) }
+
+func (l checkStoreUnverifiableListReadonly) Get(i int) CheckStoreUnverifiableReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l checkStoreUnverifiableListReadonly) Range(yield func(int, CheckStoreUnverifiableReader) bool) {
+	for i, v := range l {
+		var r CheckStoreUnverifiableReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewCheckStoreUnverifiableListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewCheckStoreUnverifiableListReader(s []*CheckStoreUnverifiable) CheckStoreUnverifiableListReader {
+	return checkStoreUnverifiableListReadonly(s)
+}
+
 // ListAuditEntriesRequestReader provides read-only access to ListAuditEntriesRequest.
 // Call Mutate() to obtain a mutable clone.
 type ListAuditEntriesRequestReader interface {

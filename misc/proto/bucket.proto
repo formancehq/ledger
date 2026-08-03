@@ -783,6 +783,10 @@ message CheckStoreEvent {
   oneof type {
     CheckStoreError error = 1;
     CheckStoreProgress progress = 2;
+    // A range the checker could not authenticate. NOT a divergence: it must
+    // never set valid:false nor a non-zero exit code, otherwise every
+    // archived cluster would report failure (see EN-1526).
+    CheckStoreUnverifiable unverifiable = 3;
   }
 }
 
@@ -902,6 +906,16 @@ enum CheckStoreErrorType {
   // a per-replica rewrite, and stale versions are reclaimed at boot by
   // purgeOrphanVersions.
   CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN = 20;
+  // A persisted SubColdLog row diverges from the log-sequence topology the
+  // audit hash chain authenticates: stored but unaudited, or stored inside an
+  // archived chapter's purged range. A log the audit authenticates but the
+  // store lacks is reported as CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP instead,
+  // reusing the name operators already know.
+  CHECK_STORE_ERROR_TYPE_LOG_MISMATCH = 21;
+  // A hash-verified AuditEntry is internally inconsistent, or an AuditItem
+  // group exists with no AuditEntry. These states are impossible by design;
+  // per invariant #7 they must surface loudly rather than be tolerated.
+  CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_MISMATCH = 22;
 }
 
 message CheckStoreError {
@@ -917,6 +931,16 @@ message CheckStoreError {
 message CheckStoreProgress {
   fixed64 logs_checked = 1;
   fixed64 total_logs = 2;
+}
+
+// CheckStoreUnverifiable reports a log-sequence range the checker could not
+// authenticate, so that the absence of an error is never mistaken for proof.
+message CheckStoreUnverifiable {
+  // Human-readable explanation of why the range could not be authenticated.
+  string reason = 1;
+  // Inclusive log-sequence bounds of the unverifiable range.
+  fixed64 range_start = 2;
+  fixed64 range_end = 3;
 }
 
 // ============================================================================
