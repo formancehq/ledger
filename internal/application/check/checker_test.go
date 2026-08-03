@@ -2704,14 +2704,19 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 }
 
 // appendFailureAuditEntry writes a hash-chained AuditEntry for a REJECTED
-// proposal and commits it. Per docs/technical/architecture/subsystems/checker/audit-chain.md
-// a failure writes exactly one AuditEntry, zero AuditItems, zero AppliedProposals
-// and zero Logs.
+// appendFailureAuditEntry writes a hash-chained AuditEntry for a REJECTED
+// proposal, plus its AuditItem rows, and commits it.
 //
-// orderCount is deliberately non-zero with no items: machine.go stamps
-// OrderCount from the submitted order count in the closure shared by both
-// outcomes, and the failure path passes no logs, so a legitimate failure entry
-// carries OrderCount = N with no AuditItem rows.
+// A failure writes 1 AuditEntry, N AuditItems (one per submitted order, each
+// with LogSequence 0), 0 AppliedProposals and 0 Logs. The items exist because
+// buildAuditItems (state/audit.go:57) is called from the closure shared by both
+// outcomes (machine.go:1435) and is sized on the full serializedOrders set
+// (:1392); only the log-sequence assignment is skipped when the failure path
+// passes logs = nil (:1495).
+//
+// NOTE: audit-chain.md:178-183 claims a failure writes 0 AuditItems. That doc is
+// wrong (Task 11 corrects it). A fixture writing no items would not represent a
+// real failure entry, so this one writes them.
 func (e *testEngine) appendFailureAuditEntry(orderCount uint32, reason commonpb.ErrorReason, message string) {
 	e.t.Helper()
 
@@ -2733,16 +2738,42 @@ func (e *testEngine) appendFailureAuditEntry(orderCount uint32, reason commonpb.
 		},
 	}
 
+	// One item per submitted order, LogSequence left at 0 — the real shape.
+	items := make([]*auditpb.AuditItem, orderCount)
+
+	for i := range items {
+		items[i] = &auditpb.AuditItem{
+			OrderIndex:      uint32(i),
+			SerializedOrder: []byte{byte(i + 1)},
+		}
+	}
+
 	headerPayload, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(e.t, err)
 
-	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, [][]byte{headerPayload})
+	hashSlices := make([][]byte, 0, 1+len(items))
+	hashSlices = append(hashSlices, headerPayload)
+
+	for _, item := range items {
+		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
+	}
+
+	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, hashSlices)
 	entry.Hash = auditHash
 
 	batch.KeyBuilder.
 		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
 		PutUint64(entry.GetSequence())
 	require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+
+	for _, item := range items {
+		batch.KeyBuilder.
+			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutUint64(entry.GetSequence()).
+			PutUint32(item.GetOrderIndex())
+		require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), item))
+	}
+
 	require.NoError(e.t, batch.Commit())
 
 	e.lastAuditHash = auditHash
