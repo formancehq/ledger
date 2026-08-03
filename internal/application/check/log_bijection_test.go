@@ -270,7 +270,7 @@ func TestVerifyAuditStructure(t *testing.T) {
 			wantOK: false,
 		},
 		{
-			name: "failure with order_count set and no items is legitimate",
+			name: "failure with one zero-log item per order is legitimate",
 			entry: &auditpb.AuditEntry{
 				Sequence:   7,
 				OrderCount: 3,
@@ -278,19 +278,31 @@ func TestVerifyAuditStructure(t *testing.T) {
 					Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 				},
 			},
-			items:  nil,
+			items:  []*auditpb.AuditItem{item(0, 0), item(1, 0), item(2, 0)},
 			wantOK: true,
 		},
 		{
-			name: "failure carrying an item",
+			name: "failure whose item claims a log sequence",
 			entry: &auditpb.AuditEntry{
 				Sequence:   7,
-				OrderCount: 1,
+				OrderCount: 2,
 				Outcome: &auditpb.AuditEntry_Failure{
 					Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 				},
 			},
-			items:  []*auditpb.AuditItem{item(0, 42)},
+			items:  []*auditpb.AuditItem{item(0, 0), item(1, 42)},
+			wantOK: false,
+		},
+		{
+			name: "failure with fewer items than order_count",
+			entry: &auditpb.AuditEntry{
+				Sequence:   7,
+				OrderCount: 3,
+				Outcome: &auditpb.AuditEntry_Failure{
+					Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+				},
+			},
+			items:  []*auditpb.AuditItem{item(0, 0)},
 			wantOK: false,
 		},
 	}

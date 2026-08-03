@@ -1,11 +1,15 @@
 package check
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
 
+	"github.com/cockroachdb/pebble/v2"
+
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // logRange is a contiguous, inclusive log-sequence interval.
@@ -127,12 +131,22 @@ type chainVerification struct {
 	// because the entry covering them is structurally malformed. compareLogs
 	// skips these rather than reporting false gaps across them.
 	unverifiable logRangeSet
+	// sequences is the set of audit sequences whose AuditEntry was read and
+	// hash-verified in this run. scanOrphanAuditItems uses it to find
+	// AuditItem groups that have no entry.
+	sequences map[uint64]struct{}
+	// archiveEndAuditSeq is the highest archived audit sequence. Orphan
+	// AuditItem rows at or below it are legitimate: executePurge deletes
+	// SubColdAudit and SubColdLog for an archived chapter but deliberately
+	// leaves SubColdAuditItem in place.
+	archiveEndAuditSeq uint64
 }
 
 // newChainVerification returns a chainVerification with its maps ready.
 func newChainVerification() *chainVerification {
 	return &chainVerification{
 		skippable: make(map[uint64]*expectedSkippableOrder),
+		sequences: make(map[uint64]struct{}),
 	}
 }
 
@@ -196,11 +210,19 @@ func verifyAuditStructure(
 		))
 	}
 
-	// unprovable records the entry's log span as unverifiable AND declares it.
-	// compareLogs skips that span in both directions, so without the event the
-	// skip would be silent — exactly the "absence of a finding read as proof"
-	// failure mode this ticket exists to remove.
-	unprovable := func(minLog, maxLog uint64) {
+	success := entry.GetSuccess()
+
+	// blank marks the entry's log span unprovable AND declares it, so
+	// compareLogs skipping that span is visible rather than silent. Only a
+	// success entry has a span; a failure produced no logs, so there is nothing
+	// to blank.
+	blank := func() {
+		if success == nil {
+			return
+		}
+
+		minLog, maxLog := success.GetMinLogSequence(), success.GetMaxLogSequence()
+
 		v.unverifiable.add(minLog, maxLog)
 		callback(unverifiableEvent(
 			servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY,
@@ -210,27 +232,55 @@ func verifyAuditStructure(
 		))
 	}
 
-	success := entry.GetSuccess()
+	// Item count and index layout are checked for BOTH outcomes.
+	// buildAuditItems (internal/infra/state/audit.go:57) is called from the
+	// closure shared by success and failure (machine.go:1435) and is sized on
+	// the full serializedOrders set, so a failure carries one item per
+	// submitted order exactly like a success — each with LogSequence 0 because
+	// the failure path passes no logs.
+	if uint32(len(items)) != entry.GetOrderCount() {
+		report("order_count is %d but %d audit items are stored", entry.GetOrderCount(), len(items))
+		blank()
 
-	if success == nil {
-		// FAILURE outcome. machine.go stamps OrderCount from the submitted
-		// order count even on the failure path, so order_count is legitimately
-		// non-zero here — only the ABSENCE of items is required. A failed
-		// proposal produces no logs, so any item is a contradiction.
-		if len(items) > 0 {
-			report("failed proposal carries %d audit items; a failure produces no logs", len(items))
+		return false
+	}
+
+	seenIndex := make(map[uint32]struct{}, len(items))
+
+	for _, item := range items {
+		idx := item.GetOrderIndex()
+
+		if idx >= entry.GetOrderCount() {
+			report("audit item order_index %d is outside [0,%d)", idx, entry.GetOrderCount())
+			blank()
 
 			return false
 		}
 
-		return true
+		if _, dup := seenIndex[idx]; dup {
+			report("audit item order_index %d is duplicated", idx)
+			blank()
+
+			return false
+		}
+
+		seenIndex[idx] = struct{}{}
 	}
 
-	if uint32(len(items)) != entry.GetOrderCount() {
-		report("order_count is %d but %d audit items are stored", entry.GetOrderCount(), len(items))
-		unprovable(success.GetMinLogSequence(), success.GetMaxLogSequence())
+	if success == nil {
+		// FAILURE: the proposal produced no logs, so no item may claim one.
+		// This is the failure-side counterpart to the success range checks and
+		// is a genuine contradiction if violated.
+		for _, item := range items {
+			if seq := item.GetLogSequence(); seq != 0 {
+				report("failed proposal item %d claims log sequence %d; a failure produces no logs",
+					item.GetOrderIndex(), seq)
 
-		return false
+				return false
+			}
+		}
+
+		return true
 	}
 
 	minLog, maxLog := success.GetMinLogSequence(), success.GetMaxLogSequence()
@@ -241,28 +291,9 @@ func verifyAuditStructure(
 		return false
 	}
 
-	seenIndex := make(map[uint32]struct{}, len(items))
 	seenLogSeq := make(map[uint64]struct{}, len(items))
 
 	for _, item := range items {
-		idx := item.GetOrderIndex()
-
-		if idx >= entry.GetOrderCount() {
-			report("audit item order_index %d is outside [0,%d)", idx, entry.GetOrderCount())
-			unprovable(minLog, maxLog)
-
-			return false
-		}
-
-		if _, dup := seenIndex[idx]; dup {
-			report("audit item order_index %d is duplicated", idx)
-			unprovable(minLog, maxLog)
-
-			return false
-		}
-
-		seenIndex[idx] = struct{}{}
-
 		logSeq := item.GetLogSequence()
 		if logSeq == 0 {
 			// An idempotent in-batch reference produced no log of its own.
@@ -279,7 +310,7 @@ func verifyAuditStructure(
 
 		if _, dup := seenLogSeq[logSeq]; dup {
 			report("log sequence %d is claimed by two audit items", logSeq)
-			unprovable(minLog, maxLog)
+			blank()
 
 			return false
 		}
@@ -290,4 +321,67 @@ func verifyAuditStructure(
 	v.authenticated.add(minLog, maxLog)
 
 	return true
+}
+
+// scanOrphanAuditItems reports AuditItem groups whose audit sequence has no
+// AuditEntry. The chain walk iterates ENTRIES, so an injected item group is
+// never read and never hashed — the one structural gap the hash chain does not
+// cover.
+//
+// Bounded to audit sequences strictly above archiveEndAuditSeq: executePurge
+// deliberately leaves archived AuditItem rows in Pebble (it purges SubColdAudit
+// and SubColdLog but not SubColdAuditItem), so orphans below the boundary are
+// legitimate and must not be flagged. Compare collectAuditOrderBoundaryEffects,
+// which filters for the same reason.
+//
+// One event per orphaned sequence, not per row.
+func (c *Checker) scanOrphanAuditItems(
+	reader dal.PebbleReader,
+	v *chainVerification,
+	callback func(*servicepb.CheckStoreEvent),
+) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdAuditItem + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating audit item iter for orphan scan: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	reported := make(map[uint64]struct{})
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+
+		// Key: [ZoneCold(1)][SubColdAuditItem(1)][audit_seq BE 8][order_idx BE 4]
+		if len(key) < 10 {
+			return fmt.Errorf("invariant: audit item key %x is shorter than the 10-byte prefix", key)
+		}
+
+		auditSeq := binary.BigEndian.Uint64(key[2:10])
+
+		if auditSeq <= v.archiveEndAuditSeq {
+			continue
+		}
+
+		if _, ok := v.sequences[auditSeq]; ok {
+			continue
+		}
+
+		if _, done := reported[auditSeq]; done {
+			continue
+		}
+
+		reported[auditSeq] = struct{}{}
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID,
+			fmt.Sprintf("audit items stored at sequence %d but no audit entry exists there", auditSeq),
+			0, "", "", "",
+		))
+	}
+
+	return iter.Error()
 }
