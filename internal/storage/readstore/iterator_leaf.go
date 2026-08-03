@@ -1,6 +1,8 @@
 package readstore
 
 import (
+	"errors"
+
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -168,7 +170,10 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 }
 
 // RangeIterator scans keys between lower and upper bounds in the read index,
-// extracting entity IDs from each key.
+// extracting entity IDs from each key. When the range spans several
+// index-value buckets the emitted entities are NOT globally sorted — they
+// surface in (value, entity) order — so this iterator only supports forward
+// draining; see SeekGE.
 type RangeIterator struct {
 	iter         *pebble.Iterator
 	lowerBound   []byte // stored for SeekPrefixGE initial positioning
@@ -177,8 +182,12 @@ type RangeIterator struct {
 	current      []byte
 	started      bool
 	exhausted    bool
-	floor        seekFloor
+	seekErr      error
 }
+
+// errInvariantRangeIteratorSeek fails a query that composed a RangeIterator
+// without materializing it first — see RangeIterator.SeekGE.
+var errInvariantRangeIteratorSeek = errors.New("invariant: RangeIterator.SeekGE called; materialize into a SliceIterator before composing")
 
 // NewRangeIterator creates an iterator that scans keys in [lower, upper).
 func NewRangeIterator(
@@ -242,55 +251,26 @@ func (it *RangeIterator) Current() []byte {
 	return it.current
 }
 
-func (it *RangeIterator) SeekGE(target []byte) bool {
-	// A prior failed seek at or below target proves this one empty too.
-	if it.floor.covers(target) {
-		it.exhausted = true
-
-		return false
-	}
-
-	// Absolute reposition: clear the exhausted latch so a re-seek after
-	// exhaustion still finds entities (the body re-seeks from target).
-	it.exhausted = false
-
-	seekKey := make([]byte, 0, it.entityOffset+len(target))
-	// Use the stored lower bound prefix for seek key construction.
-	if len(it.lowerBound) >= it.entityOffset {
-		seekKey = append(seekKey, it.lowerBound[:it.entityOffset]...)
-	}
-
-	seekKey = append(seekKey[:min(len(seekKey), it.entityOffset)], target...)
-
-	it.started = true
-
-	if !it.iter.SeekPrefixGE(seekKey) {
-		it.exhausted = true
-		it.floor.fail(target, it.iter.Error())
-
-		return false
-	}
-
-	for it.iter.Valid() {
-		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && compareEntities(entity, target) >= 0 {
-			it.current = entity
-
-			return true
-		}
-
-		if !it.iter.Next() {
-			break
-		}
-	}
-
+// SeekGE cannot be implemented on a raw range scan: the [lower, upper) range
+// may span several index-value buckets, so rows surface in (value, entity)
+// order and "the first entity >= target" is undefined without draining the
+// whole range. Every construction site materializes this iterator into a
+// sorted SliceIterator before composing (internal/query.materializeIterator),
+// which serves seeks over the sorted result; a call here is an invariant
+// violation and fails the query loudly instead of returning
+// plausible-looking wrong rows.
+func (it *RangeIterator) SeekGE([]byte) bool {
+	it.seekErr = errInvariantRangeIteratorSeek
 	it.exhausted = true
-	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
 
 func (it *RangeIterator) Err() error {
+	if it.seekErr != nil {
+		return it.seekErr
+	}
+
 	if it.iter == nil {
 		return nil
 	}

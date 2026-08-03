@@ -27,9 +27,17 @@ Composite iterators rely on this freely: `AndIterator.SeekGE` seeks **every**
 child to the target (a child left at a stale position past the target would
 become the convergence candidate and skip valid intersections below it), then
 `converge` leapfrogs children forward; `OrIterator`/`ReverseOrIterator`
-re-seek all children per seek; `NotIterator` re-seeks its excluded child to
-the universe's position on every step. Any latch or consuming seek in a leaf
+re-seek all children per seek; `NotIterator` re-seeks its excluded child on
+every `SeekGE` — including after the child reported done — and catches it up
+with `Next()` as the universe advances. Any latch or consuming seek in a leaf
 turns these algebra steps into silent row drops.
+
+One leaf is exempt by construction: `RangeIterator` emits rows in
+`(value, entity)` order across index-value buckets, so an entity-space
+`SeekGE` is undefined on the raw scan. It only supports forward draining;
+every construction site materializes it into a sorted `SliceIterator` before
+composing, and a direct `SeekGE` call fails the query with an invariant
+error.
 
 The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 `iterator_address_test.go`, `iterator_and_seek_test.go`) and end-to-end by the
