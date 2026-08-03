@@ -50,9 +50,10 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner     *pterm.SpinnerPrinter
-		errorCount  int
-		checkErrors []*servicepb.CheckStoreError
+		spinner            *pterm.SpinnerPrinter
+		errorCount         int
+		checkErrors        []*servicepb.CheckStoreError
+		unverifiableRanges []*servicepb.CheckStoreUnverifiableRange
 	)
 
 	if !structuredOutput {
@@ -88,6 +89,16 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 			if !structuredOutput {
 				printCheckError(t.Error)
 			}
+
+		case *servicepb.CheckStoreEvent_UnverifiableRange:
+			// NOT a divergence, so it must not touch errorCount or the exit
+			// code: "cannot prove" is not "diverges", and the malformed-entry
+			// case already emits its own AUDIT_STRUCTURE_INVALID (EN-1526).
+			unverifiableRanges = append(unverifiableRanges, t.UnverifiableRange)
+
+			if !structuredOutput {
+				printCheckUnverifiable(t.UnverifiableRange)
+			}
 		}
 	}
 
@@ -96,13 +107,15 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
-		Valid      bool                         `json:"valid"`
-		ErrorCount int                          `json:"errorCount"`
-		Errors     []*servicepb.CheckStoreError `json:"errors,omitempty"`
+		Valid              bool                                     `json:"valid"`
+		ErrorCount         int                                      `json:"errorCount"`
+		Errors             []*servicepb.CheckStoreError             `json:"errors,omitempty"`
+		UnverifiableRanges []*servicepb.CheckStoreUnverifiableRange `json:"unverifiableRanges,omitempty"`
 	}{
-		Valid:      errorCount == 0,
-		ErrorCount: errorCount,
-		Errors:     checkErrors,
+		Valid:              errorCount == 0,
+		ErrorCount:         errorCount,
+		Errors:             checkErrors,
+		UnverifiableRanges: unverifiableRanges,
 	}); handled || err != nil {
 		return err
 	}
@@ -111,6 +124,10 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.IntegrityResult("store validation", errorCount); err != nil {
 		return err
+	}
+
+	if len(unverifiableRanges) > 0 {
+		pterm.Warning.Printfln("%d range(s) could not be authenticated; absence of errors there is not proof", len(unverifiableRanges))
 	}
 
 	pterm.Success.Println("Store is valid - no integrity errors found")
@@ -144,4 +161,28 @@ func printCheckError(e *servicepb.CheckStoreError) {
 	}
 
 	pterm.Printf("  %s %s: %s\n", prefix, pterm.Gray(details), e.GetMessage())
+}
+
+// printCheckUnverifiable renders a range the checker could not authenticate.
+// It is a warning, never an error: the absence of a finding in an
+// unauthenticated range is not proof of integrity. Every occurrence still
+// marks a defect, so it is surfaced rather than hidden.
+func printCheckUnverifiable(u *servicepb.CheckStoreUnverifiableRange) {
+	prefix := pterm.Yellow("WARN")
+
+	// Mirror printCheckError's "[TYPE]" shape using the typed reason, so the
+	// output is greppable without parsing prose.
+	reasonName := strings.TrimPrefix(u.GetReason().String(), "CHECK_STORE_UNVERIFIABLE_REASON_")
+	details := fmt.Sprintf("[UNVERIFIABLE %s]", reasonName)
+
+	// Log sequences are 1-based, so a zero or inverted range means the bounds
+	// could not be determined. Never render that as a literal "0-0".
+	start, end := u.GetRangeStart(), u.GetRangeEnd()
+	if start > 0 && end >= start {
+		details += fmt.Sprintf(" logs=%d-%d", start, end)
+	} else {
+		details += " logs=undetermined"
+	}
+
+	pterm.Printfln("%s %s %s", prefix, details, u.GetMessage())
 }
