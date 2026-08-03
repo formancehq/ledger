@@ -2514,6 +2514,11 @@ func (c *Checker) verifyAuditHashChain(
 		// earlier entry's log; collectExpectedSkippable filters those out via
 		// the success [Min,Max] range so each referenced log is folded once.
 		// Failure-side entries get LogSequence=0 and contribute nothing.
+		// Structural preconditions + the authenticated log-sequence set. Runs
+		// only on a chain-verified entry, so a malformed entry here is a
+		// writer bug rather than tampering (EN-1526).
+		verifyAuditStructure(entry, items, verification, callback)
+
 		if success := entry.GetSuccess(); success != nil {
 			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 		}

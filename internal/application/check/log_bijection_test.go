@@ -4,6 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestLogRangeSetAdd(t *testing.T) {
@@ -182,5 +186,161 @@ func TestLogRangeSetNormalizeIdempotent(t *testing.T) {
 		require.Equal(t, []logRange{{min: 1, max: 6}}, s.intervals())
 		require.Equal(t, uint64(6), s.total())
 		require.False(t, s.empty())
+	}
+}
+
+func TestVerifyAuditStructure(t *testing.T) {
+	t.Parallel()
+
+	success := func(minLog, maxLog uint64, orderCount uint32) *auditpb.AuditEntry {
+		return &auditpb.AuditEntry{
+			Sequence:   7,
+			OrderCount: orderCount,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
+			},
+		}
+	}
+
+	item := func(idx uint32, logSeq uint64) *auditpb.AuditItem {
+		return &auditpb.AuditItem{OrderIndex: idx, LogSequence: logSeq}
+	}
+
+	tests := []struct {
+		name              string
+		entry             *auditpb.AuditEntry
+		items             []*auditpb.AuditItem
+		wantOK            bool
+		wantAuthenticated uint64
+		wantUnverifiable  uint64
+	}{
+		{
+			name:              "well-formed success",
+			entry:             success(10, 11, 2),
+			items:             []*auditpb.AuditItem{item(0, 10), item(1, 11)},
+			wantOK:            true,
+			wantAuthenticated: 2,
+		},
+		{
+			name:              "success with an idempotent reference item",
+			entry:             success(10, 10, 2),
+			items:             []*auditpb.AuditItem{item(0, 10), item(1, 0)},
+			wantOK:            true,
+			wantAuthenticated: 1,
+		},
+		{
+			name:              "legacy replay item below the range is tolerated",
+			entry:             success(10, 10, 2),
+			items:             []*auditpb.AuditItem{item(0, 10), item(1, 3)},
+			wantOK:            true,
+			wantAuthenticated: 1,
+		},
+		{
+			name:             "order_count disagrees with item count",
+			entry:            success(10, 11, 3),
+			items:            []*auditpb.AuditItem{item(0, 10), item(1, 11)},
+			wantOK:           false,
+			wantUnverifiable: 2,
+		},
+		{
+			name:             "order_index out of range",
+			entry:            success(10, 11, 2),
+			items:            []*auditpb.AuditItem{item(0, 10), item(5, 11)},
+			wantOK:           false,
+			wantUnverifiable: 2,
+		},
+		{
+			name:             "duplicate order_index",
+			entry:            success(10, 11, 2),
+			items:            []*auditpb.AuditItem{item(0, 10), item(0, 11)},
+			wantOK:           false,
+			wantUnverifiable: 2,
+		},
+		{
+			name:             "two items claim one log sequence",
+			entry:            success(10, 11, 2),
+			items:            []*auditpb.AuditItem{item(0, 10), item(1, 10)},
+			wantOK:           false,
+			wantUnverifiable: 2,
+		},
+		{
+			name:   "inverted success range",
+			entry:  success(11, 10, 0),
+			items:  nil,
+			wantOK: false,
+		},
+		{
+			name: "failure with order_count set and no items is legitimate",
+			entry: &auditpb.AuditEntry{
+				Sequence:   7,
+				OrderCount: 3,
+				Outcome: &auditpb.AuditEntry_Failure{
+					Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+				},
+			},
+			items:  nil,
+			wantOK: true,
+		},
+		{
+			name: "failure carrying an item",
+			entry: &auditpb.AuditEntry{
+				Sequence:   7,
+				OrderCount: 1,
+				Outcome: &auditpb.AuditEntry_Failure{
+					Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+				},
+			},
+			items:  []*auditpb.AuditItem{item(0, 42)},
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := newChainVerification()
+
+			var (
+				errs     []*servicepb.CheckStoreError
+				unproven []*servicepb.CheckStoreUnverifiableRange
+			)
+
+			// The switch variable is named `ev`, not `t`: `t` is the *testing.T
+			// of the enclosing subtest and shadowing it here would be a trap.
+			ok := verifyAuditStructure(tc.entry, tc.items, v, func(e *servicepb.CheckStoreEvent) {
+				switch ev := e.GetType().(type) {
+				case *servicepb.CheckStoreEvent_Error:
+					errs = append(errs, ev.Error)
+				case *servicepb.CheckStoreEvent_UnverifiableRange:
+					unproven = append(unproven, ev.UnverifiableRange)
+				}
+			})
+
+			require.Equal(t, tc.wantOK, ok)
+			require.Equal(t, tc.wantAuthenticated, v.authenticated.total())
+			require.Equal(t, tc.wantUnverifiable, v.unverifiable.total())
+
+			if tc.wantOK {
+				require.Empty(t, errs)
+				require.Empty(t, unproven)
+
+				return
+			}
+
+			// Every rejection reports exactly one structural error.
+			require.Len(t, errs, 1)
+			require.Equal(t,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID,
+				errs[0].GetErrorType())
+
+			// A rejection that blanks out a log span must also declare that
+			// span unverifiable, so compareLogs skipping it is visible.
+			if tc.wantUnverifiable > 0 {
+				require.Len(t, unproven, 1)
+			} else {
+				require.Empty(t, unproven)
+			}
+		})
 	}
 }

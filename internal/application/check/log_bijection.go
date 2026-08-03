@@ -1,6 +1,12 @@
 package check
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+)
 
 // logRange is a contiguous, inclusive log-sequence interval.
 type logRange struct {
@@ -109,12 +115,18 @@ func (s *logRangeSet) empty() bool {
 // hash-verified audit range. A struct rather than extra out-parameters: the
 // function already takes 7 arguments, and its five direct test call sites
 // discard this return with `_`, so widening it later costs no test churn —
-// which is the point. Task 5 adds the authenticated / unverifiable log-sequence
-// sets here when it gains the code that writes them.
+// which is the point.
 type chainVerification struct {
 	// skippable is the per-log-sequence skippable_reasons whitelist consumed
 	// by verifySkippedOrder during log replay.
 	skippable map[uint64]*expectedSkippableOrder
+	// authenticated holds the log sequences the chain proves must exist in
+	// the store. Fed by every verified AuditSuccess range.
+	authenticated logRangeSet
+	// unverifiable holds log spans the checker can prove nothing about,
+	// because the entry covering them is structurally malformed. compareLogs
+	// skips these rather than reporting false gaps across them.
+	unverifiable logRangeSet
 }
 
 // newChainVerification returns a chainVerification with its maps ready.
@@ -122,4 +134,160 @@ func newChainVerification() *chainVerification {
 	return &chainVerification{
 		skippable: make(map[uint64]*expectedSkippableOrder),
 	}
+}
+
+// unverifiableEvent builds a CheckStoreUnverifiableRange event. It is NOT an
+// error: it must never affect the CLI exit code or the JSON `valid` flag. It
+// exists so that a range the checker could not authenticate is declared rather
+// than silently passed over — the absence of a finding in an unauthenticated
+// range is not proof.
+//
+// Every occurrence marks a defect; a healthy cluster, archived or not, emits
+// none. reason is typed so operators route on it rather than string-matching
+// message, since the two causes need different runbooks.
+//
+// rangeStart/rangeEnd are inclusive. Log sequences are 1-based, so pass 0/0
+// when the bounds genuinely could not be determined — consumers render that as
+// unknown, never as a literal "0-0".
+func unverifiableEvent(
+	reason servicepb.CheckStoreUnverifiableReason,
+	message string,
+	rangeStart, rangeEnd uint64,
+) *servicepb.CheckStoreEvent {
+	return &servicepb.CheckStoreEvent{
+		Type: &servicepb.CheckStoreEvent_UnverifiableRange{
+			UnverifiableRange: &servicepb.CheckStoreUnverifiableRange{
+				Reason:     reason,
+				Message:    message,
+				RangeStart: rangeStart,
+				RangeEnd:   rangeEnd,
+			},
+		},
+	}
+}
+
+// verifyAuditStructure checks a hash-verified AuditEntry for internal
+// consistency and records what it authenticates.
+//
+// None of these checks detect tampering: order_count, order_index and
+// log_sequence are all hash-bound (state.BuildHashedHeaderPayload,
+// state.BuildPerItemPayload), and query.ReadAuditItems folds EVERY row in the
+// entry's prefix into the hash, so mutating, deleting or injecting an item
+// already breaks the chain. They exist because compareLogs CONSUMES these
+// fields: an internally inconsistent entry would yield a wrong authenticated
+// set and therefore false missing/extra findings. Per invariant #8 the audit is
+// the sole authority, so a self-contradictory entry must surface.
+//
+// A violating entry contributes its span to v.unverifiable instead of
+// v.authenticated, so compareLogs proves nothing across it.
+//
+// Returns false when the entry was rejected.
+func verifyAuditStructure(
+	entry *auditpb.AuditEntry,
+	items []*auditpb.AuditItem,
+	v *chainVerification,
+	callback func(*servicepb.CheckStoreEvent),
+) bool {
+	report := func(format string, args ...any) {
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID,
+			fmt.Sprintf("audit entry %d: "+format, append([]any{entry.GetSequence()}, args...)...),
+			logSequenceFromAuditEntry(entry), "", "", "",
+		))
+	}
+
+	// unprovable records the entry's log span as unverifiable AND declares it.
+	// compareLogs skips that span in both directions, so without the event the
+	// skip would be silent — exactly the "absence of a finding read as proof"
+	// failure mode this ticket exists to remove.
+	unprovable := func(minLog, maxLog uint64) {
+		v.unverifiable.add(minLog, maxLog)
+		callback(unverifiableEvent(
+			servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY,
+			fmt.Sprintf("audit entry %d is structurally malformed; its log span cannot be proven either way",
+				entry.GetSequence()),
+			minLog, maxLog,
+		))
+	}
+
+	success := entry.GetSuccess()
+
+	if success == nil {
+		// FAILURE outcome. machine.go stamps OrderCount from the submitted
+		// order count even on the failure path, so order_count is legitimately
+		// non-zero here — only the ABSENCE of items is required. A failed
+		// proposal produces no logs, so any item is a contradiction.
+		if len(items) > 0 {
+			report("failed proposal carries %d audit items; a failure produces no logs", len(items))
+
+			return false
+		}
+
+		return true
+	}
+
+	if uint32(len(items)) != entry.GetOrderCount() {
+		report("order_count is %d but %d audit items are stored", entry.GetOrderCount(), len(items))
+		unprovable(success.GetMinLogSequence(), success.GetMaxLogSequence())
+
+		return false
+	}
+
+	minLog, maxLog := success.GetMinLogSequence(), success.GetMaxLogSequence()
+
+	if minLog > maxLog {
+		report("success range [%d,%d] is inverted", minLog, maxLog)
+
+		return false
+	}
+
+	seenIndex := make(map[uint32]struct{}, len(items))
+	seenLogSeq := make(map[uint64]struct{}, len(items))
+
+	for _, item := range items {
+		idx := item.GetOrderIndex()
+
+		if idx >= entry.GetOrderCount() {
+			report("audit item order_index %d is outside [0,%d)", idx, entry.GetOrderCount())
+			unprovable(minLog, maxLog)
+
+			return false
+		}
+
+		if _, dup := seenIndex[idx]; dup {
+			report("audit item order_index %d is duplicated", idx)
+			unprovable(minLog, maxLog)
+
+			return false
+		}
+
+		seenIndex[idx] = struct{}{}
+
+		logSeq := item.GetLogSequence()
+		if logSeq == 0 {
+			// An idempotent in-batch reference produced no log of its own.
+			continue
+		}
+
+		// Legacy pre-f9ee1e829 stores can carry per-order replay REFERENCE
+		// items whose log_sequence points at an EARLIER entry's log. Those sit
+		// outside [minLog,maxLog] by construction and are filtered rather than
+		// flagged, exactly as collectExpectedSkippable does.
+		if logSeq < minLog || logSeq > maxLog {
+			continue
+		}
+
+		if _, dup := seenLogSeq[logSeq]; dup {
+			report("log sequence %d is claimed by two audit items", logSeq)
+			unprovable(minLog, maxLog)
+
+			return false
+		}
+
+		seenLogSeq[logSeq] = struct{}{}
+	}
+
+	v.authenticated.add(minLog, maxLog)
+
+	return true
 }
