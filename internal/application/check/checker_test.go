@@ -2702,3 +2702,111 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 	require.True(t, missing, "a dropped audited reference must surface as REFERENCE_MISMATCH")
 	require.True(t, unaudited, "an injected unaudited reference must surface as REFERENCE_MISMATCH")
 }
+
+// appendFailureAuditEntry writes a hash-chained AuditEntry for a REJECTED
+// proposal and commits it. Per docs/technical/architecture/subsystems/checker/audit-chain.md
+// a failure writes exactly one AuditEntry, zero AuditItems, zero AppliedProposals
+// and zero Logs.
+//
+// orderCount is deliberately non-zero with no items: machine.go stamps
+// OrderCount from the submitted order count in the closure shared by both
+// outcomes, and the failure path passes no logs, so a legitimate failure entry
+// carries OrderCount = N with no AuditItem rows.
+func (e *testEngine) appendFailureAuditEntry(orderCount uint32, reason commonpb.ErrorReason, message string) {
+	e.t.Helper()
+
+	batch := e.store.OpenWriteSession()
+
+	defer func() { _ = batch.Cancel() }()
+
+	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	hashGenerator := processing.NewHashGenerator(hashAlgorithm, e.clusterID)
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    e.nextAuditSequenceID,
+		Timestamp:   &commonpb.Timestamp{Data: 1700000000 + e.raftIndex},
+		ProposalId:  e.raftIndex,
+		OrderCount:  orderCount,
+		HashVersion: uint32(hashAlgorithm),
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{Reason: reason, Message: message},
+		},
+	}
+
+	headerPayload, err := state.BuildHashedHeaderPayload(entry)
+	require.NoError(e.t, err)
+
+	_, auditHash := hashGenerator.Compute(nil, e.lastAuditHash, [][]byte{headerPayload})
+	entry.Hash = auditHash
+
+	batch.KeyBuilder.
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutUint64(entry.GetSequence())
+	require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+	require.NoError(e.t, batch.Commit())
+
+	e.lastAuditHash = auditHash
+	e.nextAuditSequenceID++
+	e.raftIndex++
+}
+
+// corruptAuditEntryHash flips a byte in the stored hash of the audit entry at
+// the given sequence, simulating tampering the chain must detect.
+func (e *testEngine) corruptAuditEntryHash(sequence uint64) {
+	e.t.Helper()
+
+	handle, err := e.store.NewReadHandle()
+	require.NoError(e.t, err)
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(sequence)
+	key := kb.Build()
+
+	entry, err := dal.ReadProto[*auditpb.AuditEntry](handle, key)
+	require.NoError(e.t, err)
+	require.NotNil(e.t, entry)
+	require.NoError(e.t, handle.Close())
+
+	entry.Hash[0] ^= 0xFF
+
+	batch := e.store.OpenWriteSession()
+
+	defer func() { _ = batch.Cancel() }()
+
+	require.NoError(e.t, batch.SetProto(key, entry))
+	require.NoError(e.t, batch.Commit())
+}
+
+// TestCheckerFailureOnlyHistoryVerifiesChain covers EN-1526: a store whose
+// entire history is rejected proposals has a full hash chain and ZERO Log rows.
+// Check() used to return success on the zero-log early return without verifying
+// anything at all.
+func TestCheckerFailureOnlyHistoryVerifiesChain(t *testing.T) {
+	t.Parallel()
+
+	t.Run("intact chain reports nothing", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.appendFailureAuditEntry(1, commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, "no such ledger")
+		engine.appendFailureAuditEntry(2, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS, "insufficient funds")
+
+		errors := collectCheckErrors(t, engine.store, engine.attrs)
+		require.Empty(t, errors, "a valid failure-only chain must report no errors")
+	})
+
+	t.Run("tampered chain is detected", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+		engine.appendFailureAuditEntry(1, commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND, "no such ledger")
+		engine.appendFailureAuditEntry(2, commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS, "insufficient funds")
+		engine.corruptAuditEntryHash(1)
+
+		errors := collectCheckErrors(t, engine.store, engine.attrs)
+		require.NotEmpty(t, errors, "a tampered failure-only chain MUST be detected")
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+			errors[0].GetErrorType())
+	})
+}

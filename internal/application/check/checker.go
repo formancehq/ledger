@@ -144,35 +144,23 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = snap.Close() }()
 
+	// lastSequence sizes the progress events only. It MUST NOT gate any
+	// verification: it reads SubColdLog, a projection, so gating on it let a
+	// failure-only or fully-archived history — or a store whose log rows were
+	// deleted — report healthy with nothing verified at all (EN-1526).
 	lastSequence, err := query.ReadLastSequence(snap)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	if lastSequence == 0 {
-		// An empty audit does not make the peer store trustworthy: the read
-		// index folds FROM the log stream, so any reverse-map row over a
-		// zero-log store is unaudited by definition. Malformed keys and rows
-		// for ledgers the audit never created are exactly the classes this pass
-		// exists to report, and returning clean here would hide them. Every
-		// oracle term is legitimately empty — there is nothing to replay.
-		c.compareReverseMapOrphans(reverseMapOrphanScope{
-			reader: snap,
-			peer:   peerSnap,
-		}, callback)
-
-		callback(&servicepb.CheckStoreEvent{
-			Type: &servicepb.CheckStoreEvent_Progress{
-				Progress: &servicepb.CheckStoreProgress{
-					LogsChecked: 0,
-					TotalLogs:   0,
-				},
-			},
-		})
-
-		return nil
-	}
-
+	// The former `if lastSequence == 0 { ... return nil }` early return is
+	// gone with it. EN-1458 had to invoke compareReverseMapOrphans inside that
+	// block precisely because it short-circuited; a zero-log store now reaches
+	// the normal call at the end of Check() instead, with a richer scope. That
+	// call stays sound here because its verdict gate is
+	// `indexedSequence == lastSequence` and both are 0 on a zero-log store, so
+	// alignment holds and every oracle term is legitimately empty. Do not
+	// reintroduce an early return: it would silently drop that pass again.
 	// Read archived chapters to adjust the starting point for log replay.
 	chaptersCursor, err := query.ReadChapters(ctx, snap)
 	if err != nil {
