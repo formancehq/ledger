@@ -1380,12 +1380,8 @@ func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 		return nil, nil
 	}
 
-	if err != nil {
+	if err != nil || cfg == nil {
 		return nil, err
-	}
-
-	if cfg == nil {
-		return nil, nil
 	}
 
 	return cfg.AsReader(), nil
