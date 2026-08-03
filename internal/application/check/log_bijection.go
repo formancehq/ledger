@@ -105,21 +105,16 @@ func (s *logRangeSet) empty() bool {
 	return len(s.ranges) == 0
 }
 
-// chainVerification bundles everything verifyAuditHashChain derives from the
+// chainVerification bundles what verifyAuditHashChain derives from the
 // hash-verified audit range. A struct rather than extra out-parameters: the
 // function already takes 7 arguments, and its five direct test call sites
-// discard this return with `_`, so widening the type costs no test churn.
+// discard this return with `_`, so widening it later costs no test churn —
+// which is the point. Task 5 adds the authenticated / unverifiable log-sequence
+// sets here when it gains the code that writes them.
 type chainVerification struct {
 	// skippable is the per-log-sequence skippable_reasons whitelist consumed
 	// by verifySkippedOrder during log replay.
 	skippable map[uint64]*expectedSkippableOrder
-	// authenticated holds the log sequences the chain proves must exist in
-	// the store. Fed by every verified AuditSuccess range.
-	authenticated logRangeSet
-	// unverifiable holds log spans the checker can prove nothing about,
-	// because the entry covering them is structurally malformed. compareLogs
-	// skips these rather than reporting false gaps across them.
-	unverifiable logRangeSet
 }
 
 // newChainVerification returns a chainVerification with its maps ready.
