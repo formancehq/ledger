@@ -949,6 +949,10 @@ message CheckStoreProgress {
 // tampered audit entry. Mirrors the enum-plus-prose convention of
 // CheckStoreError{error_type,message} and AuditFailure{reason,message}.
 enum CheckStoreUnverifiableReason {
+  // Reserved by proto3. The checker MUST NOT emit this value: every
+  // CheckStoreUnverifiableRange MUST carry a concrete cause. A consumer that
+  // decodes UNSPECIFIED should treat it as version skew — a reason added after
+  // the consumer was built — and NOT as evidence that no cause was determined.
   CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED = 0;
   // An ARCHIVED chapter's start/close log bounds are unusable, so logs cannot
   // be attributed to its purged range.
@@ -963,6 +967,7 @@ enum CheckStoreUnverifiableReason {
 // proof. Every occurrence indicates a defect: a healthy cluster, archived or
 // not, emits none.
 message CheckStoreUnverifiableRange {
+  // MUST be non-zero. See CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED.
   CheckStoreUnverifiableReason reason = 1;
   // Human-readable detail. Diagnostic only; route on reason, never on this.
   string message = 2;

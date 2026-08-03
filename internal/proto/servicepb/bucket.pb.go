@@ -253,6 +253,10 @@ func (CheckStoreErrorType) EnumDescriptor() ([]byte, []int) {
 type CheckStoreUnverifiableReason int32
 
 const (
+	// Reserved by proto3. The checker MUST NOT emit this value: every
+	// CheckStoreUnverifiableRange MUST carry a concrete cause. A consumer that
+	// decodes UNSPECIFIED should treat it as version skew — a reason added after
+	// the consumer was built — and NOT as evidence that no cause was determined.
 	CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED CheckStoreUnverifiableReason = 0
 	// An ARCHIVED chapter's start/close log bounds are unusable, so logs cannot
 	// be attributed to its purged range.
@@ -5906,7 +5910,8 @@ func (x *CheckStoreProgress) GetTotalLogs() uint64 {
 // proof. Every occurrence indicates a defect: a healthy cluster, archived or
 // not, emits none.
 type CheckStoreUnverifiableRange struct {
-	state  protoimpl.MessageState       `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// MUST be non-zero. See CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED.
 	Reason CheckStoreUnverifiableReason `protobuf:"varint,1,opt,name=reason,proto3,enum=ledger.CheckStoreUnverifiableReason" json:"reason,omitempty"`
 	// Human-readable detail. Diagnostic only; route on reason, never on this.
 	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
