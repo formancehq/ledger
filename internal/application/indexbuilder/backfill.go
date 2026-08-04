@@ -1318,6 +1318,19 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				continue
 			}
 
+			// This task only builds task.ledger's index, but the cursor
+			// replays the GLOBAL log and indexLogEntry keys writes by the
+			// log's own ledger — a foreign log would pass the task config's
+			// gates and write forward+rmap rows into ITS ledger's keyspace
+			// for a field that ledger never indexed. Skip foreign logs,
+			// exactly as processBackfillPostings does.
+			if log.GetPayload().GetApply().GetLedgerName() != task.ledger {
+				lastSeq = log.GetSequence()
+				batchCount++
+
+				continue
+			}
+
 			if err := b.indexLogEntry(cfg, log, proposals); err != nil {
 				_ = batch.Cancel()
 
