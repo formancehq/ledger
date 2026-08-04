@@ -519,6 +519,7 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(resp.LedgerNames).To(ConsistOf(ledgerName, ledger2, chartLedger, deltaLedger))
 			Expect(resp.LastAppliedIndex).To(BeNumerically(">", 0))
 			Expect(resp.LastSequence).To(BeNumerically(">", 0))
+			Expect(resp.LastAppliedTimestamp).To(BeNumerically(">", 0))
 		})
 
 		It("should finalize the restore", func() {
