@@ -269,6 +269,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// live audit-chain mutations on top.
 	chainBound := newChainBoundState()
 
+	// Signing key/config expectations, re-derived from chain-bound signing orders
+	// (invariant #8). Archived history is folded FIRST, oldest-first, so the live
+	// chain layer below sees the pre-archive keys a later revoke may target.
+	// Never seeded from the live projection or the baseline checkpoint — see
+	// signingVerifier.
+	signing := newSigningVerifier()
+	if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+		return fmt.Errorf("folding archived signing orders: %w", err)
+	}
+
 	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references, chainBound.referenceTxIDs)
 	if err != nil {
 		return fmt.Errorf("loading baseline references: %w", err)
@@ -287,8 +297,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Verify the audit hash chain before log replay. This iterates
 	// every non-archived audit entry and recomputes each hash from the
 	// stored orders, chaining from archiveLastAuditHash. Populates
-	// expectedSkippable + layers live mutations onto chainBound.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, callback)
+	// expectedSkippable + layers live mutations onto chainBound and the
+	// live-range signing orders onto `signing`.
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, signing, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -850,6 +861,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
 		return err
+	}
+
+	if err := signing.compare(snap, callback); err != nil {
+		return fmt.Errorf("comparing signing projections: %w", err)
 	}
 
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
@@ -2314,6 +2329,11 @@ func compareTransactionPostCommitVolumes(
 // `serialized_order` so a tampered LedgerLog projection cannot forge a
 // "prior claim" for a fake skip.
 //
+// signing is layered the same way: the caller has already folded the archived
+// range into it from cold storage, and this function adds the signing orders of
+// every chain-verified entry above that archive boundary. The comparison against
+// the stored keys / config runs at the Check() call site.
+//
 // Returns expectedSkippable: the per-log-seq skippable_reasons whitelist +
 // reason correlator re-derived from the chain-bound Orders, consumed by
 // verifySkippedOrder.
@@ -2328,6 +2348,7 @@ func (c *Checker) verifyAuditHashChain(
 	archiveLastAuditHash []byte,
 	chainBound *chainBoundState,
 	idempotencyTTLMicros *uint64,
+	signing *signingVerifier,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[uint64]*expectedSkippableOrder, error) {
 	// Find the last archived audit sequence to start iteration after it.
@@ -2524,6 +2545,25 @@ func (c *Checker) verifyAuditHashChain(
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
 			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
+
+			// Fold signing orders from this successful entry. Items at or below the
+			// archive boundary were already folded from cold storage; re-applying a
+			// register there would resurrect a key a later revoke removed.
+			for _, item := range items {
+				if item.GetLogSequence() == 0 || item.GetLogSequence() <= signing.archiveEndSeq {
+					continue
+				}
+
+				order := &raftcmdpb.Order{}
+				if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+					// Chain-bound bytes whose entry hash already verified, so a decode
+					// failure is impossible by design (invariant #7): fail loudly.
+					return nil, fmt.Errorf("invariant: decoding chain-verified order from audit item at log %d: %w",
+						item.GetLogSequence(), err)
+				}
+
+				signing.applyOrder(order)
+			}
 		}
 	}
 

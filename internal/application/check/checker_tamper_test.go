@@ -211,12 +211,36 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 		panic("newRichAuditEntry: unknown outcomeKind " + outcomeKind)
 	}
 
+	// Real serialized Orders, not opaque marker bytes: the chain binds these
+	// payloads either way, but verifyAuditHashChain decodes the items of a
+	// chain-verified entry (signing fold) and treats an undecodable order as a
+	// broken invariant. A fixture carrying non-proto bytes would trip that hard
+	// failure on the pre-tampering baseline run and never reach the mutation
+	// under test.
 	items := []*auditpb.AuditItem{
-		{OrderIndex: 0, LogSequence: 100, SerializedOrder: []byte("order-A-payload")},
-		{OrderIndex: 1, LogSequence: 101, SerializedOrder: []byte("order-B-payload")},
+		{OrderIndex: 0, LogSequence: 100, SerializedOrder: richAuditOrder("ledger-a")},
+		{OrderIndex: 1, LogSequence: 101, SerializedOrder: richAuditOrder("ledger-b")},
 	}
 
 	return entry, items
+}
+
+// richAuditOrder builds the serialized business order an audit item carries. Its
+// payload is non-empty on every bound field so a tamper-by-zero is still a real
+// mutation of the hashed bytes.
+func richAuditOrder(ledger string) []byte {
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		},
+	}
+
+	return order.MarshalDeterministicVT(nil)
 }
 
 // persistAuditEntry computes the envelope + chain hash via the production
@@ -294,7 +318,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		// A nil TTL (PersistedConfig absent) skips the cold extension entirely,
 		// keeping the report floor at the archive boundary and isolating the
 		// post-boundary guard this test exercises.
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, newSigningVerifier(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -417,7 +441,7 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 	var mismatches []*servicepb.CheckStoreError
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, newSigningVerifier(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}
