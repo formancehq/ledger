@@ -50,15 +50,18 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(logs) == 0 {
-		unreachable("save-numscript apply returned no log", map[string]any{"ledger": ledgerName, "name": name})
+	details := map[string]any{"ledger": ledgerName, "name": name}
+
+	logEntry := exactlyOneLog("save-numscript", logs, details)
+
+	saved := logEntry.GetPayload().GetSavedNumscript()
+	if saved == nil {
+		panic(unexpectedLogPayload("save-numscript", logEntry, details))
 	}
 
-	if saved := logs[0].GetPayload().GetSavedNumscript(); saved != nil {
-		writeCreated(w, saved.GetInfo())
-
-		return
+	if saved.GetInfo() == nil {
+		panic(emptyLogPayload("save-numscript", logEntry, details))
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	writeCreated(w, saved.GetInfo())
 }

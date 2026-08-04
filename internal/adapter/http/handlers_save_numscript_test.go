@@ -51,30 +51,58 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-func TestHandleSaveNumscript_NoLogReturned(t *testing.T) {
+// TestHandleSaveNumscript_LogContractViolations locks in the exact-one typed-log
+// contract: a successful save always emits exactly one non-nil SavedNumscript log
+// (processSaveNumscript returns either an error or that log). Any other
+// cardinality, a nil sole log, or a mismatched payload type must fail loudly
+// through assert.Unreachable and a panic (the jsonRecoverer turns the panic
+// into a sanitized 500 in production) — never a silent 2xx.
+func TestHandleSaveNumscript_LogContractViolations(t *testing.T) {
 	t.Parallel()
 
-	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return nil, nil
-		}).AnyTimes()
-	srv := newTestServer(t, backend)
+	saved := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{
+			Info: &commonpb.NumscriptInfo{Name: "my-script", Version: "1.0.0"},
+		}},
+	}}
+	wrongPayload := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "ledger1"}},
+	}}
+	emptyBody := &commonpb.Log{Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_SavedNumscript{SavedNumscript: &commonpb.SavedNumscriptLog{Info: nil}},
+	}}
 
-	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodPut, "/ledger1/numscripts/my-script",
-		strings.NewReader(`{"content":"send [USD 100] ( source = @world destination = @alice )"}`),
-		map[string]string{
-			"ledgerName": "ledger1",
-			"name":       "my-script",
+	cases := []struct {
+		name    string
+		logs    []*commonpb.Log
+		wantMsg string
+	}{
+		{"zero logs", []*commonpb.Log{}, "apply did not return exactly one log"},
+		{"two logs", []*commonpb.Log{saved, saved}, "apply did not return exactly one log"},
+		{"nil sole log", []*commonpb.Log{nil}, "apply returned a nil log"},
+		{"wrong payload type", []*commonpb.Log{wrongPayload}, "apply returned an unexpected log payload type"},
+		{"empty payload body", []*commonpb.Log{emptyBody}, "apply returned a log with no payload body"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newTestServer(t, backendReturningLogs(t, tc.logs))
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodPut, "/ledger1/numscripts/my-script",
+				strings.NewReader(`{"content":"send [USD 100] ( source = @world destination = @alice )","version":"1.0.0"}`),
+				map[string]string{
+					"ledgerName": "ledger1",
+					"name":       "my-script",
+				})
+
+			requirePanicsContaining(t, tc.wantMsg, func() {
+				srv.handleSaveNumscript(w, r)
+			})
 		})
-
-	// A successful save always emits a log (processSaveNumscript returns either an
-	// error or a SavedNumscript log), so no log is a backend contract violation:
-	// the handler panics (jsonRecoverer turns this into a 500 in production).
-	require.Panics(t, func() {
-		srv.handleSaveNumscript(w, r)
-	})
+	}
 }
 
 func TestHandleSaveNumscript_MissingLedgerName(t *testing.T) {
