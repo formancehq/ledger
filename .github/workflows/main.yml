@@ -201,6 +201,11 @@ jobs:
         uses: ./.github/actions/default
       - run: >
           nix develop --command go build ./...
+      - name: Cross-compile ledgerctl for Windows
+        run: >
+          nix develop --command bash -c "mkdir -p build &&
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o build/ledgerctl-windows-amd64.exe ./cmd/ledgerctl &&
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o build/ledgerctl-windows-arm64.exe ./cmd/ledgerctl"
       - name: Build operator
         run: >
           nix develop --command bash -c "cd misc/operator && go build ./..."

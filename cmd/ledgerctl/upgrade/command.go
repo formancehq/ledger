@@ -46,7 +46,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	spinner, _ := pterm.DefaultSpinner.Start(
 		fmt.Sprintf("Checking for updates (channel: %s)...", channel))
 
-	release, err := fetchRelease(channel)
+	release, err := fetchRelease(channel, currentVersion)
 	if err != nil {
 		spinner.Fail("Failed to check for updates")
 

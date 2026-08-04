@@ -8,8 +8,19 @@
 
 ## Installation
 
+### Download a prebuilt binary
+
+Releases publish platform archives on
+[GitHub](https://github.com/formancehq/ledger/releases):
+
+- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
+- Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+
+Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Once installed, `ledgerctl upgrade` keeps the CLI current.
+
+### Build from source
+
 ```bash
-# Build from source
 just build-client
 
 # Or directly with Go
@@ -4897,7 +4908,7 @@ See [Event System Architecture](../technical/architecture/subsystems/events-mirr
 
 ### upgrade
 
-Self-update `ledgerctl` to the latest version from GitHub releases. Downloads the archive, verifies the SHA256 checksum, and replaces the binary in-place.
+Self-update `ledgerctl` to the latest version from GitHub releases. Downloads the archive, verifies the SHA256 checksum, and replaces the installed binary.
 
 ```bash
 ledgerctl upgrade [flags]
@@ -4914,12 +4925,13 @@ ledgerctl upgrade [flags]
 **Behavior:**
 - Downloads the latest release from `formancehq/ledger` GitHub releases
 - Verifies the archive's SHA256 checksum against `checksums.txt`
-- Extracts the `ledgerctl` binary and atomically replaces the current binary
+- Extracts `ledgerctl` from the Linux/macOS tarball or `ledgerctl.exe` from the Windows ZIP archive, then replaces the current binary
+- On Windows, keeps the previous executable as `ledgerctl.exe.old` because the running executable cannot be replaced in place. If an upgrade is interrupted and `ledgerctl.exe` is missing, rename `ledgerctl.exe.old` back to `ledgerctl.exe`.
 - If the current version is `dev` (built without ldflags), warns and requires `--force`
 
 **Channels:**
 - **`nightly`** (default): The rolling nightly build, tagged `nightly` on GitHub. Version format: `nightly-<shortcommit>`.
-- **`stable`**: The latest tagged release matching `v*.*.*` semver format.
+- **`stable`**: The latest final release matching the running binary's major version. Drafts and prereleases are excluded. Until the first final release for that major exists, the command returns an error and `nightly` must be used.
 
 **Example:**
 

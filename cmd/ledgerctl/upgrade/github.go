@@ -7,10 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/Masterminds/semver/v3"
+	"golang.org/x/mod/module"
 )
 
 const (
@@ -22,6 +26,8 @@ type releaseInfo struct {
 	TagName         string      `json:"tag_name"`
 	Name            string      `json:"name"`
 	TargetCommitish string      `json:"target_commitish"`
+	Draft           bool        `json:"draft"`
+	Prerelease      bool        `json:"prerelease"`
 	Assets          []assetInfo `json:"assets"`
 }
 
@@ -32,13 +38,14 @@ type assetInfo struct {
 
 // fetchRelease fetches the release info for the given channel.
 // For "nightly", it fetches the release tagged "nightly".
-// For "stable", it fetches the most recent release matching a semver tag.
-func fetchRelease(channel string) (*releaseInfo, error) {
+// For "stable", it fetches the most recent final release matching the running
+// binary's major version.
+func fetchRelease(channel, currentVersion string) (*releaseInfo, error) {
 	switch channel {
 	case "nightly":
 		return fetchNightlyRelease()
 	case "stable":
-		return fetchStableRelease()
+		return fetchStableRelease(currentVersion)
 	default:
 		return nil, fmt.Errorf("unknown channel %q; use \"nightly\" or \"stable\"", channel)
 	}
@@ -57,25 +64,92 @@ func fetchNightlyRelease() (*releaseInfo, error) {
 	return &release, nil
 }
 
-var semverTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+`)
-
-func fetchStableRelease() (*releaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", githubRepo)
-
-	var releases []releaseInfo
-
-	err := githubGet(url, &releases)
-	if err != nil {
-		return nil, err
+func fetchStableRelease(currentVersion string) (*releaseInfo, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases", githubRepo)
+	modulePath := ""
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		modulePath = buildInfo.Main.Path
 	}
 
-	for i := range releases {
-		if semverTagRe.MatchString(releases[i].TagName) {
-			return &releases[i], nil
+	return fetchStableReleaseFromURL(currentVersion, modulePath, url)
+}
+
+func fetchStableReleaseFromURL(currentVersion, modulePath, releasesURL string) (*releaseInfo, error) {
+	currentMajor, err := versionMajor(currentVersion, modulePath)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cannot select a stable release for current version %q: %w; use --channel nightly",
+			currentVersion,
+			err,
+		)
+	}
+
+	const releasesPerPage = 100
+
+	for page := 1; ; page++ {
+		url := fmt.Sprintf("%s?per_page=%d&page=%d", releasesURL, releasesPerPage, page)
+
+		var releases []releaseInfo
+		if err := githubGet(url, &releases); err != nil {
+			return nil, err
+		}
+
+		if release := findStableRelease(releases, currentMajor); release != nil {
+			return release, nil
+		}
+
+		if len(releases) < releasesPerPage {
+			break
 		}
 	}
 
-	return nil, errors.New("no stable release found; use --channel nightly")
+	return nil, fmt.Errorf(
+		"no final release found for major v%d; use --channel nightly",
+		currentMajor,
+	)
+}
+
+func versionMajor(currentVersion, modulePath string) (uint64, error) {
+	current, versionErr := semver.NewVersion(currentVersion)
+	if versionErr == nil {
+		return current.Major(), nil
+	}
+
+	_, pathMajor, ok := module.SplitPathVersion(modulePath)
+	if !ok || pathMajor == "" {
+		return 0, fmt.Errorf(
+			"version is not semantic and module path %q has no major suffix: %w",
+			modulePath,
+			versionErr,
+		)
+	}
+
+	major, err := strconv.ParseUint(strings.TrimPrefix(pathMajor, "/v"), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing module major %q: %w", pathMajor, err)
+	}
+
+	return major, nil
+}
+
+func findStableRelease(releases []releaseInfo, currentMajor uint64) *releaseInfo {
+	for i := range releases {
+		release := &releases[i]
+		if release.Draft || release.Prerelease {
+			continue
+		}
+
+		releaseVersion, err := semver.StrictNewVersion(strings.TrimPrefix(release.TagName, "v"))
+		if err != nil || releaseVersion.Prerelease() != "" {
+			continue
+		}
+
+		if releaseVersion.Major() == currentMajor {
+			return release
+		}
+	}
+
+	return nil
 }
 
 var (
@@ -173,21 +247,38 @@ func githubDownload(url string) (*http.Response, error) {
 	return resp, nil
 }
 
-// archiveAssetName returns the expected archive filename for the current OS/arch.
-func archiveAssetName() string {
-	return fmt.Sprintf("%s_%s-%s.tar.gz", projectName, runtime.GOOS, runtime.GOARCH)
+// archiveAssetName returns the expected archive filename for an OS/arch pair.
+func archiveAssetName(goos, goarch string) string {
+	extension := ".tar.gz"
+	if goos == "windows" {
+		extension = ".zip"
+	}
+
+	return fmt.Sprintf("%s_%s-%s%s", projectName, goos, goarch, extension)
+}
+
+func executableName(goos string) string {
+	if goos == "windows" {
+		return "ledgerctl.exe"
+	}
+
+	return "ledgerctl"
 }
 
 // findAsset finds the archive asset matching the current OS/arch in the release.
 func findAsset(release *releaseInfo) (*assetInfo, error) {
-	want := archiveAssetName()
+	return findAssetForPlatform(release, runtime.GOOS, runtime.GOARCH)
+}
+
+func findAssetForPlatform(release *releaseInfo, goos, goarch string) (*assetInfo, error) {
+	want := archiveAssetName(goos, goarch)
 	for i := range release.Assets {
 		if release.Assets[i].Name == want {
 			return &release.Assets[i], nil
 		}
 	}
 
-	return nil, fmt.Errorf("no binary available for %s/%s (expected asset %q)", runtime.GOOS, runtime.GOARCH, want)
+	return nil, fmt.Errorf("no binary available for %s/%s (expected asset %q)", goos, goarch, want)
 }
 
 // findChecksumsAsset finds the checksums.txt asset in the release.
