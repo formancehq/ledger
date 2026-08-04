@@ -2904,7 +2904,7 @@ func collectCheckEvents(t *testing.T, store *dal.Store, attrs *attributes.Attrib
 ) {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "test-cluster", nil, nil, logging.Testing())
+	checker := NewChecker(store, attrs, "test-cluster", nil, nil, nil, logging.Testing())
 
 	var (
 		errs     []*servicepb.CheckStoreError
