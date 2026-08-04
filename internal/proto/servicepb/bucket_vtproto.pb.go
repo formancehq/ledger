@@ -8996,7 +8996,7 @@ func (m *Request_Apply) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -9015,7 +9015,7 @@ func (m *Request_CreateLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x12
 	}
 	return len(dAtA) - i, nil
 }
@@ -9034,7 +9034,7 @@ func (m *Request_DeleteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9053,7 +9053,7 @@ func (m *Request_RegisterSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -9072,7 +9072,7 @@ func (m *Request_RevokeSigningKey) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9091,7 +9091,7 @@ func (m *Request_SetSigningConfig) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -9110,7 +9110,7 @@ func (m *Request_AddEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9129,7 +9129,7 @@ func (m *Request_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x52
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -9148,7 +9148,7 @@ func (m *Request_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x5a
+		dAtA[i] = 0x4a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9167,7 +9167,7 @@ func (m *Request_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x62
+		dAtA[i] = 0x52
 	}
 	return len(dAtA) - i, nil
 }
@@ -9186,7 +9186,7 @@ func (m *Request_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x5a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9205,7 +9205,7 @@ func (m *Request_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x72
+		dAtA[i] = 0x62
 	}
 	return len(dAtA) - i, nil
 }
@@ -9224,7 +9224,7 @@ func (m *Request_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x6a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9243,9 +9243,7 @@ func (m *Request_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x72
 	}
 	return len(dAtA) - i, nil
 }
@@ -9264,9 +9262,7 @@ func (m *Request_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0x7a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9287,7 +9283,7 @@ func (m *Request_SetMetadataFieldType) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -9308,7 +9304,7 @@ func (m *Request_RemoveMetadataFieldType) MarshalToSizedBufferVT(dAtA []byte) (i
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9329,7 +9325,7 @@ func (m *Request_PromoteLedger) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -9350,7 +9346,7 @@ func (m *Request_CreatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x9a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9371,7 +9367,7 @@ func (m *Request_UpdatePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xba
+		dAtA[i] = 0xa2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9392,7 +9388,7 @@ func (m *Request_DeletePreparedQuery) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xc2
+		dAtA[i] = 0xaa
 	}
 	return len(dAtA) - i, nil
 }
@@ -9413,7 +9409,7 @@ func (m *Request_CreateIndex) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xca
+		dAtA[i] = 0xb2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9434,7 +9430,7 @@ func (m *Request_DropIndex) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xd2
+		dAtA[i] = 0xba
 	}
 	return len(dAtA) - i, nil
 }
@@ -9455,7 +9451,7 @@ func (m *Request_SaveNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xda
+		dAtA[i] = 0xc2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9476,7 +9472,7 @@ func (m *Request_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xea
+		dAtA[i] = 0xca
 	}
 	return len(dAtA) - i, nil
 }
@@ -9497,7 +9493,7 @@ func (m *Request_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xf2
+		dAtA[i] = 0xd2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9518,7 +9514,7 @@ func (m *Request_SetDefaultEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xda
 	}
 	return len(dAtA) - i, nil
 }
@@ -9537,9 +9533,9 @@ func (m *Request_CreateQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xe2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9558,9 +9554,9 @@ func (m *Request_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -9579,9 +9575,9 @@ func (m *Request_SetQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -9600,9 +9596,9 @@ func (m *Request_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -9623,7 +9619,7 @@ func (m *Request_SaveLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -9644,7 +9640,7 @@ func (m *Request_DeleteLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -10605,7 +10601,7 @@ func (m *CreateIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -10655,7 +10651,7 @@ func (m *DropIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x12
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -15286,7 +15282,7 @@ func (m *GetIndexStatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x2a
 		}
 	}
 	if m.IndexFileSize != 0 {
@@ -16782,7 +16778,7 @@ func (m *Request_SetChapterSchedule) SizeVT() (n int) {
 	_ = l
 	if m.SetChapterSchedule != nil {
 		l = m.SetChapterSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -16794,7 +16790,7 @@ func (m *Request_DeleteChapterSchedule) SizeVT() (n int) {
 	_ = l
 	if m.DeleteChapterSchedule != nil {
 		l = m.DeleteChapterSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -21341,7 +21337,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: Request: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
+		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Apply", wireType)
 			}
@@ -21382,7 +21378,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_Apply{Apply: v}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateLedger", wireType)
 			}
@@ -21423,7 +21419,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CreateLedger{CreateLedger: v}
 			}
 			iNdEx = postIndex
-		case 4:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedger", wireType)
 			}
@@ -21464,7 +21460,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteLedger{DeleteLedger: v}
 			}
 			iNdEx = postIndex
-		case 6:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RegisterSigningKey", wireType)
 			}
@@ -21505,7 +21501,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RegisterSigningKey{RegisterSigningKey: v}
 			}
 			iNdEx = postIndex
-		case 7:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevokeSigningKey", wireType)
 			}
@@ -21546,7 +21542,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RevokeSigningKey{RevokeSigningKey: v}
 			}
 			iNdEx = postIndex
-		case 8:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetSigningConfig", wireType)
 			}
@@ -21587,7 +21583,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetSigningConfig{SetSigningConfig: v}
 			}
 			iNdEx = postIndex
-		case 9:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddEventsSink", wireType)
 			}
@@ -21628,7 +21624,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_AddEventsSink{AddEventsSink: v}
 			}
 			iNdEx = postIndex
-		case 10:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveEventsSink", wireType)
 			}
@@ -21669,7 +21665,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RemoveEventsSink{RemoveEventsSink: v}
 			}
 			iNdEx = postIndex
-		case 11:
+		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
 			}
@@ -21710,7 +21706,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CloseChapter{CloseChapter: v}
 			}
 			iNdEx = postIndex
-		case 12:
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
 			}
@@ -21751,7 +21747,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SealChapter{SealChapter: v}
 			}
 			iNdEx = postIndex
-		case 13:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
 			}
@@ -21792,7 +21788,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_ArchiveChapter{ArchiveChapter: v}
 			}
 			iNdEx = postIndex
-		case 14:
+		case 12:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
 			}
@@ -21833,7 +21829,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
 			}
 			iNdEx = postIndex
-		case 15:
+		case 13:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetMaintenanceMode", wireType)
 			}
@@ -21874,7 +21870,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetMaintenanceMode{SetMaintenanceMode: v}
 			}
 			iNdEx = postIndex
-		case 16:
+		case 14:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
 			}
@@ -21915,7 +21911,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetChapterSchedule{SetChapterSchedule: v}
 			}
 			iNdEx = postIndex
-		case 17:
+		case 15:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
 			}
@@ -21956,7 +21952,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteChapterSchedule{DeleteChapterSchedule: v}
 			}
 			iNdEx = postIndex
-		case 18:
+		case 16:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetMetadataFieldType", wireType)
 			}
@@ -21997,7 +21993,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetMetadataFieldType{SetMetadataFieldType: v}
 			}
 			iNdEx = postIndex
-		case 19:
+		case 17:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveMetadataFieldType", wireType)
 			}
@@ -22038,7 +22034,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RemoveMetadataFieldType{RemoveMetadataFieldType: v}
 			}
 			iNdEx = postIndex
-		case 21:
+		case 18:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PromoteLedger", wireType)
 			}
@@ -22079,7 +22075,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_PromoteLedger{PromoteLedger: v}
 			}
 			iNdEx = postIndex
-		case 22:
+		case 19:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatePreparedQuery", wireType)
 			}
@@ -22120,7 +22116,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CreatePreparedQuery{CreatePreparedQuery: v}
 			}
 			iNdEx = postIndex
-		case 23:
+		case 20:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdatePreparedQuery", wireType)
 			}
@@ -22161,7 +22157,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_UpdatePreparedQuery{UpdatePreparedQuery: v}
 			}
 			iNdEx = postIndex
-		case 24:
+		case 21:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeletePreparedQuery", wireType)
 			}
@@ -22202,7 +22198,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeletePreparedQuery{DeletePreparedQuery: v}
 			}
 			iNdEx = postIndex
-		case 25:
+		case 22:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateIndex", wireType)
 			}
@@ -22243,7 +22239,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CreateIndex{CreateIndex: v}
 			}
 			iNdEx = postIndex
-		case 26:
+		case 23:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DropIndex", wireType)
 			}
@@ -22284,7 +22280,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DropIndex{DropIndex: v}
 			}
 			iNdEx = postIndex
-		case 27:
+		case 24:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SaveNumscript", wireType)
 			}
@@ -22325,7 +22321,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SaveNumscript{SaveNumscript: v}
 			}
 			iNdEx = postIndex
-		case 29:
+		case 25:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
 			}
@@ -22366,7 +22362,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 30:
+		case 26:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -22407,7 +22403,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		case 31:
+		case 27:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetDefaultEnforcementMode", wireType)
 			}
@@ -22448,7 +22444,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: v}
 			}
 			iNdEx = postIndex
-		case 32:
+		case 28:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateQueryCheckpoint", wireType)
 			}
@@ -22489,7 +22485,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CreateQueryCheckpoint{CreateQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 33:
+		case 29:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpoint", wireType)
 			}
@@ -22530,7 +22526,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 34:
+		case 30:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetQueryCheckpointSchedule", wireType)
 			}
@@ -22571,7 +22567,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
-		case 35:
+		case 31:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpointSchedule", wireType)
 			}
@@ -22612,7 +22608,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
-		case 36:
+		case 32:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SaveLedgerMetadata", wireType)
 			}
@@ -22653,7 +22649,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SaveLedgerMetadata{SaveLedgerMetadata: v}
 			}
 			iNdEx = postIndex
-		case 37:
+		case 33:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteLedgerMetadata", wireType)
 			}
@@ -24728,7 +24724,7 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
@@ -24847,7 +24843,7 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
@@ -35724,7 +35720,7 @@ func (m *GetIndexStatusResponse) UnmarshalVT(dAtA []byte) error {
 			}
 			m.IndexFileSize = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 6:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Indexes", wireType)
 			}

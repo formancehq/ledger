@@ -1186,9 +1186,9 @@ func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
 
 type BackupRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	BasePath      string                  `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
-	BucketId      string                  `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
-	Storage       *commonpb.BackupStorage `protobuf:"bytes,9,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	BasePath      string                  `protobuf:"bytes,1,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
+	BucketId      string                  `protobuf:"bytes,2,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,3,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1346,9 +1346,9 @@ func (x *BackupResponse) GetOrphansDeleted() uint32 {
 
 type IncrementalBackupRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	BasePath      string                  `protobuf:"bytes,2,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
-	BucketId      string                  `protobuf:"bytes,3,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
-	Storage       *commonpb.BackupStorage `protobuf:"bytes,9,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	BasePath      string                  `protobuf:"bytes,1,opt,name=base_path,json=basePath,proto3" json:"base_path,omitempty"` // Reserved for future use
+	BucketId      string                  `protobuf:"bytes,2,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,3,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2279,11 +2279,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11RemoveNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"\x14\n" +
-	"\x12RemoveNodeResponse\"\xf1\x01\n" +
+	"\x12RemoveNodeResponse\"z\n" +
 	"\rBackupRequest\x12\x1b\n" +
-	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
-	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12/\n" +
-	"\astorage\x18\t \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\x06driverR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"\xd1\x02\n" +
+	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x12\x1b\n" +
+	"\tbucket_id\x18\x02 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\x03 \x01(\v2\x15.common.BackupStorageR\astorage\"\xd1\x02\n" +
 	"\x0eBackupResponse\x12%\n" +
 	"\x0efiles_uploaded\x18\x01 \x01(\rR\rfilesUploaded\x12#\n" +
 	"\rfiles_deleted\x18\x02 \x01(\rR\ffilesDeleted\x12\x1f\n" +
@@ -2294,11 +2294,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x05 \x01(\x06R\x0flastLogSequence\x12.\n" +
 	"\x13last_audit_sequence\x18\x06 \x01(\x06R\x11lastAuditSequence\x12,\n" +
 	"\x12last_applied_index\x18\a \x01(\x06R\x10lastAppliedIndex\x12'\n" +
-	"\x0forphans_deleted\x18\b \x01(\rR\x0eorphansDeleted\"\xfc\x01\n" +
+	"\x0forphans_deleted\x18\b \x01(\rR\x0eorphansDeleted\"\x85\x01\n" +
 	"\x18IncrementalBackupRequest\x12\x1b\n" +
-	"\tbase_path\x18\x02 \x01(\tR\bbasePath\x12\x1b\n" +
-	"\tbucket_id\x18\x03 \x01(\tR\bbucketId\x12/\n" +
-	"\astorage\x18\t \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\x06driverR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"\xd6\x02\n" +
+	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x12\x1b\n" +
+	"\tbucket_id\x18\x02 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\x03 \x01(\v2\x15.common.BackupStorageR\astorage\"\xd6\x02\n" +
 	"\x19IncrementalBackupResponse\x120\n" +
 	"\x14log_entries_exported\x18\x01 \x01(\x06R\x12logEntriesExported\x124\n" +
 	"\x16audit_entries_exported\x18\x02 \x01(\x06R\x14auditEntriesExported\x12+\n" +

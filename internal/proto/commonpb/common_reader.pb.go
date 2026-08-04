@@ -2019,8 +2019,6 @@ type IndexReader interface {
 	GetId() IndexIDReader
 	GetBuildStatus() IndexBuildStatus
 	GetCreatedAt() TimestampReader
-	GetLastBuiltAt() TimestampReader
-	GetLastError() string
 	GetLedger() string
 	GetForwardEncodingVersion() uint32
 	Mutate() *Index
@@ -2046,18 +2044,6 @@ func (r *indexReadonly) GetCreatedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *indexReadonly) GetLastBuiltAt() TimestampReader {
-	v := (*Index)(r).GetLastBuiltAt()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *indexReadonly) GetLastError() string {
-	return (*Index)(r).GetLastError()
 }
 
 func (r *indexReadonly) GetLedger() string {
@@ -2185,78 +2171,6 @@ func (l idempotencyListReadonly) Range(yield func(int, IdempotencyReader) bool) 
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewIdempotencyListReader(s []*Idempotency) IdempotencyListReader {
 	return idempotencyListReadonly(s)
-}
-
-// IdempotencyEntryReader provides read-only access to IdempotencyEntry.
-// Call Mutate() to obtain a mutable clone.
-type IdempotencyEntryReader interface {
-	GetHash() []byte
-	GetLogId() uint64
-	Mutate() *IdempotencyEntry
-}
-
-type idempotencyEntryReadonly IdempotencyEntry
-
-func (r *idempotencyEntryReadonly) GetHash() []byte {
-	return bytes.Clone((*IdempotencyEntry)(r).GetHash())
-}
-
-func (r *idempotencyEntryReadonly) GetLogId() uint64 {
-	return (*IdempotencyEntry)(r).GetLogId()
-}
-
-func (r *idempotencyEntryReadonly) Mutate() *IdempotencyEntry {
-	return (*IdempotencyEntry)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this IdempotencyEntry.
-func (m *IdempotencyEntry) AsReader() IdempotencyEntryReader {
-	if m == nil {
-		return nil
-	}
-	return (*idempotencyEntryReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this IdempotencyEntry.
-func (m *IdempotencyEntry) Mutate() *IdempotencyEntry {
-	return m.CloneVT()
-}
-
-// IdempotencyEntryListReader provides read-only iteration over []*IdempotencyEntry.
-type IdempotencyEntryListReader interface {
-	Len() int
-	Get(i int) IdempotencyEntryReader
-	Range(yield func(int, IdempotencyEntryReader) bool)
-}
-
-type idempotencyEntryListReadonly []*IdempotencyEntry
-
-func (l idempotencyEntryListReadonly) Len() int { return len(l) }
-
-func (l idempotencyEntryListReadonly) Get(i int) IdempotencyEntryReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l idempotencyEntryListReadonly) Range(yield func(int, IdempotencyEntryReader) bool) {
-	for i, v := range l {
-		var r IdempotencyEntryReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewIdempotencyEntryListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewIdempotencyEntryListReader(s []*IdempotencyEntry) IdempotencyEntryListReader {
-	return idempotencyEntryListReadonly(s)
 }
 
 // LogReader provides read-only access to Log.
