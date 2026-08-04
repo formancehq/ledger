@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=lookup.go -destination=lookup_generated_test.go -package=indexes_test Lookup,IndexWriter
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source=lookup.go -destination=lookup_generated_test.go -package=indexes_test Lookup,IndexWriter
 
 // Lookup is implemented by anything that can serve a point lookup on the
 // bucket-scoped index registry. The FSM hot path passes Scope.Indexes()

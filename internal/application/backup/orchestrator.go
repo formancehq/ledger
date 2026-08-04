@@ -45,7 +45,7 @@ import (
 // background context covers both gaps with a single budget.
 const TerminalProposeTimeout = 30 * time.Second
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=orchestrator.go -destination=orchestrator_generated_test.go -package=backup
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source=orchestrator.go -destination=orchestrator_generated_test.go -package=backup
 
 // Proposer is the high-level proposal API the orchestrator depends on.
 // Implementations route the proposal through proposeTechnical, which

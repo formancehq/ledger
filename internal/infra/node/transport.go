@@ -26,7 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source transport.go -destination transport_generated_test.go -typed -package node . Transport
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source transport.go -destination transport_generated_test.go -typed -package node . Transport
 type Transport interface {
 	Unreachable() <-chan uint64
 	RecvHighPriority() <-chan []*raftpb.Message

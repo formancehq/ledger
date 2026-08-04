@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source emitter.go -destination emitter_generated_test.go -typed -package events . Proposer
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source emitter.go -destination emitter_generated_test.go -typed -package events . Proposer
 
 // Proposer proposes commands to the Raft cluster.
 type Proposer interface {

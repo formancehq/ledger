@@ -30,7 +30,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-//go:generate mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination notifier_generated_test.go -typed -package state . Notifier
+//go:generate go tool mockgen -write_source_comment=false -write_package_comment=false -source machine.go -destination notifier_generated_test.go -typed -package state . Notifier
 
 // Notifier is notified by the FSM when logs are committed or config changes.
 // Used by the events Manager and mirror Manager.

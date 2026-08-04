@@ -32,7 +32,7 @@ type PruneStats struct {
 	SealedFullyAppliedRemaining int
 }
 
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -typed -package spool . Spool
+//go:generate go tool mockgen -typed -write_source_comment=false -write_package_comment=false -source spool.go -destination spool_generated_test.go -typed -package spool . Spool
 type Spool interface {
 	AppendCommittedEntries(ctx context.Context, entries ...*raftpb.Entry) error
 	End() (*Position, error)
