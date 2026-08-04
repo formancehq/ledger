@@ -2549,6 +2549,20 @@ func (c *Checker) verifyAuditHashChain(
 			// Fold signing orders from this successful entry. Items at or below the
 			// archive boundary were already folded from cold storage; re-applying a
 			// register there would resurrect a key a later revoke removed.
+			//
+			// This walk starts above the last archived AUDIT sequence, so an item
+			// whose LOG sequence still sits at or below archiveEndSeq is the legacy
+			// case described above: a pre-f9ee1e829 per-order REFERENCE item
+			// pointing back at an earlier entry's log. Most double-applies would be
+			// harmless — register is an upsert and revoke a delete, both idempotent
+			// — but not all: archived register(K), archived revoke(K), then a live
+			// reference item pointing at register(K) would put K back in the
+			// expected set and report a false SIGNING_KEY_MISMATCH against a
+			// healthy store. Hence the skip rather than relying on idempotence.
+			//
+			// Not covered by a dedicated test: reaching it needs an upgraded store
+			// with archived chapters AND a reference item straddling the boundary.
+			// Keep the skip; do not "simplify" it away on the idempotence argument.
 			for _, item := range items {
 				if item.GetLogSequence() == 0 || item.GetLogSequence() <= signing.archiveEndSeq {
 					continue
