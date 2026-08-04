@@ -660,20 +660,24 @@ Trying to keep existing Pebble data and upgrade in-place is **unsafe**:
 
 Mixed-binary rolling upgrades are **not supported** across this change. Stop all nodes before deploying the new binary.
 
-### Upgrading across EN-1379 (coverage-miss reclassification)
+### Upgrading across an FSM error-identity change
 
-EN-1379 changes how the FSM labels one failure class. A preload coverage miss used to be flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED`; it now surfaces under its own `ERROR_REASON_COVERAGE_MISS` with the identifying context (`attribute`, `canonicalHex`, `idHex`, `raftIndex`) intact.
+`buildAuditFailurePayload` folds a failure's reason, its message and every sorted context key *and value* into the audit hash pre-image. So **any** change to how the FSM identifies an error — its reason, its message text, or its metadata keys and values — makes an old binary and a new binary compute different `AuditEntry.Hash` values for one and the same Raft entry. `HashVersion` identifies the hash *algorithm* only and carries no notion of failure-projection semantics, so nothing lets a node recognise an entry written under an older classification.
 
-That relabelling is **not hash-neutral**. `buildAuditFailurePayload` folds the failure reason, its message and every sorted context key *and value* into the audit hash pre-image, so for one and the same Raft entry an old binary and a new binary compute different `AuditEntry.Hash` values. `HashVersion` identifies the hash *algorithm* only and carries no notion of failure-projection semantics, so nothing lets a node recognise an entry written under the old classification.
+This is a standing rule rather than a per-change note. Whenever a release changes an FSM-emitted error's identity:
 
-Mixed-binary rolling upgrades are **not supported** across this change. Restart every node onto the new binary; a coverage miss applied while the cluster straddles the two builds diverges the audit chain at that index, and `ledgerctl check` then reports `HASH_MISMATCH` on whichever node disagrees with the persisted chain.
+- **Mixed-binary rolling upgrades are not supported across that change.** Restart every node onto the new binary. Note that the Kubernetes operator performs a *rolling* update by default (a pod-template spec-hash annotation drives it), so this constraint has to be applied deliberately — it is not the default behaviour. A failure of the affected class applied while the cluster straddles two builds diverges the audit chain at that index, and `ledgerctl check` then reports `HASH_MISMATCH` on whichever node disagrees with the persisted chain.
+- **No data wipe is required**, unlike the pre-#400 upgrade above. No persisted key layout or value encoding changes, `storage-schema-version` is unaffected, and existing entries stay verifiable byte-for-byte. The exposure is confined to entries written *inside* the mixed-binary window, and only to the affected failure class.
 
-Unlike the pre-#400 upgrade above, **no data wipe is required**:
+Changes in this release line that fall under the rule:
 
-- No persisted key layout or value encoding changed, so `storage-schema-version` is unaffected and existing entries stay verifiable byte-for-byte.
-- The exposure is confined to entries written *inside* the mixed-binary window, and only to this one failure class. A coverage miss is itself an admission-contract violation that should never fire (invariant #7), so in a healthy cluster the window is empty.
+| Change | What shifts in the hash pre-image | Exposure |
+|--------|-----------------------------------|----------|
+| EN-1558 (`e43016439`) | `marshalOrdersForAudit` hashes business-intent bytes instead of the whole order | every order |
+| EN-1536 (`8b24ee535`) | `buildAuditFailure` resolves the outermost `Describable` instead of `errors.As`-unwrapping, and takes `Message` from `d.Error()` — reason, message and context can all shift for a wrapped failure | any wrapped FSM failure |
+| EN-1379 | a preload coverage miss stops being flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED` and surfaces as `ERROR_REASON_COVERAGE_MISS`, with `attribute`, `canonicalHex`, `idHex`, `raftIndex` intact | coverage misses only — themselves admission-contract violations that must never fire (invariant #7), so in a healthy cluster the window is empty |
 
-The hazard generalises: **any** change to an FSM-emitted error's reason, message or metadata is observable in the hash chain, and should carry an upgrade note like this one. Making it structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes — a deliberate design change that EN-1379 does not take on. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
+Making this structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes. That is a deliberate design change, tracked as EN-1661; until it lands, the rule above is the mitigation. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
 
 ### Audit hash keying — threat model
 
