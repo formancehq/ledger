@@ -127,6 +127,8 @@ Output includes key ID, public key (hex), and parent key ID. Root keys (bootstra
 
 The first `RegisterSigningKey` can be **unsigned** — this is the bootstrap path. Once at least one key is registered, all key management operations must be signed by an existing key.
 
+The bootstrap path opens only on a cluster that has genuinely never registered a key. It stays **closed** when the store holds signing-key rows that failed to decode, even though skipping them can leave the in-memory key store empty. Boot deliberately survives an undecodable row — logging it, and letting `CheckStore` report it as `SIGNING_KEY_MISMATCH` — rather than crash-looping the replica, so "no usable keys" no longer implies "fresh cluster". Reopening the bootstrap path there would let whoever corrupted the rows register their own key unsigned, and because that registration takes the normal path it would be **audited**: the checker would see a legitimately chain-bound key and flag only the corrupt row it replaced. A cluster in that state therefore refuses all signing management until an operator restores the rows (from a backup, or by rebuilding the projection from the audit log).
+
 ```bash
 # Step 1: Bootstrap — register the first key (no --signing-key needed)
 ledgerctl signing register-key --key-id admin --public-key-file /path/to/pubkey.hex

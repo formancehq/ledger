@@ -56,4 +56,12 @@ func TestRecoverState_SurvivesMalformedSigningKeyRow(t *testing.T) {
 		"the decodable keys must still load after a malformed row is skipped")
 	require.Nil(t, machine.keyStore.GetPublicKey("truncated-key"),
 		"a malformed row must be dropped whole, never half-loaded")
+
+	// The skip must be recorded on the key store, not only logged. With EVERY row
+	// corrupt the store would otherwise look identical to a fresh cluster, and
+	// admission opens the unsigned RegisterSigningKey bootstrap exception on
+	// exactly that condition — see
+	// TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows.
+	require.True(t, machine.keyStore.HasUndecodableRows(),
+		"recovery must mark the key store when it skips an undecodable row")
 }

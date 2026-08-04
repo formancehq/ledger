@@ -151,6 +151,16 @@ func (r *Recovery) RecoverState() error {
 				m.KeyID, m.Key, m.ValueLength, m.Reason)
 		}
 
+		// Recorded on the key store, not just logged: if EVERY row was malformed
+		// the store ends up with no usable key, which is indistinguishable from a
+		// fresh cluster by HasKeys alone — and admission opens the unsigned
+		// RegisterSigningKey bootstrap exception on exactly that condition. Whoever
+		// corrupted the rows could then register their own key unsigned and, because
+		// that registration goes through the normal path, have it AUDITED: the
+		// checker would see a legitimately chain-bound key and flag only the corrupt
+		// row it replaced. Marking the store keeps the gate shut.
+		r.apply.keyStore.MarkUndecodableRows(len(malformedSigningKeys))
+
 		for keyID, entry := range signingKeys {
 			r.apply.keyStore.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
 		}
