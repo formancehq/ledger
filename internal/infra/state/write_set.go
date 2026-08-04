@@ -1265,7 +1265,7 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 			// zero-balance assertion below would run on an unread base and
 			// mis-decide the proposal. Surface it loudly rather than
 			// silently treating the base as absent (invariant #7).
-			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "reading transient base volume", Cause: baseErr}})
+			storageFaults = append(storageFaults, storageFault{key, domain.StoreFailure("reading transient base volume", baseErr)})
 
 			continue
 		}
