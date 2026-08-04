@@ -1,7 +1,9 @@
 package admission
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -332,7 +334,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "register_signing_key",
 			req: &servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{
-				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{KeyId: "k1", PublicKey: []byte("pk")},
+				RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{KeyId: "k1", PublicKey: bytes.Repeat([]byte{0x11}, ed25519.PublicKeySize)},
 			}},
 			expect: expect{
 				kind: wrapSystem,
