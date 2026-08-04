@@ -1,0 +1,629 @@
+package check
+
+import (
+	"crypto/ed25519"
+	"encoding/hex"
+	"fmt"
+	"slices"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+)
+
+// signingTestKey returns a deterministic public key of the right length, filled
+// with a single distinguishable byte so a tampered row is obvious in a failure
+// message and so the "never render key bytes" assertions have something
+// unambiguous to look for.
+func signingTestKey(seed byte) []byte {
+	key := make([]byte, ed25519.PublicKeySize)
+	for i := range key {
+		key[i] = seed
+	}
+
+	return key
+}
+
+// writeSigningKey persists one SubGlobSigningKey row through the same helper the
+// FSM commit path uses, so the row layout under test is the production one.
+func writeSigningKey(t *testing.T, store *dal.Store, keyID string, publicKey []byte, parentKeyID string) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveSigningKey(batch, keyID, publicKey, parentKeyID))
+	require.NoError(t, batch.Commit())
+}
+
+// writeRawSigningKeyRow plants a SubGlobSigningKey row verbatim, bypassing
+// SaveSigningKey. Needed for the truncated-value case: SaveSigningKey always
+// writes at least a full public key, so a short row can only be produced by
+// direct disk access — which is exactly the tampering being modelled.
+func writeRawSigningKeyRow(t *testing.T, store *dal.Store, keyID string, value []byte) {
+	t.Helper()
+
+	key := append([]byte{dal.ZoneGlobal, dal.SubGlobSigningKey}, keyID...)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes(key, value))
+	require.NoError(t, batch.Commit())
+}
+
+// writeSigningConfig persists the require-signatures flag the way the FSM does.
+func writeSigningConfig(t *testing.T, store *dal.Store, requireSignatures bool) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveSigningConfig(batch, requireSignatures))
+	require.NoError(t, batch.Commit())
+}
+
+// openSigningReader pins the snapshot the comparison reads.
+//
+// It MUST be called after every fixture write. Store.NewReadHandle is backed by
+// a real Pebble snapshot, so a handle opened before the writes sees an empty
+// store and every expected row reads as missing — a fixture bug that looks
+// exactly like a compare bug.
+func openSigningReader(t *testing.T, store *dal.Store) dal.PebbleReader {
+	t.Helper()
+
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = handle.Close() })
+
+	return handle
+}
+
+// collectSigningErrors runs the comparison and returns the errors it emitted, in
+// emission order. Every event a signing finding produces is an error event, so a
+// non-error event is a bug rather than something to filter out.
+func collectSigningErrors(t *testing.T, verifier *signingVerifier, reader dal.PebbleReader) []*servicepb.CheckStoreError {
+	t.Helper()
+
+	var got []*servicepb.CheckStoreError
+
+	require.NoError(t, verifier.compare(reader, func(event *servicepb.CheckStoreEvent) {
+		errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error)
+		require.True(t, ok, "signing findings must be error events")
+
+		got = append(got, errEvent.Error)
+	}))
+
+	return got
+}
+
+func registerSigningKeyOrder(keyID string, publicKey []byte, parentKeyID string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+					RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+						KeyId:       keyID,
+						PublicKey:   publicKey,
+						ParentKeyId: parentKeyID,
+					},
+				},
+			},
+		},
+	}
+}
+
+func revokeSigningKeyOrder(keyID string, cascade bool) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{
+					RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
+						KeyId:   keyID,
+						Cascade: cascade,
+					},
+				},
+			},
+		},
+	}
+}
+
+func setSigningConfigOrder(requireSignatures bool) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_SystemScoped{
+			SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{
+					SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
+						RequireSignatures: requireSignatures,
+					},
+				},
+			},
+		},
+	}
+}
+
+// foldSigningOrders builds a verifier over the given orders. coldComplete is set
+// so the fold-semantics tests are not entangled with the incomplete-coverage
+// finding, which every zero-value verifier reports by design.
+func foldSigningOrders(orders ...*raftcmdpb.Order) *signingVerifier {
+	verifier := newSigningVerifier()
+	verifier.coldComplete = true
+
+	for _, order := range orders {
+		verifier.applyOrder(order)
+	}
+
+	return verifier
+}
+
+// TestSigningVerifier_ApplyOrder pins the fold semantics against
+// processing.processRegisterSigningKey / processRevokeSigningKey /
+// processSetSigningConfig — the FSM handlers this expected-state model
+// re-derives.
+func TestSigningVerifier_ApplyOrder(t *testing.T) {
+	t.Parallel()
+
+	var (
+		rootKey        = signingTestKey(0x01)
+		childKey       = signingTestKey(0x02)
+		grandchildKey  = signingTestKey(0x03)
+		siblingKey     = signingTestKey(0x04)
+		replacementKey = signingTestKey(0x05)
+	)
+
+	cases := []struct {
+		name                  string
+		orders                []*raftcmdpb.Order
+		wantKeys              map[string]signingKeyExpectation
+		wantRequireSignatures bool
+	}{
+		{
+			name: "register root and child",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"root":  {publicKey: rootKey},
+				"child": {publicKey: childKey, parentKeyID: "root"},
+			},
+		},
+		{
+			// The FSM rejects no duplicate key ID, so a second registration
+			// legitimately replaces both the material and the parent link.
+			name: "re-registration overwrites material and parent",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+				registerSigningKeyOrder("child", replacementKey, ""),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"root":  {publicKey: rootKey},
+				"child": {publicKey: replacementKey},
+			},
+		},
+		{
+			// Without cascade the descendants survive with a dangling parent
+			// link, exactly as the FSM leaves them.
+			name: "non-cascade revoke removes only the target",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+				registerSigningKeyOrder("grandchild", grandchildKey, "child"),
+				revokeSigningKeyOrder("child", false),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"root":       {publicKey: rootKey},
+				"grandchild": {publicKey: grandchildKey, parentKeyID: "child"},
+			},
+		},
+		{
+			name: "cascade revoke removes the whole subtree",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+				registerSigningKeyOrder("grandchild", grandchildKey, "child"),
+				registerSigningKeyOrder("sibling", siblingKey, ""),
+				revokeSigningKeyOrder("root", true),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"sibling": {publicKey: siblingKey},
+			},
+		},
+		{
+			name: "config toggles both ways",
+			orders: []*raftcmdpb.Order{
+				setSigningConfigOrder(true),
+				setSigningConfigOrder(false),
+				setSigningConfigOrder(true),
+			},
+			wantKeys:              map[string]signingKeyExpectation{},
+			wantRequireSignatures: true,
+		},
+		{
+			name: "revoking an unknown key is a no-op",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				revokeSigningKeyOrder("ghost", true),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"root": {publicKey: rootKey},
+			},
+		},
+		{
+			name: "orders that are not system-scoped signing orders are ignored",
+			orders: []*raftcmdpb.Order{
+				{
+					Type: &raftcmdpb.Order_LedgerScoped{
+						LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+							Ledger: "ledger-a",
+							Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+								CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+							},
+						},
+					},
+				},
+				{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{}}},
+				{},
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			wantKeys: map[string]signingKeyExpectation{
+				"root": {publicKey: rootKey},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			verifier := foldSigningOrders(testCase.orders...)
+
+			require.Equal(t, testCase.wantKeys, verifier.keys)
+			require.Equal(t, testCase.wantRequireSignatures, verifier.requireSignatures)
+		})
+	}
+}
+
+// TestSigningVerifier_ApplyOrderCopiesPublicKey pins that the fold does not
+// alias the order's byte slice: an order may be reused or mutated after apply,
+// and an aliased expectation would silently follow that mutation and compare a
+// tampered row against itself.
+func TestSigningVerifier_ApplyOrderCopiesPublicKey(t *testing.T) {
+	t.Parallel()
+
+	publicKey := signingTestKey(0x01)
+	order := registerSigningKeyOrder("root", publicKey, "")
+
+	verifier := foldSigningOrders(order)
+
+	publicKey[0] = 0xFF
+
+	require.Equal(t, signingTestKey(0x01), verifier.keys["root"].publicKey)
+}
+
+// TestSigningVerifier_CascadeIsOrderIndependent is the regression guard for the
+// decision NOT to reproduce the FSM's child-traversal ordering: the reachable
+// descendant set is fully determined by the parent relation, so the same
+// hierarchy built in opposite registration orders must fold identically.
+func TestSigningVerifier_CascadeIsOrderIndependent(t *testing.T) {
+	t.Parallel()
+
+	registrations := []*raftcmdpb.Order{
+		registerSigningKeyOrder("root", signingTestKey(0x01), ""),
+		registerSigningKeyOrder("branch-a", signingTestKey(0x02), "root"),
+		registerSigningKeyOrder("branch-b", signingTestKey(0x03), "root"),
+		registerSigningKeyOrder("leaf-a", signingTestKey(0x04), "branch-a"),
+		registerSigningKeyOrder("leaf-b", signingTestKey(0x05), "branch-b"),
+	}
+
+	revokeRoot := revokeSigningKeyOrder("root", true)
+
+	reversed := slices.Clone(registrations)
+	slices.Reverse(reversed)
+
+	// Both folds append onto a fresh clone, so neither can grow into the other's
+	// backing array and reorder the fixture under the second run.
+	forward := foldSigningOrders(append(slices.Clone(registrations), revokeRoot)...)
+	backward := foldSigningOrders(append(reversed, revokeRoot)...)
+
+	require.Empty(t, forward.keys)
+	require.Empty(t, backward.keys)
+	require.Equal(t, forward.keys, backward.keys)
+}
+
+// TestSigningVerifier_Compare walks the tamper classes the pass exists to
+// detect. Each case seeds the audit-derived expectation by folding orders (never
+// by poking the map, so the fold stays part of what is verified), then writes a
+// possibly-divergent store, then compares.
+func TestSigningVerifier_Compare(t *testing.T) {
+	t.Parallel()
+
+	var (
+		rootKey     = signingTestKey(0x01)
+		childKey    = signingTestKey(0x02)
+		tamperedKey = signingTestKey(0xAA)
+	)
+
+	cases := []struct {
+		name string
+		// orders are the chain-bound orders the expectation is folded from.
+		orders []*raftcmdpb.Order
+		// coldIncomplete leaves the verifier's cold-coverage flag unset, which is
+		// the fail-closed default a zero-value verifier carries.
+		coldIncomplete bool
+		// write lays down the persisted projection under judgement.
+		write func(t *testing.T, store *dal.Store)
+		// wantTypes is the exact emitted error-type sequence.
+		wantTypes []servicepb.CheckStoreErrorType
+		// wantSubstrings[i] must all appear in the i-th emitted message.
+		wantSubstrings [][]string
+		// wantAbsent must appear in no emitted message at all.
+		wantAbsent []string
+	}{
+		{
+			name: "clean store emits nothing",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "root", rootKey, "")
+				writeSigningKey(t, store, "child", childKey, "root")
+			},
+		},
+		{
+			// An absent config row decodes as false, which is also the initial
+			// expected value, so a store with no config row is clean.
+			name:  "absent config row matches the initial expectation",
+			write: func(_ *testing.T, _ *dal.Store) {},
+		},
+		{
+			name: "injected key with no audited registration",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "root", rootKey, "")
+				writeSigningKey(t, store, "ghost", tamperedKey, "root")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"ghost", "no audited registration"}},
+		},
+		{
+			name: "audited key missing from the store",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "root", rootKey, "")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"child", "missing from the store"}},
+		},
+		{
+			name: "public-key bytes replaced",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "root", tamperedKey, "")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"root", "public-key bytes"}},
+			// The key ID plus the diverging field name is all an operator needs;
+			// the material itself never belongs in an event message.
+			wantAbsent: []string{
+				hex.EncodeToString(rootKey),
+				hex.EncodeToString(tamperedKey),
+				fmt.Sprintf("%v", rootKey),
+				fmt.Sprintf("%v", tamperedKey),
+			},
+		},
+		{
+			name: "parent re-pointed",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+				registerSigningKeyOrder("child", childKey, "root"),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "root", rootKey, "")
+				writeSigningKey(t, store, "child", childKey, "attacker")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"child", "parent", "attacker", "root"}},
+		},
+		{
+			name:   "config byte flipped on",
+			orders: []*raftcmdpb.Order{setSigningConfigOrder(false)},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningConfig(t, store, true)
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"require-signatures", "true", "false"}},
+		},
+		{
+			name:   "config byte flipped off",
+			orders: []*raftcmdpb.Order{setSigningConfigOrder(true)},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningConfig(t, store, false)
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH,
+			},
+			wantSubstrings: [][]string{{"require-signatures", "false", "true"}},
+		},
+		{
+			// A truncated row is two symptoms of one corruption: the row does not
+			// decode, and the reader skips it so the audited key also reads as
+			// absent. Both are reported, undecodable first.
+			name: "row truncated below a full public key",
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeRawSigningKeyRow(t, store, "root", []byte{0x01, 0x02, 0x03})
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+			},
+			wantSubstrings: [][]string{
+				{"root", "undecodable", "shorter than an Ed25519 public key", "3"},
+				{"root", "missing from the store"},
+			},
+		},
+		{
+			name:           "incomplete cold coverage is reported on an otherwise clean store",
+			coldIncomplete: true,
+			write:          func(_ *testing.T, _ *dal.Store) {},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{{"could not be verified over the whole history"}},
+		},
+		{
+			// Ordered last, so the divergences above it read as a partial result
+			// rather than a clean comparison.
+			name:           "incomplete cold coverage is emitted after the divergences it frames",
+			coldIncomplete: true,
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "ghost", tamperedKey, "")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"root", "missing from the store"},
+				{"ghost", "no audited registration"},
+				{"could not be verified over the whole history"},
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			verifier := newSigningVerifier()
+			verifier.coldComplete = !testCase.coldIncomplete
+
+			for _, order := range testCase.orders {
+				verifier.applyOrder(order)
+			}
+
+			store := createTestStore(t)
+			testCase.write(t, store)
+
+			got := collectSigningErrors(t, verifier, openSigningReader(t, store))
+
+			gotTypes := make([]servicepb.CheckStoreErrorType, 0, len(got))
+			for _, event := range got {
+				gotTypes = append(gotTypes, event.GetErrorType())
+			}
+
+			require.Equal(t, testCase.wantTypes, nonEmptyErrorTypes(gotTypes), "emitted messages: %s", renderSigningMessages(got))
+			require.Len(t, testCase.wantSubstrings, len(got), "one substring set per emitted event")
+
+			for i, substrings := range testCase.wantSubstrings {
+				for _, substring := range substrings {
+					require.Contains(t, got[i].GetMessage(), substring)
+				}
+			}
+
+			for _, event := range got {
+				for _, absent := range testCase.wantAbsent {
+					require.NotContains(t, event.GetMessage(), absent)
+				}
+			}
+		})
+	}
+}
+
+// nonEmptyErrorTypes normalizes an empty slice to nil so a case that expects no
+// events can leave wantTypes unset.
+func nonEmptyErrorTypes(types []servicepb.CheckStoreErrorType) []servicepb.CheckStoreErrorType {
+	if len(types) == 0 {
+		return nil
+	}
+
+	return types
+}
+
+func renderSigningMessages(events []*servicepb.CheckStoreError) string {
+	messages := make([]string, 0, len(events))
+	for _, event := range events {
+		messages = append(messages, event.GetMessage())
+	}
+
+	return fmt.Sprintf("%q", messages)
+}
+
+// TestSigningVerifier_CompareEmissionIsDeterministic is the regression guard for
+// the map-iteration nondeterminism: both sides of the comparison are Go maps, so
+// without the sort-then-emit step two runs over the same store would produce
+// different event streams and Check() output would not be reproducible.
+func TestSigningVerifier_CompareEmissionIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	verifier := newSigningVerifier()
+	for _, order := range []*raftcmdpb.Order{
+		registerSigningKeyOrder("root", signingTestKey(0x01), ""),
+		registerSigningKeyOrder("missing-a", signingTestKey(0x02), "root"),
+		registerSigningKeyOrder("missing-b", signingTestKey(0x03), "root"),
+		registerSigningKeyOrder("missing-c", signingTestKey(0x04), "root"),
+		registerSigningKeyOrder("wrong-material", signingTestKey(0x05), "root"),
+		registerSigningKeyOrder("wrong-parent", signingTestKey(0x06), "root"),
+		setSigningConfigOrder(true),
+	} {
+		verifier.applyOrder(order)
+	}
+
+	store := createTestStore(t)
+	writeSigningKey(t, store, "root", signingTestKey(0x01), "")
+	writeSigningKey(t, store, "wrong-material", signingTestKey(0xAA), "root")
+	writeSigningKey(t, store, "wrong-parent", signingTestKey(0x06), "attacker")
+	writeSigningKey(t, store, "ghost-a", signingTestKey(0xAB), "")
+	writeSigningKey(t, store, "ghost-b", signingTestKey(0xAC), "")
+	writeRawSigningKeyRow(t, store, "truncated", []byte{0x01})
+	writeSigningConfig(t, store, false)
+
+	reader := openSigningReader(t, store)
+
+	const runs = 5
+
+	var reference []string
+
+	for run := range runs {
+		got := collectSigningErrors(t, verifier, reader)
+
+		rendered := make([]string, 0, len(got))
+		for _, event := range got {
+			rendered = append(rendered, fmt.Sprintf("%d|%s", event.GetErrorType(), event.GetMessage()))
+		}
+
+		require.NotEmpty(t, rendered, "the fixture must produce divergences for this to prove anything")
+
+		if run == 0 {
+			reference = rendered
+
+			continue
+		}
+
+		require.Equal(t, reference, rendered, "run %d diverged from the first run", run)
+	}
+}
