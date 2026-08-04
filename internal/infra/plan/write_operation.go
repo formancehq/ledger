@@ -11,9 +11,10 @@ package plan
 // without wiring Target (test scenarios), and an operation with no
 // reads may still want a (zero) bitset assigned to pin "I read
 // nothing" explicitly. In practice the common cases are either both
-// filled (admission orders, mirror cursor) or both nil (cluster
-// config, idempotency eviction, events sink — TUs whose handlers
-// don't read cache state).
+// filled (admission orders, mirror cursor) or Coverage nil with Target
+// still wired (cluster config, idempotency eviction, events sink,
+// backup — TUs whose handlers don't read cache state but still get an
+// explicit zero bitset). Both nil is the test-only shape.
 type WriteOperation struct {
 	// Coverage declares which cache keys this operation will read at FSM
 	// apply time. nil or empty Coverage means "no reads".
