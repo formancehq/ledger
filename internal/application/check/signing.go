@@ -3,9 +3,17 @@ package check
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/pebble/v2"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -78,6 +86,13 @@ type signingVerifier struct {
 	// expectation. It is fail-closed: a zero-value verifier reports incomplete
 	// coverage rather than presenting a live-range-only replay as clean.
 	coldComplete bool
+	// archiveEndSeq is the highest log sequence covered by the archived chapters
+	// foldArchived walked — the boundary above which the live range takes over.
+	// The live fold uses it to skip items it already folded from cold storage:
+	// the archived audit items are purged from the live store but the surviving
+	// AuditItem rows can still reach below the boundary, and re-applying a
+	// register there would resurrect a key a later revoke removed.
+	archiveEndSeq uint64
 }
 
 func newSigningVerifier() *signingVerifier {
@@ -165,6 +180,145 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 	}
 
 	return descendants
+}
+
+// foldArchived replays the signing orders of every ARCHIVED chapter into the
+// expectation, oldest chapter first, and records whether that coverage is
+// complete.
+//
+// Signing state has no TTL: a key registered before an archive boundary stays
+// authoritative forever, so unlike the idempotency window there is no cutoff to
+// stop the walk early — every archived chapter must be read. The ordering is the
+// other difference: signing state accumulates forward, so a chapter must be
+// folded before any later chapter whose revoke may target one of its keys, where
+// reDeriveArchivedIdempotency walks newest-first because each freeze is
+// independent.
+//
+// Seeding from the baseline checkpoint is not an option: it is a verbatim copy of
+// the projection under test (see signingVerifier), so cold storage is the only
+// audit-derived source for pre-boundary keys.
+//
+// Like reDeriveArchivedIdempotency, archived entries are trusted as read and are
+// NOT re-verified against the hash chain: cold storage sits outside the
+// follower-disk threat model this pass targets. Widening the model to cover
+// cold-storage tampering would mean re-walking the chain over the whole archived
+// history.
+//
+// Every failure mode — no cold reader, a failed read, an undecodable order — is a
+// coverage gap, not a checker failure: coldComplete stays false, compare reports
+// SIGNING_VERIFICATION_INCOMPLETE and Check() carries on with the remaining
+// passes. The error return is therefore always nil today; it is kept so a future
+// caller-fatal condition does not have to churn the call site.
+func (v *signingVerifier) foldArchived(
+	ctx context.Context,
+	chapters []*commonpb.Chapter,
+	coldReader *coldstorage.ColdReader,
+	logger logging.Logger,
+) error {
+	archived := make([]*commonpb.Chapter, 0, len(chapters))
+
+	for _, ch := range chapters {
+		if ch.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVED {
+			continue
+		}
+
+		archived = append(archived, ch)
+
+		// CloseSequence is the last LOG sequence of the chapter — the boundary the
+		// live fold compares AuditItem.LogSequence against. Not to be confused
+		// with CloseAuditSequence (the last AUDIT sequence), which orders the walk
+		// below; the two are different fields and not interchangeable.
+		if ch.GetCloseSequence() > v.archiveEndSeq {
+			v.archiveEndSeq = ch.GetCloseSequence()
+		}
+	}
+
+	// Nothing archived: the live audit range already spans the whole history, so
+	// the expectation is complete without any cold read.
+	if len(archived) == 0 {
+		v.coldComplete = true
+
+		return nil
+	}
+
+	// Restore and CLI paths legitimately run without cold storage. Reporting the
+	// gap is the correct outcome there — not an error.
+	if coldReader == nil {
+		logger.Info("archived chapters exist but cold storage is unavailable; signing keys registered before the archive boundary cannot be verified")
+
+		return nil
+	}
+
+	// Oldest first: a revoke in a later chapter must see the keys the earlier
+	// chapters registered, or it would delete nothing and leave the key expected.
+	slices.SortFunc(archived, func(a, b *commonpb.Chapter) int {
+		return cmp.Compare(a.GetCloseAuditSequence(), b.GetCloseAuditSequence())
+	})
+
+	for _, ch := range archived {
+		coldPebble, err := coldReader.GetReader(ctx, ch.GetId())
+		if err != nil {
+			logger.Infof("reading archived chapter %d for signing verification failed: %v", ch.GetId(), err)
+
+			return nil
+		}
+
+		if err := v.foldChapter(coldPebble); err != nil {
+			logger.Infof("folding signing orders from archived chapter %d failed: %v", ch.GetId(), err)
+
+			return nil
+		}
+	}
+
+	v.coldComplete = true
+
+	return nil
+}
+
+// foldChapter folds the signing orders of one archived chapter's audit items into
+// the expectation. Any failure is reported to the caller, which downgrades the
+// whole fold to incomplete coverage: a partially folded chapter would carry a
+// register whose revoke was never read.
+func (v *signingVerifier) foldChapter(reader dal.PebbleReader) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdAuditItem + 1},
+	})
+	if err != nil {
+		return fmt.Errorf("creating archived audit item iter: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return fmt.Errorf("reading archived audit item value: %w", err)
+		}
+
+		item := &auditpb.AuditItem{}
+		if err := item.UnmarshalVT(value); err != nil {
+			return fmt.Errorf("unmarshaling archived audit item %x: %w", iter.Key(), err)
+		}
+
+		// Failure-side items carry LogSequence=0 and changed no state, so they must
+		// not contribute to the expected set. Sound because buildAuditItems
+		// (state/audit.go:57-78) sets LogSequence only from a CreatedLog sequence,
+		// failure entries carry no logs, and NextSequenceID starts at 1
+		// (state/fsmstate.go:62) so 0 is never a real log sequence.
+		if item.GetLogSequence() == 0 {
+			continue
+		}
+
+		order := &raftcmdpb.Order{}
+		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+			return fmt.Errorf("decoding order from archived audit item %x: %w", iter.Key(), err)
+		}
+
+		v.applyOrder(order)
+	}
+
+	return iter.Error()
 }
 
 // compare reads both persisted signing projections and reports every divergence

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -9,7 +10,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -604,6 +609,246 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			}
 		})
 	}
+}
+
+// signingChapter builds a chapter fixture with only the fields foldArchived
+// reads. closeSequence is the last LOG sequence and closeAuditSequence the last
+// AUDIT sequence: distinct fields, deliberately given different values here so a
+// swap between them cannot pass unnoticed.
+func signingChapter(id uint64, status commonpb.ChapterStatus, closeSequence, closeAuditSequence uint64) *commonpb.Chapter {
+	return &commonpb.Chapter{
+		Id:                 id,
+		Status:             status,
+		CloseSequence:      closeSequence,
+		CloseAuditSequence: closeAuditSequence,
+	}
+}
+
+// TestSigningVerifier_FoldArchivedCoverage pins the coverage verdict and the
+// archive boundary foldArchived derives from the chapter list alone, with no cold
+// reader: the boundary must come from CloseSequence (the log sequence the live
+// fold compares against), never from CloseAuditSequence, and must be the maximum
+// over the ARCHIVED chapters rather than the last one seen.
+func TestSigningVerifier_FoldArchivedCoverage(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name              string
+		chapters          []*commonpb.Chapter
+		wantColdComplete  bool
+		wantArchiveEndSeq uint64
+	}{
+		{
+			// Nothing archived: the live audit range spans the whole history, so the
+			// expectation is complete without reading cold storage at all.
+			name: "no archived chapters means complete coverage",
+			chapters: []*commonpb.Chapter{
+				signingChapter(1, commonpb.ChapterStatus_CHAPTER_OPEN, 500, 400),
+			},
+			wantColdComplete: true,
+		},
+		{
+			name:             "nil chapter list means complete coverage",
+			chapters:         nil,
+			wantColdComplete: true,
+		},
+		{
+			// Archived history with no cold reader is the restore / CLI case: the
+			// pre-boundary keys are unverifiable, which compare reports as
+			// incomplete rather than clean.
+			name: "one archived chapter without a cold reader is incomplete",
+			chapters: []*commonpb.Chapter{
+				signingChapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 500, 400),
+			},
+			wantColdComplete:  false,
+			wantArchiveEndSeq: 500,
+		},
+		{
+			// The highest boundary wins, not the last one iterated — the list is not
+			// ordered, so a last-seen assignment would leave the live fold re-applying
+			// already-folded registers.
+			name: "the boundary is the max close sequence across archived chapters",
+			chapters: []*commonpb.Chapter{
+				signingChapter(3, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 900, 800),
+				signingChapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 1200, 1100),
+				signingChapter(2, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 700, 600),
+			},
+			wantColdComplete:  false,
+			wantArchiveEndSeq: 1200,
+		},
+		{
+			// A non-archived chapter's logs are still in the live range, so its close
+			// sequence must not raise the boundary — doing so would make the live fold
+			// skip orders nothing else folded.
+			name: "only archived chapters contribute to the boundary",
+			chapters: []*commonpb.Chapter{
+				signingChapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 400, 300),
+				signingChapter(2, commonpb.ChapterStatus_CHAPTER_CLOSED, 800, 700),
+				signingChapter(3, commonpb.ChapterStatus_CHAPTER_ARCHIVING, 900, 850),
+				signingChapter(4, commonpb.ChapterStatus_CHAPTER_OPEN, 1500, 1400),
+			},
+			wantColdComplete:  false,
+			wantArchiveEndSeq: 400,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			verifier := newSigningVerifier()
+
+			require.NoError(t, verifier.foldArchived(context.Background(), testCase.chapters, nil, logging.Testing()))
+
+			require.Equal(t, testCase.wantColdComplete, verifier.coldComplete)
+			require.Equal(t, testCase.wantArchiveEndSeq, verifier.archiveEndSeq)
+			require.Empty(t, verifier.keys, "a fold with no cold reader can register nothing")
+		})
+	}
+}
+
+// signingArchivedSST builds the SST an archived chapter would hold for the given
+// audit items, keyed by (audit sequence, order index) exactly as the live store
+// keys them. logSequence is carried on the item itself, which is what
+// foldChapter's zero-sequence guard reads.
+func signingArchivedSST(t *testing.T, orders map[uint64]*raftcmdpb.Order, logSequences map[uint64]uint64) []byte {
+	t.Helper()
+
+	items := make(map[uint64][]*auditpb.AuditItem, len(orders))
+
+	for auditSeq, order := range orders {
+		serialized, err := order.MarshalVT()
+		require.NoError(t, err)
+
+		items[auditSeq] = []*auditpb.AuditItem{{
+			OrderIndex:      0,
+			SerializedOrder: serialized,
+			LogSequence:     logSequences[auditSeq],
+		}}
+	}
+
+	return buildColdAuditSST(t, nil, items)
+}
+
+// TestSigningVerifier_FoldArchivedReadsColdStorage folds real archived chapters
+// back through a ColdReader. The multi-chapter case is the reason the walk is
+// ordered oldest-first: the revoke lives in the newer chapter and can only remove
+// the key the older chapter registered if that registration was folded first.
+func TestSigningVerifier_FoldArchivedReadsColdStorage(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "signing-cold-bucket"
+
+	t.Run("register order in a single archived chapter", func(t *testing.T) {
+		t.Parallel()
+
+		sst := signingArchivedSST(t,
+			map[uint64]*raftcmdpb.Order{
+				1: registerSigningKeyOrder("archived-root", signingTestKey(0x01), ""),
+				2: setSigningConfigOrder(true),
+			},
+			map[uint64]uint64{1: 10, 2: 11},
+		)
+
+		verifier := newSigningVerifier()
+		coldReader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{7: sst})
+
+		require.NoError(t, verifier.foldArchived(context.Background(),
+			[]*commonpb.Chapter{signingChapter(7, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 20, 2)},
+			coldReader, logging.Testing()))
+
+		require.True(t, verifier.coldComplete)
+		require.Equal(t, uint64(20), verifier.archiveEndSeq)
+		require.Equal(t, map[string]signingKeyExpectation{
+			"archived-root": {publicKey: signingTestKey(0x01)},
+		}, verifier.keys)
+		require.True(t, verifier.requireSignatures)
+	})
+
+	t.Run("a later chapter revokes a key registered by an earlier one", func(t *testing.T) {
+		t.Parallel()
+
+		older := signingArchivedSST(t,
+			map[uint64]*raftcmdpb.Order{
+				1: registerSigningKeyOrder("root", signingTestKey(0x01), ""),
+				2: registerSigningKeyOrder("child", signingTestKey(0x02), "root"),
+			},
+			map[uint64]uint64{1: 10, 2: 11},
+		)
+		newer := signingArchivedSST(t,
+			map[uint64]*raftcmdpb.Order{
+				5: revokeSigningKeyOrder("root", true),
+				6: registerSigningKeyOrder("successor", signingTestKey(0x03), ""),
+			},
+			map[uint64]uint64{5: 30, 6: 31},
+		)
+
+		verifier := newSigningVerifier()
+		coldReader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{3: older, 9: newer})
+
+		// Listed newest-first so a fold that walked the list as given would apply
+		// the revoke before the registration and leave both keys expected.
+		require.NoError(t, verifier.foldArchived(context.Background(),
+			[]*commonpb.Chapter{
+				signingChapter(9, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 40, 6),
+				signingChapter(3, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 20, 2),
+			},
+			coldReader, logging.Testing()))
+
+		require.True(t, verifier.coldComplete)
+		require.Equal(t, uint64(40), verifier.archiveEndSeq)
+		require.Equal(t, map[string]signingKeyExpectation{
+			"successor": {publicKey: signingTestKey(0x03)},
+		}, verifier.keys)
+	})
+
+	t.Run("items with no log sequence are skipped", func(t *testing.T) {
+		t.Parallel()
+
+		// LogSequence 0 marks a failure-side item: it changed no state, so folding
+		// it would manufacture a key the projection legitimately never held.
+		sst := signingArchivedSST(t,
+			map[uint64]*raftcmdpb.Order{
+				1: registerSigningKeyOrder("rejected", signingTestKey(0x0F), ""),
+			},
+			map[uint64]uint64{1: 0},
+		)
+
+		verifier := newSigningVerifier()
+		coldReader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{4: sst})
+
+		require.NoError(t, verifier.foldArchived(context.Background(),
+			[]*commonpb.Chapter{signingChapter(4, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 20, 1)},
+			coldReader, logging.Testing()))
+
+		require.True(t, verifier.coldComplete)
+		require.Empty(t, verifier.keys)
+	})
+
+	t.Run("an unreadable chapter leaves the coverage incomplete", func(t *testing.T) {
+		t.Parallel()
+
+		// The reader holds chapter 4 only, so chapter 8's archive is missing: the
+		// fold must report a gap instead of presenting chapter 4's keys as the whole
+		// truth, and must not fail Check().
+		sst := signingArchivedSST(t,
+			map[uint64]*raftcmdpb.Order{1: registerSigningKeyOrder("root", signingTestKey(0x01), "")},
+			map[uint64]uint64{1: 10},
+		)
+
+		verifier := newSigningVerifier()
+		coldReader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{4: sst})
+
+		require.NoError(t, verifier.foldArchived(context.Background(),
+			[]*commonpb.Chapter{
+				signingChapter(4, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 20, 1),
+				signingChapter(8, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 40, 5),
+			},
+			coldReader, logging.Testing()))
+
+		require.False(t, verifier.coldComplete)
+		require.Equal(t, uint64(40), verifier.archiveEndSeq)
+	})
 }
 
 // nonEmptyErrorTypes normalizes an empty slice to nil so a case that expects no
