@@ -33,7 +33,7 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, okKey.Bytes(), okInfo)
 	require.NoError(t, err)
-	require.NoError(t, SaveLedger(seedBatch, okInfo))
+	require.NoError(t, SaveLedger(seedBatch, okInfo.GetName(), okInfo))
 	require.NoError(t, seedBatch.Commit())
 
 	// ExecutionPlan declares ONLY "ok" — "missed" is intentionally absent so
@@ -109,8 +109,8 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, bKey.Bytes(), bInfo)
 	require.NoError(t, err)
-	require.NoError(t, SaveLedger(seedBatch, aInfo))
-	require.NoError(t, SaveLedger(seedBatch, bInfo))
+	require.NoError(t, SaveLedger(seedBatch, aInfo.GetName(), aInfo))
+	require.NoError(t, SaveLedger(seedBatch, bInfo.GetName(), bInfo))
 	require.NoError(t, seedBatch.Commit())
 
 	// Both ledgers are declared in the ExecutionPlan — under proposal-wide

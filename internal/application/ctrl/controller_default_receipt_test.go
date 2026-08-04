@@ -41,7 +41,7 @@ func seedCreatedTransaction(t *testing.T, store *dal.Store, attrs *attributes.At
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 
 	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: logSeq})
@@ -79,7 +79,7 @@ func seedRevertedTransaction(t *testing.T, store *dal.Store, attrs *attributes.A
 
 	batch := store.OpenWriteSession()
 
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{Name: ledger}))
+	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 
 	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
 	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: logSeq})

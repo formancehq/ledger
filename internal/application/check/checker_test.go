@@ -214,7 +214,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	// Write ledger info
 	for _, info := range e.ledgers {
-		err := state.SaveLedger(batch, info)
+		err := state.SaveLedger(batch, info.GetName(), info)
 		require.NoError(e.t, err)
 		_, err = e.attrs.Ledger.Set(batch, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
 		require.NoError(e.t, err)
@@ -1173,8 +1173,8 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
-	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetName(), log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1669,7 +1669,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
 
@@ -1730,7 +1730,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -2251,7 +2251,7 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 	if len(ledgers) > 0 {
 		batch := store.OpenWriteSession()
 		for _, info := range ledgers {
-			require.NoError(t, state.SaveLedger(batch, info))
+			require.NoError(t, state.SaveLedger(batch, info.GetName(), info))
 		}
 		require.NoError(t, batch.Commit())
 	}

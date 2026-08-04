@@ -657,7 +657,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// SubGlobLedgerInfo (0x03)
 	for _, update := range ledgerUpdates {
-		if err := SaveLedger(batch, update.New); err != nil {
+		// Key off the canonical attribute key, not update.New.GetName(): this
+		// row and the SubAttrLedger attribute/cache row above are flushed from
+		// the same ledgerUpdates slice, so deriving one key from the payload
+		// and the other from the canonical key would let a divergent
+		// LedgerInfo.name split them apart.
+		if err := SaveLedger(batch, string(update.CanonicalKey), update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
 		}
 	}

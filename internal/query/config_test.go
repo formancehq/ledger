@@ -21,7 +21,7 @@ func TestReadLastAppliedIndex(t *testing.T) {
 
 	// Create batch with index 5
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, "test", &commonpb.LedgerInfo{
 		Name: "test",
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, 5))
@@ -34,7 +34,7 @@ func TestReadLastAppliedIndex(t *testing.T) {
 
 	// Create another batch with index 10
 	batch = s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, "test2", &commonpb.LedgerInfo{
 		Name: "test2",
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, 10))

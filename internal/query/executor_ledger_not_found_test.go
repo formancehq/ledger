@@ -40,7 +40,7 @@ func TestExecute_LedgerNotFound(t *testing.T) {
 			name: "soft-deleted ledger",
 			seed: func(t *testing.T, s *dal.Store, ledger string) {
 				batch := s.OpenWriteSession()
-				require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+				require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{
 					Name:      ledger,
 					CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 					DeletedAt: commonpb.NewTimestamp(libtime.Now()),

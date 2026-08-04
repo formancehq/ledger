@@ -29,11 +29,20 @@ func AppendLogs(b *dal.WriteSession, logs []*commonpb.Log) error {
 	return nil
 }
 
-// SaveLedger saves or updates a ledger in the store.
-func SaveLedger(b *dal.WriteSession, info *commonpb.LedgerInfo) error {
+// SaveLedger saves or updates a ledger in the store under the given name.
+//
+// name is passed explicitly rather than read from info.GetName(): the payload's
+// name field is mutable projection data, while the row's key must be the
+// ledger's identity. Deriving the key from the payload lets a divergent
+// LedgerInfo.name split this global row from the attribute/cache row for the
+// same update, which is keyed off the canonical attribute key — and no checker
+// pass would catch it, since they all re-derive the name from the payload.
+// Callers pass the identity they were given: the canonical attribute key on the
+// Merge path, the log-replayed name during a rebuild.
+func SaveLedger(b *dal.WriteSession, name string, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).
-		PutLedgerName(info.GetName())
+		PutLedgerName(name)
 
 	err := b.SetProto(b.KeyBuilder.Consume(), info)
 	if err != nil {

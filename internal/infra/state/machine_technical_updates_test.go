@@ -34,7 +34,9 @@ func TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection(t *testing.T) {
 	seedBatch := dataStore.OpenWriteSession()
 	_, _, err := fsm.Registry.Ledgers.PutWithCache(seedBatch, gen0Byte, envKey.Bytes(), divergentInfo)
 	require.NoError(t, err)
-	require.NoError(t, SaveLedger(seedBatch, divergentInfo))
+	// Global row under the envelope key too: the divergence under test is the
+	// payload's Name field, not a split between the two seeded rows.
+	require.NoError(t, SaveLedger(seedBatch, envelope, divergentInfo))
 	require.NoError(t, seedBatch.Commit())
 
 	envID, _ := attributes.MakeKey(envKey.Bytes())
