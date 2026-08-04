@@ -310,6 +310,35 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
+// modelChartDump renders the committed model's account-type chart as sorted
+// "name=pattern|persistence" entries, for a chart-divergence finding. Acquires c.mu.
+func (c *Checker) modelChartDump(ledger string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ls := c.modelState.Ledger(ledger)
+
+	var parts []string
+	for name, t := range ls.Types().All() {
+		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.Pattern, t.Persistence))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+// renderChart renders a server account-type map the same way as modelChartDump,
+// so the two can be diffed directly in a finding.
+func renderChart(types map[string]*commonpb.AccountType) string {
+	var parts []string
+	for name, t := range types {
+		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.GetPattern(), t.GetPersistence()))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
 // modelTxDump renders the committed model's transaction at id (reference,
 // reverted, metadata), or "<absent>" if the log has no such id. Acquires c.mu.
 func (c *Checker) modelTxDump(ledger string, id uint64) string {

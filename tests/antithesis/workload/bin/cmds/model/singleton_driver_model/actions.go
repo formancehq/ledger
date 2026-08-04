@@ -10,6 +10,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -129,6 +130,15 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receiptFor func(string
 					return oracle.Bulk{Requests: reqs}
 				}
 			}
+		}
+	}
+
+	// An index create/drop is its own single-request bulk (single-ledger, since
+	// the index is ledger-scoped). Emitting it alone keeps the model's index
+	// lifecycle a clean sequence of committed CreateIndex/DropIndex orders.
+	if len(picks) == 1 && rollIndexOp() {
+		if req := generateIndexOp(g, picks[0]); req != nil {
+			return oracle.Bulk{Requests: []*servicepb.Request{req}}
 		}
 	}
 
@@ -910,19 +920,32 @@ func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 		}
 	}
 
-	return generateSetMetadataFieldType(ledger)
+	return generateSetMetadataFieldType(ledger, ls)
 }
 
 // SetMetadataFieldType for an account- or ledger-target key, with a type from the
 // pool. Declared on the same small key pool as metadata values, so writes and
 // reads of those keys coerce.
-func generateSetMetadataFieldType(ledger string) *servicepb.Request {
+//
+// A retype of a key that currently has a metadata index triggers a background
+// index REWRITE (version bump + re-encode) whose serving window the model does
+// not yet track — until it does, the generator skips those keys (nil) rather
+// than emit an outcome the validation cannot pin.
+func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	target := random.RandomChoice(metaTargetPool)
+	key := metaKey()
+
+	canonical := indexes.Canonical(indexes.MetadataID(target, key))
+	if exists, _ := ls.IndexState(canonical); exists {
+		return nil
+	}
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_SetMetadataFieldType{
 			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 				Ledger:     ledger,
-				TargetType: random.RandomChoice(metaTargetPool),
-				Key:        metaKey(),
+				TargetType: target,
+				Key:        key,
 				Type:       random.RandomChoice(metaTypePool),
 			},
 		},

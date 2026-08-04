@@ -116,6 +116,11 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 		log.Printf("restore cycle: drained, firing restore")
 		err := func() error {
 			defer c.resume()
+			// LIFO: demote before workers wake. The restored node rebuilds its
+			// read-store from the log, so its indexes re-enter BUILDING until the
+			// backfill catches up; the model must tolerate a not-ready rejection
+			// again until the poller reconfirms readiness.
+			defer c.demoteAllIndexes()
 			return trigger.Fire(ctx)
 		}()
 		if err != nil {

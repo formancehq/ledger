@@ -135,3 +135,59 @@ func AddTxMetaReq(txID uint64, md map[string]*commonpb.MetadataValue) *servicepb
 		},
 	}
 }
+
+// SetFieldTypeReq declares (target, key) with the given metadata type on
+// ledger "L".
+func SetFieldTypeReq(target commonpb.TargetType, key string, t commonpb.MetadataType) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+				Ledger:     "L",
+				TargetType: target,
+				Key:        key,
+				Type:       t,
+			},
+		},
+	}
+}
+
+// RemoveFieldTypeReq drops the (target, key) declaration on ledger "L".
+func RemoveFieldTypeReq(target commonpb.TargetType, key string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+				Ledger:     "L",
+				TargetType: target,
+				Key:        key,
+			},
+		},
+	}
+}
+
+// CreateIndexReq creates an index on ledger "L".
+func CreateIndexReq(id *commonpb.IndexID) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{Ledger: "L", Id: id},
+		},
+	}
+}
+
+// AddAccountMetaReq writes one metadata value on an account of ledger "L".
+func AddAccountMetaReq(addr, key string, v *commonpb.MetadataValue) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: "L",
+				Action: &servicepb.LedgerAction{
+					Data: &servicepb.LedgerAction_AddMetadata{
+						AddMetadata: &commonpb.SaveMetadataCommand{
+							Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: addr}}},
+							Metadata: map[string]*commonpb.MetadataValue{key: v},
+						},
+					},
+				},
+			},
+		},
+	}
+}

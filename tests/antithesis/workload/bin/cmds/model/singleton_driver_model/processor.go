@@ -131,6 +131,12 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
+
+		// Advance the committed frontier: this bulk is now in modelState, so a
+		// read pinned to this sequence sees at least everything modelState holds.
+		if s := maxLogSequence(head.obs.resp.GetLogs()); s > c.committedSeq {
+			c.committedSeq = s
+		}
 	}
 }
 
@@ -159,4 +165,15 @@ func minLogSequence(logs []*commonpb.Log) uint64 {
 		}
 	}
 	return min
+}
+
+// Largest Log.Sequence in logs, or 0 if none.
+func maxLogSequence(logs []*commonpb.Log) uint64 {
+	var max uint64
+	for _, l := range logs {
+		if s := l.GetSequence(); s > max {
+			max = s
+		}
+	}
+	return max
 }
