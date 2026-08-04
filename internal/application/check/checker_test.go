@@ -3125,9 +3125,17 @@ func TestCheckerLogBijectionArchiveBounding(t *testing.T) {
 		engine.injectStoredLog(3)
 
 		errs, _ := collectCheckEvents(t, engine.store, engine.attrs)
-		require.Equal(t, []uint64{3},
+
+		// Both rows are residue, and log 1 is the interesting one: the fixture
+		// declares the chapter ARCHIVED without running executePurge, so
+		// createLedgerOrder's own log 1 stays in the store while remaining
+		// authenticated by its (equally unpurged) audit entry. It is reported
+		// because the purged-range test precedes the authenticated skip — the
+		// overlap that is unavoidable at a real archive boundary, where the
+		// closing proposal's audit entry outlives the logs it produced.
+		require.Equal(t, []uint64{1, 3},
 			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE),
-			"a log inside an archived chapter's purged range must be reported")
+			"every log inside an archived chapter's purged range must be reported, authenticated or not")
 		require.Empty(t,
 			logSequencesForType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
 			"the purged-range classification is the more specific claim and must win")

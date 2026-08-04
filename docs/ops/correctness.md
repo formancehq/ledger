@@ -49,7 +49,7 @@ Two properties matter operationally:
 | Error Type | Description |
 |------------|-------------|
 | `HASH_MISMATCH` | Audit entry hash does not match the recomputed hash (corruption or tampering) |
-| `SEQUENCE_GAP` | A log the audit chain authenticates is absent from the store |
+| `SEQUENCE_GAP` | A log the audit chain authenticates is absent from the store, and does not fall inside an archived chapter's purged range |
 | `VOLUME_MISMATCH` | Account input or output volume, or a transaction's `post_commit_volumes` snapshot, does not match the audit replay |
 | `METADATA_MISMATCH` | Account or transaction metadata value does not match the audit replay |
 | `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
@@ -68,7 +68,7 @@ Two properties matter operationally:
 | `BOUNDARY_MISMATCH` | A ledger's stored boundaries diverge from the checker's re-derivation |
 | `NUMSCRIPT_MISMATCH` | A numscript content entry or latest-version pointer diverges from the audited saves |
 | `LOG_UNAUDITED` | A stored log row is not authenticated by the audit chain (injection or a forged row) |
-| `LOG_PURGE_RESIDUE` | A stored log row survives inside an archived chapter's purged range (the purge did not run, or the row was reintroduced) |
+| `LOG_PURGE_RESIDUE` | A stored log row survives inside an archived chapter's purged range (the purge did not run, or the row was reintroduced). Reported even when the audit chain still authenticates that sequence, which is the case for the closing proposal's own logs |
 | `AUDIT_STRUCTURE_INVALID` | A verified audit entry is internally inconsistent, or audit items exist with no audit entry |
 
 ### Unverifiable ranges

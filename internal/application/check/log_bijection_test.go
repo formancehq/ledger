@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestLogRangeSetAdd(t *testing.T) {
@@ -779,5 +780,132 @@ func TestCompareLogsBoundsForgedAuthenticatedRange(t *testing.T) {
 			func(*servicepb.CheckStoreEvent) {
 				t.Fatal("no event expected when every authenticated sequence is accounted for")
 			}))
+	})
+}
+
+// TestCompareLogsArchiveBoundaryAsymmetry pins the archive-boundary regression
+// that made every archived chapter report a false SEQUENCE_GAP.
+//
+// processCloseChapter sets close_sequence to the CloseChapter log's own sequence
+// but close_audit_sequence to next-1, so executePurge deletes the closing
+// proposal's logs while the audit entry that produced them survives at
+// close_audit_sequence + 1. That entry is the first one the chain walk verifies,
+// and it authenticates logs up to close_sequence — all purged. Purged sequences
+// must therefore be treated as accounted for in the authenticated->stored
+// direction, while the stored->authenticated direction keeps reporting a
+// surviving row there as LOG_PURGE_RESIDUE.
+func TestCompareLogsArchiveBoundaryAsymmetry(t *testing.T) {
+	t.Parallel()
+
+	// storeWithLogs returns a reader over a store holding exactly these
+	// SubColdLog rows, mirroring what survives an archive purge.
+	storeWithLogs := func(t *testing.T, sequences ...uint64) dal.PebbleReader {
+		t.Helper()
+
+		store := createTestStore(t)
+
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+
+		for _, seq := range sequences {
+			key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(seq).Build()
+			require.NoError(t, batch.SetProto(key, &commonpb.Log{Sequence: seq}))
+		}
+
+		require.NoError(t, batch.Commit())
+
+		reader, err := store.NewReadHandle()
+		require.NoError(t, err)
+
+		t.Cleanup(func() { _ = reader.Close() })
+
+		return reader
+	}
+
+	collect := func(t *testing.T, reader dal.PebbleReader, authenticated, purged *logRangeSet) []*servicepb.CheckStoreError {
+		t.Helper()
+
+		var (
+			unverifiable logRangeSet
+			errs         []*servicepb.CheckStoreError
+		)
+
+		c := &Checker{}
+
+		require.NoError(t, c.compareLogs(reader, authenticated, purged, &unverifiable,
+			func(e *servicepb.CheckStoreEvent) {
+				if err := e.GetError(); err != nil {
+					errs = append(errs, err)
+				}
+			}))
+
+		return errs
+	}
+
+	t.Run("the closing proposal's purged logs are not reported as gaps", func(t *testing.T) {
+		t.Parallel()
+
+		// Chapter [1,6] archived: logs 1-6 gone, but the CloseChapter entry at
+		// close_audit_sequence+1 survives and authenticates up to log 6.
+		var authenticated, purged logRangeSet
+
+		authenticated.add(1, 6)
+		purged.add(1, 6)
+
+		require.Empty(t, collect(t, storeWithLogs(t), &authenticated, &purged),
+			"an archived chapter's own logs are legitimately absent")
+	})
+
+	t.Run("a gap above the archive boundary is still reported", func(t *testing.T) {
+		t.Parallel()
+
+		var authenticated, purged logRangeSet
+
+		authenticated.add(1, 9)
+		purged.add(1, 6)
+
+		errs := collect(t, storeWithLogs(t, 7, 9), &authenticated, &purged)
+
+		require.Len(t, errs, 1, "suppression must stop at the purge frontier")
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			errs[0].GetErrorType())
+		require.Equal(t, uint64(8), errs[0].GetLogSequence())
+	})
+
+	t.Run("a row surviving inside the purged range is still residue", func(t *testing.T) {
+		t.Parallel()
+
+		var authenticated, purged logRangeSet
+
+		authenticated.add(1, 6)
+		purged.add(1, 6)
+
+		// Log 3 escaped the DeleteRange: the purge did not fully run.
+		errs := collect(t, storeWithLogs(t, 3), &authenticated, &purged)
+
+		require.Len(t, errs, 1, "the stored direction must not be suppressed too")
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE,
+			errs[0].GetErrorType())
+		require.Equal(t, uint64(3), errs[0].GetLogSequence())
+	})
+
+	t.Run("a non-archived chapter's logs are still required to exist", func(t *testing.T) {
+		t.Parallel()
+
+		// buildPurgedLogSet contributes nothing for an ARCHIVING chapter, so
+		// its logs stay covered by the ordinary gap reporting.
+		var authenticated, purged logRangeSet
+
+		authenticated.add(1, 3)
+
+		errs := collect(t, storeWithLogs(t, 1, 3), &authenticated, &purged)
+
+		require.Len(t, errs, 1)
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			errs[0].GetErrorType())
+		require.Equal(t, uint64(2), errs[0].GetLogSequence())
 	})
 }

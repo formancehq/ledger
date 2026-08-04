@@ -108,6 +108,13 @@ func (s *logRangeSet) intervals() []logRange {
 	return s.ranges
 }
 
+// addAll merges every interval of other into s. other is left untouched.
+func (s *logRangeSet) addAll(other *logRangeSet) {
+	for _, iv := range other.intervals() {
+		s.add(iv.min, iv.max)
+	}
+}
+
 // contains reports whether seq is a member of the set.
 func (s *logRangeSet) contains(seq uint64) bool {
 	s.normalize()
@@ -469,15 +476,22 @@ func (c *Checker) scanOrphanAuditItems(
 // DeleteRange lands in the same Pebble batch — so no legitimate Log row can
 // survive inside a purged range.
 //
-// This set REFINES which error compareLogs reports; it never suppresses one. A
-// stored log is wrong whether it sits in a purged range (LOG_PURGE_RESIDUE, the
-// purge did not run) or outside every one (LOG_UNAUDITED, injection). So a
-// chapter with unusable bounds cannot produce a false positive — it only costs
-// the ability to name the more specific cause, and the log is then reported as
-// LOG_UNAUDITED, the conservative claim. That is why nothing is added to an
-// unverifiable set here: when the bounds are corrupt the covered range is
-// unknown by definition, so there is no range to record. The event is the
-// signal; suppression would be both impossible and wrong.
+// The set plays two different roles per direction. On the STORED side it only
+// REFINES which error is reported and never suppresses one: a stored log is
+// wrong whether it sits in a purged range (LOG_PURGE_RESIDUE, the purge did not
+// run) or outside every one (LOG_UNAUDITED, injection). On the AUTHENTICATED
+// side it does suppress, and must: the closing proposal's audit entry outlives
+// the logs it produced (see compareLogs), so a purged sequence is legitimately
+// absent and reporting it would be a false SEQUENCE_GAP.
+//
+// Nothing is added to an unverifiable set when the bounds are corrupt: the
+// covered range is then unknown by definition, so there is no range to record.
+// The event is the signal. On the stored side that costs only the ability to
+// name the more specific cause, and the log is reported as LOG_UNAUDITED — the
+// conservative claim. On the authenticated side an unusable-bounds chapter can
+// surface SEQUENCE_GAP for its own purged logs; that is a defect layered on the
+// already-reported corrupt chapter row, not a false positive on a healthy store,
+// and inventing a range to suppress it would be a guess.
 func buildPurgedLogSet(
 	chapters []*commonpb.Chapter,
 	callback func(*servicepb.CheckStoreEvent),
@@ -525,22 +539,36 @@ func buildPurgedLogSet(
 // maxEnumeratedGapSequences + 1 emissions per missing range, memory
 // O(intervals).
 //
-//   - authenticated, absent from the store -> SEQUENCE_GAP
+//   - authenticated, absent from the store, outside every purged range ->
+//     SEQUENCE_GAP
 //   - stored, inside an ARCHIVED chapter's purged range -> LOG_PURGE_RESIDUE
 //   - stored, unauthenticated, outside every purged range -> LOG_UNAUDITED
 //     (this also catches audit-TAIL truncation: deleting trailing AuditEntry
 //     rows orphans the logs they produced, which surface here)
 //
-// PRECEDENCE: the purged-range check runs FIRST and wins. The two conditions
-// are not mutually exclusive — archiving purges a chapter's AuditEntry rows and
-// its Log rows in the same batch, so a row surviving in a purged range is
-// necessarily also unauthenticated (its audit entry is gone by design, not by
-// tampering). Reporting LOG_UNAUDITED there would be technically true but
-// misdiagnose a purge-lifecycle failure as an injection. LOG_PURGE_RESIDUE is
-// the more specific claim, so it takes precedence; exactly one event is emitted
-// per stored sequence.
+// PRECEDENCE: the purged-range check runs FIRST and wins over BOTH other
+// stored-side outcomes, because a purged range admits no legitimate row
+// whatever else is true of the sequence.
+//
+// Against LOG_UNAUDITED: archiving purges most of a chapter's AuditEntry rows
+// alongside its Log rows, so a row surviving mid-chapter is also unauthenticated
+// (its audit entry is gone by design, not by tampering). Reporting LOG_UNAUDITED
+// would be technically true but misdiagnose a purge-lifecycle failure as an
+// injection. LOG_PURGE_RESIDUE is the more specific claim.
+//
+// Against the authenticated skip: at the archive boundary the two sets OVERLAP.
+// The closing proposal's audit entry sits one audit sequence above the purged
+// audit range and survives, while its logs sit at or below close_sequence and do
+// not — so those sequences are authenticated and purged at once. Testing
+// authentication first would silently skip a row that escaped the DeleteRange
+// there, the one place residue is most likely to be missed.
+//
+// Exactly one event is emitted per stored sequence.
 //
 // Sequences inside an unverifiable span are skipped in both directions.
+// Sequences inside a purged range are skipped in the authenticated->stored
+// direction only; the stored->authenticated direction still reports them as
+// LOG_PURGE_RESIDUE.
 //
 // There is deliberately no duplicate category (SubColdLog is keyed by
 // sequence, so two rows at one sequence are physically impossible) and no
@@ -580,10 +608,12 @@ func (c *Checker) compareLogs(
 			continue
 		}
 
-		if authenticated.contains(seq) {
-			continue
-		}
-
+		// Purged BEFORE authenticated: the two are not mutually exclusive at the
+		// archive boundary. The closing proposal's audit entry survives the
+		// purge that deleted its logs, so those sequences are authenticated AND
+		// purged; testing authentication first would skip a row that escaped the
+		// DeleteRange there, reporting it as neither residue nor gap. No
+		// legitimate row can sit in a purged range whatever authenticates it.
 		if purged.contains(seq) {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE,
@@ -591,6 +621,10 @@ func (c *Checker) compareLogs(
 				seq, "", "", "",
 			))
 
+			continue
+		}
+
+		if authenticated.contains(seq) {
 			continue
 		}
 
@@ -606,18 +640,26 @@ func (c *Checker) compareLogs(
 	}
 
 	// Reverse direction: authenticated but absent. Derived as a range
-	// DIFFERENCE against everything the checker accounts for — the stored rows
-	// plus the spans it can prove nothing about — so an authenticated interval
-	// is never walked sequence by sequence.
+	// DIFFERENCE against everything the checker accounts for — the stored rows,
+	// the spans it can prove nothing about, and the spans archiving legitimately
+	// removed — so an authenticated interval is never walked sequence by
+	// sequence.
+	//
+	// The purged set belongs here because the two purge ranges an archive
+	// applies are NOT aligned at the same boundary. processCloseChapter sets
+	// close_sequence to the CloseChapter log's OWN sequence but
+	// close_audit_sequence to the last audit entry written BEFORE that proposal
+	// (next - 1), so executePurge deletes logs [start, close_sequence]
+	// *including* the CloseChapter log while the audit entry that produced it —
+	// sitting at close_audit_sequence + 1 — survives. That surviving entry is
+	// the first one verifyAuditHashChain reads, and its success range reaches up
+	// to close_sequence, so it authenticates logs the same purge deleted by
+	// design. Without this subtraction every archived chapter yields a false
+	// SEQUENCE_GAP for each log of its closing proposal.
 	covered := &logRangeSet{}
-
-	for _, iv := range stored.intervals() {
-		covered.add(iv.min, iv.max)
-	}
-
-	for _, iv := range unverifiable.intervals() {
-		covered.add(iv.min, iv.max)
-	}
+	covered.addAll(stored)
+	covered.addAll(unverifiable)
+	covered.addAll(purged)
 
 	for _, r := range authenticated.intervals() {
 		for _, gap := range covered.gapsIn(r) {
