@@ -149,6 +149,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
+	// Read archived chapters to adjust the starting point for log replay. Read
+	// BEFORE the empty-audit fast path below, which needs them too: the signing
+	// fold consults the archived set to decide whether its coverage is complete.
+	chaptersCursor, err := query.ReadChapters(ctx, snap)
+	if err != nil {
+		return fmt.Errorf("reading chapters: %w", err)
+	}
+
+	chapters, err := cursor.Collect(chaptersCursor)
+	if err != nil {
+		return fmt.Errorf("collecting chapters: %w", err)
+	}
+
 	if lastSequence == 0 {
 		// An empty audit does not make the peer store trustworthy: the read
 		// index folds FROM the log stream, so any reverse-map row over a
@@ -161,6 +174,30 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			peer:   peerSnap,
 		}, callback)
 
+		// The signing projections are cluster-global, not per-ledger, so they can
+		// hold rows over a store with no logs at all — and every successful signing
+		// order writes a log (processOrder gives each returned payload a global
+		// sequence), so a zero-log store proves the audit registered no key. The
+		// expectation is therefore legitimately empty and every stored row is
+		// unaudited: returning clean here would hide exactly the injected-key class
+		// this pass exists to report.
+		//
+		// foldArchived still runs rather than hardcoding complete coverage. Archived
+		// chapters are unreachable with lastSequence == 0 today — archiving emits its
+		// own logs above the range it purges, so at least one log always survives —
+		// but that is a property of the archive flow's log emission, not an invariant
+		// of this pass. Folding cold storage keeps a fully-archived store honest, one
+		// INCOMPLETE finding instead of a spurious mismatch per legitimate key, if
+		// that ever stops holding.
+		signing := newSigningVerifier()
+		if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+			return fmt.Errorf("folding archived signing orders: %w", err)
+		}
+
+		if err := signing.compare(snap, callback); err != nil {
+			return fmt.Errorf("comparing signing projections: %w", err)
+		}
+
 		callback(&servicepb.CheckStoreEvent{
 			Type: &servicepb.CheckStoreEvent_Progress{
 				Progress: &servicepb.CheckStoreProgress{
@@ -171,17 +208,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		})
 
 		return nil
-	}
-
-	// Read archived chapters to adjust the starting point for log replay.
-	chaptersCursor, err := query.ReadChapters(ctx, snap)
-	if err != nil {
-		return fmt.Errorf("reading chapters: %w", err)
-	}
-
-	chapters, err := cursor.Collect(chaptersCursor)
-	if err != nil {
-		return fmt.Errorf("collecting chapters: %w", err)
 	}
 
 	var (

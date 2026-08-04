@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -923,4 +924,73 @@ func TestSigningVerifier_CompareEmissionIsDeterministic(t *testing.T) {
 
 		require.Equal(t, reference, rendered, "run %d diverged from the first run", run)
 	}
+}
+
+// TestCheck_SigningProjections_EmptyAuditWiring pins that the comparison actually
+// runs on the lastSequence == 0 path, which returns before the replay and
+// therefore before the compare phase every other projection pass lives in.
+//
+// The signing projections are cluster-global, so a store with no logs can still
+// hold rows — and since every successful signing order writes a log, a zero-log
+// store proves the audit registered no key. An injected row there is unaudited by
+// construction, and reporting it clean would leave the exact tamper class this
+// pass exists to detect undetected on a freshly bootstrapped cluster.
+func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
+	t.Parallel()
+
+	runCheck := func(t *testing.T, seed func(*dal.Store)) []*servicepb.CheckStoreError {
+		t.Helper()
+
+		store := createTestStore(t)
+		if seed != nil {
+			seed(store)
+		}
+
+		// No readstore handle: the reverse-map pass on this same path skips itself
+		// loudly, keeping the events attributable to the signing comparison alone.
+		checker := NewChecker(store, attributes.New(), "test-cluster", nil, nil, nil, logging.Testing())
+
+		var got []*servicepb.CheckStoreError
+
+		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+			if errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+				got = append(got, errEvent.Error)
+			}
+		}))
+
+		return got
+	}
+
+	t.Run("injected signing key is reported", func(t *testing.T) {
+		t.Parallel()
+
+		got := runCheck(t, func(store *dal.Store) {
+			writeSigningKey(t, store, "injected", signingTestKey(0x11), "")
+		})
+
+		require.Len(t, got, 1, "a signing key with no audited registration must be reported")
+		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH, got[0].GetErrorType())
+		require.Contains(t, got[0].GetMessage(), "no audited registration")
+		require.Contains(t, got[0].GetMessage(), "injected")
+		require.NotContains(t, got[0].GetMessage(), hex.EncodeToString(signingTestKey(0x11)),
+			"public-key bytes must never be rendered into an event message")
+	})
+
+	t.Run("tampered require-signatures flag is reported", func(t *testing.T) {
+		t.Parallel()
+
+		got := runCheck(t, func(store *dal.Store) {
+			writeSigningConfig(t, store, true)
+		})
+
+		require.Len(t, got, 1, "a require-signatures flag with no audited order behind it must be reported")
+		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH, got[0].GetErrorType())
+	})
+
+	t.Run("untouched store stays clean", func(t *testing.T) {
+		t.Parallel()
+
+		require.Empty(t, runCheck(t, nil),
+			"an empty store holds no signing rows, so the empty expectation must match it exactly")
+	})
 }
