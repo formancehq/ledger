@@ -15,24 +15,45 @@ type SigningKeyEntry struct {
 	ParentKeyID string
 }
 
+// MalformedSigningKeyRow describes a SubGlobSigningKey row whose value is too
+// short to hold an Ed25519 public key. Only SaveSigningKey writes these rows and
+// it always writes at least the full public key, so a short value means
+// corruption, tampering, or a partial write.
+//
+// The rows are skipped rather than fatal: this decode runs on the boot path
+// (state.Recovery), and panicking there crash-loops every replica because the
+// row is Raft-replicated. They are returned so recovery can log them loudly and
+// the checker can surface them as integrity events, instead of a key silently
+// disappearing from the trusted set. Mirrors MalformedReversionRow.
+type MalformedSigningKeyRow struct {
+	KeyID       string
+	Key         []byte
+	ValueLength int
+	Reason      string
+}
+
 // ed25519PublicKeySize is the size of an Ed25519 public key in bytes.
 const ed25519PublicKeySize = 32
 
 // ReadSigningKeys loads all signing keys from the given reader.
 // Returns a map of keyID → SigningKeyEntry.
 // Backward-compatible: values of exactly 32 bytes have no parent (root keys).
-func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error) {
+// Rows whose value is too short to hold a public key are skipped and reported
+// in the malformed slice rather than decoded.
+func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, []MalformedSigningKeyRow, error) {
 	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey}
 	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey + 1}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for signing keys: %w", err)
+		return nil, nil, fmt.Errorf("creating iterator for signing keys: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
 	keys := make(map[string]SigningKeyEntry)
+
+	var malformed []MalformedSigningKeyRow
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		// Key format: [ZoneGlobal(1)][SubGlobSigningKey(1)][keyID(variable)]
@@ -41,7 +62,20 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 
 		value, err := iter.ValueAndErr()
 		if err != nil {
-			return nil, fmt.Errorf("reading signing key value: %w", err)
+			return nil, nil, fmt.Errorf("reading signing key value: %w", err)
+		}
+
+		// Guard before slicing: value[:32] is bounds-checked before copy runs, so
+		// a short row would panic here rather than truncate.
+		if len(value) < ed25519PublicKeySize {
+			malformed = append(malformed, MalformedSigningKeyRow{
+				KeyID:       keyID,
+				Key:         append([]byte(nil), key...),
+				ValueLength: len(value),
+				Reason:      "value shorter than an Ed25519 public key",
+			})
+
+			continue
 		}
 
 		entry := SigningKeyEntry{
@@ -57,7 +91,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 		keys[keyID] = entry
 	}
 
-	return keys, nil
+	return keys, malformed, nil
 }
 
 // ReadSigningKeysCursor returns a cursor over all registered signing keys.
@@ -66,7 +100,10 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor
 	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
 	defer span.End()
 
-	keys, err := ReadSigningKeys(reader)
+	// Malformed rows are intentionally dropped here: this cursor feeds
+	// ListSigningKeys, which has no channel for integrity events. Recovery logs
+	// them and the checker reports them as SIGNING_KEY_MISMATCH.
+	keys, _, err := ReadSigningKeys(reader)
 	if err != nil {
 		return nil, err
 	}
