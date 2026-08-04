@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 
@@ -1215,4 +1216,73 @@ func TestValidateOrder_MirrorIAMRejectsPGSSLMODEBypass(t *testing.T) {
 	err := validateOrder(order)
 	require.ErrorIs(t, err, ErrMirrorIAMRequiresTLS,
 		"PGSSLMODE=require in the pod env must not satisfy the admission TLS gate — the persisted DSN must carry sslmode= itself")
+}
+
+// TestValidateOrderSigningKey pins EN-1515: the stored SubGlobSigningKey value
+// layout is [publicKey 32B][parentKeyID variable] (state.SaveSigningKey), and
+// the reader (query.ReadSigningKeys) splits at a hard-coded 32. Before this
+// gate, nothing on the server write path checked the public_key length —
+// admission copied the bytes verbatim, the FSM validated only the key ID —
+// so a raw gRPC client bypassing the CLI's client-side check could persist a
+// short row that panicked the boot-path reader.
+func TestValidateOrderSigningKey(t *testing.T) {
+	t.Parallel()
+
+	registerOrder := func(pub []byte) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{
+					Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{
+						RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
+							KeyId:     "k1",
+							PublicKey: pub,
+						},
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		order   *raftcmdpb.Order
+		wantErr error
+	}{
+		{
+			name:  "valid 32-byte public key",
+			order: registerOrder(bytes.Repeat([]byte{0x11}, 32)),
+		},
+		{
+			name:    "nil public key rejected",
+			order:   registerOrder(nil),
+			wantErr: ErrSigningKeyInvalidLength,
+		},
+		{
+			name:    "31-byte public key rejected",
+			order:   registerOrder(bytes.Repeat([]byte{0x11}, 31)),
+			wantErr: ErrSigningKeyInvalidLength,
+		},
+		{
+			name:    "33-byte public key rejected",
+			order:   registerOrder(bytes.Repeat([]byte{0x11}, 33)),
+			wantErr: ErrSigningKeyInvalidLength,
+		},
+		{
+			name:  "unrelated order is ignored",
+			order: &raftcmdpb.Order{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateOrder(tt.order)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

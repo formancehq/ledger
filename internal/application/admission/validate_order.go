@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"crypto/ed25519"
 	"net/url"
 	"strings"
 
@@ -46,6 +47,10 @@ func validateOrder(order *raftcmdpb.Order) error {
 	}
 
 	if err := validateOrderPostingColors(order); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	if err := validateOrderSigningKey(order); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
@@ -427,6 +432,24 @@ func dsnEnforcesTLS(dsn string) bool {
 	}
 
 	return true
+}
+
+// validateOrderSigningKey rejects a signing-key registration whose public key is
+// not a well-formed Ed25519 public key. The stored value layout is
+// [publicKey 32B][parentKeyID variable] (state.SaveSigningKey), and the reader
+// splits at a hard-coded 32, so any other length either mis-parses the parent ID
+// boundary or makes the row undecodable.
+func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
+	reg, ok := order.GetSystemScoped().GetPayload().(*raftcmdpb.SystemScopedOrder_RegisterSigningKey)
+	if !ok {
+		return nil
+	}
+
+	if len(reg.RegisterSigningKey.GetPublicKey()) != ed25519.PublicKeySize {
+		return ErrSigningKeyInvalidLength
+	}
+
+	return nil
 }
 
 // validateMetadataMap validates all keys and values in a metadata map.
