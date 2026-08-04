@@ -24,8 +24,8 @@ sequenceDiagram
     A->>A: Health + maintenance check
     A->>A: Verify Ed25519 signature, unwrap batch
     A->>A: Convert requests → orders
-    A->>A: Resolve numscript + enrich Coverage
     A->>A: Extract preload Coverage
+    A->>A: Resolve numscript + enrich Coverage
     A->>Pre: Build(aggregate, operations) → ExecutionPlan
     Pre->>Pre: Cache (gen0/gen1) → Pebble fallback
     Pre-->>A: BuildResult (ExecutionPlan + loader cleanup token)
@@ -73,15 +73,15 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 `requestsToOrders()` walks every `Request` in the batch and dispatches to a per-type converter (`CreateLedger`, `Apply`, `RegisterSigningKey`, …) producing an internal `Order`. Orders are the FSM's input language; requests are the wire language. The conversion is structural — it does not consult Pebble.
 
-### 5. Numscript resolution + coverage enrichment
-
-For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrichNeeds()` resolves the `NumscriptReference` against an intra-batch overlay (programs being created in the same batch) and falls back to the persisted numscript library. Each resolved program is parsed for its account / metadata / volume dependencies; those become additional coverage entries on the order's `plan.Coverage`.
-
-This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `plan.Coverage` entries before consensus.
-
-### 6. Preload coverage extraction
+### 5. Preload coverage extraction
 
 `extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [`feedback_component_owns_its_preload`](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
+
+### 6. Numscript resolution + coverage enrichment
+
+For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrichNeeds()` resolves the `NumscriptReference` against an intra-batch overlay (programs being created in the same batch) and falls back to the persisted numscript library. Each resolved program is parsed for its account / metadata / volume dependencies; those become additional coverage entries on the `plan.Coverage` that step 5 already produced — this stage enriches that aggregate and the matching per-order entry in place, it does not build a new one. That is why it runs second: it takes the aggregate and per-order slices as parameters.
+
+This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `plan.Coverage` entries before consensus.
 
 ### 7. Build the execution plan
 
