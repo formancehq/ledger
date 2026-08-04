@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
-
-	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -263,7 +262,7 @@ func (v *signingVerifier) foldArchived(
 			return nil
 		}
 
-		if err := v.foldChapter(coldPebble); err != nil {
+		if err := v.foldChapter(ctx, coldPebble); err != nil {
 			logger.Infof("folding signing orders from archived chapter %d failed: %v", ch.GetId(), err)
 
 			return nil
@@ -279,46 +278,59 @@ func (v *signingVerifier) foldArchived(
 // the expectation. Any failure is reported to the caller, which downgrades the
 // whole fold to incomplete coverage: a partially folded chapter would carry a
 // register whose revoke was never read.
-func (v *signingVerifier) foldChapter(reader dal.PebbleReader) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
-		UpperBound: []byte{dal.ZoneCold, dal.SubColdAuditItem + 1},
-	})
+//
+// Items are paired with their entry rather than scanned on their own, because two
+// things can only be decided per-entry. Only SUCCESSFUL entries are folded — a
+// rejected order left no trace in the projection — and only items inside the
+// entry's fresh-log window [MinLogSequence, MaxLogSequence], which excludes the
+// legacy pre-f9ee1e829 per-order replay references that point back at a log an
+// earlier entry already folded. Both mirror the live fold in verifyAuditHashChain;
+// the archived range needs them for the same reason, since replaying a register
+// after its revoke resurrects a key and reports a false mismatch.
+func (v *signingVerifier) foldChapter(ctx context.Context, reader dal.PebbleReader) error {
+	entries, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
-		return fmt.Errorf("creating archived audit item iter: %w", err)
+		return fmt.Errorf("reading archived audit entries: %w", err)
 	}
 
-	defer func() { _ = iter.Close() }()
+	defer func() { _ = entries.Close() }()
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
+	for {
+		entry, err := entries.Next()
 		if err != nil {
-			return fmt.Errorf("reading archived audit item value: %w", err)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return fmt.Errorf("reading archived audit entry: %w", err)
 		}
 
-		item := &auditpb.AuditItem{}
-		if err := item.UnmarshalVT(value); err != nil {
-			return fmt.Errorf("unmarshaling archived audit item %x: %w", iter.Key(), err)
-		}
-
-		// Failure-side items carry LogSequence=0 and changed no state, so they must
-		// not contribute to the expected set. Sound because buildAuditItems
-		// (state/audit.go:57-78) sets LogSequence only from a CreatedLog sequence,
-		// failure entries carry no logs, and NextSequenceID starts at 1
-		// (state/fsmstate.go:62) so 0 is never a real log sequence.
-		if item.GetLogSequence() == 0 {
+		success := entry.GetSuccess()
+		if success == nil {
 			continue
 		}
 
-		order := &raftcmdpb.Order{}
-		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-			return fmt.Errorf("decoding order from archived audit item %x: %w", iter.Key(), err)
+		items, err := query.ReadAuditItems(ctx, reader, entry.GetSequence())
+		if err != nil {
+			return fmt.Errorf("reading archived audit items for sequence %d: %w", entry.GetSequence(), err)
 		}
 
-		v.applyOrder(order)
+		for _, item := range items {
+			logSeq := item.GetLogSequence()
+			if logSeq == 0 || logSeq < success.GetMinLogSequence() || logSeq > success.GetMaxLogSequence() {
+				continue
+			}
+
+			order := &raftcmdpb.Order{}
+			if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+				return fmt.Errorf("decoding order from archived audit item at log %d: %w", logSeq, err)
+			}
+
+			v.applyOrder(order)
+		}
 	}
 
-	return iter.Error()
+	return nil
 }
 
 // compare reads both persisted signing projections and reports every divergence

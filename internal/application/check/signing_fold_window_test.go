@@ -147,3 +147,64 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	require.True(t, verifier.requireSignatures,
 		"the entry's own fresh item must still fold, or the window guard is over-skipping")
 }
+
+// TestSigningVerifier_FoldArchivedIgnoresLegacyReplayReferences is the
+// cold-storage twin of the test above.
+//
+// The archived fold needs the same fresh-log window as the live one, and for the
+// same reason: an upgraded store's archived chapters can hold legacy
+// pre-f9ee1e829 per-order replay references. Replaying one re-applies a register
+// after the revoke that removed it, and because pre-boundary signing state has no
+// other audit-derived source — the baseline checkpoint is a copy of the very
+// projection under test — nothing downstream would catch the resurrected key.
+func TestSigningVerifier_FoldArchivedIgnoresLegacyReplayReferences(t *testing.T) {
+	t.Parallel()
+
+	publicKey := signingTestKey(0x44)
+
+	register := marshalSigningOrder(t, registerSigningKeyOrder("legacy-key", publicKey, ""))
+
+	entry := func(seq, logSeq uint64) *auditpb.AuditEntry {
+		return &auditpb.AuditEntry{
+			Sequence:   seq,
+			OrderCount: 1,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
+			},
+		}
+	}
+
+	sst := buildColdAuditSST(t,
+		[]*auditpb.AuditEntry{entry(1, 10), entry(2, 11), entry(3, 12)},
+		map[uint64][]*auditpb.AuditItem{
+			1: {{OrderIndex: 0, LogSequence: 10, SerializedOrder: register}},
+			2: {{
+				OrderIndex:      0,
+				LogSequence:     11,
+				SerializedOrder: marshalSigningOrder(t, revokeSigningKeyOrder("legacy-key", false)),
+			}},
+			3: {
+				{
+					OrderIndex:      0,
+					LogSequence:     12,
+					SerializedOrder: marshalSigningOrder(t, setSigningConfigOrder(true)),
+				},
+				// The legacy shape: a replay reference back at log 10, carried by an
+				// entry whose own fresh log is 12.
+				{OrderIndex: 1, LogSequence: 10, SerializedOrder: register},
+			},
+		})
+
+	verifier := newSigningVerifier()
+	coldReader := coldReaderWithChapters(t, "signing-legacy-replay-bucket", map[uint64][]byte{4: sst})
+
+	require.NoError(t, verifier.foldArchived(context.Background(),
+		[]*commonpb.Chapter{signingChapter(4, commonpb.ChapterStatus_CHAPTER_ARCHIVED, 20, 3)},
+		coldReader, logging.Testing()))
+
+	require.True(t, verifier.coldComplete)
+	require.Empty(t, verifier.keys,
+		"a legacy replay reference outside its entry's fresh-log window must not resurrect the revoked key")
+	require.True(t, verifier.requireSignatures,
+		"the entry's own fresh item must still fold, or the window guard is over-skipping")
+}

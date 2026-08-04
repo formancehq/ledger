@@ -1,6 +1,7 @@
 package check
 
 import (
+	"cmp"
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
@@ -729,8 +730,17 @@ func TestSigningVerifier_FoldArchivedCoverage(t *testing.T) {
 // audit items, keyed by (audit sequence, order index) exactly as the live store
 // keys them. logSequence is carried on the item itself, which is what
 // foldChapter's zero-sequence guard reads.
+// signingArchivedSST builds an archived chapter holding one single-item audit
+// entry per (audit sequence -> order) pair, each entry's fresh-log window being
+// exactly that item's log sequence.
+//
+// The entries are as load-bearing as the items: foldChapter walks entries and
+// folds only the items inside their own `[MinLogSequence, MaxLogSequence]`
+// window, so an items-only fixture folds nothing at all.
 func signingArchivedSST(t *testing.T, orders map[uint64]*raftcmdpb.Order, logSequences map[uint64]uint64) []byte {
 	t.Helper()
+
+	var entries []*auditpb.AuditEntry
 
 	items := make(map[uint64][]*auditpb.AuditItem, len(orders))
 
@@ -738,14 +748,31 @@ func signingArchivedSST(t *testing.T, orders map[uint64]*raftcmdpb.Order, logSeq
 		serialized, err := order.MarshalVT()
 		require.NoError(t, err)
 
+		logSeq := logSequences[auditSeq]
+
 		items[auditSeq] = []*auditpb.AuditItem{{
 			OrderIndex:      0,
 			SerializedOrder: serialized,
-			LogSequence:     logSequences[auditSeq],
+			LogSequence:     logSeq,
 		}}
+
+		entries = append(entries, &auditpb.AuditEntry{
+			Sequence:   auditSeq,
+			OrderCount: 1,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
+			},
+		})
 	}
 
-	return buildColdAuditSST(t, nil, items)
+	// buildColdAuditSST writes into an SST, which requires strictly increasing
+	// keys; the entry keys are the audit sequences, and ranging a Go map yields
+	// them in random order.
+	slices.SortFunc(entries, func(a, b *auditpb.AuditEntry) int {
+		return cmp.Compare(a.GetSequence(), b.GetSequence())
+	})
+
+	return buildColdAuditSST(t, entries, items)
 }
 
 // TestSigningVerifier_FoldArchivedReadsColdStorage folds real archived chapters
