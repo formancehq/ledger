@@ -63,6 +63,50 @@ func TestCoverageContractViolation(t *testing.T) {
 			err:  &ErrStorageOperation{Operation: "loading ledger", Cause: errors.New("pebble: closed")},
 			want: nil,
 		},
+		// The multi-error cases below are the branch the forbidigo rule cannot
+		// guard: a future errors.Join is a plain call the linter cannot see, so
+		// only these rows stand between a regressed descent and a contract
+		// violation silently relabelled as a storage fault in the audit chain.
+		{
+			name: "coverage miss joined with an unrelated error",
+			err:  errors.Join(errors.New("pebble: closed"), miss),
+			want: miss,
+		},
+		{
+			name: "coverage miss joined behind a wrap",
+			err:  fmt.Errorf("commit: %w", errors.Join(miss, errors.New("flush failed"))),
+			want: miss,
+		},
+		{
+			name: "multi-%w wrap carrying a coverage miss",
+			err:  fmt.Errorf("%w: %w", errors.New("outer"), miss),
+			want: miss,
+		},
+		{
+			name: "join with no violation",
+			err:  errors.Join(errors.New("pebble: closed"), other),
+			want: nil,
+		},
+		{
+			name: "violation nested in a joined subtree",
+			err:  errors.Join(errors.New("pebble: closed"), fmt.Errorf("wrap: %w", errors.Join(errors.New("flush failed"), plan))),
+			want: plan,
+		},
+		// This pair pins the slice-order visit CoverageContractViolation
+		// documents: the same member set in the opposite order must yield the
+		// other violation. A map-based or otherwise unordered traversal would
+		// satisfy every row above but not both of these, and a non-deterministic
+		// pick on the FSM apply path breaks invariant #2.
+		{
+			name: "two violations joined, first in slice order wins",
+			err:  errors.Join(miss, plan),
+			want: miss,
+		},
+		{
+			name: "two violations joined, reversed slice order",
+			err:  errors.Join(plan, miss),
+			want: plan,
+		},
 	}
 
 	for _, tt := range tests {
@@ -94,6 +138,16 @@ func TestStoreFailure(t *testing.T) {
 		miss := &stubDescribable{reason: ErrReasonCoverageMiss, msg: "coverage miss"}
 
 		got := StoreFailure("loading ledger", fmt.Errorf("numscript: %w", miss))
+
+		require.Same(t, miss, got)
+	})
+
+	t.Run("propagates a joined coverage miss verbatim", func(t *testing.T) {
+		t.Parallel()
+
+		miss := &stubDescribable{reason: ErrReasonCoverageMiss, msg: "coverage miss"}
+
+		got := StoreFailure("loading ledger", errors.Join(errors.New("pebble: closed"), miss))
 
 		require.Same(t, miss, got)
 	})
