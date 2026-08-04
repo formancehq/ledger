@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -985,4 +986,114 @@ func TestRebuildDelta_IdempotencyFreshFailureOverwrites(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, v)
 	require.NotNil(t, v.GetFailure(), "a fresh non-conflict failure overwrites the earlier outcome")
+}
+
+func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID string) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_RegisterSigningKey{
+				RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
+					KeyId: keyID, PublicKey: pub, ParentKeyId: parentKeyID,
+				},
+			},
+		},
+	}
+}
+
+func revokeSigningKeyLog(seq uint64, keyID string, cascaded []string) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_RevokeSigningKey{
+				RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
+					KeyId: keyID, CascadedKeyIds: cascaded,
+				},
+			},
+		},
+	}
+}
+
+// TestRebuildDelta_ReplaysRevokeSigningKey: revocation's only persistent
+// representation is row absence (SaveSigningKey's stored value carries no
+// revoked flag), so the rebuild must delete the row(s) itself rather than
+// treat RevokeSigningKey as having no persistent state — otherwise a key
+// revoked because it was compromised comes back valid after a restore.
+func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
+	t.Parallel()
+
+	rootPub := bytes.Repeat([]byte{0x11}, 32)
+	bPub := bytes.Repeat([]byte{0x22}, 32)
+	cPub := bytes.Repeat([]byte{0x33}, 32)
+
+	tests := []struct {
+		name        string
+		logs        []*commonpb.Log
+		wantPresent []string
+		wantAbsent  []string
+	}{
+		{
+			name: "non-cascade revoke deletes only the target",
+			logs: []*commonpb.Log{
+				registerSigningKeyLog(1, "root", rootPub, ""),
+				registerSigningKeyLog(2, "b", bPub, "root"),
+				revokeSigningKeyLog(3, "b", nil),
+			},
+			wantPresent: []string{"root"},
+			wantAbsent:  []string{"b"},
+		},
+		{
+			name: "cascade revoke deletes the target and its descendants",
+			logs: []*commonpb.Log{
+				registerSigningKeyLog(1, "root", rootPub, ""),
+				registerSigningKeyLog(2, "b", bPub, "root"),
+				registerSigningKeyLog(3, "c", cPub, "b"),
+				revokeSigningKeyLog(4, "b", []string{"c"}),
+			},
+			wantPresent: []string{"root"},
+			wantAbsent:  []string{"b", "c"},
+		},
+		{
+			name: "register then revoke leaves nothing behind",
+			logs: []*commonpb.Log{
+				registerSigningKeyLog(1, "root", rootPub, ""),
+				revokeSigningKeyLog(2, "root", nil),
+			},
+			wantAbsent: []string{"root"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newRebuildTestStore(t)
+
+			batch := store.OpenWriteSession()
+			for _, log := range tt.logs {
+				require.NoError(t, batch.SetProto(coldLogKey(log.GetSequence()), log))
+			}
+			require.NoError(t, batch.Commit())
+
+			require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+			handle, err := store.NewDirectReadHandle()
+			require.NoError(t, err)
+			defer func() { _ = handle.Close() }()
+
+			keys, malformed, err := query.ReadSigningKeys(handle)
+			require.NoError(t, err)
+			require.Empty(t, malformed)
+
+			for _, keyID := range tt.wantPresent {
+				_, ok := keys[keyID]
+				require.True(t, ok, "key %q must still be present after the rebuild", keyID)
+			}
+
+			for _, keyID := range tt.wantAbsent {
+				_, ok := keys[keyID]
+				require.False(t, ok, "revoked key %q must NOT be resurrected by the rebuild", keyID)
+			}
+		})
+	}
 }
