@@ -75,7 +75,7 @@ If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected her
 
 ### 5. Preload coverage extraction
 
-`extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [`feedback_component_owns_its_preload`](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
+`extractPreloadNeeds()` — the function name kept the older word; the type it returns is `*plan.Coverage` — aggregates the per-order coverage declared by each order's converter, returning both the proposal-wide aggregate and the per-order slice the `coverage_bits` computation needs. **Each component owns its own declaration** (per [invariant #6](../../../../../AGENTS.md)): there is no central helper that introspects orders to compute what they read — the order's producer declares it upfront. Admission, the mirror worker, the events emitter and the idempotency-eviction scheduler each declare their own.
 
 ### 6. Numscript resolution + coverage enrichment
 
@@ -101,7 +101,7 @@ Under the proposal guard lock:
 2. Call `proposer.Propose(ctx, proposal)` (`internal/infra/node`). Raft assigns the proposal a real index, increments the tracker.
 3. Release the guard. The future returned by `Propose` is what admission waits on.
 
-The guard's job is to make sure the cache state observed during preload is the same cache state the FSM will see on apply. Releasing loaders "after apply" is a **performance optimisation**, not correctness — the cache FSM is protected by `putAttributeIfAbsent` (see [`project_loaders_release_is_optimization`](../../../../../AGENTS.md)).
+The guard's job is to make sure the cache state observed during preload is the same cache state the FSM will see on apply. Releasing loaders "after apply" is a **performance optimisation**, not correctness — the cache FSM is protected by `putAttributeIfAbsent` (`internal/infra/state/cache_snapshotter.go`, reached only from `MirrorPreload`), which never overwrites an entry that is already present.
 
 ### 10. Wait for commit
 
