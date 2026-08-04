@@ -792,10 +792,6 @@ type PreviewRestoreResponseReader interface {
 	GetLastSequence() uint64
 	GetLedgerCount() uint32
 	GetLedgerNames() []string
-	GetFirstLogSequence() uint64
-	GetFirstAuditSequence() uint64
-	GetHasExports() bool
-	GetExportCount() uint32
 	Mutate() *PreviewRestoreResponse
 }
 
@@ -819,22 +815,6 @@ func (r *previewRestoreResponseReadonly) GetLedgerCount() uint32 {
 
 func (r *previewRestoreResponseReadonly) GetLedgerNames() []string {
 	return slices.Clone((*PreviewRestoreResponse)(r).GetLedgerNames())
-}
-
-func (r *previewRestoreResponseReadonly) GetFirstLogSequence() uint64 {
-	return (*PreviewRestoreResponse)(r).GetFirstLogSequence()
-}
-
-func (r *previewRestoreResponseReadonly) GetFirstAuditSequence() uint64 {
-	return (*PreviewRestoreResponse)(r).GetFirstAuditSequence()
-}
-
-func (r *previewRestoreResponseReadonly) GetHasExports() bool {
-	return (*PreviewRestoreResponse)(r).GetHasExports()
-}
-
-func (r *previewRestoreResponseReadonly) GetExportCount() uint32 {
-	return (*PreviewRestoreResponse)(r).GetExportCount()
 }
 
 func (r *previewRestoreResponseReadonly) Mutate() *PreviewRestoreResponse {
