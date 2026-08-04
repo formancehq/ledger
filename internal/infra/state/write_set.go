@@ -95,6 +95,21 @@ type WriteSet struct {
 	// correctly described when only some of its assets are transient.
 	transientVolumes map[string][]*commonpb.TouchedVolume
 
+	// gatedLedgerTypes holds the account types ValidateTransientVolumes
+	// resolved through the gated Scope, keyed by ledger name. partitionVolumes
+	// consumes it at Merge time so volume classification is driven by
+	// proposal-declared, coverage-gated data instead of a raw parent-cache
+	// read (invariant #9).
+	//
+	// Both consumers walk the same key set: DirtyValues() returns the very map
+	// Derived.Volumes.Merge() drains into volumeUpdates, and the only four
+	// volume writers (processor_posting.go, processor_transaction_numscript.go)
+	// live on the order path, which always runs ValidateTransientVolumes first
+	// (machine.go:1539 before machine.go:1568). A technical-only proposal has
+	// no orders, hence no volume updates, so the absence of an entry at Merge
+	// time is impossible by design rather than an expected miss.
+	gatedLedgerTypes map[string]gatedLedgerType
+
 	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
 	// drained to zero (had a prior non-zero balance, now zero and evicted
 	// from Pebble) by the log produced by order i. DISJOINT from
@@ -897,6 +912,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
+	b.gatedLedgerTypes = nil
 	b.volumes.Reset()
 	for i := range b.purgedByLog {
 		b.purgedByLog[i] = nil
@@ -1152,6 +1168,16 @@ func compareVolumeKeys(a, b domain.VolumeKey) int {
 	)
 }
 
+// gatedLedgerType records one ledger's account types as resolved through the
+// gated Scope. found distinguishes "the gate resolved this ledger to
+// ErrNotFound" (a genuine absence, compiled is nil) from "no entry at all"
+// (the gated pass never covered this key) — a distinction partitionVolumes
+// needs, since only the latter is an invariant violation.
+type gatedLedgerType struct {
+	compiled []accounttype.CompiledType
+	found    bool
+}
+
 // ValidateTransientVolumes checks that all transient account volumes have zero balance.
 // Must be called after ProcessOrders and before Commit, so that failures are
 // treated as business errors (rejected proposals) rather than fatal FSM errors.
@@ -1168,17 +1194,26 @@ func compareVolumeKeys(a, b domain.VolumeKey) int {
 // every handler-level read so a missing ledger declaration surfaces as
 // *ErrCoverageMiss instead of an opaque "ledger not found" skip.
 func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
-	ledgerTypes := make(map[string][]accounttype.CompiledType)
+	// Published on the WriteSet rather than kept local: partitionVolumes
+	// consumes it at Merge time so the same gated resolution drives both the
+	// zero-balance assertion here and the persistence classification there,
+	// with a single ledger read per proposal.
+	b.gatedLedgerTypes = make(map[string]gatedLedgerType)
 
 	var (
 		storageFaults []storageFault
 		offenders     []domain.VolumeKey
 	)
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
-		compiled, ok := ledgerTypes[key.LedgerName]
+		entry, ok := b.gatedLedgerTypes[key.LedgerName]
 		if !ok {
 			info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})
 			if errors.Is(err, domain.ErrNotFound) {
+				// Record the gate's verdict (found:false) instead of just
+				// skipping: partitionVolumes must be able to tell this genuine
+				// absence apart from a key the gated pass never covered.
+				b.gatedLedgerTypes[key.LedgerName] = gatedLedgerType{}
+
 				continue
 			}
 
@@ -1188,11 +1223,18 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 				continue
 			}
 
-			compiled = accounttype.CompileTypes(info.Mutate().GetAccountTypes())
-			ledgerTypes[key.LedgerName] = compiled
+			entry = gatedLedgerType{
+				compiled: accounttype.CompileTypes(info.Mutate().GetAccountTypes()),
+				found:    true,
+			}
+			b.gatedLedgerTypes[key.LedgerName] = entry
 		}
 
-		matched := accounttype.FindMatchingType(key.Account, compiled)
+		if !entry.found {
+			continue
+		}
+
+		matched := accounttype.FindMatchingType(key.Account, entry.compiled)
 		if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			continue
 		}

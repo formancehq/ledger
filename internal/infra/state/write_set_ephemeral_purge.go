@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -40,6 +39,13 @@ type volumePartitionResult struct {
 
 // partitionVolumes splits volume updates into kept, purged, and transient sets.
 //
+// Account types are read from b.gatedLedgerTypes, which ValidateTransientVolumes
+// resolves through the gated Scope before Merge runs. partitionVolumes performs
+// no ledger read of its own: it executes at Merge time, past the per-order
+// coverage gate, so a direct Derived.Ledgers read here would classify volumes
+// off keys the proposal never declared (invariant #9). A ledger missing from the
+// map is an invariant violation, not an expected miss — see the hard fail below.
+//
 //   - NORMAL accounts: always kept
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
@@ -51,43 +57,42 @@ type volumePartitionResult struct {
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 ) (volumePartitionResult, error) {
-	// Build a cache of ledger → compiled account types to avoid repeated parsing.
-	ledgerTypes := make(map[string][]accounttype.CompiledType)
-
 	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
 
 	for _, update := range updates {
-		compiled, ok := ledgerTypes[update.Key.LedgerName]
+		// Account types come from ValidateTransientVolumes' gated resolution,
+		// never from a raw Derived.Ledgers read: the classification below picks
+		// which volumes are written to Pebble and which are purged, so it must
+		// be driven by proposal-declared, coverage-gated data (invariant #9).
+		entry, ok := b.gatedLedgerTypes[update.Key.LedgerName]
 		if !ok {
-			info, err := b.getLedgerData(update.Key.LedgerName)
-			if errors.Is(err, domain.ErrNotFound) {
-				// Expected soft outcome: no account-type info is reachable
-				// for this ledger — either it was never created, or its key
-				// is absent from the Derived cache (partitionVolumes runs at
-				// Merge time, outside the per-order coverage gate, and
-				// getLedgerData reads Derived.Ledgers directly). A ledger
-				// deleted earlier in this batch does NOT land here:
-				// DeleteLedger soft-deletes by Putting the row back with
-				// DeletedAt set, so getLedgerData still returns it with its
-				// account types intact. Default persistence is "kept".
-				result.kept = append(result.kept, update)
-
-				continue
-			}
-
-			if err != nil {
-				// Any other error is a genuine storage/cache fault, not an
-				// absence — surface it loudly rather than silently keeping
-				// the volume and mis-classifying its persistence
-				// (invariant #7).
-				return volumePartitionResult{}, fmt.Errorf("loading ledger %q for volume partition: %w", update.Key.LedgerName, err)
-			}
-
-			compiled = accounttype.CompileTypes(info.GetAccountTypes())
-			ledgerTypes[update.Key.LedgerName] = compiled
+			// Impossible by design: ValidateTransientVolumes runs before Merge
+			// on the order path and covers exactly this key set (it walks the
+			// same DirtyValues() map Merge drains), and only order handlers
+			// write volumes — so a technical-only proposal reaches Merge with
+			// none. A miss therefore means the gated pass did not run over this
+			// key, and silently defaulting to "kept" would let an ungated
+			// classification decide Pebble contents (invariant #7).
+			return volumePartitionResult{}, fmt.Errorf(
+				"invariant: volume update for ledger %q whose account types were never resolved through the gated scope",
+				update.Key.LedgerName,
+			)
 		}
+
+		if !entry.found {
+			// The gate resolved this ledger as genuinely absent — it carries no
+			// account-type info (never created). Default persistence is "kept".
+			// A ledger deleted earlier in this batch does NOT land here:
+			// DeleteLedger soft-deletes by Putting the row back with DeletedAt
+			// set, so the gated read still returns it with its types intact.
+			result.kept = append(result.kept, update)
+
+			continue
+		}
+
+		compiled := entry.compiled
 
 		if len(compiled) == 0 {
 			result.kept = append(result.kept, update)

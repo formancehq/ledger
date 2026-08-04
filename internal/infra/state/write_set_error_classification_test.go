@@ -31,34 +31,82 @@ func injectTagCollision[K attributes.Key, V any](t *testing.T, ks *attributes.Ke
 
 // --- C1: partitionVolumes ---------------------------------------------------
 
-// TestPartitionVolumes_MissingLedgerIsSoftKept pins the documented soft
-// outcome: a volume for a ledger with no account-type info (absent ledger)
-// defaults to "kept", no error.
-func TestPartitionVolumes_MissingLedgerIsSoftKept(t *testing.T) {
-	t.Parallel()
+// volumeUpdate builds a single zero-balance volume update for ledger/account.
+func volumeUpdate(ledgerName, account string) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account}, Asset: "USD"}
 
-	buf, _, _ := newTestBuffer(t)
-
-	key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "ghost", Account: "acc"}, Asset: "USD"}
-	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+	return []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
 		{
 			Key:          key,
 			CanonicalKey: key.Bytes(),
 			New:          &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
 		},
 	}
+}
 
-	result, err := buf.partitionVolumes(updates)
+// TestPartitionVolumes_MissingLedgerIsSoftKept pins the documented soft
+// outcome: when the gated pass resolved the ledger as genuinely absent
+// (found:false), the volume defaults to "kept", no error.
+func TestPartitionVolumes_MissingLedgerIsSoftKept(t *testing.T) {
+	t.Parallel()
+
+	buf, _, _ := newTestBuffer(t)
+
+	buf.gatedLedgerTypes = map[string]gatedLedgerType{"ghost": {}}
+
+	result, err := buf.partitionVolumes(volumeUpdate("ghost", "acc"))
 	require.NoError(t, err)
 	require.Len(t, result.kept, 1)
 	require.Empty(t, result.purged)
 	require.Empty(t, result.transient)
 }
 
-// TestPartitionVolumes_StorageFaultPropagates pins that a non-ErrNotFound
-// fault on the ledger read surfaces loudly instead of silently keeping the
-// volume.
-func TestPartitionVolumes_StorageFaultPropagates(t *testing.T) {
+// TestPartitionVolumes_UngatedLedgerFailsLoudly is the invariant-#9 regression:
+// partitionVolumes must never classify a volume off a ledger row it can reach
+// in the raw parent KeyStore. The ledger is seeded directly into the parent
+// cache carrying an EPHEMERAL type, but no gated pass ran — so gatedLedgerTypes
+// is empty. Pre-fix, partitionVolumes read the parent through getLedgerData,
+// matched EPHEMERAL and purged the zero-balance volume; this test therefore
+// cannot pass on a raw parent-cache hit.
+func TestPartitionVolumes_UngatedLedgerFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	buf, machine, _ := newTestBuffer(t)
+
+	const ledgerName = "ungated"
+	ledger := &commonpb.LedgerInfo{
+		Name: ledgerName,
+		Id:   1,
+		AccountTypes: map[string]*commonpb.AccountType{
+			"cache": {
+				Name:        "cache",
+				Pattern:     "acc",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		},
+	}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(
+		(&domain.LedgerKey{Name: ledgerName}).Bytes(),
+		ledger,
+	)
+	require.NoError(t, err)
+
+	// No gated pass ran: the map is empty even though the parent cache would
+	// happily serve this ledger.
+	require.Empty(t, buf.gatedLedgerTypes)
+
+	result, err := buf.partitionVolumes(volumeUpdate(ledgerName, "acc"))
+	require.Error(t, err, "an ungated ledger must not be classified off the parent cache")
+	require.ErrorContains(t, err, "invariant:")
+	require.ErrorContains(t, err, ledgerName)
+	require.Empty(t, result.purged, "the volume must not be purged off an ungated EPHEMERAL match")
+}
+
+// TestValidateTransientVolumes_LedgerStorageFaultPropagates pins that a
+// non-ErrNotFound fault on the ledger read surfaces loudly instead of being
+// treated as an absence. The read moved here from partitionVolumes, which now
+// consumes this pass's gated resolution.
+func TestValidateTransientVolumes_LedgerStorageFaultPropagates(t *testing.T) {
 	t.Parallel()
 
 	buf, machine, _ := newTestBuffer(t)
@@ -67,20 +115,97 @@ func TestPartitionVolumes_StorageFaultPropagates(t *testing.T) {
 	ledgerKey := domain.LedgerKey{Name: ledgerName}
 	injectTagCollision(t, machine.Registry.Ledgers.KeyStore(), ledgerKey.Bytes(), &commonpb.LedgerInfo{Name: ledgerName})
 
-	key := domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "acc"}, Asset: "USD"}
-	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
-		{
-			Key:          key,
-			CanonicalKey: key.Bytes(),
-			New:          &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)},
+	volKey := domain.NewVolumeKey(ledgerName, "acc", "USD", "")
+	buf.Derived.Volumes.Put(volKey, &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	})
+
+	lid, _ := attributes.MakeKey(ledgerKey.Bytes())
+	vid, _ := attributes.MakeKey(volKey.Bytes())
+	scope, err := NewScopeFactory(
+		buf,
+		&raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+			declareTestPlan(lid, dal.SubAttrLedger),
+			declareTestPlan(vid, dal.SubAttrVolume),
+		}},
+		machine.logger,
+		machine.preloadMissCounter,
+		1,
+	).NewProposalScope()
+	require.NoError(t, err)
+
+	describ := buf.ValidateTransientVolumes(scope)
+	require.NotNil(t, describ, "a non-ErrNotFound ledger read fault must surface")
+
+	_, ok := describ.(*domain.ErrStorageOperation)
+	require.True(t, ok, "expected a storage fault, got %T", describ)
+}
+
+// TestValidateTransientVolumes_PublishesGatedTypes pins the carry-forward
+// contract partitionVolumes depends on: every dirty volume's ledger gets an
+// entry, in both the resolved and the absent case.
+func TestValidateTransientVolumes_PublishesGatedTypes(t *testing.T) {
+	t.Parallel()
+
+	buf, machine, _ := newTestBuffer(t)
+
+	const presentLedger = "present"
+	ledger := &commonpb.LedgerInfo{
+		Name: presentLedger,
+		Id:   1,
+		AccountTypes: map[string]*commonpb.AccountType{
+			"cache": {
+				Name:        "cache",
+				Pattern:     "acc",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
 		},
 	}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(
+		(&domain.LedgerKey{Name: presentLedger}).Bytes(),
+		ledger,
+	)
+	require.NoError(t, err)
+	buf.Derived.Ledgers.Put(domain.LedgerKey{Name: presentLedger}, ledger)
 
-	_, err := buf.partitionVolumes(updates)
-	require.Error(t, err)
+	presentVol := domain.NewVolumeKey(presentLedger, "acc", "USD", "")
+	absentVol := domain.NewVolumeKey("absent", "acc", "USD", "")
+	zero := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+	buf.Derived.Volumes.Put(presentVol, zero)
+	buf.Derived.Volumes.Put(absentVol, zero)
 
-	var collision *attributes.ErrCollisionDetected
-	require.ErrorAs(t, err, &collision, "a non-ErrNotFound ledger read fault must propagate out of partitionVolumes")
+	lid, _ := attributes.MakeKey((&domain.LedgerKey{Name: presentLedger}).Bytes())
+	absentLid, _ := attributes.MakeKey((&domain.LedgerKey{Name: "absent"}).Bytes())
+	presentVid, _ := attributes.MakeKey(presentVol.Bytes())
+	absentVid, _ := attributes.MakeKey(absentVol.Bytes())
+	scope, err := NewScopeFactory(
+		buf,
+		&raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+			declareTestPlan(lid, dal.SubAttrLedger),
+			declareTestPlan(absentLid, dal.SubAttrLedger),
+			declareTestPlan(presentVid, dal.SubAttrVolume),
+			declareTestPlan(absentVid, dal.SubAttrVolume),
+		}},
+		machine.logger,
+		machine.preloadMissCounter,
+		1,
+	).NewProposalScope()
+	require.NoError(t, err)
+
+	require.Nil(t, buf.ValidateTransientVolumes(scope))
+
+	present, ok := buf.gatedLedgerTypes[presentLedger]
+	require.True(t, ok, "a resolved ledger must be published")
+	require.True(t, present.found)
+	require.NotEmpty(t, present.compiled)
+
+	absent, ok := buf.gatedLedgerTypes["absent"]
+	require.True(t, ok, "a gate-resolved absence must be published, not skipped")
+	require.False(t, absent.found)
 }
 
 // --- C3: GetSinkConfig ------------------------------------------------------
