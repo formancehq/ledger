@@ -136,9 +136,19 @@ func (r *Recovery) RecoverState() error {
 	if r.apply.keyStore != nil {
 		r.apply.keyStore.Reset()
 
-		signingKeys, err := query.ReadSigningKeys(handle)
+		signingKeys, malformedSigningKeys, err := query.ReadSigningKeys(handle)
 		if err != nil {
 			return fmt.Errorf("loading signing keys: %w", err)
+		}
+
+		// Only SaveSigningKey produces these rows and it always writes a full
+		// public key, so a malformed one means corruption or tampering. Boot
+		// proceeds on the decodable keys — the checker reports malformed rows as
+		// integrity events — but never silently: a dropped key stops authorizing
+		// requests signed with it.
+		for _, m := range malformedSigningKeys {
+			r.apply.logger.Errorf("malformed signing key row %q at key %x skipped during recovery (value %d bytes): %s",
+				m.KeyID, m.Key, m.ValueLength, m.Reason)
 		}
 
 		for keyID, entry := range signingKeys {
