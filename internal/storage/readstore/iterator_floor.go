@@ -8,10 +8,11 @@ import "bytes"
 // is fixed at pebble.Iterator creation (so a proof never goes stale and the
 // floor is never cleared), and a seek that failed because of an I/O error
 // proves nothing about the view's contents (fail drops it — see #320 for the
-// error class). Composite iterators re-seek exhausted children once per merge
-// step (AND converge, OR findMin, the NOT child catch-up); the floor turns
-// every such re-seek at or above the proven bound into an O(1) comparison
-// instead of a Pebble seek.
+// error class). Exhausted children still get re-seeked: AndIterator.converge
+// seeks per merge step, and the composite SeekGE/SeekLE child loops (AND, OR,
+// NOT, ReverseOr) seek unconditionally — once per parent merge step when
+// nested. The floor turns each such re-seek at or above the proven bound into
+// an O(1) comparison instead of a Pebble seek.
 type seekFloor struct {
 	bound []byte
 	set   bool
