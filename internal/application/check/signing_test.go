@@ -330,6 +330,58 @@ func TestSigningVerifier_CascadeIsOrderIndependent(t *testing.T) {
 	require.Equal(t, forward.keys, backward.keys)
 }
 
+// TestSigningVerifier_CascadeTerminatesOnAParentCycle pins the visited set in
+// descendantsOf. A parent cycle is reachable through ordinary audited orders:
+// registration is an upsert and neither admission nor the FSM validates that a
+// parent exists or that the graph stays acyclic, so registering "a" under "b" and
+// then "b" under "a" is accepted end to end. Without the visited set the BFS
+// alternates between them forever, and the hang lands inside Check().
+//
+// A cascade revoke of either key must therefore remove the whole cycle and
+// return. If this test ever hangs instead of failing, the visited set is gone.
+func TestSigningVerifier_CascadeTerminatesOnAParentCycle(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		revoke string
+	}{
+		{name: "revoke one side of the cycle", revoke: "a"},
+		{name: "revoke the other side", revoke: "b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// "a" parents "b" and "b" parents "a" — each is the other's descendant.
+			verifier := foldSigningOrders(
+				registerSigningKeyOrder("a", signingTestKey(0x01), "b"),
+				registerSigningKeyOrder("b", signingTestKey(0x02), "a"),
+				registerSigningKeyOrder("outside", signingTestKey(0x03), ""),
+				revokeSigningKeyOrder(tc.revoke, true),
+			)
+
+			require.NotContains(t, verifier.keys, "a", "the cycle must be fully revoked")
+			require.NotContains(t, verifier.keys, "b", "the cycle must be fully revoked")
+			require.Contains(t, verifier.keys, "outside",
+				"a cascade must not reach keys outside the revoked subtree")
+		})
+	}
+}
+
+// TestSigningVerifier_CascadeTerminatesOnASelfParent covers the degenerate cycle:
+// one key registered as its own parent. descendantsOf seeds visited with the
+// revoked key itself, so the key is never re-enqueued as its own child.
+func TestSigningVerifier_CascadeTerminatesOnASelfParent(t *testing.T) {
+	t.Parallel()
+
+	verifier := foldSigningOrders(
+		registerSigningKeyOrder("self", signingTestKey(0x01), "self"),
+		revokeSigningKeyOrder("self", true),
+	)
+
+	require.Empty(t, verifier.keys)
+}
+
 // TestSigningVerifier_Compare walks the tamper classes the pass exists to
 // detect. Each case seeds the audit-derived expectation by folding orders (never
 // by poking the map, so the fold stays part of what is verified), then writes a
