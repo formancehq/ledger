@@ -1038,3 +1038,80 @@ func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 			"an empty store holds no signing rows, so the empty expectation must match it exactly")
 	})
 }
+
+// TestSigningVerifier_CascadeUnionsBothParentEdges pins the cascade against the
+// FSM's actual child relation, which is a UNION of two edges rather than the
+// single running parent pointer.
+//
+// state.WriteSet.GetSigningKeyChildren starts from the COMMITTED children of the
+// revoked key and filters only the keys the same proposal removed. It never
+// consults a reassigned parent pointer to exclude a key. So a key re-registered
+// under a new parent in the same proposal as a cascade revoke of its OLD parent is
+// still revoked — and a checker that walked only the reassigned pointer would keep
+// it in the expected set and report a false SIGNING_KEY_MISMATCH against a store
+// that legitimately deleted it.
+func TestSigningVerifier_CascadeUnionsBothParentEdges(t *testing.T) {
+	t.Parallel()
+
+	var (
+		parentKey = signingTestKey(0x01)
+		otherKey  = signingTestKey(0x02)
+		childKey  = signingTestKey(0x03)
+	)
+
+	// seedThreeKeys folds "parent", "other" and "child" (parented to "parent"), one
+	// proposal each, so they are all committed before the proposal under test.
+	seedThreeKeys := func() *signingVerifier {
+		verifier := newSigningVerifier()
+
+		for _, order := range []*raftcmdpb.Order{
+			registerSigningKeyOrder("parent", parentKey, ""),
+			registerSigningKeyOrder("other", otherKey, ""),
+			registerSigningKeyOrder("child", childKey, "parent"),
+		} {
+			verifier.beginProposal()
+			verifier.applyOrder(order)
+		}
+
+		return verifier
+	}
+
+	t.Run("reparent inside the revoking proposal still cascades", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedThreeKeys()
+
+		// Both orders in ONE proposal: "child" moves to "other", then "parent" is
+		// cascade-revoked. The FSM sees "child" as a committed child of "parent" and
+		// deletes it regardless of the reassignment.
+		verifier.beginProposal()
+		verifier.applyOrder(registerSigningKeyOrder("child", childKey, "other"))
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent", "the revoke target must be gone")
+		require.NotContains(t, verifier.keys, "child",
+			"a key reparented within the revoking proposal is still cascaded by the FSM")
+		require.Contains(t, verifier.keys, "other", "an unrelated root key must survive")
+	})
+
+	t.Run("reparent in an earlier proposal does not cascade", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedThreeKeys()
+
+		// The counterpart: once the reassignment is COMMITTED by an earlier proposal,
+		// "child" is no longer a committed child of "parent", so revoking "parent"
+		// must leave it alone. This is what makes the snapshot per-proposal rather
+		// than a permanent record of every parent a key ever had.
+		verifier.beginProposal()
+		verifier.applyOrder(registerSigningKeyOrder("child", childKey, "other"))
+
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.Contains(t, verifier.keys, "child",
+			"a key reparented by an earlier proposal must not be cascaded from its old parent")
+		require.Contains(t, verifier.keys, "other")
+	})
+}

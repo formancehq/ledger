@@ -85,6 +85,15 @@ type signingVerifier struct {
 	// expectation. It is fail-closed: a zero-value verifier reports incomplete
 	// coverage rather than presenting a live-range-only replay as clean.
 	coldComplete bool
+	// proposalParents is the parent relation as it stood BEFORE any of the current
+	// proposal's orders were folded — the checker's stand-in for the FSM's
+	// committed state. Rebuilt lazily (see ensureProposalSnapshot) because most
+	// audit entries carry no signing order at all.
+	proposalParents map[string]string
+	// proposalSnapshotValid says whether proposalParents describes the current
+	// proposal. Cleared per entry in O(1); the map is only populated if that entry
+	// turns out to fold a signing order.
+	proposalSnapshotValid bool
 	// archiveEndSeq is the highest log sequence covered by the archived chapters
 	// foldArchived walked — the boundary above which the live range takes over.
 	// The live fold uses it to skip items it already folded from cold storage:
@@ -95,7 +104,37 @@ type signingVerifier struct {
 }
 
 func newSigningVerifier() *signingVerifier {
-	return &signingVerifier{keys: make(map[string]signingKeyExpectation)}
+	return &signingVerifier{
+		keys:            make(map[string]signingKeyExpectation),
+		proposalParents: make(map[string]string),
+	}
+}
+
+// beginProposal marks the start of a new proposal's orders. One proposal is one
+// audit entry, matching WriteSet.Reset, which the FSM calls once per proposal and
+// which is what makes "committed" mean "before this proposal" there too.
+//
+// O(1): it only invalidates the snapshot. Building it is deferred to
+// ensureProposalSnapshot so the overwhelming majority of audit entries — those
+// with no signing order — cost nothing.
+func (v *signingVerifier) beginProposal() {
+	v.proposalSnapshotValid = false
+}
+
+// ensureProposalSnapshot captures the parent relation before the current
+// proposal's first signing order mutates it.
+func (v *signingVerifier) ensureProposalSnapshot() {
+	if v.proposalSnapshotValid {
+		return
+	}
+
+	clear(v.proposalParents)
+
+	for keyID, expectation := range v.keys {
+		v.proposalParents[keyID] = expectation.parentKeyID
+	}
+
+	v.proposalSnapshotValid = true
 }
 
 // applyOrder folds one order into the expected signing state, ignoring every
@@ -106,6 +145,10 @@ func newSigningVerifier() *signingVerifier {
 func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 	switch payload := order.GetSystemScoped().GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
+		// Taken before the mutation below: a re-registration that moves a key to a
+		// new parent must not erase the old edge the FSM's cascade still sees.
+		v.ensureProposalSnapshot()
+
 		register := payload.RegisterSigningKey
 
 		// Upsert, not insert: the FSM has no duplicate-ID rejection, so
@@ -118,6 +161,12 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 			parentKeyID: register.GetParentKeyId(),
 		}
 	case *raftcmdpb.SystemScopedOrder_RevokeSigningKey:
+		// Required here too, not just on the register path: descendantsOf reads
+		// proposalParents, so without this a cascade in a proposal that registered
+		// nothing would walk the snapshot left behind by an EARLIER proposal and
+		// cascade from a parent link that has since been committed away.
+		v.ensureProposalSnapshot()
+
 		revoke := payload.RevokeSigningKey
 
 		revoked := []string{revoke.GetKeyId()}
@@ -141,12 +190,22 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 // descendantsOf returns every key reachable from keyID through the expected
 // parent relation, excluding keyID itself.
 //
-// Traversal order is irrelevant and this deliberately does NOT reproduce the
+// Traversal ORDER is irrelevant and this deliberately does not reproduce the
 // FSM's: state.WriteSet.GetSigningKeyChildren returns sorted committed children
-// followed by un-re-sorted in-batch additions, and reproducing that would couple
-// the checker to an implementation detail for no gain. The reachable *set* is
-// fully determined by the parent relation, and the comparison is over the final
-// key set, so any traversal that visits the whole subtree yields the same answer.
+// followed by un-re-sorted in-proposal additions, and the comparison is over the
+// final key set, so any traversal visiting the whole subtree agrees.
+//
+// The set of EDGES is not irrelevant, and this is where a subtle divergence lives.
+// GetSigningKeyChildren unions two relations: the COMMITTED children of the key
+// (minus those the same proposal removed) and the keys the same proposal
+// registered under it. So a key re-registered under a new parent within the same
+// proposal as a cascade revoke of its OLD parent is cascaded from both — the FSM
+// never consults the reassigned pointer to exclude it. Walking only the running
+// relation would drop that key from the cascade, leave it in the expected set, and
+// report a false SIGNING_KEY_MISMATCH against a store that legitimately deleted
+// it. Hence both edges below, the pre-proposal one coming from proposalParents.
+// Keys the proposal already removed are absent from v.keys, which reproduces
+// GetSigningKeyChildren's pending-removal filter for free.
 //
 // The visited set is what makes the walk terminate: re-registration can point a
 // key at a descendant of itself, and a parent cycle would otherwise loop forever.
@@ -164,7 +223,9 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 		// Collected into a slice rather than deleted in place: mutating v.keys
 		// while ranging over it is what this loop must not do.
 		for candidate, expectation := range v.keys {
-			if expectation.parentKeyID != current {
+			// Either edge makes it a child, mirroring the union
+			// GetSigningKeyChildren returns.
+			if expectation.parentKeyID != current && v.proposalParents[candidate] != current {
 				continue
 			}
 
@@ -314,6 +375,10 @@ func (v *signingVerifier) foldChapter(ctx context.Context, reader dal.PebbleRead
 		if err != nil {
 			return fmt.Errorf("reading archived audit items for sequence %d: %w", entry.GetSequence(), err)
 		}
+
+		// One entry is one proposal, which is the boundary the FSM's notion of
+		// "committed" is defined against.
+		v.beginProposal()
 
 		for _, item := range items {
 			logSeq := item.GetLogSequence()

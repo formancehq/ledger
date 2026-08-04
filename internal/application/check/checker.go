@@ -2597,6 +2597,11 @@ func (c *Checker) verifyAuditHashChain(
 			// two items sharing a LogSequence inside [Min,Max] carry the same order,
 			// and register (upsert), revoke (delete) and setConfig (assign) all reach
 			// the same state applied twice.
+			// One entry is one proposal, which is the boundary the FSM's notion of
+			// "committed" is defined against (WriteSet.Reset runs once per proposal).
+			// The signing cascade needs it to reproduce GetSigningKeyChildren.
+			signing.beginProposal()
+
 			for _, item := range items {
 				logSeq := item.GetLogSequence()
 				if logSeq == 0 || logSeq <= signing.archiveEndSeq {
