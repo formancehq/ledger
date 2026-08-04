@@ -2,6 +2,13 @@
 
 This document contains rules and conventions for AI agents working on this codebase. Detailed documentation lives in `docs/` - see [docs/README.md](docs/README.md) for navigation.
 
+## Release Status — v3 is unreleased
+
+**CRITICAL**: The Raft-based ledger v3 has never been released. No deployment carries data across versions, and all state is wiped on every push to `release/v3.0`. Because nothing persists across versions, there is no backward-compatibility burden — break wire and storage formats freely:
+
+- **No compatibility shims.** Do not add migrations, version guards, or fallback paths to preserve old wire or storage formats. Change the format and move on.
+- **Do not reserve proto fields.** When removing a field, delete it and realign the remaining field numbers sequentially (see [Protocol Buffers](#protocol-buffers)). Pre-existing `reserved` declarations may stay — a dedicated cleanup pass will remove them before release.
+
 ## Invariants
 
 **CRITICAL**: These rules are non-negotiable and must never be violated.
@@ -73,7 +80,7 @@ Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Cont
 
 ## Protocol Buffers
 
-**CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields.
+**CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields. Do not add `reserved` declarations for removed fields — see [Release Status](#release-status--v3-is-unreleased).
 
 See [docs/technical/contributing/protobuf.md](docs/technical/contributing/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
 
