@@ -3,6 +3,7 @@ package readstore
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -298,4 +299,28 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 	require.False(t, empty.SeekLE([]byte("z")), "empty view")
 	require.False(t, empty.SeekLE([]byte("a")), "covered by the ceil")
 	require.NoError(t, empty.Err())
+}
+
+// SeekLE at the all-0xff cursor must return the last transaction: the
+// incremented probe key wraps to zero, and mistaking that for an empty range
+// would also poison the ceil for every later seek.
+func TestPebbleReverseTxIterator_SeekLEMaxUint64(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	for _, id := range []uint64{5, 7} {
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+	}
+
+	it, err := NewPebbleReverseTxIterator(s.DB(), "l")
+	require.NoError(t, err)
+	defer it.Close()
+
+	require.True(t, it.SeekLE(txIDBytes(math.MaxUint64)), "everything is <= MaxUint64")
+	require.Equal(t, uint64(7), binary.BigEndian.Uint64(it.Current()))
+
+	require.True(t, it.SeekLE(txIDBytes(6)), "ceil must not be poisoned by the wrap")
+	require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
+	require.NoError(t, it.Err())
 }

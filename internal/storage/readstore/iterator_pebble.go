@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -715,26 +716,31 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	it.started = true
 
 	// Seek to the last byLog entry for target txID:
-	// SeekGE([prefix][target+1]) then Prev(), or Last() if past end
-	nextTarget := incrementUint64Bytes(target)
-	seekKey := make([]byte, len(it.prefix)+8)
-	copy(seekKey, it.prefix)
-	copy(seekKey[len(it.prefix):], nextTarget)
-
-	if it.iter.SeekGE(seekKey) {
-		if !it.iter.Prev() {
-			it.exhausted = true
-			it.ceil.fail(target, it.iter.Error())
-
-			return false
-		}
+	// SeekGE([prefix][target+1]) then Prev(), or Last() if past end.
+	// An all-0xff target wraps the increment to zero, which would land the
+	// probe on the FIRST key and mis-record an emptiness proof; every key
+	// qualifies for that target, so position at the end of the range directly.
+	var positioned bool
+	if isMaxUint64Bytes(target) {
+		positioned = it.iter.Last()
 	} else {
-		if !it.iter.Last() {
-			it.exhausted = true
-			it.ceil.fail(target, it.iter.Error())
+		nextTarget := incrementUint64Bytes(target)
+		seekKey := make([]byte, len(it.prefix)+8)
+		copy(seekKey, it.prefix)
+		copy(seekKey[len(it.prefix):], nextTarget)
 
-			return false
+		if it.iter.SeekGE(seekKey) {
+			positioned = it.iter.Prev()
+		} else {
+			positioned = it.iter.Last()
 		}
+	}
+
+	if !positioned {
+		it.exhausted = true
+		it.ceil.fail(target, it.iter.Error())
+
+		return false
 	}
 
 	for it.iter.Valid() {
@@ -1016,6 +1022,12 @@ func copyBytes(b []byte) []byte {
 	copy(cp, b)
 
 	return cp
+}
+
+// isMaxUint64Bytes reports whether b is the 8-byte encoding of MaxUint64 —
+// the one value incrementUint64Bytes wraps to zero on.
+func isMaxUint64Bytes(b []byte) bool {
+	return len(b) == 8 && binary.BigEndian.Uint64(b) == math.MaxUint64
 }
 
 func incrementUint64Bytes(b []byte) []byte {
