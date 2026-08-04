@@ -190,7 +190,7 @@ The bitset lives on `OrderTechnical` (`misc/proto/raft_cmd.proto:64`) and `Techn
 
 Between the moment a producer resolves `(key=K, value=V)` and the moment the FSM applies the proposal at Raft index `I`, another proposal may mutate `K`. The preloaded `V` would then be stale at apply.
 
-`AppendProposalPredictedIndex(data []byte, index uint64) []byte` (`internal/infra/plan/predicted_index.go`) stamps the expected index onto the already-marshalled proposal by appending the raw wire encoding of `Proposal.predicted_index` (field 7, a `fixed64`); it is a no-op when the index is 0. Appending raw bytes avoids re-marshalling a possibly-megabyte `Proposal` while holding the proposal lock.
+`AppendProposalPredictedIndex(data []byte, index uint64) []byte` (`internal/infra/plan/predicted_index.go`) stamps the expected index onto the already-marshalled proposal by appending the raw wire encoding of `Proposal.predicted_index` (field 7, a `fixed64`); it is a no-op when the index is 0. Appending raw bytes avoids re-marshalling a possibly-megabyte `Proposal` while holding the proposal lock. That is the common path only: when the guard finds the boundary shifted it must re-marshal the rebuilt proposal anyway, and the fresh marshal serializes `PredictedIndex` inline, so the append is skipped (`internal/infra/plan/runner.go` — the index is assigned to `cmd` before the branch, then either re-marshalled or appended, never both).
 
 At apply, the FSM compares the predicted index against the actual one. A mismatch means the observed cache state may no longer hold, so the proposal is rejected with `ErrStaleProposal` and the producer rebuilds and retries.
 
@@ -206,7 +206,9 @@ Idempotency keys are declared through `Coverage.AddIdempotencyKey` but are **not
 
 ## Cache horizon and cache epoch
 
-`ExecutionPlan.cache_epoch` is stamped at admission time. The FSM rejects a proposal whose epoch does not match the current one — a mismatch means the cache was reset in between, so nothing the plan resolved can be trusted.
+`ExecutionPlan.cache_epoch` is stamped at admission time on any plan that carries attribute coverage. The FSM rejects such a proposal when its epoch does not match the current one — a mismatch means the cache was reset in between, so nothing the plan resolved can be trusted.
+
+The gate is therefore scoped, not universal: a proposal that reads nothing from the cache carries no `cache_epoch` at all, because `runWithoutPreload` strips it along with `attributes` (see the no-preload fast path above). That is deliberate — an idempotency-only proposal resolved nothing the reset could invalidate, so letting a cluster-config cache reset between `Build` and apply reject it would fail a proposal that is still perfectly valid.
 
 The related question of whether the proposal's target index is still within cache reach at all is answered on the admission side; see [admission cache horizon](../admission/admission-cache-horizon.md) rather than duplicating the rules here.
 
@@ -237,10 +239,13 @@ sequenceDiagram
     P->>P: marshal — outside the critical section
     P->>B: AcquireProposalGuard: lock IndexTracker, re-check Gen(nextIndex)
     B-->>P: ProposalGuard
-    opt boundary shifted between Build and guard (rare)
+    P->>P: cmd.PredictedIndex = TrackerNext() (index known under the lock)
+    alt boundary shifted between Build and guard (rare)
         B-->>P: rebuilt ExecutionPlan → re-apply bits, re-marshal under the guard
+        Note over P: the re-marshal serializes PredictedIndex inline — no append
+    else common path
+        P->>P: AppendProposalPredictedIndex onto the pre-marshalled buffer
     end
-    P->>P: AppendProposalPredictedIndex (index known under the lock)
     P->>P: Propose under the guard
     Note over P,FSM: Raft commit (no Pebble reads on the hot path)
     FSM->>FSM: checkStaleProposal: predictedIndex == raftIndex? cache_epoch match?
