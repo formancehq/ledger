@@ -313,7 +313,7 @@ func processMirrorSavedMetadata(ledger string, sm *raftcmdpb.MirrorSavedMetadata
 
 				stateReader, err := s.TransactionStates().Get(txKey)
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
-					return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
+					return nil, domain.StoreFailure("reading transaction state", err)
 				}
 
 				if stateReader != nil {
@@ -356,14 +356,14 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 				Key:        dm.GetKey(),
 			}
 			if err := s.AccountMetadata().Delete(metaKey); err != nil {
-				return nil, &domain.ErrStorageOperation{Operation: "deleting account metadata", Cause: err}
+				return nil, domain.StoreFailure("deleting account metadata", err)
 			}
 		case *commonpb.Target_TransactionId:
 			txKey := domain.TransactionKey{LedgerName: ledger, ID: target.TransactionId}
 
 			stateReader, err := s.TransactionStates().Get(txKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, &domain.ErrStorageOperation{Operation: "reading transaction state", Cause: err}
+				return nil, domain.StoreFailure("reading transaction state", err)
 			}
 
 			if stateReader != nil && stateReader.GetMetadata() != nil {
@@ -423,7 +423,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 
 	origReader, err := s.TransactionStates().Get(origKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, &domain.ErrStorageOperation{Operation: "reading original transaction state", Cause: err}
+		return nil, domain.StoreFailure("reading original transaction state", err)
 	}
 
 	if origReader != nil {

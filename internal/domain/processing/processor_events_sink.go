@@ -19,7 +19,7 @@ func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*c
 
 	existing, err := ctx.Scope.GetSinkConfig(cfg.GetName())
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + cfg.GetName(), Cause: err}
+		return nil, domain.StoreFailure("checking existing sink "+cfg.GetName(), err)
 	}
 
 	if existing != nil {
@@ -38,7 +38,7 @@ func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*c
 func processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	existing, err := ctx.Scope.GetSinkConfig(order.GetName())
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "checking existing sink " + order.GetName(), Cause: err}
+		return nil, domain.StoreFailure("checking existing sink "+order.GetName(), err)
 	}
 
 	if existing == nil {

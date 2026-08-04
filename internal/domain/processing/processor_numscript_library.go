@@ -40,7 +40,7 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 	// Immutable: a stored version can never be overwritten.
 	exists, existsErr := s.NumscriptVersionExists(ledger, order.GetName(), order.GetVersion())
 	if existsErr != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "checking numscript version existence", Cause: existsErr}
+		return nil, domain.StoreFailure("checking numscript version existence", existsErr)
 	}
 
 	if exists {
@@ -52,7 +52,7 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 	// are about to write.
 	current, curErr := s.GetNumscriptLatestVersion(ledger, order.GetName())
 	if curErr != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "getting numscript latest version", Cause: curErr}
+		return nil, domain.StoreFailure("getting numscript latest version", curErr)
 	}
 
 	info := &commonpb.NumscriptInfo{

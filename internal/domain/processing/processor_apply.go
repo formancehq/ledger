@@ -21,7 +21,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	// even though the ledger is just deleted.
 	ledgerInfoReader, infoErr := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if infoErr != nil && !errors.Is(infoErr, domain.ErrNotFound) {
-		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: infoErr}
+		return nil, domain.StoreFailure("loading ledger", infoErr)
 	}
 
 	infoOk := infoErr == nil

@@ -15,7 +15,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	s := ctx.Scope
 	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
+		return nil, domain.StoreFailure("loading ledger", err)
 	}
 
 	if err == nil {
@@ -129,7 +129,7 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 	// ungated delete. Future GetBoundaries calls — in this proposal and,
 	// after Merge, in later ones — return domain.ErrNotFound as before.
 	if err := s.Boundaries().Delete(domain.LedgerKey{Name: ledger}); err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "deleting ledger boundary", Cause: err}
+		return nil, domain.StoreFailure("deleting ledger boundary", err)
 	}
 	// The LedgerCleanup signal (cleanup queue + deferred data purge) is
 	// derived from DeletedLedgerLog by deriveSignals / WriteSet.Absorb.

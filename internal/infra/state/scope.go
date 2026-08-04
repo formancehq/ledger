@@ -39,17 +39,42 @@ type ErrCoverageMiss struct {
 }
 
 func (e *ErrCoverageMiss) Error() string {
-	return fmt.Sprintf("preload coverage miss (kind=%s id=%s raft_index=%d)",
+	return fmt.Sprintf("preload coverage miss (kind=%s id=%s raftIndex=%d)",
 		e.Attribute, e.IDHex, e.RaftIndex)
 }
 
 func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
+
+// Metadata keys are camelCase, matching every other Describable and the
+// repo-wide wire convention (CLAUDE.md). This map was NOT unreachable before
+// EN-1379: two paths already surfaced the bare miss, so the EN-1379 rename from
+// snake_case is a deliberate breaking change, not an incidental cleanup —
+//
+//   - numscript re-resolution returns the bare miss (convertNumscriptError
+//     flattens the chain via errors.As), and a ProcessOrders failure feeds
+//     buildAuditFailure, which copies Metadata() into the hash-chained
+//     AuditFailure.Context. The snake_case keys were already in the audit.
+//   - planInvariantDescribable returns the bare miss to applyProposal, which
+//     surfaces it as a domain.BusinessError whose Metadata() delegates through
+//     to the gRPC/HTTP ErrorInfo.
+//
+// So operator tooling keyed on canonical_hex / id_hex / raft_index stops
+// matching at this deploy, and audit entries for this failure class carry
+// different key names either side of it. That cost is paid once, deliberately:
+// this was the last snake_case Describable in the repo, and leaving the only
+// outlier on the error that most needs to be greppable would just defer the
+// same seam. Error() above uses the same raftIndex spelling so a single audit
+// record does not carry both (kind= / id= are prose labels, not payload keys).
+// See docs/technical/architecture/subsystems/fsm/coverage-gate.md.
+//
+// The structured log emitted by coverageMiss keeps its own snake_case field
+// names — that is a log, not a wire payload.
 func (e *ErrCoverageMiss) Metadata() map[string]string {
 	return map[string]string{
-		"attribute":     e.Attribute,
-		"canonical_hex": e.CanonicalHex,
-		"id_hex":        e.IDHex,
-		"raft_index":    strconv.FormatUint(e.RaftIndex, 10),
+		"attribute":    e.Attribute,
+		"canonicalHex": e.CanonicalHex,
+		"idHex":        e.IDHex,
+		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
 	}
 }
 

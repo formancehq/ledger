@@ -895,8 +895,11 @@ func TestValidateTransientVolumesListsAllOffendersSorted(t *testing.T) {
 // should-not-happen storage/coverage fault surfaces ahead of any business
 // offender: the check could not run correctly for that key, so the aggregated
 // ErrTransientAccountNonZero must not mask it. Here one transient volume has no
-// declared volume coverage (CheckCoverage fails => ErrStorageOperation) while
-// another is a plain non-zero business offender.
+// declared volume coverage (CheckCoverage fails => *ErrCoverageMiss) while
+// another is a plain non-zero business offender. Since EN-1379 that miss
+// propagates verbatim through domain.StoreFailure instead of being relabelled
+// as an ErrStorageOperation, so the audit chain records COVERAGE_MISS with the
+// identifying key.
 func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 	t.Parallel()
 
@@ -952,7 +955,71 @@ func TestValidateTransientVolumesStorageFaultTakesPrecedence(t *testing.T) {
 		describ := buf.ValidateTransientVolumes(scope)
 		require.NotNil(t, describ, "iteration %d: expected a fault", i)
 
-		_, ok := describ.(*domain.ErrStorageOperation)
-		require.True(t, ok, "iteration %d: storage fault must win over business offender, got %T", i, describ)
+		_, ok := describ.(*ErrCoverageMiss)
+		require.True(t, ok, "iteration %d: coverage fault must win over business offender, got %T", i, describ)
+		require.Equal(t, domain.ErrReasonCoverageMiss, describ.Reason(),
+			"iteration %d: an undeclared key is an admission bug, not a storage fault (EN-1379)", i)
 	}
+}
+
+// TestValidateTransientVolumesLedgerCoverageMissPropagates covers the OTHER
+// StoreFailure site in ValidateTransientVolumes: the ledger load, not the
+// per-volume CheckCoverage that
+// TestValidateTransientVolumesStorageFaultTakesPrecedence drives.
+//
+// Here the volume coverage IS declared but the ledger is not, so
+// scope.Ledgers().Get returns *ErrCoverageMiss. That is neither
+// domain.ErrNotFound (which is the legitimate "ledger absent, skip" branch) nor
+// an IO fault, so it must reach the audit chain as COVERAGE_MISS with the
+// identifying key rather than as a relabelled storage fault (EN-1379).
+func TestValidateTransientVolumesLedgerCoverageMissPropagates(t *testing.T) {
+	t.Parallel()
+
+	buf, machine, _ := newTestBuffer(t)
+
+	ledger := &commonpb.LedgerInfo{
+		Name: "l-a",
+		Id:   1,
+		AccountTypes: map[string]*commonpb.AccountType{
+			"staging": {
+				Name:        "staging",
+				Pattern:     "staging:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+			},
+		},
+	}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(
+		(&domain.LedgerKey{Name: ledger.GetName()}).Bytes(),
+		ledger,
+	)
+	require.NoError(t, err)
+
+	offender := domain.NewVolumeKey("l-a", "staging:a", "USD", "")
+	buf.Derived.Volumes.Put(offender, &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(200),
+		Output: commonpb.NewUint256FromUint64(50),
+	})
+
+	// Declare ONLY the volume coverage. The ledger plan is deliberately absent,
+	// so the ledger read inside ValidateTransientVolumes misses the gate.
+	vid, _ := attributes.MakeKey(offender.Bytes())
+	scope, err := NewScopeFactory(
+		buf,
+		&raftcmdpb.ExecutionPlan{Attributes: []*raftcmdpb.AttributeCoverage{
+			declareTestPlan(vid, dal.SubAttrVolume),
+		}},
+		machine.logger,
+		machine.preloadMissCounter,
+		1,
+	).NewProposalScope()
+	require.NoError(t, err)
+
+	describ := buf.ValidateTransientVolumes(scope)
+	require.NotNil(t, describ)
+
+	miss, ok := describ.(*ErrCoverageMiss)
+	require.True(t, ok, "the ledger-load site must propagate the miss verbatim, got %T", describ)
+	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
+	require.Equal(t, "ledgers", miss.Metadata()["attribute"],
+		"the identifying key must survive to the audit context")
 }

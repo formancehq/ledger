@@ -77,7 +77,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		}
 
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state", Cause: err}
+			return nil, domain.StoreFailure("getting transaction state", err)
 		}
 
 		// Mutate() yields a fresh clone — handlers may freely modify the
@@ -139,11 +139,11 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 				}
 			}
 
-			return nil, &domain.ErrStorageOperation{Operation: "checking account metadata", Cause: err}
+			return nil, domain.StoreFailure("checking account metadata", err)
 		}
 
 		if err := s.AccountMetadata().Delete(metaKey); err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "deleting account metadata", Cause: err}
+			return nil, domain.StoreFailure("deleting account metadata", err)
 		}
 	case *commonpb.Target_TransactionId:
 		txID := target.TransactionId
@@ -159,7 +159,7 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		}
 
 		if err != nil {
-			return nil, &domain.ErrStorageOperation{Operation: "getting transaction state for delete", Cause: err}
+			return nil, domain.StoreFailure("getting transaction state for delete", err)
 		}
 
 		state := stateReader.Mutate()

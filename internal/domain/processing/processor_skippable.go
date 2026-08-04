@@ -146,7 +146,7 @@ func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commo
 			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("skip allocated for unknown ledger %q", ledger)}
 		}
 
-		return &domain.ErrStorageOperation{Operation: fmt.Sprintf("loading boundaries for skip log on ledger %q", ledger), Cause: err}
+		return domain.StoreFailure(fmt.Sprintf("loading boundaries for skip log on ledger %q", ledger), err)
 	}
 
 	boundaries := boundariesReader.Mutate()

@@ -376,6 +376,61 @@ func TestBuildAuditFailure(t *testing.T) {
 		require.Equal(t, domain.ErrReasonChapterNotClosed, domain.ReasonString(failure.GetReason()))
 		require.Equal(t, "3", failure.GetContext()["chapterId"])
 	})
+
+	// CoverageMiss pins the EN-1379 contract on the surface that matters most:
+	// the hash-chained AuditFailure. buildAuditFailure reads Reason()/Metadata()
+	// off the OUTERMOST Describable and never unwraps, so an admission-contract
+	// violation that reached here wrapped would be recorded permanently as
+	// STORAGE_OPERATION_FAILED with the identifying key stripped.
+	//
+	// The exact key SET is asserted, not just the values: buildAuditFailurePayload
+	// folds every sorted Context key AND value into the audit hash pre-image, so a
+	// renamed or added key changes bytes that are immutable once written. Asserting
+	// the keys only on Metadata() (scope_unit_test.go) leaves that free to drift —
+	// which is how the EN-1379 snake_case -> camelCase rename shipped green.
+	t.Run("CoverageMiss", func(t *testing.T) {
+		t.Parallel()
+
+		err := &ErrCoverageMiss{
+			Attribute:    "volumes",
+			CanonicalHex: "deadbeef",
+			IDHex:        "0102",
+			RaftIndex:    42,
+		}
+		failure := buildAuditFailure(err)
+
+		require.Equal(t, domain.ErrReasonCoverageMiss, domain.ReasonString(failure.GetReason()),
+			"an undeclared key is an admission bug, never a storage fault (EN-1379)")
+		require.Equal(t, err.Error(), failure.GetMessage())
+
+		require.Equal(t, map[string]string{
+			"attribute":    "volumes",
+			"canonicalHex": "deadbeef",
+			"idHex":        "0102",
+			"raftIndex":    "42",
+		}, failure.GetContext())
+	})
+
+	// CoverageMissWrappedStaysStorageFault is the negative control for the
+	// subtest above: buildAuditFailure genuinely does NOT unwrap, so the no-wrap
+	// contract has to be upheld by every FSM read site going through
+	// domain.StoreFailure. If someone reintroduces a bare wrap, this is the shape
+	// the audit chain would record forever.
+	t.Run("CoverageMissWrappedStaysStorageFault", func(t *testing.T) {
+		t.Parallel()
+
+		miss := &ErrCoverageMiss{Attribute: "volumes", IDHex: "0102", RaftIndex: 42}
+
+		failure := buildAuditFailure(&domain.ErrStorageOperation{Operation: "loading volume", Cause: miss})
+
+		require.Equal(t, domain.ErrReasonStorageOperation, domain.ReasonString(failure.GetReason()))
+		require.Equal(t, map[string]string{"operation": "loading volume"}, failure.GetContext(),
+			"the wrap strips the identifying key — this is what EN-1379 prevents")
+
+		// And the supported path avoids exactly that.
+		require.Equal(t, domain.ErrReasonCoverageMiss,
+			domain.ReasonString(buildAuditFailure(domain.StoreFailure("loading volume", miss)).GetReason()))
+	})
 }
 
 // TestExtractLedgers_WrapperCoversAllLedgerScopedPayloads guards the

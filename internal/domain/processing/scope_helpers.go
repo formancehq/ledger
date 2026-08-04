@@ -10,9 +10,10 @@ import (
 
 // loadLedger reads a ledger through the Scope and translates Scope-level
 // errors into business errors handlers can return directly. ErrNotFound
-// becomes ErrLedgerNotFound; any other error (notably *ErrCoverageMiss)
-// is wrapped in ErrStorageOperation so the FSM emits a failure audit
-// entry rather than misreporting the cause.
+// becomes ErrLedgerNotFound; an admission-contract violation (notably
+// *state.ErrCoverageMiss) propagates verbatim so the audit chain records
+// COVERAGE_MISS rather than a storage fault (EN-1379); any other error is
+// wrapped in ErrStorageOperation so the FSM emits a failure audit entry.
 //
 // Returns a Mutate()-clone so handlers can freely modify the result and
 // write it back through s.PutLedger without mutating the cached pointer
@@ -24,7 +25,7 @@ func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable)
 	}
 
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "loading ledger", Cause: err}
+		return nil, domain.StoreFailure("loading ledger", err)
 	}
 
 	return info.Mutate(), nil
@@ -38,7 +39,7 @@ func loadBoundaries(s Scope, name string) (raftcmdpb.LedgerBoundariesReader, dom
 	}
 
 	if err != nil {
-		return nil, &domain.ErrStorageOperation{Operation: "loading boundaries", Cause: err}
+		return nil, domain.StoreFailure("loading boundaries", err)
 	}
 
 	return boundaries, nil
