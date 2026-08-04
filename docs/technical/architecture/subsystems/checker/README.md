@@ -54,11 +54,14 @@ peer-store datum a pass does verify is reverse-map (`0x03`) row *presence*
 Persisted projections that are genuinely not yet covered — prepared
 queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive
 user-visible results and with no `compare*` pass), persisted bloom blocks on
-the restart path, and the persisted governance projections (signing keys
-`SubGlobSigningKey`, signing config `SubGlobSigningConfig`, and maintenance mode
-`SubGlobMaintenanceMode` — all read into the live key store / shared state on
-recovery by `recovery.go` and consulted by admission to accept or reject writes,
-with no `compare*` pass) — are tracked integrity gaps, not approved exemptions.
+the restart path, and maintenance mode (`SubGlobMaintenanceMode`, read into
+shared state on recovery by `recovery.go` and consulted before a write is
+accepted, with no `compare*` pass) — are tracked integrity gaps, not approved
+exemptions. The two signing projections (`SubGlobSigningKey`,
+`SubGlobSigningConfig`) were on that list until EN-1515 and are now verified by
+`signingVerifier` (`internal/application/check/signing.go`) against the
+chain-bound signing orders; maintenance mode has the identical shape and gap but
+is deliberately deferred.
 
 ## Related
 
