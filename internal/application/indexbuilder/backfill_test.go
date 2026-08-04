@@ -2192,3 +2192,116 @@ func mustReadHandle(t *testing.T, b *Builder) *dal.ReadHandle {
 
 	return handle
 }
+
+// makeSavedAccountMetadataLog builds a standalone account-metadata write log.
+func makeSavedAccountMetadataLog(seq uint64, ledger, account, key, value string) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: ledger,
+					Log: &commonpb.LedgerLog{
+						Id: seq,
+						Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
+								SavedMetadata: &commonpb.SavedMetadata{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_Account{
+											Account: &commonpb.TargetAccount{Addr: account},
+										},
+									},
+									Metadata: map[string]*commonpb.MetadataValue{
+										key: commonpb.NewStringValue(value),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// countKeysWithPrefix returns how many readstore keys live under prefix.
+func countKeysWithPrefix(t *testing.T, store *readstore.Store, prefix []byte) int {
+	t.Helper()
+
+	iter, err := store.DB().NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: readstore.IncrementBytes(prefix),
+	})
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	n := 0
+	for iter.First(); iter.Valid(); iter.Next() {
+		n++
+	}
+
+	require.NoError(t, iter.Error())
+
+	return n
+}
+
+// TestMetadataBackfillSkipsForeignLedgerLogs pins the generic backfill
+// driver's ledger scoping: processBackfill replays the GLOBAL log with a
+// temporary config holding the task's index, and indexLogEntry keys writes
+// by each log's own ledger — so a foreign ledger's SavedMetadata on the same
+// key would pass the config gates and write forward+rmap rows into the
+// foreign keyspace for a field that ledger never indexed, surfacing as
+// reverse-map orphans in compareReverseMapOrphans (EN-1458). The postings
+// driver carries the same guard, pinned by
+// TestAccountAssetBackfillDoesNotWipeUnrelatedLedger.
+func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const (
+		taskLedger    = "task"
+		foreignLedger = "other"
+		metaKey       = "leak"
+	)
+
+	writeLogToFSM(t, b, makeSavedAccountMetadataLog(1, taskLedger, "accounts:own", metaKey, "v1"))
+	writeAppliedProposalToFSM(t, b, 1, 1, 1)
+
+	writeLogToFSM(t, b, makeSavedAccountMetadataLog(2, foreignLedger, "accounts:foreign", metaKey, "v2"))
+	writeAppliedProposalToFSM(t, b, 2, 2, 2)
+
+	globalCursor, err := query.ReadLastSequence(mustReadHandle(t, b))
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), globalCursor)
+
+	// CreateIndex on (ACCOUNT, metaKey) in taskLedger only.
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
+		Id: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
+	})
+	require.NoError(t, b.wb.Flush())
+	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one metadata backfill task")
+
+	b.backfillBudget = time.Second
+	stop := make(chan struct{})
+	for range 10 {
+		if len(b.backfillTasks) == 0 {
+			break
+		}
+		b.processBackfills(context.Background(), stop, globalCursor)
+	}
+	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
+
+	// The task ledger's rows were backfilled — guards against this test
+	// passing vacuously on a backfill that indexed nothing at all.
+	taskRmap := readstore.ReverseMapPrefix(dal.NewKeyBuilder(), taskLedger, readstore.NamespaceAccount)
+	assert.NotZero(t, countKeysWithPrefix(t, b.readStore, taskRmap), "task ledger's rmap rows must be backfilled")
+
+	// The foreign ledger's keyspace stayed untouched: it never indexed
+	// anything, so any row here is an orphan.
+	foreignRmap := readstore.ReverseMapPrefix(dal.NewKeyBuilder(), foreignLedger, readstore.NamespaceAccount)
+	assert.Zero(t, countKeysWithPrefix(t, b.readStore, foreignRmap), "foreign ledger must have no rmap rows")
+}
