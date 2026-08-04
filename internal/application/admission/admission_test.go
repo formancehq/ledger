@@ -51,7 +51,7 @@ func createTestStore(t *testing.T) *dal.Store {
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	}
 	batch := s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, info))
+	require.NoError(t, state.SaveLedger(batch, info.GetName(), info))
 	_, err = testAttrs.Ledger.Set(batch, domain.LedgerKey{Name: testLedgerName}.Bytes(), info)
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

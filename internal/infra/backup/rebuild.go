@@ -677,7 +677,11 @@ func (w *attributeReplayWriter) saveLedgerInfo(info *commonpb.LedgerInfo) error 
 		return fmt.Errorf("saving rebuilt ledger attribute: %w", err)
 	}
 
-	if err := state.SaveLedger(w.batch, info); err != nil {
+	// Both rows are keyed off info.GetName() here, so the two stay consistent
+	// with each other: during a rebuild the payload IS the identity, replayed
+	// from the log (or seeded from the checkpoint) rather than loaded from a
+	// projection that could have drifted from its key.
+	if err := state.SaveLedger(w.batch, info.GetName(), info); err != nil {
 		return fmt.Errorf("saving rebuilt ledger info: %w", err)
 	}
 

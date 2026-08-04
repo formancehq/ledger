@@ -1,6 +1,8 @@
 package state
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -37,6 +39,13 @@ type volumePartitionResult struct {
 
 // partitionVolumes splits volume updates into kept, purged, and transient sets.
 //
+// Account types are read from b.gatedLedgerTypes, which ValidateTransientVolumes
+// resolves through the gated Scope before Merge runs. partitionVolumes performs
+// no ledger read of its own: it executes at Merge time, past the per-order
+// coverage gate, so a direct Derived.Ledgers read here would classify volumes
+// off keys the proposal never declared (invariant #9). A ledger missing from the
+// map is an invariant violation, not an expected miss — see the hard fail below.
+//
 //   - NORMAL accounts: always kept
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
@@ -47,27 +56,43 @@ type volumePartitionResult struct {
 //     already purged): never written to Pebble.
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
-) volumePartitionResult {
-	// Build a cache of ledger → compiled account types to avoid repeated parsing.
-	ledgerTypes := make(map[string][]accounttype.CompiledType)
-
+) (volumePartitionResult, error) {
 	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
 
 	for _, update := range updates {
-		compiled, ok := ledgerTypes[update.Key.LedgerName]
+		// Account types come from ValidateTransientVolumes' gated resolution,
+		// never from a raw Derived.Ledgers read: the classification below picks
+		// which volumes are written to Pebble and which are purged, so it must
+		// be driven by proposal-declared, coverage-gated data (invariant #9).
+		entry, ok := b.gatedLedgerTypes[update.Key.LedgerName]
 		if !ok {
-			info, err := b.getLedgerData(update.Key.LedgerName)
-			if err != nil {
-				result.kept = append(result.kept, update)
-
-				continue
-			}
-
-			compiled = accounttype.CompileTypes(info.GetAccountTypes())
-			ledgerTypes[update.Key.LedgerName] = compiled
+			// Impossible by design: ValidateTransientVolumes runs before Merge
+			// on the order path and covers exactly this key set (it walks the
+			// same DirtyValues() map Merge drains), and only order handlers
+			// write volumes — so a technical-only proposal reaches Merge with
+			// none. A miss therefore means the gated pass did not run over this
+			// key, and silently defaulting to "kept" would let an ungated
+			// classification decide Pebble contents (invariant #7).
+			return volumePartitionResult{}, fmt.Errorf(
+				"invariant: volume update for ledger %q whose account types were never resolved through the gated scope",
+				update.Key.LedgerName,
+			)
 		}
+
+		if !entry.found {
+			// The gate resolved this ledger as genuinely absent — it carries no
+			// account-type info (never created). Default persistence is "kept".
+			// A ledger deleted earlier in this batch does NOT land here:
+			// DeleteLedger soft-deletes by Putting the row back with DeletedAt
+			// set, so the gated read still returns it with its types intact.
+			result.kept = append(result.kept, update)
+
+			continue
+		}
+
+		compiled := entry.compiled
 
 		if len(compiled) == 0 {
 			result.kept = append(result.kept, update)
@@ -115,7 +140,7 @@ func (b *WriteSet) partitionVolumes(
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 // applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.

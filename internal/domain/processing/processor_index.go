@@ -25,7 +25,13 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// handleCreatedIndexLog must then guard against re-scheduling a backfill
 	// by consulting the registry (cfg.byCanonical alone can lag behind the
 	// applied READY state).
-	existing, findErr := indexes.Find(ctx.Scope.Indexes(), info.GetName(), id)
+	//
+	// The registry is keyed off the command envelope, never the loaded
+	// projection's mutable name field, so a divergent LedgerInfo.name cannot
+	// redirect the lookup or the write to another ledger's index keys. The
+	// Ledger field below carries the same envelope value, keeping key and
+	// payload consistent.
+	existing, findErr := indexes.Find(ctx.Scope.Indexes(), ledger, id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up existing index", Cause: findErr}
 	}
@@ -34,7 +40,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		return buildCreatedIndexLogPayload(id, false), nil
 	}
 
-	indexes.Put(ctx.Scope.Indexes(), info.GetName(), &commonpb.Index{
+	indexes.Put(ctx.Scope.Indexes(), ledger, &commonpb.Index{
 		Id:          id,
 		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:   ctx.Scope.GetDate().Mutate(),
@@ -48,13 +54,16 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 }
 
 func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(ctx.Scope, ledger)
-	if loadErr != nil {
+	// The loaded projection is only needed to validate that the ledger exists
+	// and is not soft-deleted; the registry key comes from the envelope below.
+	if _, loadErr := loadLedger(ctx.Scope, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
 	id := order.GetId()
-	if err := indexes.Remove(ctx.Scope.Indexes(), info.GetName(), id); err != nil {
+	// Key off the command envelope, never the loaded projection's mutable
+	// name field (see processCreateIndex).
+	if err := indexes.Remove(ctx.Scope.Indexes(), ledger, id); err != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "dropping index", Cause: err}
 	}
 

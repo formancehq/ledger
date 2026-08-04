@@ -941,7 +941,7 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	// ZoneGlobal+SubGlobLedgerInfo (state.SaveLedger) and the Index
 	// row lives in the bucket-scoped SubAttrIndex zone (registry).
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
@@ -1037,7 +1037,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	// registry entry with no version state, so loadIndexRegistry schedules
 	// a backfill (versionFor defaults current == 0).
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{

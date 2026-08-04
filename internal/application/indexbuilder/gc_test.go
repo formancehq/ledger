@@ -232,7 +232,7 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	// SubAttrIndex zone (registry).
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(fsmBatch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 	}))
 	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes()

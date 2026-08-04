@@ -75,7 +75,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 
 	createdAt := commonpb.NewTimestamp(libtime.Now())
 	batch := s.OpenWriteSession()
-	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
+	err := state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 	})
@@ -117,7 +117,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	// Soft delete ledger
 	deletedAt := commonpb.NewTimestamp(libtime.Now())
 	batch = s.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, ledgerName, &commonpb.LedgerInfo{
 		Name:      ledgerName,
 		CreatedAt: createdAt,
 		DeletedAt: deletedAt,

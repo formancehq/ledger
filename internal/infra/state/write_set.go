@@ -95,6 +95,21 @@ type WriteSet struct {
 	// correctly described when only some of its assets are transient.
 	transientVolumes map[string][]*commonpb.TouchedVolume
 
+	// gatedLedgerTypes holds the account types ValidateTransientVolumes
+	// resolved through the gated Scope, keyed by ledger name. partitionVolumes
+	// consumes it at Merge time so volume classification is driven by
+	// proposal-declared, coverage-gated data instead of a raw parent-cache
+	// read (invariant #9).
+	//
+	// Both consumers walk the same key set: DirtyValues() returns the very map
+	// Derived.Volumes.Merge() drains into volumeUpdates, and the only four
+	// volume writers (processor_posting.go, processor_transaction_numscript.go)
+	// live on the order path, which always runs ValidateTransientVolumes first
+	// (machine.go:1539 before machine.go:1568). A technical-only proposal has
+	// no orders, hence no volume updates, so the absence of an entry at Merge
+	// time is impossible by design rather than an expected miss.
+	gatedLedgerTypes map[string]gatedLedgerType
+
 	// purgedByLog[i] is the deduplicated list of (account, asset) volumes
 	// drained to zero (had a prior non-zero balance, now zero and evicted
 	// from Pebble) by the log produced by order i. DISJOINT from
@@ -260,7 +275,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Partition volumes by persistence mode: normal (kept), ephemeral (purged), transient (skipped).
-	partResult := b.partitionVolumes(volumeUpdates)
+	partResult, err := b.partitionVolumes(volumeUpdates)
+	if err != nil {
+		return fmt.Errorf("partitioning volumes: %w", err)
+	}
 
 	metadataUpdates, metadataDeletions, err := b.Derived.AccountMetadata.Merge()
 	if err != nil {
@@ -639,7 +657,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// SubGlobLedgerInfo (0x03)
 	for _, update := range ledgerUpdates {
-		if err := SaveLedger(batch, update.New); err != nil {
+		// Key off the canonical attribute key, not update.New.GetName(): this
+		// row and the SubAttrLedger attribute/cache row above are flushed from
+		// the same ledgerUpdates slice, so deriving one key from the payload
+		// and the other from the canonical key would let a divergent
+		// LedgerInfo.name split them apart.
+		if err := SaveLedger(batch, string(update.CanonicalKey), update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
 		}
 	}
@@ -787,9 +810,11 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// Register pending ledger data cleanups (deferred to purge time). Boundary
-	// deletion is handled by MarkLedgerForCleanup adding a Delete to the
-	// Derived.Boundaries overlay (flushed in phase 3 above).
+	// Register pending ledger data cleanups (deferred to purge time). The
+	// Boundary deletion itself was already queued by processDeleteLedger
+	// through the gated Scope (Derived.Boundaries overlay, flushed in
+	// phase 3 above); this block only records the deferred data-purge
+	// bookkeeping.
 	for _, ledgerName := range b.deletedLedgers {
 		seq := deleteSequences[ledgerName]
 
@@ -892,6 +917,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
+	b.gatedLedgerTypes = nil
 	b.volumes.Reset()
 	for i := range b.purgedByLog {
 		b.purgedByLog[i] = nil
@@ -959,13 +985,13 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		empty := ""
 		b.queryCheckpointScheduleUpdate = &empty
 	case *commonpb.LogPayload_DeleteLedger:
-		ledger := p.DeleteLedger.GetName()
-		b.deletedLedgers = append(b.deletedLedgers, ledger)
-		// Remove boundary from the in-memory overlay so that subsequent
-		// GetBoundaries calls return domain.ErrNotFound — both within
-		// this proposal and in future ones after Merge propagates the
-		// deletion.
-		b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
+		// Only the cleanup signal is recorded here (drives
+		// SavePendingLedgerCleanup + the deferred range delete at purge
+		// time). The Boundary deletion now happens in processDeleteLedger
+		// through the gated Scope with the command-envelope key, so the
+		// SubAttrBoundary coverage is consumed on the gated path instead
+		// of via this raw, ungated overlay delete (invariant #9).
+		b.deletedLedgers = append(b.deletedLedgers, p.DeleteLedger.GetName())
 	case *commonpb.LogPayload_CloseChapter:
 		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
 		// CloseChapter is the last order of its proposal, so at most one
@@ -1147,6 +1173,16 @@ func compareVolumeKeys(a, b domain.VolumeKey) int {
 	)
 }
 
+// gatedLedgerType records one ledger's account types as resolved through the
+// gated Scope. found distinguishes "the gate resolved this ledger to
+// ErrNotFound" (a genuine absence, compiled is nil) from "no entry at all"
+// (the gated pass never covered this key) — a distinction partitionVolumes
+// needs, since only the latter is an invariant violation.
+type gatedLedgerType struct {
+	compiled []accounttype.CompiledType
+	found    bool
+}
+
 // ValidateTransientVolumes checks that all transient account volumes have zero balance.
 // Must be called after ProcessOrders and before Commit, so that failures are
 // treated as business errors (rejected proposals) rather than fatal FSM errors.
@@ -1163,17 +1199,26 @@ func compareVolumeKeys(a, b domain.VolumeKey) int {
 // every handler-level read so a missing ledger declaration surfaces as
 // *ErrCoverageMiss instead of an opaque "ledger not found" skip.
 func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Describable {
-	ledgerTypes := make(map[string][]accounttype.CompiledType)
+	// Published on the WriteSet rather than kept local: partitionVolumes
+	// consumes it at Merge time so the same gated resolution drives both the
+	// zero-balance assertion here and the persistence classification there,
+	// with a single ledger read per proposal.
+	b.gatedLedgerTypes = make(map[string]gatedLedgerType)
 
 	var (
 		storageFaults []storageFault
 		offenders     []domain.VolumeKey
 	)
 	for key, vol := range b.Derived.Volumes.DirtyValues() {
-		compiled, ok := ledgerTypes[key.LedgerName]
+		entry, ok := b.gatedLedgerTypes[key.LedgerName]
 		if !ok {
 			info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})
 			if errors.Is(err, domain.ErrNotFound) {
+				// Record the gate's verdict (found:false) instead of just
+				// skipping: partitionVolumes must be able to tell this genuine
+				// absence apart from a key the gated pass never covered.
+				b.gatedLedgerTypes[key.LedgerName] = gatedLedgerType{}
+
 				continue
 			}
 
@@ -1183,11 +1228,18 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 				continue
 			}
 
-			compiled = accounttype.CompileTypes(info.Mutate().GetAccountTypes())
-			ledgerTypes[key.LedgerName] = compiled
+			entry = gatedLedgerType{
+				compiled: accounttype.CompileTypes(info.Mutate().GetAccountTypes()),
+				found:    true,
+			}
+			b.gatedLedgerTypes[key.LedgerName] = entry
 		}
 
-		matched := accounttype.FindMatchingType(key.Account, compiled)
+		if !entry.found {
+			continue
+		}
+
+		matched := accounttype.FindMatchingType(key.Account, entry.compiled)
 		if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
 			continue
 		}
@@ -1208,10 +1260,24 @@ func (b *WriteSet) ValidateTransientVolumes(scope processing.Scope) domain.Descr
 		}
 
 		baseVol, _, baseErr := b.Derived.Volumes.Parent().GetKey(key)
-		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
+		if baseErr != nil && !errors.Is(baseErr, domain.ErrNotFound) {
+			// A non-ErrNotFound fault means the base read failed — the
+			// zero-balance assertion below would run on an unread base and
+			// mis-decide the proposal. Surface it loudly rather than
+			// silently treating the base as absent (invariant #7).
+			storageFaults = append(storageFaults, storageFault{key, &domain.ErrStorageOperation{Operation: "reading transient base volume", Cause: baseErr}})
+
 			continue
 		}
 
+		if baseErr == nil && !isVolumeZeroBalance(baseVol) {
+			// Pre-existing non-zero base — exempt from the end-of-batch
+			// zero-balance assertion (handled by the ephemeral-mirror flow).
+			continue
+		}
+
+		// ErrNotFound or a nil-and-zero base: steady-state transient — the
+		// cumulative must be back to zero by end of batch.
 		if !isVolumeZeroBalance(vol) {
 			offenders = append(offenders, key)
 		}
@@ -1355,8 +1421,14 @@ func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 
 func (b *WriteSet) GetSinkConfig(name string) (commonpb.SinkConfigReader, error) {
 	cfg, err := b.Derived.SinkConfigs.Get(domain.SinkConfigKey{Name: name})
-	if err != nil || cfg == nil {
+	// A cache miss is the documented "no sink config" outcome; any other
+	// error is a real storage/cache fault and must surface (invariant #7).
+	if errors.Is(err, domain.ErrNotFound) {
 		return nil, nil
+	}
+
+	if err != nil || cfg == nil {
+		return nil, err
 	}
 
 	return cfg.AsReader(), nil
@@ -1690,9 +1762,16 @@ func (b *WriteSet) SetNumscriptLatestVersion(ledgerName string, name, version st
 
 func (b *WriteSet) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {
 	info, err := b.Derived.NumscriptContents.Get(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version})
-	if err != nil {
-		// Not in cache — treat as not existing (admission ensures preloading)
+	// A cache miss is the documented "version does not exist" outcome
+	// (admission ensures preloading). Any other error is a real
+	// storage/cache fault and must surface so the caller does not treat a
+	// transient failure as absence and write a duplicate (invariant #7).
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
+	}
+
+	if err != nil {
+		return false, err
 	}
 
 	return info != nil, nil

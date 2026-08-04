@@ -31,7 +31,7 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 
 	seedSoftDeleted := func(t *testing.T, store *dal.Store) {
 		batch := store.OpenWriteSession()
-		require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
+		require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{
 			Name:      ledger,
 			CreatedAt: commonpb.NewTimestamp(libtime.Now()),
 			DeletedAt: commonpb.NewTimestamp(libtime.Now()),

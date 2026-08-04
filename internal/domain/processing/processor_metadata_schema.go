@@ -66,8 +66,13 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 	// The Index entry lives in the bucket-scoped registry (not in
 	// LedgerInfo), so we Mutate() a copy and Put it back rather than mutating
 	// the cached pointer in place — the Find returns the cache's pointer.
+	//
+	// The cascade keys off the command envelope, never the loaded projection's
+	// mutable name field — the LedgerInfo above is already Put under
+	// domain.LedgerKey{Name: ledger}, so keying the index registry off
+	// info.GetName() would let a divergent name split the two apart.
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	existing, findErr := indexes.Find(s.Indexes(), info.GetName(), id)
+	existing, findErr := indexes.Find(s.Indexes(), ledger, id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema change", Cause: findErr}
 	}
@@ -76,7 +81,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		updated := existing.Mutate()
 		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 		updated.ForwardEncodingVersion++
-		indexes.Put(s.Indexes(), info.GetName(), updated)
+		indexes.Put(s.Indexes(), ledger, updated)
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -126,14 +131,16 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	// an index actually existed.
 	var droppedIndex *commonpb.IndexID
 
+	// Keyed off the command envelope, never the loaded projection's mutable
+	// name field (see processSetMetadataFieldType).
 	id := indexes.MetadataID(order.GetTargetType(), order.GetKey())
-	existing, findErr := indexes.Find(s.Indexes(), info.GetName(), id)
+	existing, findErr := indexes.Find(s.Indexes(), ledger, id)
 	if findErr != nil {
 		return nil, &domain.ErrStorageOperation{Operation: "looking up index for schema removal", Cause: findErr}
 	}
 
 	if existing != nil {
-		if err := indexes.Remove(s.Indexes(), info.GetName(), id); err != nil {
+		if err := indexes.Remove(s.Indexes(), ledger, id); err != nil {
 			return nil, &domain.ErrStorageOperation{Operation: "removing metadata field index", Cause: err}
 		}
 		droppedIndex = id

@@ -6,11 +6,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// gatedTypesFor builds the gatedLedgerTypes map partitionVolumes consumes,
+// standing in for the resolution ValidateTransientVolumes performs through the
+// gated Scope on the real apply path. Tests that drive partitionVolumes in
+// isolation must seed it — an unseeded ledger is an invariant violation, by
+// design (invariant #9).
+func gatedTypesFor(infos ...*commonpb.LedgerInfo) map[string]gatedLedgerType {
+	types := make(map[string]gatedLedgerType, len(infos))
+	for _, info := range infos {
+		types[info.GetName()] = gatedLedgerType{
+			compiled: accounttype.CompileTypes(info.GetAccountTypes()),
+			found:    true,
+		}
+	}
+
+	return types
+}
 
 func TestIsVolumeZeroBalance(t *testing.T) {
 	t.Parallel()
@@ -115,8 +133,9 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	derived.Ledgers.Put(domain.LedgerKey{Name: "test"}, ledgerInfo)
 
 	buf := &WriteSet{
-		fsm:     machine,
-		Derived: derived,
+		fsm:              machine,
+		Derived:          derived,
+		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
@@ -158,7 +177,8 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.purged, 1)
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
@@ -198,8 +218,9 @@ func TestPartitionVolumesTransient(t *testing.T) {
 	derived.Ledgers.Put(domain.LedgerKey{Name: "test"}, ledgerInfo)
 
 	buf := &WriteSet{
-		fsm:     machine,
-		Derived: derived,
+		fsm:              machine,
+		Derived:          derived,
+		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
 	}
 
 	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
@@ -232,7 +253,8 @@ func TestPartitionVolumesTransient(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.transient, 2)
 	require.Len(t, result.kept, 1)
@@ -274,8 +296,9 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	derived.Ledgers.Put(domain.LedgerKey{Name: "test"}, ledgerInfo)
 
 	buf := &WriteSet{
-		fsm:     machine,
-		Derived: derived,
+		fsm:              machine,
+		Derived:          derived,
+		gatedLedgerTypes: gatedTypesFor(ledgerInfo),
 	}
 
 	preExistingUnbalanced := &raftcmdpb.VolumePair{
@@ -336,7 +359,8 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 		},
 	}
 
-	result := buf.partitionVolumes(updates)
+	result, err := buf.partitionVolumes(updates)
+	require.NoError(t, err)
 
 	require.Len(t, result.kept, 1)
 	require.Equal(t, "staging:draining", result.kept[0].Key.Account)
