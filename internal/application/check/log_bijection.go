@@ -2,6 +2,7 @@ package check
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -209,8 +210,10 @@ type chainVerification struct {
 	// skips these rather than reporting false gaps across them.
 	unverifiable logRangeSet
 	// sequences is the set of audit sequences whose AuditEntry was read and
-	// hash-verified in this run. scanOrphanAuditItems uses it to find
-	// AuditItem groups that have no entry.
+	// hash-verified in this run. scanOrphanAuditItems uses it as a no-I/O fast
+	// path only — NOT as its orphan criterion. It is a partial view whenever
+	// the chain walk aborted early, so membership proves an entry exists while
+	// absence proves nothing.
 	sequences map[uint64]struct{}
 	// archiveEndAuditSeq is the highest archived audit sequence. Orphan
 	// AuditItem rows at or below it are legitimate: executePurge deletes
@@ -400,10 +403,54 @@ func verifyAuditStructure(
 	return true
 }
 
+// auditEntryExists reports whether an AuditEntry row is physically stored at
+// auditSeq. A point lookup, not a chain walk: it answers existence only and
+// says nothing about whether the entry is hash-verified.
+func auditEntryExists(reader dal.PebbleReader, auditSeq uint64) (bool, error) {
+	key := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutUint64(auditSeq).
+		Build()
+
+	_, closer, err := reader.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("reading audit entry %d for orphan classification: %w", auditSeq, err)
+	}
+
+	if err := closer.Close(); err != nil {
+		return false, fmt.Errorf("closing audit entry %d read: %w", auditSeq, err)
+	}
+
+	return true, nil
+}
+
 // scanOrphanAuditItems reports AuditItem groups whose audit sequence has no
 // AuditEntry. The chain walk iterates ENTRIES, so an injected item group is
 // never read and never hashed — the one structural gap the hash chain does not
 // cover.
+//
+// The orphan criterion is the PHYSICAL ABSENCE of the AuditEntry key, probed
+// with auditEntryExists — deliberately not "absent from v.sequences".
+// verifyAuditHashChain aborts at the first chain break (embedded items, an
+// un-rehashable header, a hash mismatch) and returns its partially populated
+// maps so Check() can keep surfacing other projection errors, so every entry
+// above the break exists on disk yet never enters v.sequences. Treating those
+// as orphans turned one HASH_MISMATCH into one false "no audit entry exists"
+// per audit sequence all the way to the tail, and the message was wrong rather
+// than merely noisy. v.sequences survives only as a fast path: membership
+// proves the entry exists, so a verified sequence needs no lookup, and on a
+// store whose walk ran to completion that admits every sequence and the scan
+// does no extra I/O at all.
+//
+// Entries that exist but were never reached are not silently dropped either:
+// they are tallied and declared ONCE as
+// CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY, so the residual
+// unexamined range is visible without re-creating the flood. Per-sequence
+// emission would only move the flood to the unverifiable arm.
 //
 // Bounded to audit sequences strictly above archiveEndAuditSeq: executePurge
 // deliberately leaves archived AuditItem rows in Pebble (it purges SubColdAudit
@@ -427,7 +474,14 @@ func (c *Checker) scanOrphanAuditItems(
 
 	defer func() { _ = iter.Close() }()
 
-	reported := make(map[uint64]struct{})
+	// classified dedupes per audit sequence across the rows of one item group,
+	// so both the orphan event and the existence probe happen once per sequence.
+	classified := make(map[uint64]struct{})
+
+	// Tally of sequences whose entry exists but was never verified, collapsed
+	// into a single declaration below. Ascending BE keys mean lo is the first
+	// one seen and hi the last, so no min/max bookkeeping is needed.
+	var unverifiedCount, unverifiedLo, unverifiedHi uint64
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -447,11 +501,27 @@ func (c *Checker) scanOrphanAuditItems(
 			continue
 		}
 
-		if _, done := reported[auditSeq]; done {
+		if _, done := classified[auditSeq]; done {
 			continue
 		}
 
-		reported[auditSeq] = struct{}{}
+		classified[auditSeq] = struct{}{}
+
+		exists, err := auditEntryExists(reader, auditSeq)
+		if err != nil {
+			return err
+		}
+
+		if exists {
+			if unverifiedCount == 0 {
+				unverifiedLo = auditSeq
+			}
+
+			unverifiedCount++
+			unverifiedHi = auditSeq
+
+			continue
+		}
 
 		callback(errorEvent(
 			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID,
@@ -460,7 +530,22 @@ func (c *Checker) scanOrphanAuditItems(
 		))
 	}
 
-	return iter.Error()
+	if err := iter.Error(); err != nil {
+		return fmt.Errorf("audit item iterator error during orphan scan: %w", err)
+	}
+
+	if unverifiedCount > 0 {
+		callback(unverifiableEvent(
+			servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY,
+			fmt.Sprintf("audit entries [%d,%d] (%d sequences) carry stored items and exist on disk, but the hash-chain walk stopped before reaching them; nothing they claim was verified",
+				unverifiedLo, unverifiedHi, unverifiedCount),
+			// Log-sequence bounds unknown: these entries were never parsed, so
+			// their spans are unread. The audit sequences are in the message.
+			0, 0,
+		))
+	}
+
+	return nil
 }
 
 // buildPurgedLogSet returns the log sequences that archiving has removed from
@@ -546,9 +631,11 @@ func buildPurgedLogSet(
 //     (this also catches audit-TAIL truncation: deleting trailing AuditEntry
 //     rows orphans the logs they produced, which surface here)
 //
-// PRECEDENCE: the purged-range check runs FIRST and wins over BOTH other
-// stored-side outcomes, because a purged range admits no legitimate row
-// whatever else is true of the sequence.
+// PRECEDENCE: the purged-range check runs FIRST and wins over ALL THREE other
+// stored-side outcomes — the unverifiable skip, the authenticated skip and
+// LOG_UNAUDITED — because a purged range admits no legitimate row whatever else
+// is true of the sequence. The purged set comes from the Chapter rows, not from
+// the audit chain, so audit verifiability is orthogonal to it.
 //
 // Against LOG_UNAUDITED: archiving purges most of a chapter's AuditEntry rows
 // alongside its Log rows, so a row surviving mid-chapter is also unauthenticated
@@ -556,19 +643,23 @@ func buildPurgedLogSet(
 // would be technically true but misdiagnose a purge-lifecycle failure as an
 // injection. LOG_PURGE_RESIDUE is the more specific claim.
 //
-// Against the authenticated skip: at the archive boundary the two sets OVERLAP.
-// The closing proposal's audit entry sits one audit sequence above the purged
-// audit range and survives, while its logs sit at or below close_sequence and do
-// not — so those sequences are authenticated and purged at once. Testing
-// authentication first would silently skip a row that escaped the DeleteRange
-// there, the one place residue is most likely to be missed.
+// Against the authenticated and unverifiable skips: at the archive boundary the
+// purged set OVERLAPS both, and one entry causes both overlaps. The closing
+// proposal's audit entry sits one audit sequence above the purged audit range
+// and survives, while its logs sit at or below close_sequence and do not. If
+// that entry is well-formed its success range authenticates those purged
+// sequences; if it is malformed verifyAuditStructure blanks the same span into
+// unverifiable instead. Testing either skip first would silently drop a row that
+// escaped the DeleteRange there, the one place residue is most likely to be
+// missed.
 //
 // Exactly one event is emitted per stored sequence.
 //
-// Sequences inside an unverifiable span are skipped in both directions.
-// Sequences inside a purged range are skipped in the authenticated->stored
-// direction only; the stored->authenticated direction still reports them as
-// LOG_PURGE_RESIDUE.
+// Sequences inside a purged range are ALWAYS reported on the stored side and
+// always skipped in the authenticated->stored direction. Sequences inside an
+// unverifiable span are skipped in both directions unless they are also purged,
+// in which case the stored side reports LOG_PURGE_RESIDUE per the precedence
+// above.
 //
 // There is deliberately no duplicate category (SubColdLog is keyed by
 // sequence, so two rows at one sequence are physically impossible) and no
@@ -604,16 +695,25 @@ func (c *Checker) compareLogs(
 		seq := binary.BigEndian.Uint64(key[2:10])
 		stored.add(seq, seq)
 
-		if unverifiable.contains(seq) {
-			continue
-		}
-
-		// Purged BEFORE authenticated: the two are not mutually exclusive at the
-		// archive boundary. The closing proposal's audit entry survives the
-		// purge that deleted its logs, so those sequences are authenticated AND
-		// purged; testing authentication first would skip a row that escaped the
-		// DeleteRange there, reporting it as neither residue nor gap. No
-		// legitimate row can sit in a purged range whatever authenticates it.
+		// Purged FIRST, before both skips. The purged set is derived from the
+		// Chapter rows (buildPurgedLogSet), never from an audit entry, so no
+		// property of the audit chain — verified, malformed or unread — can
+		// weaken the claim that a purged range admits no legitimate row.
+		//
+		// Both skips genuinely overlap this set at the archive boundary, and in
+		// both cases the overlap is produced by the SAME surviving entry:
+		// executePurge deletes logs up to close_sequence while the audit entry
+		// that produced them, at close_audit_sequence + 1, survives.
+		//
+		//   - authenticated: that surviving entry's success range reaches up to
+		//     close_sequence, so those sequences are authenticated AND purged.
+		//   - unverifiable: if that same surviving entry is structurally
+		//     malformed, verifyAuditStructure blanks its span instead, so those
+		//     sequences are unverifiable AND purged.
+		//
+		// Testing either skip first would silently drop a row that escaped the
+		// DeleteRange at the boundary — the one place residue is most likely to
+		// be missed — reporting it as neither residue nor gap.
 		if purged.contains(seq) {
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE,
@@ -621,6 +721,10 @@ func (c *Checker) compareLogs(
 				seq, "", "", "",
 			))
 
+			continue
+		}
+
+		if unverifiable.contains(seq) {
 			continue
 		}
 

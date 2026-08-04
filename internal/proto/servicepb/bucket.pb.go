@@ -264,6 +264,19 @@ const (
 	// A hash-verified AuditEntry is internally inconsistent, so the log span it
 	// claims cannot be proven either way.
 	CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY CheckStoreUnverifiableReason = 2
+	// An AuditEntry exists on disk but the hash-chain walk stopped before
+	// reaching it, so nothing it claims was verified. The chain walk aborts at
+	// the first break and that break is reported on its own as
+	// CHECK_STORE_ERROR_TYPE_HASH_MISMATCH; this reason declares the residual
+	// tail the abort left unexamined, so the absence of findings above the break
+	// is never mistaken for proof.
+	//
+	// range_start/range_end are 0/0 here: the entries were never parsed, so their
+	// log spans are unknown. The affected AUDIT sequences are named in message —
+	// the only reason whose subject is an audit-sequence span rather than a
+	// log-sequence one, which is exactly why the bounds are left unset instead of
+	// being repurposed.
+	CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY CheckStoreUnverifiableReason = 3
 )
 
 // Enum value maps for CheckStoreUnverifiableReason.
@@ -272,11 +285,13 @@ var (
 		0: "CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED",
 		1: "CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE",
 		2: "CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY",
+		3: "CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY",
 	}
 	CheckStoreUnverifiableReason_value = map[string]int32{
 		"CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED":                      0,
 		"CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE": 1,
 		"CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY":            2,
+		"CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY":           3,
 	}
 )
 
@@ -9897,11 +9912,12 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED\x10\x15\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE\x10\x16\x122\n" +
-	".CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID\x10\x17*\xd0\x01\n" +
+	".CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID\x10\x17*\x8c\x02\n" +
 	"\x1cCheckStoreUnverifiableReason\x12/\n" +
 	"+CHECK_STORE_UNVERIFIABLE_REASON_UNSPECIFIED\x10\x00\x12D\n" +
 	"@CHECK_STORE_UNVERIFIABLE_REASON_ARCHIVED_CHAPTER_BOUNDS_UNUSABLE\x10\x01\x129\n" +
-	"5CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY\x10\x02*W\n" +
+	"5CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY\x10\x02\x12:\n" +
+	"6CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY\x10\x03*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

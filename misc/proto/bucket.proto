@@ -960,6 +960,19 @@ enum CheckStoreUnverifiableReason {
   // A hash-verified AuditEntry is internally inconsistent, so the log span it
   // claims cannot be proven either way.
   CHECK_STORE_UNVERIFIABLE_REASON_MALFORMED_AUDIT_ENTRY = 2;
+  // An AuditEntry exists on disk but the hash-chain walk stopped before
+  // reaching it, so nothing it claims was verified. The chain walk aborts at
+  // the first break and that break is reported on its own as
+  // CHECK_STORE_ERROR_TYPE_HASH_MISMATCH; this reason declares the residual
+  // tail the abort left unexamined, so the absence of findings above the break
+  // is never mistaken for proof.
+  //
+  // range_start/range_end are 0/0 here: the entries were never parsed, so their
+  // log spans are unknown. The affected AUDIT sequences are named in message —
+  // the only reason whose subject is an audit-sequence span rather than a
+  // log-sequence one, which is exactly why the bounds are left unset instead of
+  // being repurposed.
+  CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY = 3;
 }
 
 // CheckStoreUnverifiableRange reports a log-sequence range the checker could

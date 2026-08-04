@@ -908,4 +908,250 @@ func TestCompareLogsArchiveBoundaryAsymmetry(t *testing.T) {
 			errs[0].GetErrorType())
 		require.Equal(t, uint64(2), errs[0].GetLogSequence())
 	})
+
+	// The overlap that made LOG_PURGE_RESIDUE unreachable: the closing
+	// proposal's audit entry survives the purge of its own logs, so when THAT
+	// entry is structurally malformed verifyAuditStructure blanks its span into
+	// unverifiable — over the very sequences the purge deleted. Testing the
+	// unverifiable skip first dropped a row that escaped the DeleteRange there
+	// without reporting anything.
+	t.Run("a purged row is residue even inside an unverifiable span", func(t *testing.T) {
+		t.Parallel()
+
+		store := createTestStore(t)
+
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(3).Build()
+		require.NoError(t, batch.SetProto(key, &commonpb.Log{Sequence: 3}))
+		require.NoError(t, batch.Commit())
+
+		reader, err := store.NewReadHandle()
+		require.NoError(t, err)
+
+		t.Cleanup(func() { _ = reader.Close() })
+
+		var authenticated, purged, unverifiable logRangeSet
+
+		// The malformed boundary entry blanks [1,6]; the same range is purged.
+		purged.add(1, 6)
+		unverifiable.add(1, 6)
+
+		var errs []*servicepb.CheckStoreError
+
+		c := &Checker{}
+
+		require.NoError(t, c.compareLogs(reader, &authenticated, &purged, &unverifiable,
+			func(e *servicepb.CheckStoreEvent) {
+				if cerr := e.GetError(); cerr != nil {
+					errs = append(errs, cerr)
+				}
+			}))
+
+		require.Len(t, errs, 1, "a purged range admits no legitimate row whatever the audit proves")
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PURGE_RESIDUE,
+			errs[0].GetErrorType())
+		require.Equal(t, uint64(3), errs[0].GetLogSequence())
+	})
+
+	t.Run("an unverifiable row outside every purged range stays unreported", func(t *testing.T) {
+		t.Parallel()
+
+		// The neighbouring case: reordering must not turn the unverifiable skip
+		// into an over-report. Log 3 is blanked but not purged, so the checker
+		// can prove nothing about it and must stay silent.
+		var authenticated, purged, unverifiable logRangeSet
+
+		unverifiable.add(1, 6)
+
+		var errs []*servicepb.CheckStoreError
+
+		c := &Checker{}
+
+		require.NoError(t, c.compareLogs(storeWithLogs(t, 3), &authenticated, &purged, &unverifiable,
+			func(e *servicepb.CheckStoreEvent) {
+				if cerr := e.GetError(); cerr != nil {
+					errs = append(errs, cerr)
+				}
+			}))
+
+		require.Empty(t, errs, "an unprovable sequence is neither residue nor unaudited")
+	})
+}
+
+// TestScanOrphanAuditItems pins the orphan criterion: the PHYSICAL ABSENCE of
+// the AuditEntry key, never absence from the hash-verified set.
+//
+// verifyAuditHashChain aborts at the first chain break and returns its partial
+// maps, so every entry above the break exists on disk while never entering
+// v.sequences. Keying the orphan verdict on v.sequences turned one
+// HASH_MISMATCH into one false "no audit entry exists" per audit sequence to
+// the tail.
+func TestScanOrphanAuditItems(t *testing.T) {
+	t.Parallel()
+
+	// storeWith writes AuditItem groups (itemsPerSeq rows each) at every
+	// sequence in items, and an AuditEntry only at the sequences in entries.
+	storeWith := func(t *testing.T, itemsPerSeq uint32, items []uint64, entries []uint64) dal.PebbleReader {
+		t.Helper()
+
+		store := createTestStore(t)
+
+		batch := store.OpenWriteSession()
+		defer func() { _ = batch.Cancel() }()
+
+		for _, seq := range items {
+			for idx := range itemsPerSeq {
+				key := dal.NewKeyBuilder().
+					PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+					PutUint64(seq).
+					PutUint32(idx).
+					Build()
+				require.NoError(t, batch.SetProto(key, &auditpb.AuditItem{OrderIndex: idx}))
+			}
+		}
+
+		for _, seq := range entries {
+			key := dal.NewKeyBuilder().
+				PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+				PutUint64(seq).
+				Build()
+			require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: seq}))
+		}
+
+		require.NoError(t, batch.Commit())
+
+		reader, err := store.NewReadHandle()
+		require.NoError(t, err)
+
+		t.Cleanup(func() { _ = reader.Close() })
+
+		return reader
+	}
+
+	collect := func(t *testing.T, reader dal.PebbleReader, v *chainVerification,
+	) ([]*servicepb.CheckStoreError, []*servicepb.CheckStoreUnverifiableRange) {
+		t.Helper()
+
+		var (
+			errs     []*servicepb.CheckStoreError
+			unproven []*servicepb.CheckStoreUnverifiableRange
+		)
+
+		c := &Checker{}
+
+		require.NoError(t, c.scanOrphanAuditItems(reader, v, func(e *servicepb.CheckStoreEvent) {
+			switch {
+			case e.GetError() != nil:
+				errs = append(errs, e.GetError())
+			case e.GetUnverifiableRange() != nil:
+				unproven = append(unproven, e.GetUnverifiableRange())
+			}
+		}))
+
+		return errs, unproven
+	}
+
+	t.Run("an existing but unverified entry is declared, not called an orphan", func(t *testing.T) {
+		t.Parallel()
+
+		// Chain broke below sequence 5: the entry is on disk, v.sequences empty.
+		reader := storeWith(t, 2, []uint64{5}, []uint64{5})
+
+		errs, unproven := collect(t, reader, newChainVerification())
+
+		require.Empty(t, errs, "an entry that exists is not an orphan, verified or not")
+		require.Len(t, unproven, 1)
+		require.Equal(t,
+			servicepb.CheckStoreUnverifiableReason_CHECK_STORE_UNVERIFIABLE_REASON_UNVERIFIED_AUDIT_ENTRY,
+			unproven[0].GetReason())
+		require.Contains(t, unproven[0].GetMessage(), "[5,5]")
+		require.Zero(t, unproven[0].GetRangeStart(), "log bounds are unknown for an unparsed entry")
+		require.Zero(t, unproven[0].GetRangeEnd())
+	})
+
+	t.Run("a genuinely absent entry is an orphan, once per sequence", func(t *testing.T) {
+		t.Parallel()
+
+		// Two item rows at sequence 5, no entry: one event, not two.
+		reader := storeWith(t, 2, []uint64{5}, nil)
+
+		errs, unproven := collect(t, reader, newChainVerification())
+
+		require.Len(t, errs, 1, "one event per orphaned sequence, not per row")
+		require.Equal(t,
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_AUDIT_STRUCTURE_INVALID,
+			errs[0].GetErrorType())
+		require.Contains(t, errs[0].GetMessage(), "no audit entry exists")
+		require.Empty(t, unproven)
+	})
+
+	t.Run("a whole unverified tail collapses into one declaration", func(t *testing.T) {
+		t.Parallel()
+
+		// The flood this fixes: every sequence above the break exists on disk.
+		reader := storeWith(t, 1, []uint64{5, 6, 7, 8}, []uint64{5, 6, 7, 8})
+
+		errs, unproven := collect(t, reader, newChainVerification())
+
+		require.Empty(t, errs)
+		require.Len(t, unproven, 1, "per-sequence emission would only move the flood")
+		require.Contains(t, unproven[0].GetMessage(), "[5,8]")
+		require.Contains(t, unproven[0].GetMessage(), "4 sequences")
+	})
+
+	t.Run("a mixed tail separates the absent entry from the unverified ones", func(t *testing.T) {
+		t.Parallel()
+
+		// 6 was deleted outright; 5 and 7 merely sit above the break.
+		reader := storeWith(t, 1, []uint64{5, 6, 7}, []uint64{5, 7})
+
+		errs, unproven := collect(t, reader, newChainVerification())
+
+		require.Len(t, errs, 1)
+		require.Contains(t, errs[0].GetMessage(), "sequence 6")
+		require.Len(t, unproven, 1)
+		require.Contains(t, unproven[0].GetMessage(), "[5,7]")
+		require.Contains(t, unproven[0].GetMessage(), "2 sequences")
+	})
+
+	t.Run("a verified sequence needs no lookup and reports nothing", func(t *testing.T) {
+		t.Parallel()
+
+		// The fast path: v.sequences membership proves the entry exists, so a
+		// complete walk leaves the scan silent even with no entry row written.
+		v := newChainVerification()
+		v.sequences[5] = struct{}{}
+
+		errs, unproven := collect(t, storeWith(t, 2, []uint64{5}, nil), v)
+
+		require.Empty(t, errs)
+		require.Empty(t, unproven)
+	})
+
+	t.Run("rows at or below the archive boundary are left alone", func(t *testing.T) {
+		t.Parallel()
+
+		// executePurge deletes SubColdAudit but deliberately keeps
+		// SubColdAuditItem, so an archived group has no entry BY DESIGN and must
+		// be neither reported nor declared.
+		v := newChainVerification()
+		v.archiveEndAuditSeq = 6
+
+		errs, unproven := collect(t, storeWith(t, 2, []uint64{4, 5, 6}, nil), v)
+
+		require.Empty(t, errs, "archived item rows legitimately outlive their entry")
+		require.Empty(t, unproven)
+	})
+
+	t.Run("an empty store reports nothing", func(t *testing.T) {
+		t.Parallel()
+
+		errs, unproven := collect(t, storeWith(t, 0, nil, nil), newChainVerification())
+
+		require.Empty(t, errs)
+		require.Empty(t, unproven)
+	})
 }
