@@ -149,6 +149,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
+	// Read archived chapters to adjust the starting point for log replay. Read
+	// BEFORE the empty-audit fast path below, which needs them too: the signing
+	// fold consults the archived set to decide whether its coverage is complete.
+	chaptersCursor, err := query.ReadChapters(ctx, snap)
+	if err != nil {
+		return fmt.Errorf("reading chapters: %w", err)
+	}
+
+	chapters, err := cursor.Collect(chaptersCursor)
+	if err != nil {
+		return fmt.Errorf("collecting chapters: %w", err)
+	}
+
 	if lastSequence == 0 {
 		// An empty audit does not make the peer store trustworthy: the read
 		// index folds FROM the log stream, so any reverse-map row over a
@@ -161,6 +174,30 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			peer:   peerSnap,
 		}, callback)
 
+		// The signing projections are cluster-global, not per-ledger, so they can
+		// hold rows over a store with no logs at all — and every successful signing
+		// order writes a log (processOrder gives each returned payload a global
+		// sequence), so a zero-log store proves the audit registered no key. The
+		// expectation is therefore legitimately empty and every stored row is
+		// unaudited: returning clean here would hide exactly the injected-key class
+		// this pass exists to report.
+		//
+		// foldArchived still runs rather than hardcoding complete coverage. Archived
+		// chapters are unreachable with lastSequence == 0 today — archiving emits its
+		// own logs above the range it purges, so at least one log always survives —
+		// but that is a property of the archive flow's log emission, not an invariant
+		// of this pass. Folding cold storage keeps a fully-archived store honest, one
+		// INCOMPLETE finding instead of a spurious mismatch per legitimate key, if
+		// that ever stops holding.
+		signing := newSigningVerifier()
+		if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+			return fmt.Errorf("folding archived signing orders: %w", err)
+		}
+
+		if err := signing.compare(snap, callback); err != nil {
+			return fmt.Errorf("comparing signing projections: %w", err)
+		}
+
 		callback(&servicepb.CheckStoreEvent{
 			Type: &servicepb.CheckStoreEvent_Progress{
 				Progress: &servicepb.CheckStoreProgress{
@@ -171,17 +208,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		})
 
 		return nil
-	}
-
-	// Read archived chapters to adjust the starting point for log replay.
-	chaptersCursor, err := query.ReadChapters(ctx, snap)
-	if err != nil {
-		return fmt.Errorf("reading chapters: %w", err)
-	}
-
-	chapters, err := cursor.Collect(chaptersCursor)
-	if err != nil {
-		return fmt.Errorf("collecting chapters: %w", err)
 	}
 
 	var (
@@ -269,6 +295,16 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// live audit-chain mutations on top.
 	chainBound := newChainBoundState()
 
+	// Signing key/config expectations, re-derived from chain-bound signing orders
+	// (invariant #8). Archived history is folded FIRST, oldest-first, so the live
+	// chain layer below sees the pre-archive keys a later revoke may target.
+	// Never seeded from the live projection or the baseline checkpoint — see
+	// signingVerifier.
+	signing := newSigningVerifier()
+	if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+		return fmt.Errorf("folding archived signing orders: %w", err)
+	}
+
 	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references, chainBound.referenceTxIDs)
 	if err != nil {
 		return fmt.Errorf("loading baseline references: %w", err)
@@ -287,8 +323,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Verify the audit hash chain before log replay. This iterates
 	// every non-archived audit entry and recomputes each hash from the
 	// stored orders, chaining from archiveLastAuditHash. Populates
-	// expectedSkippable + layers live mutations onto chainBound.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, callback)
+	// expectedSkippable + layers live mutations onto chainBound and the
+	// live-range signing orders onto `signing`.
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, signing, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -850,6 +887,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
 		return err
+	}
+
+	if err := signing.compare(snap, callback); err != nil {
+		return fmt.Errorf("comparing signing projections: %w", err)
 	}
 
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
@@ -2314,6 +2355,11 @@ func compareTransactionPostCommitVolumes(
 // `serialized_order` so a tampered LedgerLog projection cannot forge a
 // "prior claim" for a fake skip.
 //
+// signing is layered the same way: the caller has already folded the archived
+// range into it from cold storage, and this function adds the signing orders of
+// every chain-verified entry above that archive boundary. The comparison against
+// the stored keys / config runs at the Check() call site.
+//
 // Returns expectedSkippable: the per-log-seq skippable_reasons whitelist +
 // reason correlator re-derived from the chain-bound Orders, consumed by
 // verifySkippedOrder.
@@ -2328,6 +2374,7 @@ func (c *Checker) verifyAuditHashChain(
 	archiveLastAuditHash []byte,
 	chainBound *chainBoundState,
 	idempotencyTTLMicros *uint64,
+	signing *signingVerifier,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[uint64]*expectedSkippableOrder, error) {
 	// Find the last archived audit sequence to start iteration after it.
@@ -2524,6 +2571,57 @@ func (c *Checker) verifyAuditHashChain(
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
 			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
+
+			// Fold signing orders from this successful entry, over the SAME fresh-log
+			// window collectExpectedSkippable uses. AuditSuccess.{Min,Max}LogSequence
+			// are computed only over freshly-created logs, never over reference
+			// sequences, so `min <= logSeq <= max` admits exactly this entry's own
+			// logs and excludes a legacy pre-f9ee1e829 per-order REFERENCE item
+			// pointing back at a log an earlier entry already folded. (A pure-replay
+			// entry has min==max==0, so every nonzero logSeq falls outside and is
+			// skipped.)
+			//
+			// The window is load-bearing, not defensive tidiness: register(K) at log
+			// 5, revoke(K) at log 10, then a legacy reference item pointing back at
+			// log 5 would re-apply the register AFTER the revoke, put K back in the
+			// expected set and report a false SIGNING_KEY_MISMATCH against a healthy
+			// store. Idempotence does not save it — the orders are individually
+			// idempotent, but replaying one out of order is not.
+			//
+			// The archive-boundary skip stays as well. It is redundant while log
+			// sequences are monotonic (a live entry's fresh logs always sit above
+			// archiveEndSeq), but it is the guard that states the archived range was
+			// already folded from cold storage, and it costs one comparison.
+			//
+			// Duplicate-sequence items need no dedup here, unlike the nextTxID fold:
+			// two items sharing a LogSequence inside [Min,Max] carry the same order,
+			// and register (upsert), revoke (delete) and setConfig (assign) all reach
+			// the same state applied twice.
+			// One entry is one proposal, which is the boundary the FSM's notion of
+			// "committed" is defined against (WriteSet.Reset runs once per proposal).
+			// The signing cascade needs it to reproduce GetSigningKeyChildren.
+			signing.beginProposal()
+
+			for _, item := range items {
+				logSeq := item.GetLogSequence()
+				if logSeq == 0 || logSeq <= signing.archiveEndSeq {
+					continue
+				}
+
+				if logSeq < success.GetMinLogSequence() || logSeq > success.GetMaxLogSequence() {
+					continue
+				}
+
+				order := &raftcmdpb.Order{}
+				if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+					// Chain-bound bytes whose entry hash already verified, so a decode
+					// failure is impossible by design (invariant #7): fail loudly.
+					return nil, fmt.Errorf("invariant: decoding chain-verified order from audit item at log %d: %w",
+						item.GetLogSequence(), err)
+				}
+
+				signing.applyOrder(order)
+			}
 		}
 	}
 

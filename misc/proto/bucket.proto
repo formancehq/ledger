@@ -902,6 +902,31 @@ enum CheckStoreErrorType {
   // a per-replica rewrite, and stale versions are reclaimed at boot by
   // purgeOrphanVersions.
   CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN = 20;
+  // Emitted when the persisted signing-key projection (SubGlobSigningKey)
+  // diverges from the key set the checker re-derived from chain-bound
+  // RegisterSigningKey / RevokeSigningKey orders: a stored key the audit never
+  // registered, a registered key the store lost, altered public-key bytes, a
+  // changed parent_key_id, or a row too short to decode. Recovery loads this
+  // projection straight into the runtime key store, which admission consults to
+  // accept or reject every signed write, so a tampered row changes who may
+  // write. Row absence is the only representation of revocation, so a missing
+  // key and a resurrected key are both integrity failures.
+  CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH = 21;
+  // Emitted when the persisted require-signatures flag (SubGlobSigningConfig)
+  // differs from the value re-derived from chain-bound SetSigningConfig orders.
+  // The flag is a single byte that gates signature enforcement cluster-wide, so
+  // flipping it silently disables request authenticity. An absent row decodes as
+  // false, which is also the checker's initial expected value.
+  CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH = 22;
+  // Emitted when signing verification could not cover the whole history:
+  // signing state has no TTL, so keys registered before an archive boundary stay
+  // authoritative forever and must be re-derived from archived audit entries via
+  // cold storage. When cold storage is unavailable or a chapter cannot be read,
+  // the pass reports this rather than presenting a partial replay as a clean
+  // comparison. Unlike the baseline-seeded passes, signing expectations are
+  // never seeded from the live projection -- that would verify old,
+  // never-touched keys against a copy of themselves.
+  CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
 }
 
 message CheckStoreError {
