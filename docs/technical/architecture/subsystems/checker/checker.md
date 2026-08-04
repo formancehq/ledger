@@ -96,6 +96,8 @@ Three error types, emitted only after the findings are sorted by (class, key ID,
 
 Public-key **bytes never appear in an event message**. The key ID plus the name of the diverging field identifies the problem completely, and the material is sensitive-adjacent.
 
+**The pass also runs on the empty-audit fast path.** `Check()` returns early when the store holds no logs (`lastSequence == 0`), before the replay and therefore before the compare phase the other projection passes live in. Signing is not per-ledger, so skipping it there would be wrong: the projections are cluster-global and a zero-log store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a zero-log store *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would have left an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch. `foldArchived` still runs on that path rather than hardcoding complete coverage: archived chapters are unreachable at `lastSequence == 0` today, since the archive flow emits its own logs above the range it purges and at least one log therefore always survives, but that is a property of that flow's log emission rather than an invariant of this pass — folding cold storage keeps a fully-archived store reporting one `SIGNING_VERIFICATION_INCOMPLETE` instead of a spurious mismatch per legitimate key if it ever stops holding. The chapter read is hoisted above the fast path to feed it.
+
 ## Replay machinery
 
 Three building blocks under `internal/domain/replay/`:
