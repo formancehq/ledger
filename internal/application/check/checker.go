@@ -2572,25 +2572,38 @@ func (c *Checker) verifyAuditHashChain(
 		if success := entry.GetSuccess(); success != nil {
 			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 
-			// Fold signing orders from this successful entry. Items at or below the
-			// archive boundary were already folded from cold storage; re-applying a
-			// register there would resurrect a key a later revoke removed.
+			// Fold signing orders from this successful entry, over the SAME fresh-log
+			// window collectExpectedSkippable uses. AuditSuccess.{Min,Max}LogSequence
+			// are computed only over freshly-created logs, never over reference
+			// sequences, so `min <= logSeq <= max` admits exactly this entry's own
+			// logs and excludes a legacy pre-f9ee1e829 per-order REFERENCE item
+			// pointing back at a log an earlier entry already folded. (A pure-replay
+			// entry has min==max==0, so every nonzero logSeq falls outside and is
+			// skipped.)
 			//
-			// This walk starts above the last archived AUDIT sequence, so an item
-			// whose LOG sequence still sits at or below archiveEndSeq is the legacy
-			// case described above: a pre-f9ee1e829 per-order REFERENCE item
-			// pointing back at an earlier entry's log. Most double-applies would be
-			// harmless — register is an upsert and revoke a delete, both idempotent
-			// — but not all: archived register(K), archived revoke(K), then a live
-			// reference item pointing at register(K) would put K back in the
-			// expected set and report a false SIGNING_KEY_MISMATCH against a
-			// healthy store. Hence the skip rather than relying on idempotence.
+			// The window is load-bearing, not defensive tidiness: register(K) at log
+			// 5, revoke(K) at log 10, then a legacy reference item pointing back at
+			// log 5 would re-apply the register AFTER the revoke, put K back in the
+			// expected set and report a false SIGNING_KEY_MISMATCH against a healthy
+			// store. Idempotence does not save it — the orders are individually
+			// idempotent, but replaying one out of order is not.
 			//
-			// Not covered by a dedicated test: reaching it needs an upgraded store
-			// with archived chapters AND a reference item straddling the boundary.
-			// Keep the skip; do not "simplify" it away on the idempotence argument.
+			// The archive-boundary skip stays as well. It is redundant while log
+			// sequences are monotonic (a live entry's fresh logs always sit above
+			// archiveEndSeq), but it is the guard that states the archived range was
+			// already folded from cold storage, and it costs one comparison.
+			//
+			// Duplicate-sequence items need no dedup here, unlike the nextTxID fold:
+			// two items sharing a LogSequence inside [Min,Max] carry the same order,
+			// and register (upsert), revoke (delete) and setConfig (assign) all reach
+			// the same state applied twice.
 			for _, item := range items {
-				if item.GetLogSequence() == 0 || item.GetLogSequence() <= signing.archiveEndSeq {
+				logSeq := item.GetLogSequence()
+				if logSeq == 0 || logSeq <= signing.archiveEndSeq {
+					continue
+				}
+
+				if logSeq < success.GetMinLogSequence() || logSeq > success.GetMaxLogSequence() {
 					continue
 				}
 

@@ -550,9 +550,13 @@ func TestSigningVerifier_Compare(t *testing.T) {
 			wantSubstrings: [][]string{{"could not be verified over the whole history"}},
 		},
 		{
-			// Ordered last, so the divergences above it read as a partial result
-			// rather than a clean comparison.
-			name:           "incomplete cold coverage is emitted after the divergences it frames",
+			// Both directions of the key comparison are unsound under incomplete
+			// coverage — a revoke in an unread chapter leaves its key expected, a
+			// register in an unread chapter leaves its row unexpected — so a store
+			// that would produce findings under complete coverage must produce only
+			// the incomplete-coverage event. Reporting those findings would flag a
+			// healthy store as tampered.
+			name:           "incomplete cold coverage suppresses the unsound key comparison",
 			coldIncomplete: true,
 			orders: []*raftcmdpb.Order{
 				registerSigningKeyOrder("root", rootKey, ""),
@@ -561,13 +565,26 @@ func TestSigningVerifier_Compare(t *testing.T) {
 				writeSigningKey(t, store, "ghost", tamperedKey, "")
 			},
 			wantTypes: []servicepb.CheckStoreErrorType{
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"could not be verified over the whole history", "skipped for this run"},
+			},
+		},
+		{
+			// The malformed-row class is a fact about the row itself and needs no
+			// audit oracle, so it survives the suppression above.
+			name:           "incomplete cold coverage still reports undecodable rows",
+			coldIncomplete: true,
+			write: func(t *testing.T, store *dal.Store) {
+				writeRawSigningKeyRow(t, store, "stub", []byte{0x01, 0x02})
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
 			},
 			wantSubstrings: [][]string{
-				{"root", "missing from the store"},
-				{"ghost", "no audited registration"},
+				{"stub", "undecodable stored row"},
 				{"could not be verified over the whole history"},
 			},
 		},

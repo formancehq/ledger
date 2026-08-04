@@ -359,6 +359,33 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 		})
 	}
 
+	// An incomplete archived fold makes the expectation a PREFIX of the real
+	// history, which is unsound in both directions: a revoke in an unread chapter
+	// leaves its key expected (reported as missing from the store), and a register
+	// in an unread chapter leaves its row unexpected (reported as injected). Both
+	// are false positives against a healthy store, so the key and config
+	// comparisons are skipped entirely and the run reports only that it could not
+	// verify. Suppressing detection for that run is the honest outcome — claiming a
+	// mismatch we cannot substantiate is worse than admitting the gap, and the same
+	// reasoning is why the empty-audit path folds cold storage instead of assuming
+	// an empty expectation.
+	//
+	// The malformed-row class above is deliberately outside this guard: a row too
+	// short to decode is a fact about that row and needs no audit oracle at all.
+	if !v.coldComplete {
+		findings = append(findings, signingFinding{
+			class:     signingClassIncomplete,
+			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			message: "signing state could not be verified over the whole history: the archived audit range was not replayed, " +
+				"so keys registered before the archive boundary — which stay authoritative forever, signing state having no TTL — are unverified. " +
+				"The key and config comparisons are skipped for this run rather than reported against a partial expectation",
+		})
+
+		emitSigningFindings(findings, callback)
+
+		return nil
+	}
+
 	for keyID, expected := range v.keys {
 		actual, present := stored[keyID]
 		if !present {
@@ -425,15 +452,18 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 		})
 	}
 
-	if !v.coldComplete {
-		findings = append(findings, signingFinding{
-			class:     signingClassIncomplete,
-			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
-			message: "signing state could not be verified over the whole history: the archived audit range was not replayed, " +
-				"so keys registered before the archive boundary — which stay authoritative forever, signing state having no TTL — are unverified",
-		})
-	}
+	emitSigningFindings(findings, callback)
 
+	return nil
+}
+
+// emitSigningFindings sorts the accumulated findings and emits them.
+//
+// Both sides of the comparison are Go maps, so emitting as findings are
+// discovered would make two Check() runs over the same store produce different
+// event streams. Shared by the complete and incomplete-coverage exits so neither
+// can drift into emitting unsorted.
+func emitSigningFindings(findings []signingFinding, callback func(*servicepb.CheckStoreEvent)) {
 	slices.SortFunc(findings, func(a, b signingFinding) int {
 		return cmp.Or(
 			cmp.Compare(a.class, b.class),
@@ -445,6 +475,4 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 	for _, finding := range findings {
 		callback(errorEvent(finding.errorType, finding.message, 0, "", "", ""))
 	}
-
-	return nil
 }
