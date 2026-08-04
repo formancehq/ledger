@@ -51,9 +51,13 @@ func (it *OrIterator) Current() []byte {
 }
 
 func (it *OrIterator) SeekGE(target []byte) bool {
-	if it.exhausted || len(it.children) == 0 {
+	if len(it.children) == 0 {
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion re-establishes the union (all children are re-seeked below).
+	it.exhausted = false
 
 	for i := range it.children {
 		it.valid[i] = it.children[i].SeekGE(target)

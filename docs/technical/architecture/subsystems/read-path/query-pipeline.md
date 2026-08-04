@@ -115,7 +115,7 @@ Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a vers
 | `NotIterator` | Difference against the entity-existence index (`0x02`). |
 | address-prefix iterator | Leaf scan with a chart-of-accounts prefix predicate. |
 
-The filter compiler turns a `QueryFilter` proto into a tree of these. Recent work (commit `7662d2bae`) added monotonic-skip and probe-based optimisations to the `AndIterator` to short-circuit when one child runs ahead of the others.
+The filter compiler turns a `QueryFilter` proto into a tree of these. `SeekGE`/`SeekLE` are **absolute** repositions — `AndIterator.SeekGE` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
 ## Pagination
 

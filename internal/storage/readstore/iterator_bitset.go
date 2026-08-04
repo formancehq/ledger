@@ -68,11 +68,16 @@ func (it *BitsetIterator) Current() []byte {
 }
 
 func (it *BitsetIterator) SeekGE(target []byte) bool {
-	if it.done || it.bs == nil {
+	if it.bs == nil {
 		return false
 	}
 
+	// SeekGE is absolute repositioning: recompute the position from target even
+	// after a prior walk exhausted the iterator. A latched `done` would make a
+	// re-seek to an earlier target (as the NOT/AND merge iterators issue once
+	// forward iteration has consumed the bitset) wrongly report no match.
 	it.started = true
+	it.done = false
 
 	var from uint64
 	if len(target) >= 8 {

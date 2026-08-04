@@ -63,9 +63,13 @@ func (it *ReverseOrIterator) Current() []byte {
 }
 
 func (it *ReverseOrIterator) SeekLE(target []byte) bool {
-	if it.done || len(it.children) == 0 {
+	if len(it.children) == 0 {
 		return false
 	}
+
+	// Absolute reposition: clear the done latch so a re-seek after exhaustion
+	// re-establishes the union (all children are re-seeked below).
+	it.done = false
 
 	for i := range it.children {
 		it.children[i].valid = it.children[i].iter.SeekLE(target)

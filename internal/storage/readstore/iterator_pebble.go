@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -27,6 +28,19 @@ type EntityIterator interface {
 
 	// SeekGE positions the iterator at the first entity >= target.
 	// Returns false if no such entity exists OR on I/O error — see Err().
+	//
+	// SeekGE is an ABSOLUTE reposition (see
+	// docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md):
+	//   - the result is computed from target alone, never from the iterator's
+	//     position, direction of travel, or exhaustion state;
+	//   - it is idempotent: repeating SeekGE with the same target yields the
+	//     same entity, and must not consume it;
+	//   - it is well-defined after exhaustion (a false Next/SeekGE) — a later
+	//     seek to a smaller target repositions normally;
+	//   - a failed seek leaves the iterator un-positioned (Next returns false)
+	//     but still re-seekable.
+	// Composite iterators (AND/OR/NOT) re-seek children freely under this
+	// contract; a latch or a consuming seek silently drops rows (EN-1597).
 	SeekGE(target []byte) bool
 
 	// Err returns the first storage error encountered during iteration, or
@@ -58,6 +72,7 @@ type PebbleAccountIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // newSingleTypeAccountIterator creates a forward account iterator for one attribute type.
@@ -188,9 +203,16 @@ func (it *PebbleAccountIterator) Current() []byte {
 }
 
 func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -200,6 +222,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -218,6 +241,7 @@ func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -250,6 +274,7 @@ type PebbleReverseAccountIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	ceil      seekCeil
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
@@ -355,9 +380,16 @@ func (it *PebbleReverseAccountIterator) Current() []byte {
 }
 
 func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
-	if it.exhausted {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -382,12 +414,14 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 		// Past target, step back
 		if !it.iter.Prev() {
 			it.exhausted = true
+			it.ceil.fail(target, it.iter.Error())
 
 			return false
 		}
 	} else if !it.iter.Last() {
 		// Past end, go to last
 		it.exhausted = true
+		it.ceil.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -406,6 +440,7 @@ func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.ceil.fail(target, it.iter.Error())
 
 	return false
 }
@@ -442,6 +477,7 @@ type PebbleTxIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // NewPebbleTxIterator creates an iterator over all transactions in a ledger.
@@ -519,9 +555,16 @@ func (it *PebbleTxIterator) Current() []byte {
 }
 
 func (it *PebbleTxIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -531,6 +574,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -543,6 +587,7 @@ func (it *PebbleTxIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -578,6 +623,7 @@ type PebbleReverseTxIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	ceil      seekCeil
 }
 
 // NewPebbleReverseTxIterator creates a reverse transaction iterator.
@@ -656,31 +702,45 @@ func (it *PebbleReverseTxIterator) Current() []byte {
 }
 
 func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
-	if it.exhausted {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
 	// Seek to the last byLog entry for target txID:
-	// SeekGE([prefix][target+1]) then Prev(), or Last() if past end
-	nextTarget := incrementUint64Bytes(target)
-	seekKey := make([]byte, len(it.prefix)+8)
-	copy(seekKey, it.prefix)
-	copy(seekKey[len(it.prefix):], nextTarget)
-
-	if it.iter.SeekGE(seekKey) {
-		if !it.iter.Prev() {
-			it.exhausted = true
-
-			return false
-		}
+	// SeekGE([prefix][target+1]) then Prev(), or Last() if past end.
+	// An all-0xff target wraps the increment to zero, which would land the
+	// probe on the FIRST key and mis-record an emptiness proof; every key
+	// qualifies for that target, so position at the end of the range directly.
+	var positioned bool
+	if isMaxUint64Bytes(target) {
+		positioned = it.iter.Last()
 	} else {
-		if !it.iter.Last() {
-			it.exhausted = true
+		nextTarget := incrementUint64Bytes(target)
+		seekKey := make([]byte, len(it.prefix)+8)
+		copy(seekKey, it.prefix)
+		copy(seekKey[len(it.prefix):], nextTarget)
 
-			return false
+		if it.iter.SeekGE(seekKey) {
+			positioned = it.iter.Prev()
+		} else {
+			positioned = it.iter.Last()
 		}
+	}
+
+	if !positioned {
+		it.exhausted = true
+		it.ceil.fail(target, it.iter.Error())
+
+		return false
 	}
 
 	for it.iter.Valid() {
@@ -697,6 +757,7 @@ func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.ceil.fail(target, it.iter.Error())
 
 	return false
 }
@@ -757,6 +818,7 @@ type PebbleTxRangeIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
@@ -843,9 +905,16 @@ func (it *PebbleTxRangeIterator) Next() bool {
 func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
 
 func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
-	if it.exhausted {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
 		return false
 	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
 
 	it.started = true
 
@@ -856,6 +925,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
@@ -868,6 +938,7 @@ func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
 	}
 
 	it.exhausted = true
+	it.floor.fail(target, it.iter.Error())
 
 	return false
 }
@@ -951,6 +1022,12 @@ func copyBytes(b []byte) []byte {
 	copy(cp, b)
 
 	return cp
+}
+
+// isMaxUint64Bytes reports whether b is the 8-byte encoding of MaxUint64 —
+// the one value incrementUint64Bytes wraps to zero on.
+func isMaxUint64Bytes(b []byte) bool {
+	return len(b) == 8 && binary.BigEndian.Uint64(b) == math.MaxUint64
 }
 
 func incrementUint64Bytes(b []byte) []byte {

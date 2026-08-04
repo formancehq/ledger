@@ -37,6 +37,15 @@ func PaginateForward(iter EntityIterator, pageSize uint32, after []byte) (items 
 type ReverseIterator interface {
 	Next() bool
 	Current() []byte
+	// SeekLE positions the iterator at the first (largest) entity <= target.
+	// Returns false if no such entity exists OR on I/O error — see Err().
+	//
+	// SeekLE is an ABSOLUTE reposition, the descending mirror of
+	// EntityIterator.SeekGE (see iterator_pebble.go and
+	// docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md):
+	// computed from target alone, idempotent and non-consuming at the same
+	// target, well-defined after exhaustion, and a failed seek leaves the
+	// iterator un-positioned but still re-seekable.
 	SeekLE(target []byte) bool
 	Err() error
 }

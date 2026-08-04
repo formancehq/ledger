@@ -81,7 +81,7 @@ Source: `internal/query/executor.go`.
 
 Commit `c1f79db80` (EN-1321) wired prepared-query keys into the standard bloom-filter infrastructure (see [attributes / bloom.md](../attributes/bloom.md)). A `MayContain` lookup on the prepared-query bloom now short-circuits the "query doesn't exist" path at preload time, putting prepared queries on the same footing as every other attribute kind.
 
-Commit `7662d2bae` (`optimized-prepared-queries`) added monotonic-skip and probe-based optimisations to the `AndIterator` used by the filter compiler, which the prepared-query execution path benefits from directly.
+Commit `7662d2bae` (`optimized-prepared-queries`) added monotonic-skip and probe-based optimisations to the `AndIterator` used by the filter compiler, which the prepared-query execution path benefits from directly. EN-1597 later reshaped the seek semantics — `AndIterator.SeekGE` now force-seeks every child, and the ahead-child skip lives in the converge loop with `seekFloor`/`seekCeil` covering re-seeks of exhausted children; see [iterator-seek-contract.md](iterator-seek-contract.md) for the current behavior.
 
 These accelerators are correctness-neutral: turning them off (e.g. by a saturated bloom) only slows execution.
 
