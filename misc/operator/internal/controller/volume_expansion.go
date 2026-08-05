@@ -1,0 +1,548 @@
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	controllermetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
+)
+
+const (
+	volumeExpansionRequeueInterval = 5 * time.Minute
+	volumeExpansionRetryInterval   = time.Minute
+
+	annotationLastExpansionAt     = "ledger.formance.com/last-expansion-at"
+	annotationLastExpansionTarget = "ledger.formance.com/last-expansion-target"
+)
+
+var (
+	volumeUsageRatioMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ledger_operator_volume_usage_ratio",
+		Help: "Filesystem usage ratio observed by the Ledger volume expansion reconciler.",
+	}, []string{"namespace", "cluster", "pod", "volume"})
+	volumeRequestedBytesMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ledger_operator_volume_requested_bytes",
+		Help: "Largest requested PVC capacity for a Ledger volume group.",
+	}, []string{"namespace", "cluster", "volume"})
+	volumeExpansionsMetric = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ledger_operator_volume_expansions_total",
+		Help: "Volume expansion reconciliation outcomes.",
+	}, []string{"namespace", "cluster", "volume", "result"})
+	volumeExpansionErrorsMetric = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ledger_operator_volume_expansion_errors_total",
+		Help: "Volume expansion errors by stage and volume kind.",
+	}, []string{"stage", "volume"})
+)
+
+func init() {
+	controllermetrics.Registry.MustRegister(
+		volumeUsageRatioMetric,
+		volumeRequestedBytesMetric,
+		volumeExpansionsMetric,
+		volumeExpansionErrorsMetric,
+	)
+}
+
+type podDiskUsage struct {
+	WAL  measuredVolume
+	Data measuredVolume
+}
+
+type measuredVolume struct {
+	UsedBytes  uint64
+	TotalBytes uint64
+}
+
+type readPodDiskUsageFunc func(ctx context.Context, ledger *ledgerv1alpha1.Cluster, pod, tlsMode string) (podDiskUsage, error)
+
+// VolumeExpansionReconciler periodically grows the live PVCs owned by one
+// Cluster. It owns neither Cluster status nor StatefulSet templates; its entire
+// mutation surface is the storage request and bookkeeping annotations on PVCs.
+type VolumeExpansionReconciler struct {
+	client.Client
+
+	APIReader     client.Reader
+	Config        *rest.Config
+	Clientset     kubernetes.Interface
+	Recorder      record.EventRecorder
+	ReadDiskUsage readPodDiskUsageFunc
+	Now           func() time.Time
+}
+
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;patch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get
+
+func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	var ledger ledgerv1alpha1.Cluster
+	if err := r.Get(ctx, req.NamespacedName, &ledger); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	if !ledger.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
+
+	definitions := enabledVolumeExpansionDefinitions(&ledger)
+	if len(definitions) == 0 {
+		return ctrl.Result{}, nil
+	}
+	applyDefaults(&ledger)
+
+	tlsMode, err := fetchTLSMode(ctx, r.Client, ledger.Namespace, resourceName(ledger.Name))
+	if err != nil {
+		volumeExpansionErrorsMetric.WithLabelValues("tls-mode", "cluster").Inc()
+
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, fmt.Errorf("resolving TLS mode for volume expansion: %w", err)
+	}
+
+	nextRequeue := volumeExpansionRequeueInterval
+	var reconcileErrors []error
+	for _, definition := range definitions {
+		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode)
+		if retrySoon {
+			nextRequeue = volumeExpansionRetryInterval
+		}
+		if err != nil {
+			reconcileErrors = append(reconcileErrors, err)
+		}
+	}
+	if len(reconcileErrors) > 0 {
+		return ctrl.Result{RequeueAfter: nextRequeue}, errors.Join(reconcileErrors...)
+	}
+
+	return ctrl.Result{RequeueAfter: nextRequeue}, nil
+}
+
+type volumeExpansionDefinition struct {
+	Name   string
+	Policy *ledgerv1alpha1.VolumeAutoExpansionSpec
+}
+
+func enabledVolumeExpansionDefinitions(ledger *ledgerv1alpha1.Cluster) []volumeExpansionDefinition {
+	var definitions []volumeExpansionDefinition
+	if auto := ledger.Spec.Persistence.WAL.AutoExpansion; auto != nil && auto.Enabled {
+		definitions = append(definitions, volumeExpansionDefinition{Name: "wal", Policy: auto})
+	}
+	if auto := ledger.Spec.Persistence.Data.AutoExpansion; auto != nil && auto.Enabled {
+		definitions = append(definitions, volumeExpansionDefinition{Name: "data", Policy: auto})
+	}
+
+	return definitions
+}
+
+func (r *VolumeExpansionReconciler) reconcileVolume(
+	ctx context.Context,
+	ledger *ledgerv1alpha1.Cluster,
+	definition volumeExpansionDefinition,
+	tlsMode string,
+) (bool, error) {
+	logger := ctrl.LoggerFrom(ctx).WithValues("volume", definition.Name)
+	policy, err := resolveVolumeExpansionPolicy(definition.Policy)
+	if err != nil {
+		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s auto-expansion policy is invalid: %v", definition.Name, err)
+		volumeExpansionErrorsMetric.WithLabelValues("policy", definition.Name).Inc()
+
+		return false, nil
+	}
+
+	pvcs, states, err := r.loadVolumePVCs(ctx, ledger, definition.Name)
+	if err != nil {
+		volumeExpansionErrorsMetric.WithLabelValues("pvc", definition.Name).Inc()
+		r.recordWarningf(ledger, "VolumeExpansionPending", "%s PVC group is not ready: %v", definition.Name, err)
+
+		return true, nil
+	}
+	if err := r.validateExpandableStorageClasses(ctx, pvcs); err != nil {
+		volumeExpansionErrorsMetric.WithLabelValues("storage-class", definition.Name).Inc()
+		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s PVC group cannot expand: %v", definition.Name, err)
+
+		return true, nil
+	}
+
+	// Let the pure policy resolve convergence, pending resize and cooldown first.
+	// Those states do not need a pod exec and should not turn an unrelated
+	// ledgerctl failure into measurement noise.
+	decision := decideVolumeExpansion(policy, states, nil, r.now())
+	var measurements []podVolumeMeasurement
+	if decision.Kind == volumeExpansionDecisionIncomplete {
+		measurements = r.collectMeasurements(ctx, ledger, definition.Name, tlsMode)
+		decision = decideVolumeExpansion(policy, states, measurements, r.now())
+	}
+	volumeRequestedBytesMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name).
+		Set(float64(decision.LargestRequestBytes))
+	for _, measurement := range measurements {
+		if measurement.Err == nil && measurement.TotalBytes > 0 {
+			volumeUsageRatioMetric.WithLabelValues(ledger.Namespace, ledger.Name, measurement.Pod, definition.Name).
+				Set(float64(measurement.UsedBytes) / float64(measurement.TotalBytes))
+		}
+	}
+
+	logger = logger.WithValues(
+		"decision", decision.Kind,
+		"currentBytes", decision.LargestRequestBytes,
+		"targetBytes", decision.TargetBytes,
+		"maximumBytes", policy.MaximumSize.Value(),
+		"maxUsageRatio", decision.MaxUsageRatio,
+		"failedMeasurements", decision.FailedMeasurements,
+	)
+	if decision.FailedMeasurements > 0 &&
+		(decision.Kind == volumeExpansionDecisionExpand || decision.Kind == volumeExpansionDecisionLimit) {
+		r.recordWarningf(ledger, "VolumeExpansionMeasurementFailed", "%s usage failed on %d replica(s); continuing because another replica crossed the threshold", definition.Name, decision.FailedMeasurements)
+	}
+
+	switch decision.Kind {
+	case volumeExpansionDecisionConverge:
+		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, decision.LastExpansionAt); err != nil {
+			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
+
+			return true, fmt.Errorf("converging %s PVCs: %w", definition.Name, err)
+		}
+		logger.Info("converged partially-expanded PVC group")
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "converged").Inc()
+
+		return true, nil
+	case volumeExpansionDecisionPending:
+		logger.Info("volume expansion is pending")
+		r.recordNormalf(ledger, "VolumeExpansionPending", "%s PVC expansion is still pending", definition.Name)
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "pending").Inc()
+
+		return true, nil
+	case volumeExpansionDecisionCooldown:
+		logger.Info("volume expansion is in cooldown", "cooldownUntil", decision.LastExpansionAt.Add(policy.Cooldown))
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "cooldown").Inc()
+
+		return false, nil
+	case volumeExpansionDecisionIncomplete:
+		logger.Info("volume usage measurement is incomplete")
+		r.recordWarningf(ledger, "VolumeExpansionMeasurementFailed", "%s usage could not be measured on every replica; no threshold crossing was observed", definition.Name)
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "measurement-incomplete").Inc()
+
+		return true, nil
+	case volumeExpansionDecisionLimit:
+		logger.Info("volume expansion maximum reached")
+		r.recordWarningf(ledger, "VolumeExpansionLimitReached", "%s PVCs reached maximumSize %s at %.1f%% usage", definition.Name, policy.MaximumSize.String(), decision.MaxUsageRatio*100)
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "limit-reached").Inc()
+
+		return false, nil
+	case volumeExpansionDecisionExpand:
+		now := r.now()
+		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, now); err != nil {
+			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
+
+			return true, fmt.Errorf("expanding %s PVCs: %w", definition.Name, err)
+		}
+		target := *resource.NewQuantity(decision.TargetBytes, resource.BinarySI)
+		logger.Info("requested PVC expansion", "target", target.String())
+		r.recordNormalf(ledger, "VolumeExpansionRequested", "%s PVCs expanding from %s to %s after reaching %.1f%% usage", definition.Name, formatBytesAsQuantity(decision.LargestRequestBytes), target.String(), decision.MaxUsageRatio*100)
+		volumeRequestedBytesMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name).Set(float64(decision.TargetBytes))
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "requested").Inc()
+
+		return true, nil
+	case volumeExpansionDecisionNone:
+		logger.Info("volume expansion not required")
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "unchanged").Inc()
+
+		return false, nil
+	default:
+		return false, fmt.Errorf("invariant: unknown volume expansion decision %q", decision.Kind)
+	}
+}
+
+func (r *VolumeExpansionReconciler) loadVolumePVCs(
+	ctx context.Context,
+	ledger *ledgerv1alpha1.Cluster,
+	volume string,
+) ([]*corev1.PersistentVolumeClaim, []volumePVCState, error) {
+	replicas := int32(3)
+	if ledger.Spec.Replicas != nil {
+		replicas = *ledger.Spec.Replicas
+	}
+
+	pvcs := make([]*corev1.PersistentVolumeClaim, 0, replicas)
+	states := make([]volumePVCState, 0, replicas)
+	for ordinal := range replicas {
+		name := fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)
+		var pvc corev1.PersistentVolumeClaim
+		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: name}, &pvc); err != nil {
+			return nil, nil, fmt.Errorf("getting PVC %s: %w", name, err)
+		}
+
+		requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		capacity := pvc.Status.Capacity[corev1.ResourceStorage]
+		lastExpansion, err := parseExpansionTime(pvc.Annotations[annotationLastExpansionAt])
+		if err != nil {
+			return nil, nil, fmt.Errorf("PVC %s has invalid %s annotation: %w", name, annotationLastExpansionAt, err)
+		}
+		_, err = parseExpansionTarget(pvc.Annotations[annotationLastExpansionTarget])
+		if err != nil {
+			return nil, nil, fmt.Errorf("PVC %s has invalid %s annotation: %w", name, annotationLastExpansionTarget, err)
+		}
+
+		pvcs = append(pvcs, pvc.DeepCopy())
+		states = append(states, volumePVCState{
+			Name:            name,
+			RequestedBytes:  requested.Value(),
+			CapacityBytes:   capacity.Value(),
+			Bound:           pvc.Status.Phase == corev1.ClaimBound && pvc.Spec.VolumeName != "",
+			ResizePending:   pvcResizePending(&pvc),
+			LastExpansionAt: lastExpansion,
+		})
+	}
+
+	return pvcs, states, nil
+}
+
+func (r *VolumeExpansionReconciler) validateExpandableStorageClasses(ctx context.Context, pvcs []*corev1.PersistentVolumeClaim) error {
+	reader := r.APIReader
+	if reader == nil {
+		reader = r.Client
+	}
+	checked := map[string]struct{}{}
+	for _, pvc := range pvcs {
+		if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
+			return fmt.Errorf("PVC %s has no StorageClass", pvc.Name)
+		}
+		name := *pvc.Spec.StorageClassName
+		if _, ok := checked[name]; ok {
+			continue
+		}
+		var storageClass storagev1.StorageClass
+		if err := reader.Get(ctx, types.NamespacedName{Name: name}, &storageClass); err != nil {
+			return fmt.Errorf("getting StorageClass %s: %w", name, err)
+		}
+		if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
+			return fmt.Errorf("StorageClass %s does not set allowVolumeExpansion: true", name)
+		}
+		checked[name] = struct{}{}
+	}
+
+	return nil
+}
+
+func (r *VolumeExpansionReconciler) collectMeasurements(
+	ctx context.Context,
+	ledger *ledgerv1alpha1.Cluster,
+	volume, tlsMode string,
+) []podVolumeMeasurement {
+	replicas := int32(3)
+	if ledger.Spec.Replicas != nil {
+		replicas = *ledger.Spec.Replicas
+	}
+	read := r.ReadDiskUsage
+	if read == nil {
+		read = r.readPodDiskUsage
+	}
+
+	measurements := make([]podVolumeMeasurement, 0, replicas)
+	for ordinal := range replicas {
+		pod := podName(ledger.Name, int(ordinal))
+		usage, err := read(ctx, ledger, pod, tlsMode)
+		measurement := podVolumeMeasurement{Pod: pod, Err: err}
+		if err == nil {
+			switch volume {
+			case "wal":
+				measurement.UsedBytes = usage.WAL.UsedBytes
+				measurement.TotalBytes = usage.WAL.TotalBytes
+			case "data":
+				measurement.UsedBytes = usage.Data.UsedBytes
+				measurement.TotalBytes = usage.Data.TotalBytes
+			default:
+				measurement.Err = fmt.Errorf("invariant: unsupported volume kind %q", volume)
+			}
+			if measurement.TotalBytes == 0 {
+				measurement.Err = errors.New("reported totalBytes is zero")
+			}
+		}
+		if measurement.Err != nil {
+			volumeExpansionErrorsMetric.WithLabelValues("measurement", volume).Inc()
+		}
+		measurements = append(measurements, measurement)
+	}
+
+	return measurements
+}
+
+func (r *VolumeExpansionReconciler) readPodDiskUsage(
+	ctx context.Context,
+	ledger *ledgerv1alpha1.Cluster,
+	pod, tlsMode string,
+) (podDiskUsage, error) {
+	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), ledger.Spec.GrpcPort)
+	result, err := podExecWithTimeout(ctx, r.Config, r.Clientset, ledger.Namespace, pod, ledgerContainer,
+		ledgerctlCommand(serverAddr, tlsMode, "cluster", "disk-usage", "--json"),
+	)
+	if err != nil {
+		return podDiskUsage{}, fmt.Errorf("reading disk usage from %s: %w", pod, err)
+	}
+
+	usage, err := parsePodDiskUsage([]byte(result.Stdout))
+	if err != nil {
+		return podDiskUsage{}, fmt.Errorf("parsing disk usage from %s: %w", pod, err)
+	}
+
+	return usage, nil
+}
+
+func (r *VolumeExpansionReconciler) patchPVCGroup(
+	ctx context.Context,
+	pvcs []*corev1.PersistentVolumeClaim,
+	targetBytes int64,
+	expansionTime time.Time,
+) error {
+	if expansionTime.IsZero() {
+		expansionTime = r.now()
+	}
+	target := *resource.NewQuantity(targetBytes, resource.BinarySI)
+	for _, pvc := range pvcs {
+		current := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if current.Value() >= targetBytes {
+			continue
+		}
+		base := pvc.DeepCopy()
+		if pvc.Spec.Resources.Requests == nil {
+			pvc.Spec.Resources.Requests = corev1.ResourceList{}
+		}
+		pvc.Spec.Resources.Requests[corev1.ResourceStorage] = target
+		if pvc.Annotations == nil {
+			pvc.Annotations = map[string]string{}
+		}
+		pvc.Annotations[annotationLastExpansionAt] = expansionTime.UTC().Format(time.RFC3339)
+		pvc.Annotations[annotationLastExpansionTarget] = target.String()
+		if err := r.Patch(ctx, pvc, client.MergeFrom(base)); err != nil {
+			return fmt.Errorf("patching PVC %s to %s: %w", pvc.Name, target.String(), err)
+		}
+	}
+
+	return nil
+}
+
+func (r *VolumeExpansionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&ledgerv1alpha1.Cluster{}).
+		Named("volume-expansion").
+		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
+		Complete(r)
+}
+
+func (r *VolumeExpansionReconciler) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+
+	return time.Now()
+}
+
+func (r *VolumeExpansionReconciler) recordNormalf(object runtime.Object, reason, format string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(object, corev1.EventTypeNormal, reason, format, args...)
+	}
+}
+
+func (r *VolumeExpansionReconciler) recordWarningf(object runtime.Object, reason, format string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(object, corev1.EventTypeWarning, reason, format, args...)
+	}
+}
+
+func pvcResizePending(pvc *corev1.PersistentVolumeClaim) bool {
+	for _, condition := range pvc.Status.Conditions {
+		if condition.Status != corev1.ConditionTrue {
+			continue
+		}
+		if condition.Type == corev1.PersistentVolumeClaimResizing ||
+			condition.Type == corev1.PersistentVolumeClaimFileSystemResizePending {
+			return true
+		}
+	}
+
+	return false
+}
+
+func parseExpansionTime(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+
+	return time.Parse(time.RFC3339, value)
+}
+
+func parseExpansionTarget(value string) (int64, error) {
+	if value == "" {
+		return 0, nil
+	}
+	target, err := resource.ParseQuantity(value)
+	if err != nil {
+		return 0, err
+	}
+
+	return target.Value(), nil
+}
+
+func formatBytesAsQuantity(value int64) string {
+	return resource.NewQuantity(value, resource.BinarySI).String()
+}
+
+type protoJSONUint64 uint64
+
+func (value *protoJSONUint64) UnmarshalJSON(data []byte) error {
+	raw := strings.Trim(string(data), `"`)
+	parsed, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parsing uint64 %q: %w", raw, err)
+	}
+	*value = protoJSONUint64(parsed)
+
+	return nil
+}
+
+func parsePodDiskUsage(data []byte) (podDiskUsage, error) {
+	var payload struct {
+		WALVolume struct {
+			UsedBytes  protoJSONUint64 `json:"usedBytes"`
+			TotalBytes protoJSONUint64 `json:"totalBytes"`
+		} `json:"walVolume"`
+		DataVolume struct {
+			UsedBytes  protoJSONUint64 `json:"usedBytes"`
+			TotalBytes protoJSONUint64 `json:"totalBytes"`
+		} `json:"dataVolume"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return podDiskUsage{}, err
+	}
+	if payload.WALVolume.TotalBytes == 0 || payload.DataVolume.TotalBytes == 0 {
+		return podDiskUsage{}, errors.New("disk usage payload contains a zero totalBytes value")
+	}
+
+	return podDiskUsage{
+		WAL: measuredVolume{
+			UsedBytes:  uint64(payload.WALVolume.UsedBytes),
+			TotalBytes: uint64(payload.WALVolume.TotalBytes),
+		},
+		Data: measuredVolume{
+			UsedBytes:  uint64(payload.DataVolume.UsedBytes),
+			TotalBytes: uint64(payload.DataVolume.TotalBytes),
+		},
+	}, nil
+}
