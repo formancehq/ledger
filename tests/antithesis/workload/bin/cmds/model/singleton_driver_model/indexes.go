@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -278,6 +281,9 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		"reverse":    reverse,
 		"modelIdx":   indexStateLabel(exists, active),
 		"modelAddrs": strings.Join(modelWindow, ","),
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, map[string]struct{}{assetIndexCanonical: {}}, func(ls oracle.LedgerState) []string {
+			return assetWindow(ls, base, precision, cursor, pageSize, reverse)
+		}),
 	}
 	if gotResults {
 		serverAddrs := make([]string, len(serverAccts))
@@ -534,6 +540,15 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		"reverse":  reverse,
 		"modelIdx": strings.Join(idxStates, " "),
 		"modelIds": joinUint64(modelWindow),
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, needed, func(ls oracle.LedgerState) []string {
+			ids := transactionWindow(ls, filter, afterID, pageSize, reverse)
+			out := make([]string, len(ids))
+			for i, id := range ids {
+				out[i] = strconv.FormatUint(id, 10)
+			}
+
+			return out
+		}),
 	}
 	if err == nil {
 		serverIds := make([]uint64, len(serverTxs))
@@ -547,6 +562,44 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 	}
 
 	assert.Unreachable("singleton_driver_model: indexed transaction query outside model", details)
+}
+
+// describeCandidateVerdicts re-enumerates a failed observation's candidate
+// bases and renders, per base (capped), the needed-index states and the model
+// window head — the context a finding needs to distinguish a server-side
+// divergence (no base explains the response) from an envelope gap (the
+// explaining base was never enumerated). Caller holds c.mu.
+func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, needed map[string]struct{}, window func(oracle.LedgerState) []string) string {
+	const maxBases = 8
+
+	var parts []string
+
+	n := 0
+	c.candidateBases(maxTicket, func(cand oracle.GlobalState) bool {
+		n++
+		if n > maxBases {
+			return false
+		}
+
+		ls := cand.Ledger(ledger)
+		idx := make([]string, 0, len(needed))
+		for canon := range needed {
+			exists, active := ls.IndexState(canon)
+			idx = append(idx, canon+"="+indexStateLabel(exists, active))
+		}
+		sort.Strings(idx)
+
+		w := window(ls)
+		if len(w) > 6 {
+			w = append(w[:6:6], "…")
+		}
+
+		parts = append(parts, fmt.Sprintf("b%d{%s|w=%s}", n, strings.Join(idx, " "), strings.Join(w, ",")))
+
+		return false
+	})
+
+	return fmt.Sprintf("%d bases: %s", n, strings.Join(parts, " ; "))
 }
 
 // metadataCanonical is the canonical IndexID of the per-(target, key) metadata
@@ -694,6 +747,9 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		"reverse":    reverse,
 		"modelIdx":   strings.Join(idxStates, " "),
 		"modelAddrs": strings.Join(modelWindow, ","),
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, needed, func(ls oracle.LedgerState) []string {
+			return accountWindow(ls, filter, cursor, pageSize, reverse)
+		}),
 	}
 	if err == nil {
 		serverAddrs := make([]string, len(serverAccts))
