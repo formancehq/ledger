@@ -54,7 +54,16 @@ type Store struct {
 	// NotifyProgress after each WriteProgress to wake up waiters.
 	progressMu   sync.Mutex
 	progressCond *sync.Cond
+
+	// readOnly marks a store opened via OpenReadOnly — a frozen view (query
+	// checkpoint) whose fold cursor will never advance, so freshness waits
+	// are meaningless against it.
+	readOnly bool
 }
+
+// Frozen reports whether this store is an immutable read-only view (a query
+// checkpoint) rather than the live, builder-fed read index.
+func (s *Store) Frozen() bool { return s.readOnly }
 
 // New opens or creates a Pebble database at the given directory for the read index.
 func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
@@ -148,9 +157,10 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	s := &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
-		dir:    dirPath,
+		db:       db,
+		logger:   logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
+		dir:      dirPath,
+		readOnly: true,
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 

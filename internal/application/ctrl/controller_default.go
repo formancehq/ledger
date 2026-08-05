@@ -965,17 +965,23 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap := ctrl.readStore.NewSnapshot()
+	snap, mainSeq, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = snap.Close() }()
 
 	kb := dal.NewKeyBuilder()
 
 	indexStart := time.Now()
 
-	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle)
+	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
+
+	iter := readstore.NewFilterIterator(compiled,
+		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq))
 	defer iter.Close()
 
 	if profile != nil {
@@ -1659,12 +1665,17 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		}
 	}
 
-	snap := ctrl.readStore.NewSnapshot()
+	snap, mainSeq, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	if err != nil {
+		_ = handle.Close()
+
+		return nil, err
+	}
 	defer func() { _ = snap.Close() }()
 
 	kb := dal.NewKeyBuilder()
 
-	iter, err := query.Compile(
+	compiled, err := query.Compile(
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
@@ -1675,6 +1686,9 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 		return nil, fmt.Errorf("compiling log filter: %w", err)
 	}
+
+	iter := readstore.NewFilterIterator(compiled,
+		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
 	defer iter.Close()
 
 	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
