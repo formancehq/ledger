@@ -188,13 +188,22 @@ func fieldKindMismatch(ls oracle.LedgerState, f *commonpb.QueryFilter, target co
 			return false
 		}
 
-		switch x.Field.GetCondition().(type) {
+		switch cond := x.Field.GetCondition().(type) {
 		case *commonpb.FieldCondition_ExistsCond:
 			return false
 		case *commonpb.FieldCondition_IntCond:
-			// Signed and datetime verbatim; unsigned via coerceIntToUint.
-			return !commonpb.IsSignedType(declaredType) && !commonpb.IsDatetimeType(declaredType) &&
-				!commonpb.IsUnsignedType(declaredType)
+			// Signed and datetime verbatim; unsigned via coerceIntToUint,
+			// which rejects negative bounds.
+			if commonpb.IsSignedType(declaredType) || commonpb.IsDatetimeType(declaredType) {
+				return false
+			}
+
+			if commonpb.IsUnsignedType(declaredType) {
+				return (cond.IntCond.Min != nil && cond.IntCond.GetMin() < 0) ||
+					(cond.IntCond.Max != nil && cond.IntCond.GetMax() < 0)
+			}
+
+			return true
 		case *commonpb.FieldCondition_UintCond:
 			return !commonpb.IsUnsignedType(declaredType)
 		case *commonpb.FieldCondition_StringCond:

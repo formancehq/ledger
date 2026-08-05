@@ -5,6 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -124,4 +127,48 @@ func TestAssetWindow(t *testing.T) {
 	// Reverse order + exclusive cursor (drops >= cursor).
 	require.Equal(t, []string{"acc:2", "acc:1"},
 		assetWindow(ls, "USD", 2, "world", 10, true))
+}
+
+// A multi-leaf filter can carry both an absent needed index and a
+// kind-mismatched leaf; the surfaced rejection follows the compiler's walk
+// order, so both honest error classes must be legal — but never results, and
+// never a rejection class the filter cannot produce.
+func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
+	t.Parallel()
+
+	acct := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+
+	// k0 declared UINT64 with an active index; k3 never declared, no index.
+	gs := buildGlobal(t,
+		oracletest.SetFieldTypeReq(acct, "k0", commonpb.MetadataType_METADATA_TYPE_UINT64),
+		oracletest.CreateIndexReq(indexes.MetadataID(acct, "k0")),
+	)
+	gs.SetIndexActive("L", indexes.Canonical(indexes.MetadataID(acct, "k0")))
+	ls := gs.Ledger("L")
+
+	neg := int64(-5)
+	mismatched := filterFieldInt("k0", &neg, nil) // negative bound on unsigned: kind mismatch
+	absent := filterFieldExists("k3", false)
+
+	both := filterOr(mismatched, absent)
+	needed := map[string]struct{}{}
+	neededIndexCanonicals(both, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
+
+	noWindow := func(oracle.LedgerState) bool { return false }
+
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrCompilation, noWindow),
+		"the mismatched leaf makes a compilation rejection legal even with an absent sibling index")
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNotReady, noWindow),
+		"the absent index keeps a not-ready rejection legal too")
+	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNone, noWindow),
+		"results are never legal while a leaf mismatches")
+
+	// Mismatch alone (all needed indexes active): compilation legal, not-ready illegal.
+	alone := filterOr(mismatched, mismatched)
+	neededAlone := map[string]struct{}{}
+	neededIndexCanonicals(alone, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, neededAlone)
+
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, noWindow))
+	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, noWindow),
+		"with every needed index active, a not-ready rejection is unexplained")
 }

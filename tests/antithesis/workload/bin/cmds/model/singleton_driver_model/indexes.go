@@ -561,14 +561,19 @@ func metadataCanonical(target commonpb.QueryTarget, key string) string {
 }
 
 // indexedQueryOutcomeLegal is the shared per-candidate verdict for a query
-// whose filter needs indexes. The compiler's check order per Field leaf is
-// schema → requireIndexReady → kind coercion, so:
+// whose filter needs indexes. Per Field leaf the compiler checks
+// schema → requireIndexReady → kind coercion, but across a multi-leaf tree
+// the surfaced error follows the compiler's walk order, which the model does
+// not pin down. So:
 //
 //   - a FailedPrecondition (index not found / not ready) is legal iff some
 //     needed index is not active on the base;
 //   - a FILTER_COMPILATION rejection (InvalidArgument) is legal iff the filter
-//     carries a kind-mismatched Field leaf under the base's declared types and
-//     every needed index exists (compilation reached the coercion check);
+//     carries a kind-mismatched Field leaf under the base's declared types —
+//     regardless of the other leaves' index states: when a mismatched leaf and
+//     an absent index coexist (e.g. or(field:absent, field:mismatched)),
+//     whichever leaf the walk reaches first decides which honest rejection
+//     surfaces, and both are legal;
 //   - results are legal iff there is no kind mismatch, every needed index
 //     exists, and the window matches (windowMatches).
 func indexedQueryOutcomeLegal(
@@ -589,16 +594,7 @@ func indexedQueryOutcomeLegal(
 
 		return false
 	case indexedErrCompilation:
-		if !fieldKindMismatch(ls, filter, target) {
-			return false
-		}
-		for canon := range needed {
-			if exists, _ := ls.IndexState(canon); !exists {
-				return false
-			}
-		}
-
-		return true
+		return fieldKindMismatch(ls, filter, target)
 	default: // results
 		if fieldKindMismatch(ls, filter, target) {
 			return false
