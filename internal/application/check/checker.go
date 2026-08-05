@@ -2603,7 +2603,10 @@ func (c *Checker) verifyAuditHashChain(
 		// the success [Min,Max] range so each referenced log is folded once.
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
-			collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
+			// The decoded orders come back so the signing fold below reuses them
+			// instead of unmarshalling the whole live audit range a second time.
+			// Parallel to `items` by index; nil where the bytes did not decode.
+			decoded := collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
 			// window collectExpectedSkippable uses. AuditSuccess.{Min,Max}LogSequence
@@ -2635,7 +2638,7 @@ func (c *Checker) verifyAuditHashChain(
 			// The signing cascade needs it to reproduce GetSigningKeyChildren.
 			signing.beginProposal()
 
-			for _, item := range items {
+			for i, item := range items {
 				logSeq := item.GetLogSequence()
 				if logSeq == 0 || logSeq <= signing.archiveEndSeq {
 					continue
@@ -2645,12 +2648,16 @@ func (c *Checker) verifyAuditHashChain(
 					continue
 				}
 
-				order := &raftcmdpb.Order{}
-				if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
+				order := decoded[i]
+				if order == nil {
 					// Chain-bound bytes whose entry hash already verified, so a decode
 					// failure is impossible by design (invariant #7): fail loudly.
-					return nil, fmt.Errorf("invariant: decoding chain-verified order from audit item at log %d: %w",
-						item.GetLogSequence(), err)
+					// collectExpectedSkippable left this element nil for exactly that
+					// reason and soft-skipped it, which is right for a whitelist that
+					// simply gains no entry; the signing fold cannot skip it, because a
+					// dropped order silently changes the expected key set.
+					return nil, fmt.Errorf("invariant: decoding chain-verified order from audit item at log %d",
+						logSeq)
 				}
 
 				signing.applyOrder(order)
@@ -2965,12 +2972,23 @@ type expectedSkippableOrder struct {
 //     replay. Conflating skipped-delete with successful-delete is safe
 //     because a skipped-delete implies the key was already absent — the
 //     transition it records is redundant but correct.
+// It RETURNS the decoded orders, one element per item in `items` and nil where
+// the bytes did not decode, so the callers that need the same orders — the signing
+// fold in verifyAuditHashChain — do not decode the whole live audit range a second
+// time. The result is returned rather than taken as an out-parameter so the many
+// call sites that only want the fold keep working unchanged; a Go call used as a
+// statement may discard its result.
 func collectExpectedSkippable(
 	items []*auditpb.AuditItem,
 	minLogSeq, maxLogSeq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-) {
+) []*raftcmdpb.Order {
+	// Parallel to `items` by index, which is what lets a caller pair an order back
+	// to the item it came from — the filters below are per-item and each caller
+	// applies its own, so a compacted slice would not line up.
+	decoded := make([]*raftcmdpb.Order, len(items))
+
 	// Legacy per-order idempotency (pre-f9ee1e829) could produce TWO items
 	// carrying the SAME LogSequence WITHIN this entry's fresh [Min,Max]
 	// range: two identical per-order requests sharing an idempotency key in
@@ -2985,14 +3003,21 @@ func collectExpectedSkippable(
 	// duplicate-sequence items, so this set stays a singleton for them.)
 	foldedLogSeqs := make(map[uint64]struct{}, len(items))
 
-	for _, item := range items {
+	for i, item := range items {
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
 			// An item that fails to unmarshal cannot tell us what its order
 			// authorised; verifySkippedOrder will see no whitelist and
 			// surface an INVALID_SKIP if a skip log claims this sequence.
+			// decoded[i] stays nil, which is how a caller sees the same failure.
 			continue
 		}
+
+		// Recorded before every filter below: the skips that follow are this
+		// function's own concerns (failure-side items, legacy out-of-range
+		// references, duplicate sequences), and a caller applying different
+		// filters still needs the order.
+		decoded[i] = order
 
 		logSeq := item.GetLogSequence()
 		if logSeq == 0 {
@@ -3115,6 +3140,8 @@ func collectExpectedSkippable(
 
 		expectedSkippable[logSeq] = exp
 	}
+
+	return decoded
 }
 
 // recordChainBoundMutations extracts every state transition from the

@@ -984,6 +984,74 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 	require.Equal(t, "L", expectedSkip[101].ledger)
 }
 
+// TestCollectExpectedSkippable_ReturnsOrdersParallelToItems pins the decoded-order
+// return, which exists so verifyAuditHashChain's signing fold does not unmarshal
+// the whole live audit range a second time.
+//
+// The contract the caller depends on is positional: element i belongs to items[i],
+// nil when those bytes did not decode. A compacted or reordered slice would pair
+// orders with the wrong items, and since the signing fold applies its own filters
+// (archive boundary, fresh-log window) it cannot re-derive the pairing.
+//
+// The elements must survive this function's OWN filters — a failure-side item, a
+// legacy out-of-range reference and a duplicate sequence are all skipped for the
+// whitelist yet still decoded — because those filters are not the caller's.
+func TestCollectExpectedSkippable_ReturnsOrdersParallelToItems(t *testing.T) {
+	t.Parallel()
+
+	order := func(reference string) *raftcmdpb.Order {
+		return &raftcmdpb.Order{
+			Type: &raftcmdpb.Order_LedgerScoped{
+				LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+					Ledger: "L",
+					Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+						Apply: &raftcmdpb.LedgerApplyOrder{
+							Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+								CreateTransaction: &raftcmdpb.CreateTransactionOrder{Reference: reference},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	item := func(o *raftcmdpb.Order, logSeq uint64) *auditpb.AuditItem {
+		b, err := o.MarshalVT()
+		require.NoError(t, err)
+
+		return &auditpb.AuditItem{SerializedOrder: b, LogSequence: logSeq}
+	}
+
+	items := []*auditpb.AuditItem{
+		item(order("in-window"), 10),
+		// Undecodable bytes: nil at this index, and the only nil expected.
+		{SerializedOrder: []byte{0xFF, 0xFF, 0xFF, 0xFF}, LogSequence: 11},
+		item(order("failure-side"), 0),
+		// Below the window — a legacy pre-f9ee1e829 replay reference.
+		item(order("out-of-window"), 1),
+		// Duplicate of the first item's sequence: skipped by foldedLogSeqs.
+		item(order("duplicate-sequence"), 10),
+	}
+
+	decoded := collectExpectedSkippable(items, 10, 20, make(map[uint64]*expectedSkippableOrder), newChainBoundState())
+
+	require.Len(t, decoded, len(items), "one element per item, so index i pairs with items[i]")
+
+	for i, want := range []string{"in-window", "", "failure-side", "out-of-window", "duplicate-sequence"} {
+		if want == "" {
+			require.Nil(t, decoded[i], "undecodable bytes must leave a nil at their own index, not shift the rest")
+
+			continue
+		}
+
+		require.NotNil(t, decoded[i], "item %d was decoded, so its order must be returned even when this function skips it", i)
+		require.Equal(t, want,
+			decoded[i].GetLedgerScoped().GetApply().GetCreateTransaction().GetReference(),
+			"element %d must be the order of items[%d]", i, i)
+	}
+}
+
 // TestCollectExpectedSkippable_TracksMirrorIngestedReferences pins that the
 // verifier accepts a skip whose conflicting reference was claimed by a
 // mirror ingestion rather than a regular CreateTransaction. Mirror
