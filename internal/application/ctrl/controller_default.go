@@ -715,7 +715,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	}
 
 	if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		progress, err := query.ReadMirrorSyncProgress(ctx, handle, name)
+		progress, err := query.ReadMirrorSyncProgress(ctx, handle, ctrl.attrs.Boundary, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
 		}

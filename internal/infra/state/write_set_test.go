@@ -547,7 +547,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	}})
 	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 50, 5, 25))
 	buf.Absorb(&raftcmdpb.Order{}, archiveChapterLog(1, 10, 50, 5, 25))
-	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", Cursor: 42, ClearError: true})
+	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", ClearError: true})
 
 	// Verify data is present before Reset
 	_, err := buf.Ledgers().Get(domain.LedgerKey{Name: "leaked"})
@@ -596,15 +596,14 @@ func TestWriteSetResetIsolation(t *testing.T) {
 // TestWriteSetMergeDrainsMirrorSyncs pins the gating semantics that motivate
 // pendingMirrorSyncs: QueueMirrorSync stages the writes, and only buffer.Merge
 // (the commit gate that runs when ProcessOrders + ValidateTransientVolumes
-// succeed) actually emits them. Reading back through query.ReadMirrorCursor
-// closes the loop end-to-end.
+// succeed) actually emits them. Reading back through query.ReadMirrorSourceHead
+// and query.ReadMirrorStatus closes the loop end-to-end.
 func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
 	t.Parallel()
 	buf, _, dataStore := newTestBuffer(t)
 
 	buf.QueueMirrorSync(MirrorSyncWrite{
 		LedgerName:     "test",
-		Cursor:         99,
 		SourceLogCount: 120,
 		ClearError:     true,
 	})
@@ -617,10 +616,6 @@ func TestWriteSetMergeDrainsMirrorSyncs(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = rh.Close() })
-
-	cursor, err := query.ReadMirrorCursor(rh, "test")
-	require.NoError(t, err)
-	require.Equal(t, uint64(99), cursor, "cursor must be persisted after Merge")
 
 	head, err := query.ReadMirrorSourceHead(rh, "test")
 	require.NoError(t, err)

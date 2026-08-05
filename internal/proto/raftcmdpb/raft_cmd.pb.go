@@ -4691,13 +4691,16 @@ func (x *IdempotencyEviction) GetLastScannedTimeIndexKey() []byte {
 	return nil
 }
 
+// MirrorSyncUpdate carries per-ledger mirror technical state: the latest known
+// source head and the error/status. It deliberately carries NO ingestion
+// cursor — LedgerBoundaries.last_mirror_v2_log_id is the sole durable
+// authority for the applied position (EN-1513).
 type MirrorSyncUpdate struct {
 	state          protoimpl.MessageState    `protogen:"open.v1"`
 	LedgerName     string                    `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
-	Cursor         uint64                    `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	Error          *commonpb.MirrorSyncError `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
-	ClearError     bool                      `protobuf:"varint,4,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"`
-	SourceLogCount uint64                    `protobuf:"fixed64,5,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
+	Error          *commonpb.MirrorSyncError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	ClearError     bool                      `protobuf:"varint,3,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"`
+	SourceLogCount uint64                    `protobuf:"fixed64,4,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -4737,13 +4740,6 @@ func (x *MirrorSyncUpdate) GetLedgerName() string {
 		return x.LedgerName
 	}
 	return ""
-}
-
-func (x *MirrorSyncUpdate) GetCursor() uint64 {
-	if x != nil {
-		return x.Cursor
-	}
-	return 0
 }
 
 func (x *MirrorSyncUpdate) GetError() *commonpb.MirrorSyncError {
@@ -6385,15 +6381,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x13IdempotencyEviction\x12#\n" +
 	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12*\n" +
 	"\x11pebble_key_hashes\x18\x02 \x03(\fR\x0fpebbleKeyHashes\x12<\n" +
-	"\x1blast_scanned_time_index_key\x18\x03 \x01(\fR\x17lastScannedTimeIndexKey\"\xc5\x01\n" +
+	"\x1blast_scanned_time_index_key\x18\x03 \x01(\fR\x17lastScannedTimeIndexKey\"\xad\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
-	"ledgerName\x12\x16\n" +
-	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12-\n" +
-	"\x05error\x18\x03 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\x12\x1f\n" +
-	"\vclear_error\x18\x04 \x01(\bR\n" +
+	"ledgerName\x12-\n" +
+	"\x05error\x18\x02 \x01(\v2\x17.common.MirrorSyncErrorR\x05error\x12\x1f\n" +
+	"\vclear_error\x18\x03 \x01(\bR\n" +
 	"clearError\x12(\n" +
-	"\x10source_log_count\x18\x05 \x01(\x06R\x0esourceLogCount\"\x91\x01\n" +
+	"\x10source_log_count\x18\x04 \x01(\x06R\x0esourceLogCount\"\x91\x01\n" +
 	"\x10EventsSinkUpdate\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x16\n" +
 	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12'\n" +

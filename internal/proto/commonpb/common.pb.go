@@ -9103,12 +9103,16 @@ func (x *MirrorSyncError) GetOccurredAt() *Timestamp {
 }
 
 type MirrorSyncProgress struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	State          MirrorSyncState        `protobuf:"varint,1,opt,name=state,proto3,enum=common.MirrorSyncState" json:"state,omitempty"`
-	Cursor         uint64                 `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	SourceLogCount uint64                 `protobuf:"fixed64,3,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"`
-	RemainingLogs  uint64                 `protobuf:"fixed64,4,opt,name=remaining_logs,json=remainingLogs,proto3" json:"remaining_logs,omitempty"`
-	Error          *MirrorSyncError       `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	State MirrorSyncState        `protobuf:"varint,1,opt,name=state,proto3,enum=common.MirrorSyncState" json:"state,omitempty"`
+	// Highest source (v2) log ID actually applied to this mirror ledger by the
+	// FSM, read from LedgerBoundaries.last_mirror_v2_log_id. This is NOT an
+	// independent worker pointer: there is no separate persisted cursor
+	// (EN-1513).
+	Cursor         uint64           `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	SourceLogCount uint64           `protobuf:"fixed64,3,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"`
+	RemainingLogs  uint64           `protobuf:"fixed64,4,opt,name=remaining_logs,json=remainingLogs,proto3" json:"remaining_logs,omitempty"`
+	Error          *MirrorSyncError `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }

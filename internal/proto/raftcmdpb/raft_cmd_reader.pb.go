@@ -5008,7 +5008,6 @@ func NewIdempotencyEvictionListReader(s []*IdempotencyEviction) IdempotencyEvict
 // Call Mutate() to obtain a mutable clone.
 type MirrorSyncUpdateReader interface {
 	GetLedgerName() string
-	GetCursor() uint64
 	GetError() commonpb.MirrorSyncErrorReader
 	GetClearError() bool
 	GetSourceLogCount() uint64
@@ -5019,10 +5018,6 @@ type mirrorSyncUpdateReadonly MirrorSyncUpdate
 
 func (r *mirrorSyncUpdateReadonly) GetLedgerName() string {
 	return (*MirrorSyncUpdate)(r).GetLedgerName()
-}
-
-func (r *mirrorSyncUpdateReadonly) GetCursor() uint64 {
-	return (*MirrorSyncUpdate)(r).GetCursor()
 }
 
 func (r *mirrorSyncUpdateReadonly) GetError() commonpb.MirrorSyncErrorReader {

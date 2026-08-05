@@ -65,15 +65,17 @@ type WriteSet struct {
 	purgeRanges     []purgeRange
 	archiveRequests []ArchiveRequest
 
-	// pendingMirrorSyncs queues mirror cursor / source-head / status
-	// writes produced by applyMirrorSyncUpdate. They are drained into
+	// pendingMirrorSyncs queues mirror source-head / status writes
+	// produced by applyMirrorSyncUpdate. The ingestion position is not
+	// among them — since EN-1513 it lives solely in
+	// LedgerBoundaries.last_mirror_v2_log_id. They are drained into
 	// the Pebble batch by Merge, which only runs when ProcessOrders +
 	// ValidateTransientVolumes succeed — so a business-rejected order
-	// in the same proposal as a mirror-sync TU never advances the
-	// cursor (mirror worker bundles ingest orders + cursor TU in a
-	// single proposal; without this gate the cursor would commit via
-	// the failure audit batch path and the worker would skip source
-	// logs on the next batch).
+	// in the same proposal as a mirror-sync TU never reports progress
+	// for a batch that never applied (mirror worker bundles ingest
+	// orders + the TU in a single proposal; without this gate it would
+	// commit via the failure audit batch path and the ledger would
+	// report a source head and a cleared error the batch never earned).
 	pendingMirrorSyncs []MirrorSyncWrite
 
 	// deletedLedgers holds ledger names scheduled for data cleanup during Merge.
@@ -191,12 +193,14 @@ type purgeRange struct {
 
 // MirrorSyncWrite captures one queued mirror-sync update. applyMirrorSyncUpdate
 // builds it from a TechnicalUpdate_MirrorSync; Merge drains the queue into
-// the Pebble batch via SetMirrorCursor / SetMirrorSourceHead / SetMirrorStatus /
-// clearMirrorStatus. Zero-valued Cursor and SourceLogCount mean "no write"
-// for that field (matches the proto convention used by MirrorSyncUpdate).
+// the Pebble batch via SetMirrorSourceHead / SetMirrorStatus /
+// clearMirrorStatus. A zero-valued SourceLogCount means "no write" for that
+// field (matches the proto convention used by MirrorSyncUpdate).
+//
+// There is deliberately no ingestion cursor here: the applied position lives
+// solely in LedgerBoundaries.last_mirror_v2_log_id (EN-1513).
 type MirrorSyncWrite struct {
 	LedgerName     string
-	Cursor         uint64
 	SourceLogCount uint64
 	ClearError     bool
 	Error          *commonpb.MirrorSyncError
@@ -237,7 +241,7 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     (0B). Cache writes are emitted paired with the attribute writes via
 //     mergeSimpleWithCache so the marshaled value bytes are shared.
 //     ZonePerLedger (0x03): SubPLReversions (01) → MirrorSourceHead (04) →
-//     MirrorCursor (05) → MirrorStatus (06).
+//     MirrorStatus (06). Sub-prefix 05 is reserved and unused (EN-1513).
 //     ZoneCold (0x04): SubColdLog (01) via AppendLogs. SubColdAudit (02),
 //     AuditItem (03) and AppliedProposal (04) are written by applyProposal
 //     after Merge returns, preserving the global Cold ordering.
@@ -608,22 +612,15 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// SubPLMirrorSourceHead (0x04), MirrorCursor (0x05), MirrorStatus (0x06)
-	// — three sub-prefixes drained in order, one pass each. Keys within a
+	// SubPLMirrorSourceHead (0x04), MirrorStatus (0x06) — two sub-prefixes
+	// drained in order, one pass each (0x05 is reserved/unused since
+	// EN-1513). Keys within a
 	// sub-prefix sort by ledger name (not sorted here — the monotonicity
 	// contract is at the (zone, sub) granularity only).
 	for _, w := range b.pendingMirrorSyncs {
 		if w.SourceLogCount > 0 {
 			if err := SetMirrorSourceHead(batch, w.LedgerName, w.SourceLogCount); err != nil {
 				return fmt.Errorf("setting mirror source head for %q: %w", w.LedgerName, err)
-			}
-		}
-	}
-
-	for _, w := range b.pendingMirrorSyncs {
-		if w.Cursor > 0 {
-			if err := SetMirrorCursor(batch, w.LedgerName, w.Cursor); err != nil {
-				return fmt.Errorf("setting mirror cursor for %q: %w", w.LedgerName, err)
 			}
 		}
 	}

@@ -123,108 +123,48 @@ its postings from the surviving projection; a missing state for an *allocated* i
 is an inconsistency surfaced loudly (invariant #7), not a routine not-found —
 that case is caught earlier by the `txID >= NextTransactionId` boundary check.
 
-## Mirror Cursor
+## Mirror ingestion position
 
-Mirror ingestion is the highest-risk boundary because the mirror cursor is an
-operational value that controls future business proposals. The normal apply path
-is correct: the worker proposes mirror ingest orders and a `MirrorSyncUpdate` in
-the same Raft proposal, and the FSM queues the cursor write through the same
-`WriteSet` so it only advances if the mirrored orders apply successfully.
+Mirror ingestion has exactly one durable position:
+`LedgerBoundaries.last_mirror_v2_log_id`, the highest source (v2) log ID the
+FSM has applied to the ledger. It is written by the FSM's order-apply path
+(`processMirrorIngest`) and verified by `compareMirrorV2LogID`.
 
-That atomicity is the load-bearing property: because the `MirrorSyncUpdate` rides
-in the *same* proposal as the ingest orders and drains through the *same*
-`WriteSet.Merge` / `batch.Commit()`, the persisted cursor **can never lag or lead
-the ingested data through any normal or crash path** — a crash lands both or
-neither. So through normal operation the stored cursor always equals the highest
-audited `MirrorIngest.v2LogId`, and the only way to move it off that value is to
-tamper the persisted cursor byte directly (after restore, manual repair, or a
-Pebble-level edit). The two tamper directions behave very differently, and
-neither is an *integrity-checker* concern:
+There used to be a second one. A per-ledger `MirrorCursor` row
+(`ZonePerLedger` / sub `0x05`) held the worker's own idea of the position, was
+proposed by the worker as a `MirrorSyncUpdate` field, and drove both
+`Worker.processBatch`'s fetch offset and the public `MirrorSyncProgress`. It
+was removed in EN-1513, and sub-prefix `0x05` is now reserved and unused.
 
-- A cursor that advances **beyond** the highest audited `MirrorIngest.v2LogId`
-  makes the worker skip source logs without any audit entry showing the missing
-  proposals — silent under-ingestion.
-- A cursor that drops **below** the highest audited `v2LogId` makes
-  `Worker.processBatch` (`internal/application/mirror/worker.go`) reload the
-  cursor and call `FetchLogs(cursor, ...)`, which returns source logs strictly
-  *after* the cursor. `TranslateBatch` then re-emits `MirrorIngest` orders for
-  logs that were already ingested. **The FSM now enforces a contiguous applied
-  prefix (EN-1550).** `processMirrorIngest`
-  (`internal/domain/processing/processor_mirror.go`) records the highest applied
-  source id in `LedgerBoundaries.last_mirror_v2_log_id` — a true contiguous
-  prefix, since the worker ingests contiguously including `FillGap` orders — and,
-  *before* applying any posting or mutating any state, first rejects a malformed
-  `v2LogId == 0` (source v2 log ids are 1-based, so 0 is tamper/corruption) with
-  `ErrMirrorV2LogIDInvalid` (`KindInternal`) — it is never applied, since a 0 is
-  never recorded as `last` and a silently-applied 0 would be re-appliable forever.
-  It then decides three ways against the next slot (`expected = last + 1`):
-  - `v2LogId <= last`: already applied. Idempotent **no-op** — return `(nil, nil)`,
-    which `ProcessOrders` treats as "no log" (no sequence id consumed, no
-    audit-visible `Log`, no sink absorb). Postings are not re-forced, so balances
-    cannot double (pre-EN-1550 this replay caused silent **double-application** via
-    `force=true` additive volume mutation with no dedup on `v2LogId`).
-  - `v2LogId == expected`: the next contiguous log. Apply and advance `last`.
-  - `v2LogId > expected`: a **gap** — the cursor/high-water mark is ahead of the
-    applied prefix. Impossible under contiguous ingestion, so it is
-    corruption/tampering. The FSM **fails loud** (`ErrMirrorV2LogIDGap`,
-    `KindInternal`) and mutates nothing — it never silently applies past the gap
-    (which would desync nodes) or skips it. The rejection is deterministic (same
-    input → same rejection on every node); the worker surfaces it as a repeating
-    apply error rather than corrupting state.
+The duplication was the problem. The cursor was a persisted projection with no
+`compare*` pass — deliberately so, since it is a v2-parity property verifiable
+only against the worker's tracked source head, not against the v3 audit chain
+the checker replays. But "the checker cannot verify this" is an argument for
+not persisting it as an authority, not for persisting it unverified. Three
+divergence regimes followed, and the third had no alarm at all: a cursor
+advanced beyond the true source head made the worker fetch nothing and report
+`FOLLOWING`, silently under-ingesting with no audit entry to catch it. That was
+recorded here as an open correctness gap awaiting "worker/startup
+reconciliation". EN-1513 is that reconciliation, delivered by removing the
+duplicate rather than by adding a protocol to reconcile it: the bad state is
+now unrepresentable instead of merely detectable.
 
-  The guard is a pure function of applied per-ledger state; v2 log ids are 1-based
-  and strictly increasing per source (`TranslateBatch`), so it is FSM-deterministic
-  and needs no new preload/coverage key (it lives inside the already-covered
-  boundaries). Only the **behind** direction is handled here; recovering a cursor
-  that is *ahead* of the true source head is worker-side source-head recovery and
-  remains out of scope.
+Today the worker reads `LedgerBoundaries` once, before its first fetch, and
+uses it for both the source position and `NextTransactionId`. The in-memory
+value it keeps afterwards is a cache, not an authority: it advances only after
+both Raft acceptance and successful FSM application, and it is dropped on any
+batch error so the next attempt re-reads the durable value. A restart,
+leadership change, or crash after commit therefore always resumes from the
+audited boundary.
 
-`MirrorCursor` is therefore classified as **technical replication state**, not a
-checker business invariant: the ledger's business truth (balances, transactions,
-metadata) is carried by the audit-bound `MirrorIngest` orders and already verified
-by the normal checker passes, independent of the cursor. It lives at
-`ZonePerLedger` / `SubPLMirrorCursor` in the main Pebble store. Edge cases worth
-recording for the worker/recovery side (not the checker):
+Two lifecycle notes for the worker/recovery side:
 
-- **Empty / never-ingested ledger:** the cursor is absent and reads back as `0`
-  (`query.ReadMirrorCursor` defaults to `0`, and `processBatch` maps `0` to
-  `expectedNextLogID == 1`); a ledger with no audited mirror-ingest logs must
-  hold cursor `0`.
-- **Deleted ledger:** the cursor **is** cleared as part of cleanup, but only
-  after a deferred purge, so there is a transient window to account for.
-  `DeleteLedger` records a deferred cleanup (`savePendingLedgerCleanup` →
-  `State.PendingLedgerCleanups`). The cursor row survives until a covering
-  chapter purge reaches the delete sequence: `WriteSet.executePurge`
-  (`internal/infra/state/write_set.go`) then calls `deleteLedgerData`
-  (`internal/infra/state/batch.go`), which point-deletes `SubPLMirrorCursor`
-  together with `SubPLMirrorSourceHead`, `SubPLMirrorStatus`, and the
-  pending-cleanup marker. So the cursor is present only during the
-  pending-cleanup window and **absent** once cleanup completes; there is no
-  "archived" ledger state. A checker must therefore expect the cursor to be
-  gone after cleanup, and treat only a ledger *still awaiting* cleanup (delete
-  logged, purge not yet reached) as the transient case to exclude — not assume
-  a deleted ledger keeps a stale cursor forever.
-
-There is deliberately **no** `compare*` pass for the `MirrorCursor` *pointer*
-itself in `internal/application/check` — but the correctness-bearing high-water
-mark it tracks, `LedgerBoundaries.last_mirror_v2_log_id`, **is** checker-verified
-by `compareMirrorV2LogID` (EN-1550). Per invariant #8 the checker guards the
-business invariants of the main store against the audit; the cursor pointer is not
-one of them, while the applied-prefix high-water mark is. On the two tamper
-directions above: the *behind* case is **now closed functionally** — EN-1550's
-`v2LogId` idempotency in `processMirrorIngest` makes an already-applied ingest a
-deterministic no-op, so a lowered cursor no longer double-applies. The *ahead* case
-is a **current correctness gap**: a cursor advanced (by corruption/tampering)
-beyond the true source head makes the worker fetch no source logs and report
-`FOLLOWING` (cursor ≥ sourceHead), silently under-ingesting v2→v3 with no audit
-entry to catch it — and **no worker/startup safeguard is wired yet**. It is a
-v2-parity property (verifiable only against the worker's tracked source-head, not
-the v3 audit the checker replays), so its home is worker/startup reconciliation
-rather than a checker compare pass — but until that reconciliation lands it
-remains an **open** gap, not a closed one. What *is* secured: the audit-bound
-`MirrorIngest` orders, the volume/transaction passes, and `compareMirrorV2LogID`
-cover everything that actually got ingested; the gap is strictly about source
-logs an advanced cursor causes to be skipped entirely.
+- **Empty / never-ingested ledger:** no boundary row exists, the nil-safe
+  getter yields `0`, and the worker fetches logs after ID `0` — i.e. from
+  source ID 1.
+- **Deleted ledger:** `DeleteLedger` removes the boundary row at apply time on
+  both the live path and the checker's replay, so no cursor-specific cleanup
+  window remains.
 
 `LedgerBoundaries.last_mirror_v2_log_id` (the EN-1550 idempotency high-water
 mark) **is** covered by the checker as a full invariant-#8 **equality** check.

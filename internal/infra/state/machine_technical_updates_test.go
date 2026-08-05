@@ -52,7 +52,7 @@ func TestApplyMirrorSyncUpdate_KeysOffEnvelopeNotProjection(t *testing.T) {
 		Date:          &commonpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
-			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: envelope, Cursor: 7}}},
+			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: envelope, SourceLogCount: 7}}},
 		},
 	}
 	// Stamp coverage bits on the TU so its scope admits the declared ledger

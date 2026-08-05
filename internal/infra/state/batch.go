@@ -434,22 +434,6 @@ func SetMirrorSourceHead(b *dal.WriteSession, ledgerName string, count uint64) e
 	return nil
 }
 
-// SetMirrorCursor writes a per-ledger mirror cursor to the batch (Raft-replicated).
-func SetMirrorCursor(b *dal.WriteSession, ledgerName string, cursor uint64) error {
-	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorCursor).
-		PutLedgerNameFixed(ledgerName)
-
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], cursor)
-
-	err := b.SetBytes(b.KeyBuilder.Consume(), buf[:])
-	if err != nil {
-		return fmt.Errorf("setting mirror cursor: %w", err)
-	}
-
-	return nil
-}
-
 // SetMirrorStatus writes a per-ledger mirror sync error to the batch.
 func SetMirrorStatus(b *dal.WriteSession, ledgerName string, syncErr *commonpb.MirrorSyncError) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorStatus).
@@ -523,7 +507,7 @@ var ledgerScopedAttrTypes = []byte{
 //   - Attributes zone (0xF1): one range delete per ledger-scoped attribute type
 //   - Prepared queries: range delete for [zone][sub][ledgerName padded 64B]
 //   - Reversions: range delete for [zone][sub][ledgerName padded 64B]
-//   - Point deletes: mirror source head, mirror cursor, mirror status
+//   - Point deletes: mirror source head, mirror status
 //   - Point delete: pending ledger cleanup
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
@@ -550,7 +534,7 @@ func deleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 	}
 
 	// Point deletes for per-ledger keys (keyed by [zone][sub][ledgerName padded]).
-	for _, sub := range []byte{dal.SubPLMirrorSourceHead, dal.SubPLMirrorCursor, dal.SubPLMirrorStatus, dal.SubPLPendingCleanup} {
+	for _, sub := range []byte{dal.SubPLMirrorSourceHead, dal.SubPLMirrorStatus, dal.SubPLPendingCleanup} {
 		key := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
 
 		if err := b.DeleteKey(key); err != nil {

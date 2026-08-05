@@ -36,13 +36,13 @@ the same logical proposal (it does not even guarantee byte-identical serializati
 for map-bearing projections — see
 [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)), so a value
 corrupted or tampered before it is proposed takes effect on every node and no
-cross-node comparison can detect it. Two items formerly listed here are reclassified — but neither is fully closed. The **mirror
-cursor**'s correctness-bearing high-water mark (`LedgerBoundaries.last_mirror_v2_log_id`)
-is now verified by `compareMirrorV2LogID` (EN-1550) — the cursor *pointer* itself
-is technical replication state, not a gap; however the **advanced-cursor path**
-(a cursor advanced/tampered beyond the source head fetches no source logs and
-reports FOLLOWING, silently under-ingesting v2→v3) remains a **current open
-correctness gap** until worker/startup reconciliation is wired. And the
+cross-node comparison can detect it. Two items formerly listed here are reclassified. The **mirror ingestion
+position** (`LedgerBoundaries.last_mirror_v2_log_id`) is now verified by
+`compareMirrorV2LogID` (EN-1550), and the **advanced-cursor path** (a second,
+unverified cursor advanced beyond the source head fetching no source logs and
+reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513
+removed that duplicate durable position, leaving the checker-verified boundary
+as the only ingestion position. The
 **readstore inverted-index contents** are a peer secondary store, out of
 main-store checker scope as a rule — but that is not a claim they are
 integrity-safe: their contents are a current open integrity gap until per-replica

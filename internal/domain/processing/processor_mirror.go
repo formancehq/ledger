@@ -63,9 +63,10 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 
 	// Three cases against the next contiguous slot (expected = last + 1):
 	//
-	//   - v2LogID <= last  → already applied. EXPECTED replay (a tampered/rolled-
-	//     back MirrorCursor makes the worker re-emit applied logs — flemzord,
-	//     #1581). Idempotent no-op: return (nil, nil), which ProcessOrders treats
+	//   - v2LogID <= last  → already applied. EXPECTED replay (a rolled-back or
+	//     restored boundary makes the worker re-emit applied logs; the worker
+	//     resumes from this same boundary since EN-1513). Idempotent no-op:
+	//     return (nil, nil), which ProcessOrders treats
 	//     as a no-log outcome (no sequence id, no audit log, no sink absorb). Soft
 	//     skip is correct per invariant #7's expected-vs-impossible distinction.
 	//

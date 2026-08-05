@@ -56,8 +56,8 @@ func TestScope_TechnicalUpdate_CoverageMissShortCircuits(t *testing.T) {
 		Date:          &commonpb.Timestamp{Data: 1700000000},
 		ExecutionPlan: executionPlan,
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{
-			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed", Cursor: 1}}},
-			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "ok", Cursor: 2}}},
+			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "missed"}}},
+			{Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "ok"}}},
 		},
 	}
 
@@ -138,7 +138,7 @@ func TestScope_TechnicalUpdate_PerUpdateCoverageIsolation(t *testing.T) {
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
 			CoverageBits: []byte{0b00000001}, // only "A"
 			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
-				MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "B", Cursor: 42},
+				MirrorSync: &raftcmdpb.MirrorSyncUpdate{LedgerName: "B"},
 			},
 		}},
 	}

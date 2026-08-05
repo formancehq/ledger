@@ -238,15 +238,17 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftc
 	return nil
 }
 
-// applyMirrorSyncUpdate queues a per-ledger mirror cursor / source-head /
-// status update into the WriteSet. The actual Pebble writes happen later
-// in buffer.Merge, which only runs when ProcessOrders +
-// ValidateTransientVolumes succeed. This gating matters because the
-// mirror worker bundles ingest orders + the cursor TU in a single
-// proposal (see internal/application/mirror/worker.go): without queuing
-// through the WriteSet, a business-rejected order would leave the
-// cursor advanced via the failure audit batch and the worker would
-// silently skip source logs on the next batch.
+// applyMirrorSyncUpdate queues a per-ledger mirror source-head / status
+// update into the WriteSet. It does NOT carry the ingestion position:
+// since EN-1513 that lives solely in LedgerBoundaries.last_mirror_v2_log_id,
+// advanced by the order-apply path (processMirrorIngest). The actual Pebble
+// writes happen later in buffer.Merge, which only runs when ProcessOrders +
+// ValidateTransientVolumes succeed. This gating matters because the mirror
+// worker bundles ingest orders + this TU in a single proposal (see
+// internal/application/mirror/worker.go): without queuing through the
+// WriteSet, a business-rejected order would leave the reported source head
+// and status committed via the failure audit batch, misreporting progress
+// for a batch that never applied.
 //
 // No log entry is produced.
 func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteSet, update *raftcmdpb.MirrorSyncUpdate) error {
@@ -265,11 +267,10 @@ func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteS
 	buffer.QueueMirrorSync(MirrorSyncWrite{
 		// Key the write off the command envelope, not the loaded
 		// projection: a divergent LedgerInfo.name must never redirect the
-		// mirror cursor / status write to another ledger's keys. The load
-		// above still gates on the envelope key and preserves the
-		// ErrNotFound stale-update skip.
+		// mirror status write to another ledger's keys. The load above
+		// still gates on the envelope key and preserves the ErrNotFound
+		// stale-update skip.
 		LedgerName:     update.GetLedgerName(),
-		Cursor:         update.GetCursor(),
 		SourceLogCount: update.GetSourceLogCount(),
 		ClearError:     update.GetClearError(),
 		Error:          update.GetError(),
