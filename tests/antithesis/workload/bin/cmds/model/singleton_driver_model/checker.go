@@ -52,10 +52,12 @@ type Checker struct {
 	modelState oracle.GlobalState
 
 	// committedSeq is the highest global log sequence drained into modelState —
-	// the model's committed frontier. Query reads pin Read.MinLogSequence to it
-	// so the server's snapshot is at least modelState; a windowed read validated
-	// by exact ordered equality needs a snapshot the (forward-folded) candidate
-	// bases can represent, unlike the tolerant single-cell reads.
+	// the model's committed frontier. Query reads pin Read.MinLogSequence to
+	// observedFrontier (committedSeq plus observed-but-undrained successes) so
+	// the server's snapshot is at least every state the drain gate may fold
+	// beneath the read; a windowed read validated by exact ordered equality
+	// needs a snapshot the (forward-folded) candidate bases can represent,
+	// unlike the tolerant single-cell reads.
 	committedSeq uint64
 
 	// receiptByRef maps a committed transaction's reference to the signed receipt

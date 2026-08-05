@@ -72,13 +72,14 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	c.mu.Lock()
 	readID := c.registerRead()
-	minSeq := c.committedSeq
+	minSeq := c.observedFrontier()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	// Pin the read to the model's committed frontier: the server snapshot is then
-	// at least modelState, so the ordered window is representable by a candidate
-	// base (a snapshot behind modelState would not be — see committedSeq).
+	// Pin the read to the observed frontier: the server snapshot is then at
+	// least every state the drain gate may fold into modelState while this
+	// read is in flight, so the ordered window stays representable by a
+	// candidate base (see observedFrontier).
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
 		Ledger: ledger,
@@ -185,13 +186,14 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 
 	c.mu.Lock()
 	readID := c.registerRead()
-	minSeq := c.committedSeq
+	minSeq := c.observedFrontier()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	// Pin the read to the model's committed frontier: the server snapshot is then
-	// at least modelState, so the ordered window is representable by a candidate
-	// base (a snapshot behind modelState would not be — see committedSeq).
+	// Pin the read to the observed frontier: the server snapshot is then at
+	// least every state the drain gate may fold into modelState while this
+	// read is in flight, so the ordered window stays representable by a
+	// candidate base (see observedFrontier).
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
