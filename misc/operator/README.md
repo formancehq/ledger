@@ -115,7 +115,9 @@ its disk-full write gate. Expansion is strictly opt-in and does not require a
 Prometheus server: every five minutes a separate controller executes
 `ledgerctl cluster disk-usage --json` inside each Ledger pod, uses the highest
 observed utilization for the volume kind, and patches every replica's PVC to
-the same target size.
+the same target size. The replica set is read from the live StatefulSet rather
+than the Cluster spec, so a rejected Cluster update cannot leave a running
+replica outside the expansion group.
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1

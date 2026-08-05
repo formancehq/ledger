@@ -42,10 +42,13 @@ another failed sample.
 
 ## Decision and convergence
 
-For a volume kind, all replica PVCs form one expansion group. Before consulting
-usage, the reconciler repairs a partially-applied prior request by raising every
-smaller PVC request to the largest request already present. This makes a crash
-or Kubernetes patch failure self-healing.
+For a volume kind, all live StatefulSet replica PVCs form one expansion group.
+The group size comes from `StatefulSet.spec.replicas`, not from the Cluster spec:
+if an invalid Cluster update is rejected while the previous StatefulSet keeps
+running, every live replica remains covered. Before consulting usage, the
+reconciler repairs a partially-applied prior request by raising every smaller
+PVC request to the largest request already present. This makes a crash or
+Kubernetes patch failure self-healing.
 
 When the threshold is crossed, the new capacity is:
 
