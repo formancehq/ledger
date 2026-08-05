@@ -48,6 +48,13 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	optOut := false
 	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
+
+	// Changing AutoExpansion should NOT change the hash: the policy is consumed
+	// only by VolumeExpansionReconciler and does not affect the pod template.
+	withAutoExpansion := base.DeepCopy()
+	withAutoExpansion.Persistence.WAL.AutoExpansion = &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true}
+	withAutoExpansion.Persistence.Data.AutoExpansion = &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true}
+	assert.Equal(t, baseHash, computeSpecHash(withAutoExpansion), "AutoExpansion change should not affect hash")
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
