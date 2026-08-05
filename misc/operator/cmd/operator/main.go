@@ -104,6 +104,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controller.VolumeExpansionReconciler{
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Config:    cfg,
+		Clientset: clientset,
+		Recorder:  mgr.GetEventRecorderFor("volume-expansion-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "VolumeExpansion")
+		os.Exit(1)
+	}
+
 	if err = (&controller.CredentialsReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
