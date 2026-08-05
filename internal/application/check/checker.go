@@ -2476,6 +2476,17 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
+			//
+			// The signing fold below stops here with the rest of the walk,
+			// leaving its expectation a prefix of the real history. Unlike
+			// the maps above — which are consulted per log sequence, so an
+			// absent entry simply yields no expectation — the signing
+			// comparison is over whole key SETS in both directions, and a
+			// prefix reports every later registration as injected and every
+			// later revocation as a lost row. Mark it incomplete so it
+			// reports the gap instead of those false positives.
+			signing.markLiveTruncated()
+
 			return expectedSkippable, nil
 		}
 
@@ -2506,6 +2517,17 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
+			//
+			// The signing fold below stops here with the rest of the walk,
+			// leaving its expectation a prefix of the real history. Unlike
+			// the maps above — which are consulted per log sequence, so an
+			// absent entry simply yields no expectation — the signing
+			// comparison is over whole key SETS in both directions, and a
+			// prefix reports every later registration as injected and every
+			// later revocation as a lost row. Mark it incomplete so it
+			// reports the gap instead of those false positives.
+			signing.markLiveTruncated()
+
 			return expectedSkippable, nil
 		}
 
@@ -2541,6 +2563,17 @@ func (c *Checker) verifyAuditHashChain(
 			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
+			//
+			// The signing fold below stops here with the rest of the walk,
+			// leaving its expectation a prefix of the real history. Unlike
+			// the maps above — which are consulted per log sequence, so an
+			// absent entry simply yields no expectation — the signing
+			// comparison is over whole key SETS in both directions, and a
+			// prefix reports every later registration as injected and every
+			// later revocation as a lost row. Mark it incomplete so it
+			// reports the gap instead of those false positives.
+			signing.markLiveTruncated()
+
 			return expectedSkippable, nil
 		}
 

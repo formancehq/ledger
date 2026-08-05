@@ -85,6 +85,20 @@ type signingVerifier struct {
 	// expectation. It is fail-closed: a zero-value verifier reports incomplete
 	// coverage rather than presenting a live-range-only replay as clean.
 	coldComplete bool
+	// liveTruncated records that the LIVE audit range was NOT folded to its end.
+	// verifyAuditHashChain returns early on a chain break — an entry carrying
+	// embedded items, a header that cannot be re-hashed, or a hash mismatch — and
+	// Check() deliberately carries on from there to surface other projection
+	// errors. The signing fold lives inside that loop, so the expectation stops at
+	// the break while coldComplete may already be true.
+	//
+	// That leaves exactly the prefix state coldComplete guards against, and it is
+	// unsound in both directions: every key registered past the break reads as
+	// injected, and every revoke past it leaves its key expected, hence reported
+	// missing. So a truncated live fold suppresses the comparisons the same way an
+	// unread archive does — reporting mismatches we cannot substantiate against a
+	// store whose real problem is the chain break is strictly worse than saying so.
+	liveTruncated bool
 	// proposalParents is the parent relation as it stood BEFORE any of the current
 	// proposal's orders were folded — the checker's stand-in for the FSM's
 	// committed state. Rebuilt lazily (see ensureProposalSnapshot) because most
@@ -118,6 +132,13 @@ func newSigningVerifier() *signingVerifier {
 		proposalParents: make(map[string]string),
 		proposalEdges:   make(map[string][]string),
 	}
+}
+
+// markLiveTruncated records that the live audit fold stopped short of the end of
+// the range. Called from every non-error early exit in verifyAuditHashChain; see
+// the liveTruncated field for why a truncated fold cannot be compared.
+func (v *signingVerifier) markLiveTruncated() {
+	v.liveTruncated = true
 }
 
 // beginProposal marks the start of a new proposal's orders. One proposal is one
@@ -471,26 +492,28 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 		})
 	}
 
-	// An incomplete archived fold makes the expectation a PREFIX of the real
-	// history, which is unsound in both directions: a revoke in an unread chapter
-	// leaves its key expected (reported as missing from the store), and a register
-	// in an unread chapter leaves its row unexpected (reported as injected). Both
-	// are false positives against a healthy store, so the key and config
-	// comparisons are skipped entirely and the run reports only that it could not
-	// verify. Suppressing detection for that run is the honest outcome — claiming a
-	// mismatch we cannot substantiate is worse than admitting the gap, and the same
-	// reasoning is why the empty-audit path folds cold storage instead of assuming
-	// an empty expectation.
+	// A fold that did not cover the whole audit history makes the expectation a
+	// PREFIX of the real one, which is unsound in both directions: a revoke in the
+	// unread part leaves its key expected (reported as missing from the store), and
+	// a register in it leaves its row unexpected (reported as injected). Both are
+	// false positives against a healthy store, so the key and config comparisons
+	// are skipped entirely and the run reports only that it could not verify.
+	// Suppressing detection for that run is the honest outcome — claiming a mismatch
+	// we cannot substantiate is worse than admitting the gap, and the same reasoning
+	// is why the empty-audit path folds cold storage instead of assuming an empty
+	// expectation.
+	//
+	// Two independent causes, same consequence: the archived range was never
+	// replayed (coldComplete), or the live range was cut short by an audit chain
+	// break (liveTruncated). Neither can be salvaged from the accumulated prefix.
 	//
 	// The malformed-row class above is deliberately outside this guard: a row too
 	// short to decode is a fact about that row and needs no audit oracle at all.
-	if !v.coldComplete {
+	if !v.coldComplete || v.liveTruncated {
 		findings = append(findings, signingFinding{
 			class:     signingClassIncomplete,
 			errorType: servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
-			message: "signing state could not be verified over the whole history: the archived audit range was not replayed, " +
-				"so keys registered before the archive boundary — which stay authoritative forever, signing state having no TTL — are unverified. " +
-				"The key and config comparisons are skipped for this run rather than reported against a partial expectation",
+			message:   signingIncompleteMessage(v.coldComplete, v.liveTruncated),
 		})
 
 		emitSigningFindings(findings, callback)
@@ -567,6 +590,34 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 	emitSigningFindings(findings, callback)
 
 	return nil
+}
+
+// signingIncompleteMessage explains WHICH part of the audit history went unread,
+// so an operator can tell a missing cold-storage backend from a broken hash chain
+// without correlating events by hand. Both causes can hold at once.
+//
+// The consequence sentence is shared: whatever the cause, the key and config
+// comparisons were skipped, and that is the part a reader must not have to infer.
+func signingIncompleteMessage(coldComplete, liveTruncated bool) string {
+	const (
+		prefix = "signing state could not be verified over the whole history: "
+		suffix = ". The key and config comparisons are skipped for this run rather than " +
+			"reported against a partial expectation"
+
+		coldGap = "the archived audit range was not replayed, so keys registered before the archive " +
+			"boundary — which stay authoritative forever, signing state having no TTL — are unverified"
+		liveGap = "the live audit range was cut short by a hash chain break, so every signing order " +
+			"recorded after it is unread"
+	)
+
+	switch {
+	case coldComplete:
+		return prefix + liveGap + suffix
+	case !liveTruncated:
+		return prefix + coldGap + suffix
+	default:
+		return prefix + coldGap + "; the live range was also cut short by a hash chain break" + suffix
+	}
 }
 
 // emitSigningFindings sorts the accumulated findings and emits them.

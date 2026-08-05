@@ -409,6 +409,9 @@ func TestSigningVerifier_Compare(t *testing.T) {
 		// coldIncomplete leaves the verifier's cold-coverage flag unset, which is
 		// the fail-closed default a zero-value verifier carries.
 		coldIncomplete bool
+		// liveTruncated marks the live fold as cut short, which is what
+		// verifyAuditHashChain does at every non-error early exit on a chain break.
+		liveTruncated bool
 		// write lays down the persisted projection under judgement.
 		write func(t *testing.T, store *dal.Store)
 		// wantTypes is the exact emitted error-type sequence.
@@ -589,6 +592,73 @@ func TestSigningVerifier_Compare(t *testing.T) {
 				{"could not be verified over the whole history"},
 			},
 		},
+		{
+			// A hash chain break makes verifyAuditHashChain return before the end of
+			// the live range, so the expectation is a prefix for exactly the same
+			// reason an unread archive makes it one — and is just as unsound. The
+			// store here is clean relative to the FULL history; only the fold is
+			// short.
+			name:          "a truncated live fold is reported even with complete cold coverage",
+			liveTruncated: true,
+			write:         func(_ *testing.T, _ *dal.Store) {},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"could not be verified over the whole history", "hash chain break", "skipped for this run"},
+			},
+		},
+		{
+			// The suppression that matters: without it these two rows report as
+			// "injected" and "missing" against a store whose only real problem is
+			// the chain break the caller already emitted a HASH_MISMATCH for.
+			name:          "a truncated live fold suppresses the unsound key comparison",
+			liveTruncated: true,
+			orders: []*raftcmdpb.Order{
+				registerSigningKeyOrder("root", rootKey, ""),
+			},
+			write: func(t *testing.T, store *dal.Store) {
+				writeSigningKey(t, store, "past-the-break", tamperedKey, "")
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"could not be verified over the whole history", "hash chain break"},
+			},
+		},
+		{
+			// Same carve-out as under incomplete cold coverage: a row too short to
+			// decode needs no audit oracle, so it survives a truncated live fold too.
+			name:          "a truncated live fold still reports undecodable rows",
+			liveTruncated: true,
+			write: func(t *testing.T, store *dal.Store) {
+				writeRawSigningKeyRow(t, store, "stub", []byte{0x01, 0x02})
+			},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"stub", "undecodable stored row"},
+				{"could not be verified over the whole history", "hash chain break"},
+			},
+		},
+		{
+			// Both gaps at once: one event naming both, not two events. The message
+			// has to stay actionable — an operator must be able to tell "restore cold
+			// storage" from "the chain is broken" from "both".
+			name:           "both coverage gaps are named in one event",
+			coldIncomplete: true,
+			liveTruncated:  true,
+			write:          func(_ *testing.T, _ *dal.Store) {},
+			wantTypes: []servicepb.CheckStoreErrorType{
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
+			},
+			wantSubstrings: [][]string{
+				{"archived audit range was not replayed", "also cut short by a hash chain break"},
+			},
+		},
 	}
 
 	for _, testCase := range cases {
@@ -597,6 +667,7 @@ func TestSigningVerifier_Compare(t *testing.T) {
 
 			verifier := newSigningVerifier()
 			verifier.coldComplete = !testCase.coldIncomplete
+			verifier.liveTruncated = testCase.liveTruncated
 
 			for _, order := range testCase.orders {
 				verifier.applyOrder(order)
