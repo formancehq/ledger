@@ -112,6 +112,18 @@ type signingVerifier struct {
 	// first registered inside this proposal has no pre-proposal entry. Reset with
 	// proposalParents.
 	proposalEdges map[string][]string
+	// proposalRevoked is every key the current proposal has ALREADY removed — each
+	// revoke target plus every descendant that revoke's cascade reached.
+	//
+	// It reproduces GetSigningKeyChildren's pendingRemovals filter, which is built
+	// over the WHOLE pendingSigningKeyUpdates slice with no ordering awareness: once
+	// a proposal removes a key, that key is excluded from EVERY cascade in the same
+	// proposal, including one evaluated after a later registration put it back.
+	//
+	// Absence from v.keys cannot express that. Absence is a point-in-time fact and a
+	// re-registration restores the row, so the walk would follow the reinstated edge
+	// and cascade a key the FSM left in the store. Reset with proposalParents.
+	proposalRevoked map[string]struct{}
 	// proposalSnapshotValid says whether proposalParents describes the current
 	// proposal. Cleared per entry in O(1); the map is only populated if that entry
 	// turns out to fold a signing order.
@@ -130,6 +142,7 @@ func newSigningVerifier() *signingVerifier {
 		keys:            make(map[string]signingKeyExpectation),
 		proposalParents: make(map[string]string),
 		proposalEdges:   make(map[string][]string),
+		proposalRevoked: make(map[string]struct{}),
 	}
 }
 
@@ -160,6 +173,7 @@ func (v *signingVerifier) ensureProposalSnapshot() {
 
 	clear(v.proposalParents)
 	clear(v.proposalEdges)
+	clear(v.proposalRevoked)
 
 	for keyID, expectation := range v.keys {
 		v.proposalParents[keyID] = expectation.parentKeyID
@@ -217,9 +231,17 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 			revoked = append(revoked, v.descendantsOf(revoke.GetKeyId())...)
 		}
 
+		// proposalRevoked is filled only HERE, after descendantsOf has run, and that
+		// ordering is load-bearing rather than incidental: processRevokeSigningKey
+		// walks the whole child relation before calling RemoveSigningKey, so the
+		// pendingRemovals set a cascade sees holds the removals of the EARLIER orders
+		// in its proposal and none of its own. Filling it first would make a revoke
+		// exclude its own targets from its own cascade.
+		//
 		// Deleting an unknown key is a no-op, matching the FSM.
 		for _, keyID := range revoked {
 			delete(v.keys, keyID)
+			v.proposalRevoked[keyID] = struct{}{}
 		}
 	case *raftcmdpb.SystemScopedOrder_SetSigningConfig:
 		v.requireSignatures = payload.SetSigningConfig.GetRequireSignatures()
@@ -256,9 +278,18 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 //     key, so register(child→parent) + register(child→root) + cascade-revoke(parent)
 //     in ONE proposal does delete child on the live path.
 //
-// Keys the proposal already removed are absent from v.keys, which reproduces
-// GetSigningKeyChildren's pending-removal filter for free — and it filters
-// proposalEdges too, since the candidate loop ranges over v.keys.
+// Keys the proposal already removed are excluded through proposalRevoked, which
+// is what reproduces GetSigningKeyChildren's pendingRemovals filter. Absence from
+// v.keys is NOT enough on its own: that filter is a set over the whole proposal,
+// while absence is a point-in-time fact, so revoke(X) + register(X under P) +
+// cascade-revoke(P) in ONE proposal has the FSM keep X — its removal excludes it
+// from the cascade even though the registration came after — while a walk driven
+// by v.keys alone follows the reinstated edge and reports a false mismatch against
+// the surviving row.
+//
+// The exclusion has to skip the candidate ENTIRELY rather than just drop it from
+// the result: GetSigningKeyChildren filters it out of what it returns, so the FSM's
+// BFS never recurses through it and its own subtree survives too.
 //
 // The visited set is what makes the walk terminate: re-registration can point a
 // key at a descendant of itself, and a parent cycle would otherwise loop forever.
@@ -276,6 +307,13 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 		// Collected into a slice rather than deleted in place: mutating v.keys
 		// while ranging over it is what this loop must not do.
 		for candidate, expectation := range v.keys {
+			// Checked before the edges: a key this proposal already removed is no
+			// longer a cascade candidate on the live path, whatever edge a later
+			// registration in the same proposal gave it back.
+			if _, removed := v.proposalRevoked[candidate]; removed {
+				continue
+			}
+
 			// Any of the three edges makes it a child, mirroring the union
 			// GetSigningKeyChildren returns.
 			if expectation.parentKeyID != current &&

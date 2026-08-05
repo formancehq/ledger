@@ -1271,3 +1271,168 @@ func TestSigningVerifier_CascadeUnionsBothParentEdges(t *testing.T) {
 			"an edge superseded in an EARLIER proposal is not a committed edge and must not cascade")
 	})
 }
+
+// TestSigningVerifier_CascadeSkipsKeysTheProposalAlreadyRemoved covers the other
+// half of the FSM's cascade model, the one the edge union cannot express:
+// GetSigningKeyChildren builds pendingRemovals over the WHOLE
+// pendingSigningKeyUpdates slice, so once a proposal removes a key that key is
+// excluded from EVERY cascade in the proposal — even one evaluated after a later
+// registration in the same proposal put it back, and even when the registration
+// pointed it straight at the key being cascade-revoked.
+//
+// Absence from v.keys is not enough to reproduce that, which is why the exclusion
+// needs its own per-proposal set: the re-registration reinstates the row, so a walk
+// driven by v.keys alone follows the fresh edge and cascades a key the FSM left in
+// the store, reporting SIGNING_KEY_MISMATCH against a healthy projection. The FSM
+// side is asymmetric because processRevokeSigningKey walks children before calling
+// RemoveSigningKey, while Absorb replays the updates in slice order — so
+// [remove X, save X→parent, remove parent] keeps X.
+func TestSigningVerifier_CascadeSkipsKeysTheProposalAlreadyRemoved(t *testing.T) {
+	t.Parallel()
+
+	var (
+		parentKey = signingTestKey(0x01)
+		otherKey  = signingTestKey(0x02)
+		childKey  = signingTestKey(0x03)
+		grandKey  = signingTestKey(0x04)
+	)
+
+	// seedFourKeys commits "parent", "other", "child" (under "parent") and
+	// "grandchild" (under "child"), one proposal each, so the proposal under test
+	// starts from fully committed state.
+	seedFourKeys := func() *signingVerifier {
+		verifier := newSigningVerifier()
+
+		for _, order := range []*raftcmdpb.Order{
+			registerSigningKeyOrder("parent", parentKey, ""),
+			registerSigningKeyOrder("other", otherKey, ""),
+			registerSigningKeyOrder("child", childKey, "parent"),
+			registerSigningKeyOrder("grandchild", grandKey, "child"),
+		} {
+			verifier.beginProposal()
+			verifier.applyOrder(order)
+		}
+
+		return verifier
+	}
+
+	// The re-registration's parent is what varies: pointing "child" AT the key being
+	// cascade-revoked exercises the running relation, pointing it elsewhere exercises
+	// the pre-proposal snapshot (which still records "child" under "parent"), and both
+	// must yield the same answer because the FSM excludes the key before it ever looks
+	// at an edge.
+	for _, tc := range []struct {
+		name      string
+		newParent string
+	}{
+		{name: "re-registered under the revoked parent", newParent: "parent"},
+		{name: "re-registered under an unrelated parent", newParent: "other"},
+		{name: "re-registered as a root", newParent: ""},
+	} {
+		t.Run("revoked then "+tc.name+" survives the cascade", func(t *testing.T) {
+			t.Parallel()
+
+			verifier := seedFourKeys()
+
+			verifier.beginProposal()
+			verifier.applyOrder(revokeSigningKeyOrder("child", false))
+			verifier.applyOrder(registerSigningKeyOrder("child", childKey, tc.newParent))
+			verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+			require.NotContains(t, verifier.keys, "parent", "the revoke target must be gone")
+			require.Contains(t, verifier.keys, "child",
+				"a key this proposal removed is excluded from every later cascade in it, so the "+
+					"re-registration survives exactly as the FSM leaves it in the store")
+			require.Equal(t, tc.newParent, verifier.keys["child"].parentKeyID,
+				"the surviving key keeps the parent its re-registration assigned")
+			require.Contains(t, verifier.keys, "other", "an unrelated root key must survive")
+		})
+	}
+
+	t.Run("the excluded key's own subtree survives with it", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedFourKeys()
+
+		// The exclusion must skip the candidate entirely rather than merely omit it
+		// from the returned descendants: the FSM filters it out of
+		// GetSigningKeyChildren's result, so its BFS never recurses through it and
+		// "grandchild" is never reached either. Dropping it from the output alone would
+		// still walk into the subtree and cascade "grandchild" out.
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("child", false))
+		verifier.applyOrder(registerSigningKeyOrder("child", childKey, "parent"))
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.Contains(t, verifier.keys, "child")
+		require.Contains(t, verifier.keys, "grandchild",
+			"the cascade cannot reach through an excluded key, so its descendants survive too")
+	})
+
+	t.Run("a cascade removal excludes the keys it reached", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedFourKeys()
+
+		// The set records every key a revoke removed, not just the explicit target:
+		// processRevokeSigningKey calls RemoveSigningKey on the target AND every
+		// cascaded descendant, so all of them land in pendingRemovals and are excluded
+		// from a SECOND cascade in the same proposal. Here "grandchild" is removed as a
+		// descendant of "child", re-registered under "other", and must then survive the
+		// cascade revoke of "other".
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("child", true))
+		verifier.applyOrder(registerSigningKeyOrder("grandchild", grandKey, "other"))
+		verifier.applyOrder(revokeSigningKeyOrder("other", true))
+
+		require.NotContains(t, verifier.keys, "child", "the first revoke target must be gone")
+		require.NotContains(t, verifier.keys, "other", "the second revoke target must be gone")
+		require.Contains(t, verifier.keys, "grandchild",
+			"a key removed as a cascade descendant is excluded from the proposal's later cascades too")
+		require.Contains(t, verifier.keys, "parent", "an unrelated committed key must survive")
+	})
+
+	t.Run("a revoke does not exclude its own cascade targets", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedFourKeys()
+
+		// The ordering guard: the set is populated AFTER the walk, mirroring the FSM
+		// walking children before removing them. Populating it first would make this
+		// plain cascade revoke exclude "child" and "grandchild" from its own cascade
+		// and leave them expected against a store that deleted them.
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.NotContains(t, verifier.keys, "child",
+			"a revoke's own cascade must still reach its committed children")
+		require.NotContains(t, verifier.keys, "grandchild",
+			"a revoke's own cascade must still reach transitively")
+		require.Contains(t, verifier.keys, "other")
+	})
+
+	t.Run("a removal does not leak into a later proposal", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedFourKeys()
+
+		// Per-proposal state, like proposalParents and proposalEdges: once the removal
+		// and the re-registration are COMMITTED, pendingRemovals is empty again for the
+		// next proposal, so the cascade revoke sees "child" as an ordinary committed
+		// child of "parent" and must delete it.
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("child", false))
+		verifier.applyOrder(registerSigningKeyOrder("child", childKey, "parent"))
+
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.NotContains(t, verifier.keys, "child",
+			"a removal from an EARLIER proposal must not exempt the key from this proposal's cascade")
+		require.NotContains(t, verifier.keys, "grandchild",
+			"and the cascade reaches through it as normal")
+	})
+}
