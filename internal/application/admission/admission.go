@@ -995,9 +995,8 @@ func (a *Admission) authorizeUnsignedBatch(reqs []*servicepb.Request) error {
 		if isSigningManagementRequest(req) {
 			// HasUndecodableRows closes the bootstrap window on a store whose signing
 			// rows exist but did not decode. Such a cluster is NOT fresh: recovery
-			// skips those rows (rather than panicking, as it used to), so with every
-			// row corrupt the key store is empty and HasKeys alone cannot tell the two
-			// situations apart. Whoever corrupted the rows would otherwise register
+			// skips those rows, so with every row corrupt the key store is empty and
+			// HasKeys alone cannot tell the two situations apart. Whoever corrupted the rows would otherwise register
 			// their own key unsigned through this very exception — and that
 			// registration, taking the normal path, would be AUDITED, so the checker
 			// would see a legitimately chain-bound key and report only the corrupt row

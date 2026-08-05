@@ -60,8 +60,7 @@ type signingFinding struct {
 // Both projections are invariant-#8 projections with no pass before this one:
 // state.Recovery loads them straight into the runtime key store and the
 // requireSignatures gate, which admission consults to accept or reject every
-// signed write. A disk edit therefore changes who may write, and CheckStore
-// previously reported the store healthy.
+// signed write. A disk edit therefore changes who may write.
 //
 // The expected state is NEVER seeded from the live projection, and never from the
 // baseline checkpoint either: attributes.writeBaselineAttributes copies the

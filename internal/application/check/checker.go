@@ -2972,6 +2972,7 @@ type expectedSkippableOrder struct {
 //     replay. Conflating skipped-delete with successful-delete is safe
 //     because a skipped-delete implies the key was already absent — the
 //     transition it records is redundant but correct.
+//
 // It RETURNS the decoded orders, one element per item in `items` and nil where
 // the bytes did not decode, so the callers that need the same orders — the signing
 // fold in verifyAuditHashChain — do not decode the whole live audit range a second

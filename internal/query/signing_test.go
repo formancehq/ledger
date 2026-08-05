@@ -116,10 +116,11 @@ func TestReadSigningKeys(t *testing.T) {
 	})
 }
 
-// TestReadSigningKeysMalformedRows proves the guard added for the panic
-// described in EN-1515: value[:32] is bounds-checked before copy runs, so a
-// row shorter than an Ed25519 public key used to panic instead of being
-// reported. Before the fix, each of these cases crashes ReadSigningKeys.
+// TestReadSigningKeysMalformedRows pins the bounds check on the public-key slice:
+// value[:32] is length-checked before copy runs, so a row shorter than an Ed25519
+// public key is REPORTED as malformed rather than panicking the reader. The boot
+// path calls this, so a panic here is a crash-loop one corrupt byte can trigger —
+// and the row is Raft-replicated, so it would be a crash-loop on every replica.
 func TestReadSigningKeysMalformedRows(t *testing.T) {
 	t.Parallel()
 

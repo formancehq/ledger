@@ -15,10 +15,9 @@ import (
 // gate on the unsigned RegisterSigningKey bootstrap exception.
 //
 // The exception exists so the very first signing key can be registered on a
-// cluster that has none. Recovery skipping undecodable signing-key rows — rather
-// than panicking on them, as it did before this branch — creates a second way to
-// reach an empty key store: every persisted row is corrupt. HasKeys cannot tell
-// those two apart.
+// cluster that has none. Recovery skips undecodable signing-key rows, which
+// creates a second way to reach an empty key store: every persisted row is
+// corrupt. HasKeys cannot tell those two apart.
 //
 // Leaving the exception open there would be an authorization bypass with an
 // unusually nasty property: whoever corrupted the rows registers their own key
