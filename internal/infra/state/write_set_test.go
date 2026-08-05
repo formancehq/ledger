@@ -237,6 +237,33 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 	require.Contains(t, children, "child-2")
 }
 
+// TestWriteSetSigningKeyChildrenAfterReregistrationAsRoot pins what the cascade
+// sees once a key has been re-registered as a root in an EARLIER proposal.
+//
+// GetSigningKeyChildren reads the committed keyStore, so this is the FSM-visible
+// consequence of keystore.AddPublicKey clearing the parent edge on an empty
+// parentKeyID. Before that fix the edge lingered in memory and the key was
+// cascaded, while a replica that had restarted since — recovery reloads from the
+// persisted rows, which carry no parent — did not cascade it, so the same revoke
+// order deleted different keys on different replicas.
+func TestWriteSetSigningKeyChildrenAfterReregistrationAsRoot(t *testing.T) {
+	t.Parallel()
+
+	_, machine, _ := newTestBuffer(t)
+
+	machine.keyStore.AddPublicKey("parent", []byte("pub-parent"), "")
+	machine.keyStore.AddPublicKey("child", []byte("pub-child"), "parent")
+
+	// The re-registration as a root, committed as an earlier proposal would.
+	machine.keyStore.AddPublicKey("child", []byte("pub-child-v2"), "")
+
+	buf := NewWriteSet(machine)
+	buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+	require.NotContains(t, buf.GetSigningKeyChildren("parent"), "child",
+		"a key re-registered as a root must no longer be cascaded from its old parent")
+}
+
 func TestWriteSetSetRequireSignatures(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)

@@ -1114,4 +1114,30 @@ func TestSigningVerifier_CascadeUnionsBothParentEdges(t *testing.T) {
 			"a key reparented by an earlier proposal must not be cascaded from its old parent")
 		require.Contains(t, verifier.keys, "other")
 	})
+
+	t.Run("re-registration as root in an earlier proposal does not cascade", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedThreeKeys()
+
+		// The empty-parent variant of the case above, and the one where the live FSM
+		// used to disagree with this replay: keystore.AddPublicKey only wrote
+		// parents[keyID] for a NON-empty parent, so a key re-registered as a root kept
+		// its old edge in memory and was cascaded anyway — until the next restart
+		// reloaded the parent-less row and stopped cascading it. The replay always
+		// cleared the edge, matching the persisted row, so it is the keystore that was
+		// fixed. This asserts the replay side of that agreement.
+		verifier.beginProposal()
+		verifier.applyOrder(registerSigningKeyOrder("child", childKey, ""))
+
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.Contains(t, verifier.keys, "child",
+			"a key re-registered as a root by an earlier proposal must not be cascaded from its old parent")
+		require.Empty(t, verifier.keys["child"].parentKeyID,
+			"re-registration with no parent must leave the key parentless")
+		require.Contains(t, verifier.keys, "other")
+	})
 }

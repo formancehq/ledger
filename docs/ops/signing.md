@@ -92,7 +92,7 @@ Keys form a **parent-child hierarchy**. When a new key is registered by signing 
 
 The parent relationship is:
 - **Automatic**: deduced from the signature used to register the key (no explicit parameter needed)
-- **Immutable**: once set, the parent cannot be changed
+- **Replaced on re-registration**: registering an existing key ID again is an upsert — it replaces both the public key and the parent link. Re-registering with no parent makes the key a root
 - **Persisted**: stored in Pebble alongside the public key and restored on startup
 
 ### Cascade Revocation

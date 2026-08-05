@@ -38,14 +38,33 @@ func (ks *KeyStore) GetPublicKey(keyID string) ed25519.PublicKey {
 }
 
 // AddPublicKey registers a public key with the given key ID and optional parent.
+//
+// An empty parentKeyID means root, and it CLEARS any previous parent rather than
+// leaving the old edge in place. The FSM rejects no duplicate key ID
+// (processing.processRegisterSigningKey), so re-registering an existing key ID as
+// a root is reachable, and this map is what the revocation cascade walks
+// (state.WriteSet.GetSigningKeyChildren). Keeping the stale edge would make that
+// cascade restart-dependent: every other representation of the parent drops it —
+// the persisted row (state.SaveSigningKey writes a bare public key when the
+// parent is empty), the store recovery rebuilds from those rows, the audit-driven
+// rebuild (backup.RebuildDelta) and the checker's replay (check.signingVerifier)
+// — so an un-restarted replica would cascade the reassigned key while a restarted
+// one would not, and the two would emit different
+// RevokedSigningKeyLog.cascadedKeyIds for the same order. That breaks invariants
+// #1 and #2 (identical cache state per applied index, deterministic FSM).
 func (ks *KeyStore) AddPublicKey(keyID string, pubKey ed25519.PublicKey, parentKeyID string) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
 	ks.publicKeys[keyID] = pubKey
-	if parentKeyID != "" {
-		ks.parents[keyID] = parentKeyID
+
+	if parentKeyID == "" {
+		delete(ks.parents, keyID)
+
+		return
 	}
+
+	ks.parents[keyID] = parentKeyID
 }
 
 // RemovePublicKey removes the public key with the given key ID.
