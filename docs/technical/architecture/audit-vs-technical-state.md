@@ -103,7 +103,7 @@ and what that node could read.
 
 State-derived execution inputs the FSM needs at apply time flow through a
 different channel: the **coverage-gated preloaded state**. Admission declares the
-`preload.Needs` for every key the apply path reads (invariant #6), and the FSM
+`plan.Coverage` for every key the apply path reads (invariant #6), and the FSM
 reads the value through `Scope.GetX(...)` under the coverage gate (invariant #9).
 Because the apply path cannot read Pebble (invariant #3), the value comes from the
 cache the preload seeded — never from the order.

@@ -154,7 +154,7 @@ FSM (apply) ─── in-memory map (bridge) ──────────>│
 
 ### Preloading
 
-During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The preload logic is in `internal/infra/preload/preloader.go` and emits a `ReloadIdempotencyKey` on a dedicated channel of `ExecutionPlan` (separate from the `AttributeCoverage` channel that drives the coverage gate):
+During admission, idempotency keys are loaded directly from Pebble (no bloom filter, no dual-generation cache). The loading happens in `Builder.Build` (`internal/infra/plan/builder.go`) as a dedicated slot running in parallel with the per-`attrCode` resolver slots, opening its own read handle and emitting a `ReloadIdempotencyKey` on a dedicated channel of `ExecutionPlan` (separate from the `AttributeCoverage` channel that drives the coverage gate):
 
 ```go
 value, err := state.LoadIdempotencyKey(reader, ik.Key)
@@ -170,7 +170,10 @@ if value != nil {
     })
 }
 // ...
-ps.IdempotencyKeys = keys
+// The slot stores `keys` on its resolveResult; Build then folds every
+// slot's result into the plan:
+//     executionPlan.IdempotencyKeys = append(
+//         executionPlan.IdempotencyKeys, results[i].resolve.idempotencyKeys...)
 ```
 
 ## API Usage
@@ -242,4 +245,4 @@ When a conflict is detected (same key, different content, within TTL):
 ## Related Documentation
 
 - [Numscript Library](../scripting/numscript-library.md) — the versioning model behind selector mutability, and dependency discovery / resolution.
-- [Admission Pipeline](pipeline.md) — where numscript resolution and Needs enrichment sit in the overall admission flow.
+- [Admission Pipeline](pipeline.md) — where numscript resolution and coverage enrichment sit in the overall admission flow.

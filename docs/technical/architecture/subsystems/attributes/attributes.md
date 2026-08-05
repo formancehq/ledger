@@ -272,7 +272,7 @@ flowchart TB
 
     subgraph Preload["Preload Guard (admission)"]
         direction TB
-        P1["BuildPreloads: read from Gen0 + Gen1 + Pebble"]
+        P1["plan.Builder.Build: read from Gen0 + Gen1 + Pebble"]
         P2["AcquireProposalGuard: lock tracker"]
         P3{"Generation boundary\ncrossed?"}
         P4["Rebuild preloads under lock"]

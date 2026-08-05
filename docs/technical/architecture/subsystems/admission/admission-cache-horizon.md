@@ -34,7 +34,7 @@ then:
 
 By the time the order applies, the cache has no record of the preload —
 reads would miss the value the proposer guaranteed. The FSM-side coverage
-gate (`Plan.CheckCoverage`) would still admit the read, but the underlying
+gate (`Scope.CheckCoverage`) would still admit the read, but the underlying
 `KeyStore.Get` would return `ErrNotFound` for a key admission promised would
 be available. This is the class of bug invariant #1 ("cache is the source of
 authority") is designed to make impossible.

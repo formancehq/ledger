@@ -39,10 +39,10 @@ These invariants are upheld by a layered stack between the order processor and t
  ┌──────────────────────────────────────────────────────────────────────┐
  │   state.gatedScope  (decorator, internal/infra/state/scope.go)        │
  │   • *WriteSet (embedded — implicit forward for everything)            │
- │   • coverage [256]map[U128]struct{}   ← immutable, built once         │
+ │   • coverage coverageSlots  ← dense [kind][]U128, rebuilt per scope   │
  │                                                                       │
  │   Override only the ~13 cache-attribute Get* methods:                 │
- │     coverage[kind] map lookup                                         │
+ │     coverageSlotIndex[kind] → linear scan over []U128                 │
  │       miss → return *ErrCoverageMiss                                  │
  │       hit  → forward to embedded *WriteSet.GetXxx                     │
  │                                                                       │
@@ -166,10 +166,9 @@ Each layer enforces exactly one invariant that the layer above doesn't have to t
 | Layer | Invariant it enforces |
 |-------|----------------------|
 | `processing.Scope` (interface) | Single handler-facing API. Hides the engine — a handler can call only what the interface exposes, never reach into `Derived`/`view` directly. |
-| `state.gatedScope` (decorator) | Coverage enforcement. `CheckCoverage(kind, canonical)` runs once at the top of every cache-attribute read. The engine below stays ignorant of the gate. |
+| `state.gatedScope` (decorator) | Coverage enforcement. `CheckCoverage(kind, canonical)` runs once at the top of every cache-attribute read, against a dense `coverageSlots` array selected by the `coverageSlotIndex` sub-attribute-byte lookup; an undeclared read returns `*ErrCoverageMiss`. The engine below stays ignorant of the gate. |
 | `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters, chapter ops. No gate logic — pure engine. |
 | `DerivedKeyStore` | Same-batch read-your-own-writes. Handler *N* sees what handler *N-1* wrote without going through the view. |
-| `Plan` | Holds the coverage state and emits `*ErrCoverageMiss` on undeclared reads. One coverage map per kind, indexed by sub-attribute byte. |
 | `KeyStore` | Collision safety + tombstone visibility. `Entry.Tag` distinguishes U128 collisions; `Entry.Deleted` propagates deletes. |
 | `AttributeCache` | Generation isolation. Gen0 = current epoch, Gen1 = previous epoch retained for in-flight proposals. |
 

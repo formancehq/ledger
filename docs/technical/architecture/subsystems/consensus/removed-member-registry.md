@@ -92,7 +92,7 @@ Every node applies the same log entry through the FSM apply path. The apply batc
 1. Delegate the ConfChange to raft's own state machine (unchanged from today).
 2. Write `RemovedMembers[nodeID, instanceID]` to Pebble via `membership`.
 
-Both mutations belong to the same Pebble transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
+Both mutations belong to the same Pebble transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
 
 No crash window on this path.
 
@@ -107,7 +107,7 @@ This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only 
 
 The `instanceID` is read from the peer's Membership row just before the delete, so no explicit parameter needs to travel on the ledgerctl RPC. `membership.Unregister` reads from its own in-memory cache (populated at boot from Pebble), which is outside the FSM hot path and therefore not subject to invariants #3/#6/#9.
 
-`internal/infra/node/` and `internal/infra/membership/` are added to the `forbidigo` exception list of [invariant #4](../../../../CLAUDE.md#invariants), justified as *"cluster-topology lifecycle path: force-remove writes ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity — see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*. The node/membership exception already exists de facto for the WAL/peer-row writes; the new Pebble mutation reuses the same exception scope.
+`internal/infra/node/` and `internal/infra/membership/` are added to the `forbidigo` exception list of [invariant #4](../../../../../CLAUDE.md#invariants), justified as *"cluster-topology lifecycle path: force-remove writes ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity — see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*. The node/membership exception already exists de facto for the WAL/peer-row writes; the new Pebble mutation reuses the same exception scope.
 
 #### Crash windows (force path only)
 
@@ -182,9 +182,9 @@ Key format: `nodeID || instanceID` (uint64 big-endian || 16 bytes). Value: `Remo
 The `RemovedMembers` KeyStore participates in:
 
 - **Snapshots**: serialized alongside other Global-zone keys — no special-case handling.
-- **Cache preload**: the consensus-path FSM apply *writes* to `RemovedMembers` but does not read from it, so [invariant #6](../../../../CLAUDE.md#invariants) does not require a `preload.Needs` read declaration. The `JoinAsLearner` admission and `checkAndPromoteLearners` reads happen on the leader-only code path (before the FSM apply of any downstream proposal), so they are not subject to invariants #6 or #9 — they read `RemovedMembers` directly from the leader's in-memory KeyStore.
+- **Cache preload**: the consensus-path FSM apply *writes* to `RemovedMembers` but does not read from it, so [invariant #6](../../../../../CLAUDE.md#invariants) does not require a `plan.Coverage` read declaration. The `JoinAsLearner` admission and `checkAndPromoteLearners` reads happen on the leader-only code path (before the FSM apply of any downstream proposal), so they are not subject to invariants #6 or #9 — they read `RemovedMembers` directly from the leader's in-memory KeyStore.
 - **Not covered by invariant #8**: `RemovedMembers` is a projection of Raft topology events, **not** of the hash-chained business audit. It cannot be reconstructed by replaying `AuditItem`s (ConfChanges never enter the audit chain). Its integrity relies on:
-  - Consensus path: [invariant #2](../../../../CLAUDE.md#invariants) (FSM determinism) — every node applies the same `ConfChangeRemoveNode`, produces the same entry.
+  - Consensus path: [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism) — every node applies the same `ConfChangeRemoveNode`, produces the same entry.
   - Force path: leader-local Pebble batch (see [Crash windows](#crash-windows-force-path-only) for the bounded gap); followers converge via the next snapshot.
 
   A cross-node consistency check (dump `RemovedMembers` from each replica via an admin RPC and compare) is a possible future enhancement, out of scope here.

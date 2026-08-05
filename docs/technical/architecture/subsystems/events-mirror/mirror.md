@@ -173,7 +173,7 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 ## Performance notes
 
 - **Async prefetch**: the next batch is fetched from the source while the previous batch is still applying through Raft + FSM. This overlaps source latency with consensus latency.
-- **Coverage pre-declaration**: the worker pre-computes the per-order `Needs` for the whole batch in one pass (`worker.go:568-630`), so the per-proposal preload work is amortised.
+- **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:589-683`), so the per-proposal preload work is amortised.
 - **Single-writer**: the cursor row is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage.
 
 ## What the mirror does not do

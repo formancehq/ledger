@@ -2,7 +2,7 @@
 
 ## Overview
 
-The coverage gate is the FSM-side guarantee that **the apply path can only read what admission declared it would read**. It enforces the contract built by [preload](preload.md): every `Scope.GetX(...)` call against the in-memory attribute cache must hit a key that the originating proposal's `preload.Needs` had pre-declared.
+The coverage gate is the FSM-side guarantee that **the apply path can only read what admission declared it would read**. It enforces the contract built by [preload](preload.md): every `Scope.GetX(...)` call against the in-memory attribute cache must hit a key that the originating proposal's `plan.Coverage` had pre-declared.
 
 A read that slips past the gate — for example by iterating the parent `KeyStore` directly — silently sees keys that admission did not preload and did not stamp into the proposal's coverage. That breaks the symmetry that makes the FSM deterministic across replicas: one node's cache might happen to hold an extra key the others don't, and now the same input produces different outputs.
 
@@ -42,7 +42,7 @@ A dense `[len(cacheAttrKinds)][]U128` array (`scope.go:430-439`) holds the allow
 
 ## What is gated
 
-The full enumeration of gated kinds (`scope.go:415-428`) — 12 in total, mirroring the `preload.Needs` field set:
+The full enumeration of gated kinds (`cacheAttrKinds` in `internal/infra/state/scope.go`) — 12 in total, one per `dal.SubAttr*` code in the resolver registry:
 
 ```
 Volume, Metadata, Reference, Ledger, Boundary,
@@ -50,7 +50,7 @@ SinkConfig, NumscriptVersion, Transaction, NumscriptContent,
 PreparedQuery, LedgerMetadata, Index
 ```
 
-If a new attribute kind is added to `Needs`, a new entry must land here, and a new `gatedAccessor` must be wired into `Scope`. The two pieces — declaration and enforcement — are deliberately co-located so they can't drift.
+If a new attribute kind is added to the `attrCode` resolver registry (`internal/infra/plan/attribute_resolvers.go`), a matching entry must land in `cacheAttrKinds` here, and a new `gatedAccessor` must be wired into `Scope`. The two registries live in **different packages** — declaration in `internal/infra/plan`, enforcement in `internal/infra/state` — so nothing structural stops them drifting; only review does. Keep them in lock-step.
 
 ## Per-order vs proposal-wide scope
 
@@ -144,7 +144,7 @@ Some operations naturally want to scan: "delete every metadata row attached to t
 
 The accepted solutions, in order of preference:
 
-1. **Declare the relevant `preload.Needs` upfront.** If admission can enumerate the set of keys at propose time, it does, and the apply path becomes a normal gated read.
+1. **Declare the relevant `plan.Coverage` upfront.** If admission can enumerate the set of keys at propose time, it does, and the apply path becomes a normal gated read.
 2. **Defer to a lifecycle path.** `batch.deleteLedgerData` queues a Pebble `DeleteRange` over the ledger's key range and `MarkLedgerForCleanup` updates `LedgerInfo.DeletedAt`. The FSM itself never iterates the cache for the doomed ledger; read paths consult `DeletedAt` and short-circuit. See `internal/domain/processing/processor_ledger.go:99-113`.
 3. **Reject the design.** If neither of the above fits, the operation does not belong in the FSM hot path.
 
@@ -158,7 +158,7 @@ The gate counts misses (`scope.go:367-369`):
 g.miss.Add(ctx, 1, metric.WithAttributes(kindAttr(kind)))
 ```
 
-This is an OTel counter labelled by the attribute kind. A non-zero rate is a smoke signal that a producer's `Needs` declaration is incomplete — the FSM is asking for something admission did not preload, and the proposal will fail until the producer is fixed.
+This is an OTel counter labelled by the attribute kind. A non-zero rate is a smoke signal that a producer's `plan.Coverage` declaration is incomplete — the FSM is asking for something admission did not preload, and the proposal will fail until the producer is fixed.
 
 ## Why this matters
 
