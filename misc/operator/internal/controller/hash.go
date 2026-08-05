@@ -29,10 +29,14 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.NetworkPolicy = nil
 	cp.DNSEndpoints = nil
 
-	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
-	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
-	// Persistence is a value field, so zeroing it on the shallow copy is safe.
+	// DeletionProtection and AutoExpansion only drive PVC/PV mutations in their
+	// dedicated reconcilers; they have no pod-template effect, so tuning them
+	// must not roll the StatefulSet. Persistence and its VolumeSpecs are value
+	// fields, so zeroing these pointers on the shallow copy is safe.
 	cp.Persistence.DeletionProtection = nil
+	cp.Persistence.WAL.AutoExpansion = nil
+	cp.Persistence.Data.AutoExpansion = nil
+	cp.Persistence.ColdCache.AutoExpansion = nil
 
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 
