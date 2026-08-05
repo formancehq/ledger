@@ -1140,4 +1140,63 @@ func TestSigningVerifier_CascadeUnionsBothParentEdges(t *testing.T) {
 			"re-registration with no parent must leave the key parentless")
 		require.Contains(t, verifier.keys, "other")
 	})
+
+	// A key first registered INSIDE the revoking proposal and then re-registered in
+	// that same proposal is the case neither the running relation nor the
+	// pre-proposal snapshot can see: the second registration overwrote the running
+	// pointer, and the key has no pre-proposal entry because it did not exist yet.
+	// GetSigningKeyChildren appends the key of every pending addition whose
+	// parentKeyID matches, superseded ones included, so the live FSM cascades it.
+	for _, tc := range []struct {
+		name       string
+		reregister *raftcmdpb.Order
+	}{
+		{
+			name:       "superseded by a root re-registration",
+			reregister: registerSigningKeyOrder("fresh", childKey, ""),
+		},
+		{
+			name:       "superseded by a reparenting re-registration",
+			reregister: registerSigningKeyOrder("fresh", childKey, "other"),
+		},
+	} {
+		t.Run("in-proposal edge "+tc.name+" still cascades", func(t *testing.T) {
+			t.Parallel()
+
+			verifier := seedThreeKeys()
+
+			verifier.beginProposal()
+			verifier.applyOrder(registerSigningKeyOrder("fresh", childKey, "parent"))
+			verifier.applyOrder(tc.reregister)
+			verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+			require.NotContains(t, verifier.keys, "parent", "the revoke target must be gone")
+			require.NotContains(t, verifier.keys, "fresh",
+				"a key whose in-proposal edge to the revoked parent was superseded is still cascaded by the FSM")
+			require.Contains(t, verifier.keys, "other", "an unrelated root key must survive")
+			require.NotContains(t, verifier.keys, "child",
+				"the committed child of the revoked parent is cascaded as before")
+		})
+	}
+
+	t.Run("a superseded edge does not leak across proposals", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := seedThreeKeys()
+
+		// The edge is asserted and superseded in one proposal, and the cascade revoke
+		// lands in a LATER one. By then the FSM has committed only the reassignment,
+		// so "fresh" must survive — proposalEdges has to be per-proposal state, not an
+		// append-only record of every parent a key ever had.
+		verifier.beginProposal()
+		verifier.applyOrder(registerSigningKeyOrder("fresh", childKey, "parent"))
+		verifier.applyOrder(registerSigningKeyOrder("fresh", childKey, "other"))
+
+		verifier.beginProposal()
+		verifier.applyOrder(revokeSigningKeyOrder("parent", true))
+
+		require.NotContains(t, verifier.keys, "parent")
+		require.Contains(t, verifier.keys, "fresh",
+			"an edge superseded in an EARLIER proposal is not a committed edge and must not cascade")
+	})
 }
