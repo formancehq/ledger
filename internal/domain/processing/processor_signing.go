@@ -41,14 +41,45 @@ func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Contex
 	var cascaded []string
 
 	if order.GetCascade() {
-		// BFS to find all descendants for cascade revocation
+		// BFS over the child relation to collect every descendant, guarded by a
+		// visited set.
+		//
+		// The visited set is what makes the walk TERMINATE, and it is load-bearing
+		// rather than defensive: nothing validates that the parent graph stays
+		// acyclic. processRegisterSigningKey shape-checks the two key IDs and
+		// nothing else — it never verifies that the parent exists — and
+		// registration is an upsert, so "register a under b" followed by
+		// "register b under a" is accepted end to end. Without the set a cascade
+		// revoke of either alternates between them forever, with `cascaded`
+		// growing unbounded. That hang would sit in the Raft apply path, so it
+		// would wedge every replica at once and, the order being committed,
+		// replay on every restart.
+		//
+		// It also dedups `cascaded`, and hence RevokedSigningKeyLog.cascaded_key_ids:
+		// GetSigningKeyChildren appends the key of EVERY pending addition whose
+		// parent matches, so registering the same child twice under one parent in
+		// one proposal otherwise reports it twice.
+		//
+		// Seeded with the revoke target so it can never appear in `cascaded` —
+		// RemoveSigningKey below already covers it, and an acyclic walk never
+		// yielded it either, so the log payload is unchanged for a well-formed
+		// graph.
 		queue := []string{order.GetKeyId()}
+		visited := map[string]struct{}{order.GetKeyId(): {}}
+
 		for len(queue) > 0 {
 			current := queue[0]
 			queue = queue[1:]
-			children := s.GetSigningKeyChildren(current)
-			cascaded = append(cascaded, children...)
-			queue = append(queue, children...)
+
+			for _, child := range s.GetSigningKeyChildren(current) {
+				if _, already := visited[child]; already {
+					continue
+				}
+
+				visited[child] = struct{}{}
+				cascaded = append(cascaded, child)
+				queue = append(queue, child)
+			}
 		}
 	}
 

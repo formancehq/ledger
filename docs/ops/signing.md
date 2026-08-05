@@ -109,9 +109,11 @@ ledgerctl signing revoke-key --key-id ops-key --signing-key ./root-keys/seed.hex
 ledgerctl signing revoke-key --key-id ops-key --cascade --signing-key ./root-keys/seed.hex
 ```
 
-When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field listing all descendant keys that were also revoked, providing a complete audit trail.
+When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field listing all descendant keys that were also revoked, providing a complete audit trail. Each descendant is listed once, and the target key itself is not repeated there.
 
 With `--cascade`, revoking a root key revokes the entire subtree under it. Other subtrees are unaffected.
+
+Nothing prevents a key from being re-registered under one of its own descendants, which makes the parent graph cyclic. A cascade over such a graph still terminates and revokes each key in the cycle exactly once — but a cycle is an operator mistake, not a supported topology: `signing keys list` shows the parent of every key, and the graph should be a forest.
 
 ### Listing Keys
 
