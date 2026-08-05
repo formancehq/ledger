@@ -36,6 +36,11 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	indexVersionFor func(canonical string) (uint32, error)
 	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
+	// horizonKeep is filled in by listEntities: it trims read-index iteration
+	// back to pebbleReader's horizon, since the aligned index snapshot may
+	// have folded entities committed after the main handle (see
+	// query.AlignedIndexSnapshot). nil admits everything.
+	horizonKeep func([]byte) (bool, error)
 }
 
 // entityListResult holds the result of a listEntities call.
@@ -60,12 +65,17 @@ func listEntities[T interface{ ~string | ~uint64 }](
 ) (entityListResult, error) {
 	var result entityListResult
 
-	snap := readStore.NewSnapshot()
+	// The snapshot's fold cursor covers everything params.pebbleReader sees,
+	// so index leaves cannot lag the main-store leaves and enrichment
+	// (EN-1748); withinHorizon trims the other direction.
+	snap, mainSeq, err := query.AlignedIndexSnapshot(readStore, params.pebbleReader)
+	if err != nil {
+		return result, err
+	}
 	defer func() { _ = snap.Close() }()
 
 	params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
-
-	var err error
+	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
 
 	if params.reverse {
 		if params.filter != nil {
@@ -84,7 +94,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	iter, err := query.Compile(
+	compiled, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
@@ -92,6 +102,11 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)
+	}
+
+	var iter readstore.EntityIterator = compiled
+	if params.horizonKeep != nil {
+		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
 	}
 	defer iter.Close()
 
@@ -188,7 +203,14 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			return nil, "", "", "", fmt.Errorf("creating reverse log iterator: %w", itErr)
 		}
 
-		return &reverseCloser{it, it.Close},
+		// The log list iterates the read index, whose aligned snapshot may run
+		// ahead of the main handle the payload reads use — trim to the horizon.
+		var rev readstore.ReverseIterator = it
+		if params.horizonKeep != nil {
+			rev = readstore.NewFilterReverseIterator(it, params.horizonKeep)
+		}
+
+		return &reverseCloser{rev, it.Close},
 			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledgerName),
 			"ReverseLedgerLog", "pebble:llog", nil
 
@@ -201,7 +223,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	iter, err := query.Compile(
+	compiled, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
@@ -209,6 +231,11 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)
+	}
+
+	var iter readstore.EntityIterator = compiled
+	if params.horizonKeep != nil {
+		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
 	}
 	defer iter.Close()
 

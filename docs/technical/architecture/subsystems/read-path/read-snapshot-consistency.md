@@ -106,3 +106,47 @@ because it matches call names, not arguments.
 
 See also [query-checkpoints.md](query-checkpoints.md) for point-in-time reads
 across the main store and the read index.
+
+## Cross-store alignment (EN-1748)
+
+The single-handle rule covers the main store; an *indexed* query additionally
+reads the peer read index, which folds asynchronously behind it. Two
+independently-taken views therefore disagree about the freshest commits: a
+transaction visible in the main handle whose index rows have not folded yet
+leaks through complements (`not(ts[..])` returns "a transaction with no
+timestamp") and mis-windows conjunctions — a response no single committed
+state ever produced.
+
+**Rule: an indexed read opens the main `ReadHandle` first, then takes its
+index snapshot through `query.AlignedIndexSnapshot`, and wraps the compiled
+iterator with `query.MainHorizonKeep`.**
+
+`AlignedIndexSnapshot` returns a read-index snapshot whose fold cursor covers
+the handle's last applied sequence (verified through the snapshot itself, so
+the check cannot race it), waiting up to a bounded grace for the fold and
+failing with `ErrReadIndexNotCaughtUp` when the builder is stalled. Because
+the fold is ordered, such a snapshot holds every index row for the entities
+the handle sees:
+
+- main-store leaves and enrichment reflect the handle's sequence exactly;
+- index leaves can only *exceed* the handle (entities committed after it),
+  and the `MainHorizonKeep` filter trims those back for TRANSACTIONS and
+  LOGS, so the response is the state at the handle's sequence. ACCOUNTS get
+  no trim: main-store existence is not a horizon signal there (purged
+  accounts legitimately live on in the monotonic has-asset and metadata
+  indexes), and account enrichment renders absent accounts as address-only
+  rows, so index membership is served as folded.
+
+Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
+the reverse LOGS arm, whose unfiltered scan also iterates the read index),
+`AggregateVolumes`, and the prepared-query executor. Index-introspection
+endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
+index snapshot and need no alignment.
+
+**Residual window**: destructive fold events — a `DropIndex` range-delete or
+a retype's version switch — landing between the handle's sequence and the
+snapshot's fold cursor can remove rows for entities the handle still sees.
+The window is the microseconds between the two acquisitions (the wait exits
+as soon as the cursor covers the handle); closing it entirely needs
+registry-generation comparison and retry, deferred until it is observed in
+practice.
