@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -64,12 +66,13 @@ func TestParsePodDiskUsage(t *testing.T) {
 	}
 }
 
-func TestVolumeExpansionReconcilerExpandsAllReplicas(t *testing.T) {
+func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 	require.NoError(t, storagev1.AddToScheme(scheme))
 	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
@@ -77,11 +80,12 @@ func TestVolumeExpansionReconcilerExpandsAllReplicas(t *testing.T) {
 	allowExpansion := true
 	storageClassName := "gp3-expandable"
 	maximum := resource.MustParse("200Gi")
-	replicas := int32(3)
+	rejectedSpecReplicas := int32(2)
+	liveReplicas := int32(3)
 	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 		Spec: ledgerv1alpha1.ClusterSpec{
-			Replicas: &replicas,
+			Replicas: &rejectedSpecReplicas,
 			Persistence: ledgerv1alpha1.PersistenceSpec{
 				Data: ledgerv1alpha1.VolumeSpec{
 					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum},
@@ -91,9 +95,13 @@ func TestVolumeExpansionReconcilerExpandsAllReplicas(t *testing.T) {
 	}
 	objects := []runtime.Object{
 		ledger,
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "ledger-test", Namespace: "default"},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &liveReplicas},
+		},
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
 	}
-	for ordinal := range replicas {
+	for ordinal := range liveReplicas {
 		objects = append(objects, boundTestPVC("data-ledger-test-"+strconv.Itoa(int(ordinal)), storageClassName, "100Gi"))
 	}
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
@@ -119,11 +127,11 @@ func TestVolumeExpansionReconcilerExpandsAllReplicas(t *testing.T) {
 		},
 	}
 
-	retry, err := reconciler.reconcileVolume(ctx, ledger, volumeExpansionDefinition{Name: "data", Policy: ledger.Spec.Persistence.Data.AutoExpansion}, "disabled")
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ledger.Namespace, Name: ledger.Name}})
 	require.NoError(t, err)
-	assert.True(t, retry)
+	assert.Equal(t, volumeExpansionRetryInterval, result.RequeueAfter)
 
-	for ordinal := range replicas {
+	for ordinal := range liveReplicas {
 		name := "data-ledger-test-" + strconv.Itoa(int(ordinal))
 		var pvc corev1.PersistentVolumeClaim
 		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: name}, &pvc))
@@ -186,7 +194,7 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 		},
 	}
 
-	retry, err := reconciler.reconcileVolume(ctx, ledger, volumeExpansionDefinition{Name: "data", Policy: ledger.Spec.Persistence.Data.AutoExpansion}, "disabled")
+	retry, err := reconciler.reconcileVolume(ctx, ledger, volumeExpansionDefinition{Name: "data", Policy: ledger.Spec.Persistence.Data.AutoExpansion}, "disabled", replicas)
 	require.NoError(t, err)
 	assert.True(t, retry)
 
