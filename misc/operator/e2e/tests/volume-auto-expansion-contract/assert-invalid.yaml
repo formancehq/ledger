@@ -1,0 +1,10 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: volume-auto-invalid
+status:
+  phase: Error
+  (conditions[?type == 'ConfigValid']):
+    - status: "False"
+      reason: ValidationFailed
+      (contains(message, 'supported only for wal and data')): true
