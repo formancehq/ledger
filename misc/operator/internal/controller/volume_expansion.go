@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -110,17 +111,30 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	applyDefaults(&ledger)
 
-	tlsMode, err := fetchTLSMode(ctx, r.Client, ledger.Namespace, resourceName(ledger.Name))
-	if err != nil {
-		volumeExpansionErrorsMetric.WithLabelValues("tls-mode", "cluster").Inc()
+	var statefulSet appsv1.StatefulSet
+	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: resourceName(ledger.Name)}, &statefulSet); err != nil {
+		for _, definition := range definitions {
+			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion is waiting for the live StatefulSet: %v", definition.Name, err)
+		}
+		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
 
-		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, fmt.Errorf("resolving TLS mode for volume expansion: %w", err)
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, nil
 	}
+	liveReplicas := int32(1)
+	if statefulSet.Spec.Replicas != nil {
+		liveReplicas = *statefulSet.Spec.Replicas
+	}
+	if liveReplicas < 1 {
+		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+
+		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, fmt.Errorf("invariant: live StatefulSet %s/%s has %d replicas", statefulSet.Namespace, statefulSet.Name, liveReplicas)
+	}
+	tlsMode := currentTLSModeFromStatefulSet(&statefulSet)
 
 	nextRequeue := volumeExpansionRequeueInterval
 	var reconcileErrors []error
 	for _, definition := range definitions {
-		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode)
+		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode, liveReplicas)
 		if retrySoon {
 			nextRequeue = volumeExpansionRetryInterval
 		}
@@ -157,6 +171,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	ledger *ledgerv1alpha1.Cluster,
 	definition volumeExpansionDefinition,
 	tlsMode string,
+	replicas int32,
 ) (bool, error) {
 	logger := ctrl.LoggerFrom(ctx).WithValues("volume", definition.Name)
 	policy, err := resolveVolumeExpansionPolicy(definition.Policy)
@@ -167,7 +182,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 		return false, nil
 	}
 
-	pvcs, states, err := r.loadVolumePVCs(ctx, ledger, definition.Name)
+	pvcs, states, err := r.loadVolumePVCs(ctx, ledger, definition.Name, replicas)
 	if err != nil {
 		volumeExpansionErrorsMetric.WithLabelValues("pvc", definition.Name).Inc()
 		r.recordWarningf(ledger, "VolumeExpansionPending", "%s PVC group is not ready: %v", definition.Name, err)
@@ -187,7 +202,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	decision := decideVolumeExpansion(policy, states, nil, r.now())
 	var measurements []podVolumeMeasurement
 	if decision.Kind == volumeExpansionDecisionIncomplete {
-		measurements = r.collectMeasurements(ctx, ledger, definition.Name, tlsMode)
+		measurements = r.collectMeasurements(ctx, ledger, definition.Name, tlsMode, replicas)
 		decision = decideVolumeExpansion(policy, states, measurements, r.now())
 	}
 	volumeRequestedBytesMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name).
@@ -274,12 +289,8 @@ func (r *VolumeExpansionReconciler) loadVolumePVCs(
 	ctx context.Context,
 	ledger *ledgerv1alpha1.Cluster,
 	volume string,
+	replicas int32,
 ) ([]*corev1.PersistentVolumeClaim, []volumePVCState, error) {
-	replicas := int32(3)
-	if ledger.Spec.Replicas != nil {
-		replicas = *ledger.Spec.Replicas
-	}
-
 	pvcs := make([]*corev1.PersistentVolumeClaim, 0, replicas)
 	states := make([]volumePVCState, 0, replicas)
 	for ordinal := range replicas {
@@ -345,11 +356,8 @@ func (r *VolumeExpansionReconciler) collectMeasurements(
 	ctx context.Context,
 	ledger *ledgerv1alpha1.Cluster,
 	volume, tlsMode string,
+	replicas int32,
 ) []podVolumeMeasurement {
-	replicas := int32(3)
-	if ledger.Spec.Replicas != nil {
-		replicas = *ledger.Spec.Replicas
-	}
 	read := r.ReadDiskUsage
 	if read == nil {
 		read = r.readPodDiskUsage
