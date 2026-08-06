@@ -153,6 +153,57 @@ func TestAddPublicKey_WithParent(t *testing.T) {
 	require.Equal(t, "child-key", children[0])
 }
 
+// TestAddPublicKey_ReregistrationAsRootClearsParent pins the empty-parent branch
+// of the upsert: re-registering an existing key ID with no parent must drop the
+// previous edge, not keep it.
+//
+// The FSM rejects no duplicate key ID, so the sequence is reachable, and this map
+// is what the revocation cascade walks. A retained edge would only survive until
+// the next restart — recovery rebuilds the store from the persisted rows, which
+// carry no parent — so the cascade would depend on whether a replica had restarted
+// since the re-registration.
+func TestAddPublicKey_ReregistrationAsRootClearsParent(t *testing.T) {
+	t.Parallel()
+
+	parent, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	child, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	replacement, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	ks := NewKeyStore()
+	ks.AddPublicKey("parent-key", parent, "")
+	ks.AddPublicKey("child-key", child, "parent-key")
+
+	require.Equal(t, []string{"child-key"}, ks.GetChildren("parent-key"))
+
+	ks.AddPublicKey("child-key", replacement, "")
+
+	require.Empty(t, ks.GetChildren("parent-key"),
+		"re-registering a key as a root must clear its previous parent edge")
+	require.Equal(t, replacement, ks.GetPublicKey("child-key"),
+		"the re-registration must still replace the key material")
+}
+
+// TestAddPublicKey_ReregistrationMovesParent covers the non-empty counterpart: the
+// edge follows the new parent instead of accumulating on both.
+func TestAddPublicKey_ReregistrationMovesParent(t *testing.T) {
+	t.Parallel()
+
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	ks := NewKeyStore()
+	ks.AddPublicKey("first-parent", pub, "")
+	ks.AddPublicKey("second-parent", pub, "")
+	ks.AddPublicKey("child-key", pub, "first-parent")
+	ks.AddPublicKey("child-key", pub, "second-parent")
+
+	require.Empty(t, ks.GetChildren("first-parent"))
+	require.Equal(t, []string{"child-key"}, ks.GetChildren("second-parent"))
+}
+
 func TestMultipleKeys(t *testing.T) {
 	t.Parallel()
 

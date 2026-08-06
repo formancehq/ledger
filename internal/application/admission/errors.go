@@ -51,4 +51,13 @@ var (
 	// and HTTP) rather than silently creating a permanently-unbuilt index.
 	// See indexes.Supported.
 	ErrIndexTargetUnsupported = domain.NewValidationSentinel("index target not supported (metadata: ACCOUNT/TRANSACTION; account builtin: ASSET; log builtin: DATE)")
+
+	// ErrSigningKeyInvalidLength rejects a RegisterSigningKey order whose
+	// public_key is not exactly an Ed25519 public key (32 bytes). This is the only
+	// length gate on the server write path: the FSM validates the key ID and
+	// nothing else, and SaveSigningKey stores the bytes unchanged, so without it a
+	// raw gRPC client can persist a row too short for query.ReadSigningKeys to
+	// decode. Validated here rather than in the FSM so the rejection happens
+	// pre-Raft and cannot diverge state across a mixed-binary rolling upgrade.
+	ErrSigningKeyInvalidLength = domain.NewValidationSentinel("signing key public_key must be exactly 32 bytes (Ed25519)")
 )

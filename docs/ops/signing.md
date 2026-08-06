@@ -92,7 +92,7 @@ Keys form a **parent-child hierarchy**. When a new key is registered by signing 
 
 The parent relationship is:
 - **Automatic**: deduced from the signature used to register the key (no explicit parameter needed)
-- **Immutable**: once set, the parent cannot be changed
+- **Replaced on re-registration**: registering an existing key ID again is an upsert — it replaces both the public key and the parent link. Re-registering with no parent makes the key a root
 - **Persisted**: stored in Pebble alongside the public key and restored on startup
 
 ### Cascade Revocation
@@ -109,9 +109,11 @@ ledgerctl signing revoke-key --key-id ops-key --signing-key ./root-keys/seed.hex
 ledgerctl signing revoke-key --key-id ops-key --cascade --signing-key ./root-keys/seed.hex
 ```
 
-When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field listing all descendant keys that were also revoked, providing a complete audit trail.
+When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field listing all descendant keys that were also revoked, providing a complete audit trail. Each descendant is listed once, and the target key itself is not repeated there.
 
 With `--cascade`, revoking a root key revokes the entire subtree under it. Other subtrees are unaffected.
+
+Nothing prevents a key from being re-registered under one of its own descendants, which makes the parent graph cyclic. A cascade over such a graph still terminates and revokes each key in the cycle exactly once — but a cycle is an operator mistake, not a supported topology: `signing keys list` shows the parent of every key, and the graph should be a forest.
 
 ### Listing Keys
 
@@ -126,6 +128,8 @@ Output includes key ID, public key (hex), and parent key ID. Root keys (bootstra
 ### Bootstrap
 
 The first `RegisterSigningKey` can be **unsigned** — this is the bootstrap path. Once at least one key is registered, all key management operations must be signed by an existing key.
+
+The bootstrap path opens only on a cluster that has genuinely never registered a key. It stays **closed** when the store holds signing-key rows that failed to decode, even though skipping them can leave the in-memory key store empty. Boot deliberately survives an undecodable row — logging it, and letting `CheckStore` report it as `SIGNING_KEY_MISMATCH` — rather than crash-looping the replica, so "no usable keys" no longer implies "fresh cluster". Reopening the bootstrap path there would let whoever corrupted the rows register their own key unsigned, and because that registration takes the normal path it would be **audited**: the checker would see a legitimately chain-bound key and flag only the corrupt row it replaced. A cluster in that state therefore refuses all signing management until an operator restores the rows (from a backup, or by rebuilding the projection from the audit log).
 
 ```bash
 # Step 1: Bootstrap — register the first key (no --signing-key needed)

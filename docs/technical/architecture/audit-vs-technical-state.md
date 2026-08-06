@@ -18,7 +18,7 @@ record, or a read-side projection:
 | Class | Definition | Examples | Required control |
 | --- | --- | --- | --- |
 | Business truth | Changes balances, transactions, metadata, reversions, ledger lifecycle, indexes, or any user-visible business decision. | `AuditEntry`, `Log`, `Volume`, `Metadata`, `Transaction`, `Reference`, reversion bitsets, idempotency outcomes, index registry. | The command must produce an audit entry, and persisted projections must be checked by `internal/application/check`. |
-| Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state (e.g. the signing-key or signing-config rows under `SubGlobSigningKey` / `SubGlobSigningConfig`) can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
+| Governance truth | Changes who can write, how writes are accepted, or how business evidence is produced. It may not change balances directly, but it changes the control plane around business truth. | Signing keys, maintenance mode, chapter schedules, hash algorithm selection. | Prefer an audited order. If a persisted projection of governance state can be altered after the fact so admission or lifecycle code accepts or rejects future writes differently, it must be checker-verified or read back from an audit-bound source — not merely trusted because an audited order once recorded the intent. The signing-key and signing-config rows (`SubGlobSigningKey` / `SubGlobSigningConfig`) **discharge** that obligation: `signingVerifier` (`internal/application/check/signing.go`) re-derives both from the chain-bound signing orders on every `Check()` run — see [checker/checker.md](subsystems/checker/checker.md). Maintenance mode (`SubGlobMaintenanceMode`) does **not**: it is persisted, read back into shared state on recovery, gates write acceptance, and has no compare pass, so it remains a tracked gap. Non-persisted operator controls (in-memory toggles) do not carry this obligation. |
 | Operational consensus state | Coordinates background work or external delivery, but does not itself define ledger business truth. | Event sink cursors/status, backup job state, removed-member registry, mirror status/source-head. | Raft replication applies the same logical proposal on every replica; it is sufficient **only** when a value corrupted before it is proposed cannot silently change a business result. Raft cannot detect a value tampered or corrupted before it is proposed (its logical effect then applies everywhere) — any such projection needs checker coverage regardless of replication. |
 | Rebuildable local projection | Speeds reads or background work and can be regenerated from audit-bound data. **A projection only belongs here if it is genuinely thrown away and rebuilt** — not merely rebuildable in principle. | Bloom filters (discarded and rebuilt on the backup/restore path — `internal/infra/attributes/prepare.go` deletes the persisted blocks so restore rebuilds them from a full attribute scan — and on a bloom-config change applied via cluster config, where `applyClusterConfigUpdate` (`internal/infra/state/machine_technical_updates.go`) purges the `SubGlobBloom` blocks, calls `BloomFilters.Rebuild`, and signals `StartAsyncBloomPopulate`; note that on normal restart / follower sync they are instead *restored from the persisted Pebble blocks*, so those blocks are durably trusted between backups — see the floor note below), cache mirrors, snapshots/spool. | Rebuild path is the control **when the projection is actually rebuilt as part of a lifecycle path**. A *durably persisted* projection **in the main store** that is trusted between rebuilds and can shape a business-visible result (e.g. persisted bloom blocks reloaded on restart — see below) additionally needs main-store checker coverage, because nothing rebuilds it before it is served. A projection in a *peer* per-replica store (the readstore inverted index) is instead the index builder's rebuild-health concern, out of main-store checker scope as a rule — with one narrow exception, the readstore reverse map (`0x03`), which `compareReverseMapOrphans` does verify. See "Readstore and Indexes" below. |
 
@@ -53,14 +53,18 @@ non-deterministic map marshaling). So a value that is corrupted or tampered
 comparison — logical or byte-wise — can catch it. Where the sections below
 describe a persisted main-store projection that the checker does not yet verify
 (prepared queries,
-persisted bloom blocks on the restart path, and the persisted governance
-projections — signing keys `SubGlobSigningKey`, signing config
-`SubGlobSigningConfig`, and maintenance mode `SubGlobMaintenanceMode`, each read
-into the live key store / shared state on recovery and consulted by admission to
-accept or reject writes), that is a tracked integrity gap, not an approved
-exemption. Those governance projections must either be checker-verified against
+persisted bloom blocks on the restart path, and maintenance mode
+`SubGlobMaintenanceMode`, read into shared state on recovery and consulted before
+a write is accepted), that is a tracked integrity gap, not an approved
+exemption. Such a governance projection must either be checker-verified against
 the audited orders that recorded the intent, or read back from an audit-bound
-source before they are trusted (see the Governance-truth row above).
+source before it is trusted (see the Governance-truth row above). The two signing
+projections were exactly that kind of gap and no longer are: `signingVerifier`
+(`internal/application/check/signing.go`) verifies `SubGlobSigningKey` and
+`SubGlobSigningConfig` against the chain-bound `RegisterSigningKey` /
+`RevokeSigningKey` / `SetSigningConfig` orders on every `Check()` run (EN-1515).
+Maintenance mode has the identical shape and is deliberately deferred, so it is
+the governance gap that remains.
 
 ### Technical execution metadata is excluded from the audit business-intent hash (EN-1558)
 

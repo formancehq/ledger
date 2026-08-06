@@ -267,6 +267,28 @@ func RebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_RevokeSigningKey:
+			if p.RevokeSigningKey != nil {
+				// Revocation's only persistent representation is row absence: the
+				// stored value carries no revoked flag and ReadSigningKeys applies
+				// no filter. Skipping this case resurrects a revoked key on
+				// restore, because the full checkpoint carries the row verbatim
+				// while post-checkpoint changes travel only as logs.
+				// cascaded_key_ids is the FSM's resolved descendant set; the live
+				// keystore it was computed from is unavailable here. Deletion is
+				// set-based, so its ordering does not matter.
+				revoked := append([]string{p.RevokeSigningKey.GetKeyId()},
+					p.RevokeSigningKey.GetCascadedKeyIds()...)
+
+				for _, keyID := range revoked {
+					if err := state.DeleteSigningKey(batch, keyID); err != nil {
+						_ = batch.Cancel()
+
+						return fmt.Errorf("deleting revoked signing key %q at log %d: %w", keyID, seq, err)
+					}
+				}
+			}
+
 		case *commonpb.LogPayload_SetSigningConfig:
 			if p.SetSigningConfig != nil {
 				if err := state.SaveSigningConfig(batch, p.SetSigningConfig.GetRequireSignatures()); err != nil {
@@ -394,7 +416,6 @@ func RebuildDelta(
 			}
 
 		// Log types with no persistent state to rebuild:
-		case *commonpb.LogPayload_RevokeSigningKey:
 		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_CloseChapter:
 		case *commonpb.LogPayload_SealChapter:

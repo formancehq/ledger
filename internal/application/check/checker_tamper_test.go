@@ -211,12 +211,36 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 		panic("newRichAuditEntry: unknown outcomeKind " + outcomeKind)
 	}
 
+	// Real serialized Orders, not opaque marker bytes: the chain binds these
+	// payloads either way, but verifyAuditHashChain decodes the items of a
+	// chain-verified entry (signing fold) and treats an undecodable order as a
+	// broken invariant. A fixture carrying non-proto bytes would trip that hard
+	// failure on the pre-tampering baseline run and never reach the mutation
+	// under test.
 	items := []*auditpb.AuditItem{
-		{OrderIndex: 0, LogSequence: 100, SerializedOrder: []byte("order-A-payload")},
-		{OrderIndex: 1, LogSequence: 101, SerializedOrder: []byte("order-B-payload")},
+		{OrderIndex: 0, LogSequence: 100, SerializedOrder: richAuditOrder("ledger-a")},
+		{OrderIndex: 1, LogSequence: 101, SerializedOrder: richAuditOrder("ledger-b")},
 	}
 
 	return entry, items
+}
+
+// richAuditOrder builds the serialized business order an audit item carries. Its
+// payload is non-empty on every bound field so a tamper-by-zero is still a real
+// mutation of the hashed bytes.
+func richAuditOrder(ledger string) []byte {
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		},
+	}
+
+	return order.MarshalDeterministicVT(nil)
 }
 
 // persistAuditEntry computes the envelope + chain hash via the production
@@ -294,7 +318,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 		// A nil TTL (PersistedConfig absent) skips the cold extension entirely,
 		// keeping the report floor at the archive boundary and isolating the
 		// post-boundary guard this test exercises.
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, newSigningVerifier(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -407,6 +431,21 @@ func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *co
 func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
 	t.Helper()
 
+	mismatches, _ := runChainVerifierWithSigning(t, store, clusterID)
+
+	return mismatches
+}
+
+// runChainVerifierWithSigning is runChainVerifier plus the signing verifier the
+// walk folded into, so a test can assert on the coverage state the walk left
+// behind and not only on the events it emitted.
+func runChainVerifierWithSigning(
+	t *testing.T,
+	store *dal.Store,
+	clusterID string,
+) ([]*servicepb.CheckStoreError, *signingVerifier) {
+	t.Helper()
+
 	attrs := attributes.New()
 	checker := NewChecker(store, attrs, clusterID, nil, nil, nil, logging.Testing())
 
@@ -416,13 +455,82 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 
 	var mismatches []*servicepb.CheckStoreError
 
+	signing := newSigningVerifier()
+
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, signing, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}
 	})
 	require.NoError(t, err)
 
-	return mismatches
+	return mismatches, signing
+}
+
+// TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak pins the wiring
+// between a chain break and the signing pass's coverage state.
+//
+// verifyAuditHashChain returns early on a break so Check() can still report other
+// projections, which leaves the signing expectation a PREFIX of the real history.
+// Compared as-is it reports every registration past the break as injected and
+// every revocation past it as a lost row — false positives against a store whose
+// only real problem is the break already reported as HASH_MISMATCH. Each early
+// exit must therefore mark the fold truncated; suppression itself is covered by
+// the compare cases in signing_test.go.
+//
+// One case per exit, because they sit at different points of the loop body: the
+// embedded-items check runs before the entry's items are even read, while the
+// other two run after.
+func TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*auditpb.AuditEntry, []*auditpb.AuditItem)
+	}{
+		{
+			name: "hash mismatch",
+			mutate: func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+				e.Hash = []byte("not-the-real-hash")
+			},
+		},
+		{
+			// Wiping the outcome leaves an entry BuildHashedHeaderPayload can no
+			// longer encode, which is the second exit.
+			name: "header cannot be re-hashed",
+			mutate: func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+				e.Outcome = nil
+			},
+		},
+		{
+			name: "items smuggled into the entry value",
+			mutate: func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+				e.Items = []*auditpb.AuditItem{{OrderIndex: 99, SerializedOrder: []byte("smuggled-order")}}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := createTestStore(t)
+			clusterID := "truncation-cluster"
+
+			entry, items := newRichAuditEntry("success")
+			persistAuditEntry(t, store, entry, items, clusterID)
+
+			// The untampered walk reaches the end of the range, so the fold is whole.
+			_, clean := runChainVerifierWithSigning(t, store, clusterID)
+			require.False(t, clean.liveTruncated,
+				"a chain that verifies to the end leaves the signing fold complete")
+
+			tc.mutate(entry, items)
+			rewriteAuditEntry(t, store, entry, items)
+
+			mismatches, broken := runChainVerifierWithSigning(t, store, clusterID)
+			require.NotEmpty(t, mismatches, "the break itself must still be reported")
+			require.True(t, broken.liveTruncated,
+				"an early exit on a chain break must mark the signing fold truncated, or the pass compares a prefix")
+		})
+	}
 }

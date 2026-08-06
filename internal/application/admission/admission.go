@@ -993,7 +993,17 @@ func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, er
 func (a *Admission) authorizeUnsignedBatch(reqs []*servicepb.Request) error {
 	for _, req := range reqs {
 		if isSigningManagementRequest(req) {
-			if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
+			// HasUndecodableRows closes the bootstrap window on a store whose signing
+			// rows exist but did not decode. Such a cluster is NOT fresh: recovery
+			// skips those rows, so with every row corrupt the key store is empty and
+			// HasKeys alone cannot tell the two situations apart. Whoever corrupted the rows would otherwise register
+			// their own key unsigned through this very exception — and that
+			// registration, taking the normal path, would be AUDITED, so the checker
+			// would see a legitimately chain-bound key and report only the corrupt row
+			// it replaced. Fail closed instead: signing management then needs a
+			// signature nobody can produce until an operator restores the rows, which
+			// is the correct outcome for a store in that state.
+			if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() && !a.keyStore.HasUndecodableRows() {
 				continue
 			}
 

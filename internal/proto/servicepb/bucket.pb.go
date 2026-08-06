@@ -143,6 +143,31 @@ const (
 	// a per-replica rewrite, and stale versions are reclaimed at boot by
 	// purgeOrphanVersions.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN CheckStoreErrorType = 20
+	// Emitted when the persisted signing-key projection (SubGlobSigningKey)
+	// diverges from the key set the checker re-derived from chain-bound
+	// RegisterSigningKey / RevokeSigningKey orders: a stored key the audit never
+	// registered, a registered key the store lost, altered public-key bytes, a
+	// changed parent_key_id, or a row too short to decode. Recovery loads this
+	// projection straight into the runtime key store, which admission consults to
+	// accept or reject every signed write, so a tampered row changes who may
+	// write. Row absence is the only representation of revocation, so a missing
+	// key and a resurrected key are both integrity failures.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH CheckStoreErrorType = 21
+	// Emitted when the persisted require-signatures flag (SubGlobSigningConfig)
+	// differs from the value re-derived from chain-bound SetSigningConfig orders.
+	// The flag is a single byte that gates signature enforcement cluster-wide, so
+	// flipping it silently disables request authenticity. An absent row decodes as
+	// false, which is also the checker's initial expected value.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH CheckStoreErrorType = 22
+	// Emitted when signing verification could not cover the whole history:
+	// signing state has no TTL, so keys registered before an archive boundary stay
+	// authoritative forever and must be re-derived from archived audit entries via
+	// cold storage. When cold storage is unavailable or a chapter cannot be read,
+	// the pass reports this rather than presenting a partial replay as a clean
+	// comparison. Unlike the baseline-seeded passes, signing expectations are
+	// never seeded from the live projection -- that would verify old,
+	// never-touched keys against a copy of themselves.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -169,29 +194,35 @@ var (
 		18: "CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH",
 		19: "CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH",
 		20: "CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN",
+		21: "CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH",
+		22: "CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH",
+		23: "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE",
 	}
 	CheckStoreErrorType_value = map[string]int32{
-		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                 0,
-		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":               1,
-		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":                2,
-		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":             3,
-		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH":           4,
-		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":              5,
-		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH": 6,
-		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":           7,
-		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":   8,
-		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":        9,
-		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":              10,
-		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                11,
-		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":     12,
-		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":             13,
-		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":       14,
-		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":              15,
-		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":            16,
-		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":          17,
-		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":           18,
-		"CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH":          19,
-		"CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN":          20,
+		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                     0,
+		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":                   1,
+		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":                    2,
+		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":                 3,
+		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH":               4,
+		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":                  5,
+		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH":     6,
+		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":               7,
+		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":       8,
+		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":            9,
+		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":                  10,
+		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                    11,
+		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":         12,
+		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":                 13,
+		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":           14,
+		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":                  15,
+		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":                16,
+		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":              17,
+		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":               18,
+		"CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH":              19,
+		"CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN":              20,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH":            21,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH":         22,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE": 23,
 	}
 )
 
@@ -9679,7 +9710,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xdb\a\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfc\b\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9702,7 +9733,10 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH\x10\x11\x12,\n" +
 	"(CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH\x10\x12\x12-\n" +
 	")CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH\x10\x13\x12-\n" +
-	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14*W\n" +
+	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
+	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
+	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
