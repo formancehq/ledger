@@ -168,8 +168,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	// included: the snapshot must carry a row for each touched account.
 	pcv := createdTx.GetTransaction().GetPostCommitVolumes()
 	require.NotNil(t, pcv, "mirror-created transaction must carry post-commit volumes")
-	require.Contains(t, pcv.GetVolumesByAccount(), "world")
-	require.Contains(t, pcv.GetVolumesByAccount(), "users:001")
+	require.NotNil(t, pcv.FindVolume("world", "USD/2", ""))
+	require.NotNil(t, pcv.FindVolume("users:001", "USD/2", ""))
 
 	// NextTransactionId should be past 42
 	require.NotNil(t, putBoundaries)
@@ -861,8 +861,8 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	// The compensating mirror transaction carries its own post-revert snapshot.
 	pcv := revertedTx.GetRevertTransaction().GetPostCommitVolumes()
 	require.NotNil(t, pcv, "mirror-reverted transaction must carry post-commit volumes")
-	require.Contains(t, pcv.GetVolumesByAccount(), "users:rare-account")
-	require.Contains(t, pcv.GetVolumesByAccount(), "world")
+	require.NotNil(t, pcv.FindVolume("users:rare-account", "USD/2", ""))
+	require.NotNil(t, pcv.FindVolume("world", "USD/2", ""))
 }
 
 func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {

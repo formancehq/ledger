@@ -49,23 +49,20 @@ func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
 	if pcv == nil {
 		return
 	}
-	for account, volumesByAssets := range pcv.GetVolumesByAccount() {
-		for _, entry := range volumesByAssets.GetVolumes() {
-			vol := entry.GetVolumes()
-			input, _ := new(big.Int).SetString(vol.GetInput(), 10)
-			output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
-			if input == nil {
-				input = big.NewInt(0)
-			}
-			if output == nil {
-				output = big.NewInt(0)
-			}
-			balance := new(big.Int).Sub(input, output)
-			CheckVolume(input, output, balance, details.With(Details{
-				"account": account,
-				"asset":   entry.GetAsset(),
-				"color":   entry.GetColor(),
-			}))
+	for _, row := range pcv.GetVolumes() {
+		input, _ := new(big.Int).SetString(row.GetInput(), 10)
+		output, _ := new(big.Int).SetString(row.GetOutput(), 10)
+		if input == nil {
+			input = big.NewInt(0)
 		}
+		if output == nil {
+			output = big.NewInt(0)
+		}
+		balance := new(big.Int).Sub(input, output)
+		CheckVolume(input, output, balance, details.With(Details{
+			"account": row.GetAccount(),
+			"asset":   row.GetAsset(),
+			"color":   row.GetColor(),
+		}))
 	}
 }

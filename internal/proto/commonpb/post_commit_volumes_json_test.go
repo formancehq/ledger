@@ -20,23 +20,19 @@ type volumeEntryJSON struct {
 // TestPostCommitVolumes_MarshalJSON_Flat guards the wire contract chosen for
 // the color-of-money model: the wire is a flat
 // `{"addr": [{asset, color, input, output}]}` map — one array of (asset,
-// color) tuples per account. protojson would otherwise emit the raw proto
-// wrappers (`{"volumesByAccount": {"addr": {"volumes": [...]}}}`) two levels
-// deep. This replaces the pre-color EN-1465 `{"addr": {"asset": Volumes}}`
-// map shape, which can no longer key a bucket uniquely once a color dimension
-// exists.
+// color) tuples per account. The persisted protobuf shape is instead a flat
+// `volumes` row list; this custom JSON view preserves the account-grouped REST
+// contract without materializing a grouped protobuf structure. This replaces
+// the pre-color EN-1465 `{"addr": {"asset": Volumes}}` map shape, which can no
+// longer key a bucket uniquely once a color dimension exists.
 func TestPostCommitVolumes_MarshalJSON_Flat(t *testing.T) {
 	t.Parallel()
 
 	pcv := &PostCommitVolumes{
-		VolumesByAccount: map[string]*VolumesByAssets{
-			"users:alice": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
-				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: "10", Output: "0"}},
-			}},
-			"world": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "0", Output: "100"}},
-			}},
+		Volumes: []*PostCommitVolume{
+			{Account: "users:alice", Asset: "USD/2", Color: "", Input: "100", Output: "40"},
+			{Account: "users:alice", Asset: "USD/2", Color: "GOLD", Input: "10", Output: "0"},
+			{Account: "world", Asset: "USD/2", Color: "", Input: "0", Output: "100"},
 		},
 	}
 
@@ -88,10 +84,8 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	t.Parallel()
 
 	pcv := &PostCommitVolumes{
-		VolumesByAccount: map[string]*VolumesByAssets{
-			"volumesByAccount": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
-			}},
+		Volumes: []*PostCommitVolume{
+			{Account: "volumesByAccount", Asset: "USD/2", Color: "", Input: "100", Output: "40"},
 		},
 	}
 

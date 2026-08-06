@@ -127,10 +127,23 @@ message VolumeEntry {
   Volumes volumes = 3;
 }
 
-// PostCommitVolumes represents volumes after commit, grouped by account.
-// Within each account, entries are flat-listed per (asset, color) tuple.
+// PostCommitVolume is one immutable post-commit volume row. Keeping the
+// account on the row avoids the map-entry + wrapper-message hierarchy on the
+// persisted hot path; API adapters regroup rows by account when rendering the
+// historical JSON shape.
+message PostCommitVolume {
+  string account = 1;
+  string asset = 2;
+  string color = 3;
+  string input = 4;
+  string output = 5;
+}
+
+// PostCommitVolumes represents volumes after commit as a deterministic flat
+// list sorted by (account, asset, color). The flat storage form substantially
+// reduces allocations while preserving one row per touched tuple.
 message PostCommitVolumes {
-  map<string, VolumesByAssets> volumes_by_account = 1;
+  repeated PostCommitVolume volumes = 1;
 }
 
 // ============================================================================

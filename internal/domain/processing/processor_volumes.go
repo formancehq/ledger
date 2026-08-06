@@ -5,84 +5,106 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// buildPostCommitVolumes computes the post-commit volumes for all
-// (account, asset, color) tuples involved in the given postings. It reads the
-// current volume state from the in-memory store (after postings have been
-// applied) and converts Known values into concrete Input/Output values as big
-// integer strings.
-//
-// The returned VolumesByAssets list is sorted by (asset, color) ascending so
-// the response is deterministic across reads.
-//
-// Reads go through readVolumeOrZero: a declared-but-absent key (domain.ErrNotFound)
-// is reported as a zero balance, while an admission-contract violation — notably
-// *state.ErrCoverageMiss (invariants #6/#9), impossible by design under a correct
-// preload — propagates verbatim so the audit chain records COVERAGE_MISS rather
-// than a storage fault (EN-1379). Any other error is wrapped as ErrStorageOperation.
-// Either way the order is rejected loudly (invariant #7) rather than returned to
-// the client as a silently truncated volume map (EN-1440). Two nodes must not emit
-// divergent PCV payloads for the same applied index, so a non-NotFound store error
-// is always surfaced. This mirrors applyPosting, which reads the same
-// source+destination keys.
-func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.Describable) {
-	type tuple struct {
-		account string
-		asset   string
-		color   string
+// postCommitVolumeAccumulator keeps the latest mutable volume produced while
+// postings are applied. It avoids reading the same coverage-gated cells again
+// solely to build the immutable transaction snapshot. A later posting touching
+// the same tuple replaces the pointer with that posting's newer cloned value.
+type postCommitVolumeAccumulator struct {
+	inline   [4]accumulatedPostCommitVolume
+	overflow []accumulatedPostCommitVolume
+	count    int
+	indexes  map[domain.VolumeKey]int
+}
+
+type accumulatedPostCommitVolume struct {
+	key    domain.VolumeKey
+	volume *raftcmdpb.VolumePair
+}
+
+func (a *postCommitVolumeAccumulator) init(postingCount int) {
+	expected := postingCount * 2
+	if expected > len(a.inline) {
+		a.overflow = make([]accumulatedPostCommitVolume, 0, expected-len(a.inline))
+	}
+}
+
+func (a *postCommitVolumeAccumulator) capture(key domain.VolumeKey, volume *raftcmdpb.VolumePair) {
+	if a == nil {
+		return
 	}
 
-	seen := make(map[tuple]struct{})
+	if a.indexes != nil {
+		if index, ok := a.indexes[key]; ok {
+			a.at(index).volume = volume
 
-	var tuples []tuple
-
-	add := func(t tuple) {
-		if _, ok := seen[t]; ok {
 			return
 		}
-		seen[t] = struct{}{}
-		tuples = append(tuples, t)
+	} else {
+		for i := range a.count {
+			entry := a.at(i)
+			if entry.key == key {
+				entry.volume = volume
+
+				return
+			}
+		}
+
+		if a.count == 8 {
+			a.indexes = make(map[domain.VolumeKey]int, a.count+1)
+			for i := range a.count {
+				a.indexes[a.at(i).key] = i
+			}
+		}
 	}
 
-	for _, p := range postings {
-		color := p.GetColor()
-		add(tuple{account: p.GetSource(), asset: p.GetAsset(), color: color})
-		add(tuple{account: p.GetDestination(), asset: p.GetAsset(), color: color})
+	entry := accumulatedPostCommitVolume{key: key, volume: volume}
+	if a.count < len(a.inline) {
+		a.inline[a.count] = entry
+	} else {
+		a.overflow = append(a.overflow, entry)
+	}
+	a.count++
+
+	if a.indexes != nil {
+		a.indexes[key] = a.count - 1
+	}
+}
+
+func (a *postCommitVolumeAccumulator) at(index int) *accumulatedPostCommitVolume {
+	if index < len(a.inline) {
+		return &a.inline[index]
 	}
 
-	volumesByAccount := make(map[string]*commonpb.VolumesByAssets, len(tuples))
+	return &a.overflow[index-len(a.inline)]
+}
 
+func (a *postCommitVolumeAccumulator) build() *commonpb.PostCommitVolumes {
+	rows := make([]*commonpb.PostCommitVolume, 0, a.count)
 	var scratch uint256.Int
 
-	for _, t := range tuples {
-		vol, err := readVolumeOrZero(s, domain.NewVolumeKey(ledgerName, t.account, t.asset, t.color))
-		if err != nil {
-			return nil, domain.StoreFailure("loading post-commit volume", err)
-		}
+	for i := range a.count {
+		accumulated := a.at(i)
+		key := accumulated.key
+		volume := accumulated.volume
+		volume.GetInput().IntoUint256(&scratch)
+		input := scratch.Dec()
+		volume.GetOutput().IntoUint256(&scratch)
+		output := scratch.Dec()
 
-		vol.GetInput().IntoUint256(&scratch)
-		inputStr := scratch.Dec()
-		vol.GetOutput().IntoUint256(&scratch)
-		outputStr := scratch.Dec()
-
-		byAssets, ok := volumesByAccount[t.account]
-		if !ok {
-			byAssets = &commonpb.VolumesByAssets{}
-			volumesByAccount[t.account] = byAssets
-		}
-		byAssets.Volumes = append(byAssets.Volumes, &commonpb.VolumeEntry{
-			Asset: t.asset,
-			Color: t.color,
-			Volumes: &commonpb.Volumes{
-				Input:  inputStr,
-				Output: outputStr,
-			},
+		rows = append(rows, &commonpb.PostCommitVolume{
+			Account: key.Account,
+			Asset:   key.Asset,
+			Color:   key.Color,
+			Input:   input,
+			Output:  output,
 		})
 	}
 
-	out := &commonpb.PostCommitVolumes{VolumesByAccount: volumesByAccount}
+	out := &commonpb.PostCommitVolumes{Volumes: rows}
 	out.SortVolumes()
 
-	return out, nil
+	return out
 }

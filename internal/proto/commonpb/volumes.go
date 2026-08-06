@@ -1,9 +1,11 @@
 package commonpb
 
 import (
+	"cmp"
 	"database/sql/driver"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -153,7 +155,30 @@ func (a *PostCommitVolumes) SortVolumes() {
 	if a == nil {
 		return
 	}
-	for _, vba := range a.GetVolumesByAccount() {
-		vba.SortVolumes()
+	slices.SortFunc(a.GetVolumes(), func(x, y *PostCommitVolume) int {
+		if c := cmp.Compare(x.GetAccount(), y.GetAccount()); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(x.GetAsset(), y.GetAsset()); c != 0 {
+			return c
+		}
+		return cmp.Compare(x.GetColor(), y.GetColor())
+	})
+}
+
+// FindVolume returns the immutable row for one (account, asset, color) tuple,
+// or nil when the tuple is absent. Snapshots are small and sorted, so a linear
+// lookup avoids allocating a temporary grouped map.
+func (a *PostCommitVolumes) FindVolume(account, asset, color string) *PostCommitVolume {
+	if a == nil {
+		return nil
 	}
+
+	for _, row := range a.GetVolumes() {
+		if row.GetAccount() == account && row.GetAsset() == asset && row.GetColor() == color {
+			return row
+		}
+	}
+
+	return nil
 }

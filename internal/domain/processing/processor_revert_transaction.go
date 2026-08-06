@@ -82,9 +82,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		}
 	}
 
+	var postCommit postCommitVolumeAccumulator
+	postCommit.init(len(revertPostings))
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		err := applyPosting(s, ledger, posting, order.GetForce(), ctx.AssetCache)
+		err := applyPosting(s, ledger, posting, order.GetForce(), ctx.AssetCache, &postCommit)
 		if err != nil {
 			return nil, err
 		}
@@ -136,11 +138,6 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// postings applied (before any proposal-level ephemeral purge). The
 	// compensating transaction carries its own post-revert snapshot; the
 	// original keeps its creation-time snapshot untouched.
-	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, revertPostings)
-	if pcvErr != nil {
-		return nil, pcvErr
-	}
-
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
@@ -153,7 +150,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 					InsertedAt:         s.GetDate().Mutate(),
 					UpdatedAt:          s.GetDate().Mutate(),
 					RevertsTransaction: order.GetTransactionId(),
-					PostCommitVolumes:  postCommitVolumes,
+					PostCommitVolumes:  postCommit.build(),
 				},
 			},
 		},

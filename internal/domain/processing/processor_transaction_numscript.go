@@ -129,6 +129,8 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
+	var postCommit postCommitVolumeAccumulator
+	postCommit.init(len(result.Postings))
 
 	var (
 		scratch    uint256.Int // reused across all postings
@@ -203,6 +205,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		sourceVol.GetOutput().SetFromUint256(&sum)
 		s.Volumes().Put(sourceKey, sourceVol)
+		postCommit.capture(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
 		destKey := domain.NewVolumeKey(ledgerName, posting.Destination, posting.Asset, posting.Color)
@@ -237,6 +240,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		destVol.GetInput().SetFromUint256(&sum)
 		s.Volumes().Put(destKey, destVol)
+		postCommit.capture(destKey, destVol)
 	}
 
 	// Collect account metadata from script execution for return. The caller
@@ -316,6 +320,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		Postings:            postings,
 		TransactionMetadata: txMeta,
 		AccountsMetadata:    accountsMeta,
+		PostCommitVolumes:   postCommit.build(),
 	}, nil
 }
 

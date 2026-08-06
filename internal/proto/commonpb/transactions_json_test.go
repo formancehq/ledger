@@ -75,10 +75,8 @@ func TestTransaction_MarshalJSON_PostCommitVolumes(t *testing.T) {
 
 		data, err := (&Transaction{
 			Id: 1,
-			PostCommitVolumes: &PostCommitVolumes{VolumesByAccount: map[string]*VolumesByAssets{
-				"users:alice": {Volumes: []*VolumeEntry{
-					{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "0", Output: "1000"}},
-				}},
+			PostCommitVolumes: &PostCommitVolumes{Volumes: []*PostCommitVolume{
+				{Account: "users:alice", Asset: "USD/2", Color: "", Input: "0", Output: "1000"},
 			}},
 		}).MarshalJSON()
 		require.NoError(t, err)

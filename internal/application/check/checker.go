@@ -2224,17 +2224,15 @@ func compareTransactionPostCommitVolumes(
 	// Index the stored snapshot, flagging duplicate rows for the same tuple.
 	storedByTuple := make(map[tupleKey]*commonpb.Volumes)
 
-	for account, byAssets := range tx.GetPostCommitVolumes().GetVolumesByAccount() {
-		for _, entry := range byAssets.GetVolumes() {
-			k := tupleKey{account: account, asset: entry.GetAsset(), color: entry.GetColor()}
-			if _, dup := storedByTuple[k]; dup {
-				emit(k.account, k.asset, k.color, "has a duplicate row")
+	for _, row := range tx.GetPostCommitVolumes().GetVolumes() {
+		k := tupleKey{account: row.GetAccount(), asset: row.GetAsset(), color: row.GetColor()}
+		if _, dup := storedByTuple[k]; dup {
+			emit(k.account, k.asset, k.color, "has a duplicate row")
 
-				continue
-			}
-
-			storedByTuple[k] = entry.GetVolumes()
+			continue
 		}
+
+		storedByTuple[k] = &commonpb.Volumes{Input: row.GetInput(), Output: row.GetOutput()}
 	}
 
 	// Every touched tuple must be present and equal to the replayed volume.

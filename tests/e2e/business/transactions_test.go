@@ -659,12 +659,12 @@ var _ = Describe("Transactions", Ordered, func() {
 		// transaction at the given log index. Post-commit volumes are part of
 		// every persisted transaction, so this is never nil for a successful
 		// create.
-		pcvOf := func(resp *servicepb.ApplyResponse, logIdx int) map[string]*commonpb.VolumesByAssets {
+		pcvOf := func(resp *servicepb.ApplyResponse, logIdx int) *commonpb.PostCommitVolumes {
 			createdTx := resp.Logs[logIdx].Payload.GetApply().Log.Data.GetCreatedTransaction()
 			Expect(createdTx.GetTransaction().GetPostCommitVolumes()).NotTo(BeNil(),
 				"every created transaction must carry post-commit volumes")
 
-			return createdTx.GetTransaction().GetPostCommitVolumes().GetVolumesByAccount()
+			return createdTx.GetTransaction().GetPostCommitVolumes()
 		}
 
 		BeforeAll(func() {
@@ -679,14 +679,14 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := pcvOf(resp, 0)
-			Expect(pcv).To(HaveKey("world"))
-			Expect(pcv).To(HaveKey("ev-simple"))
+			Expect(pcv.FindVolume("world", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-simple", "USD", "")).NotTo(BeNil())
 
 			// world is shared across tests in this Ordered context, so only check presence
-			Expect(pcv["world"].FindVolume("USD", "")).NotTo(BeNil(), "expected USD entry on world")
+			Expect(pcv.FindVolume("world", "USD", "")).NotTo(BeNil(), "expected USD entry on world")
 
 			// ev-simple is fresh — exact values are predictable
-			evSimple := pcv["ev-simple"].FindVolume("USD", "")
+			evSimple := pcv.FindVolume("ev-simple", "USD", "")
 			Expect(evSimple).NotTo(BeNil(), "expected USD entry on ev-simple")
 			Expect(evSimple.GetInput()).To(Equal("100"))
 			Expect(evSimple.GetOutput()).To(Equal("0"))
@@ -700,14 +700,14 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := pcvOf(resp, 0)
-			Expect(pcv).To(HaveKey("world"))
-			Expect(pcv).To(HaveKey("ev-multi-a"))
-			Expect(pcv).To(HaveKey("ev-multi-b"))
+			Expect(pcv.FindVolume("world", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-multi-a", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-multi-b", "USD", "")).NotTo(BeNil())
 
-			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Output).To(Equal("0"))
-			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Input).To(Equal("200"))
-			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv.FindVolume("ev-multi-a", "USD", "").Input).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-multi-a", "USD", "").Output).To(Equal("0"))
+			Expect(pcv.FindVolume("ev-multi-b", "USD", "").Input).To(Equal("200"))
+			Expect(pcv.FindVolume("ev-multi-b", "USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple assets", func() {
@@ -718,11 +718,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := pcvOf(resp, 0)
-			Expect(pcv).To(HaveKey("ev-multi-asset"))
-
-			vba := pcv["ev-multi-asset"]
-			usd := vba.FindVolume("USD", "")
-			eur := vba.FindVolume("EUR", "")
+			usd := pcv.FindVolume("ev-multi-asset", "USD", "")
+			eur := pcv.FindVolume("ev-multi-asset", "EUR", "")
 			Expect(usd).NotTo(BeNil(), "expected USD entry on ev-multi-asset")
 			Expect(eur).NotTo(BeNil(), "expected EUR entry on ev-multi-asset")
 			Expect(usd.GetInput()).To(Equal("100"))
@@ -738,8 +735,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv1 := pcvOf(resp1, 0)
-			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
-			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv1.FindVolume("ev-cumul", "USD", "").Input).To(Equal("500"))
+			Expect(pcv1.FindVolume("ev-cumul", "USD", "").Output).To(Equal("0"))
 
 			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
@@ -747,10 +744,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv2 := pcvOf(resp2, 0)
-			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
-			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Output).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Input).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv2.FindVolume("ev-cumul", "USD", "").Input).To(Equal("500"))
+			Expect(pcv2.FindVolume("ev-cumul", "USD", "").Output).To(Equal("200"))
+			Expect(pcv2.FindVolume("ev-cumul-dest", "USD", "").Input).To(Equal("200"))
+			Expect(pcv2.FindVolume("ev-cumul-dest", "USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should include post-commit volumes on a force transaction", func() {
@@ -762,13 +759,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := pcvOf(resp, 0)
-			Expect(pcv).To(HaveKey("ev-force-src"))
-			Expect(pcv).To(HaveKey("ev-force-dst"))
+			Expect(pcv.FindVolume("ev-force-src", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-force-dst", "USD", "")).NotTo(BeNil())
 
-			Expect(pcv["ev-force-src"].FindVolume("USD", "").Input).To(Equal("0"))
-			Expect(pcv["ev-force-src"].FindVolume("USD", "").Output).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv.FindVolume("ev-force-src", "USD", "").Input).To(Equal("0"))
+			Expect(pcv.FindVolume("ev-force-src", "USD", "").Output).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-force-dst", "USD", "").Input).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-force-dst", "USD", "").Output).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes with Numscript transaction", func() {
@@ -782,10 +779,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv := pcvOf(resp, 0)
-			Expect(pcv).To(HaveKey("world"))
-			Expect(pcv).To(HaveKey("user:001"))
-			Expect(pcv["user:001"].FindVolume("USD/2", "").Input).To(Equal("100"))
-			Expect(pcv["user:001"].FindVolume("USD/2", "").Output).To(Equal("0"))
+			Expect(pcv.FindVolume("world", "USD/2", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("user:001", "USD/2", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("user:001", "USD/2", "").Input).To(Equal("100"))
+			Expect(pcv.FindVolume("user:001", "USD/2", "").Output).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes for every transaction in a bulk request", func() {
@@ -798,8 +795,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
 
-			Expect(pcvOf(resp, 0)["ev-bulk-a"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcvOf(resp, 1)["ev-bulk-b"].FindVolume("USD", "").Input).To(Equal("200"))
+			Expect(pcvOf(resp, 0).FindVolume("ev-bulk-a", "USD", "").Input).To(Equal("100"))
+			Expect(pcvOf(resp, 1).FindVolume("ev-bulk-b", "USD", "").Input).To(Equal("200"))
 		})
 
 		It("Should carry the same snapshot on the unitary get and list reads", func() {
@@ -809,7 +806,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetId()
-			createSnapshot := pcvOf(resp, 0)["ev-read"].FindVolume("GBP", "")
+			createSnapshot := pcvOf(resp, 0).FindVolume("ev-read", "GBP", "")
 			Expect(createSnapshot.GetInput()).To(Equal("300"))
 
 			// Unitary get returns the stored historical snapshot verbatim.
@@ -819,10 +816,10 @@ var _ = Describe("Transactions", Ordered, func() {
 				tx := got.GetTransaction()
 				g.Expect(tx.GetPostCommitVolumes()).NotTo(BeNil())
 
-				vba := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"]
-				g.Expect(vba).NotTo(BeNil())
-				g.Expect(vba.FindVolume("GBP", "").GetInput()).To(Equal("300"))
-				g.Expect(vba.FindVolume("GBP", "").GetOutput()).To(Equal("0"))
+				row := tx.GetPostCommitVolumes().FindVolume("ev-read", "GBP", "")
+				g.Expect(row).NotTo(BeNil())
+				g.Expect(row.GetInput()).To(Equal("300"))
+				g.Expect(row.GetOutput()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// List returns the same immutable snapshot.
@@ -837,7 +834,7 @@ var _ = Describe("Transactions", Ordered, func() {
 					}
 				}
 				g.Expect(found).NotTo(BeNil())
-				g.Expect(found.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"].FindVolume("GBP", "").GetInput()).To(Equal("300"))
+				g.Expect(found.GetPostCommitVolumes().FindVolume("ev-read", "GBP", "").GetInput()).To(Equal("300"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
