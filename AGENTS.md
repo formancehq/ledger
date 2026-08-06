@@ -82,6 +82,8 @@ Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Cont
 
 **CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields. Do not add `reserved` declarations for removed fields — see [Release Status](#release-status--v3-is-unreleased).
 
+**Before renumbering, audit the hand-rolled wire sites** — grep the read side (`protowire.Consume*`) as well as the write side (`protowireutil` / `AppendTag`). `internal/application/indexbuilder/protowire_postings.go` hardcodes field numbers when decoding `Log` / `LogPayload` / `ApplyLedgerLog` / `LedgerLog` / `Transaction` / `TouchedVolume` / `Posting`, and a stale literal there fails **silently**: the parser skips the unrecognised field and yields empty postings, with nothing failing at compile time. `internal/infra/plan/predicted_index.go` reads its field number from the descriptor so the number self-heals, but its `fixed64` wire type is hardcoded. See [protobuf.md](docs/technical/contributing/protobuf.md#renumbering-audit-the-hand-rolled-wire-sites-first).
+
 See [docs/technical/contributing/protobuf.md](docs/technical/contributing/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
 
 ## Conventions
