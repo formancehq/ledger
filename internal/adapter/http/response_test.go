@@ -34,6 +34,34 @@ func TestWriteJSONResponse(t *testing.T) {
 	require.Equal(t, "value", resp["key"])
 }
 
+func TestWriteBufferedJSONResponse(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		writeBufferedJSONResponse(w, http.StatusCreated, map[string]string{"key": "value"})
+
+		require.Equal(t, http.StatusCreated, w.Code)
+		require.Equal(t, "application/json", w.Header().Get("Content-Type"))
+		resp := decodeResponse[map[string]string](t, w)
+		require.Equal(t, "value", resp["key"])
+	})
+
+	t.Run("marshal failure becomes a clean 500", func(t *testing.T) {
+		t.Parallel()
+
+		w := httptest.NewRecorder()
+		writeBufferedJSONResponse(w, http.StatusOK, make(chan int))
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		resp := decodeResponse[ErrorResponse](t, w)
+		require.Equal(t, "INTERNAL_ERROR", resp.ErrorCode)
+		require.Equal(t, "failed to marshal response", resp.ErrorMessage)
+	})
+}
+
 func TestWriteOK(t *testing.T) {
 	t.Parallel()
 

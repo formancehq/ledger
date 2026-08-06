@@ -316,7 +316,7 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	}
 
 	response := bulkResponse{Data: apiResults}
-	writeJSONResponse(w, statusCode, response)
+	writeBufferedJSONResponse(w, statusCode, response)
 }
 
 // perElementStatus returns the HTTP status a given per-element error would
