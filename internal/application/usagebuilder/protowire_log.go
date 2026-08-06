@@ -26,7 +26,7 @@ func parseUsageLog(data []byte, out *logVolumeAnnotations) error {
 
 	payload, err := usageScanBytesField(data, 2)
 	if err != nil {
-		return fmt.Errorf("Log: %w", err)
+		return fmt.Errorf("log: %w", err)
 	}
 	if payload == nil {
 		return nil
@@ -34,7 +34,7 @@ func parseUsageLog(data []byte, out *logVolumeAnnotations) error {
 
 	apply, err := usageScanOneofBytesField(payload, 3, usageIsLogPayloadField, "LogPayload")
 	if err != nil {
-		return fmt.Errorf("LogPayload: %w", err)
+		return fmt.Errorf("log payload: %w", err)
 	}
 	if apply == nil {
 		return nil
@@ -42,7 +42,7 @@ func parseUsageLog(data []byte, out *logVolumeAnnotations) error {
 
 	ledgerLog, err := usageScanBytesField(apply, 2)
 	if err != nil {
-		return fmt.Errorf("ApplyLedgerLog: %w", err)
+		return fmt.Errorf("apply ledger log: %w", err)
 	}
 	if ledgerLog == nil {
 		return nil
@@ -138,13 +138,13 @@ func parseUsageLog(data []byte, out *logVolumeAnnotations) error {
 				out.isCreatedTx = true
 				transaction, err = usageScanBytesField(value, 1)
 				if err != nil {
-					return fmt.Errorf("CreatedTransaction: %w", err)
+					return fmt.Errorf("created transaction: %w", err)
 				}
 			case 2:
 				out.isRevertedTx = true
 				transaction, err = usageScanBytesField(value, 2)
 				if err != nil {
-					return fmt.Errorf("RevertedTransaction: %w", err)
+					return fmt.Errorf("reverted transaction: %w", err)
 				}
 			}
 
