@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -74,30 +76,22 @@ func RunBackup(
 		_ = store.RemoveTemporaryCheckpoint(checkpointName)
 	}()
 
-	// 2. List files in the checkpoint, hashing each so its stored key is
-	// content-addressed (see CheckpointFile / CheckpointFileKey). The hash both
-	// makes the object immutable per content and lets us skip re-uploading files
-	// already present under the same key.
-	checkpointFiles, err := listCheckpointFiles(bucketID, checkpointPath)
-	if err != nil {
-		return nil, fmt.Errorf("listing checkpoint files: %w", err)
-	}
-
-	// 3. Read existing manifest. It is used for two things: logging the upload
-	// delta, and classifying which objects the post-manifest prune (step 8)
-	// removes — objects the previous manifest referenced are stale checkpoint
-	// files this run superseded (normal churn, counted as FilesDeleted), objects
-	// it did not are true orphans leaked by a crashed run (OrphansDeleted).
-	// Correctness of the upload no longer depends on diffing sizes — the
-	// content-addressed key is the diff.
+	// 2. Read the existing manifest FIRST. It is used for three things: reusing
+	// prior per-file hashes so unchanged immutable files are not re-hashed
+	// (step 4), logging the upload delta, and classifying which objects the
+	// post-manifest prune (step 8) removes — objects the previous manifest
+	// referenced are stale checkpoint files this run superseded (normal churn,
+	// counted as FilesDeleted), objects it did not are true orphans leaked by a
+	// crashed run (OrphansDeleted). Correctness of the upload no longer depends
+	// on diffing sizes — the content-addressed key is the diff.
 	// A legacy pre-content-addressing manifest is NOT fatal here: a full backup
 	// overwrites the manifest wholesale and never diffs against it, so retaking a
 	// full backup with the current binary is exactly the documented recovery path
 	// out of a legacy manifest. Treat it as a warning and proceed with no
 	// previous-manifest keys (so its objects, which live under bare data/<name>
-	// keys, all classify as orphans on prune). (The incremental path, which does
-	// depend on the existing manifest, keeps the error fatal — see
-	// RunIncrementalBackup.)
+	// keys, all classify as orphans on prune, and no hash reuse triggers). (The
+	// incremental path, which depends on the existing manifest, keeps the error
+	// fatal — see RunIncrementalBackup.)
 	prevManifest, err := ReadManifestOrEmpty(ctx, logger, storage, manifestKey)
 	if err != nil {
 		if errors.Is(err, ErrLegacyManifestFormat) {
@@ -113,23 +107,32 @@ func RunBackup(
 	prevCheckpointKeys := checkpointKeySet(prevManifest)
 	prevExportKeys := exportKeySet(prevManifest)
 
-	// 4. Determine which files still need uploading. A file whose
-	// content-addressed key already exists on storage is byte-identical to what
-	// is already there (that is what content-addressing guarantees), so it is
-	// skipped — this is the incremental dedup, now keyed by content rather than
-	// by name+size. Objects the new manifest will NOT reference are left in
-	// place and removed by the post-manifest orphan prune (step 8).
-	//
-	// Existence is resolved with a single List of the checkpoint prefix rather
-	// than one GetObject/HEAD per file: a full backup hashes hundreds/thousands
-	// of SSTs and a per-file remote round trip would dominate the wall clock.
-	// The List is done once and every computed content-addressed key is compared
-	// against the returned set locally.
+	// 3. List the objects already present under the checkpoint prefix with a
+	// single List (not a HEAD per file: a full backup has thousands of SSTs and
+	// a per-file round trip would dominate wall clock). This set is used twice:
+	// as the guard that lets a prior file's hash be reused (a reused key must
+	// still be present remotely — see listCheckpointFiles), and as the upload
+	// dedup (a file whose content-addressed key already exists is byte-identical
+	// and skipped).
 	existingKeys, err := listKeySet(ctx, storage, CheckpointPrefix(bucketID))
 	if err != nil {
 		return nil, fmt.Errorf("listing existing checkpoint objects: %w", err)
 	}
 
+	// 4. Enumerate the checkpoint files, computing each file's content-addressed
+	// key. Unchanged immutable files (.sst/.blob still present remotely under
+	// the prior manifest's key with the same size+mtime) reuse that key instead
+	// of being re-hashed — the dominant cost on a large store where almost every
+	// SST is unchanged between runs.
+	checkpointFiles, err := listCheckpointFiles(ctx, bucketID, checkpointPath, prevManifest, existingKeys)
+	if err != nil {
+		return nil, fmt.Errorf("listing checkpoint files: %w", err)
+	}
+
+	// 5. Determine which files still need uploading — those whose
+	// content-addressed key is not already on storage. Objects the new manifest
+	// will NOT reference are left in place and removed by the post-manifest
+	// orphan prune (step 8).
 	var toUpload []string
 
 	for filename, cf := range checkpointFiles {
@@ -157,7 +160,7 @@ func RunBackup(
 	// restorable — there is never a window where the current manifest points at
 	// a half-written or deleted object.
 	for _, filename := range toUpload {
-		if err := uploadFile(ctx, storage, checkpointPath, checkpointFiles[filename].Key, filename); err != nil {
+		if err := uploadFile(ctx, logger, storage, checkpointPath, checkpointFiles[filename].Key, filename); err != nil {
 			return nil, err
 		}
 	}
@@ -209,7 +212,7 @@ func RunBackup(
 		Exports: nil,
 	}
 
-	if err := WriteManifest(ctx, storage, manifestKey, newManifest); err != nil {
+	if err := writeManifestWithRetry(ctx, storage, manifestKey, newManifest, logger); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
@@ -494,7 +497,7 @@ func RunIncrementalBackup(
 	// 6. Export new log entries
 	if currentLogSeq > afterLogSeq {
 		segs, count, err := exportEntries(
-			ctx, storage, readHandle,
+			ctx, logger, storage, readHandle,
 			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq, "log",
 			func(part int) string { return ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq, part) },
 			maxSegmentBytes,
@@ -511,7 +514,7 @@ func RunIncrementalBackup(
 	// 7. Export new audit entries
 	if currentAuditSeq > afterAuditSeq {
 		segs, count, err := exportEntries(
-			ctx, storage, readHandle,
+			ctx, logger, storage, readHandle,
 			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq, "audit",
 			func(part int) string { return ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part) },
 			maxSegmentBytes,
@@ -537,7 +540,7 @@ func RunIncrementalBackup(
 		// storage (subsequent ApplyExports would fail on GetFile). Same
 		// guard as the appliedProposal branch below.
 		itemSegs, _, err := exportEntries(
-			ctx, storage, readHandle,
+			ctx, logger, storage, readHandle,
 			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
 			func(part int) string {
 				return ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
@@ -558,7 +561,7 @@ func RunIncrementalBackup(
 		// referencing a key that does not exist on storage, or a subsequent
 		// ApplyExports will fail on GetFile.
 		appliedSegs, _, err := exportEntries(
-			ctx, storage, readHandle,
+			ctx, logger, storage, readHandle,
 			dal.ZoneCold, dal.SubColdAppliedProposal, afterAuditSeq, currentAuditSeq, "appliedProposal",
 			func(part int) string {
 				return ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
@@ -574,7 +577,7 @@ func RunIncrementalBackup(
 	}
 
 	// 8. Write updated manifest
-	if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
+	if err := writeManifestWithRetry(ctx, storage, manifestKey, manifest, logger); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}
 
@@ -623,6 +626,7 @@ const maxExportSegmentBytes = 4 << 30 // 4 GiB
 // memory stays bounded regardless of range size.
 func exportEntries(
 	ctx context.Context,
+	logger logging.Logger,
 	storage Storage,
 	reader dal.PebbleReader,
 	zone, sub byte,
@@ -666,7 +670,7 @@ func exportEntries(
 		startSeq := seqFromKey(iter.Key())
 		key := keyFn(part)
 
-		endSeqPart, count, size, err := uploadSegmentPart(ctx, storage, key, iter, maxSegmentBytes)
+		endSeqPart, count, size, err := uploadSegmentPart(ctx, logger, storage, key, iter, maxSegmentBytes)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -693,12 +697,60 @@ func exportEntries(
 }
 
 // uploadSegmentPart streams one KV segment from the iterator's current position
-// through an io.Pipe into storage.PutFile. It writes entries until the segment
-// reaches maxSegmentBytes at a sequence boundary or the iterator is exhausted,
-// leaving the iterator positioned at the first entry of the next segment (or
-// invalid). It returns the last sequence written, the entry count, and the
-// segment's on-storage byte size.
+// through an io.Pipe into storage.PutFile, with bounded upload retry. It writes
+// entries until the segment reaches maxSegmentBytes at a sequence boundary or
+// the iterator is exhausted, leaving the iterator positioned at the first entry
+// of the next segment (or invalid). It returns the last sequence written, the
+// entry count, and the segment's on-storage byte size.
+//
+// Retry replays the segment from its start key: a pipe body is single-use, so a
+// failed upload must re-stream. The iterator is re-seeked at the top of each
+// attempt, which is safe because streamSegment joins its writer goroutine before
+// returning — Pebble iterators are not safe for concurrent use.
 func uploadSegmentPart(
+	ctx context.Context,
+	logger logging.Logger,
+	storage Storage,
+	key string,
+	iter *pebble.Iterator,
+	maxSegmentBytes int64,
+) (endSeq, count uint64, size int64, err error) {
+	// iter is Valid here (exportEntries guarantees it). Capture the segment's
+	// first key so each retry attempt can replay the same range.
+	startKey := bytes.Clone(iter.Key())
+
+	var (
+		endSeqOut, countOut uint64
+		sizeOut             int64
+	)
+
+	retryErr := retryUpload(ctx, key, logger, func() error {
+		iter.SeekGE(startKey)
+		if err := iter.Error(); err != nil {
+			return fmt.Errorf("seeking segment start: %w", err)
+		}
+
+		if !iter.Valid() || !bytes.Equal(iter.Key(), startKey) {
+			return fmt.Errorf("invariant: iterator lost segment start on retry of %s", key)
+		}
+
+		e, c, s, streamErr := streamSegment(ctx, storage, key, iter, maxSegmentBytes)
+		endSeqOut, countOut, sizeOut = e, c, s
+
+		return streamErr
+	})
+	if retryErr != nil {
+		return 0, 0, 0, retryErr
+	}
+
+	return endSeqOut, countOut, sizeOut, nil
+}
+
+// streamSegment performs one attempt of uploadSegmentPart: it streams KV
+// entries from the iterator's current position through an io.Pipe into
+// storage.PutFile, and joins the writer goroutine before returning so the
+// iterator is safe to re-seek and reuse afterwards.
+func streamSegment(
 	ctx context.Context,
 	storage Storage,
 	key string,
@@ -802,24 +854,25 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filename string) error {
+func uploadFile(ctx context.Context, logger logging.Logger, storage Storage, checkpointPath, key, filename string) error {
 	localPath := filepath.Join(checkpointPath, filepath.FromSlash(filename))
 
-	file, err := os.Open(localPath)
+	// Stat once for the size hint. The body itself is (re-)opened per attempt
+	// by putWithRetry so a retried upload always streams from the start of the
+	// file — an *os.File consumed by a failed multipart upload is single-use.
+	info, err := os.Stat(localPath)
 	if err != nil {
-		return fmt.Errorf("opening %s for upload: %w", filename, err)
-	}
-
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-
 		return fmt.Errorf("stat %s: %w", filename, err)
 	}
 
-	err = storage.PutFile(ctx, key, file, info.Size())
-	_ = file.Close()
+	err = putWithRetry(ctx, storage, key, info.Size(), logger, func() (io.Reader, func(), error) {
+		f, openErr := os.Open(localPath)
+		if openErr != nil {
+			return nil, func() {}, fmt.Errorf("opening %s for upload: %w", filename, openErr)
+		}
 
+		return f, func() { _ = f.Close() }, nil
+	})
 	if err != nil {
 		return fmt.Errorf("uploading %s: %w", filename, err)
 	}
@@ -828,16 +881,28 @@ func uploadFile(ctx context.Context, storage Storage, checkpointPath, key, filen
 }
 
 // listCheckpointFiles walks the checkpoint directory and returns, per local
-// filename, its size and content-addressed storage key. Each file is hashed
-// (sha256 over its bytes) so its key embeds the content: a file whose bytes
-// change between checkpoints — notably Pebble's same-named MANIFEST-NNNNNN that
-// grows in place — maps to a different key and is uploaded as a new object
+// filename, its size, mtime, and content-addressed storage key. A file's key
+// embeds a sha256 of its bytes so it is immutable per content: a file whose
+// bytes change between checkpoints — notably Pebble's same-named MANIFEST-NNNNNN
+// that grows in place — maps to a different key and is uploaded as a new object
 // instead of overwriting the one the currently published manifest references.
-func listCheckpointFiles(bucketID, dir string) (map[string]CheckpointFile, error) {
+//
+// Hashing every file is the dominant cost on a large store, so an unchanged
+// immutable file (.sst/.blob still present remotely under the prior manifest's
+// key with the same size+mtime) reuses that key instead of being re-hashed —
+// see reusePriorKey. prev/existingKeys may be empty (first backup, legacy
+// manifest), in which case every file is hashed.
+func listCheckpointFiles(ctx context.Context, bucketID, dir string, prev *Manifest, existingKeys map[string]struct{}) (map[string]CheckpointFile, error) {
 	files := make(map[string]CheckpointFile)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			return err
+		}
+
+		// Abort promptly on cancellation: hashing a multi-TiB store is an
+		// otherwise-uninterruptible phase that holds the destination lock.
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 
@@ -850,16 +915,28 @@ func listCheckpointFiles(bucketID, dir string) (map[string]CheckpointFile, error
 			return err
 		}
 
-		hash, err := hashFile(path)
+		// Normalize to forward slashes for consistent keys across platforms.
+		name := filepath.ToSlash(relPath)
+
+		if key, ok := reusePriorKey(name, info, prev, existingKeys); ok {
+			files[name] = CheckpointFile{
+				Size:            info.Size(),
+				Key:             key,
+				ModTimeUnixNano: info.ModTime().UnixNano(),
+			}
+
+			return nil
+		}
+
+		hash, err := hashFileFn(ctx, path)
 		if err != nil {
 			return fmt.Errorf("hashing %s: %w", relPath, err)
 		}
 
-		// Normalize to forward slashes for consistent keys across platforms.
-		name := filepath.ToSlash(relPath)
 		files[name] = CheckpointFile{
-			Size: info.Size(),
-			Key:  CheckpointFileKey(bucketID, name, hash),
+			Size:            info.Size(),
+			Key:             CheckpointFileKey(bucketID, name, hash),
+			ModTimeUnixNano: info.ModTime().UnixNano(),
 		}
 
 		return nil
@@ -868,9 +945,61 @@ func listCheckpointFiles(bucketID, dir string) (map[string]CheckpointFile, error
 	return files, err
 }
 
+// reusePriorKey reports whether name's prior content-addressed key can be
+// reused (skipping the sha256 re-hash), returning it when so. Reuse is sound
+// only for a file byte-identical to the previous backup, which requires ALL of:
+//
+//   - immutable-by-name: a Pebble .sst or .blob, never rewritten in place and
+//     whose file number is never reused within a store lineage. Metadata files
+//     (MANIFEST-*, OPTIONS-*, CURRENT, marker.*) change under a stable name and
+//     are always re-hashed;
+//   - the previous manifest recorded the same name with the same size AND the
+//     same mtime. mtime is the lineage discriminator: RestoreCheckpoint swaps in
+//     freshly-written files, so a restored file with a colliding number+size
+//     gets a new mtime and is re-hashed rather than falsely reused;
+//   - the reused key is still present on storage. Otherwise a missing object
+//     would be re-uploaded under a stale hash-bearing key that no longer matches
+//     current bytes, corrupting content-addressing — fall through to a re-hash.
+func reusePriorKey(name string, info os.FileInfo, prev *Manifest, existingKeys map[string]struct{}) (string, bool) {
+	if prev == nil || prev.Checkpoint == nil {
+		return "", false
+	}
+
+	if !isImmutableCheckpointFile(name) {
+		return "", false
+	}
+
+	pf, ok := prev.Checkpoint.Files[name]
+	if !ok {
+		return "", false
+	}
+
+	if pf.Size != info.Size() || pf.ModTimeUnixNano != info.ModTime().UnixNano() {
+		return "", false
+	}
+
+	if _, present := existingKeys[pf.Key]; !present {
+		return "", false
+	}
+
+	return pf.Key, true
+}
+
+// isImmutableCheckpointFile reports whether a checkpoint file is one Pebble
+// never mutates in place (an SST or a value-separation blob), and is therefore
+// safe to identify by name+size+mtime for hash reuse.
+func isImmutableCheckpointFile(name string) bool {
+	return strings.HasSuffix(name, ".sst") || strings.HasSuffix(name, ".blob")
+}
+
+// hashFileFn is the hasher listCheckpointFiles uses, indirected through a
+// package variable so tests can count invocations to assert re-hash skipping.
+var hashFileFn = hashFile
+
 // hashFile returns the hex-encoded sha256 of a file's contents, streamed so
-// memory stays bounded regardless of file size.
-func hashFile(path string) (string, error) {
+// memory stays bounded regardless of file size. The read is wrapped so a long
+// hash of a multi-GB file aborts promptly on context cancellation.
+func hashFile(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -879,9 +1008,24 @@ func hashFile(path string) (string, error) {
 	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, &ctxReader{ctx: ctx, r: f}); err != nil {
 		return "", err
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// ctxReader aborts a streaming read when ctx is cancelled: io.Copy would
+// otherwise run a multi-GB hash to completion, ignoring a cancelled backup.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	return c.r.Read(p)
 }

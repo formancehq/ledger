@@ -39,6 +39,16 @@ type CheckpointManifest struct {
 type CheckpointFile struct {
 	Size int64  `json:"size"`
 	Key  string `json:"key"`
+	// ModTimeUnixNano is the checkpoint file's modification time (unix nanos).
+	// It lets a later backup skip re-hashing an unchanged immutable file
+	// (.sst/.blob): if the same local name still has the same size and mtime,
+	// the content is byte-identical within the store lineage, so the prior
+	// content-addressed Key is reused as-is. mtime doubles as the lineage
+	// discriminator — RestoreCheckpoint writes fresh files, so a restored file
+	// with a colliding number+size gets a new mtime and is correctly re-hashed.
+	// Zero on manifests written before this field existed (reuse then never
+	// triggers → one full re-hash, then steady state).
+	ModTimeUnixNano int64 `json:"modTimeUnixNano"`
 }
 
 // ExportSegment describes a single incremental export segment stored on S3.
