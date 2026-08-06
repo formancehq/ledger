@@ -105,22 +105,26 @@ func newBlockedFilterOptimized(capacity uint64, fpRate float64) *blockedFilter {
 	return newBlockedFilter(nbits, nhashes)
 }
 
-// Add inserts a key with hash value h and returns the index of the touched
-// block. Safe to call concurrently with Has (lock-free atomics), but only
-// from a single writer goroutine.
-func (f *blockedFilter) Add(h uint64) uint32 {
+// Add inserts a key with hash value h and returns the touched block plus
+// whether at least one bit changed. Safe to call concurrently with Has
+// (lock-free atomics), but only from a single writer goroutine.
+func (f *blockedFilter) Add(h uint64) (uint32, bool) {
 	h1, h2 := uint32(h>>32), uint32(h)
 	idx := reducerange(h2, uint32(len(f.blocks)))
 	b := &f.blocks[idx]
+	changed := false
 
 	for i := 1; i < f.k; i++ {
 		h1, h2 = doublehash(h1, h2, i)
 
 		bit := uint32(1) << (h1 % wordSize)
-		atomic.OrUint32(&b[(h1/wordSize)%blockWords], bit)
+		old := atomic.OrUint32(&b[(h1/wordSize)%blockWords], bit)
+		if old&bit == 0 {
+			changed = true
+		}
 	}
 
-	return idx
+	return idx, changed
 }
 
 // Has reports whether a key with hash value h might be in the set.

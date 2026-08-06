@@ -1480,7 +1480,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	perOrder := make([]*plan.Coverage, len(orders))
 
 	for orderIdx, order := range orders {
-		p := plan.NewCoverage()
+		p := plan.NewCoverageWithHint(preloadCoverageHint(order))
 
 		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_LedgerScoped:
@@ -1494,6 +1494,32 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	}
 
 	return aggregate, perOrder, nil
+}
+
+// preloadCoverageHint identifies the common large native-posting shape before
+// extraction starts. It lets Coverage allocate its grouped representation
+// directly when ledger + boundary + source/destination volume keys cannot fit
+// inline. Script-derived and metadata-derived needs remain deliberately
+// unhinted: their final cardinality is discovered later and ordinary promotion
+// preserves the same behavior.
+func preloadCoverageHint(order *raftcmdpb.Order) int {
+	scoped := order.GetLedgerScoped()
+	if scoped == nil {
+		return 0
+	}
+
+	apply := scoped.GetApply()
+	if apply == nil {
+		return 0
+	}
+
+	create := apply.GetCreateTransaction()
+	if create == nil || create.GetNumscriptReference() != nil ||
+		(create.GetScript() != nil && create.GetScript().GetPlain() != "" && len(create.GetPostings()) == 0) {
+		return 0
+	}
+
+	return 2 + 2*len(create.GetPostings())
 }
 
 // markPreloadUnavailable stamps the OrderTechnical PreloadUnavailable flag — the

@@ -1052,11 +1052,22 @@ var bloomFlagNames = []string{
 	"indexes",
 }
 
+const defaultVolumeBloomExpectedKeys = 1_000_000
+
 // registerBloomFlags registers per-attribute-type bloom filter flags.
 func registerBloomFlags(cmd *cobra.Command) {
 	for _, name := range bloomFlagNames {
+		var defaultExpectedKeys uint
+		if name == "volumes" {
+			// Volume existence checks sit on every transaction preload. A compact
+			// default filter avoids Pebble point reads for the overwhelmingly common
+			// new-volume case at ~1.4 MiB of memory (1% target FPR). Operators with
+			// larger cardinalities can size it explicitly; 0 still disables it.
+			defaultExpectedKeys = defaultVolumeBloomExpectedKeys
+		}
+
 		cmd.Flags().Uint(
-			fmt.Sprintf("bloom-%s-expected-keys", name), 0,
+			fmt.Sprintf("bloom-%s-expected-keys", name), defaultExpectedKeys,
 			fmt.Sprintf("Expected unique keys for %s bloom filter (0 = disable this type)", name),
 		)
 		cmd.Flags().Float64(

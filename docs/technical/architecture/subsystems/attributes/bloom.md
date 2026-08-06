@@ -60,6 +60,10 @@ Dirty blocks are flushed to Pebble at every batch commit:
 - `PersistDirtyBlocks()` (`bloom.go:113-131`) iterates dirty blocks and queues writes into the FSM batch — so the bloom flush is atomic with the rest of the batch's effects.
 - On boot, `RestoreFromStore()` (`bloom.go:165-211`) reloads the persisted blocks, merging via OR. Because OR is monotone, partial restorations are safe.
 
+Re-adding a key whose probe bits are already set does not mark its block dirty.
+This avoids rewriting unchanged blocks for hot keys and bounds persistence work
+after a filter has become saturated without changing its monotone semantics.
+
 ### Boot path — populate from the attribute store
 
 `PopulateFromStore()` (`bloom.go:536`) scans the attribute zones at boot and re-adds every key to the relevant filter. This handles two cases:

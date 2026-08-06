@@ -85,6 +85,20 @@ func planAttrCode(plan *raftcmdpb.AttributeCoverage) byte {
 // (twice on the rare rebuild). Keys outside the map (idempotency
 // tracker, references whose preload was skipped) are silently dropped.
 func setIDInBitset(bits []byte, indexByPlan map[planLookupKey]uint32, needs *Coverage) {
+	if needs.Attributes == nil {
+		for i := range needs.inline {
+			item := needs.inline[i]
+			idx, ok := indexByPlan[planLookupKey{id: item.id, attrCode: item.attrCode}]
+			if !ok {
+				continue
+			}
+
+			bits[idx/8] |= 1 << (idx % 8)
+		}
+
+		return
+	}
+
 	for attrCode, byID := range needs.Attributes {
 		for id := range byID {
 			idx, ok := indexByPlan[planLookupKey{id: id, attrCode: attrCode}]

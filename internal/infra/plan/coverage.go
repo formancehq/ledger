@@ -18,6 +18,14 @@ type CoverageEntry struct {
 	Tag       uint64
 }
 
+const inlineCoverageCapacity = 8
+
+type inlineCoverageEntry struct {
+	attrCode byte
+	id       attributes.U128
+	entry    CoverageEntry
+}
+
 // Coverage describes the preload / coverage requirements for a command.
 //
 // Attributes[attrCode][id] = (canonical bytes, tag). `id` is the U128
@@ -39,6 +47,13 @@ type Coverage struct {
 	Attributes      map[byte]map[attributes.U128]CoverageEntry
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
 
+	// Small per-order coverages dominate the admission path: a one-posting
+	// CreateTransaction carries ledger + boundary + source/destination volume
+	// keys. Keep up to eight entries inline so those orders need one allocation
+	// instead of an outer map plus one map per attribute kind. Larger coverages
+	// transparently promote to Attributes and retain the existing map behavior.
+	inline []inlineCoverageEntry
+
 	// collision holds the first XXH3-128 collision detected by Add/Merge
 	// (two distinct canonical keys sharing a 128-bit id). It is surfaced
 	// as a hard error at the Build boundary via Err() so a dropped preload
@@ -53,8 +68,33 @@ type Coverage struct {
 // key's Bytes() method; Coverage takes ownership of the slice, callers
 // MUST NOT mutate it afterwards.
 func (c *Coverage) Add(attrCode byte, canonical []byte) {
+	id, tag := attributes.MakeKey(canonical)
+	c.addHashed(attrCode, id, CoverageEntry{Canonical: canonical, Tag: tag})
+}
+
+func (c *Coverage) addHashed(attrCode byte, id attributes.U128, entry CoverageEntry) {
 	if c.Attributes == nil {
-		c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry)
+		for i := range c.inline {
+			current := &c.inline[i]
+			if current.attrCode != attrCode || current.id != id {
+				continue
+			}
+
+			c.recordCollision(attrCode, current.entry, entry)
+
+			return
+		}
+
+		if len(c.inline) < inlineCoverageCapacity {
+			if c.inline == nil {
+				c.inline = make([]inlineCoverageEntry, 0, inlineCoverageCapacity)
+			}
+			c.inline = append(c.inline, inlineCoverageEntry{attrCode: attrCode, id: id, entry: entry})
+
+			return
+		}
+
+		c.promoteInline()
 	}
 
 	m, ok := c.Attributes[attrCode]
@@ -63,32 +103,72 @@ func (c *Coverage) Add(attrCode byte, canonical []byte) {
 		c.Attributes[attrCode] = m
 	}
 
-	id, tag := attributes.MakeKey(canonical)
-
 	if existing, exists := m[id]; !exists {
-		m[id] = CoverageEntry{Canonical: canonical, Tag: tag}
-	} else if existing.Tag != tag {
-		// Same XXH3-128 id but a different XXH3-64 tag means two distinct
-		// canonical keys genuinely collided on the 128-bit id (~2^-128).
-		// The map can only hold one entry per id, so the second key would
-		// be silently dropped and the order reaching apply without its
-		// Pebble seed — a silent cache miss instead of the loud collision
-		// the tag exists to surface (attributes.KeyStore.Get/Put rejects
-		// same-id/different-tag as ErrCollisionDetected). Keep the first
-		// entry but fail loudly: this is impossible by design (invariant #7).
-		assert.Unreachable("coverage: XXH3-128 collision between distinct canonical keys", map[string]any{
-			"attrCode":    attrCode,
-			"existingTag": existing.Tag,
-			"newTag":      tag,
-		})
-		// assert.Unreachable is a no-op in production builds, so also record
-		// a clean, returnable error (first collision wins). Build checks it
-		// via Err() and fails the proposal instead of dropping the key —
-		// mirroring the loud attributes.KeyStore ErrCollisionDetected path.
-		if c.collision == nil {
-			c.collision = &attributes.ErrCollisionDetected{Bytes: canonical, OriginalTag: existing.Tag, NewTag: tag}
+		m[id] = entry
+	} else {
+		c.recordCollision(attrCode, existing, entry)
+	}
+}
+
+func (c *Coverage) recordCollision(attrCode byte, existing, incoming CoverageEntry) {
+	if existing.Tag == incoming.Tag {
+		return
+	}
+
+	// Same XXH3-128 id but a different XXH3-64 tag means two distinct
+	// canonical keys genuinely collided on the 128-bit id (~2^-128).
+	// The map can only hold one entry per id, so the second key would
+	// be silently dropped and the order reaching apply without its
+	// Pebble seed — a silent cache miss instead of the loud collision
+	// the tag exists to surface (attributes.KeyStore.Get/Put rejects
+	// same-id/different-tag as ErrCollisionDetected). Keep the first
+	// entry but fail loudly: this is impossible by design (invariant #7).
+	assert.Unreachable("coverage: XXH3-128 collision between distinct canonical keys", map[string]any{
+		"attrCode":    attrCode,
+		"existingTag": existing.Tag,
+		"newTag":      incoming.Tag,
+	})
+	// assert.Unreachable is a no-op in production builds, so also record
+	// a clean, returnable error (first collision wins). Build checks it
+	// via Err() and fails the proposal instead of dropping the key —
+	// mirroring the loud attributes.KeyStore ErrCollisionDetected path.
+	if c.collision == nil {
+		c.collision = &attributes.ErrCollisionDetected{
+			Bytes:       incoming.Canonical,
+			OriginalTag: existing.Tag,
+			NewTag:      incoming.Tag,
 		}
 	}
+}
+
+func (c *Coverage) promoteInline() {
+	if c.Attributes != nil {
+		return
+	}
+
+	c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry, 4)
+	for i := range c.inline {
+		item := c.inline[i]
+		set := c.Attributes[item.attrCode]
+		if set == nil {
+			set = make(map[attributes.U128]CoverageEntry)
+			c.Attributes[item.attrCode] = set
+		}
+		set[item.id] = item.entry
+	}
+	clear(c.inline)
+	c.inline = nil
+}
+
+// attributeSets materializes the grouped map representation required by the
+// parallel preload resolvers. Only the proposal-wide aggregate calls this;
+// per-order coverages remain inline through coverage_bits construction.
+func (c *Coverage) attributeSets() map[byte]map[attributes.U128]CoverageEntry {
+	if c.Attributes == nil && len(c.inline) > 0 {
+		c.promoteInline()
+	}
+
+	return c.Attributes
 }
 
 // AddIdempotencyKey records a batch idempotency key. Lazily allocates
@@ -104,14 +184,18 @@ func (c *Coverage) AddIdempotencyKey(key string) {
 // Has reports whether `canonical` is in attrCode's key set.
 // Primarily a test helper (production reads iterate the map directly).
 func (c *Coverage) Has(attrCode byte, canonical []byte) bool {
-	m, ok := c.Attributes[attrCode]
-	if !ok {
+	id, _ := attributes.MakeKey(canonical)
+	if c.Attributes == nil {
+		for i := range c.inline {
+			if c.inline[i].attrCode == attrCode && c.inline[i].id == id {
+				return true
+			}
+		}
+
 		return false
 	}
 
-	id, _ := attributes.MakeKey(canonical)
-
-	_, ok = m[id]
+	_, ok := c.Attributes[attrCode][id]
 
 	return ok
 }
@@ -119,6 +203,17 @@ func (c *Coverage) Has(attrCode byte, canonical []byte) bool {
 // Count returns the number of keys declared for attrCode (0 if the
 // attrCode has no entry). Test helper.
 func (c *Coverage) Count(attrCode byte) int {
+	if c.Attributes == nil {
+		count := 0
+		for i := range c.inline {
+			if c.inline[i].attrCode == attrCode {
+				count++
+			}
+		}
+
+		return count
+	}
+
 	return len(c.Attributes[attrCode])
 }
 
@@ -136,6 +231,10 @@ func (c *Coverage) TotalKeys() int {
 // take the fast path and avoid spurious ErrStaleProposal on
 // cluster-config resets.
 func (c *Coverage) AttributeKeysCount() int {
+	if c.Attributes == nil {
+		return len(c.inline)
+	}
+
 	total := 0
 	for _, set := range c.Attributes {
 		total += len(set)
@@ -153,37 +252,15 @@ func (c *Coverage) Merge(src *Coverage) {
 		return
 	}
 
-	for attrCode, srcMap := range src.Attributes {
-		if len(srcMap) == 0 {
-			continue
+	if src.Attributes == nil {
+		for i := range src.inline {
+			item := src.inline[i]
+			c.addHashed(item.attrCode, item.id, item.entry)
 		}
-
-		if c.Attributes == nil {
-			c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry, len(src.Attributes))
-		}
-
-		dst, ok := c.Attributes[attrCode]
-		if !ok {
-			dst = make(map[attributes.U128]CoverageEntry, len(srcMap))
-			c.Attributes[attrCode] = dst
-		}
-
-		for id, entry := range srcMap {
-			if existing, exists := dst[id]; !exists {
-				dst[id] = entry
-			} else if existing.Tag != entry.Tag {
-				// Genuine XXH3-128 collision across the two Coverages being
-				// merged (see Add): the second key would be silently dropped.
-				// Keep the first and fail loudly — impossible by design
-				// (invariant #7).
-				assert.Unreachable("coverage: XXH3-128 collision on Merge between distinct canonical keys", map[string]any{
-					"attrCode":    attrCode,
-					"existingTag": existing.Tag,
-					"newTag":      entry.Tag,
-				})
-				if c.collision == nil {
-					c.collision = &attributes.ErrCollisionDetected{Bytes: entry.Canonical, OriginalTag: existing.Tag, NewTag: entry.Tag}
-				}
+	} else {
+		for attrCode, srcMap := range src.Attributes {
+			for id, entry := range srcMap {
+				c.addHashed(attrCode, id, entry)
 			}
 		}
 	}
@@ -216,9 +293,23 @@ func (c *Coverage) Err() error {
 	return c.collision
 }
 
-// NewCoverage returns an empty Coverage. Maps are allocated lazily on the
-// first Add / AddIdempotencyKey — a Coverage that ends up carrying
-// nothing (many system-scoped orders) never touches the allocator.
+// NewCoverage returns an empty Coverage. Attribute maps are allocated lazily
+// only when the compact inline representation overflows; IdempotencyKeys is
+// likewise lazy. A Coverage that ends up carrying nothing (many system-scoped
+// orders) never touches the allocator.
 func NewCoverage() *Coverage {
 	return &Coverage{}
+}
+
+// NewCoverageWithHint returns a Coverage preselected for the expected number
+// of distinct attribute keys. Callers that already know an order is larger
+// than the inline capacity can bypass the inline-fill-and-promote transition;
+// the hint is only an allocation strategy and does not cap the result.
+func NewCoverageWithHint(attributeKeys int) *Coverage {
+	c := &Coverage{}
+	if attributeKeys > inlineCoverageCapacity {
+		c.Attributes = make(map[byte]map[attributes.U128]CoverageEntry, 4)
+	}
+
+	return c
 }

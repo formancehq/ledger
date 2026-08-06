@@ -1,12 +1,70 @@
 package plan
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 )
+
+func TestCoverageInlineAndPromotion(t *testing.T) {
+	t.Parallel()
+
+	c := NewCoverage()
+	for i := range inlineCoverageCapacity {
+		c.Add(byte(i%2+1), []byte(fmt.Sprintf("key-%d", i)))
+	}
+
+	require.Nil(t, c.Attributes, "small coverage must stay out of the map representation")
+	require.Equal(t, inlineCoverageCapacity, c.AttributeKeysCount())
+	require.Equal(t, inlineCoverageCapacity/2, c.Count(1))
+	require.True(t, c.Has(1, []byte("key-0")))
+
+	// Duplicate insertion is idempotent and must not force promotion.
+	c.Add(1, []byte("key-0"))
+	require.Nil(t, c.Attributes)
+	require.Equal(t, inlineCoverageCapacity, c.AttributeKeysCount())
+
+	// The first distinct overflow entry promotes every inline row into the
+	// historical grouped representation without losing identity.
+	c.Add(3, []byte("overflow"))
+	require.NotNil(t, c.Attributes)
+	require.Empty(t, c.inline)
+	require.Equal(t, inlineCoverageCapacity+1, c.AttributeKeysCount())
+	require.True(t, c.Has(1, []byte("key-0")))
+	require.True(t, c.Has(3, []byte("overflow")))
+}
+
+func TestCoverageInlineMergeDeduplicates(t *testing.T) {
+	t.Parallel()
+
+	dst := NewCoverage()
+	src := NewCoverage()
+	dst.Add(1, []byte("shared"))
+	src.Add(1, []byte("shared"))
+	src.Add(2, []byte("other"))
+
+	dst.Merge(src)
+
+	require.Nil(t, dst.Attributes)
+	require.Equal(t, 2, dst.AttributeKeysCount())
+	require.True(t, dst.Has(1, []byte("shared")))
+	require.True(t, dst.Has(2, []byte("other")))
+}
+
+func TestCoverageInlineCollisionRecordsError(t *testing.T) {
+	t.Parallel()
+
+	id := attributes.NewU128(42, 42)
+	c := NewCoverage()
+	c.addHashed(1, id, CoverageEntry{Canonical: []byte("first"), Tag: 1})
+	c.addHashed(1, id, CoverageEntry{Canonical: []byte("second"), Tag: 2})
+
+	require.Error(t, c.Err())
+	require.Equal(t, 1, c.AttributeKeysCount(), "colliding entry must not replace or duplicate the first")
+}
 
 // A genuine XXH3-128 collision between two distinct canonical keys is a
 // ~2^-128 event that cannot be produced by hashing real inputs, so these
