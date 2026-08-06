@@ -73,6 +73,30 @@ preserves the established distinctions and shapes:
 This changes no HTTP schema, protobuf message, audit serialization, storage
 format, or FSM behavior.
 
+## Impact by execution path
+
+The two optimizations have deliberately different scopes. The table below is
+also the checklist to use when evaluating a workload: “no discovery reuse”
+means the original per-order admission path remains active, not that the order
+is skipped or trusted without validation.
+
+| Execution path | Numscript discovery | HTTP JSON encoding | Expected impact |
+|----------------|---------------------|--------------------|-----------------|
+| Bulk with repeated, variable-free script; same ledger, text, and `force`; empty volume/metadata read sets | First occurrence runs fully, later matches reuse it | Direct view for every successful HTTP result | Largest gain; both optimizations apply on HTTP |
+| Same eligible bulk over gRPC | Reused | Unchanged | Admission gain only |
+| HTTP bulk with unique scripts | Full path for every order | Direct view | JSON gain only |
+| HTTP bulk with external variables | Full path for every order | Direct view | JSON gain only; variable bindings never share discovery |
+| HTTP bulk with non-empty `ReadVolumes` / `ReadMetadata` (for example `balance()`, `meta()`, or a bounded balance-checked source) | Full path for every order against the evolving overlay | Direct view | JSON gain only; no discovery reuse |
+| Same state-reading or variable-bearing bulk over gRPC | Full path for every order | Unchanged | No direct effect from this change |
+| Different ledger, script text, or `force` value | Separate first discovery for each key | Direct view on HTTP bulk | No reuse across keys; later exact matches can still reuse |
+| Unitary HTTP request | Full path (there is no later match) | `Transaction.MarshalJSON` uses the same plain view, but without the bulk direct-handoff saving | No discovery gain; smaller, unmeasured encoding benefit is possible |
+| Unitary gRPC request | Full path (there is no later match) | Unchanged | No direct effect from this change |
+| FSM, Raft, Pebble writes, audit, or storage | Unchanged | Not applicable | No effect |
+
+Changing the ledger, script text, or `force` mode creates a different memo key.
+Even on the accelerated path, preload coverage and predicted effects are still
+added for every order, and the FSM still executes every accepted order.
+
 ## Measurements
 
 Measurements were taken on 2026-08-06 on Linux/arm64 with Go 1.26.5. The A/B
@@ -110,5 +134,6 @@ go test ./internal/application/admission \
 
 The throughput gain is workload-specific. Bulks containing unique,
 variable-bearing, or state-reading scripts deliberately receive no discovery
-reuse. The JSON view optimization applies to successful HTTP bulk responses;
-gRPC and non-bulk reads keep their existing paths.
+reuse. The direct JSON-view handoff applies to successful HTTP bulk responses;
+other HTTP transaction responses still call `Transaction.MarshalJSON`, now
+backed by the same plain view, while gRPC encoding is unchanged.

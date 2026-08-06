@@ -1463,6 +1463,86 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
 }
 
+// TestWriteBulkResponse_TransactionJSONViewContract pins the optimized bulk
+// encoder to the established REST shape. It exercises the outer streaming
+// encoder directly, including the nested custom-marshaler shapes that the plain
+// JSON view replaces on this path.
+func TestWriteBulkResponse_TransactionJSONViewContract(t *testing.T) {
+	t.Parallel()
+
+	elements := []*servicepb.BulkElement{
+		{Action: &servicepb.LedgerAction{
+			Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{},
+			},
+		}},
+	}
+	results := []bulkResult{{
+		log: &commonpb.LedgerLog{
+			Id: 7,
+			Data: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+					CreatedTransaction: &commonpb.CreatedTransaction{
+						Transaction: &commonpb.Transaction{
+							Id: 42,
+							Postings: []*commonpb.Posting{{
+								Source:      "world",
+								Destination: "users:alice",
+								Asset:       "USD/2",
+								Color:       "",
+								Amount:      commonpb.NewUint256FromUint64(100),
+							}},
+							Metadata: map[string]*commonpb.MetadataValue{
+								"category": commonpb.NewStringValue("deposit"),
+							},
+							PostCommitVolumes: &commonpb.PostCommitVolumes{
+								VolumesByAccount: map[string]*commonpb.VolumesByAssets{
+									"users:alice": {Volumes: []*commonpb.VolumeEntry{{
+										Asset:   "USD/2",
+										Color:   "",
+										Volumes: &commonpb.Volumes{Input: "100", Output: "0"},
+									}}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, elements, results, false)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{
+  "data": [{
+    "data": {
+      "postings": [{
+        "source": "world",
+        "destination": "users:alice",
+        "amount": 100,
+        "asset": "USD/2",
+        "color": ""
+      }],
+      "metadata": {"category": "deposit"},
+      "id": 42,
+      "reverted": false,
+      "postCommitVolumes": {
+        "users:alice": [{
+          "asset": "USD/2",
+          "color": "",
+          "input": "100",
+          "output": "0"
+        }]
+      }
+    },
+    "responseType": "CREATE_TRANSACTION",
+    "logID": 7
+  }]
+}`, w.Body.String())
+}
+
 func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	t.Parallel()
 
