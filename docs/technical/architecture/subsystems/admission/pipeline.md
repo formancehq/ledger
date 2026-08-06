@@ -83,6 +83,12 @@ For every `CreateTransaction` order backed by a script, `resolveScriptsAndEnrich
 
 This stage is the reason numscript is admission-time work, not FSM work: the FSM's apply path is forbidden from reading Pebble (see [FSM cache layers](../fsm/cache-layers.md)), so the program's dependencies must be turned into declared `plan.Coverage` entries before consensus.
 
+Within one bulk, admission memoizes the discovery of a repeated variable-free
+script only after the first resolution proves that both its volume-read and
+metadata-read sets are empty. The per-order coverage and effect folding still
+run for every order. State-dependent scripts always take the full path. See
+[Bulk performance](bulk-performance.md) for the proof boundary and measurements.
+
 ### 7. Build the execution plan
 
 `builder.Build(aggregate, operations)` (`internal/infra/plan/builder.go`) dispatches each `plan.Coverage` entry to its `attrCode` resolver, hits the gen0/gen1 attribute cache first, and falls back to Pebble for misses. The result is an `ExecutionPlan` — the read-only view the FSM apply path will see when it runs.

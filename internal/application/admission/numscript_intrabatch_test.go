@@ -7,10 +7,37 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestReusableNumscriptDiscovery(t *testing.T) {
+	t.Parallel()
+
+	static := &numscript.DiscoveryResult{}
+	require.True(t, reusableNumscriptDiscovery(static))
+
+	boundedRead := &numscript.DiscoveryResult{
+		ReadVolumes: map[domain.VolumeKey]struct{}{
+			domain.NewVolumeKey(testLedgerName, "wallet", "USD/2", ""): {},
+		},
+	}
+	require.False(t, reusableNumscriptDiscovery(boundedRead),
+		"a bounded source reads state even when its resolution hash is empty")
+
+	metadataRead := &numscript.DiscoveryResult{
+		ReadMetadata: map[domain.MetadataKey]struct{}{
+			{
+				AccountKey: domain.AccountKey{LedgerName: testLedgerName, Account: "config"},
+				Key:        "destination",
+			}: {},
+		},
+	}
+	require.False(t, reusableNumscriptDiscovery(metadataRead))
+	require.False(t, reusableNumscriptDiscovery(nil))
+}
 
 // scriptOrder builds a ledger-scoped inline-script CreateTransaction order.
 func scriptOrder(ledger, plain string) *raftcmdpb.Order {
