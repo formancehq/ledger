@@ -2,6 +2,7 @@ package processing
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
@@ -50,10 +51,18 @@ func newSkipSafeScope(inner Scope) *skipSafeScope {
 // message format stays uniform and the two-tier enforcement is applied
 // consistently. The panic MUST run after assert.Unreachable so the
 // Antithesis finding is captured even on a run that later crashes.
+//
+// The assert.Unreachable message must stay a string literal: the
+// antithesis-go-instrumentor catalogues assertions by statically resolving
+// that argument, and anything else degrades to an anonymous catalog entry.
+// The offending method therefore travels in the details map and in the
+// panic value.
 func trapUnbuffered(method string, details map[string]any) {
-	msg := fmt.Sprintf("skippable order attempted %s — the overlay does not buffer this mutation, and letting it through would leak past a rollback", method)
-	assert.Unreachable(msg, details)
-	panic("skip_safe_scope: " + msg)
+	d := make(map[string]any, len(details)+1)
+	maps.Copy(d, details)
+	d["method"] = method
+	assert.Unreachable("skippable order attempted a non-buffered scope mutation", d)
+	panic(fmt.Sprintf("skip_safe_scope: skippable order attempted %s — the overlay does not buffer this mutation, and letting it through would leak past a rollback", method))
 }
 
 // ──────────────────────────────────────────────────────────────────────────
