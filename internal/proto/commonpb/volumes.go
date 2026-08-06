@@ -162,6 +162,7 @@ func (a *PostCommitVolumes) SortVolumes() {
 		if c := cmp.Compare(x.GetAsset(), y.GetAsset()); c != 0 {
 			return c
 		}
+
 		return cmp.Compare(x.GetColor(), y.GetColor())
 	})
 }

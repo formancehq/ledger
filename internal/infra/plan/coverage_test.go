@@ -14,7 +14,7 @@ func TestCoverageInlineAndPromotion(t *testing.T) {
 
 	c := NewCoverage()
 	for i := range inlineCoverageCapacity {
-		c.Add(byte(i%2+1), []byte(fmt.Sprintf("key-%d", i)))
+		c.Add(byte(i%2+1), fmt.Appendf(nil, "key-%d", i))
 	}
 
 	require.Nil(t, c.Attributes, "small coverage must stay out of the map representation")
