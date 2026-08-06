@@ -20,81 +20,106 @@ import (
 // an index complement. not(ts[_,_]) over a READY TIMESTAMP index is the
 // sharpest probe — any transaction it returns claims "committed but absent
 // from the timestamp index", a state no aligned snapshot pair can produce.
-// The index builder is kept busy with create/drop backfill churn to stretch
-// the fold lag that made the unaligned snapshots observable.
+//
+// The fold is made to lag by throughput asymmetry, with no artificial hooks:
+// many live indexes multiply the fold cost of every log while apply cost
+// stays flat, so sustained apply pressure drives the read-store fold hundreds
+// of sequences behind the primary head — the natural condition (load, faults,
+// backfill storms) under which unaligned snapshots serve torn responses.
 var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
-	const (
-		ledgerName = "cross-store-alignment-ledger"
-		seedTxs    = 1500
-	)
+	const ledgerName = "cross-store-alignment-ledger"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
+		})))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)))
-		Expect(err).To(Succeed())
-
-		for i := 0; i < seedTxs; i++ {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", fmt.Sprintf("acc:%d", i%64), big.NewInt(1), "USD"),
-			}, nil, nil)))
+		// Fold cost per log is multiplicative in the live index count.
+		for _, req := range []*servicepb.Request{
+			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS),
+			actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS),
+			actions.CreateAccountMetadataIndexAction(ledgerName, "tier"),
+			actions.CreateAccountAssetIndexAction(ledgerName),
+		} {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", req))
 			Expect(err).To(Succeed())
 		}
-
 		Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
 	})
 
 	It("never surfaces a committed tx as missing from a READY index", func() {
-		stopChurn := make(chan struct{})
+		stop := make(chan struct{})
 
-		var churn sync.WaitGroup
+		var pressure sync.WaitGroup
 
-		// Backfill churn: create/drop cycles over a second builtin index force
-		// the builder to rescan the seeded history over and over, delaying its
-		// live fold — the condition that widens the cross-store window.
-		churn.Add(1)
-		go func() {
-			defer GinkgoRecover()
-			defer churn.Done()
+		for w := 0; w < 4; w++ {
+			pressure.Add(1)
+			go func(w int) {
+				defer GinkgoRecover()
+				defer pressure.Done()
 
-			for {
-				select {
-				case <-stopChurn:
-					return
-				default:
+				n := 0
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+
+					reqs := make([]*servicepb.Request, 0, 20)
+					for j := 0; j < 20; j++ {
+						n++
+						a := fmt.Sprintf("load:%d:%d:a", w, n%128)
+						b := fmt.Sprintf("load:%d:%d:b", w, n%128)
+						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", a, big.NewInt(1), "COIN"),
+							actions.NewPosting("world", b, big.NewInt(1), "EUR"),
+							actions.NewPosting("world", a, big.NewInt(1), "USD/2"),
+						}, nil, map[string]*commonpb.MetadataMap{
+							a: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("silver")}},
+						}))
+					}
+					if _, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", reqs...)); err != nil {
+						return
+					}
 				}
-
-				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
-				Expect(err).To(Succeed())
-				_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.DropBuiltinTxIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)))
-				Expect(err).To(Succeed())
-			}
+			}(w)
+		}
+		defer func() {
+			close(stop)
+			pressure.Wait()
 		}()
 
 		notTs := actions.NotFilter(actions.BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 0, ^uint64(0)))
-		deadline := time.Now().Add(30 * time.Second)
+		deadline := time.Now().Add(25 * time.Second)
+		probes, served := 0, 0
 
-		i := 0
 		for time.Now().Before(deadline) {
-			i++
+			probes++
 
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", fmt.Sprintf("live:%d", i%64), big.NewInt(1), "USD"),
+				actions.NewPosting("world", fmt.Sprintf("probe:%d", probes%64), big.NewInt(1), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, notTs)
 			if err != nil {
-				// A stalled builder legitimately rejects with the
+				// A lagging fold legitimately rejects with the retryable
 				// not-caught-up precondition; only phantom ROWS are the bug.
 				continue
 			}
+			served++
 
-			Expect(txs).To(BeEmpty(), "iteration %d: a committed tx surfaced as missing from the READY timestamp index", i)
+			if len(txs) > 0 {
+				Fail(fmt.Sprintf("probe %d: not(ts[_,_]) returned %d row(s), first id=%d — a committed tx surfaced as missing from the READY timestamp index", probes, len(txs), txs[0].GetId()))
+			}
 		}
 
-		close(stopChurn)
-		churn.Wait()
+		Expect(served).To(BeNumerically(">", 0), "every probe was rejected — inconclusive")
 	})
 })
