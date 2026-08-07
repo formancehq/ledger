@@ -13,5 +13,5 @@ push *ARGS:
 
 	just build-config "$tmpdir/docker-compose.yaml"
 
-	docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}} $tmpdir
+	env -u SOURCE_DATE_EPOCH docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}} $tmpdir
 	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}}
