@@ -225,8 +225,6 @@ Tombstones are exactly the 9-byte header with no payload -- the pre-delete value
 
 Reversions are **not** part of the cache snapshot. They are stored per-word in Pebble zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble via `ReadReversions` on startup or snapshot restore.
 
-The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references, transaction state) serialized per generation, allowing fast in-memory restoration.
-
 ### Restoration from Snapshot
 
 When a node starts or recovers:
