@@ -368,6 +368,13 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 			Expect(got.GetStartSequence()).To(Equal(archived.GetStartSequence()))
 			Expect(got.GetCloseSequence()).To(Equal(archived.GetCloseSequence()),
 				"the archived chapter's range routes cold reads; a wrong range misroutes them")
+			Expect(got.GetStartAuditSequence()).To(Equal(archived.GetStartAuditSequence()))
+			Expect(got.GetCloseAuditSequence()).To(Equal(archived.GetCloseAuditSequence()))
+			Expect(got.GetSealingHash()).To(Equal(archived.GetSealingHash()),
+				"the sealing hash must survive the restore byte-for-byte")
+			Expect(got.GetStateHash()).To(Equal(archived.GetStateHash()))
+			Expect(got.GetLastAuditHash()).To(Equal(archived.GetLastAuditHash()),
+				"the checker chains from this hash across the chapter's purged audit range")
 
 			successor := byID[archived.GetId()+1]
 			Expect(successor).ToNot(BeNil(), "the successor chapter opened at close must survive the restore")
