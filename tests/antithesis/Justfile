@@ -112,3 +112,45 @@ k8s-push-images include='' *ARGS:
     just --justfile workload/Justfile -d workload tag={{tag}} push {{quote(include)}}
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
+
+# Verify every image a k8s launch references resolves in the registry under
+# the current tag — a silently failed push otherwise surfaces only as a boot
+# failure inside the Antithesis environment.
+check-k8s-image-freshness:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for image in \
+        "$ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}" \
+        "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
+        "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}" \
+        "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:{{tag}}" \
+        "$ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3-k8s:{{tag}}"; do
+        docker manifest inspect "$image" >/dev/null
+        echo "fresh: $image"
+    done
+
+# Launch a k8s run against images already pushed under the current tag (no
+# build): duration in minutes, raw API response on stdout so CI can extract
+# run identifiers. Auth prefers the API key (tenant as user), falling back to
+# the legacy password.
+k8s-launch-minutes duration_minutes description='ledger-v3 k8s run':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tenant="${ANTITHESIS_TENANT:-formance}"
+    payload=$(jq -n \
+        --arg duration "{{duration_minutes}}" \
+        --arg recipients "$ANTITHESIS_REPORT_RECIPIENT" \
+        --arg config_image "antithesis-config-ledger-v3-k8s:{{tag}}" \
+        --arg description {{quote(description)}} \
+        --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}" \
+        '{params: {
+            "antithesis.duration": $duration,
+            "antithesis.report.recipients": $recipients,
+            "antithesis.config_image": $config_image,
+            "antithesis.description": $description,
+            "antithesis.images": $images
+        }}')
+    curl --fail --silent --show-error \
+        --user "$tenant:${ANTITHESIS_API_KEY:-$ANTITHESIS_PASSWORD}" \
+        -X POST "https://$tenant.antithesis.com/api/v1/launch/basic_k8s_test" \
+        -d "$payload"
