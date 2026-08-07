@@ -94,6 +94,7 @@ func TestLongOperationalSingletonsUsePlatformBound(t *testing.T) {
 
 	files := []string{
 		"singleton_driver_quorum_recovery/main.go",
+		"singleton_driver_scaling/main.go",
 		"singleton_driver_scaling_structured/main.go",
 		"singleton_driver_scenario_blocks/main.go",
 	}
@@ -121,8 +122,51 @@ func TestK8sModelDriverHasAPlatformRuntimeBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read workload manifest: %v", err)
 	}
-	if !strings.Contains(string(manifest), "- name: MODEL_MAX_SECONDS\n          value: \"600\"") {
-		t.Error("k8s model driver must stop within 10 minutes so a 20-minute Antithesis run can observe command completion")
+	if !strings.Contains(string(manifest), "- name: MODEL_MAX_SECONDS\n          value: \"180\"") {
+		t.Error("k8s model driver must stop within 3 minutes so a 20-minute Antithesis run can observe command completion")
+	}
+}
+
+func TestOperationalSingletonBudgetLeavesComposerTime(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("driver.go")
+	if err != nil {
+		t.Fatalf("read driver.go: %v", err)
+	}
+	if !strings.Contains(string(source), "platformSingletonTimeout = 6 * time.Minute") {
+		t.Error("operational singletons must return within 6 minutes so Test Composer can schedule multiple commands in a 20-minute run")
+	}
+}
+
+func TestOperationalCoverageDriversDoNotSkipRecoverablePreconditions(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		path      string
+		forbidden string
+		reason    string
+	}{
+		{
+			path:      "../bin/cmds/main/singleton_driver_scaling/main.go",
+			forbidden: "if currentReplicas == target",
+			reason:    "the scaling command must choose another target instead of leaving its reachability assertions untouched",
+		},
+		{
+			path:      "../bin/cmds/main/singleton_driver_quorum_recovery/main.go",
+			forbidden: "cluster not at N=3",
+			reason:    "quorum recovery must normalize the cluster rather than skip all force-remove assertions",
+		},
+	}
+
+	for _, tc := range cases {
+		source, err := os.ReadFile(tc.path)
+		if err != nil {
+			t.Fatalf("read %s: %v", tc.path, err)
+		}
+		if strings.Contains(string(source), tc.forbidden) {
+			t.Errorf("%s: %s", tc.path, tc.reason)
+		}
 	}
 }
 

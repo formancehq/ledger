@@ -716,3 +716,28 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 	require.Equal(t, []byte("persist-val"), val)
 	require.NoError(t, closer.Close())
 }
+
+func TestOpenPebbleWithLockRetryWaitsForPreviousProcess(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+	dir := t.TempDir()
+
+	first, err := NewStore(dir, logger, meter, DefaultConfig())
+	require.NoError(t, err)
+
+	openCalls := 0
+	second, err := openPebbleWithLockRetry(func() (*pebble.DB, error) {
+		openCalls++
+		if openCalls == 2 {
+			require.NoError(t, first.Close())
+		}
+
+		return pebble.Open(filepath.Join(dir, liveDir), &pebble.Options{})
+	}, storeOpenLockRetryTimeout, 0)
+	require.NoError(t, err, "a replacement process should tolerate the previous process releasing Pebble shortly after startup")
+	require.Equal(t, 2, openCalls)
+	require.NoError(t, second.Close())
+}

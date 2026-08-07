@@ -24,7 +24,7 @@ const singletonDriverTimeout = 90 * time.Minute
 // Antithesis run for Test Composer to observe command completion and schedule
 // another singleton. Destructive scenarios with long per-step timeouts must
 // use this bound instead of the 90-minute hang fail-safe.
-const platformSingletonTimeout = 12 * time.Minute
+const platformSingletonTimeout = 6 * time.Minute
 
 // SingletonContext returns a fresh context with the singleton deadline.
 // Singletons that run an explicit `main()` (instead of going through

@@ -24,14 +24,14 @@ import (
 var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
 
 const (
-	convergenceTimeout = 10 * time.Minute
-	stableWindow       = 20 * time.Second
-	cleanupTimeout     = 3 * time.Minute
+	convergenceTimeout = 2 * time.Minute
+	stableWindow       = 10 * time.Second
+	cleanupTimeout     = 90 * time.Second
 )
 
 // scalingCycle is the deterministic replica sequence. Each value MUST be odd
 // (Raft quorum) and present in internal.OddReplicas.
-var scalingCycle = []int64{5, 3, 7, 3}
+var scalingCycle = []int64{5, 3}
 
 func main() {
 	log.Println("composer: singleton_driver_scaling_structured")

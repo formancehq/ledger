@@ -28,8 +28,8 @@ func MarketplaceBlocks() *BlockGroup {
 		Blocks: []*Block{
 			{Name: "marketplace/deposit", Run: marketplaceDeposit},
 			{Name: "marketplace/purchase", Run: marketplacePurchase},
-			{Name: "marketplace/revert", Run: marketplaceRevert},
 			{Name: "marketplace/payout", Run: marketplacePayout},
+			{Name: "marketplace/revert", Run: marketplaceRevert},
 			{Name: "marketplace/metadata", Run: marketplaceMetadata},
 		},
 	}
@@ -49,15 +49,15 @@ func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClien
 }
 
 func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
-	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
+	customerID, bal, ok := findFundedMarketplaceAccount(
+		ctx, client, "customer", MarketplaceNumCustomers, RandIntN(r, MarketplaceNumCustomers), big.NewInt(1000),
+	)
+	if !ok {
+		return nil, ErrSkip
+	}
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	customer := fmt.Sprintf("customer:%d", customerID)
 	merchant := fmt.Sprintf("merchant:%d", merchantID)
-
-	bal, ok := GetAccountBalance(ctx, client, MarketplaceLedger, customer, "USD/2")
-	if !ok || bal.Cmp(big.NewInt(1000)) < 0 {
-		return nil, ErrSkip
-	}
 
 	maxAmt := min(bal.Int64(), 50_000)
 	amount := int64(1000) + RandInt64N(r, maxAmt-1000+1)
@@ -83,13 +83,13 @@ func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient
 }
 
 func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
-	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
-	merchant := fmt.Sprintf("merchant:%d", merchantID)
-
-	bal, ok := GetAccountBalance(ctx, client, MarketplaceLedger, merchant, "USD/2")
-	if !ok || bal.Sign() <= 0 {
+	merchantID, bal, ok := findFundedMarketplaceAccount(
+		ctx, client, "merchant", MarketplaceNumMerchants, RandIntN(r, MarketplaceNumMerchants), big.NewInt(1),
+	)
+	if !ok {
 		return nil, ErrSkip
 	}
+	merchant := fmt.Sprintf("merchant:%d", merchantID)
 
 	return ApplyActions(ctx, client,
 		actions.CreateScriptRefTransactionAction(MarketplaceLedger, "payout", "1.0.0", map[string]string{
@@ -97,6 +97,32 @@ func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient
 			"amount":   fmt.Sprintf("USD/2 %d", bal.Int64()),
 		}, nil),
 	)
+}
+
+// findFundedMarketplaceAccount starts at a randomized account but scans the
+// entire bounded fleet. Blocks are coverage probes, so choosing one empty
+// random account must not hide a valid purchase or payout path elsewhere.
+func findFundedMarketplaceAccount(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	prefix string,
+	count int,
+	start int,
+	minimum *big.Int,
+) (int, *big.Int, bool) {
+	for offset := range count {
+		id := marketplaceCandidateID(start, offset, count)
+		balance, ok := GetAccountBalance(ctx, client, MarketplaceLedger, fmt.Sprintf("%s:%d", prefix, id), "USD/2")
+		if ok && balance.Cmp(minimum) >= 0 {
+			return id, balance, true
+		}
+	}
+
+	return 0, nil, false
+}
+
+func marketplaceCandidateID(start, offset, count int) int {
+	return 1 + (start+offset)%count
 }
 
 func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {

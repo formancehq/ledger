@@ -107,6 +107,19 @@ func TestConditionalSafetyPropertiesDoNotRequireCoverage(t *testing.T) {
 		}
 	}
 
+	// TransactionCount/LogCount are read from the primary store while the
+	// remaining counters are eventually-consistent usagestore projections.
+	// Relating the two groups in an Always assertion creates false failures
+	// while the usagebuilder is catching up.
+	for _, message := range []string{
+		"posting count must be >= transaction count (each tx has at least one posting)",
+		"revert count must be <= transaction count",
+	} {
+		for _, use := range found[message] {
+			t.Errorf("cross-store stats relation %q in %s uses assert.%s; primary and usage counters are not point-in-time comparable", message, use.path, use.function)
+		}
+	}
+
 	barrierUses := found["barrier succeeded after an observed leadership change"]
 	if len(barrierUses) != 1 {
 		t.Errorf("leadership-change barrier assertion has %d call sites; want exactly one", len(barrierUses))

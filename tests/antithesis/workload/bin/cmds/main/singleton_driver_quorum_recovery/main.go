@@ -33,8 +33,9 @@ import (
 var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
 
 const (
-	qrScaleDownTimeout = 4 * time.Minute
-	qrScaleUpTimeout   = 4 * time.Minute
+	qrNormalizeTimeout = 90 * time.Second
+	qrScaleDownTimeout = 2 * time.Minute
+	qrScaleUpTimeout   = 2 * time.Minute
 
 	// qrConfChangeLatencyBudget is the "should be fast" threshold for the
 	// force-remove ConfChange to bring voters down to 1 after scale-down.
@@ -86,8 +87,14 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		return
 	}
 	if current != 3 {
-		log.Printf("quorum-recovery: cluster not at N=3 (got %d), skipping", current)
-		return
+		log.Printf("quorum-recovery: normalizing cluster from %d to 3 replicas", current)
+		if err := internal.PatchReplicas(ctx, lsClient, internal.ClusterName, 3); err != nil {
+			log.Printf("quorum-recovery: cannot normalize replicas: %s", err)
+			return
+		}
+		if !internal.WaitForVoters(ctx, clusterClient, 3, qrNormalizeTimeout, internal.Details{"phase": "normalize"}) {
+			return
+		}
 	}
 
 	sentinel, err := internal.PreCommitSentinel(ctx, client, qrSentinelLedger)

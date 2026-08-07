@@ -18,12 +18,12 @@ const maxStep int64 = 2
 
 // convergenceTimeout is the maximum time to wait for the Raft cluster to
 // reach the expected voter count after a scaling patch.
-const convergenceTimeout = 10 * time.Minute
+const convergenceTimeout = 3 * time.Minute
 
 func main() {
 	log.Println("composer: singleton_driver_scaling")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
@@ -45,18 +45,13 @@ func main() {
 }
 
 func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient) {
-	target := internal.OddReplicas[internal.Rand().Intn(len(internal.OddReplicas))]
-
 	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, "ledger")
 	if err != nil {
 		log.Printf("scaling: cannot get Cluster: %s", err)
 		return
 	}
 
-	if currentReplicas == target {
-		log.Printf("scaling: already at %d replicas, skipping", target)
-		return
-	}
+	target := differentScalingTarget(currentReplicas, internal.Rand().Intn(len(internal.OddReplicas)))
 
 	// Scale in steps of maxStep to avoid long convergence times.
 	for currentReplicas != target {
@@ -87,6 +82,17 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 
 		currentReplicas = next
 	}
+}
+
+func differentScalingTarget(current int64, start int) int64 {
+	for offset := range len(internal.OddReplicas) {
+		candidate := internal.OddReplicas[(start+offset)%len(internal.OddReplicas)]
+		if candidate != current {
+			return candidate
+		}
+	}
+
+	return current
 }
 
 // nextStep computes the next replica count towards target, clamping the

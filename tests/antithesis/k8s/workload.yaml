@@ -108,7 +108,7 @@ spec:
         # Bound the model command below the shortest supported platform run so
         # Test Composer can observe at least one clean command completion.
         - name: MODEL_MAX_SECONDS
-          value: "600"
+          value: "180"
         # Restore-cycle rendezvous with the restore-orchestrator sidecar (only
         # the model driver writes requests; other templates leave it idle).
         # The interval and lease are k8s-sized: one cycle is a full cluster
