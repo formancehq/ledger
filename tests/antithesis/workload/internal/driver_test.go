@@ -170,6 +170,23 @@ func TestOperationalCoverageDriversDoNotSkipRecoverablePreconditions(t *testing.
 	}
 }
 
+func TestQuorumRecoveryWaitsForStatefulSetScaleDown(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("../bin/cmds/main/singleton_driver_quorum_recovery/main.go")
+	if err != nil {
+		t.Fatalf("read quorum-recovery driver: %v", err)
+	}
+
+	text := string(source)
+	voters := strings.Index(text, "WaitForVoters(ctx, clusterClient, 1")
+	statefulSet := strings.Index(text, "WaitForStatefulSetReady(ctx, clientset, internal.LedgerStatefulSetName(), 1")
+	verify := strings.Index(text, `sentinel.Verify(ctx, client, "after_quorum_recovery")`)
+	if voters < 0 || statefulSet < 0 || verify < 0 || !(voters < statefulSet && statefulSet < verify) {
+		t.Fatal("quorum recovery must wait for the StatefulSet to settle at one replica after voters=1 and before cleanup can scale back to three")
+	}
+}
+
 func findFunction(file *ast.File, name string) *ast.FuncDecl {
 	for _, declaration := range file.Decls {
 		function, ok := declaration.(*ast.FuncDecl)

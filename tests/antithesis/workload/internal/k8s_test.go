@@ -105,12 +105,15 @@ func TestWaitForStatefulSetReady_NotFoundFailsFast(t *testing.T) {
 func TestWaitForStatefulSetReady_ReportsReady(t *testing.T) {
 	t.Parallel()
 
+	replicas := int32(3)
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      LedgerStatefulSetName(),
 			Namespace: "default",
 		},
+		Spec: appsv1.StatefulSetSpec{Replicas: &replicas},
 		Status: appsv1.StatefulSetStatus{
+			Replicas:        3,
 			ReadyReplicas:   3,
 			CurrentRevision: "rev-1",
 			UpdateRevision:  "rev-1",
@@ -123,6 +126,47 @@ func TestWaitForStatefulSetReady_ReportsReady(t *testing.T) {
 
 	if !WaitForStatefulSetReady(ctx, clientset, LedgerStatefulSetName(), 3, 10*time.Second) {
 		t.Fatalf("WaitForStatefulSetReady returned false for a healthy fake STS")
+	}
+}
+
+func TestStatefulSetReady_RequiresObservedReplicas(t *testing.T) {
+	t.Parallel()
+
+	desired := int32(1)
+	sts := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{Replicas: &desired},
+		Status: appsv1.StatefulSetStatus{
+			Replicas:        3,
+			ReadyReplicas:   1,
+			CurrentRevision: "rev-1",
+			UpdateRevision:  "rev-1",
+		},
+	}
+
+	if statefulSetReady(sts, 1) {
+		t.Fatal("spec.replicas=1 is not settled while the StatefulSet still observes three pods")
+	}
+}
+
+// A StatefulSet can temporarily report one ready pod while its desired size is
+// still three (for example immediately after two pods are killed). That is not
+// a completed scale-down: letting the quorum-recovery driver scale back up at
+// this point races the operator's in-flight StatefulSet update.
+func TestStatefulSetReady_RequiresDesiredReplicas(t *testing.T) {
+	t.Parallel()
+
+	desired := int32(3)
+	sts := &appsv1.StatefulSet{
+		Spec: appsv1.StatefulSetSpec{Replicas: &desired},
+		Status: appsv1.StatefulSetStatus{
+			ReadyReplicas:   1,
+			CurrentRevision: "rev-1",
+			UpdateRevision:  "rev-1",
+		},
+	}
+
+	if statefulSetReady(sts, 1) {
+		t.Fatal("one ready pod with spec.replicas=3 must not be treated as a completed scale-down to one")
 	}
 }
 

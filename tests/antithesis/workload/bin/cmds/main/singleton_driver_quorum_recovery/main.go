@@ -204,5 +204,16 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		"force-remove ConfChange applies within latency budget after scale-down (EN-1043)",
 		details.With(internal.Details{"elapsed": elapsed.String(), "budget": qrConfChangeLatencyBudget.String()}))
 
+	// WaitForVoters observes the leader's in-memory ConfState before the
+	// operator necessarily finishes updating the StatefulSet to one replica.
+	// Returning earlier runs the deferred scale-up concurrently with that
+	// in-flight scale-down, which can recreate a pod with fresh storage while
+	// the leader still has stale progress for its node ID. Pin the Kubernetes
+	// side of the transition before allowing cleanup to restore three replicas.
+	if !internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerStatefulSetName(), 1, qrScaleDownTimeout) {
+		log.Printf("quorum-recovery: StatefulSet did not settle at one replica")
+		return
+	}
+
 	sentinel.Verify(ctx, client, "after_quorum_recovery")
 }
