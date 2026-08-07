@@ -94,16 +94,6 @@ func TestIsPodCrashed_NotFound(t *testing.T) {
 	require.True(t, isPodCrashed(ctx, cs, ns, "nonexistent-pod"))
 }
 
-func TestIsPodNeverReady_NotFound(t *testing.T) {
-	ns := createTestNamespace(t)
-	cs := newTestClientset(t)
-
-	// A missing replica may have joined Raft before it was deleted. The
-	// scale-down path must classify it as crashed so removal is attempted with
-	// --force; remove-node is idempotent when it never joined.
-	require.False(t, isPodNeverReady(ctx, cs, ns, "nonexistent-pod"))
-}
-
 func TestIsPodCrashed_Pending(t *testing.T) {
 	ns := createTestNamespace(t)
 	cs := newTestClientset(t)
@@ -127,7 +117,11 @@ func TestIsPodCrashed_Pending(t *testing.T) {
 	_, err = cs.CoreV1().Pods(ns).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
 	require.NoError(t, err)
 
-	require.False(t, isPodCrashed(ctx, cs, ns, "pending-pod"))
+	// The current Pending pod may be a replacement for a replica that was a
+	// committed voter before its predecessor was deleted. Kubernetes pod state
+	// cannot prove Raft membership history, so scale-down must attempt a force
+	// removal. That operation is idempotent if the node truly never joined.
+	require.True(t, isPodCrashed(ctx, cs, ns, "pending-pod"))
 }
 
 func TestIsPodCrashed_OOMKilled(t *testing.T) {
