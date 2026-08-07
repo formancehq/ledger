@@ -94,6 +94,16 @@ func TestIsPodCrashed_NotFound(t *testing.T) {
 	require.True(t, isPodCrashed(ctx, cs, ns, "nonexistent-pod"))
 }
 
+func TestIsPodNeverReady_NotFound(t *testing.T) {
+	ns := createTestNamespace(t)
+	cs := newTestClientset(t)
+
+	// A missing replica may have joined Raft before it was deleted. The
+	// scale-down path must classify it as crashed so removal is attempted with
+	// --force; remove-node is idempotent when it never joined.
+	require.False(t, isPodNeverReady(ctx, cs, ns, "nonexistent-pod"))
+}
+
 func TestIsPodCrashed_Pending(t *testing.T) {
 	ns := createTestNamespace(t)
 	cs := newTestClientset(t)

@@ -319,14 +319,15 @@ func ledgerctlTLSFlag(tlsMode string) string {
 	return "--insecure"
 }
 
-// isPodNeverReady returns true if the pod has never been ready: not found,
-// still Pending (not scheduled), or no container has ever started.
-// These pods could never have joined the Raft cluster.
+// isPodNeverReady returns true if an existing pod has never been ready: it is
+// still Pending (not scheduled), or no container has ever started. A missing
+// pod is not enough evidence that the replica never joined Raft: it may have
+// been deleted after becoming a voter, so isPodCrashed must classify it and
+// let the idempotent force-remove path handle either case.
 func isPodNeverReady(ctx context.Context, clientset kubernetes.Interface, namespace, podName string) bool {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
-		// Not found → never existed, never joined.
-		return kerrors.IsNotFound(err)
+		return false
 	}
 
 	// Pending pods have never started.
