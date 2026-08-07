@@ -635,9 +635,12 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// Sampled per batch and accumulated as a max so the gate tracks
 	// the freshest FSM state any of this task's batches could have
 	// observed.
-	if fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle); sampleErr != nil {
+	fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle)
+	if sampleErr != nil {
 		return false, fmt.Errorf("sampling FSM log sequence for schema-rewrite gate: %w", sampleErr)
-	} else if fsmSeq > task.requiredIndexedSeq {
+	}
+
+	if fsmSeq > task.requiredIndexedSeq {
 		task.requiredIndexedSeq = fsmSeq
 	}
 
@@ -687,6 +690,11 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	committed := false
+
+	// The rewrite stamps events with the FSM state it reads from; the
+	// atomic switch is gated on the read-store cursor reaching that same
+	// sequence, so every queryable pin at v_pending sees these events.
+	b.wb.SetEventSequence(fsmSeq)
 
 	defer func() {
 		if !committed {

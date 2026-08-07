@@ -36,27 +36,37 @@ import (
 const alignWait = 2 * time.Second
 
 // AlignedIndexSnapshot returns a read-index snapshot whose fold cursor is at
-// or beyond mainReader's last applied log sequence, plus that sequence. The
-// cursor is verified through the snapshot itself, so the check can never race
-// the snapshot it vouches for. Fails with ErrReadIndexNotCaughtUp when the
-// fold does not catch up within alignWait.
-func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, error) {
+// or beyond mainReader's last applied log sequence, plus that sequence and a
+// release closure. The cursor is verified through the snapshot itself, so the
+// check can never race the snapshot it vouches for. Fails with
+// ErrReadIndexNotCaughtUp when the fold does not catch up within alignWait.
+//
+// The release closure drops the read lease registered at the returned
+// sequence — the pin the event GC must not reclaim past (read_lease.go). The
+// caller must invoke it when iteration ends, alongside closing the snapshot.
+func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
-		return nil, 0, fmt.Errorf("reading main-store sequence: %w", err)
+		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)
 	}
 
 	// A frozen store (query checkpoint) never advances, so waiting on it is
 	// meaningless: the pair is consistent by construction at the checkpoint's
 	// sequence (the builder materializes the read index as its fold crosses
 	// the CreatedQueryCheckpoint log). Serve it as-is; the horizon filter
-	// still bounds the index-ahead direction.
+	// still bounds the index-ahead direction. No GC runs against a frozen
+	// store, so there is no lease to hold.
 	if rs.Frozen() {
-		return rs.NewSnapshot(), mainSeq, nil
+		return rs.NewSnapshot(), mainSeq, func() {}, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), alignWait)
 	defer cancel()
+
+	// The lease is registered BEFORE the snapshot: the GC computes its
+	// watermark from registered pins, so the order guarantees no reclamation
+	// between pinning and snapshotting.
+	lease := rs.Leases().Acquire(mainSeq)
 
 	for {
 		snap := rs.NewSnapshot()
@@ -64,18 +74,21 @@ func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pe
 		lastIndexed, err := rs.LastIndexedSequenceFrom(snap)
 		if err != nil {
 			_ = snap.Close()
+			lease.Release()
 
-			return nil, 0, fmt.Errorf("reading index progress: %w", err)
+			return nil, 0, nil, fmt.Errorf("reading index progress: %w", err)
 		}
 
 		if lastIndexed >= mainSeq {
-			return snap, mainSeq, nil
+			return snap, mainSeq, lease.Release, nil
 		}
 
 		_ = snap.Close()
 
 		if waitErr := rs.WaitForSequence(ctx, mainSeq); waitErr != nil {
-			return nil, 0, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: lastIndexed}
+			lease.Release()
+
+			return nil, 0, nil, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: lastIndexed}
 		}
 	}
 }

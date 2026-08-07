@@ -99,10 +99,12 @@ func Execute(
 	}
 	defer func() { _ = handle.Close() }()
 
-	indexSnap, mainSeq, err := AlignedIndexSnapshot(rs, handle)
+	indexSnap, mainSeq, releaseLease, err := AlignedIndexSnapshot(rs, handle)
 	if err != nil {
 		return nil, err
 	}
+
+	defer releaseLease()
 	defer func() { _ = indexSnap.Close() }()
 
 	// Check min_log_sequence freshness against the handle: alignment makes
@@ -127,7 +129,7 @@ func Execute(
 	// partial results.
 	indexVersionFor := readstore.SnapshotVersionResolver(indexSnap, ledgerInfo.GetName())
 
-	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle)
+	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
 	}

@@ -66,6 +66,10 @@ type Builder struct {
 	// Max time budget per tick for backfill processing (default 50ms).
 	backfillBudget time.Duration
 
+	// Per-zone resume cursors for the incremental event GC (see
+	// runEventGC); nil resumes from the zone start.
+	eventGCResume map[byte][]byte
+
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int
 
@@ -570,6 +574,7 @@ func (b *Builder) loop(ctx context.Context) {
 		}
 
 		b.processBackgroundTasks(ctx, stop, cursor)
+		b.runEventGC(cursor)
 
 		// Always wake WaitForSequence waiters so they can re-check progress.
 		// Without this, a waiter that enters Wait() between the last

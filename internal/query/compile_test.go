@@ -867,7 +867,7 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 
 			_, err := Compile(
 				nil, nil, tc.filter, tc.target, ledgerName,
-				nil, nil, info, indexRegistry, indexResolverZero, nil, nil)
+				nil, nil, info, indexRegistry, indexResolverZero, nil, nil, 0)
 			require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
 			var building *domain.ErrIndexBuilding
@@ -954,7 +954,7 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 
 			iter, err := Compile(
 				nil, nil, tc.filter, badTarget, "ledger1",
-				nil, nil, info, nil, nil, nil, nil)
+				nil, nil, info, nil, nil, nil, nil, 0)
 			require.Error(t, err, "unsupported target must fail loudly, not return an (empty) iterator")
 			require.Nil(t, iter)
 

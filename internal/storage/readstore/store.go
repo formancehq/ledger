@@ -59,7 +59,15 @@ type Store struct {
 	// checkpoint) whose fold cursor will never advance, so freshness waits
 	// are meaningless against it.
 	readOnly bool
+
+	// leases tracks the pinned sequences of live reads so the event GC never
+	// reclaims history a pinned reader could still resolve (see read_lease.go
+	// and event_gc.go). Nil on frozen stores — no GC runs against them.
+	leases *LeaseRegistry
 }
+
+// Leases returns the read-lease registry gating the event GC.
+func (s *Store) Leases() *LeaseRegistry { return s.leases }
 
 // Frozen reports whether this store is an immutable read-only view (a query
 // checkpoint) rather than the live, builder-fed read index.
@@ -138,6 +146,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		db:     db,
 		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
 		dir:    dir,
+		leases: NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 

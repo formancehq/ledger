@@ -58,15 +58,20 @@ type compileCtx struct {
 	// and to refuse early with ErrIndexBuilding when no live keyspace
 	// exists yet.
 	indexVersionFor func(canonical string) (uint32, error)
-	profile         *QueryProfile
-	depth           int
+	// pin is the main-store handle's applied sequence: metadata / exists
+	// index leaves resolve their event groups at this sequence, so index
+	// selection observes exactly the state the rest of the query reads
+	// (EN-1748). Callers obtain it from AlignedIndexSnapshot, which
+	// guarantees indexReader's fold cursor covers it.
+	pin     uint64
+	profile *QueryProfile
+	depth   int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
 // metadata condition compilers (string, int, uint, bool, exists).
 type metadataCtx struct {
 	prefix    []byte
-	entityLen int
 	namespace string
 	metaKey   string
 	// version is the per-replica forward-encoding version resolved
@@ -100,6 +105,7 @@ func Compile(
 	indexVersionFor func(canonical string) (uint32, error),
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
+	pin uint64,
 ) (readstore.EntityIterator, error) {
 	// Reject an unsupported/unknown target at the earliest point. Without this
 	// guard compileUniverse's default arm returns an empty iterator, which the
@@ -128,6 +134,7 @@ func Compile(
 		schema:          schema,
 		info:            info,
 		indexRegistry:   indexRegistry,
+		pin:             pin,
 		indexVersionFor: indexVersionFor,
 		profile:         profile,
 	}
@@ -460,7 +467,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		return nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
 
-	ns, entityLen := targetNamespaceAndLen(ctx.target)
+	ns, _ := targetNamespaceAndLen(ctx.target)
 	metaKey := fc.GetField().GetMetadata()
 
 	// Validate index availability and condition type against declared schema type.
@@ -489,7 +496,6 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 
 	mc := &metadataCtx{
 		prefix:    readstore.MetadataIndexPrefixV(ctx.kb, ctx.ledgerName, ns, metaKey, indexVersion),
-		entityLen: entityLen,
 		namespace: ns,
 		metaKey:   metaKey,
 		version:   indexVersion,
@@ -521,14 +527,14 @@ func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Str
 
 	fullPrefix := readstore.EncodeString(append([]byte{}, mc.prefix...), value)
 
-	iter, err := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+	iter, err := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if err != nil {
-		return nil, fmt.Errorf("creating string prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating string event iterator: %w", err)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=string)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=string)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "midx",
 	}), nil
 }
@@ -665,14 +671,14 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeInt64(append([]byte{}, mc.prefix...), bounds.min)
 
-		iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+		iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 		if pErr != nil {
-			return nil, fmt.Errorf("creating int prefix iterator: %w", pErr)
+			return nil, fmt.Errorf("creating int event iterator: %w", pErr)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=int)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=int)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "midx",
 		}), nil
 	}
@@ -695,11 +701,11 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		upper = append(upper, readstore.TypeTagInt+1)
 	}
 
-	entityOffset := len(mc.prefix) + 1 + 8 // prefix + typeTag(1) + int64(8)
-
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, mc.entityLen)
+	// prefix + typeTag(1) + int64(8): fixed-width values keep the entity
+	// extractable from each event group.
+	iter, rErr := readstore.NewEventResolveRangeIterator(ctx.indexReader, lower, upper, len(mc.prefix), 1+8, ctx.pin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating int range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating int range event iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
@@ -834,14 +840,14 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeUint64(append([]byte{}, mc.prefix...), bounds.min)
 
-		iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+		iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 		if pErr != nil {
-			return nil, fmt.Errorf("creating uint prefix iterator: %w", pErr)
+			return nil, fmt.Errorf("creating uint event iterator: %w", pErr)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=uint)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=uint)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "midx",
 		}), nil
 	}
@@ -864,11 +870,9 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		upper = append(upper, readstore.TypeTagUint+1)
 	}
 
-	entityOffset := len(mc.prefix) + 1 + 8
-
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, mc.entityLen)
+	iter, rErr := readstore.NewEventResolveRangeIterator(ctx.indexReader, lower, upper, len(mc.prefix), 1+8, ctx.pin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating uint range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating uint range event iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
@@ -890,14 +894,14 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 
 	fullPrefix := readstore.EncodeBool(append([]byte{}, mc.prefix...), value)
 
-	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+	iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if pErr != nil {
-		return nil, fmt.Errorf("creating bool prefix iterator: %w", pErr)
+		return nil, fmt.Errorf("creating bool event iterator: %w", pErr)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=bool)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=bool)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "midx",
 	}), nil
 }
@@ -908,14 +912,14 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 	if !cond.GetIncludeNull() {
 		// Only non-null entries
-		iter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
+		iter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 		if err != nil {
-			return nil, fmt.Errorf("creating exists non-null prefix iterator: %w", err)
+			return nil, fmt.Errorf("creating exists non-null event iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "eidx",
 		}), nil
 	}
@@ -923,21 +927,21 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	// Both non-null and null entries: merge two prefix iterators
 	nullPrefix := readstore.EntityExistsNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 
-	nonNullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
+	nonNullIter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 	if err != nil {
-		return nil, fmt.Errorf("creating exists non-null prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating exists non-null event iterator: %w", err)
 	}
 
-	nullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nullPrefix, len(nullPrefix), mc.entityLen)
+	nullIter, err := readstore.NewEventResolveIterator(ctx.indexReader, nullPrefix, ctx.pin)
 	if err != nil {
 		nonNullIter.Close()
 
-		return nil, fmt.Errorf("creating exists null prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating exists null event iterator: %w", err)
 	}
 
 	nonNullTracked := trackIterator(nonNullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "eidx",
 	})
 
@@ -947,8 +951,8 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	nullTracked := trackIterator(nullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "eidx",
 	})
 

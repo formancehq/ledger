@@ -7,31 +7,39 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 )
 
-// GCMetadataEvents reclaims superseded events below the read-lease watermark
-// in one value range (see event_keys.go and read_lease.go).
+// GCEventZone reclaims superseded events below the read-lease watermark
+// across one event zone (the metadata index 0x01 or the exists index 0x02),
+// walking at most budget keys from resume (nil = zone start) and stopping
+// only at group boundaries. It returns the number of reclaimed events and
+// the cursor to resume from on the next call — nil once the zone walk
+// completed.
 //
-// The pruning rule per (value, entity) group: every event with seq <
-// watermark is droppable EXCEPT the latest one, and that one only survives if
-// it is an ADD. Justification: any live or future reader resolves at some
-// pin P >= watermark, and the latest event <= P is what decides —
+// The pruning rule per event group: every event with seq < watermark is
+// droppable EXCEPT the latest one, and that one survives only as an ADD.
+// Justification: any live or future reader resolves at some pin P >=
+// watermark (live pins are lease-registered and bound the watermark; future
+// pins are at least the fold cursor, which also bounds it), and the latest
+// event <= P is what decides —
 //
 //   - events superseded below the watermark can never be "latest <= P" again;
 //   - a surviving latest-below-watermark ADD still decides P's verdict when
 //     the group has no event in (watermark, P];
 //   - a latest-below-watermark DEL decides the same verdict as no event at
-//     all ("not matching"), so the whole dead pair is reclaimed.
-//
-// Operates on one value prefix per call.
-//
-// TODO(EN-1748): incremental whole-zone walk under the builder's
-// background-task budget.
-func GCMetadataEvents(db *pebble.DB, prefix []byte, watermark uint64) (pruned int, err error) {
+//     all ("not matching"), so the whole dead group is reclaimed.
+func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error) {
+	zonePrefix := []byte{zone}
+
+	lower := zonePrefix
+	if len(resume) > 0 && resume[0] == zone {
+		lower = resume
+	}
+
 	iter, err := db.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: IncrementBytes(prefix),
+		LowerBound: lower,
+		UpperBound: IncrementBytes(zonePrefix),
 	})
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer func() { _ = iter.Close() }()
 
@@ -41,9 +49,10 @@ func GCMetadataEvents(db *pebble.DB, prefix []byte, watermark uint64) (pruned in
 	suffix := metadataEventSuffixLen + 1 // terminator + seq + op
 
 	var (
-		group        []byte // current entity
+		group        []byte // current group identity (key bytes before the terminator)
 		pendingBelow []byte // latest below-watermark key seen, not yet judged
 		pendingIsAdd bool
+		scanned      int
 	)
 
 	flush := func() {
@@ -58,20 +67,32 @@ func GCMetadataEvents(db *pebble.DB, prefix []byte, watermark uint64) (pruned in
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		rest := key[len(prefix):]
-		tpos := len(rest) - suffix
-		if tpos < 0 || rest[tpos] != metadataEventTerminator {
+		tpos := len(key) - suffix
+		if tpos < 1 || key[tpos] != metadataEventTerminator {
+			scanned++
+
 			continue // malformed keys are the checker's business, not GC's
 		}
 
-		entity := rest[:tpos]
-		seq := binary.BigEndian.Uint64(rest[tpos+1 : tpos+9])
-		op := rest[tpos+9]
+		identity := key[:tpos]
+		seq := binary.BigEndian.Uint64(key[tpos+1 : tpos+9])
+		op := key[tpos+9]
 
-		if !bytes.Equal(entity, group) {
+		if !bytes.Equal(identity, group) {
 			flush()
-			group = append(group[:0], entity...)
+
+			// Budget is only enforced at group boundaries so a group is
+			// never judged from a partial view of its events.
+			if scanned >= budget {
+				next = append([]byte(nil), key...)
+
+				break
+			}
+
+			group = append(group[:0], identity...)
 		}
+
+		scanned++
 
 		if seq >= watermark {
 			// Above the watermark nothing is reclaimable, and the group's
@@ -93,13 +114,15 @@ func GCMetadataEvents(db *pebble.DB, prefix []byte, watermark uint64) (pruned in
 		pendingIsAdd = op == MetadataEventAdd
 	}
 
-	flush()
+	if next == nil {
+		flush()
+	}
 
 	if pruned > 0 {
 		if err := batch.Commit(pebble.NoSync); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 
-	return pruned, nil
+	return pruned, next, nil
 }

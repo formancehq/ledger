@@ -9,7 +9,7 @@ import (
 // The pruning rule: below the watermark, only a group's latest event may
 // survive, and only as an ADD. Resolution at any pin >= watermark must be
 // identical before and after.
-func TestGCMetadataEvents(t *testing.T) {
+func TestGCEventZone(t *testing.T) {
 	t.Parallel()
 
 	s, prefix := eventFixture(t, "v",
@@ -30,9 +30,10 @@ func TestGCMetadataEvents(t *testing.T) {
 		before[pin] = collect(t, s, prefix, pin)
 	}
 
-	pruned, err := GCMetadataEvents(s.DB(), prefix, watermark)
+	pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
 	require.NoError(t, err)
 	require.Equal(t, 4, pruned, "dead's pair + live's superseded pair")
+	require.Nil(t, next, "single pass covers the whole zone")
 
 	for _, pin := range []uint64{30, 35, 45} {
 		require.Equal(t, before[pin], collect(t, s, prefix, pin), "pin %d verdicts unchanged", pin)
@@ -47,4 +48,44 @@ func TestGCMetadataEvents(t *testing.T) {
 		remaining++
 	}
 	require.Equal(t, 4, remaining)
+}
+
+// A budget-bounded walk resumes at a group boundary and converges to the
+// same end state as one unbounded pass.
+func TestGCEventZone_BudgetedResume(t *testing.T) {
+	t.Parallel()
+
+	s, prefix := eventFixture(t, "v",
+		ev{"a", 10, MetadataEventAdd},
+		ev{"a", 20, MetadataEventDel},
+		ev{"b", 10, MetadataEventAdd},
+		ev{"b", 20, MetadataEventDel},
+		ev{"c", 10, MetadataEventAdd},
+	)
+
+	const watermark = 30
+
+	totalPruned := 0
+
+	var resume []byte
+
+	rounds := 0
+	for {
+		rounds++
+		require.Less(t, rounds, 10, "walk must terminate")
+
+		pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, resume, watermark, 2)
+		require.NoError(t, err)
+
+		totalPruned += pruned
+		if next == nil {
+			break
+		}
+
+		resume = next
+	}
+
+	require.Greater(t, rounds, 1, "budget of 2 keys must split the walk")
+	require.Equal(t, 4, totalPruned, "a's pair + b's pair reclaimed, c's ADD kept")
+	require.Equal(t, []string{"c"}, collect(t, s, prefix, 35))
 }

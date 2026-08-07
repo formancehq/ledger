@@ -178,6 +178,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
 			}
 
+			b.wb.SetEventSequence(log.GetSequence())
+
 			// Per-ledger log index is always maintained — every log gets a
 			// LedgerLogKey(ledgerName, logID) → globalSeq entry. The controller's
 			// ListLogs path relies on this being unconditional.
@@ -521,6 +523,8 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	}
 
 	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
+
+	b.wb.SetEventSequence(log.GetSequence())
 
 	// Per-ledger log index is always maintained — see the live-path comment.
 	if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {

@@ -75,6 +75,39 @@ func MetadataIndexEventKeyV(
 		Consume()
 }
 
+// EntityExistsEventKeyV builds one existence event key. Layout mirrors
+// EntityExistsKeyV with the entity terminated and the (seq, op) suffix
+// appended; the nullFlag byte plays the encoded-value role, so an entity
+// moving between null and non-null tombstones the flag range it leaves.
+func EntityExistsEventKeyV(
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	ns, metaKey string,
+	version uint32,
+	isNull bool,
+	entityID []byte,
+	seq uint64,
+	op byte,
+) []byte {
+	nullFlag := EntityExistsNonNull
+	if isNull {
+		nullFlag = EntityExistsNull
+	}
+
+	return kb.Reset().
+		PutByte(PrefixEntityExists).
+		PutLedgerNameFixed(ledgerName).
+		PutNamespace(ns).
+		PutStringNull(metaKey).
+		PutUint32(version).
+		PutByte(nullFlag).
+		PutBytes(entityID).
+		PutByte(metadataEventTerminator).
+		PutUint64(seq).
+		PutByte(op).
+		Consume()
+}
+
 // MetadataIndexEventValuePrefixV is the scan prefix covering every event of
 // one (metadata key, encoded value) pair — the range an equality condition
 // resolves at a pinned sequence (see EventResolveIterator).

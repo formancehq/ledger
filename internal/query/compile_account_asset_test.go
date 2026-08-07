@@ -59,7 +59,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 	_, err := query.Compile(
 		nil, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-		nil, nil, info, registry, resolverZero, nil, nil)
+		nil, nil, info, registry, resolverZero, nil, nil, 0)
 	require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
 	var building *domain.ErrIndexBuilding
@@ -113,7 +113,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
-		nil, nil, info, registry, resolverReady, nil, reader)
+		nil, nil, info, registry, resolverReady, nil, reader, 0)
 	require.NoError(t, err)
 
 	t.Cleanup(iter.Close)

@@ -1,58 +1,70 @@
 package readstore
 
 import (
+	"errors"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Write side of the event-suffixed metadata index (see event_keys.go). The builder folds one log at a time and knows the log's
-// raft sequence; every index mutation becomes one or two APPENDS, never a
+// Write side of the event-suffixed metadata index (see event_keys.go). The
+// builder folds one log at a time and declares its raft sequence via
+// SetEventSequence; every index mutation becomes one or two APPENDS, never a
 // delete:
 //
 //	set   k=v   (fresh)   → ADD in v's range
 //	set   k=v2  (was v1)  → ADD in v2's range + DEL in v1's range
 //	unset k     (was v1)  → DEL in v1's range
 //
+// The exists index (eidx) gets the same treatment keyed on its nullFlag: an
+// event is emitted only when the flag transitions (fresh set, null↔non-null
+// move, unset) — a value change within the same flag leaves the standing ADD
+// as the group's verdict at every pin.
+//
 // The old value still comes from the reverse map, exactly like today's
-// delete-old-forward-key path — the rmap keeps its role and its prompt
-// deletion semantics (the checker's reverse-map pass is untouched).
+// path — the rmap keeps its role and its prompt deletion semantics (the
+// checker's reverse-map pass is untouched).
 
-// AppendMetadataIndexEvent appends a single ADD or DEL event.
-func (wb *WriteBatch) AppendMetadataIndexEvent(
+// eventSequence returns the declared raft sequence for event writes, failing
+// loudly when unset: stamping a zero or stale sequence would silently corrupt
+// pinned resolution for every future reader of the group.
+func (wb *WriteBatch) eventSequence() (uint64, error) {
+	if wb.eventSeq == 0 {
+		return 0, errors.New("invariant: metadata event write without SetEventSequence")
+	}
+
+	return wb.eventSeq, nil
+}
+
+func (wb *WriteBatch) appendMetadataIndexEvent(
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	ns, metadataKey string,
 	version uint32,
 	encodedValue []byte,
 	entityID []byte,
-	seq uint64,
 	op byte,
 ) error {
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
+	}
+
 	return wb.put(MetadataIndexEventKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID, seq, op), nil)
 }
 
-// ReplaceMetadataIndexEvents is the update shape: tombstone the old value's
-// range and add to the new one, in the same fold batch — atomic under any
-// snapshot. oldEncoded nil means a fresh set (no tombstone); newEncoded nil
-// means an unset (no add). Costs the same number of writes as today's
-// delete-then-put.
-func (wb *WriteBatch) ReplaceMetadataIndexEvents(
+func (wb *WriteBatch) appendEntityExistsEvent(
 	kb *dal.KeyBuilder,
 	ledgerName string,
-	ns, metadataKey string,
+	ns, metaKey string,
 	version uint32,
-	oldEncoded, newEncoded []byte,
+	isNull bool,
 	entityID []byte,
-	seq uint64,
+	op byte,
 ) error {
-	if oldEncoded != nil {
-		if err := wb.AppendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncoded, entityID, seq, MetadataEventDel); err != nil {
-			return err
-		}
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
 	}
 
-	if newEncoded != nil {
-		return wb.AppendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncoded, entityID, seq, MetadataEventAdd)
-	}
-
-	return nil
+	return wb.put(EntityExistsEventKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID, seq, op), nil)
 }

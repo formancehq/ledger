@@ -965,23 +965,27 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap, mainSeq, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
 	if err != nil {
 		return nil, err
 	}
+
+	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
 	kb := dal.NewKeyBuilder()
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle)
+	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
 
-	iter := readstore.NewFilterIterator(compiled,
-		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq))
+	var iter = compiled
+	if keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq); keep != nil {
+		iter = readstore.NewFilterIterator(compiled, keep)
+	}
 	defer iter.Close()
 
 	if profile != nil {
@@ -1665,12 +1669,14 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		}
 	}
 
-	snap, mainSeq, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
 	if err != nil {
 		_ = handle.Close()
 
 		return nil, err
 	}
+
+	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
 	kb := dal.NewKeyBuilder()
@@ -1679,7 +1685,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), nil, handle,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), nil, handle, mainSeq,
 	)
 	if err != nil {
 		_ = handle.Close()

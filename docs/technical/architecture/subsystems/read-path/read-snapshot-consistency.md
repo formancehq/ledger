@@ -124,18 +124,25 @@ iterator with `query.MainHorizonKeep`.**
 `AlignedIndexSnapshot` returns a read-index snapshot whose fold cursor covers
 the handle's last applied sequence (verified through the snapshot itself, so
 the check cannot race it), waiting up to a bounded grace for the fold and
-failing with `ErrReadIndexNotCaughtUp` when the builder is stalled. Because
-the fold is ordered, such a snapshot holds every index row for the entities
-the handle sees:
+failing with `ErrReadIndexNotCaughtUp` when the builder is stalled. It also
+registers the handle's sequence as a *read lease*, bounding the event GC (see
+below); the caller releases it with the returned closure when iteration ends.
+Because the fold is ordered, such a snapshot holds every index event at or
+below the handle's sequence. That sequence is the query's **pin**:
 
-- main-store leaves and enrichment reflect the handle's sequence exactly;
-- index leaves can only *exceed* the handle (entities committed after it),
-  and the `MainHorizonKeep` filter trims those back for TRANSACTIONS and
-  LOGS, so the response is the state at the handle's sequence. ACCOUNTS get
-  no trim: main-store existence is not a horizon signal there (purged
-  accounts legitimately live on in the monotonic has-asset and metadata
-  indexes), and account enrichment renders absent accounts as address-only
-  rows, so index membership is served as folded.
+- main-store leaves and enrichment reflect the pin exactly;
+- metadata and exists index leaves resolve their append-only event groups at
+  the pin (see [readstore-event-keys.md](readstore-event-keys.md)) — events
+  folded past the handle are invisible, so selection and enrichment cannot
+  disagree about a value flip in either direction;
+- add-only index leaves (timestamp, inserted_at, address→tx, reference,
+  has-asset, reverted_at) keep plain keys and can only *exceed* the handle
+  (entities committed after it); the `MainHorizonKeep` filter trims those
+  back for TRANSACTIONS and LOGS. ACCOUNTS get no trim: main-store existence
+  is not a horizon signal there (purged accounts legitimately live on in the
+  monotonic has-asset and metadata indexes), and account enrichment renders
+  absent accounts as address-only rows, so index membership is served as
+  folded.
 
 Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
 the reverse LOGS arm, whose unfiltered scan also iterates the read index),
@@ -143,10 +150,12 @@ the reverse LOGS arm, whose unfiltered scan also iterates the read index),
 endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
 index snapshot and need no alignment.
 
-**Residual window**: destructive fold events — a `DropIndex` range-delete or
-a retype's version switch — landing between the handle's sequence and the
-snapshot's fold cursor can remove rows for entities the handle still sees.
-The window is the microseconds between the two acquisitions (the wait exits
-as soon as the cursor covers the handle); closing it entirely needs
-registry-generation comparison and retry, deferred until it is observed in
-practice.
+**Residual window**: a retype's version switch landing between the handle's
+sequence and the snapshot's fold cursor makes the snapshot-resolved version
+serve rewrite-stamped events the pin cannot see yet — the query may miss
+entries the rewrite carried over. A `DropIndex` in the same window is an
+honest rejection instead (the registry is read through the snapshot, so
+compilation fails with index-not-found). The window is the microseconds
+between the two acquisitions (the wait exits as soon as the cursor covers
+the handle); closing it entirely needs registry-generation comparison and
+retry, deferred until it is observed in practice.

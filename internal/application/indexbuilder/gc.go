@@ -231,3 +231,43 @@ func (b *Builder) purgeOrphanVersions() error {
 
 	return nil
 }
+
+// eventGCKeyBudget bounds how many event keys one tick's GC pass visits per
+// zone — enough to keep up with sustained metadata churn (the walk runs ~10
+// times a second) while keeping each pass well under the tick interval.
+const eventGCKeyBudget = 4096
+
+// runEventGC advances the incremental reclamation of superseded metadata /
+// exists index events (readstore.GCEventZone) by one budgeted slice per zone.
+// The watermark is the lowest pin any current or future reader can resolve
+// at: live reads register their pins as leases, and every future pin is at
+// least the fold cursor.
+func (b *Builder) runEventGC(cursor uint64) {
+	watermark := cursor
+	if w, ok := b.readStore.Leases().Watermark(); ok && w < watermark {
+		watermark = w
+	}
+
+	if watermark == 0 {
+		return
+	}
+
+	if b.eventGCResume == nil {
+		b.eventGCResume = map[byte][]byte{}
+	}
+
+	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
+		pruned, next, err := readstore.GCEventZone(b.readStore.DB(), zone, b.eventGCResume[zone], watermark, eventGCKeyBudget)
+		if err != nil {
+			b.logger.Errorf("event GC pass on zone %#x failed: %v", zone, err)
+
+			return
+		}
+
+		b.eventGCResume[zone] = next
+
+		if pruned > 0 {
+			b.logger.Debugf("event GC reclaimed %d events in zone %#x", pruned, zone)
+		}
+	}
+}

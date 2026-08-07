@@ -36,6 +36,9 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	indexVersionFor func(canonical string) (uint32, error)
 	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
+	// pin is filled in by listEntities: the main handle's applied sequence,
+	// at which metadata / exists index leaves resolve their event groups.
+	pin uint64
 	// horizonKeep is filled in by listEntities: it trims read-index iteration
 	// back to pebbleReader's horizon, since the aligned index snapshot may
 	// have folded entities committed after the main handle (see
@@ -68,14 +71,17 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
-	snap, mainSeq, err := query.AlignedIndexSnapshot(readStore, params.pebbleReader)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(readStore, params.pebbleReader)
 	if err != nil {
 		return result, err
 	}
+
+	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
 	params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
 	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
+	params.pin = mainSeq
 
 	if params.reverse {
 		if params.filter != nil {
@@ -98,13 +104,13 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader,
+		params.pebbleReader, params.pin,
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)
 	}
 
-	var iter readstore.EntityIterator = compiled
+	var iter = compiled
 	if params.horizonKeep != nil {
 		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
 	}
@@ -227,13 +233,13 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader,
+		params.pebbleReader, params.pin,
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)
 	}
 
-	var iter readstore.EntityIterator = compiled
+	var iter = compiled
 	if params.horizonKeep != nil {
 		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
 	}
