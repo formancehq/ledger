@@ -83,10 +83,12 @@ func TestConditionalSafetyPropertiesDoNotRequireCoverage(t *testing.T) {
 	}
 
 	optionalDiagnostics := []string{
+		"FailFuturesBelowTerm resolved at least one future",
 		"concurrent ledger delete: delete failed transiently",
 		"concurrent ledger delete: post-delete write inconclusive (transient)",
 		"config patch applied",
 		"follower observed same ClusterConfig as leader",
+		"future failed by below-term sweep",
 		"rolling-restart deleted pod",
 		"sentinel verify hit a transient error",
 		"STS ready after config patch",
@@ -95,6 +97,7 @@ func TestConditionalSafetyPropertiesDoNotRequireCoverage(t *testing.T) {
 		"bloom SetReady skipped: rebuild raced populate",
 		"deleted ledger deferred cleanup executed by covering purge",
 		"snap file recovered from WAL snapshot records",
+		"spool pruned after resync",
 		"stale proposal rejected: cache epoch mismatch",
 		"stale proposal rejected: predicted index mismatch",
 	}

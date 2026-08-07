@@ -126,9 +126,10 @@ if err != nil {
   10 min deadline.
 - Drivers that own their `main()` (singletons, first-, eventually-, or
   parallel drivers that need to create their own ledger from scratch) should
-  use `internal.SingletonContext()` (90 min) or `internal.DriverContext()`
-  (10 min) instead of bare `context.Background()`, so a SUT hang surfaces as a
-  timed-out context.
+  use `internal.PlatformSingletonContext()` (12 min) when Composer must observe
+  completion in a 20-minute run, `internal.SingletonContext()` (90 min) for
+  longer suites, or `internal.DriverContext()` (10 min) for parallel paths.
+  Avoid bare `context.Background()` so a SUT hang surfaces as a timeout.
 - A `singleton_driver_` must execute one bounded scenario and return. Do not
   add a startup cooldown or a repeat-until-context loop: Test Composer runs at
   most one singleton per timeline, and a command that outlives the platform

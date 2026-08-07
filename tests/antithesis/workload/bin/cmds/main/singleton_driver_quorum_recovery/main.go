@@ -33,8 +33,8 @@ import (
 var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
 
 const (
-	qrScaleDownTimeout = 8 * time.Minute
-	qrScaleUpTimeout   = 15 * time.Minute
+	qrScaleDownTimeout = 4 * time.Minute
+	qrScaleUpTimeout   = 4 * time.Minute
 
 	// qrConfChangeLatencyBudget is the "should be fast" threshold for the
 	// force-remove ConfChange to bring voters down to 1 after scale-down.
@@ -49,7 +49,7 @@ const (
 func main() {
 	log.Println("composer: singleton_driver_quorum_recovery")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
@@ -136,13 +136,16 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	// operator scale-down and every subsequent driver runs against a broken
 	// cluster for the rest of the experiment.
 	defer func() {
-		if err := internal.PatchReplicas(context.Background(), lsClient, internal.ClusterName, 3); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), qrScaleUpTimeout)
+		defer cancel()
+
+		if err := internal.PatchReplicas(cleanupCtx, lsClient, internal.ClusterName, 3); err != nil {
 			log.Printf("quorum-recovery: cleanup PatchReplicas(3) failed: %s", err)
 		}
 		// Best-effort wait for the cluster to settle back to N=3 voters before
 		// releasing the singleton slot. If it doesn't recover we let the next
 		// driver iteration deal with it.
-		_ = internal.WaitForVoters(context.Background(), clusterClient, 3, qrScaleUpTimeout, details)
+		_ = internal.WaitForVoters(cleanupCtx, clusterClient, 3, qrScaleUpTimeout, details)
 	}()
 
 	deleted := 0

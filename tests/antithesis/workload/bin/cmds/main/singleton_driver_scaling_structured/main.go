@@ -26,6 +26,7 @@ var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
 const (
 	convergenceTimeout = 10 * time.Minute
 	stableWindow       = 20 * time.Second
+	cleanupTimeout     = 3 * time.Minute
 )
 
 // scalingCycle is the deterministic replica sequence. Each value MUST be odd
@@ -35,7 +36,7 @@ var scalingCycle = []int64{5, 3, 7, 3}
 func main() {
 	log.Println("composer: singleton_driver_scaling_structured")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
@@ -61,6 +62,18 @@ func main() {
 }
 
 func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
+	cleanupDetails := internal.Details{"target": int64(3), "phase": "cleanup"}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := internal.PatchReplicas(cleanupCtx, lsClient, internal.ClusterName, 3); err != nil {
+			log.Printf("structured-scaling: cleanup PatchReplicas(3) failed: %s", err)
+			return
+		}
+		_ = internal.WaitForVoters(cleanupCtx, clusterClient, 3, cleanupTimeout, cleanupDetails)
+	}()
+
 	// Capture a sentinel commit before scaling; it must survive every move.
 	sentinel, err := internal.PreCommitSentinel(ctx, client, sentinelLedger)
 	if err != nil {
