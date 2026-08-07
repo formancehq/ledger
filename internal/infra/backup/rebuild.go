@@ -415,9 +415,17 @@ func RebuildDelta(
 				}
 			}
 
+		// A chapter lifecycle log always carries its full snapshots (the
+		// processors build them unconditionally), so a nil payload or chapter
+		// is a corrupt/truncated log stream. Skipping it would report a
+		// successful restore with an incomplete registry — the exact
+		// identity-collision seed this replay exists to prevent — so the
+		// rebuild fails loudly instead.
 		case *commonpb.LogPayload_CloseChapter:
-			if p.CloseChapter == nil {
-				continue
+			if p.CloseChapter.GetClosedChapter() == nil || p.CloseChapter.GetNewChapter() == nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: CloseChapter log %d carries no chapter snapshots — corrupt log stream", seq)
 			}
 
 			if err := writer.replayClosedChapter(ctx, p.CloseChapter); err != nil {
@@ -427,30 +435,42 @@ func RebuildDelta(
 			}
 
 		case *commonpb.LogPayload_SealChapter:
-			if p.SealChapter != nil && p.SealChapter.GetChapter() != nil {
-				if err := writer.storeChapterRow(p.SealChapter.GetChapter()); err != nil {
-					_ = batch.Cancel()
+			if p.SealChapter.GetChapter() == nil {
+				_ = batch.Cancel()
 
-					return fmt.Errorf("replaying sealed chapter at log %d: %w", seq, err)
-				}
+				return fmt.Errorf("invariant: SealChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.SealChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying sealed chapter at log %d: %w", seq, err)
 			}
 
 		case *commonpb.LogPayload_ArchiveChapter:
-			if p.ArchiveChapter != nil && p.ArchiveChapter.GetChapter() != nil {
-				if err := writer.storeChapterRow(p.ArchiveChapter.GetChapter()); err != nil {
-					_ = batch.Cancel()
+			if p.ArchiveChapter.GetChapter() == nil {
+				_ = batch.Cancel()
 
-					return fmt.Errorf("replaying archiving chapter at log %d: %w", seq, err)
-				}
+				return fmt.Errorf("invariant: ArchiveChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.ArchiveChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying archiving chapter at log %d: %w", seq, err)
 			}
 
 		case *commonpb.LogPayload_ConfirmArchiveChapter:
-			if p.ConfirmArchiveChapter != nil && p.ConfirmArchiveChapter.GetChapter() != nil {
-				if err := writer.storeChapterRow(p.ConfirmArchiveChapter.GetChapter()); err != nil {
-					_ = batch.Cancel()
+			if p.ConfirmArchiveChapter.GetChapter() == nil {
+				_ = batch.Cancel()
 
-					return fmt.Errorf("replaying archived chapter at log %d: %w", seq, err)
-				}
+				return fmt.Errorf("invariant: ConfirmArchiveChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.ConfirmArchiveChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying archived chapter at log %d: %w", seq, err)
 			}
 
 		// Log types with no persistent state to rebuild:
@@ -857,43 +877,43 @@ func (w *attributeReplayWriter) storeChapterRow(chapter *commonpb.Chapter) error
 }
 
 // replayClosedChapter upserts both chapters a close produced and advances the
-// next-chapter id past the newly opened one.
+// next-chapter id past the newly opened one. The caller validates that both
+// snapshots are present.
 func (w *attributeReplayWriter) replayClosedChapter(ctx context.Context, p *commonpb.ClosedChapterLog) error {
-	if closed := p.GetClosedChapter(); closed != nil {
-		// The log's snapshot is cloned before the live apply stamps
-		// LastAuditHash onto the tracker's chapter (machine.applyProposal), so
-		// it is empty here. That hash — the chain hash of the audit entry at
-		// CloseAuditSequence — seeds the checker's chain verification across
-		// the chapter's eventual purge, and the later lifecycle logs carry it
-		// only when the seal predates the backup. Recover it from the stored
-		// audit entry so a chapter sealed after the restore carries it too.
-		if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
-			// The entry cannot be missing: it is at or above the incremental
-			// window's floor (every archival confirm audits above the range it
-			// purges, so no purge reaches CloseAuditSequence of a delta close),
-			// and below-floor entries ride the checkpoint SSTs.
-			entry, err := query.ReadAuditEntry(ctx, w.readHandle, closed.GetCloseAuditSequence())
-			if err != nil {
-				return fmt.Errorf("reading audit entry %d to recover closed chapter %d's last audit hash: %w",
-					closed.GetCloseAuditSequence(), closed.GetId(), err)
-			}
+	closed := p.GetClosedChapter()
 
-			closed.LastAuditHash = entry.GetHash()
+	// The log's snapshot is cloned before the live apply stamps
+	// LastAuditHash onto the tracker's chapter (machine.applyProposal), so
+	// it is empty here. That hash — the chain hash of the audit entry at
+	// CloseAuditSequence — seeds the checker's chain verification across
+	// the chapter's eventual purge, and the later lifecycle logs carry it
+	// only when the seal predates the backup. Recover it from the stored
+	// audit entry so a chapter sealed after the restore carries it too.
+	if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
+		// The entry cannot be missing: it is at or above the incremental
+		// window's floor (every archival confirm audits above the range it
+		// purges, so no purge reaches CloseAuditSequence of a delta close),
+		// and below-floor entries ride the checkpoint SSTs.
+		entry, err := query.ReadAuditEntry(ctx, w.readHandle, closed.GetCloseAuditSequence())
+		if err != nil {
+			return fmt.Errorf("reading audit entry %d to recover closed chapter %d's last audit hash: %w",
+				closed.GetCloseAuditSequence(), closed.GetId(), err)
 		}
 
-		if err := w.storeChapterRow(closed); err != nil {
-			return err
-		}
+		closed.LastAuditHash = entry.GetHash()
 	}
 
-	if opened := p.GetNewChapter(); opened != nil {
-		if err := w.storeChapterRow(opened); err != nil {
-			return err
-		}
+	if err := w.storeChapterRow(closed); err != nil {
+		return err
+	}
 
-		if next := opened.GetId() + 1; next > w.nextChapterID {
-			w.nextChapterID = next
-		}
+	opened := p.GetNewChapter()
+	if err := w.storeChapterRow(opened); err != nil {
+		return err
+	}
+
+	if next := opened.GetId() + 1; next > w.nextChapterID {
+		w.nextChapterID = next
 	}
 
 	return nil

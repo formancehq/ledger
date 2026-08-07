@@ -194,6 +194,34 @@ func TestRebuildDelta_RebuildsChapterRegistry(t *testing.T) {
 		"NextChapterID must advance past the opened chapter or the restored FSM re-allocates archived ids")
 }
 
+// TestRebuildDelta_MalformedChapterLog_FailsLoudly: a chapter lifecycle log
+// with a missing snapshot is a corrupt log stream — silently skipping it would
+// report a successful restore with an incomplete registry, the exact
+// identity-collision seed the chapter replay exists to prevent.
+func TestRebuildDelta_MalformedChapterLog_FailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	for name, log := range map[string]*commonpb.Log{
+		"close without snapshots": closeChapterLog(3, nil, nil),
+		"seal without chapter":    sealChapterLog(3, nil),
+		"archive without chapter": archiveChapterLog(3, nil),
+		"confirm without chapter": confirmArchiveChapterLog(3, nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newRebuildTestStore(t)
+
+			batch := store.OpenWriteSession()
+			require.NoError(t, batch.SetProto(coldLogKey(3), log))
+			require.NoError(t, batch.Commit())
+
+			err := RebuildDelta(context.Background(), logging.Testing(), store, 0, 0)
+			require.ErrorContains(t, err, "corrupt log stream")
+		})
+	}
+}
+
 // TestRebuildDelta_CloseOnlyDelta_RecoversLastAuditHash: a chapter closed but
 // not yet sealed at backup time carries no LastAuditHash in its close log (the
 // live apply stamps it on the tracker's row after the snapshot is cloned). The
