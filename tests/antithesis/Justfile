@@ -22,9 +22,10 @@ ledger_image_name := env_var_or_default("LEDGER_IMAGE_NAME", "ledger")
 # on a specific subset (e.g. "main/parallel_driver_bulk,main/first_default_ledger").
 run duration description='ledger-v3 manual run' include='' *ARGS:
     just tag={{tag}} push-images {{quote(include)}} {{ARGS}}
-    curl --fail \
-        --user "formance:$ANTITHESIS_PASSWORD" \
-        -X POST https://formance.antithesis.com/api/v1/launch/basic_test -d '{ \
+    curl --fail --silent --show-error \
+        --header "Authorization: Bearer $ANTITHESIS_API_KEY" \
+        --header "Content-Type: application/json" \
+        -X POST "https://$ANTITHESIS_TENANT.antithesis.com/api/v1/launch/basic_test" -d '{ \
             "params": { \
                 "custom.duration": "{{duration}}", \
                 "custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
@@ -41,7 +42,7 @@ build-images:
     docker tag quay.io/coreos/etcd:v3.5.9 "$ANTITHESIS_REPOSITORY/etcd:v3.5.9"
 
     # ledger (instrumented for Antithesis)
-    docker build \
+    env -u SOURCE_DATE_EPOCH docker build \
         --platform linux/amd64 \
         -f ../../Dockerfile.antithesis \
         --progress=plain \
@@ -77,22 +78,56 @@ deploy-local: build-images
 # "main/parallel_driver_bulk,main/first_default_ledger").
 k8s-run duration_hours description='ledger-v3 k8s run' include='' *ARGS:
     just tag={{tag}} k8s-push-images {{quote(include)}} {{ARGS}}
-    curl --fail \
-        --user "formance:$ANTITHESIS_PASSWORD" \
-        -X POST https://formance.antithesis.com/api/v1/launch/basic_k8s_test -d '{ \
-            "params": { \
-                "antithesis.duration": "'"$(echo "{{duration_hours}} * 60" | bc | cut -d. -f1)"'", \
-                "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
-                "antithesis.config_image": "'"antithesis-config-ledger-v3-k8s:{{tag}}"'", \
-                "antithesis.description": "{{description}}", \
-                "antithesis.images": "'"workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}"'" \
-            } \
-        }'
+    just tag={{tag}} check-k8s-image-freshness
+    just tag={{tag}} k8s-launch-minutes "$(echo "{{duration_hours}} * 60" | bc | cut -d. -f1)" {{quote(description)}}
+
+# Launch an already-built k8s suite with a duration expressed in minutes.
+# This is the convenient entrypoint for short validation runs such as 20m.
+k8s-run-minutes duration_minutes description='ledger-v3 k8s run' include='' *ARGS:
+    just tag={{tag}} k8s-push-images {{quote(include)}} {{ARGS}}
+    just tag={{tag}} check-k8s-image-freshness
+    just tag={{tag}} k8s-launch-minutes {{quote(duration_minutes)}} {{quote(description)}}
+
+# Launch an already-published k8s suite. The request returns as soon as
+# Antithesis accepts it; the platform run continues independently.
+k8s-launch-minutes duration_minutes description:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    : "${ANTITHESIS_API_KEY:?ANTITHESIS_API_KEY is required}"
+    : "${ANTITHESIS_TENANT:?ANTITHESIS_TENANT is required}"
+    : "${ANTITHESIS_REPORT_RECIPIENT:?ANTITHESIS_REPORT_RECIPIENT is required}"
+
+    if ! [[ {{quote(duration_minutes)}} =~ ^[1-9][0-9]*$ ]]; then
+        printf 'duration_minutes must be a positive integer, got: %s\n' {{quote(duration_minutes)}} >&2
+        exit 1
+    fi
+
+    payload="$(jq -n \
+        --arg duration {{quote(duration_minutes)}} \
+        --arg recipients "$ANTITHESIS_REPORT_RECIPIENT" \
+        --arg config_image "antithesis-config-ledger-v3-k8s:{{tag}}" \
+        --arg description {{quote(description)}} \
+        --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}" \
+        '{params: {
+            "antithesis.duration": $duration,
+            "antithesis.report.recipients": $recipients,
+            "antithesis.config_image": $config_image,
+            "antithesis.description": $description,
+            "antithesis.images": $images
+        }}')"
+
+    curl --fail --silent --show-error \
+        --header "Authorization: Bearer $ANTITHESIS_API_KEY" \
+        --header "Content-Type: application/json" \
+        --request POST \
+        --data "$payload" \
+        "https://$ANTITHESIS_TENANT.antithesis.com/api/v1/launch/basic_k8s_test"
 
 # Build all images needed for k8s mode.
 k8s-build-images:
     # ledger (instrumented for Antithesis)
-    docker build \
+    env -u SOURCE_DATE_EPOCH docker build \
         --platform linux/amd64 \
         -f ../../Dockerfile.antithesis \
         --progress=plain \
@@ -100,7 +135,7 @@ k8s-build-images:
         ../../
 
     # operator
-    docker build \
+    env -u SOURCE_DATE_EPOCH docker build \
         --platform linux/amd64 \
         -t "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
         ../../misc/operator
@@ -113,44 +148,57 @@ k8s-push-images include='' *ARGS:
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
 
-# Verify every image a k8s launch references resolves in the registry under
-# the current tag — a silently failed push otherwise surfaces only as a boot
-# failure inside the Antithesis environment.
+# Exit non-zero while a completed run still contains failing properties.
+check-run run_id:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    : "${ANTITHESIS_API_KEY:?ANTITHESIS_API_KEY is required}"
+    : "${ANTITHESIS_TENANT:?ANTITHESIS_TENANT is required}"
+
+    response="$({ curl --fail --silent --show-error --get \
+        --header "Authorization: Bearer $ANTITHESIS_API_KEY" \
+        --data-urlencode 'limit=100' \
+        --data-urlencode 'status=Failing' \
+        "https://$ANTITHESIS_TENANT.antithesis.com/api/v0/runs/{{run_id}}/properties"; } 2>&1)" || {
+        printf '%s\n' "$response" >&2
+        exit 1
+    }
+
+    count="$(jq '.data | length' <<<"$response")"
+    if (( count > 0 )); then
+        printf 'Antithesis run {{run_id}} has %d failing properties:\n' "$count" >&2
+        jq -r '.data[].name | "- \(.)"' <<<"$response" >&2
+        exit 1
+    fi
+
+    printf 'Antithesis run {{run_id}} has no failing properties.\n'
+
+# Ensure the locally built k8s images carry a creation time Antithesis accepts.
 check-k8s-image-freshness:
     #!/usr/bin/env bash
     set -euo pipefail
-    for image in \
-        "$ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}" \
-        "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
-        "$ANTITHESIS_REPOSITORY/workload-ledger-v3:{{tag}}" \
-        "$ANTITHESIS_REPOSITORY/workload-ledger-v3-sidecar:{{tag}}" \
-        "$ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3-k8s:{{tag}}"; do
-        docker manifest inspect "$image" >/dev/null
-        echo "fresh: $image"
-    done
 
-# Launch a k8s run against images already pushed under the current tag (no
-# build): duration in minutes, raw API response on stdout so CI can extract
-# run identifiers. Auth prefers the API key (tenant as user), falling back to
-# the legacy password.
-k8s-launch-minutes duration_minutes description='ledger-v3 k8s run':
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tenant="${ANTITHESIS_TENANT:-formance}"
-    payload=$(jq -n \
-        --arg duration "{{duration_minutes}}" \
-        --arg recipients "$ANTITHESIS_REPORT_RECIPIENT" \
-        --arg config_image "antithesis-config-ledger-v3-k8s:{{tag}}" \
-        --arg description {{quote(description)}} \
-        --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}" \
-        '{params: {
-            "antithesis.duration": $duration,
-            "antithesis.report.recipients": $recipients,
-            "antithesis.config_image": $config_image,
-            "antithesis.description": $description,
-            "antithesis.images": $images
-        }}')
-    curl --fail --silent --show-error \
-        --user "$tenant:${ANTITHESIS_API_KEY:-$ANTITHESIS_PASSWORD}" \
-        -X POST "https://$tenant.antithesis.com/api/v1/launch/basic_k8s_test" \
-        -d "$payload"
+    : "${ANTITHESIS_REPOSITORY:?ANTITHESIS_REPOSITORY is required}"
+
+    now="$(date +%s)"
+    max_age_seconds="$((72 * 60 * 60))"
+    images=(
+        "antithesis-config-ledger-v3-k8s"
+        "{{ledger_image_name}}"
+        "ledger-operator"
+        "workload-ledger-v3"
+        "workload-ledger-v3-sidecar"
+    )
+
+    for name in "${images[@]}"; do
+        image="$ANTITHESIS_REPOSITORY/$name:{{tag}}"
+        created="$(docker image inspect "$image" | jq -r '.[0].Created')"
+        created_epoch="$(date -d "$created" +%s)"
+        age="$((now - created_epoch))"
+        if (( age < 0 || age > max_age_seconds )); then
+            printf '%s is not fresh: created=%s age=%ss\n' "$image" "$created" "$age" >&2
+            exit 1
+        fi
+        printf '%s is fresh: created=%s\n' "$image" "$created"
+    done
