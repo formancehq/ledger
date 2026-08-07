@@ -152,5 +152,17 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 
 		Expect(served).To(BeNumerically(">", 0), "every probe was rejected — inconclusive")
 
+		// Drain the fold backlog before the spec ends: teardown stops the
+		// server under a bounded budget, which a deep backlog can exceed on
+		// slow runners.
+		stopPressure()
+		Eventually(func() uint64 {
+			st, err := actions.GetIndexStatus(ctx, client)
+			if err != nil {
+				return ^uint64(0)
+			}
+
+			return st.GetLag()
+		}, 3*time.Minute, 500*time.Millisecond).Should(BeZero(), "fold backlog drained")
 	})
 })
