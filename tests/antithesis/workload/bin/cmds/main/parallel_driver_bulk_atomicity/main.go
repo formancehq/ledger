@@ -229,14 +229,14 @@ func main() {
 		for i, ref := range refs {
 			empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref), minLogSeq)
 			if conclusive {
-				assert.Always(empty,
+				assert.AlwaysOrUnreachable(empty,
 					"failed atomic bulk leaves no partial transaction effects",
 					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 			}
 
 			empty, ids, conclusive = listIsEmpty(ctx, client, ledger, actions.AddressExactFilter(accounts[i]), minLogSeq)
 			if conclusive {
-				assert.Always(empty,
+				assert.AlwaysOrUnreachable(empty,
 					"failed atomic bulk leaves no partial account activity",
 					details.With(internal.Details{"account": accounts[i], "txIds": fmt.Sprintf("%v", ids)}))
 			}

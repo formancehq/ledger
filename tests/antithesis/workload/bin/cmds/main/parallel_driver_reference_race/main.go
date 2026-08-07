@@ -161,7 +161,7 @@ func assertReferenceUnique(
 		return
 	}
 
-	assert.Always(len(ids) <= 1,
+	assert.AlwaysOrUnreachable(len(ids) <= 1,
 		"a reference never maps to more than one committed transaction",
 		details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 }

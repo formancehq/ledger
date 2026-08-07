@@ -41,15 +41,7 @@ func main() {
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(30 * time.Second):
-		}
-
-		scale(ctx, lsClient, clusterClient)
-	}
+	scale(ctx, lsClient, clusterClient)
 }
 
 func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient) {
@@ -71,7 +63,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 		next := nextStep(currentReplicas, target)
 
 		details := internal.Details{
-			"cluster":   "ledger",
+			"cluster":         "ledger",
 			"currentReplicas": currentReplicas,
 			"stepTarget":      next,
 			"finalTarget":     target,

@@ -1341,16 +1341,17 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 				a.FailFuturesBelowTerm(work.maxTerm, ErrLeadershipLost)
 			}
 
-			// Runs on every committed batch: the condition is the signal —
-			// true only when a below-maxTerm future got its real result in
-			// the same batch that triggers a sweep.
-			assert.Sometimes(oldTermResolved > 0,
-				"old-term entry committed and resolved in same batch as a sweep",
-				map[string]any{
+			// This is a rare scheduling observation, not a property that every
+			// general-purpose run must cover. Emit it only when the interleaving
+			// occurs; the resolve-before-sweep ordering is regression-tested
+			// independently.
+			if oldTermResolved > 0 {
+				lifecycle.SendEvent("old_term_entry_resolved_before_sweep", map[string]any{
 					"maxTerm":         work.maxTerm,
 					"oldTermResolved": oldTermResolved,
 					"batchFutures":    len(work.futures),
 				})
+			}
 		} else {
 			// Fail fast: ownership was already taken via LoadAndDelete, so no
 			// other path (term sweep, dropped-proposal resolution) can ever

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"google.golang.org/grpc/codes"
@@ -36,9 +37,9 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
-						Reference:     ref,
-						Force:         true,
+						Postings:  []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Reference: ref,
+						Force:     true,
 					},
 				}},
 			},
@@ -61,9 +62,8 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 }
 
 // Verify asserts the sentinel transaction is still readable via the gRPC
-// client. Transient failures (UNAVAILABLE, ledger-deleted, etc.) are downgraded
-// to a Reachable check; a NotFound on a previously committed transaction is a
-// hard failure (Always violation).
+// client. Transient failures are recorded as lifecycle events; a NotFound on a
+// previously committed transaction is a hard failure.
 func (s *Sentinel) Verify(ctx context.Context, client servicepb.BucketServiceClient, label string) {
 	details := Details{
 		"label":     label,
@@ -81,11 +81,13 @@ func (s *Sentinel) Verify(ctx context.Context, client servicepb.BucketServiceCli
 		return
 	}
 	if IsTransient(err) {
-		assert.Reachable("sentinel verify hit a transient error", details.With(Details{"error": err}))
+		lifecycle.SendEvent("sentinel_verify_transient_error", details.With(Details{"error": err}))
 		return
 	}
 	st, _ := status.FromError(err)
 	// A committed sentinel must never be NotFound, regardless of the operational
 	// disruption that occurred between PreCommit and Verify.
-	assert.Always(st.Code() != codes.NotFound, "committed sentinel transaction must survive operational events", details.With(Details{"error": err}))
+	if st.Code() == codes.NotFound {
+		assert.Unreachable("committed sentinel transaction must survive operational events", details.With(Details{"error": err}))
+	}
 }

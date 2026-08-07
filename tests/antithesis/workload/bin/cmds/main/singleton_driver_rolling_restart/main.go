@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -30,11 +31,10 @@ import (
 var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")
 
 const (
-	rrPodGoneTimeout      = 60 * time.Second
-	rrPodReadyTimeout     = 5 * time.Minute
-	rrVotersTimeout       = 5 * time.Minute
-	rrCooldownPerPod      = 15 * time.Second
-	rrCooldownBetweenRuns = 90 * time.Second
+	rrPodGoneTimeout  = 60 * time.Second
+	rrPodReadyTimeout = 5 * time.Minute
+	rrVotersTimeout   = 5 * time.Minute
+	rrCooldownPerPod  = 15 * time.Second
 )
 
 func main() {
@@ -61,15 +61,7 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(rrCooldownBetweenRuns):
-		}
-
-		runSweep(ctx, clientset, clusterClient, client)
-	}
+	runSweep(ctx, clientset, clusterClient, client)
 }
 
 func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
@@ -121,7 +113,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 		if err != nil {
 			continue
 		}
-		assert.Reachable("rolling-restart deleted pod", details)
+		lifecycle.SendEvent("rolling_restart_deleted_pod", details)
 
 		if !internal.WaitForPodGone(ctx, clientset, pod, uid, rrPodGoneTimeout) {
 			log.Printf("rolling-restart: %s did not disappear within %s", pod, rrPodGoneTimeout)

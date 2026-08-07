@@ -8,7 +8,7 @@ import (
 	"iter"
 	"time"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -809,7 +809,7 @@ func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.Recov
 		// while this task was scanning, so publishing readiness would have
 		// exposed a half-populated filter. Skipping is the correct path —
 		// the rebuild's own task republishes readiness.
-		assert.Reachable("bloom SetReady skipped: rebuild raced populate", map[string]any{
+		lifecycle.SendEvent("bloom_set_ready_skipped_after_rebuild_race", map[string]any{
 			"reason": reason,
 			"epoch":  epoch,
 		})

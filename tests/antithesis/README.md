@@ -129,6 +129,11 @@ if err != nil {
   use `internal.SingletonContext()` (90 min) or `internal.DriverContext()`
   (10 min) instead of bare `context.Background()`, so a SUT hang surfaces as a
   timed-out context.
+- A `singleton_driver_` must execute one bounded scenario and return. Do not
+  add a startup cooldown or a repeat-until-context loop: Test Composer runs at
+  most one singleton per timeline, and a command that outlives the platform
+  run is reported as never completed. The 90 min `SingletonContext` is only a
+  fail-safe for a stuck scenario; it is not a target runtime.
 - Driver-owned ledgers must use a typed `internal.OwnedLedgerPrefix`
   constant (e.g. `internal.PrefixInsufficientFunds.New()` or
   `.WithSeed(run)` when several names share a seed). The constant must
@@ -146,10 +151,10 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
 
 ### Antithesis SDK usage
 
-- **Every `assert.Always` / `Sometimes` / `Reachable` / `Unreachable` MUST have a
-  globally-unique name.** Antithesis indexes assertions by name; two sites
-  sharing one name collapse into one signal and the triage UI shows you a
-  single average instead of three failure modes.
+- **Every `assert.Always` / `AlwaysOrUnreachable` / `Sometimes` / `Reachable` /
+  `Unreachable` MUST have a globally-unique name.** Antithesis indexes
+  assertions by name; two sites sharing one name collapse into one signal and
+  the triage UI shows you a single average instead of three failure modes.
 - `Sometimes` is a coverage sonde — Antithesis prioritizes paths that make
   more `Sometimes` calls satisfied. Use it to mark expected outcomes (`err
   == nil || IsTransient(err)`) even when no invariant is at stake; it tells
@@ -157,6 +162,10 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
 - A `Reachable("X")` with no upstream `Sometimes` that fires when X is true
   is passive: Antithesis cannot bias toward making X happen. Prefer pairing
   them when the path is fragile.
+- `Reachable` is a must-hit coverage contract, not a trace event. An optional
+  branch (for example, a transient RPC failure that a healthy run may never
+  encounter) must use `lifecycle.SendEvent` instead; otherwise every run that
+  avoids the branch is reported as a failure.
 - Never use `panic` / `log.Fatal` / `os.Exit` to signal a finding from a
   driver — they kill the worker without producing a structured signal.
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
@@ -176,8 +185,21 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   interceptors in `internal/client.go` handle transients. Drivers only see
   errors that survived `retryMaxAttempts` retries.
 - Swallow an error with `if err != nil { continue }` — at least log via
-  `LogCleanupError` (for cleanup paths) or `assert.Reachable("X skipped due
-  to error", …)` so the path stays visible in the trace.
+  `LogCleanupError` (for cleanup paths) or `lifecycle.SendEvent("x_skipped",
+  …)` so the path stays visible in the trace without creating a must-hit
+  property.
+
+### Assertion semantics
+
+- Use `AlwaysOrUnreachable` / `Unreachable` for conditional safety invariants.
+- Use `Sometimes` / `Reachable` only when the default suite deliberately
+  drives the condition in every platform run.
+- Use `lifecycle.SendEvent` for rare scheduler interleavings and optional
+  diagnostics. An event remains searchable without turning absence of coverage
+  into a failing property.
+- Put positive reachability checks at the driver that creates their
+  precondition. For example, the post-election Barrier assertion belongs to
+  the leadership-transfer driver, not to an unrelated Barrier sampler.
 
 ## Running locally
 
@@ -191,7 +213,35 @@ just compose-down
 
 # Build and push the workload + ledger images to Antithesis's registry.
 just k8s-push-images
+
+# Build, push, and launch a 20-minute k8s validation run using API-key auth.
+just k8s-run-minutes 20 "ledger-v3 validation"
+
+# Validate image timestamps before launch and check a completed report.
+just check-k8s-image-freshness
+just check-run <run-id>
 ```
+
+The image recipes remove Nix's reproducible `SOURCE_DATE_EPOCH` from Docker
+builds. Without that override, OCI images are dated 1980 and Antithesis reports
+`Recent software version provided` as failing even when the tag was just pushed.
+
+### Running from GitHub Actions
+
+The `Run Antithesis` workflow builds and publishes the Kubernetes suite on a
+native AMD64 runner, launches the platform run, and then releases the runner.
+Use **Actions → Run Antithesis → Run workflow** and provide the report name,
+duration in minutes, and an optional comma-separated driver filter.
+
+Configure a protected GitHub environment named `antithesis` with:
+
+- secrets `ANTITHESIS_API_KEY` and `ANTITHESIS_REGISTRY_KEY_JSON`;
+- variables `ANTITHESIS_REPOSITORY`, `ANTITHESIS_REPORT_RECIPIENT`, and
+  `ANTITHESIS_TENANT`.
+
+`ANTITHESIS_REGISTRY_KEY_JSON` is the complete registry credential file issued
+by Antithesis. The workflow does not wait for the platform run to finish; the
+configured recipient receives the report when it is ready.
 
 `run_model_test.sh` only exercises `singleton_driver_model` — the 60+
 property drivers under `main/` are tested exclusively by the Antithesis

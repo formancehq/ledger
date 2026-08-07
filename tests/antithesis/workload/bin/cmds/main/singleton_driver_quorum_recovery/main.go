@@ -33,7 +33,6 @@ import (
 var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
 
 const (
-	qrCooldown         = 5 * time.Minute
 	qrScaleDownTimeout = 8 * time.Minute
 	qrScaleUpTimeout   = 15 * time.Minute
 
@@ -77,15 +76,7 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(qrCooldown):
-		}
-
-		runRound(ctx, lsClient, clientset, clusterClient, client)
-	}
+	runRound(ctx, lsClient, clientset, clusterClient, client)
 }
 
 func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
@@ -154,12 +145,20 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		_ = internal.WaitForVoters(context.Background(), clusterClient, 3, qrScaleUpTimeout, details)
 	}()
 
+	deleted := 0
 	for _, v := range victims {
 		err := internal.DeletePod(ctx, clientset, v)
 		assert.Sometimes(err == nil, "quorum-recovery pod delete should succeed",
 			details.With(internal.Details{"pod": v, "error": err}))
+		if err == nil {
+			deleted++
+		}
 	}
-	assert.Reachable("quorum-recovery killed both non-leader pods", details)
+	assert.Sometimes(deleted == len(victims), "quorum-recovery killed both non-leader pods",
+		details.With(internal.Details{"deleted": deleted}))
+	if deleted != len(victims) {
+		return
+	}
 
 	err = internal.PatchReplicas(ctx, lsClient, internal.ClusterName, 1)
 	assert.Sometimes(err == nil, "scale-down to 1 should succeed", details.With(internal.Details{"error": err}))

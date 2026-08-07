@@ -1,7 +1,7 @@
 // singleton_driver_scaling_structured exercises deterministic scale-up /
 // scale-down cycles, with stability windows between each move. Unlike the
 // random-target scaling driver and the rapid-fire scaling_chaos driver, this
-// one walks a fixed sequence: 3 → 5 → 3 → 7 → 3 (repeat). Between every move
+// one walks a fixed sequence: 3 → 5 → 3 → 7 → 3. Between every move
 // it re-reads a sentinel transaction committed before the first move and
 // asserts post-commit volumes on a small fresh transaction. The goal is to
 // catch regressions where scaling succeeds at the Raft level but breaks
@@ -24,9 +24,8 @@ import (
 var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
 
 const (
-	convergenceTimeout    = 10 * time.Minute
-	stableWindow          = 20 * time.Second
-	cooldownBetweenRounds = 60 * time.Second
+	convergenceTimeout = 10 * time.Minute
+	stableWindow       = 20 * time.Second
 )
 
 // scalingCycle is the deterministic replica sequence. Each value MUST be odd
@@ -58,15 +57,7 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(cooldownBetweenRounds):
-		}
-
-		runCycle(ctx, lsClient, clusterClient, client)
-	}
+	runCycle(ctx, lsClient, clusterClient, client)
 }
 
 func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
@@ -118,8 +109,8 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: sentinelLedger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
-						Force:         true,
+						Postings: []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+						Force:    true,
 					},
 				}},
 			},

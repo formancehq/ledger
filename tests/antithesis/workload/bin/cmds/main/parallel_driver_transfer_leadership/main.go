@@ -6,6 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -101,6 +102,19 @@ func main() {
 
 	assert.AlwaysOrUnreachable(stateAfter.GetLeader() != 0,
 		"cluster should have a leader after transfer", details)
+
+	// Exercise Barrier at the exact seam the property describes. The generic
+	// monotonicity driver cannot reliably infer a leadership change because its
+	// independent GetClusterState samples often return no leader under faults.
+	barrier, barrierErr := servicepb.NewBucketServiceClient(conn).Barrier(ctx, &servicepb.BarrierRequest{})
+	assert.Sometimes(barrierErr == nil,
+		"barrier succeeded after an observed leadership change",
+		details.With(internal.Details{"error": barrierErr}))
+	if barrierErr == nil {
+		assert.AlwaysGreaterThan(barrier.GetCommitIndex(), uint64(0),
+			"barrier commit index is positive after leadership transfer",
+			details.With(internal.Details{"commitIndex": barrier.GetCommitIndex()}))
+	}
 
 	log.Printf("Leadership transferred: %d -> %d (confirmed leader: %d)",
 		currentLeader, targetID, stateAfter.GetLeader())

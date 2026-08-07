@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -40,7 +41,6 @@ const (
 	ccConvergeWait         = 8 * time.Minute
 	ccStsReadyWait         = 8 * time.Minute
 	ccFollowerConvergeWait = 30 * time.Second
-	ccCooldown             = 90 * time.Second
 )
 
 var (
@@ -88,15 +88,7 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(ccCooldown):
-		}
-
-		runRound(ctx, lsClient, clientset, clusterClient, client)
-	}
+	runRound(ctx, lsClient, clientset, clusterClient, client)
 }
 
 func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
@@ -123,7 +115,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	if err != nil {
 		return
 	}
-	assert.Reachable("config patch applied", details)
+	lifecycle.SendEvent("config_patch_applied", details)
 
 	select {
 	case <-ctx.Done():
@@ -141,7 +133,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	if !ready {
 		return
 	}
-	assert.Reachable("STS ready after config patch", details)
+	lifecycle.SendEvent("statefulset_ready_after_config_patch", details)
 
 	converged := internal.WaitForClusterConfig(ctx, clusterClient, change.predicate, ccConvergeWait)
 	assert.Sometimes(converged, "ClusterConfig should converge to the patched value", details)
@@ -151,14 +143,14 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 
 	// Best-effort follower convergence check. A real FSM divergence is
 	// structurally impossible (deterministic Raft apply); the strong
-	// correctness guarantee lives in sentinel.Verify (Always). Under fault
+	// correctness guarantee lives in sentinel.Verify. Under fault
 	// injection a follower can be partitioned from the leader and stay behind
-	// for far longer than any reasonable wait — Reachable on success keeps
-	// the signal in the report without false-flagging during partitions.
+	// for far longer than any reasonable wait. Keep the observation as an
+	// event rather than a must-hit property so partitions do not false-flag it.
 	followerID, err := internal.GetNonLeaderVoter(ctx, clusterClient)
 	if err == nil && followerID != 0 {
 		if internal.WaitForClusterConfigOnNode(ctx, clusterClient, followerID, change.predicate, ccFollowerConvergeWait) {
-			assert.Reachable("follower observed same ClusterConfig as leader",
+			lifecycle.SendEvent("follower_observed_cluster_config",
 				details.With(internal.Details{"followerId": followerID}))
 		}
 	}

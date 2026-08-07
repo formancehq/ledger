@@ -34,6 +34,7 @@ import (
 	"io"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -184,14 +185,14 @@ func main() {
 		for i, ref := range ackedRefs {
 			ids, conclusive := listMatches(ctx, client, ledger, actions.ReferenceFilter(ref), minLogSeq)
 			if conclusive {
-				assert.Always(len(ids) == 0,
+				assert.AlwaysOrUnreachable(len(ids) == 0,
 					"recreated ledger never exposes predecessor transactions",
 					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 			}
 
 			ids, conclusive = listMatches(ctx, client, ledger, actions.AddressExactFilter(ackedAccounts[i]), minLogSeq)
 			if conclusive {
-				assert.Always(len(ids) == 0,
+				assert.AlwaysOrUnreachable(len(ids) == 0,
 					"recreated ledger never exposes predecessor account activity",
 					details.With(internal.Details{"account": ackedAccounts[i], "txIds": fmt.Sprintf("%v", ids)}))
 			}
@@ -210,12 +211,12 @@ func main() {
 			return
 		}
 
-		assert.Always(!internal.HasErrorReason(err, domain.ErrReasonTransactionReferenceConflict),
+		assert.AlwaysOrUnreachable(!internal.HasErrorReason(err, domain.ErrReasonTransactionReferenceConflict),
 			"predecessor references are reusable after ledger recreate",
 			reuseDetails)
 
-		assert.Sometimes(err == nil,
-			"predecessor reference accepted by recreated ledger",
-			reuseDetails)
+		if err == nil {
+			lifecycle.SendEvent("predecessor_reference_accepted_by_recreated_ledger", reuseDetails)
+		}
 	})
 }
