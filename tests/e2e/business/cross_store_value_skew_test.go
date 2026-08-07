@@ -17,18 +17,21 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// Cross-store snapshot alignment (EN-1748): a transaction visible in the
-// main store whose index rows have not folded yet must never surface through
-// an index complement. not(ts[_,_]) over a READY TIMESTAMP index is the
-// sharpest probe — any transaction it returns claims "committed but absent
-// from the timestamp index", a state no aligned snapshot pair can produce.
+// Cross-store value skew (EN-1748, metadata-flip half): a row selected by a
+// metadata index filter must satisfy that filter in its own enriched
+// metadata — no single-sequence snapshot can return an account for
+// tier=gold whose metadata reads tier=silver.
 //
-// The fold is made to lag by throughput asymmetry, with no artificial hooks:
-// many live indexes multiply the fold cost of every log while apply cost
-// stays flat, so sustained apply pressure drives the read-store fold hundreds
-// of sequences behind the primary head — the natural condition (load, faults,
-// backfill storms) under which unaligned snapshots serve torn responses.
-var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
+// Selection reads the read-index while enrichment reads the main-store
+// handle pinned at query start. The alignment wait only bounds the fold from
+// BELOW (it must reach the handle's sequence): a tier flip folded past the
+// handle would make plain index keys select an account whose enrichment
+// still carries the pre-flip value. Metadata index leaves therefore resolve
+// their event groups AT the handle's sequence (event_keys.go) — this test
+// drives the fold into large catch-up batches (sustained apply pressure,
+// many live indexes) so the index snapshot lands well past the handle on
+// nearly every query, and asserts the flip can never leak through.
+var _ = Describe("Cross-store value skew", Ordered, func() {
 	// The apply pressure this spec generates would linger in the shared
 	// server's store and tax every later spec that walks it (checker
 	// sweeps are O(logs)), so it gets a server of its own.
@@ -38,11 +41,11 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 	)
 
 	const (
-		httpPort = 15708
-		grpcPort = 15808
+		httpPort = 15710
+		grpcPort = 15810
 	)
 
-	const ledgerName = "cross-store-alignment-ledger"
+	const ledgerName = "cross-store-value-skew-ledger"
 
 	BeforeAll(func() {
 		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
@@ -65,13 +68,15 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
 			Expect(err).To(Succeed())
 		}
-		Expect(actions.WaitForBuiltinIndexReady(ctx, client, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)).To(Succeed())
+		Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
 	})
 
-	It("never surfaces a committed tx as missing from a READY index", func() {
+	It("never returns a tier=gold row whose own metadata disagrees", func() {
 		stop := make(chan struct{})
 
 		var pressure sync.WaitGroup
+
+		flip := [2]string{"gold", "silver"}
 
 		for w := 0; w < 4; w++ {
 			pressure.Add(1)
@@ -90,15 +95,19 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 					reqs := make([]*servicepb.Request, 0, 20)
 					for j := 0; j < 20; j++ {
 						n++
+						// Each touch of an account lands one round (128 txs)
+						// after the previous one, so the round-parity value
+						// inverts the account's tier on every touch.
 						a := fmt.Sprintf("load:%d:%d:a", w, n%128)
 						b := fmt.Sprintf("load:%d:%d:b", w, n%128)
+						round := n / 128
 						reqs = append(reqs, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 							actions.NewPosting("world", a, big.NewInt(1), "COIN"),
 							actions.NewPosting("world", b, big.NewInt(1), "EUR"),
 							actions.NewPosting("world", a, big.NewInt(1), "USD/2"),
 						}, nil, map[string]*commonpb.MetadataMap{
-							a: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
-							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("silver")}},
+							a: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue(flip[round%2])}},
+							b: {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue(flip[(round+1)%2])}},
 						}))
 					}
 					if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...)); err != nil {
@@ -118,28 +127,26 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		}
 		defer stopPressure()
 
-		notTs := actions.NotFilter(actions.BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 0, ^uint64(0)))
+		gold := actions.StringMetadataFilter("tier", "gold")
 		deadline := time.Now().Add(25 * time.Second)
 		probes, served := 0, 0
 
 		for time.Now().Before(deadline) {
 			probes++
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", fmt.Sprintf("probe:%d", probes%64), big.NewInt(1), "USD"),
-			}, nil, nil)))
-			Expect(err).To(Succeed())
-
-			txs, err := actions.ListTransactionsFiltered(ctx, client, ledgerName, 0, 0, notTs)
+			accs, err := actions.ListAccountsFiltered(ctx, client, ledgerName, 0, "", gold)
 			if err != nil {
 				// A lagging fold legitimately rejects with the retryable
-				// not-caught-up precondition; only phantom ROWS are the bug.
+				// not-caught-up precondition; only contradictory ROWS are
+				// the bug.
 				continue
 			}
 			served++
 
-			if len(txs) > 0 {
-				Fail(fmt.Sprintf("probe %d: not(ts[_,_]) returned %d row(s), first id=%d — a committed tx surfaced as missing from the READY timestamp index", probes, len(txs), txs[0].GetId()))
+			for _, acc := range accs {
+				if got := acc.GetMetadata()["tier"].GetStringValue(); got != "gold" {
+					Fail(fmt.Sprintf("probe %d: tier=gold returned %s with tier=%q — index selection and enrichment disagree on one row", probes, acc.GetAddress(), got))
+				}
 			}
 		}
 

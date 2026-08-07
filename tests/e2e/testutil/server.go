@@ -62,6 +62,8 @@ func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.Clust
 func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(NotCaughtUpUnaryInterceptor()),
+		grpc.WithStreamInterceptor(NotCaughtUpStreamInterceptor()),
 	}
 
 	if withRetry {
