@@ -103,6 +103,37 @@ func TestPredictedIndexFieldIsFixed64(t *testing.T) {
 	require.Equal(t, fd.Number(), predictedIndexField)
 }
 
+// TestLookupPredictedIndexField covers both arms of the descriptor lookup that
+// seeds predictedIndexField at package init.
+//
+// The panic arm is the one worth pinning: it fires only if predicted_index is
+// dropped from raft_cmd.proto, and a guard that never runs in any test is a
+// guard whose message and reachability are unverified. CloseChapterOrder is an
+// empty message, so it cannot drift into carrying the field.
+func TestLookupPredictedIndexField(t *testing.T) {
+	t.Parallel()
+
+	t.Run("field present", func(t *testing.T) {
+		t.Parallel()
+
+		md := (&raftcmdpb.Proposal{}).ProtoReflect().Descriptor()
+
+		require.Equal(t, predictedIndexField, lookupPredictedIndexField(md))
+	})
+
+	t.Run("field absent panics", func(t *testing.T) {
+		t.Parallel()
+
+		md := (&raftcmdpb.CloseChapterOrder{}).ProtoReflect().Descriptor()
+		require.Nil(t, md.Fields().ByName("predicted_index"),
+			"fixture must be a message without the field, otherwise the guard is not exercised")
+
+		require.PanicsWithValue(t,
+			"invariant: "+string(md.FullName())+" has no predicted_index field",
+			func() { lookupPredictedIndexField(md) })
+	})
+}
+
 // TestAppendProposalPredictedIndexZeroIsNoop pins the documented contract: a
 // zero index is omitted by proto3, so the append must not emit a second
 // occurrence of the field on the wire.
