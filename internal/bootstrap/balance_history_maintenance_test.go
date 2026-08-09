@@ -83,6 +83,22 @@ func TestBalanceHistoryMaintenanceBoundsCompactionsBeforeColdPass(t *testing.T) 
 	require.Equal(t, []string{"compact", "compact", "compact", "compact", "tier", "collect"}, observed.events)
 }
 
+func TestBalanceHistoryMaintenanceOptionalPathsAreNoOps(t *testing.T) {
+	t.Parallel()
+
+	var nilWorker *balanceHistoryMaintenanceWorker
+	require.NotPanics(t, func() {
+		nilWorker.Start()
+		nilWorker.Stop()
+	})
+
+	worker := &balanceHistoryMaintenanceWorker{}
+	require.True(t, worker.runTier(context.Background()))
+	require.NotPanics(t, func() {
+		worker.runRemoteGC(context.Background())
+	})
+}
+
 func TestBalanceHistoryMaintenanceCompactsWithoutColdTier(t *testing.T) {
 	t.Parallel()
 

@@ -16,6 +16,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+func TestSourceErrorsWithoutDetail(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "balance history source is missing", (&ErrSourceMissing{}).Error())
+	require.Equal(t, "balance history source is invalid", (&ErrSourceInvalid{}).Error())
+}
+
 type hotSourceFixture struct {
 	entry *auditpb.AuditEntry
 	items []*auditpb.AuditItem
