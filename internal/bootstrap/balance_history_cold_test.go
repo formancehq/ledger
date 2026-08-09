@@ -107,7 +107,6 @@ func TestBalanceHistoryColdTierFilesystemLifecycle(t *testing.T) {
 		return false
 	}, 5*time.Second, 10*time.Millisecond)
 	require.NotEmpty(t, archived.ArchiveParts)
-	rootedRef := archived.ArchiveParts[0].Ref
 	require.NoError(t, first.Stop())
 
 	cacheDir := filepath.Join(historyDir, "archive-cache")
@@ -149,9 +148,22 @@ func TestBalanceHistoryColdTierFilesystemLifecycle(t *testing.T) {
 
 		return existsErr == nil && !exists
 	}, 5*time.Second, 10*time.Millisecond)
-	rooted, err := second.runtime.archive.Exists(context.Background(), rootedRef)
+
+	// Freeze maintenance before sampling roots: compaction may legitimately
+	// replace an archived run and make its former objects collectible.
+	second.runtime.maintenance.Stop()
+	manifest, err := second.store.Manifest()
 	require.NoError(t, err)
-	require.True(t, rooted, "remote GC must preserve manifest-rooted archive parts")
+	rootedParts := 0
+	for _, run := range manifest.Runs {
+		for _, part := range run.ArchiveParts {
+			rootedParts++
+			rooted, existsErr := second.runtime.archive.Exists(context.Background(), part.Ref)
+			require.NoError(t, existsErr)
+			require.True(t, rooted, "remote GC must preserve current manifest-rooted archive parts")
+		}
+	}
+	require.Positive(t, rootedParts)
 	require.NoError(t, second.Stop())
 
 	disabledConfig := config
