@@ -159,6 +159,266 @@ func TestReducerRejectsSequenceMismatch(t *testing.T) {
 	require.ErrorIs(t, err, balancehistory.ErrInvalidPosition)
 }
 
+func TestReducerRejectsMalformedLifecycleAndApplyLogs(t *testing.T) {
+	t.Parallel()
+
+	var nilReducer *balancehistory.Reducer
+	_, err := nilReducer.Reduce(position(1, 0, 1), createLedgerLog(1, "default", 1))
+	require.ErrorIs(t, err, balancehistory.ErrMalformedLog)
+	require.ErrorContains(t, err, "nil reducer")
+
+	tests := []struct {
+		name    string
+		prepare bool
+		log     func() *commonpb.Log
+		want    string
+	}{
+		{name: "nil log", log: func() *commonpb.Log { return nil }, want: "nil log"},
+		{
+			name: "missing payload",
+			log:  func() *commonpb.Log { return &commonpb.Log{Sequence: 2} },
+			want: "has no payload",
+		},
+		{
+			name: "nil create",
+			log: func() *commonpb.Log {
+				return &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{}}}
+			},
+			want: "incomplete create-ledger log",
+		},
+		{
+			name: "empty create name",
+			log: func() *commonpb.Log {
+				return createLedgerLog(2, "", 1)
+			},
+			want: "incomplete create-ledger log",
+		},
+		{
+			name: "zero create id",
+			log: func() *commonpb.Log {
+				return createLedgerLog(2, "default", 0)
+			},
+			want: "incomplete create-ledger log",
+		},
+		{
+			name:    "duplicate active ledger",
+			prepare: true,
+			log: func() *commonpb.Log {
+				return createLedgerLog(2, "default", 8)
+			},
+			want: "already active",
+		},
+		{
+			name: "nil delete",
+			log: func() *commonpb.Log {
+				return &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{}}}
+			},
+			want: "incomplete delete-ledger log",
+		},
+		{
+			name: "inactive delete",
+			log: func() *commonpb.Log {
+				return deleteLedgerLog(2, "missing")
+			},
+			want: "deleting inactive ledger",
+		},
+		{
+			name: "nil apply",
+			log: func() *commonpb.Log {
+				return &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{}}}
+			},
+			want: "incomplete apply log",
+		},
+		{
+			name: "apply without ledger name",
+			log: func() *commonpb.Log {
+				return &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{}}},
+				}}}
+			},
+			want: "incomplete apply log",
+		},
+		{
+			name: "apply without ledger log",
+			log: func() *commonpb.Log {
+				return &commonpb.Log{Sequence: 2, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{LedgerName: "default"},
+				}}}
+			},
+			want: "incomplete apply log",
+		},
+		{
+			name: "apply without ledger payload",
+			log: func() *commonpb.Log {
+				return transactionLog(2, "default", &commonpb.LedgerLogPayload{})
+			},
+			want: "apply log has no ledger payload",
+		},
+		{
+			name:    "nil created transaction",
+			prepare: true,
+			log: func() *commonpb.Log {
+				return transactionLog(2, "default", &commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{},
+				})
+			},
+			want: "nil created-transaction payload",
+		},
+		{
+			name:    "nil reverted transaction",
+			prepare: true,
+			log: func() *commonpb.Log {
+				return transactionLog(2, "default", &commonpb.LedgerLogPayload{
+					Payload: &commonpb.LedgerLogPayload_RevertedTransaction{},
+				})
+			},
+			want: "nil reverted-transaction payload",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			reducer := balancehistory.NewReducer()
+			if test.prepare {
+				require.NoError(t, reduceLifecycle(reducer, 1, 0, 1, createLedgerLog(1, "default", 7)))
+			}
+			_, err := reducer.Reduce(position(2, 0, 2), test.log())
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+
+	reducer := balancehistory.NewReducer()
+	_, err = reducer.Reduce(position(0, 0, 1), createLedgerLog(1, "default", 1))
+	require.ErrorIs(t, err, balancehistory.ErrInvalidPosition)
+	_, err = reducer.Reduce(position(1, 0, 0), createLedgerLog(1, "default", 1))
+	require.ErrorIs(t, err, balancehistory.ErrInvalidPosition)
+}
+
+func TestReducerRejectsMalformedTransactionsAndPostings(t *testing.T) {
+	t.Parallel()
+
+	validTransaction := func(postings ...*commonpb.Posting) *commonpb.Transaction {
+		return &commonpb.Transaction{
+			Postings:   postings,
+			Timestamp:  &commonpb.Timestamp{Data: 10},
+			InsertedAt: &commonpb.Timestamp{Data: 20},
+		}
+	}
+	created := func(transaction *commonpb.Transaction) *commonpb.Log {
+		return transactionLog(2, "default", &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &commonpb.CreatedTransaction{Transaction: transaction},
+			},
+		})
+	}
+	tests := []struct {
+		name string
+		log  func() *commonpb.Log
+		want string
+	}{
+		{name: "nil transaction", log: func() *commonpb.Log { return created(nil) }, want: "missing its effective or insertion timestamp"},
+		{
+			name: "missing effective timestamp",
+			log: func() *commonpb.Log {
+				return created(&commonpb.Transaction{InsertedAt: &commonpb.Timestamp{Data: 20}})
+			},
+			want: "missing its effective or insertion timestamp",
+		},
+		{
+			name: "missing insertion timestamp",
+			log: func() *commonpb.Log {
+				return created(&commonpb.Transaction{Timestamp: &commonpb.Timestamp{Data: 10}})
+			},
+			want: "missing its effective or insertion timestamp",
+		},
+		{name: "no postings", log: func() *commonpb.Log { return created(validTransaction()) }, want: "transaction has no resolved posting"},
+		{name: "nil posting", log: func() *commonpb.Log { return created(validTransaction(nil)) }, want: "incomplete resolved posting"},
+		{
+			name: "missing source",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("", "cash", "USD", "", 1)))
+			},
+			want: "incomplete resolved posting",
+		},
+		{
+			name: "missing destination",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("world", "", "USD", "", 1)))
+			},
+			want: "incomplete resolved posting",
+		},
+		{
+			name: "nil amount",
+			log: func() *commonpb.Log {
+				value := posting("world", "cash", "USD", "", 1)
+				value.Amount = nil
+
+				return created(validTransaction(value))
+			},
+			want: "incomplete resolved posting",
+		},
+		{
+			name: "invalid source",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting(":", "cash", "USD", "", 1)))
+			},
+			want: "invalid source account",
+		},
+		{
+			name: "invalid destination",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("world", ":", "USD", "", 1)))
+			},
+			want: "invalid destination account",
+		},
+		{
+			name: "invalid asset",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("world", "cash", "USD/", "", 1)))
+			},
+			want: "invalid asset",
+		},
+		{
+			name: "invalid color",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("world", "cash", "USD", "invalid color", 1)))
+			},
+			want: "invalid color",
+		},
+		{
+			name: "zero amount",
+			log: func() *commonpb.Log {
+				return created(validTransaction(posting("world", "cash", "USD", "", 0)))
+			},
+			want: "resolved posting amount is zero",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			reducer := balancehistory.NewReducer()
+			require.NoError(t, reduceLifecycle(reducer, 1, 0, 1, createLedgerLog(1, "default", 7)))
+			_, err := reducer.Reduce(position(2, 0, 2), test.log())
+			require.ErrorContains(t, err, test.want)
+			require.ErrorIs(t, err, balancehistory.ErrMalformedLog)
+		})
+	}
+}
+
+func TestAmountHelpers(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, balancehistory.AmountFromProto(nil).IsZero())
+	amount := balancehistory.AmountFromUint64(42)
+	require.False(t, amount.IsZero())
+	require.Equal(t, "42", amount.BigInt().String())
+	require.Equal(t, "42", balancehistory.AmountFromProto(&commonpb.Uint256{V0: 42}).BigInt().String())
+}
+
 func reduceLifecycle(reducer *balancehistory.Reducer, audit uint64, order uint32, logSequence uint64, log *commonpb.Log) error {
 	effects, err := reducer.Reduce(position(audit, order, logSequence), log)
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	domainhistory "github.com/formancehq/ledger/v3/internal/domain/balancehistory"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -192,6 +193,281 @@ func builderTransactionLog(sequence uint64, ledger string, amount uint64) *commo
 				}},
 			},
 		}}},
+	}
+}
+
+func TestFreshLogRangeValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		entry     *auditpb.AuditEntry
+		watermark uint64
+		wantMin   uint64
+		wantMax   uint64
+		wantErr   string
+	}{
+		{
+			name:  "failure has no fresh range",
+			entry: &auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}}},
+		},
+		{name: "missing outcome", entry: &auditpb.AuditEntry{Sequence: 1}, wantErr: "has no outcome"},
+		{
+			name: "partial range",
+			entry: &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+				MinLogSequence: 1,
+			}}},
+			wantErr: "partial fresh log range",
+		},
+		{
+			name: "descending range",
+			entry: &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+				MinLogSequence: 2,
+				MaxLogSequence: 1,
+			}}},
+			wantErr: "descending fresh log range",
+		},
+		{
+			name: "discontinuous range",
+			entry: &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+				MinLogSequence: 3,
+				MaxLogSequence: 4,
+			}}},
+			watermark: 1,
+			wantErr:   "starts fresh log range at 3 after watermark 1",
+		},
+		{
+			name: "valid range",
+			entry: &auditpb.AuditEntry{Sequence: 1, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+				MinLogSequence: 3,
+				MaxLogSequence: 4,
+			}}},
+			watermark: 2,
+			wantMin:   3,
+			wantMax:   4,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			minimum, maximum, err := freshLogRange(test.entry, test.watermark)
+			if test.wantErr != "" {
+				require.ErrorContains(t, err, test.wantErr)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.wantMin, minimum)
+			require.Equal(t, test.wantMax, maximum)
+		})
+	}
+}
+
+func TestAuditHashSlicesRejectsUnboundOrMissingData(t *testing.T) {
+	t.Parallel()
+
+	entry := &auditpb.AuditEntry{
+		Sequence: 1,
+		Outcome:  &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+	}
+	entry.Items = []*auditpb.AuditItem{{OrderIndex: 0}}
+	_, err := auditHashSlices(entry, nil)
+	require.ErrorContains(t, err, "embeds 1 unbound items")
+
+	entry.Items = nil
+	entry.Outcome = nil
+	_, err = auditHashSlices(entry, nil)
+	require.ErrorContains(t, err, "cannot rebuild its hash header")
+
+	entry.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}}
+	_, err = auditHashSlices(entry, []*auditpb.AuditItem{nil})
+	require.ErrorContains(t, err, "is missing item 0")
+
+	slices, err := auditHashSlices(entry, []*auditpb.AuditItem{{OrderIndex: 0}})
+	require.NoError(t, err)
+	require.Len(t, slices, 2)
+}
+
+func TestReducerFromManifestValidation(t *testing.T) {
+	t.Parallel()
+
+	_, err := reducerFromManifest(balancehistorystore.Manifest{
+		AuditWatermark: 1,
+		LogWatermark:   1,
+		ReducerState: domainhistory.State{
+			Seen: []domainhistory.IncarnationState{{Name: "", ID: 1}},
+		},
+	})
+	require.ErrorContains(t, err, "restoring reducer at audit 1")
+
+	_, err = reducerFromManifest(balancehistorystore.Manifest{
+		AuditWatermark: 1,
+		LogWatermark:   1,
+		ReducerState: domainhistory.State{
+			HasLast: true,
+			Last:    domainhistory.Position{AuditSequence: 2, LogSequence: 2},
+		},
+	})
+	require.ErrorContains(t, err, "exceeds manifest watermarks")
+}
+
+func TestReduceVerifiedBatchRejectsMalformedBatches(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name       string
+		configure  func(t *testing.T, proposal *VerifiedProposal)
+		rehash     bool
+		alterBatch func(batch *Batch)
+		want       string
+	}
+	tests := []testCase{
+		{
+			name: "missing entry",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Entry = nil
+			},
+			want: "has audit sequence 0, want 1",
+		},
+		{
+			name: "item and log count mismatch",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Logs = nil
+			},
+			want: "has 1 items, 0 logs",
+		},
+		{
+			name: "audit hash mismatch",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Entry.Hash = []byte("tampered")
+			},
+			want: "audit hash chain mismatch",
+		},
+		{
+			name: "invalid item order",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Items[0].OrderIndex = 2
+			},
+			rehash: true,
+			want:   "invalid item at position 0",
+		},
+		{
+			name: "failed proposal references log",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Entry.Outcome = &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}}
+			},
+			rehash: true,
+			want:   "failed audit sequence 1 item 0 references log 1",
+		},
+		{
+			name: "reference with empty fresh range",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Entry.GetSuccess().MinLogSequence = 0
+				proposal.Entry.GetSuccess().MaxLogSequence = 0
+			},
+			rehash: true,
+			want:   "references log 1 with an empty fresh range",
+		},
+		{
+			name: "reference beyond maximum",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Items[0].LogSequence = 2
+			},
+			rehash: true,
+			want:   "beyond fresh range maximum 1",
+		},
+		{
+			name: "payload without sequence",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Items[0].LogSequence = 0
+				proposal.Entry.GetSuccess().MinLogSequence = 0
+				proposal.Entry.GetSuccess().MaxLogSequence = 0
+			},
+			rehash: true,
+			want:   "has a log payload without a log sequence",
+		},
+		{
+			name: "missing fresh log payload",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Logs[0] = nil
+			},
+			want: "fresh log 1 is missing",
+		},
+		{
+			name: "reducer rejects malformed log",
+			configure: func(_ *testing.T, proposal *VerifiedProposal) {
+				proposal.Logs[0] = &commonpb.Log{Sequence: 1}
+			},
+			want: "reducing audit sequence 1 item 0 log 1",
+		},
+		{
+			name:      "source next position mismatch",
+			configure: func(_ *testing.T, _ *VerifiedProposal) {},
+			alterBatch: func(batch *Batch) {
+				batch.Next.LogSequence = 0
+			},
+			want: "source next position is (1,0), verified position is (1,1)",
+		},
+		{
+			name:      "source next hash mismatch",
+			configure: func(_ *testing.T, _ *VerifiedProposal) {},
+			alterBatch: func(batch *Batch) {
+				batch.Next.AuditHash = []byte("wrong")
+			},
+			want: "source next hash",
+		},
+		{
+			name:      "source head behind next",
+			configure: func(_ *testing.T, _ *VerifiedProposal) {},
+			alterBatch: func(batch *Batch) {
+				batch.Head = Position{}
+			},
+			want: "source batch head is behind",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := builderSuccessfulFixture(
+				t,
+				1,
+				nil,
+				"test",
+				builderCreateLedgerLog(1, "default", 7),
+			)
+			proposal := VerifiedProposal{
+				Entry: fixture.entry.CloneVT(),
+				Items: []*auditpb.AuditItem{fixture.items[0].CloneVT()},
+				Logs:  []*commonpb.Log{fixture.logs[0].CloneVT()},
+			}
+			test.configure(t, &proposal)
+			if test.rehash {
+				proposal.Entry.Hash = builderAuditHash(t, proposal.Entry, proposal.Items, nil)
+			}
+
+			next := Position{AuditSequence: 1, LogSequence: 1}
+			if proposal.Entry != nil {
+				next.AuditHash = append([]byte(nil), proposal.Entry.GetHash()...)
+				if proposal.Entry.GetFailure() != nil || proposal.Entry.GetSuccess().GetMaxLogSequence() == 0 {
+					next.LogSequence = 0
+				}
+			}
+			batch := Batch{Proposals: []VerifiedProposal{proposal}, Next: next, Head: clonePosition(next)}
+			if test.alterBatch != nil {
+				test.alterBatch(&batch)
+			}
+
+			_, _, _, err := reduceVerifiedBatch(
+				builderTestClusterID,
+				domainhistory.NewReducer(),
+				Position{},
+				batch,
+			)
+			require.ErrorContains(t, err, test.want)
+		})
 	}
 }
 

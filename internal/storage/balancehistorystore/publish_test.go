@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	domainhistory "github.com/formancehq/ledger/v3/internal/domain/balancehistory"
 )
 
 func TestBuildRunRecordsFromGroupsRejectsOversizedIdentityComponentsDeterministically(t *testing.T) {
@@ -107,4 +109,182 @@ func assertRunRecordBuildError(t *testing.T, groups map[recordIdentity][]timedDe
 	require.Zero(t, dataCount)
 	require.Zero(t, identityCount)
 	require.Zero(t, checksum)
+}
+
+func validPublicationEffect() domainhistory.Effect {
+	return domainhistory.Effect{
+		LedgerID:      7,
+		AuditSequence: 6,
+		LogSequence:   6,
+		EffectiveAt:   10,
+		InsertedAt:    20,
+		Account:       "assets:cash",
+		AssetBase:     "USD",
+		Input:         domainhistory.AmountFromUint64(1),
+	}
+}
+
+func TestValidateEffectRejectsIncompleteEffects(t *testing.T) {
+	t.Parallel()
+
+	valid := validPublicationEffect()
+	tests := []struct {
+		name   string
+		mutate func(*domainhistory.Effect)
+		want   string
+	}{
+		{name: "ledger", mutate: func(effect *domainhistory.Effect) { effect.LedgerID = 0 }, want: "ledger id is required"},
+		{name: "audit", mutate: func(effect *domainhistory.Effect) { effect.AuditSequence = 0 }, want: "audit sequence is required"},
+		{name: "log", mutate: func(effect *domainhistory.Effect) { effect.LogSequence = 0 }, want: "log sequence is required"},
+		{name: "account", mutate: func(effect *domainhistory.Effect) { effect.Account = "" }, want: "account is required"},
+		{name: "asset", mutate: func(effect *domainhistory.Effect) { effect.AssetBase = "" }, want: "asset base is required"},
+		{
+			name: "zero mutation",
+			mutate: func(effect *domainhistory.Effect) {
+				effect.Input = domainhistory.Amount{}
+				effect.Output = domainhistory.Amount{}
+			},
+			want: "effect must change input or output",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			effect := valid
+			test.mutate(&effect)
+			require.ErrorContains(t, validateEffect(effect), test.want)
+		})
+	}
+	require.NoError(t, validateEffect(valid))
+}
+
+func TestValidatePublicationRejectsSourceGaps(t *testing.T) {
+	t.Parallel()
+
+	current := Manifest{
+		AuditWatermark: 5,
+		LogWatermark:   5,
+		AuditHash:      []byte("current"),
+		SourceComplete: true,
+	}
+	valid := Publication{
+		Coverage: Coverage{
+			AuditSequence:  6,
+			LogSequence:    6,
+			AuditHash:      []byte("next"),
+			SourceComplete: true,
+		},
+		Effects: []domainhistory.Effect{validPublicationEffect()},
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Publication)
+		want   string
+	}{
+		{name: "audit moves backward", mutate: func(p *Publication) { p.Coverage.AuditSequence = 4 }, want: "audit watermark moved backward"},
+		{name: "log moves backward", mutate: func(p *Publication) { p.Coverage.LogSequence = 4 }, want: "log watermark moved backward"},
+		{name: "non-zero floor", mutate: func(p *Publication) { p.Coverage.EffectiveFloor = 1 }, want: "non-zero history floors"},
+		{name: "completeness revoked", mutate: func(p *Publication) { p.Coverage.SourceComplete = false }, want: "source completeness cannot be revoked"},
+		{
+			name: "effects without audit advance",
+			mutate: func(p *Publication) {
+				p.Coverage.AuditSequence = 5
+				p.Coverage.LogSequence = 5
+				p.Coverage.AuditHash = []byte("current")
+			},
+			want: "effects cannot be appended",
+		},
+		{
+			name: "log advances alone",
+			mutate: func(p *Publication) {
+				p.Effects = nil
+				p.Coverage.AuditSequence = 5
+			},
+			want: "log coverage cannot advance",
+		},
+		{
+			name: "hash changes alone",
+			mutate: func(p *Publication) {
+				p.Effects = nil
+				p.Coverage.AuditSequence = 5
+				p.Coverage.LogSequence = 5
+			},
+			want: "audit hash changed",
+		},
+		{
+			name: "invalid effect",
+			mutate: func(p *Publication) {
+				p.Effects[0].Account = ""
+			},
+			want: "invalid monetary effect 0",
+		},
+		{
+			name: "effect before current",
+			mutate: func(p *Publication) {
+				p.Effects[0].AuditSequence = 5
+			},
+			want: "effect audit sequence 5 is outside",
+		},
+		{
+			name: "effect beyond coverage",
+			mutate: func(p *Publication) {
+				p.Effects[0].AuditSequence = 7
+			},
+			want: "effect audit sequence 7 is outside",
+		},
+		{
+			name: "effect log beyond coverage",
+			mutate: func(p *Publication) {
+				p.Effects[0].LogSequence = 7
+			},
+			want: "effect log sequence 7 exceeds watermark 6",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			publication := valid
+			publication.Effects = append([]domainhistory.Effect(nil), valid.Effects...)
+			test.mutate(&publication)
+			require.ErrorContains(t, validatePublication(current, publication), test.want)
+		})
+	}
+	require.NoError(t, validatePublication(current, valid))
+}
+
+func TestPublicationHelpers(t *testing.T) {
+	t.Parallel()
+
+	effect := validPublicationEffect()
+	effect.AssetPrecision = 2
+	effect.Color = "BLUE"
+	effectiveVolume := effectIdentity(effect, AxisEffective, scopeVolume)
+	require.Equal(t, "assets:cash", effectiveVolume.Account)
+	require.Equal(t, uint64(10), effectTimestamp(effect, AxisEffective))
+	require.Equal(t, uint64(20), effectTimestamp(effect, AxisInsertion))
+	asset := effectIdentity(effect, AxisInsertion, scopeAsset)
+	require.Empty(t, asset.Account)
+
+	require.Equal(t, -1, compareUint64(1, 2))
+	require.Equal(t, 1, compareUint64(2, 1))
+	require.Zero(t, compareUint64(1, 1))
+	require.Equal(t, -1, compareUint32(1, 2))
+	require.Equal(t, 1, compareUint32(2, 1))
+	require.Zero(t, compareUint32(1, 1))
+	require.Equal(t, 3, firstNonZero(0, 3, 4))
+	require.Zero(t, firstNonZero(0, 0))
+
+	current := [32]byte{1}
+	digest, err := AdvanceLogicalDigest(current, 2, 2, nil)
+	require.NoError(t, err)
+	require.Equal(t, current, digest)
+	_, err = AdvanceLogicalDigest(current, 2, 1, nil)
+	require.ErrorContains(t, err, "logical digest range moved backward")
+
+	oversized := effect
+	oversized.Account = strings.Repeat("x", math.MaxUint16+1)
+	_, err = encodeEffectCanonical(oversized)
+	require.ErrorContains(t, err, "encoding canonical effect account")
 }

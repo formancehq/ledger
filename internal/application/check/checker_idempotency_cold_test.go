@@ -445,7 +445,7 @@ func TestReDeriveArchivedIdempotency_LeaseSurvivesConcurrentEviction(t *testing.
 	}()
 	close(start)
 
-	checker := NewChecker(createTestStore(t), attributes.New(), "x", reader, nil, logging.Testing())
+	checker := NewChecker(createTestStore(t), attributes.New(), "x", reader, nil, nil, logging.Testing())
 	expected := map[idemExpectedKey]expectedIdempotency{}
 	require.True(t, checker.reDeriveArchivedIdempotency(
 		context.Background(),

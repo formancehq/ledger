@@ -674,6 +674,203 @@ func TestHistoryVerifierQuarantinesReducerStateMismatch(t *testing.T) {
 	requireHistoryQuarantined(t, history)
 }
 
+func TestNewHistoryVerifierValidatesRequiredDependencies(t *testing.T) {
+	t.Parallel()
+
+	store := newBuilderTestHistoryStore(t)
+	source := NewMockSource(gomock.NewController(t))
+	meter := noop.NewMeterProvider().Meter("balance-history-verifier-validation-test")
+
+	_, err := NewHistoryVerifier(nil, store, builderTestClusterID, logging.NopZap(), meter, VerifierConfig{})
+	require.ErrorContains(t, err, "source is nil")
+	_, err = NewHistoryVerifier(source, nil, builderTestClusterID, logging.NopZap(), meter, VerifierConfig{})
+	require.ErrorContains(t, err, "store is nil")
+	_, err = NewHistoryVerifier(source, store, "", logging.NopZap(), meter, VerifierConfig{})
+	require.ErrorContains(t, err, "cluster id is empty")
+
+	verifier, err := NewHistoryVerifier(source, store, builderTestClusterID, logging.NopZap(), nil, VerifierConfig{})
+	require.NoError(t, err)
+	require.Equal(t, DefaultVerifierInterval, verifier.config.Interval)
+	require.Equal(t, DefaultVerifierBatchSize, verifier.config.BatchSize)
+	require.Equal(t, uint64(DefaultVerifierReplayEvery), verifier.config.ReplayEvery)
+	require.Equal(t, DefaultVerifierSampleArchiveParts, verifier.config.SampleArchiveParts)
+	require.Equal(t, DefaultBackfillYield, verifier.config.ReplayYield)
+}
+
+func TestHistoryVerifierValidateHeadFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		manifest balancehistorystore.Manifest
+		head     Position
+		want     string
+	}{
+		{
+			name:     "manifest hash missing",
+			manifest: balancehistorystore.Manifest{AuditWatermark: 1},
+			head:     Position{AuditSequence: 1, AuditHash: []byte("head")},
+			want:     "has no audit hash",
+		},
+		{
+			name:     "source hash missing",
+			manifest: balancehistorystore.Manifest{},
+			head:     Position{AuditSequence: 1},
+			want:     "authoritative head at audit 1 has no audit hash",
+		},
+		{
+			name: "source audit behind",
+			manifest: balancehistorystore.Manifest{
+				AuditWatermark: 2,
+				LogWatermark:   2,
+				AuditHash:      []byte("manifest"),
+			},
+			head: Position{AuditSequence: 1, LogSequence: 2, AuditHash: []byte("head")},
+			want: "is behind manifest",
+		},
+		{
+			name: "source log behind",
+			manifest: balancehistorystore.Manifest{
+				AuditWatermark: 1,
+				LogWatermark:   2,
+				AuditHash:      []byte("manifest"),
+			},
+			head: Position{AuditSequence: 2, LogSequence: 1, AuditHash: []byte("head")},
+			want: "is behind manifest",
+		},
+		{
+			name: "same audit different log",
+			manifest: balancehistorystore.Manifest{
+				AuditWatermark: 1,
+				LogWatermark:   1,
+				AuditHash:      []byte("manifest"),
+			},
+			head: Position{AuditSequence: 1, LogSequence: 2, AuditHash: []byte("head")},
+			want: "have log watermarks 2 and 1",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newBuilderTestHistoryStore(t)
+			verifier := &HistoryVerifier{store: store}
+			err := verifier.validateHead(test.manifest, test.head)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+
+	store := newBuilderTestHistoryStore(t)
+	verifier := &HistoryVerifier{store: store}
+	require.NoError(t, verifier.validateHead(
+		balancehistorystore.Manifest{AuditWatermark: 1, LogWatermark: 1, AuditHash: []byte("hash")},
+		Position{AuditSequence: 2, LogSequence: 2, AuditHash: []byte("head")},
+	))
+}
+
+func TestHistoryVerifierReplayIntoHandlesCancellationAndSourceGaps(t *testing.T) {
+	t.Parallel()
+
+	t.Run("canceled", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		verifier := &HistoryVerifier{config: VerifierConfig{BatchSize: 1}}
+		scratch := newBuilderTestHistoryStore(t)
+		_, _, _, err := verifier.replayInto(
+			ctx,
+			1,
+			scratch,
+			Position{},
+			[32]byte{},
+			domainhistory.NewReducer(),
+		)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("source error", func(t *testing.T) {
+		t.Parallel()
+
+		wantErr := errors.New("read failed")
+		source := NewMockSource(gomock.NewController(t))
+		source.EXPECT().Read(gomock.Any(), Position{}, 1).Return(Batch{}, wantErr)
+		verifier := &HistoryVerifier{source: source, config: VerifierConfig{BatchSize: 1}}
+		scratch := newBuilderTestHistoryStore(t)
+		_, _, _, err := verifier.replayInto(
+			context.Background(),
+			1,
+			scratch,
+			Position{},
+			[32]byte{},
+			domainhistory.NewReducer(),
+		)
+		require.ErrorIs(t, err, wantErr)
+		require.ErrorContains(t, err, "reading authoritative source")
+	})
+
+	t.Run("empty batch", func(t *testing.T) {
+		t.Parallel()
+
+		source := NewMockSource(gomock.NewController(t))
+		source.EXPECT().Read(gomock.Any(), Position{}, 1).Return(Batch{}, nil)
+		verifier := &HistoryVerifier{source: source, config: VerifierConfig{BatchSize: 1}}
+		scratch := newBuilderTestHistoryStore(t)
+		_, _, _, err := verifier.replayInto(
+			context.Background(),
+			1,
+			scratch,
+			Position{},
+			[32]byte{},
+			domainhistory.NewReducer(),
+		)
+		var missing *ErrSourceMissing
+		require.ErrorAs(t, err, &missing)
+		require.ErrorContains(t, err, "returned no proposal")
+	})
+
+	t.Run("empty target", func(t *testing.T) {
+		t.Parallel()
+
+		verifier := &HistoryVerifier{}
+		scratch := newBuilderTestHistoryStore(t)
+		digest, position, reducerState, err := verifier.replayInto(
+			context.Background(),
+			0,
+			scratch,
+			Position{},
+			[32]byte{},
+			domainhistory.NewReducer(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, [32]byte{}, digest)
+		require.Equal(t, Position{}, position)
+		require.Equal(t, domainhistory.State{}, reducerState)
+	})
+}
+
+func TestHistoryVerifierErrorHelpers(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("scratch failed")
+	scratchErr := &scratchProjectionError{err: wantErr}
+	require.ErrorContains(t, scratchErr, "building balance history verification scratch projection")
+	require.ErrorIs(t, scratchErr, wantErr)
+	require.Nil(t, wrapNonNilError("ignored", nil))
+	require.ErrorContains(t, wrapNonNilError("operation", wantErr), "operation")
+
+	store := newBuilderTestHistoryStore(t)
+	verifier := &HistoryVerifier{store: store}
+	require.ErrorIs(t, verifier.markReplayFailure(context.Canceled), context.Canceled)
+	require.Same(t, scratchErr, verifier.markReplayFailure(scratchErr))
+
+	sourceErr := errors.New("source invalid")
+	require.ErrorIs(t, verifier.markReplayFailure(sourceErr), sourceErr)
+	_, err := store.OpenView(0)
+	var sourceMissing *balancehistorystore.ErrSourceMissing
+	require.ErrorAs(t, err, &sourceMissing)
+}
+
 func requireHistoryNotQuarantined(t *testing.T, store *balancehistorystore.Store) {
 	t.Helper()
 

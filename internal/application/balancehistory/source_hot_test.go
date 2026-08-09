@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -372,4 +373,205 @@ func TestHotSourceValidatesFreshLogCoverage(t *testing.T) {
 		require.ErrorAs(t, err, &invalid)
 		require.ErrorContains(t, err, "partial fresh log range")
 	})
+}
+
+func TestHotSourceRejectsInvalidRequestsAndCursors(t *testing.T) {
+	t.Parallel()
+
+	store := newHotSourceTestStore(t)
+	fixture := successfulHotFixture(1, 1)
+	fixture.entry.Hash = []byte("head-hash")
+	seedHotSource(t, store, fixture)
+	source := NewHotSource(store)
+
+	_, err := source.Read(context.Background(), Position{}, 0)
+	require.ErrorContains(t, err, "batch limit must be positive")
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = source.Head(canceled)
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = source.Read(canceled, Position{}, 1)
+	require.ErrorIs(t, err, context.Canceled)
+
+	tests := []struct {
+		name   string
+		cursor Position
+		want   string
+	}{
+		{
+			name:   "audit ahead",
+			cursor: Position{AuditSequence: 2, LogSequence: 1},
+			want:   "cursor audit sequence 2 is ahead of hot head 1",
+		},
+		{
+			name:   "log ahead",
+			cursor: Position{AuditSequence: 0, LogSequence: 2},
+			want:   "cursor log sequence 2 is ahead of hot head 1",
+		},
+		{
+			name:   "head log mismatch",
+			cursor: Position{AuditSequence: 1},
+			want:   "log watermark is 0 instead of 1",
+		},
+		{
+			name: "head hash mismatch",
+			cursor: Position{
+				AuditSequence: 1,
+				LogSequence:   1,
+				AuditHash:     []byte("wrong-hash"),
+			},
+			want: "differs from hot head hash",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, readErr := source.Read(context.Background(), test.cursor, 1)
+			require.ErrorContains(t, readErr, test.want)
+		})
+	}
+}
+
+func TestHotSourceReportsSnapshotOpenErrors(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("snapshot unavailable")
+
+	t.Run("head", func(t *testing.T) {
+		t.Parallel()
+
+		reader := NewMockSnapshotReader(gomock.NewController(t))
+		reader.EXPECT().NewReadHandle().Return(nil, wantErr)
+		_, err := NewHotSource(reader).Head(context.Background())
+		require.ErrorIs(t, err, wantErr)
+		require.ErrorContains(t, err, "opening hot balance history source snapshot")
+	})
+
+	t.Run("read", func(t *testing.T) {
+		t.Parallel()
+
+		reader := NewMockSnapshotReader(gomock.NewController(t))
+		reader.EXPECT().NewReadHandle().Return(nil, wantErr)
+		_, err := NewHotSource(reader).Read(context.Background(), Position{}, 1)
+		require.ErrorIs(t, err, wantErr)
+		require.ErrorContains(t, err, "opening hot balance history source snapshot")
+	})
+}
+
+func TestHotSourceRejectsDiscontinuousFreshLogRange(t *testing.T) {
+	t.Parallel()
+
+	store := newHotSourceTestStore(t)
+	seedHotSource(t, store,
+		successfulHotFixture(1, 1),
+		successfulHotFixture(2, 3),
+	)
+
+	_, err := NewHotSource(store).Read(context.Background(), Position{}, 10)
+	var missing *ErrSourceMissing
+	require.ErrorAs(t, err, &missing)
+	require.ErrorContains(t, err, "starts fresh log range at 3 after watermark 1")
+}
+
+func TestReadVerifiedProposalRejectsMalformedHeadersAndItems(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fixture hotSourceFixture
+		mutate  func(t *testing.T, store *dal.Store)
+		want    string
+	}{
+		{
+			name: "embedded items",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{
+				Sequence: 1,
+				Items:    []*auditpb.AuditItem{{OrderIndex: 0}},
+			}},
+			want: "embeds 1 items",
+		},
+		{
+			name:    "missing outcome",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{Sequence: 1}},
+			want:    "has no outcome",
+		},
+		{
+			name: "descending fresh range",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+						MinLogSequence: 2,
+						MaxLogSequence: 1,
+					}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0}},
+			},
+			want: "descending fresh log range",
+		},
+		{
+			name: "wrong physical item order",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+				},
+			},
+			mutate: func(t *testing.T, store *dal.Store) {
+				t.Helper()
+				batch := store.OpenWriteSession()
+				require.NoError(t, batch.SetProto(
+					hotAuditItemKey(1, 0),
+					&auditpb.AuditItem{OrderIndex: 1},
+				))
+				require.NoError(t, batch.Commit())
+			},
+			want: "declares order index 1",
+		},
+		{
+			name: "failed proposal references log",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0, LogSequence: 1}},
+			},
+			want: "failed audit sequence 1 item 0 references log 1",
+		},
+		{
+			name:    "log payload sequence mismatch",
+			fixture: successfulHotFixture(1, 1),
+			mutate: func(t *testing.T, store *dal.Store) {
+				t.Helper()
+				batch := store.OpenWriteSession()
+				require.NoError(t, batch.SetProto(hotLogKey(1), &commonpb.Log{Sequence: 2}))
+				require.NoError(t, batch.Commit())
+			},
+			want: "payload sequence is 2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newHotSourceTestStore(t)
+			seedHotSource(t, store, test.fixture)
+			if test.mutate != nil {
+				test.mutate(t, store)
+			}
+			handle, err := store.NewReadHandle()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+			_, _, err = readVerifiedProposal(context.Background(), handle, test.fixture.entry)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
 }

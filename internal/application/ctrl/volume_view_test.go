@@ -269,3 +269,215 @@ func TestPrepareTemporalAccountSelectionEnforcesFilterDepthLimit(t *testing.T) {
 	)
 	require.ErrorIs(t, err, domain.ErrFilterTooDeep)
 }
+
+func TestLocalVolumeViewProviderValidatesAxisAndClosedViews(t *testing.T) {
+	t.Parallel()
+
+	store, err := balancehistorystore.New(t.TempDir(), logging.NopZap(), balancehistorystore.DefaultConfig())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, store.Close()) }()
+
+	provider := NewLocalVolumeViewProvider(store)
+	_, err = provider.Open(
+		context.Background(),
+		"ledger",
+		7,
+		PointInTimeSelector{Axis: balancehistorystore.Axis(99)},
+		0,
+	)
+	require.ErrorContains(t, err, "invalid point-in-time axis")
+
+	view := (*HistoricalVolumeView)(nil)
+	_, err = view.Aggregate(context.Background(), nil, query.AggregateOptions{})
+	require.ErrorContains(t, err, "historical volume view is closed")
+	require.NoError(t, view.Close())
+
+	closed := &HistoricalVolumeView{}
+	_, err = closed.Aggregate(context.Background(), nil, query.AggregateOptions{})
+	require.ErrorContains(t, err, "historical volume view is closed")
+	require.NoError(t, closed.Close())
+}
+
+func TestBuildTemporalAccountFilterPlanRejectsUnsupportedShapes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		filter   *commonpb.QueryFilter
+		category string
+	}{
+		{name: "nil filter", category: "nil-subfilter"},
+		{
+			name: "nil address",
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
+				Address: nil,
+			}},
+			category: "invalid-address",
+		},
+		{
+			name: "empty address match",
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
+				Address: &commonpb.AddressMatch{},
+			}},
+			category: "invalid-address",
+		},
+		{
+			name: "parameterized exact",
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_ParamExact{ParamExact: "account"},
+			}}},
+			category: "parameterized-address",
+		},
+		{
+			name: "parameterized prefix",
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_ParamPrefix{ParamPrefix: "account"},
+			}}},
+			category: "parameterized-address",
+		},
+		{
+			name: "nil not",
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
+				Not: nil,
+			}},
+			category: "nil-subfilter",
+		},
+		{
+			name:     "unknown condition",
+			filter:   &commonpb.QueryFilter{},
+			category: "account-condition",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := buildTemporalAccountFilterPlan(test.filter, 0)
+			var unsupported *balancehistorystore.ErrUnsupportedTemporalFilter
+			require.ErrorAs(t, err, &unsupported)
+			require.Equal(t, test.category, unsupported.Category)
+		})
+	}
+}
+
+func TestPrepareTemporalAccountSelectionCurrentAndEmptyPlans(t *testing.T) {
+	t.Parallel()
+
+	compileErr := errors.New("compile failed")
+	_, err := prepareTemporalAccountSelection(
+		context.Background(),
+		currentMetadataFilter(),
+		func(context.Context, *commonpb.QueryFilter) ([]string, error) {
+			return nil, compileErr
+		},
+	)
+	require.ErrorIs(t, err, compileErr)
+
+	selection, err := prepareTemporalAccountSelection(
+		context.Background(),
+		currentMetadataFilter(),
+		func(context.Context, *commonpb.QueryFilter) ([]string, error) {
+			return []string{"b", "a", "b"}, nil
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, selection.accounts)
+	require.Nil(t, selection.match)
+
+	for _, filter := range []*commonpb.QueryFilter{
+		{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{}}},
+		{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{}}},
+	} {
+		empty, emptyErr := prepareTemporalAccountSelection(
+			context.Background(),
+			filter,
+			func(context.Context, *commonpb.QueryFilter) ([]string, error) { return nil, nil },
+		)
+		require.NoError(t, emptyErr)
+		require.Empty(t, empty.accounts)
+		require.False(t, empty.match("anything"))
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = prepareTemporalAccountSelection(
+		canceled,
+		currentMetadataFilter(),
+		func(context.Context, *commonpb.QueryFilter) ([]string, error) { return nil, nil },
+	)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestTemporalAccountCandidatesComposeBooleanPlans(t *testing.T) {
+	t.Parallel()
+
+	exactA, err := buildTemporalAccountFilterPlan(hardcodedAddressExact("a"), 0)
+	require.NoError(t, err)
+	exactB, err := buildTemporalAccountFilterPlan(hardcodedAddressExact("b"), 0)
+	require.NoError(t, err)
+	prefix, err := buildTemporalAccountFilterPlan(hardcodedAddressPrefix("users:"), 0)
+	require.NoError(t, err)
+	notPrefix := &temporalAccountFilterPlan{
+		kind:     temporalFilterAddress,
+		operator: temporalFilterNot,
+		children: []*temporalAccountFilterPlan{prefix},
+	}
+
+	intersection := &temporalAccountFilterPlan{
+		kind:     temporalFilterAddress,
+		operator: temporalFilterAnd,
+		children: []*temporalAccountFilterPlan{
+			{kind: temporalFilterCurrent, operator: temporalFilterLeaf, currentAccounts: []string{"b", "a"}},
+			{kind: temporalFilterCurrent, operator: temporalFilterLeaf, currentAccounts: []string{"b", "c"}},
+		},
+	}
+	candidates, bounded := intersection.candidates()
+	require.True(t, bounded)
+	require.Equal(t, []string{"b"}, candidates.accounts)
+
+	andWithPrefix := &temporalAccountFilterPlan{
+		kind:     temporalFilterAddress,
+		operator: temporalFilterAnd,
+		children: []*temporalAccountFilterPlan{prefix, exactA},
+	}
+	candidates, bounded = andWithPrefix.candidates()
+	require.True(t, bounded)
+	require.Equal(t, []string{"a"}, candidates.accounts)
+	require.Empty(t, candidates.prefixes)
+
+	union := &temporalAccountFilterPlan{
+		kind:     temporalFilterAddress,
+		operator: temporalFilterOr,
+		children: []*temporalAccountFilterPlan{exactB, exactA, exactA, prefix},
+	}
+	candidates, bounded = union.candidates()
+	require.True(t, bounded)
+	require.Equal(t, []string{"a", "b"}, candidates.accounts)
+	require.Equal(t, []string{"users:"}, candidates.prefixes)
+
+	unbounded := &temporalAccountFilterPlan{
+		kind:     temporalFilterAddress,
+		operator: temporalFilterOr,
+		children: []*temporalAccountFilterPlan{exactA, notPrefix},
+	}
+	_, bounded = unbounded.candidates()
+	require.False(t, bounded)
+
+	require.False(t, (&temporalAccountFilterPlan{operator: temporalFilterOperator(99)}).matches("a"))
+	_, bounded = (&temporalAccountFilterPlan{operator: temporalFilterOperator(99)}).candidates()
+	require.False(t, bounded)
+}
+
+func TestAccountSetHelpersAreSortedAndIndependent(t *testing.T) {
+	t.Parallel()
+
+	input := []string{"b", "a", "b", "c"}
+	require.Equal(t, []string{"a", "b", "c"}, deduplicateSortedAccounts(input))
+	require.Equal(t, []string{"b", "a", "b", "c"}, input)
+	require.Empty(t, deduplicateSortedAccounts(nil))
+	require.Equal(
+		t,
+		[]string{"b", "d"},
+		intersectSortedAccounts([]string{"d", "b", "a", "b"}, []string{"c", "d", "b"}),
+	)
+}

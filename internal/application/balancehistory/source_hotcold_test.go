@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -200,6 +202,437 @@ func TestHotColdSourceRejectsMissingArchivedPrefix(t *testing.T) {
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
 	require.ErrorContains(t, err, "instead of 1/1")
+}
+
+func TestValidateChapterTopology(t *testing.T) {
+	t.Parallel()
+
+	archived := func(id, startLog, closeLog, startAudit, closeAudit uint64) *commonpb.Chapter {
+		return &commonpb.Chapter{
+			Id:                 id,
+			Status:             commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+			StartSequence:      startLog,
+			CloseSequence:      closeLog,
+			StartAuditSequence: startAudit,
+			CloseAuditSequence: closeAudit,
+		}
+	}
+	tests := []struct {
+		name     string
+		chapters []*commonpb.Chapter
+		want     string
+	}{
+		{name: "nil row", chapters: []*commonpb.Chapter{nil}, want: "row 0 is nil"},
+		{
+			name: "ids not increasing",
+			chapters: []*commonpb.Chapter{
+				archived(1, 1, 1, 1, 1),
+				archived(1, 2, 2, 2, 2),
+			},
+			want: "ids are not strictly increasing",
+		},
+		{
+			name: "archive after live",
+			chapters: []*commonpb.Chapter{
+				{Id: 1, Status: commonpb.ChapterStatus_CHAPTER_OPEN},
+				archived(2, 1, 1, 1, 1),
+			},
+			want: "follows a non-archived chapter",
+		},
+		{
+			name:     "zero log start",
+			chapters: []*commonpb.Chapter{archived(1, 0, 1, 1, 1)},
+			want:     "invalid log range",
+		},
+		{
+			name:     "descending log range",
+			chapters: []*commonpb.Chapter{archived(1, 2, 1, 1, 1)},
+			want:     "invalid log range",
+		},
+		{
+			name:     "zero audit start",
+			chapters: []*commonpb.Chapter{archived(1, 1, 1, 0, 0)},
+			want:     "invalid audit range",
+		},
+		{
+			name:     "descending audit range",
+			chapters: []*commonpb.Chapter{archived(1, 1, 1, 3, 1)},
+			want:     "invalid audit range",
+		},
+		{
+			name:     "missing oldest prefix",
+			chapters: []*commonpb.Chapter{archived(1, 2, 2, 1, 1)},
+			want:     "instead of 1/1",
+		},
+		{
+			name: "discontinuous ranges",
+			chapters: []*commonpb.Chapter{
+				archived(1, 1, 2, 1, 2),
+				archived(2, 4, 4, 3, 3),
+			},
+			want: "does not continue chapter 1 ranges",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateChapterTopology(test.chapters)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+
+	require.NoError(t, validateChapterTopology([]*commonpb.Chapter{
+		archived(1, 1, 2, 1, 2),
+		archived(2, 3, 4, 3, 4),
+		{Id: 3, Status: commonpb.ChapterStatus_CHAPTER_OPEN},
+	}))
+}
+
+func TestValidateCursorAgainstHead(t *testing.T) {
+	t.Parallel()
+
+	head := Position{AuditSequence: 5, LogSequence: 8, AuditHash: []byte("head")}
+	tests := []struct {
+		name   string
+		cursor Position
+		want   string
+	}{
+		{name: "audit ahead", cursor: Position{AuditSequence: 6}, want: "audit sequence 6 is ahead"},
+		{name: "log ahead", cursor: Position{LogSequence: 9}, want: "log sequence 9 is ahead"},
+		{
+			name:   "head log mismatch",
+			cursor: Position{AuditSequence: 5, LogSequence: 7},
+			want:   "log watermark is 7 instead of 8",
+		},
+		{
+			name: "head hash mismatch",
+			cursor: Position{
+				AuditSequence: 5,
+				LogSequence:   8,
+				AuditHash:     []byte("other"),
+			},
+			want: "differs from source head hash",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.ErrorContains(t, validateCursorAgainstHead(test.cursor, head), test.want)
+		})
+	}
+	require.NoError(t, validateCursorAgainstHead(head, head))
+}
+
+func TestCombinedSourceHead(t *testing.T) {
+	t.Parallel()
+
+	hotHash := []byte("hot")
+	head := combinedSourceHead(
+		Position{AuditSequence: 2, LogSequence: 5, AuditHash: hotHash},
+		[]*commonpb.Chapter{
+			{CloseSequence: 4, CloseAuditSequence: 1, LastAuditHash: []byte("old")},
+			{CloseSequence: 7, CloseAuditSequence: 3, LastAuditHash: []byte("cold")},
+		},
+	)
+	require.Equal(t, Position{AuditSequence: 3, LogSequence: 7, AuditHash: []byte("cold")}, head)
+	head.AuditHash[0] = 'X'
+	require.Equal(t, []byte("hot"), hotHash)
+}
+
+func TestHotColdSourceRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+
+	source := NewHotColdSource(nil, nil, nil, "")
+	_, err := source.Read(context.Background(), Position{}, 0)
+	require.ErrorContains(t, err, "batch limit must be positive")
+	_, err = source.Head(context.Background())
+	require.ErrorContains(t, err, "primary snapshot reader is not configured")
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = source.Read(canceled, Position{}, 1)
+	require.ErrorIs(t, err, context.Canceled)
+
+	wantErr := errors.New("open snapshot")
+	reader := NewMockSnapshotReader(gomock.NewController(t))
+	reader.EXPECT().NewReadHandle().Return(nil, wantErr)
+	_, err = NewHotColdSource(reader, nil, nil, "").Head(context.Background())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestReadProposalHeaderRejectsMalformedData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fixture hotSourceFixture
+		mutate  func(t *testing.T, store *dal.Store)
+		want    string
+	}{
+		{
+			name: "embedded items",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{
+				Sequence: 1,
+				Items:    []*auditpb.AuditItem{{OrderIndex: 0}},
+			}},
+			want: "embeds 1 items",
+		},
+		{
+			name:    "missing outcome",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{Sequence: 1}},
+			want:    "has no outcome",
+		},
+		{
+			name: "item count mismatch",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{
+				Sequence:   1,
+				OrderCount: 1,
+				Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+			}},
+			want: "declares 1 items but 0 are available",
+		},
+		{
+			name: "partial range",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+						MinLogSequence: 1,
+					}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0}},
+			},
+			want: "partial fresh log range",
+		},
+		{
+			name: "descending range",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+						MinLogSequence: 2,
+						MaxLogSequence: 1,
+					}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0}},
+			},
+			want: "descending fresh log range",
+		},
+		{
+			name: "wrong item index",
+			fixture: hotSourceFixture{entry: &auditpb.AuditEntry{
+				Sequence:   1,
+				OrderCount: 1,
+				Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+			}},
+			mutate: func(t *testing.T, store *dal.Store) {
+				t.Helper()
+				batch := store.OpenWriteSession()
+				require.NoError(t, batch.SetProto(
+					hotAuditItemKey(1, 0),
+					&auditpb.AuditItem{OrderIndex: 1},
+				))
+				require.NoError(t, batch.Commit())
+			},
+			want: "declares order index 1",
+		},
+		{
+			name: "failed item references log",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0, LogSequence: 1}},
+			},
+			want: "failed audit sequence 1 item 0 references log 1",
+		},
+		{
+			name: "reference without fresh range",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 1,
+					Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+				},
+				items: []*auditpb.AuditItem{{OrderIndex: 0, LogSequence: 1}},
+			},
+			want: "beyond fresh range maximum 0",
+		},
+		{
+			name: "duplicate fresh log",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 2,
+					Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+						MinLogSequence: 1,
+						MaxLogSequence: 2,
+					}},
+				},
+				items: []*auditpb.AuditItem{
+					{OrderIndex: 0, LogSequence: 1},
+					{OrderIndex: 1, LogSequence: 1},
+				},
+			},
+			want: "references fresh log 1 more than once",
+		},
+		{
+			name: "missing fresh log",
+			fixture: hotSourceFixture{
+				entry: &auditpb.AuditEntry{
+					Sequence:   1,
+					OrderCount: 2,
+					Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
+						MinLogSequence: 1,
+						MaxLogSequence: 2,
+					}},
+				},
+				items: []*auditpb.AuditItem{
+					{OrderIndex: 0, LogSequence: 1},
+					{OrderIndex: 1},
+				},
+			},
+			want: "missing fresh log 2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newHotSourceTestStore(t)
+			seedHotSource(t, store, test.fixture)
+			if test.mutate != nil {
+				test.mutate(t, store)
+			}
+			handle, err := store.NewReadHandle()
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+			_, _, err = readProposalHeader(context.Background(), handle, test.fixture.entry)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+}
+
+func TestVerifyArchiveBounds(t *testing.T) {
+	t.Parallel()
+
+	t.Run("log bounds", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name    string
+			logs    []uint64
+			chapter *commonpb.Chapter
+			want    string
+		}{
+			{
+				name:    "no logs",
+				chapter: &commonpb.Chapter{Id: 1, StartSequence: 1, CloseSequence: 1},
+				want:    "contains no logs",
+			},
+			{
+				name:    "wrong first",
+				logs:    []uint64{2},
+				chapter: &commonpb.Chapter{Id: 1, StartSequence: 1, CloseSequence: 2},
+				want:    "first log is 2, want 1",
+			},
+			{
+				name:    "wrong last",
+				logs:    []uint64{1},
+				chapter: &commonpb.Chapter{Id: 1, StartSequence: 1, CloseSequence: 2},
+				want:    "last log is 1, want 2",
+			},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				store := newHotSourceTestStore(t)
+				for index, sequence := range test.logs {
+					seedHotSource(t, store, successfulHotFixture(uint64(index+1), sequence))
+				}
+				handle, err := store.NewReadHandle()
+				require.NoError(t, err)
+				t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+				err = verifyArchiveLogBounds(context.Background(), handle, test.chapter)
+				require.ErrorContains(t, err, test.want)
+			})
+		}
+	})
+
+	t.Run("audit bounds", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name    string
+			entries []hotSourceFixture
+			chapter *commonpb.Chapter
+			want    string
+		}{
+			{
+				name:    "no entries",
+				chapter: &commonpb.Chapter{Id: 1, StartAuditSequence: 1, CloseAuditSequence: 1},
+				want:    "contains no audit entries",
+			},
+			{
+				name:    "wrong first",
+				entries: []hotSourceFixture{successfulHotFixture(2, 0)},
+				chapter: &commonpb.Chapter{Id: 1, StartAuditSequence: 1, CloseAuditSequence: 2},
+				want:    "first audit sequence is 2, want 1",
+			},
+			{
+				name:    "wrong last",
+				entries: []hotSourceFixture{successfulHotFixture(1, 0)},
+				chapter: &commonpb.Chapter{Id: 1, StartAuditSequence: 1, CloseAuditSequence: 2},
+				want:    "last audit sequence is 1, want 2",
+			},
+			{
+				name: "hash mismatch",
+				entries: []hotSourceFixture{func() hotSourceFixture {
+					fixture := successfulHotFixture(1, 0)
+					fixture.entry.Hash = []byte("actual")
+
+					return fixture
+				}()},
+				chapter: &commonpb.Chapter{
+					Id:                 1,
+					StartAuditSequence: 1,
+					CloseAuditSequence: 1,
+					LastAuditHash:      []byte("expected"),
+				},
+				want: "last audit hash",
+			},
+			{
+				name:    "declared empty contains entry",
+				entries: []hotSourceFixture{successfulHotFixture(1, 0)},
+				chapter: &commonpb.Chapter{Id: 1, StartAuditSequence: 2, CloseAuditSequence: 1},
+				want:    "declares an empty audit range but contains sequence 1",
+			},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				store := newHotSourceTestStore(t)
+				seedHotSource(t, store, test.entries...)
+				handle, err := store.NewReadHandle()
+				require.NoError(t, err)
+				t.Cleanup(func() { require.NoError(t, handle.Close()) })
+
+				err = verifyArchiveAuditBounds(context.Background(), handle, test.chapter)
+				require.ErrorContains(t, err, test.want)
+			})
+		}
+	})
 }
 
 func TestHotColdSourceSnapshotSurvivesConcurrentPurge(t *testing.T) {

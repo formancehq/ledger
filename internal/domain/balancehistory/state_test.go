@@ -43,3 +43,67 @@ func TestReducerStateRoundTrip(t *testing.T) {
 	require.Empty(t, restored.State().Active)
 	require.Len(t, restored.State().Seen, 1)
 }
+
+func TestReducerStateValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state State
+		want  string
+	}{
+		{
+			name:  "invalid seen incarnation",
+			state: State{Seen: []IncarnationState{{Name: "", ID: 1}}},
+			want:  "invalid seen incarnation snapshot",
+		},
+		{
+			name: "duplicate seen id",
+			state: State{Seen: []IncarnationState{
+				{Name: "first", ID: 1},
+				{Name: "second", ID: 1},
+			}},
+			want: "duplicate seen incarnation id 1",
+		},
+		{
+			name:  "invalid active incarnation",
+			state: State{Active: []IncarnationState{{Name: "ledger", ID: 0}}},
+			want:  "invalid active incarnation snapshot",
+		},
+		{
+			name: "duplicate active name",
+			state: State{
+				Seen: []IncarnationState{{Name: "ledger", ID: 1}, {Name: "ledger", ID: 2}},
+				Active: []IncarnationState{
+					{Name: "ledger", ID: 1},
+					{Name: "ledger", ID: 2},
+				},
+			},
+			want: "duplicate active ledger",
+		},
+		{
+			name: "active absent from seen",
+			state: State{
+				Seen:   []IncarnationState{{Name: "other", ID: 1}},
+				Active: []IncarnationState{{Name: "ledger", ID: 1}},
+			},
+			want: "is absent from seen set",
+		},
+		{
+			name:  "invalid last position",
+			state: State{HasLast: true, Last: Position{AuditSequence: 1}},
+			want:  "invalid last reducer position",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewReducerFromState(test.state)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+
+	var reducer *Reducer
+	require.Equal(t, State{}, reducer.State())
+}
