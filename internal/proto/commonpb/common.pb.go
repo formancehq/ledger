@@ -714,6 +714,12 @@ const (
 	// there within the alignment grace. Retryable (Kind=Unavailable): the fold
 	// is behind, not broken. See EN-1748.
 	ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP ErrorReason = 69
+	// ERROR_REASON_READ_PIN_RECLAIMED: an indexed read holds a main-store
+	// handle whose sequence the read-index event GC has already reclaimed
+	// past, so the history that pin needs may be gone. Retryable
+	// (Kind=Unavailable): a retry opens a fresh handle and pins forward.
+	// See EN-1748.
+	ErrorReason_ERROR_REASON_READ_PIN_RECLAIMED ErrorReason = 70
 )
 
 // Enum value maps for ErrorReason.
@@ -789,6 +795,7 @@ var (
 		67: "ERROR_REASON_AGGREGATE_OVERFLOW",
 		68: "ERROR_REASON_BALANCE_NOT_FOUND",
 		69: "ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP",
+		70: "ERROR_REASON_READ_PIN_RECLAIMED",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -861,6 +868,7 @@ var (
 		"ERROR_REASON_AGGREGATE_OVERFLOW":               67,
 		"ERROR_REASON_BALANCE_NOT_FOUND":                68,
 		"ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP":         69,
+		"ERROR_REASON_READ_PIN_RECLAIMED":               70,
 	}
 )
 
@@ -13711,7 +13719,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xea\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x8f\x16\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13783,7 +13791,8 @@ const file_common_proto_rawDesc = "" +
 	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10B\x12#\n" +
 	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10C\x12\"\n" +
 	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10D\x12)\n" +
-	"%ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP\x10E*Q\n" +
+	"%ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP\x10E\x12#\n" +
+	"\x1fERROR_REASON_READ_PIN_RECLAIMED\x10F*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

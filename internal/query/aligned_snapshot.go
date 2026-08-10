@@ -47,8 +47,11 @@ const alignWait = 2 * time.Second
 // caller must invoke it when iteration ends, alongside closing the snapshot.
 //
 // The pin is read from the handle before it can be registered, so a GC pass
-// may begin reclaiming at or above it in that gap; Acquire refuses such a pin
-// and the loop re-reads the handle, which only ever moves the pin forward.
+// may begin reclaiming at or above it in that gap. Acquire refuses such a pin
+// and the read fails with ErrReadPinReclaimed: mainReader is a fixed snapshot,
+// so the pin cannot be moved forward here, and it has to keep matching the
+// reader the caller enriches through. A retry opens a fresh handle, whose
+// sequence is at or above the floor by construction.
 func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
@@ -71,19 +74,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 	for {
 		lease, ok := rs.Leases().Acquire(mainSeq)
 		if !ok {
-			// Reclamation has passed this pin. A fresh handle read yields a
-			// sequence at or above the floor, so this retries at most until
-			// the caller's deadline rather than spinning on a dead pin.
-			mainSeq, err = ReadLastSequence(mainReader)
-			if err != nil {
-				return nil, 0, nil, fmt.Errorf("re-reading main-store sequence: %w", err)
-			}
-
-			if ctxErr := waitCtx.Err(); ctxErr != nil {
-				return nil, 0, nil, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: rs.Leases().ReclaimFloor()}
-			}
-
-			continue
+			return nil, 0, nil, &ErrReadPinReclaimed{Pin: mainSeq, Floor: rs.Leases().ReclaimFloor()}
 		}
 
 		snap := rs.NewSnapshot()

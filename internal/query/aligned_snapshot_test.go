@@ -154,3 +154,36 @@ func txIDBytesQ(id uint64) []byte {
 
 	return b
 }
+
+// A pin the event GC has already reclaimed past cannot be salvaged in place:
+// mainReader is a fixed snapshot, so re-reading it returns the same rejected
+// sequence. The read must fail immediately so a retry can open a fresh handle.
+func TestAlignedIndexSnapshot_ReclaimedPinFailsFast(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+
+	rs := newTestReadStore(t)
+
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	lastSeq, err := query.ReadLastSequence(handle)
+	require.NoError(t, err)
+
+	setReadStoreProgress(t, rs, lastSeq)
+
+	// A GC pass sweeps past the handle's sequence while no lease holds it down.
+	rs.Leases().BeginGC(lastSeq + 1)
+
+	start := time.Now()
+	_, _, _, err = query.AlignedIndexSnapshot(t.Context(), rs, handle)
+
+	var reclaimed *query.ErrReadPinReclaimed
+	require.ErrorAs(t, err, &reclaimed)
+	require.Equal(t, lastSeq, reclaimed.Pin)
+	require.Less(t, time.Since(start), time.Second, "must not spin against the frozen handle until the deadline")
+}
