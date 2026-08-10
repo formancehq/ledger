@@ -50,6 +50,21 @@ const (
 // ClampPageSize applies default and maximum bounds to a USER-VISIBLE page
 // size value. gRPC handlers feed it the value the client sent in
 // ListOptions.page_size and use the result as the rendered-page limit.
+
+// releasingCloser closes a read handle and drops the reclamation hold taken
+// with it (see query.OpenAlignedHandle), so a cursor that outlives the
+// handler frees both at the same moment.
+type releasingCloser struct {
+	handle  io.Closer
+	release func()
+}
+
+func (c releasingCloser) Close() error {
+	defer c.release()
+
+	return c.handle.Close()
+}
+
 func ClampPageSize(pageSize uint32) uint32 {
 	if pageSize == 0 {
 		return DefaultPageSize
@@ -400,13 +415,14 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, err := store.NewReadHandle()
+	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
@@ -453,6 +469,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	}
 
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("listing transactions from index: %w", err)
@@ -463,6 +480,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName())
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, err
@@ -474,7 +492,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		profile.ItemsCollected = len(result.entityIDs)
 	}
 
-	return cursor.NewClosingCursor(cursor.NewSliceCursor(txns), handle), nil
+	return cursor.NewClosingCursor(cursor.NewSliceCursor(txns), releasingCloser{handle: handle, release: releaseHold}), nil
 }
 
 // ListAccounts returns a cursor over accounts for a ledger.
@@ -493,13 +511,14 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, err := ctrl.store.NewReadHandle()
+	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
@@ -540,6 +559,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	}
 
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("listing accounts from index: %w", err)
@@ -550,6 +570,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName())
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, err
@@ -561,7 +582,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		profile.ItemsCollected = len(result.entityIDs)
 	}
 
-	return cursor.NewClosingCursor(cursor.NewSliceCursor(accounts), handle), nil
+	return cursor.NewClosingCursor(cursor.NewSliceCursor(accounts), releasingCloser{handle: handle, release: releaseHold}), nil
 }
 
 func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*commonpb.Account, error) {
@@ -931,10 +952,11 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	handle, err := ctrl.store.NewReadHandle()
+	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
+	defer releaseHold()
 	defer func() { _ = handle.Close() }()
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
@@ -1626,13 +1648,14 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 // by the indexbuilder, so every read uses the Compile framework — boolean
 // filters and date ranges are honored on the single code path.
 func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	handle, err := ctrl.store.NewReadHandle()
+	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
@@ -1671,6 +1694,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, err
@@ -1688,6 +1712,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
 	)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("compiling log filter: %w", err)
@@ -1699,6 +1724,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
 	if paginateErr != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
@@ -1706,12 +1732,13 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	c, err := query.ReadLedgerLogsCompiled(ctx, handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
+		releaseHold()
 		_ = handle.Close()
 
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}
 
-	return cursor.NewClosingCursor(c, handle), nil
+	return cursor.NewClosingCursor(c, releasingCloser{handle: handle, release: releaseHold}), nil
 }
 
 // ListAuditEntries returns a cursor over audit entries against the live store,

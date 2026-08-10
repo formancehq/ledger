@@ -48,7 +48,7 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 	const ledgerName = "cross-store-value-skew-ledger"
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNodeRetryingNotCaughtUp(httpPort, grpcPort)
+		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
@@ -135,12 +135,10 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 			probes++
 
 			accs, err := actions.ListAccountsFiltered(ctx, client, ledgerName, 0, "", gold)
-			if err != nil {
-				// A lagging fold legitimately rejects with the retryable
-				// not-caught-up precondition; only contradictory ROWS are
-				// the bug.
-				continue
-			}
+			// Alignment waits out a lagging fold rather than rejecting, so an
+			// error here is a real failure, not a freshness condition.
+			Expect(err).To(Succeed())
+
 			served++
 
 			for _, acc := range accs {

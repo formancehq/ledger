@@ -3,9 +3,7 @@ package query
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"time"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -29,22 +27,27 @@ import (
 // membership can then only exceed the main store (entities committed after
 // the handle), and MainHorizonKeep trims those back. The result is exactly
 // the state at the main reader's sequence.
-// alignWait bounds how long a query waits for the read index to fold up to
-// the main handle's sequence. The fold normally trails by well under a
-// millisecond; the bound bites only when the builder is stalled (backfill
-// storm, faults), where failing fast with ErrReadIndexNotCaughtUp beats
-// holding every request.
-const alignWait = 2 * time.Second
-
 // AlignedIndexSnapshot returns a read-index snapshot whose fold cursor is at
 // or beyond mainReader's last applied log sequence, plus that sequence and a
 // release closure. The cursor is verified through the snapshot itself, so the
-// check can never race the snapshot it vouches for. Fails with
-// ErrReadIndexNotCaughtUp when the fold does not catch up within alignWait.
+// check can never race the snapshot it vouches for. Waits for the fold for as
+// long as the caller's context allows.
 //
 // The release closure drops the read lease registered at the returned
 // sequence — the pin the event GC must not reclaim past (read_lease.go). The
 // caller must invoke it when iteration ends, alongside closing the snapshot.
+//
+// The wait is bounded by the caller's context and nothing else. Alignment is
+// not optional — a filtered read cannot answer correctly until the fold
+// reaches the pin — so how long to spend on it is the caller's call, exactly
+// as a deadline expresses. A server-side cap would also diverge rather than
+// converge: mainSeq is fixed for the life of this handle, so waiting makes
+// progress, while a retry opens a NEW handle at a HIGHER sequence and leaves
+// the fold further behind than the attempt that just gave up. Under sustained
+// write load that never converges.
+//
+// The lease is released before waiting, so a long wait pins no history and
+// creates no reclamation pressure.
 //
 // The pin is read from the handle before it can be registered, so a GC pass
 // may begin reclaiming at or above it in that gap. Acquire refuses such a pin
@@ -67,9 +70,6 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 	if rs.Frozen() {
 		return rs.NewSnapshot(), mainSeq, func() {}, nil
 	}
-
-	waitCtx, cancel := context.WithTimeout(ctx, alignWait)
-	defer cancel()
 
 	for {
 		lease, ok := rs.Leases().Acquire(mainSeq)
@@ -94,15 +94,11 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		_ = snap.Close()
 		lease.Release()
 
-		if waitErr := rs.WaitForSequence(waitCtx, mainSeq); waitErr != nil {
-			// A Pebble fault reading progress is not a freshness condition —
-			// surfacing it as one would launder a real I/O error into a
-			// retryable precondition.
-			if !errors.Is(waitErr, context.DeadlineExceeded) && !errors.Is(waitErr, context.Canceled) {
-				return nil, 0, nil, fmt.Errorf("waiting for read index: %w", waitErr)
-			}
-
-			return nil, 0, nil, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: lastIndexed}
+		if waitErr := rs.WaitForSequence(ctx, mainSeq); waitErr != nil {
+			// The caller's context ending is the caller's answer; a Pebble
+			// fault reading progress is a real I/O error and must not be
+			// laundered into a freshness condition.
+			return nil, 0, nil, fmt.Errorf("waiting for read index alignment at sequence %d: %w", mainSeq, waitErr)
 		}
 	}
 }
@@ -164,4 +160,38 @@ func MainHorizonKeep(
 	default:
 		return nil
 	}
+}
+
+// OpenAlignedHandle opens a main-store handle for a read that will align an
+// index snapshot against it, holding reclamation still across the two steps.
+//
+// The order is the point. A read's pin does not exist until its handle is
+// open, so no lease can protect it beforehand; under sustained load the fold
+// cursor — and with it the GC's reclaim floor — advances past a just-opened
+// handle within a tick, and the read is refused for history it never had a
+// chance to claim. Reserving first pins the floor where it is, and the handle
+// that follows is necessarily at or above it.
+//
+// The returned release drops the reservation; callers must invoke it when the
+// read finishes, alongside closing the handle. Holding it for the request's
+// life is intended — a request retains exactly the history it may still need.
+func OpenAlignedHandle(rs *readstore.Store, store *dal.Store) (*dal.ReadHandle, func(), error) {
+	if rs.Frozen() {
+		// A checkpoint's index never advances and nothing reclaims against
+		// it, so there is no floor to hold.
+		handle, err := store.NewReadHandle()
+
+		return handle, func() {}, err
+	}
+
+	hold := rs.Leases().Reserve()
+
+	handle, err := store.NewReadHandle()
+	if err != nil {
+		hold.Release()
+
+		return nil, nil, err
+	}
+
+	return handle, hold.Release, nil
 }

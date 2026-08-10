@@ -123,8 +123,13 @@ iterator with `query.MainHorizonKeep`.**
 
 `AlignedIndexSnapshot` returns a read-index snapshot whose fold cursor covers
 the handle's last applied sequence (verified through the snapshot itself, so
-the check cannot race it), waiting up to a bounded grace for the fold and
-failing with `ErrReadIndexNotCaughtUp` when the builder is stalled. It also
+the check cannot race it), waiting for the fold for as long as the caller's
+context allows. There is deliberately no server-side cap: alignment is not
+optional for a filtered read, so how much latency to spend on it belongs to
+the caller, and a cap would diverge rather than converge — the pin is fixed
+for the life of the handle, so waiting makes progress, while a retry opens a
+new handle at a higher sequence and leaves the fold further behind than the
+attempt that gave up. It also
 registers the handle's sequence as a *read lease*, bounding the event GC (see
 below); the caller releases it with the returned closure when iteration ends.
 Because the fold is ordered, such a snapshot holds every index event at or

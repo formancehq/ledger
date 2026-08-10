@@ -36,9 +36,30 @@ type Lease struct {
 	once sync.Once
 }
 
+// Reserve holds reclamation where it is, for a reader that does not yet know
+// its pin. It is a lease at the current floor, so it can never be refused, and
+// while it is held every GC pass lowers its watermark to that floor.
+//
+// A read must take this BEFORE opening its main-store handle. The handle's
+// sequence is then necessarily at or above the held floor (floor <= fold
+// cursor <= applied index), so the Acquire that follows cannot be refused.
+// Without it there is an unclosable window: the pin does not exist until the
+// handle is open, so no lease can protect it, and under sustained load the
+// fold and the GC pass it within a tick.
+func (r *LeaseRegistry) Reserve() *Lease {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.nextID++
+	r.leases[r.nextID] = r.floor
+
+	return &Lease{r: r, id: r.nextID}
+}
+
 // Acquire registers a read pinned at seq. ok=false means a GC pass has already
 // begun reclaiming at or above seq, so events the pin needs may be gone; the
-// caller must re-pin against fresher state instead of reading at seq.
+// caller must re-pin against fresher state instead of reading at seq. A caller
+// holding a Reserve taken before its handle cannot be refused.
 func (r *LeaseRegistry) Acquire(seq uint64) (*Lease, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -783,8 +783,8 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	// window: the loop below checks ctx.Err() and calls Wait() under the same
 	// lock, and Wait releases it only once parked. Broadcasting without the
 	// lock can land between that check and Wait, stranding the waiter until an
-	// unrelated NotifyProgress arrives — so the bounded alignment wait
-	// (query.alignWait) would not be bounded at all.
+	// unrelated NotifyProgress arrives — so an alignment wait would outlive
+	// its caller's cancellation instead of ending with it.
 	done := make(chan struct{})
 	defer close(done)
 

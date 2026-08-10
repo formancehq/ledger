@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"encoding/binary"
 	"testing"
 	"time"
@@ -90,7 +91,11 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 	})
 }
 
-func TestAlignedIndexSnapshot_TimesOutNotCaughtUp(t *testing.T) {
+// Alignment waits for as long as the caller allows and no longer: the bound
+// is the caller's context, never a server-chosen constant. A cap would also
+// diverge — mainSeq is fixed for this handle, so waiting converges, while a
+// retry re-pins higher and leaves the fold further behind.
+func TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
@@ -104,18 +109,14 @@ func TestAlignedIndexSnapshot_TimesOutNotCaughtUp(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	lastSeq, err := query.ReadLastSequence(handle)
-	require.NoError(t, err)
-	require.Greater(t, lastSeq, uint64(1))
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
 
 	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(t.Context(), rs, handle)
+	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle)
 
-	var notCaughtUp *query.ErrReadIndexNotCaughtUp
-	require.ErrorAs(t, err, &notCaughtUp)
-	require.Equal(t, lastSeq, notCaughtUp.Requested)
-	require.Equal(t, uint64(1), notCaughtUp.Current)
-	require.GreaterOrEqual(t, time.Since(start), time.Second, "the bounded wait ran before failing")
+	require.ErrorIs(t, err, context.DeadlineExceeded, "the caller's deadline is what ends the wait")
+	require.Less(t, time.Since(start), time.Second, "it must not outlive the caller's deadline")
 }
 
 // A committed transaction whose index rows have not folded yet must be

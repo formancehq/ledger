@@ -133,11 +133,14 @@ func Execute(
 
 	// Always open a read handle — needed for filter compilation and entity
 	// enrichment. Opened BEFORE the index snapshot: alignment guarantees the
-	// snapshot's fold cursor covers everything the handle sees (EN-1748).
-	handle, err := pebbleStore.NewReadHandle()
+	// snapshot's fold cursor covers everything the handle sees (EN-1748), and
+	// OpenAlignedHandle holds reclamation still across the two steps.
+	handle, releaseHold, err := OpenAlignedHandle(rs, pebbleStore)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
+
+	defer releaseHold()
 	defer func() { _ = handle.Close() }()
 
 	indexSnap, mainSeq, releaseLease, err := AlignedIndexSnapshot(ctx, rs, handle)
