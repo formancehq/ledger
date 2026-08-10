@@ -19,6 +19,16 @@ type ChapterTracker struct {
 	closingChapters    []*commonpb.Chapter
 	nextChapterID      uint64
 
+	// archivedThroughID is the highest chapter id such that every chapter from
+	// 1 to it is ARCHIVED — the archived prefix of history. allChapters holds
+	// only chapters whose data is still in hot storage (purged ones are
+	// removed), so it cannot answer "is this chapter archived?" for the very
+	// chapters the question is about; this scalar records that history fact
+	// explicitly instead of inferring it from residency. Its twin is
+	// nextChapterID: same monotonic-chapter-bookkeeping character, same need to
+	// survive recovery.
+	archivedThroughID uint64
+
 	// schedule is the cron expression for automatic chapter rotation (empty = disabled).
 	schedule string
 	// scheduleChanged fires when the schedule is updated via Raft.
@@ -42,9 +52,39 @@ func NewChapterTracker(
 		currentOpenChapter: currentOpenChapter,
 		closingChapters:    closingChapters,
 		nextChapterID:      nextChapterID,
+		archivedThroughID:  deriveArchivedThroughID(allChapters, nextChapterID),
 		schedule:           schedule,
 		scheduleChanged:    signal.New(),
 	}
+}
+
+// deriveArchivedThroughID computes the archived prefix from persisted chapter
+// rows: the highest id such that every chapter from 1 up to it is ARCHIVED.
+//
+// Both recovery paths (boot and follower checkpoint-sync) rebuild the tracker
+// from the SubGlobChapters rows, which are never deleted — so a row is present
+// for every chapter that ever existed and carries its final status. A missing
+// row therefore stops the prefix: it cannot be shown to be archived, and
+// counting it would let the ordering gate authorise a purge over a chapter
+// whose fate is unknown.
+//
+// The scan is over a fixed id range rather than a map iteration, so the result
+// does not depend on map order — a requirement, since the ordering gate's
+// accept/reject verdict is recorded in the audit chain and must be identical on
+// every replica.
+func deriveArchivedThroughID(allChapters map[uint64]*commonpb.Chapter, nextChapterID uint64) uint64 {
+	var through uint64
+
+	for id := uint64(1); id < nextChapterID; id++ {
+		chapter, ok := allChapters[id]
+		if !ok || chapter.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVED {
+			break
+		}
+
+		through = id
+	}
+
+	return through
 }
 
 // AllChapters returns a slice of all non-purged chapters.
@@ -250,6 +290,26 @@ func (pt *ChapterTracker) Reset(
 	pt.currentOpenChapter = currentOpenChapter
 	pt.closingChapters = closingChapters
 	pt.nextChapterID = nextChapterID
+	pt.archivedThroughID = deriveArchivedThroughID(allChapters, nextChapterID)
+}
+
+// ArchivedThroughID returns the archived prefix: every chapter from 1 to the
+// returned id is ARCHIVED. 0 means no chapter is archived yet.
+func (pt *ChapterTracker) ArchivedThroughID() uint64 {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	return pt.archivedThroughID
+}
+
+// SetArchivedThroughID records the archived prefix. Advanced by the
+// confirm-archive handler; the ordering rule keeps the prefix contiguous, so it
+// only ever moves forward by one.
+func (pt *ChapterTracker) SetArchivedThroughID(id uint64) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	pt.archivedThroughID = id
 }
 
 // Clone returns a deep copy of the ChapterTracker suitable for use in a Buffer.
@@ -279,5 +339,6 @@ func (pt *ChapterTracker) Clone() *ChapterTracker {
 		currentOpenChapter: clonedOpen,
 		closingChapters:    clonedClosing,
 		nextChapterID:      pt.nextChapterID,
+		archivedThroughID:  pt.archivedThroughID,
 	}
 }

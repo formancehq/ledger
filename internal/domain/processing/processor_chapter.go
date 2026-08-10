@@ -110,6 +110,25 @@ func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (
 		return nil, &domain.ErrChapterNotClosed{ChapterID: order.GetChapterId()}
 	}
 
+	// Archived chapters must form a contiguous prefix of history, so the only
+	// archivable chapter is the one right after the archived prefix. The purge
+	// deletes everything up to the archived chapter's close sequence, so
+	// archiving out of order would leave an older, un-archived chapter's logs
+	// retained *below* the archive boundary — where the checker's replay skips
+	// them, leaving a permanently unverified window, and where cold storage has
+	// a hole no later archive ever fills.
+	//
+	// The prefix is read from the tracker's explicit marker rather than inferred
+	// from which chapters are still resident: the purge drops archived chapters
+	// from the tracker, so residency answers "does this chapter still have hot
+	// data", not "is it archived".
+	if archivedThrough := s.GetArchivedThroughChapterID(); order.GetChapterId() != archivedThrough+1 {
+		return nil, &domain.ErrChapterArchiveOutOfOrder{
+			ChapterID:         order.GetChapterId(),
+			BlockingChapterID: archivedThrough + 1,
+		}
+	}
+
 	chapter := chapterReader.Mutate()
 
 	// Transition to ARCHIVING deterministically on all nodes
@@ -159,6 +178,12 @@ func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, c
 
 	chapter.Status = commonpb.ChapterStatus_CHAPTER_ARCHIVED
 	s.UpdateChapter(chapter)
+
+	// Extend the archived prefix. The ordering rule (processArchiveChapter) only
+	// admits the chapter right after the prefix, so a confirm always lands on
+	// prefix + 1 and the prefix stays contiguous. Advancing here rather than in
+	// the purge means a later order in the same proposal sees it.
+	s.SetArchivedThroughChapterID(chapter.GetId())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchiveChapter{
