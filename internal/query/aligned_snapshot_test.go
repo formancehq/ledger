@@ -64,7 +64,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 			setReadStoreProgress(t, rs, lastSeq)
 		}()
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(rs, handle)
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -81,7 +81,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 	t.Run("already aligned", func(t *testing.T) {
 		setReadStoreProgress(t, rs, lastSeq+4)
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(rs, handle)
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -109,7 +109,7 @@ func TestAlignedIndexSnapshot_TimesOutNotCaughtUp(t *testing.T) {
 	require.Greater(t, lastSeq, uint64(1))
 
 	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(rs, handle)
+	_, _, _, err = query.AlignedIndexSnapshot(t.Context(), rs, handle)
 
 	var notCaughtUp *query.ErrReadIndexNotCaughtUp
 	require.ErrorAs(t, err, &notCaughtUp)

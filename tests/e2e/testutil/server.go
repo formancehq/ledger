@@ -59,16 +59,20 @@ func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.Clust
 }
 
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
-func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(NotCaughtUpUnaryInterceptor()),
-		grpc.WithStreamInterceptor(NotCaughtUpStreamInterceptor()),
 	}
 
 	if withRetry {
 		opts = append(opts, grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy))
 	}
+
+	// The read-index freshness precondition is deliberately NOT retried by
+	// default: a spec that hits it should fail fast and say so. Only the
+	// specs that drive the fold behind on purpose opt in
+	// (NotCaughtUpRetryDialOptions).
+	opts = append(opts, extraDialOptions...)
 
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
@@ -336,6 +340,18 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 // Returns the context, client, and cluster client.
 // Cleanup is handled automatically via DeferCleanup.
 func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+	return setupSingleNode(httpPort, grpcPort, nil, extraInstruments...)
+}
+
+// SetupSingleNodeRetryingNotCaughtUp is SetupSingleNode for specs that drive
+// the read-index fold behind on purpose: its client retries the freshness
+// precondition instead of failing fast. Every other spec keeps the fail-fast
+// client, where that precondition means a regression.
+func SetupSingleNodeRetryingNotCaughtUp(httpPort, grpcPort int, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+	return setupSingleNode(httpPort, grpcPort, NotCaughtUpRetryDialOptions(), extraInstruments...)
+}
+
+func setupSingleNode(httpPort, grpcPort int, dialOpts []grpc.DialOption, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
 	ctx := logging.TestingContext()
 
 	walTmpDir := GinkgoT().TempDir()
@@ -375,7 +391,7 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 	})
 
 	// Create gRPC client
-	grpcClient, clusterClient, grpcConn, err := NewGRPCClient(grpcPort)
+	grpcClient, clusterClient, grpcConn, err := NewGRPCClientWithRetry(grpcPort, true, dialOpts...)
 	Expect(err).To(Succeed())
 	DeferCleanup(func() {
 		_ = grpcConn.Close()

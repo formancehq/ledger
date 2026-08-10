@@ -2,9 +2,9 @@ package testutil
 
 import (
 	"context"
-	"strings"
 	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -16,15 +16,37 @@ import (
 // the same for the test harness, so load-heavy specs that leave a deep fold
 // backlog don't fail the next filtered read.
 const (
-	notCaughtUpMarker  = "read index has not caught up"
+	notCaughtUpReason  = "READ_INDEX_NOT_CAUGHT_UP"
 	notCaughtUpBackoff = 200 * time.Millisecond
 	notCaughtUpWindow  = 90 * time.Second
 )
 
+// isNotCaughtUp matches the server's structured detail, not its message: the
+// text is free to change, the ErrorInfo reason is the wire contract.
 func isNotCaughtUp(err error) bool {
 	s, ok := status.FromError(err)
+	if !ok || s.Code() != codes.FailedPrecondition {
+		return false
+	}
 
-	return ok && s.Code() == codes.FailedPrecondition && strings.Contains(s.Message(), notCaughtUpMarker)
+	for _, d := range s.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.GetReason() == notCaughtUpReason {
+			return true
+		}
+	}
+
+	return false
+}
+
+// NotCaughtUpRetryDialOptions returns the dial options that make a client
+// retry the read-index freshness precondition. Opt-in per spec: the default
+// client fails fast, so an unexpected precondition surfaces as a test failure
+// rather than a silent multi-minute stall.
+func NotCaughtUpRetryDialOptions() []grpc.DialOption {
+	return []grpc.DialOption{
+		grpc.WithUnaryInterceptor(NotCaughtUpUnaryInterceptor()),
+		grpc.WithStreamInterceptor(NotCaughtUpStreamInterceptor()),
+	}
 }
 
 // NotCaughtUpUnaryInterceptor retries unary calls rejected by the read-index
@@ -118,22 +140,21 @@ func (s *notCaughtUpRetryStream) RecvMsg(m any) error {
 			return err
 		}
 
-		replay := true
+		// A replay or close failure is terminal: looping would keep polling
+		// the dead original stream until the window closes, reporting a real
+		// failure as "never caught up" — the one thing this helper exists to
+		// distinguish.
 		for _, sent := range s.sent {
 			if serr := replacement.SendMsg(sent); serr != nil {
-				replay = false
+				_ = replacement.CloseSend()
 
-				break
+				return err
 			}
-		}
-
-		if !replay {
-			continue
 		}
 
 		if s.sendsDone {
 			if cerr := replacement.CloseSend(); cerr != nil {
-				continue
+				return err
 			}
 		}
 

@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -63,6 +64,7 @@ type entityListResult struct {
 // scan a version that does not match the snapshot's keyspace
 // (silent partial results).
 func listEntities[T interface{ ~string | ~uint64 }](
+	ctx context.Context,
 	readStore *readstore.Store,
 	params entityListParams[T],
 ) (entityListResult, error) {
@@ -71,7 +73,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(readStore, params.pebbleReader)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader)
 	if err != nil {
 		return result, err
 	}
@@ -79,7 +81,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
-	params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
+	params.indexVersionFor = readstore.PinnedVersionResolver(snap, params.ledgerName, mainSeq)
 	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
 	params.pin = mainSeq
 

@@ -45,7 +45,7 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 	const ledgerName = "cross-store-alignment-ledger"
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		ctx, client, _ = testutil.SetupSingleNodeRetryingNotCaughtUp(httpPort, grpcPort)
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},

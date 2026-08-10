@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -32,6 +33,21 @@ type ErrReadIndexNotCaughtUp struct {
 func (e *ErrReadIndexNotCaughtUp) Error() string {
 	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
 }
+
+func (*ErrReadIndexNotCaughtUp) Reason() string { return domain.ErrReasonReadIndexNotCaughtUp }
+
+func (e *ErrReadIndexNotCaughtUp) Metadata() map[string]string {
+	return map[string]string{
+		"requested": strconv.FormatUint(e.Requested, 10),
+		"current":   strconv.FormatUint(e.Current, 10),
+	}
+}
+
+// Compile-time assertion that ErrReadIndexNotCaughtUp satisfies
+// domain.Describable. Without it the shared error edge cannot classify the
+// condition and every REST list endpoint renders a routine fold lag as an
+// opaque 500 rather than a retryable 503.
+var _ domain.Describable = (*ErrReadIndexNotCaughtUp)(nil)
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
@@ -99,7 +115,7 @@ func Execute(
 	}
 	defer func() { _ = handle.Close() }()
 
-	indexSnap, mainSeq, releaseLease, err := AlignedIndexSnapshot(rs, handle)
+	indexSnap, mainSeq, releaseLease, err := AlignedIndexSnapshot(ctx, rs, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +143,7 @@ func Execute(
 	// (rewrite commit) return v_new from the resolver while the
 	// snapshot still holds an incomplete v_new keyspace — silent
 	// partial results.
-	indexVersionFor := readstore.SnapshotVersionResolver(indexSnap, ledgerInfo.GetName())
+	indexVersionFor := readstore.PinnedVersionResolver(indexSnap, ledgerInfo.GetName(), mainSeq)
 
 	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 	if compileErr != nil {

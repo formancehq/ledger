@@ -170,6 +170,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		logger:   logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
 		dir:      dirPath,
 		readOnly: true,
+		leases:   NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -352,6 +353,14 @@ type IndexVersionState struct {
 	// PendingVersion is the target version of an in-flight local
 	// rewrite. Zero when no rewrite is running.
 	PendingVersion uint32
+	// ActivationSequence is the log sequence CurrentVersion's keyspace
+	// became complete at. A rewrite stamps every event it writes with the
+	// FSM sequence it read from, so a reader pinned below that sequence
+	// resolves the promoted keyspace as empty; queries compare their pin
+	// against this and refuse rather than serve nothing. Zero for a version
+	// built by an initial backfill, whose events carry the sequences of the
+	// logs they were folded from and are therefore resolvable at any pin.
+	ActivationSequence uint64
 	// RewriteProgress is the cursor of the in-flight rewrite (e.g. the
 	// last reverse-map key processed). Empty when no rewrite is
 	// running. Variable-length, opaque to the readstore.
@@ -368,12 +377,13 @@ type IndexVersionStateEntry struct {
 }
 
 // encodeIndexVersionState packs the state to a single byte slice.
-// Layout: [current(4B BE)][pending(4B BE)][rewrite_progress…].
+// Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][rewrite_progress…].
 func encodeIndexVersionState(s IndexVersionState) []byte {
-	out := make([]byte, 8+len(s.RewriteProgress))
+	out := make([]byte, 16+len(s.RewriteProgress))
 	binary.BigEndian.PutUint32(out[0:4], s.CurrentVersion)
 	binary.BigEndian.PutUint32(out[4:8], s.PendingVersion)
-	copy(out[8:], s.RewriteProgress)
+	binary.BigEndian.PutUint64(out[8:16], s.ActivationSequence)
+	copy(out[16:], s.RewriteProgress)
 
 	return out
 }
@@ -382,17 +392,18 @@ func encodeIndexVersionState(s IndexVersionState) []byte {
 // Returns (zero, false) on any malformed input — caller treats it as
 // "absent" and re-initializes.
 func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
-	if len(v) < 8 {
+	if len(v) < 16 {
 		return IndexVersionState{}, false
 	}
 
-	progress := make([]byte, len(v)-8)
-	copy(progress, v[8:])
+	progress := make([]byte, len(v)-16)
+	copy(progress, v[16:])
 
 	return IndexVersionState{
-		CurrentVersion:  binary.BigEndian.Uint32(v[0:4]),
-		PendingVersion:  binary.BigEndian.Uint32(v[4:8]),
-		RewriteProgress: progress,
+		CurrentVersion:     binary.BigEndian.Uint32(v[0:4]),
+		PendingVersion:     binary.BigEndian.Uint32(v[4:8]),
+		ActivationSequence: binary.BigEndian.Uint64(v[8:16]),
+		RewriteProgress:    progress,
 	}, true
 }
 
@@ -455,10 +466,28 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
 func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, error) {
+	return PinnedVersionResolver(reader, ledgerName, 0)
+}
+
+// PinnedVersionResolver is the pin-aware variant: a version promoted by a
+// schema rewrite is only servable at pins at or above its activation
+// sequence, because the rewrite stamps every event it writes with the one
+// FSM sequence it read from. Below that, the promoted keyspace resolves
+// empty at the pin — indistinguishable from "no rows match" — so the
+// resolver reports the index as not yet live (version 0) and the caller
+// surfaces ErrIndexBuilding instead of an empty page.
+//
+// A pin of 0 means "no pin" (introspection paths that do not resolve rows
+// at a sequence) and skips the check.
+func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) func(canonical string) (uint32, error) {
 	return func(canonical string) (uint32, error) {
 		state, _, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
 			return 0, err
+		}
+
+		if pin > 0 && state.ActivationSequence > pin {
+			return 0, nil
 		}
 
 		return state.CurrentVersion, nil
@@ -749,15 +778,22 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 		return nil
 	}
 
-	// Spawn a goroutine that broadcasts when the context is cancelled so
-	// the Wait() below is unblocked.
+	// Broadcast on cancellation while holding progressMu, exactly as
+	// WaitForCheckpoint does. Taking the lock is what closes the missed-wakeup
+	// window: the loop below checks ctx.Err() and calls Wait() under the same
+	// lock, and Wait releases it only once parked. Broadcasting without the
+	// lock can land between that check and Wait, stranding the waiter until an
+	// unrelated NotifyProgress arrives — so the bounded alignment wait
+	// (query.alignWait) would not be bounded at all.
 	done := make(chan struct{})
 	defer close(done)
 
 	go func() {
 		select {
 		case <-ctx.Done():
+			s.progressMu.Lock()
 			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
 		case <-done:
 		}
 	}()

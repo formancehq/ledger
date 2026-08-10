@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +45,11 @@ const alignWait = 2 * time.Second
 // The release closure drops the read lease registered at the returned
 // sequence — the pin the event GC must not reclaim past (read_lease.go). The
 // caller must invoke it when iteration ends, alongside closing the snapshot.
-func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
+//
+// The pin is read from the handle before it can be registered, so a GC pass
+// may begin reclaiming at or above it in that gap; Acquire refuses such a pin
+// and the loop re-reads the handle, which only ever moves the pin forward.
+func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)
@@ -60,15 +65,27 @@ func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pe
 		return rs.NewSnapshot(), mainSeq, func() {}, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), alignWait)
+	waitCtx, cancel := context.WithTimeout(ctx, alignWait)
 	defer cancel()
 
-	// The lease is registered BEFORE the snapshot: the GC computes its
-	// watermark from registered pins, so the order guarantees no reclamation
-	// between pinning and snapshotting.
-	lease := rs.Leases().Acquire(mainSeq)
-
 	for {
+		lease, ok := rs.Leases().Acquire(mainSeq)
+		if !ok {
+			// Reclamation has passed this pin. A fresh handle read yields a
+			// sequence at or above the floor, so this retries at most until
+			// the caller's deadline rather than spinning on a dead pin.
+			mainSeq, err = ReadLastSequence(mainReader)
+			if err != nil {
+				return nil, 0, nil, fmt.Errorf("re-reading main-store sequence: %w", err)
+			}
+
+			if ctxErr := waitCtx.Err(); ctxErr != nil {
+				return nil, 0, nil, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: rs.Leases().ReclaimFloor()}
+			}
+
+			continue
+		}
+
 		snap := rs.NewSnapshot()
 
 		lastIndexed, err := rs.LastIndexedSequenceFrom(snap)
@@ -84,9 +101,15 @@ func AlignedIndexSnapshot(rs *readstore.Store, mainReader dal.PebbleReader) (*pe
 		}
 
 		_ = snap.Close()
+		lease.Release()
 
-		if waitErr := rs.WaitForSequence(ctx, mainSeq); waitErr != nil {
-			lease.Release()
+		if waitErr := rs.WaitForSequence(waitCtx, mainSeq); waitErr != nil {
+			// A Pebble fault reading progress is not a freshness condition —
+			// surfacing it as one would launder a real I/O error into a
+			// retryable precondition.
+			if !errors.Is(waitErr, context.DeadlineExceeded) && !errors.Is(waitErr, context.Canceled) {
+				return nil, 0, nil, fmt.Errorf("waiting for read index: %w", waitErr)
+			}
 
 			return nil, 0, nil, &ErrReadIndexNotCaughtUp{Requested: mainSeq, Current: lastIndexed}
 		}

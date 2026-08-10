@@ -426,7 +426,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	indexStart := time.Now()
 
-	result, err := listEntities(rs, entityListParams[uint64]{
+	result, err := listEntities(ctx, rs, entityListParams[uint64]{
 		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
@@ -516,7 +516,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	indexStart := time.Now()
 
-	result, err := listEntities(ctrl.readStore, entityListParams[string]{
+	result, err := listEntities(ctx, ctrl.readStore, entityListParams[string]{
 		target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
@@ -965,7 +965,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -977,7 +977,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle, mainSeq)
+	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -1669,7 +1669,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		}
 	}
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle)
 	if err != nil {
 		_ = handle.Close()
 
@@ -1685,7 +1685,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), nil, handle, mainSeq,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
 	)
 	if err != nil {
 		_ = handle.Close()

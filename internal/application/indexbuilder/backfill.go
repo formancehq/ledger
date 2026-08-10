@@ -867,8 +867,9 @@ scan:
 			done = false
 		} else {
 			newState = readstore.IndexVersionState{
-				CurrentVersion: pendingVersion,
-				PendingVersion: 0,
+				CurrentVersion:     pendingVersion,
+				PendingVersion:     0,
+				ActivationSequence: task.requiredIndexedSeq,
 			}
 
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
@@ -943,8 +944,9 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}()
 
 	newState := readstore.IndexVersionState{
-		CurrentVersion: pendingVersion,
-		PendingVersion: 0,
+		CurrentVersion:     pendingVersion,
+		PendingVersion:     0,
+		ActivationSequence: task.requiredIndexedSeq,
 	}
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {

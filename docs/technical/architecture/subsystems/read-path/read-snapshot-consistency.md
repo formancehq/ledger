@@ -150,12 +150,19 @@ the reverse LOGS arm, whose unfiltered scan also iterates the read index),
 endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
 index snapshot and need no alignment.
 
-**Residual window**: a retype's version switch landing between the handle's
-sequence and the snapshot's fold cursor makes the snapshot-resolved version
-serve rewrite-stamped events the pin cannot see yet — the query may miss
-entries the rewrite carried over. A `DropIndex` in the same window is an
-honest rejection instead (the registry is read through the snapshot, so
-compilation fails with index-not-found). The window is the microseconds
-between the two acquisitions (the wait exits as soon as the cursor covers
-the handle); closing it entirely needs registry-generation comparison and
-retry, deferred until it is observed in practice.
+**Version activation**: a rewrite stamps every event it writes with the one
+FSM sequence it read from, so a promoted version resolves as EMPTY at any pin
+below that sequence — and the pin can sit arbitrarily far below the serving
+snapshot's cursor, since the bounded wait sits between the two acquisitions.
+`IndexVersionState.ActivationSequence` records that sequence and
+`PinnedVersionResolver` withholds the version from pins beneath it, so the
+query returns `ErrIndexBuilding` rather than an empty page for a fully
+populated index (see
+[readstore-event-keys.md](readstore-event-keys.md)).
+
+**Known gap — index existence is not read at the pin**: `checkIndexed`
+resolves the registry through the main-store handle while the rows come from
+the read-store snapshot. A removal landing between the two is visible only to
+the snapshot: compilation still finds the index and scans an emptied
+keyspace, so the read answers "no matches" for a filter it can no longer
+serve, with no error. Pinned to `TestCompile_RegistryRowSkewOnFieldRemoval`.

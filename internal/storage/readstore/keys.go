@@ -166,13 +166,6 @@ func MetadataIndexPrefixV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey
 		Snapshot()
 }
 
-// MetadataIndexKey builds a full metadata inverted index key under
-// version 1. Equivalent to MetadataIndexKeyV(..., 1, ...) — kept for
-// callers not yet aware of versioning.
-func MetadataIndexKey(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue []byte, entityID []byte) []byte {
-	return MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
-}
-
 // MetadataIndexKeyV builds a full metadata inverted index key. Forward-
 // encoding version sits between the metadata key separator and the
 // encoded value so that each version has its own contiguous scan range
@@ -409,12 +402,6 @@ func AccountByAssetPrefix(kb *dal.KeyBuilder, ledgerName, assetBase string, prec
 		PutStringNull(assetBase).
 		PutByte(precision).
 		Snapshot()
-}
-
-// EntityExistsKey builds a full entity-ordered existence index key
-// under version 1. Equivalent to EntityExistsKeyV(..., 1, ...).
-func EntityExistsKey(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) []byte {
-	return EntityExistsKeyV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
 }
 
 // EntityExistsKeyV builds a full entity-ordered existence index key.
