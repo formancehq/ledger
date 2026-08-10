@@ -249,6 +249,8 @@ func TestProcessArchiveChapter_Success(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(closedChapter.AsReader(), true)
+	// Nothing archived yet, so chapter 1 is the prefix successor.
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVING, chapter.GetStatus())
 	})
@@ -306,6 +308,99 @@ func TestProcessArchiveChapter_NotClosed(t *testing.T) {
 	require.Equal(t, uint64(1), notClosedErr.ChapterID)
 }
 
+// TestProcessArchiveChapter_RejectsOutOfOrder pins the archival ordering rule:
+// archived chapters form a contiguous prefix of history, so the only archivable
+// chapter is the one right after that prefix. Skipping ahead would purge past an
+// un-archived chapter, leaving its logs below the archive boundary — a
+// permanently unverified window for the checker's replay, and a hole in cold
+// storage no later archive fills.
+func TestProcessArchiveChapter_RejectsOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		target          uint64
+		archivedThrough uint64
+		wantBlockingID  uint64
+	}{
+		"one chapter ahead of the prefix":   {target: 3, archivedThrough: 1, wantBlockingID: 2},
+		"several chapters ahead":            {target: 7, archivedThrough: 2, wantBlockingID: 3},
+		"nothing archived yet, skips first": {target: 2, archivedThrough: 0, wantBlockingID: 1},
+		// Re-archiving something inside the prefix is equally out of order: its
+		// data is already gone, so a purge here would delete a later chapter's.
+		"already inside the prefix": {target: 1, archivedThrough: 3, wantBlockingID: 4},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+
+			target := &commonpb.Chapter{
+				Id:            tc.target,
+				Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
+				StartSequence: 200,
+				CloseSequence: 300,
+			}
+
+			mockStore.EXPECT().GetChapterByID(tc.target).Return(target.AsReader(), true)
+			mockStore.EXPECT().GetArchivedThroughChapterID().Return(tc.archivedThrough)
+
+			payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: tc.target}, &Context{Scope: mockStore})
+			require.Error(t, err)
+			require.Nil(t, payload, "a rejected archive must emit no log")
+
+			var outOfOrderErr *domain.ErrChapterArchiveOutOfOrder
+			require.ErrorAs(t, err, &outOfOrderErr)
+			require.Equal(t, tc.target, outOfOrderErr.ChapterID)
+			require.Equal(t, tc.wantBlockingID, outOfOrderErr.BlockingChapterID,
+				"the rejection must name the chapter that has to be archived first")
+		})
+	}
+}
+
+// TestProcessArchiveChapter_AllowsPrefixSuccessor is the positive counterpart:
+// the chapter immediately after the archived prefix archives normally, whatever
+// happened to its predecessors' tracker entries — they are purged (and hence
+// absent) on a running node, reloaded as ARCHIVED after a restart, and the gate
+// consults neither, only the marker.
+func TestProcessArchiveChapter_AllowsPrefixSuccessor(t *testing.T) {
+	t.Parallel()
+
+	for name, archivedThrough := range map[string]uint64{
+		"first chapter, empty prefix": 0,
+		"successor of a long prefix":  9,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+
+			targetID := archivedThrough + 1
+			target := &commonpb.Chapter{
+				Id:            targetID,
+				Status:        commonpb.ChapterStatus_CHAPTER_CLOSED,
+				StartSequence: 200,
+				CloseSequence: 300,
+			}
+
+			mockStore.EXPECT().GetChapterByID(targetID).Return(target.AsReader(), true)
+			mockStore.EXPECT().GetArchivedThroughChapterID().Return(archivedThrough)
+			mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
+				require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVING, chapter.GetStatus())
+			})
+
+			payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: targetID}, &Context{Scope: mockStore})
+			require.NoError(t, err)
+			require.Equal(t, targetID, payload.GetArchiveChapter().GetChapter().GetId())
+		})
+	}
+}
+
 func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 	t.Parallel()
 
@@ -326,6 +421,9 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, chapter.GetStatus())
 	})
+	// The confirm extends the archived prefix, which is what the ordering gate
+	// reads to admit the next chapter.
+	mockStore.EXPECT().SetArchivedThroughChapterID(uint64(1))
 
 	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.NoError(t, err)

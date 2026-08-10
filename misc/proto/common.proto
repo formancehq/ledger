@@ -1253,6 +1253,12 @@ enum ErrorReason {
   ERROR_REASON_PRELOAD_UNAVAILABLE = 66;
   ERROR_REASON_AGGREGATE_OVERFLOW = 67;
   ERROR_REASON_BALANCE_NOT_FOUND = 68;
+  // ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER: the chapter is CLOSED, but it is
+  // not the one immediately after the archived prefix. Archived chapters must
+  // form a contiguous prefix of history so that "below the archive boundary"
+  // and "archived" mean the same thing — see the archival ordering rule in
+  // docs/technical/architecture/subsystems/chapters/lifecycle.md.
+  ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER = 69;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

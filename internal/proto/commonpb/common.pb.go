@@ -709,6 +709,12 @@ const (
 	ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE ErrorReason = 66
 	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW  ErrorReason = 67
 	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND   ErrorReason = 68
+	// ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER: the chapter is CLOSED, but it is
+	// not the one immediately after the archived prefix. Archived chapters must
+	// form a contiguous prefix of history so that "below the archive boundary"
+	// and "archived" mean the same thing — see the archival ordering rule in
+	// docs/technical/architecture/subsystems/chapters/lifecycle.md.
+	ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER ErrorReason = 69
 )
 
 // Enum value maps for ErrorReason.
@@ -783,6 +789,7 @@ var (
 		66: "ERROR_REASON_PRELOAD_UNAVAILABLE",
 		67: "ERROR_REASON_AGGREGATE_OVERFLOW",
 		68: "ERROR_REASON_BALANCE_NOT_FOUND",
+		69: "ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -854,6 +861,7 @@ var (
 		"ERROR_REASON_PRELOAD_UNAVAILABLE":              66,
 		"ERROR_REASON_AGGREGATE_OVERFLOW":               67,
 		"ERROR_REASON_BALANCE_NOT_FOUND":                68,
+		"ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER":     69,
 	}
 )
 
@@ -13704,7 +13712,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xbf\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xee\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13775,7 +13783,8 @@ const file_common_proto_rawDesc = "" +
 	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10A\x12$\n" +
 	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10B\x12#\n" +
 	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10C\x12\"\n" +
-	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10D*Q\n" +
+	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10D\x12-\n" +
+	")ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER\x10E*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +
