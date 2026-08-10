@@ -41,8 +41,9 @@ func TestPinnedVersionResolver_HidesAVersionAboveThePin(t *testing.T) {
 		{"no pin skips the check", 0, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v, err := PinnedVersionResolver(snap, ledger, tc.pin)(canonical)
+			v, primed, err := PinnedVersionResolver(snap, ledger, tc.pin)(canonical)
 			require.NoError(t, err)
+			require.True(t, primed, "the record exists; only the version is withheld")
 			require.Equal(t, tc.want, v)
 		})
 	}
@@ -70,8 +71,9 @@ func TestPinnedVersionResolver_BackfilledVersionServesAtAnyPin(t *testing.T) {
 	snap := s.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	v, err := PinnedVersionResolver(snap, ledger, 1)(canonical)
+	v, primed, err := PinnedVersionResolver(snap, ledger, 1)(canonical)
 	require.NoError(t, err)
+	require.True(t, primed)
 	require.Equal(t, uint32(1), v)
 }
 
@@ -90,4 +92,21 @@ func TestIndexVersionState_ActivationRoundTrip(t *testing.T) {
 	got, ok := decodeIndexVersionState(encodeIndexVersionState(want))
 	require.True(t, ok)
 	require.Equal(t, want, got)
+}
+
+// A removed index leaves no record, which is what tells a reader "removed"
+// rather than "still building" — the builder always writes one when it folds
+// the CreateIndex log.
+func TestPinnedVersionResolver_AbsentRecordReportsNotPrimed(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	snap := s.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	v, primed, err := PinnedVersionResolver(snap, "l", 10)("metadata:account:gone")
+	require.NoError(t, err)
+	require.False(t, primed)
+	require.Zero(t, v)
 }

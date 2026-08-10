@@ -54,7 +54,7 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
-	resolverZero := func(string) (uint32, error) { return 0, nil }
+	resolverZero := func(string) (uint32, bool, error) { return 0, true, nil }
 
 	_, err := query.Compile(
 		nil, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
@@ -108,7 +108,7 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
-	resolverReady := func(string) (uint32, error) { return 1, nil }
+	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),

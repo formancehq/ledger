@@ -165,9 +165,15 @@ query returns `ErrIndexBuilding` rather than an empty page for a fully
 populated index (see
 [readstore-event-keys.md](readstore-event-keys.md)).
 
-**Known gap — index existence is not read at the pin**: `checkIndexed`
-resolves the registry through the main-store handle while the rows come from
-the read-store snapshot. A removal landing between the two is visible only to
-the snapshot: compilation still finds the index and scans an emptied
-keyspace, so the read answers "no matches" for a filter it can no longer
-serve, with no error. Pinned to `TestCompile_RegistryRowSkewOnFieldRemoval`.
+**Index removal is a rejection, not a stale read**: `checkIndexed` resolves
+index existence from the mainstore handle, so it reflects the read's pin,
+while the rows and the per-replica `IndexVersionState` come from the readstore
+snapshot, which can already have folded a removal. The rows are gone at that
+point, so the read cannot be served — but it must be rejected *honestly*. The
+builder always writes the version record when it folds `CreateIndex`, and
+alignment guarantees the fold cursor has reached the pin, so an absent record
+can only mean the index was removed after the pin. `requireIndexReady` reads
+it that way and returns `ErrIndexNotFound`; a record present at version 0
+still means a build in progress and returns `ErrIndexBuilding`. Telling a
+client to wait for readiness that will never arrive is the failure this
+prevents.

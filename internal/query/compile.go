@@ -57,7 +57,7 @@ type compileCtx struct {
 	// read failure. Compile uses it to pick the right v_n keyspace
 	// and to refuse early with ErrIndexBuilding when no live keyspace
 	// exists yet.
-	indexVersionFor func(canonical string) (uint32, error)
+	indexVersionFor func(canonical string) (uint32, bool, error)
 	// pin is the main-store handle's applied sequence: metadata / exists
 	// index leaves resolve their event groups at this sequence, so index
 	// selection observes exactly the state the rest of the query reads
@@ -102,7 +102,7 @@ func Compile(
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
 	indexRegistry indexes.Lookup,
-	indexVersionFor func(canonical string) (uint32, error),
+	indexVersionFor func(canonical string) (uint32, bool, error),
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 	pin uint64,
@@ -121,7 +121,7 @@ func Compile(
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
 		// always supplies a resolver backed by readstore.
-		indexVersionFor = func(string) (uint32, error) { return 1, nil }
+		indexVersionFor = func(string) (uint32, bool, error) { return 1, true, nil }
 	}
 
 	ctx := &compileCtx{
@@ -1502,9 +1502,25 @@ func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uin
 		return 0, err
 	}
 
-	v, err := ctx.indexVersionFor(indexes.Canonical(id))
+	v, primed, err := ctx.indexVersionFor(indexes.Canonical(id))
 	if err != nil {
 		return 0, fmt.Errorf("resolving index version for %s: %w", label, err)
+	}
+
+	if !primed {
+		// checkIndexed passed, so the registry lists this index at the read's
+		// pin — its CreateIndex applied at or below that pin. Alignment puts
+		// the fold cursor at or beyond the pin, so the builder has folded that
+		// log and written the per-replica record. Its absence therefore means
+		// the record was written and later deleted: the index was REMOVED
+		// after the pin, not still building. Reporting it as building would
+		// tell the client to wait for something that will never arrive.
+		//
+		// The one state that breaks the derivation is a follower restore that
+		// rolls the main store back beneath the read index without resetting
+		// the builder (see CLAUDE.md invariant #8) — there the record can be
+		// missing for an index that is genuinely unbuilt.
+		return 0, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
 	if v == 0 {

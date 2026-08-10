@@ -465,7 +465,7 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, error) {
+func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, bool, error) {
 	return PinnedVersionResolver(reader, ledgerName, 0)
 }
 
@@ -479,18 +479,24 @@ func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(ca
 //
 // A pin of 0 means "no pin" (introspection paths that do not resolve rows
 // at a sequence) and skips the check.
-func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) func(canonical string) (uint32, error) {
-	return func(canonical string) (uint32, error) {
-		state, _, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
+func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) func(canonical string) (uint32, bool, error) {
+	return func(canonical string) (uint32, bool, error) {
+		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
-			return 0, err
+			return 0, false, err
+		}
+
+		if !present {
+			// No record at all. Callers use this to tell a removed index
+			// apart from one still being built — see requireIndexReady.
+			return 0, false, nil
 		}
 
 		if pin > 0 && state.ActivationSequence > pin {
-			return 0, nil
+			return 0, true, nil
 		}
 
-		return state.CurrentVersion, nil
+		return state.CurrentVersion, true, nil
 	}
 }
 
