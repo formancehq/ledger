@@ -284,11 +284,7 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					// Feed the transaction's plain JSON view to the outer streaming
-					// encoder. Passing the proto pointer would invoke MarshalJSON for
-					// every bulk element, recursively allocating intermediate buffers
-					// for postings and post-commit volumes.
-					data = p.CreatedTransaction.GetTransaction().JSONView()
+					data = p.CreatedTransaction.GetTransaction()
 				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
