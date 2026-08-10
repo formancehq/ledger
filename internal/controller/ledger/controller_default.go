@@ -307,7 +307,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
-				if err := ctrl.upsertTransactionAccounts(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
+				if err := ctrl.upsertTransactionAccounts(ctx, store, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to upsert transaction accounts: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
@@ -374,10 +374,15 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 	return err
 }
 
-func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) error {
+// upsertTransactionAccounts writes the accounts a transaction involves. It must
+// run on the operation's store: the upsert lowers first_usage to the transaction's
+// effective date, so on any other handle it would autocommit independently of the
+// transaction — visible before the transaction, and durable even when the
+// transaction never commits.
+func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, store Store, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) error {
 	accountsToUpsert := tx.AccountsWithDefaultMetadata(schema, accountMetadata)
 
-	err := ctrl.store.UpsertAccounts(
+	err := store.UpsertAccounts(
 		ctx,
 		accountsToUpsert...,
 	)
@@ -501,7 +506,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 	if err != nil {
 		return nil, err
 	}
-	err = ctrl.upsertTransactionAccounts(ctx, schema, &transaction, accountMetadata)
+	err = ctrl.upsertTransactionAccounts(ctx, store, schema, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
