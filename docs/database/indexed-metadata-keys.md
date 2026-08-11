@@ -105,6 +105,12 @@ SET features = jsonb_set(features, '{INDEXED_METADATA_KEYS}', '"source_wallet_id
 WHERE name = '<ledger>';
 ```
 
+> **This statement bypasses the API validation described above.** Supply only
+> keys matching `[a-zA-Z0-9_]+`. Keys are embedded as literals in the generated
+> SQL, so Ledger re-checks them on read and silently drops any that fail — a
+> malformed key is ignored rather than indexed, which looks like the feature not
+> working.
+
 Index existence is verified at store-open time (the start of each request): if
 no matching functional index is found for a given key, that key falls back to
 the `@>` containment form and an INFO message is logged.

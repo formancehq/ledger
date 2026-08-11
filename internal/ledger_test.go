@@ -72,3 +72,27 @@ func TestGetIndexedMetadataKeys(t *testing.T) {
 		require.Equal(t, []string{"source_wallet_id", "destination_wallet_id"}, l.GetIndexedMetadataKeys())
 	})
 }
+
+func TestGetIndexedMetadataKeys_DropsInvalidKeys(t *testing.T) {
+	// Feature values can reach the database without passing the API validation
+	// (the operator guide documents a direct UPDATE on _system.ledgers), and these
+	// keys are embedded as SQL literals — so they are re-checked on read.
+	for _, tc := range []struct {
+		name     string
+		value    string
+		expected []string
+	}{
+		{"all valid", "source_wallet_id,dest_id", []string{"source_wallet_id", "dest_id"}},
+		{"drops invalid, keeps valid", "source_wallet_id,bad-key", []string{"source_wallet_id"}},
+		{"drops injection attempt", "ok_key,x'); drop table transactions; --", []string{"ok_key"}},
+		{"all invalid", "bad-key,another bad", nil},
+		{"empty element", "source_wallet_id,", []string{"source_wallet_id"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := Ledger{Configuration: Configuration{Features: features.FeatureSet{
+				features.FeatureIndexedMetadataKeys: tc.value,
+			}}}
+			require.Equal(t, tc.expected, l.GetIndexedMetadataKeys())
+		})
+	}
+}

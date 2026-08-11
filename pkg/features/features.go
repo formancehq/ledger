@@ -13,6 +13,17 @@ import (
 // Keys are embedded as SQL literals, so only alphanumeric + underscore are allowed.
 var indexedMetadataKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
+// IsValidIndexedMetadataKey reports whether a key is safe to embed as a SQL literal
+// in the indexed-metadata predicate.
+//
+// ValidateFeatureWithValue enforces this when the feature is set through the API, but
+// the feature value can also reach the database by other routes — the operator guide
+// documents a direct UPDATE on _system.ledgers — so consumers must re-check keys they
+// read back rather than trusting the stored value.
+func IsValidIndexedMetadataKey(key string) bool {
+	return indexedMetadataKeyRe.MatchString(key)
+}
+
 const (
 	// FeatureMovesHistory is used to define if the ledger has to save funds movements history.
 	// Value is either ON or OFF

@@ -42,12 +42,31 @@ func (l Ledger) HasFeature(feature, value string) bool {
 // builder will emit a functional-index-compatible predicate (metadata ->> 'key' = 'value')
 // instead of the default JSONB containment form. The list is stored as a comma-separated
 // string in Features[FeatureIndexedMetadataKeys].
+//
+// Keys that are not valid SQL-literal-safe identifiers are dropped. The API validates
+// them when the feature is set, but the value can reach the database by other routes —
+// the operator guide documents a direct UPDATE on _system.ledgers — and these keys are
+// embedded as literals in the generated predicate. Filtering here covers every consumer,
+// including the unresolved fallback in Store.IndexedMetadataKeys which returns this list
+// without any catalog confirmation.
 func (l Ledger) GetIndexedMetadataKeys() []string {
 	val := l.Features[features.FeatureIndexedMetadataKeys]
 	if val == "" {
 		return nil
 	}
-	return strings.Split(val, ",")
+
+	keys := strings.Split(val, ",")
+	ret := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if features.IsValidIndexedMetadataKey(key) {
+			ret = append(ret, key)
+		}
+	}
+	if len(ret) == 0 {
+		return nil
+	}
+
+	return ret
 }
 
 func (l Ledger) WithMetadata(m metadata.Metadata) Ledger {
