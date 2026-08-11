@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"maps"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -681,15 +682,41 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 		"a malformed key needs no oracle, so the lag gate must not suppress it")
 }
 
-// TestCompareReverseMapOrphans_CursorAhead pins the other side of the gate. Every
-// oracle term is frozen at lastSequence, so an ahead peer holds rows the oracles
-// cannot speak about at all — no verdict of either kind may be reached.
+// withoutAheadDiagnostic strips the structural "read index ahead" error and
+// asserts it was emitted exactly once, leaving the per-row findings for the
+// caller to judge. An ahead cursor is reported because no runtime path
+// produces it, but it must never turn healthy rows into orphan findings — the
+// oracles simply cannot speak about them.
+func withoutAheadDiagnostic(t *testing.T, events []*servicepb.CheckStoreEvent) []*servicepb.CheckStoreEvent {
+	t.Helper()
+
+	ahead := 0
+	rest := make([]*servicepb.CheckStoreEvent, 0, len(events))
+
+	for _, e := range events {
+		if strings.Contains(e.GetError().GetMessage(), "ahead of the verified log range") {
+			ahead++
+
+			continue
+		}
+
+		rest = append(rest, e)
+	}
+
+	require.Equal(t, 1, ahead, "an ahead cursor must be reported, not silently tolerated")
+
+	return rest
+}
+
+// TestCompareReverseMapOrphans_CursorAhead pins the other side of the gate.
+// Every oracle term is frozen at lastSequence, so an ahead peer holds rows the
+// oracles cannot speak about — none of them may become an orphan finding.
 //
-// Check() makes this position unreachable by race — it pins the peer snapshot
-// before the primary one, so the peer cursor it reads can only ever trail the
-// verified sequence (see the comment on the two pins in Check()). A primary-store
-// rollback beneath the read-index cursor still reaches it, so the gate has to hold
-// on its own; TestCheck_ReverseMapOrphans_EndToEnd pins both sides through Check().
+// The position itself IS reported: Check() pins the peer snapshot before the
+// primary one so an ahead cursor cannot arise by race, and no runtime path
+// replaces the primary beneath a surviving read index either, so reaching it
+// means the deployment is already broken (see ALIGNMENT).
+// TestCheck_ReverseMapOrphans_EndToEnd pins both sides through Check().
 func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 	t.Parallel()
 
@@ -703,7 +730,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, newField.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, withoutAheadDiagnostic(t, newField.run(10, ledgerNameSet("L1"), nil)),
 		"a field created after the pinned oracle must not be reported as an orphan")
 
 	// A ledger created after the snapshot: same shape, unknown-ledger class.
@@ -712,7 +739,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, newLedger.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, withoutAheadDiagnostic(t, newLedger.run(10, ledgerNameSet("L1"), nil)),
 		"a ledger created after the pinned oracle must not be reported as absent from the live set")
 
 	// An observed removal is no exception. The removal set is append-only while
@@ -728,11 +755,11 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, redeclaredAfterPin.runScope(reverseMapOrphanScope{
+	require.Empty(t, withoutAheadDiagnostic(t, redeclaredAfterPin.runScope(reverseMapOrphanScope{
 		lastSequence:  10,
 		liveLedgers:   ledgerNameSet("L1"),
 		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
-	}), "a field re-declared after the pinned oracle must not be reported as an orphan on an ahead cursor")
+	})), "a field re-declared after the pinned oracle must not be reported as an orphan on an ahead cursor")
 
 	// The aligned twin proves the silence above is earned by the gate and not by
 	// the fixture: the very same removal evidence and rows, judged on an aligned
@@ -756,7 +783,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, deleted.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, withoutAheadDiagnostic(t, deleted.run(10, ledgerNameSet("L1"), nil)),
 		"rows for a ledger absent from the pinned live set must not be reported on an ahead cursor")
 
 	// Malformed keys need no oracle, so the ahead position must not suppress them
@@ -766,7 +793,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Len(t, malformed.run(10, ledgerNameSet("L1"), nil), 1,
+	require.Len(t, withoutAheadDiagnostic(t, malformed.run(10, ledgerNameSet("L1"), nil)), 1,
 		"a malformed key needs no oracle, so an ahead cursor must not suppress it")
 }
 
@@ -1069,16 +1096,20 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 		require.Contains(t, err0.GetMessage(), `"role"`)
 	})
 
-	t.Run("ahead cursor reaches no verdict", func(t *testing.T) {
+	t.Run("ahead cursor is reported, and judges no rows", func(t *testing.T) {
 		t.Parallel()
 
-		// Check() pins the peer snapshot first, so this position is unreachable by
-		// race; it models a primary-store rollback beneath the read-index cursor.
-		// The oracles cannot speak about logs past the verified sequence, so the
-		// pass must reach no verdict at all — not even on the row whose removal the
-		// replay did observe, since a re-declaration past the pin is invisible to it.
-		require.Empty(t, runCheck(t, 1_000),
-			"a read index ahead of the verified sequence must not be judged")
+		// Check() pins the peer snapshot first, so this position cannot arise by
+		// race, and no runtime path replaces the primary beneath a surviving read
+		// index — reaching it means the deployment is already broken, so it is
+		// reported rather than quietly limiting the check. The rows themselves
+		// still get no verdict: the oracles cannot speak about logs past the
+		// verified sequence, and a re-declaration past the pin is invisible to
+		// them, so even the row whose removal the replay observed stays unjudged.
+		events := runCheck(t, 1_000)
+
+		require.Len(t, events, 1, "the ahead position must be surfaced")
+		require.Contains(t, events[0].GetError().GetMessage(), "ahead of the verified log range")
 	})
 }
 

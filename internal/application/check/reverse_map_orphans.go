@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -201,15 +202,23 @@ type reverseMapOrphanScope struct {
 //     peer snapshot BEFORE the primary one precisely so that ordering is
 //     inherited by the two pinned values. See the comment on the pins in Check().
 //
-//     It remains reachable one way only: a primary-store rollback beneath the
-//     cursor (RestoreCheckpoint on a follower restore) lowers maxLogSeq while the
-//     read index keeps its progress. Unlike usagebuilder, which detects this and
-//     calls usagestore.Reset(), the index builder has no rollback reset — so the
-//     read index legitimately holds rows for logs the restored primary never had.
-//     That is a real divergence, but it belongs to the missing rollback reset, not
-//     to the purge path this pass audits, and reporting it here would paint
-//     Check() red on a restore that never self-heals. It is logged loudly and
-//     skipped.
+//     Nor is it reachable at runtime by any other route. RestoreCheckpoint —
+//     the only thing that replaces the primary store wholesale — has a single
+//     production caller (dal.incomingRestoreFactory.Run, reached through
+//     state.Synchronizer.SynchronizeWithLeader), and it installs a checkpoint
+//     fetched FROM the leader: a follower only syncs because it is behind, a
+//     leader compacts only up to a snapshot it can serve, and an applied index
+//     can never exceed the leader's log. Every path moves the node forward.
+//
+//     So an ahead cursor means the deployment is already broken — the classic
+//     shape being an offline restore of an older backup into a data directory
+//     whose read-indexes/ survived, leaving rows folded from logs the primary
+//     no longer has. That state never self-heals (the index builder, unlike
+//     usagebuilder, has no rollback reset), and it is exactly the corruption
+//     this pass exists to surface, so it is REPORTED rather than skipped:
+//     silently limiting the check to key decoding would leave the one
+//     read-index limb the checker covers unverified, with an INFO log as the
+//     only trace (invariant #7).
 //
 // This is why the pass needs no cross-store atomicity: an ordering that can only
 // leave the peer behind is sufficient, because behind is already a skip.
@@ -249,13 +258,22 @@ func (c *Checker) compareReverseMapOrphans(
 			"lastSequence":    scope.lastSequence,
 		}).Infof("Reverse-map orphan check limited to key decoding: the read index has not folded the whole verified log range")
 	case indexedSequence > scope.lastSequence:
-		// Unreachable by race (Check() pins the peer snapshot first). Reachable
-		// only through a primary-store rollback beneath the read-index cursor,
-		// which the index builder does not reset — see ALIGNMENT.
-		c.logger.WithFields(map[string]any{
+		// No runtime path produces this — see ALIGNMENT. Getting here means the
+		// primary store was replaced beneath a surviving read index, so the
+		// peer holds rows derived from logs the primary no longer has.
+		assert.Unreachable("check: read index ahead of the verified log range", map[string]any{
 			"indexedSequence": indexedSequence,
 			"lastSequence":    scope.lastSequence,
-		}).Infof("Reverse-map orphan check limited to key decoding: the read index is ahead of the verified log range, which means the primary store was rolled back beneath the read-index cursor")
+		})
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			fmt.Sprintf(
+				"read index is ahead of the verified log range (indexed %d > verified %d): the primary store was replaced beneath a surviving read index, so the read index holds rows for logs the primary no longer has",
+				indexedSequence, scope.lastSequence,
+			),
+			0, "", "", "",
+		))
 	}
 
 	// The registry is only consulted when a verdict can be reached at all, so an
