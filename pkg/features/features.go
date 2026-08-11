@@ -51,6 +51,11 @@ var (
 		FeatureAccountMetadataHistory:                 "DISABLED",
 		FeatureTransactionMetadataHistory:             "DISABLED",
 	}
+	// FeatureConfigurations lists the accepted values of every closed-set feature.
+	// Benchmarks enumerate it to build all possible ledger configurations and take the
+	// first value of each entry as the default, so every entry must hold at least one
+	// value.  Features whose value is free-form belong in OpenEndedFeatures instead.
+	//
 	// notes: keep the default value as first option for benchmarks
 	FeatureConfigurations = map[string][]string{
 		FeatureMovesHistory:                           {"ON", "OFF"},
@@ -58,26 +63,40 @@ var (
 		FeatureHashLogs:                               {"SYNC", "ASYNC", "DISABLED"},
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
-		FeatureIndexedMetadataKeys:                    nil, // nil = any comma-separated list of key names is valid
+	}
+	// OpenEndedFeatures holds features accepting a free-form value that cannot be
+	// enumerated. They are validated by feature-specific rules in ValidateFeatureWithValue
+	// and deliberately kept out of FeatureConfigurations so benchmark enumeration keeps
+	// working.
+	OpenEndedFeatures = map[string]func(value string) error{
+		FeatureIndexedMetadataKeys: validateIndexedMetadataKeys,
 	}
 )
 
+func validateIndexedMetadataKeys(value string) error {
+	if value == "" {
+		return nil
+	}
+	for _, key := range strings.Split(value, ",") {
+		if !indexedMetadataKeyRe.MatchString(key) {
+			return fmt.Errorf("INDEXED_METADATA_KEYS: key %q is invalid (only [a-zA-Z0-9_] allowed)", key)
+		}
+	}
+
+	return nil
+}
+
 func ValidateFeatureWithValue(feature, value string) error {
+	if validate, ok := OpenEndedFeatures[feature]; ok {
+		return validate(value)
+	}
+
 	possibleConfigurations, ok := FeatureConfigurations[feature]
 	if !ok {
 		return fmt.Errorf("feature %q not exists", feature)
 	}
-	// nil/empty set means the value is open-ended; apply feature-specific validation.
-	if len(possibleConfigurations) > 0 && !slices.Contains(possibleConfigurations, value) {
+	if !slices.Contains(possibleConfigurations, value) {
 		return fmt.Errorf("configuration %s it not possible for feature %s", value, feature)
-	}
-
-	if feature == FeatureIndexedMetadataKeys && value != "" {
-		for _, key := range strings.Split(value, ",") {
-			if !indexedMetadataKeyRe.MatchString(key) {
-				return fmt.Errorf("INDEXED_METADATA_KEYS: key %q is invalid (only [a-zA-Z0-9_] allowed)", key)
-			}
-		}
 	}
 
 	return nil
