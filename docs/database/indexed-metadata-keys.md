@@ -18,9 +18,14 @@ When a key is added to `INDEXED_METADATA_KEYS`, Ledger rewrites the predicate to
 metadata ->> 'source_wallet_id' = 'abc'
 ```
 
-This form is eligible for a BTree functional index and lets the planner use an
-index scan that also satisfies the `ORDER BY id DESC`, so it reads the matching
-rows directly instead of walking the table.
+This form is eligible for a BTree functional index, so the planner can look up
+the matching rows directly instead of walking the table.
+
+Whether the same scan also satisfies the `ORDER BY id DESC` depends on the index
+shape. The composite index recommended below — `((metadata->>'<key>'), id DESC)` —
+returns rows already in order, so no sort step is needed. A single-expression
+index on `(metadata->>'<key>')` alone serves the equality filter but still
+requires a sort for the ordering.
 
 It is an index scan, not an index-only scan: the query returns `postings`,
 `metadata` and other columns the index does not carry, so Postgres still visits
@@ -143,10 +148,18 @@ index.
 
 ## Key naming constraints
 
-Key names in `INDEXED_METADATA_KEYS` must match `[a-zA-Z0-9_]+`. Keys
-containing other characters (dots, hyphens, spaces) are rejected at flag-set
-time. This constraint exists because the key name is embedded as a literal in
-the generated SQL to enable functional-index matching.
+Key names in `INDEXED_METADATA_KEYS` must match `[a-zA-Z0-9_]+`. This constraint
+exists because the key name is embedded as a literal in the generated SQL to
+enable functional-index matching.
+
+It is enforced in two places, because the flag can be written by two routes:
+
+- **Through the API** (ledger creation), keys containing other characters — dots,
+  hyphens, spaces — are **rejected**: the request fails and nothing is stored.
+- **Through a direct `UPDATE` on `_system.ledgers`**, there is no validation, so
+  an invalid key *can* be stored. Ledger re-checks keys when it reads the flag
+  and **silently ignores** the invalid ones; those metadata filters keep using
+  `@>`. A key that looks enabled but never takes effect is usually this.
 
 ---
 
