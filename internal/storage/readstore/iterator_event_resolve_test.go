@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -139,3 +140,60 @@ func TestEventResolveIterator_SeekContract(t *testing.T) {
 	require.Equal(t, "a:1", string(it.Current()))
 	require.NoError(t, it.Err())
 }
+
+// The floor memoises a proven-empty seek so a composite re-seeking an
+// exhausted leaf does not re-resolve every group to reach the same verdict.
+// It must bound only what the failed seek proved: nothing at or beyond that
+// target, and nothing at all about smaller ones.
+func TestEventResolveIterator_SeekFloor(t *testing.T) {
+	t.Parallel()
+
+	s, prefix := eventFixture(t, "v",
+		ev{"a:1", 10, MetadataEventAdd},
+		ev{"a:5", 10, MetadataEventAdd},
+		ev{"a:5", 20, MetadataEventDel},
+	)
+
+	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
+	require.NoError(t, err)
+
+	defer it.Close()
+
+	// a:5 is dead at this pin and nothing lives beyond it, so the seek is
+	// proven empty and the bound is recorded.
+	require.False(t, it.SeekGE([]byte("a:5")))
+	require.True(t, it.floor.covers([]byte("a:5")), "the failed seek must be memoised")
+	require.True(t, it.floor.covers([]byte("a:9")), "a higher target is proven empty by the same failure")
+
+	// Nothing below the bound is covered: the live group at a:1 is still
+	// reachable, which is the property a latch would break.
+	require.False(t, it.floor.covers([]byte("a:0")))
+	require.True(t, it.SeekGE([]byte("a:0")))
+	require.Equal(t, "a:1", string(it.Current()))
+
+	// And the memoised verdict is still the right one on a re-seek.
+	require.False(t, it.SeekGE([]byte("a:5")))
+	require.NoError(t, it.Err())
+}
+
+// A seek that ends in a storage fault proves nothing about the keyspace, so it
+// must not be memoised — otherwise a transient fault turns into a permanent
+// empty result for every later seek at or above that target.
+func TestEventResolveIterator_SeekFloorIgnoresFaults(t *testing.T) {
+	t.Parallel()
+
+	s, prefix := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+
+	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
+	require.NoError(t, err)
+
+	defer it.Close()
+
+	it.floor.fail([]byte("a:0"), errFaultProbe)
+	require.False(t, it.floor.covers([]byte("a:0")), "a faulted seek must leave the floor unset")
+
+	require.True(t, it.SeekGE([]byte("a:0")))
+	require.Equal(t, "a:1", string(it.Current()))
+}
+
+var errFaultProbe = errors.New("probe: simulated storage fault")

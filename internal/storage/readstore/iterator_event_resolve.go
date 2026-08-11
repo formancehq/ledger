@@ -47,6 +47,7 @@ type EventResolveIterator struct {
 	current   []byte
 	started   bool
 	exhausted bool
+	floor     seekFloor
 	err       error
 }
 
@@ -99,6 +100,19 @@ func (it *EventResolveIterator) parse(key []byte) (group []byte, seq uint64, op 
 // settle resolves consecutive groups starting at the raw iterator's current
 // position until one is live at the pin, leaving the raw iterator at the
 // following group.
+// settle resolves consecutive groups from the raw iterator's current position
+// until one is live at the pin. seekTarget is the target of the seek that led
+// here, or nil when advancing through Next: a scan that runs out while seeking
+// proves no live group at or beyond that target, which the floor memoises.
+func (it *EventResolveIterator) settleFrom(seekTarget []byte) bool {
+	live := it.settle()
+	if !live && seekTarget != nil && it.err == nil {
+		it.floor.fail(seekTarget, it.iter.Error())
+	}
+
+	return live
+}
+
 func (it *EventResolveIterator) settle() bool {
 	for it.iter.Valid() {
 		g, _, _, ok := it.parse(it.iter.Key())
@@ -168,7 +182,7 @@ func (it *EventResolveIterator) Next() bool {
 
 	// After a successful settle the raw iterator already rests on the next
 	// group's first key.
-	return it.settle()
+	return it.settleFrom(nil)
 }
 
 func (it *EventResolveIterator) Current() []byte { return it.current }
@@ -184,6 +198,15 @@ func (it *EventResolveIterator) SeekGE(target []byte) bool {
 		return false
 	}
 
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds groups (the body re-seeks from target).
 	it.exhausted = false
 	it.started = true
 
@@ -193,11 +216,12 @@ func (it *EventResolveIterator) SeekGE(target []byte) bool {
 
 	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
+		it.floor.fail(target, it.iter.Error())
 
 		return false
 	}
 
-	return it.settle()
+	return it.settleFrom(target)
 }
 
 func (it *EventResolveIterator) Err() error {
