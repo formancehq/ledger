@@ -7,10 +7,13 @@ package ledger_test
 // When a metadata key appears in the ledger's INDEXED_METADATA_KEYS feature and a matching
 // functional index has been confirmed via pg_indexes, the query builder must emit
 //
-//	ledger = ? AND metadata ? 'key' AND metadata ->> 'key' = ?
+//	ledger = ? AND metadata ? 'key'
+//	  AND jsonb_typeof(metadata -> 'key') = 'string'
+//	  AND metadata ->> 'key' = ?
 //
 // instead of  metadata @> '{"key":"value"}'.  Without the index, the flag is silently ignored
-// and the query falls back to @>.
+// and the query falls back to @>.  The key-existence and jsonb_typeof guards keep the two
+// forms equivalent for absent keys and non-string stored values respectively.
 //
 // Properties verified:
 //
@@ -765,4 +768,83 @@ func TestIndexedMetadataKeys_PartialConfirmationAcrossKeys(t *testing.T) {
 
 	require.Equal(t, []string{"source_wallet_id", "destination_wallet_id"}, store.IndexedMetadataKeys(),
 		"both keys confirmed, in the order they were configured")
+}
+
+// TestIndexedMetadataKeys_NonStringStoredValueSemantics verifies the ->> rewrite stays
+// equivalent to @> when the stored metadata value is not a JSON string.
+//
+// @> compares JSON values by type, so {"k":"123"} does not match a stored number 123.
+// A bare `metadata ->> 'k' = '123'` would match it, because ->> renders the number as
+// text. Ledger metadata is map[string]string so this only arises for values written
+// outside the API — which is precisely where a silent divergence would go unnoticed.
+func TestIndexedMetadataKeys_NonStringStoredValueSemantics(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	const key = "numeric_wallet_id"
+
+	indexed := newLedgerStore(t, withIndexedMetadataKeys(key))
+	createFunctionalIndexForKey(t, indexed, key)
+	indexed.ResolveIndexedMetadataKeys(ctx)
+	require.Contains(t, indexed.IndexedMetadataKeys(), key,
+		"index must be confirmed so this test exercises the ->> path")
+
+	plain := newLedgerStore(t)
+
+	// Seed both stores identically: one row with the string "123", one with a number 123
+	// forced in via SQL (WithMetadata cannot express a non-string value).
+	seed := func(store *ledgerstore.Store) {
+		strTx := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{key: "123"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &strTx))
+
+		numTx := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bob", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{key: "placeholder"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &numTx))
+
+		// jsonb_build_object turns the bare 123 into a JSON *number*; there is no
+		// integer -> jsonb cast to lean on. ledger name is a UUID prefix and id is an
+		// integer, both safe to embed.
+		_, err := store.GetDB().ExecContext(ctx, fmt.Sprintf(
+			`UPDATE %q.transactions SET metadata = jsonb_build_object('%s', 123)
+			 WHERE ledger = '%s' AND id = %d`,
+			store.GetLedger().Bucket, key, store.GetLedger().Name, *numTx.ID,
+		))
+		require.NoError(t, err)
+
+		// Guard the premise: the row must really hold a JSON number, not a string.
+		var typ string
+		require.NoError(t, store.GetDB().QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT jsonb_typeof(metadata -> '%s') FROM %q.transactions
+			 WHERE ledger = '%s' AND id = %d`,
+			key, store.GetLedger().Bucket, store.GetLedger().Name, *numTx.ID,
+		)).Scan(&typ))
+		require.Equal(t, "number", typ, "seed must store a JSON number for this test to mean anything")
+	}
+	seed(plain)
+	seed(indexed)
+
+	q := common.InitialPaginatedQuery[any]{
+		Options: common.ResourceQuery[any]{Builder: query.Match("metadata["+key+"]", "123")},
+	}
+
+	plainCursor, err := plain.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	indexedCursor, err := indexed.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	// @> matches only the JSON-string row, never the numeric one.
+	require.Len(t, plainCursor.Data, 1, "@> must match only the string-valued row")
+	require.Len(t, indexedCursor.Data, len(plainCursor.Data),
+		"->> path must match the same rows as @> for a non-string stored value")
+
+	for i := range plainCursor.Data {
+		require.Equal(t, *plainCursor.Data[i].ID, *indexedCursor.Data[i].ID,
+			"row %d: id mismatch between @> and ->> path", i)
+	}
 }
