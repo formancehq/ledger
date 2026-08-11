@@ -337,6 +337,12 @@ func TestSparseWalletSimulation(t *testing.T) {
 		seedSparseData(t, p, smallNoise+smallWallet, smallWallet, "w-equiv")
 		seedSparseData(t, ix, smallNoise+smallWallet, smallWallet, "w-equiv")
 		createFunctionalIndex(t, ix)
+		// Refresh the confirmed-key snapshot now the index exists, then assert the key
+		// really was confirmed.  Without this the paginate call below silently uses the
+		// @> fallback and the subtest compares the @> path against itself.
+		ix.ResolveIndexedMetadataKeys(ctx)
+		require.Contains(t, ix.IndexedMetadataKeys(), "source_wallet_id",
+			"functional index must be confirmed so this subtest exercises the ->> path")
 
 		eq := common.ColumnPaginatedQuery[any]{
 			InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
