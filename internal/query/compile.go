@@ -1516,10 +1516,11 @@ func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uin
 		// after the pin, not still building. Reporting it as building would
 		// tell the client to wait for something that will never arrive.
 		//
-		// The one state that breaks the derivation is a follower restore that
-		// rolls the main store back beneath the read index without resetting
-		// the builder (see CLAUDE.md invariant #8) — there the record can be
-		// missing for an index that is genuinely unbuilt.
+		// Nothing at runtime lowers the main store beneath the read index and
+		// so inverts this: RestoreCheckpoint's only production caller installs
+		// a checkpoint fetched FROM the leader, which moves the node forward,
+		// and an applied index can never exceed the leader's log to begin
+		// with.
 		return 0, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
