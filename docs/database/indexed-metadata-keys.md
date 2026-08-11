@@ -18,9 +18,14 @@ When a key is added to `INDEXED_METADATA_KEYS`, Ledger rewrites the predicate to
 metadata ->> 'source_wallet_id' = 'abc'
 ```
 
-This form is eligible for a BTree functional index and allows the planner to use
-an index-only scan that also covers the `ORDER BY id DESC`, eliminating the
-table walk entirely.
+This form is eligible for a BTree functional index and lets the planner use an
+index scan that also satisfies the `ORDER BY id DESC`, so it reads the matching
+rows directly instead of walking the table.
+
+It is an index scan, not an index-only scan: the query returns `postings`,
+`metadata` and other columns the index does not carry, so Postgres still visits
+the heap for each matching row. What the index removes is the scan over
+non-matching rows, which is where the time goes for a sparse key.
 
 **The rewrite only takes effect when a matching functional index is confirmed to
 exist.** Ledger checks `pg_index` (via `pg_get_expr`) at store-open time (per
