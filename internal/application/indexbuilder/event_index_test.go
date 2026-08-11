@@ -23,7 +23,8 @@ const currentPin = uint64(math.MaxUint64)
 func resolveMetadataEvents(t *testing.T, b *Builder, ledger, ns, metaKey string, version uint32, encoded []byte) []string {
 	t.Helper()
 
-	prefix := readstore.MetadataIndexEventValuePrefixV(dal.NewKeyBuilder(), ledger, ns, metaKey, version, encoded)
+	prefix := append([]byte(nil), readstore.MetadataIndexPrefixV(dal.NewKeyBuilder(), ledger, ns, metaKey, version)...)
+	prefix = append(prefix, encoded...)
 
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()

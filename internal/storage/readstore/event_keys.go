@@ -107,23 +107,3 @@ func EntityExistsEventKeyV(
 		PutByte(op).
 		Consume()
 }
-
-// MetadataIndexEventValuePrefixV is the scan prefix covering every event of
-// one (metadata key, encoded value) pair — the range an equality condition
-// resolves at a pinned sequence (see EventResolveIterator).
-func MetadataIndexEventValuePrefixV(
-	kb *dal.KeyBuilder,
-	ledgerName string,
-	ns, metadataKey string,
-	version uint32,
-	encodedValue []byte,
-) []byte {
-	return kb.Reset().
-		PutByte(PrefixMetadataIndex).
-		PutLedgerNameFixed(ledgerName).
-		PutNamespace(ns).
-		PutStringNull(metadataKey).
-		PutUint32(version).
-		PutBytes(encodedValue).
-		Consume()
-}

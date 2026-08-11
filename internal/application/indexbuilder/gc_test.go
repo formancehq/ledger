@@ -36,12 +36,12 @@ func TestGCVersionAt_PurgesForwardEidxAndRmap(t *testing.T) {
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
 
 	// v=1 entries (target of the GC).
-	fwdV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 1, encoded, entityID))
-	eidxV1 := cloneBytes(readstore.EntityExistsKeyV(kb, ledger, ns, key, 1, false, entityID))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
+	eidxV1 := cloneBytes(readstore.EntityExistsEventKeyV(kb, ledger, ns, key, 1, false, entityID, 1, readstore.MetadataEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
 
 	// v=2 entries (must survive).
-	fwdV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 2, encoded, entityID))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 2))
 
 	// Rmap row at v=1 for a *different* metadata key — the iter
@@ -105,11 +105,11 @@ func TestPurgeOrphanVersions_SweepsKeyspacesOutsideCurrentAndPending(t *testing.
 	b.indexConfig[ledger] = cfg
 
 	// Seed orphan v=1 + v=2 entries and the live v=3 entries.
-	fwdV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 1, encoded, entityID))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
-	fwdV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 2, encoded, entityID))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 2))
-	fwdV3 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 3, encoded, entityID))
+	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV3 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 3))
 
 	seed := b.readStore.NewBatch()
@@ -166,9 +166,9 @@ func TestPurgeOrphanVersions_PreservesPending(t *testing.T) {
 	b.indexConfig[ledger] = cfg
 
 	// Seed an orphan v=1 alongside the live (v=2 current, v=3 pending).
-	fwdV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 1, encoded, entityID))
-	fwdV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 2, encoded, entityID))
-	fwdV3 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 3, encoded, entityID))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
+	fwdV3 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 3, encoded, entityID, 1, readstore.MetadataEventAdd))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(fwdV1, nil))
@@ -215,9 +215,9 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 
 	// Seed both v=1 (orphan, abandoned by the partial GC) and v=2
 	// (live data).
-	fwdV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 1, encoded, entityID))
+	fwdV1 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 1))
-	fwdV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledger, ns, key, 2, encoded, entityID))
+	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(fwdV1, nil))

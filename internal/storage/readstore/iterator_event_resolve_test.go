@@ -24,7 +24,16 @@ func eventFixture(t *testing.T, value string, events ...struct {
 		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 	}
 
-	return s, MetadataIndexEventValuePrefixV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte(value))
+	return s, eventValuePrefix("l", NamespaceAccount, "k", 1, []byte(value))
+}
+
+// eventValuePrefix builds the scan range covering one (metadata key, encoded
+// value) pair, exactly as the compile path does: the versioned field prefix
+// with the encoded value appended.
+func eventValuePrefix(ledger, ns, key string, version uint32, encoded []byte) []byte {
+	prefix := append([]byte(nil), MetadataIndexPrefixV(dal.NewKeyBuilder(), ledger, ns, key, version)...)
+
+	return append(prefix, encoded...)
 }
 
 type ev = struct {
@@ -64,7 +73,7 @@ func TestEventResolveIterator_TransitionTimeline(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 25, MetadataEventAdd), nil, pebble.NoSync))
 	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 40, MetadataEventDel), nil, pebble.NoSync))
-	bluePrefix := MetadataIndexEventValuePrefixV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("blue"))
+	bluePrefix := eventValuePrefix("l", NamespaceAccount, "k", 1, []byte("blue"))
 
 	require.Empty(t, collect(t, s, redPrefix, 5), "before the first ADD")
 	require.Equal(t, []string{"E"}, collect(t, s, redPrefix, 15), "red between 10 and 25")

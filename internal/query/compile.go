@@ -467,7 +467,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		return nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
 
-	ns, _ := targetNamespaceAndLen(ctx.target)
+	ns := targetNamespace(ctx.target)
 	metaKey := fc.GetField().GetMetadata()
 
 	// Validate index availability and condition type against declared schema type.
@@ -1671,15 +1671,15 @@ func targetHumanName(target commonpb.QueryTarget) string {
 	return commonpb.TargetHumanName(target)
 }
 
-// targetNamespaceAndLen returns the namespace and entity length for a query target.
-func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
+// targetNamespace returns the read-index namespace for a query target.
+func targetNamespace(target commonpb.QueryTarget) string {
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		return readstore.NamespaceTransaction, 8
+		return readstore.NamespaceTransaction
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		return readstore.NamespaceLog, 8
+		return readstore.NamespaceLog
 	default:
-		return readstore.NamespaceAccount, 0
+		return readstore.NamespaceAccount
 	}
 }
 

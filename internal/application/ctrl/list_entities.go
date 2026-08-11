@@ -70,6 +70,24 @@ func listEntities[T interface{ ~string | ~uint64 }](
 ) (entityListResult, error) {
 	var result entityListResult
 
+	// Alignment is owed only to a read that actually consults the read index.
+	// An unfiltered ACCOUNTS or TRANSACTIONS list draws its universe from the
+	// main store alone (compileUniverse / newReverseIterator both iterate
+	// params.pebbleReader), so waiting for the fold — and failing the request
+	// when it lags — would gate a read on data it never touches. LOGS is not
+	// in that class: its universe is the read index's per-ledger log limb.
+	if params.filter == nil && params.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+		snap := readStore.NewSnapshot()
+		defer func() { _ = snap.Close() }()
+
+		// No index leaves, so no version to resolve and no pin to resolve it
+		// at; and no index-ahead membership to trim, since every row comes
+		// from params.pebbleReader itself.
+		params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
+
+		return listWithoutIndex(snap, params)
+	}
+
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
@@ -91,6 +109,22 @@ func listEntities[T interface{ ~string | ~uint64 }](
 		} else {
 			err = listDescUnfiltered(snap, params, &result.entityIDs)
 		}
+	} else {
+		err = listAscending(snap, params, &result.entityIDs)
+	}
+
+	return result, err
+}
+
+// listWithoutIndex serves the main-store-only shapes: an unfiltered ACCOUNTS or
+// TRANSACTIONS page in either direction. Split out so the aligned path above
+// keeps one exit and this one cannot accidentally acquire a lease or a pin.
+func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.PebbleReader, params entityListParams[T]) (entityListResult, error) {
+	var result entityListResult
+
+	var err error
+	if params.reverse {
+		err = listDescUnfiltered(snap, params, &result.entityIDs)
 	} else {
 		err = listAscending(snap, params, &result.entityIDs)
 	}
@@ -253,6 +287,13 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 		cp := make([]byte, len(iter.Current()))
 		copy(cp, iter.Current())
 		all = append(all, cp)
+	}
+
+	// Next() returns false for a storage fault as readily as for exhaustion,
+	// and FilterIterator latches a failing horizon probe the same way — so
+	// without this the page is silently truncated and returned as complete.
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("draining filtered descending list: %w", err)
 	}
 
 	// Reverse for descending order
