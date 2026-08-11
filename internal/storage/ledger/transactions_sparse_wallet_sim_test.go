@@ -32,7 +32,7 @@ package ledger_test
 //
 // Environment variables:
 //
-//	SIM_ROWS    total rows (default 1000000; use 20000 for a quick sanity check)
+//	SIM_ROWS    total rows (default 20000; raise to 500000+ for a production-scale run)
 //	SIM_WALLET  number of sparse matching rows (default 50)
 
 import (
@@ -227,7 +227,12 @@ func explainAnalyze(t *testing.T, store *ledgerstore.Store, filter string, value
 func TestSparseWalletSimulation(t *testing.T) {
 	const walletID = "wallet-target"
 
-	totalRows := getEnvInt("SIM_ROWS", 1_000_000)
+	// Keep the default small: `just tests` runs the whole `it` suite with -race and no
+	// -run filter, so this test's cost is paid on every CI run against a 10 minute
+	// package timeout. The plan shape depends on selectivity rather than absolute table
+	// size, so a small default still reproduces the pathology; raise SIM_ROWS for a
+	// production-scale run.
+	totalRows := getEnvInt("SIM_ROWS", 20_000)
 	walletRows := getEnvInt("SIM_WALLET", 50)
 
 	t.Logf("simulation: %d total rows, %d wallet rows (%.4f%% selectivity)",
