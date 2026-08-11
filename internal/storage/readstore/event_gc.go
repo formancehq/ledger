@@ -52,17 +52,32 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		group        []byte // current group identity (key bytes before the terminator)
 		pendingBelow []byte // latest below-watermark key seen, not yet judged
 		pendingIsAdd bool
+		reclaimable  [][]byte // the current group's condemned events, applied at its boundary
+		groupUnsafe  bool     // the current group holds an event this package cannot read
 		scanned      int
 	)
 
+	// Reclamation is decided per event but applied per group, because whether
+	// it is safe at all is only known once the whole group has been read: an
+	// event superseded early can be condemned before a later unreadable one
+	// proves the group must be preserved.
 	flush := func() {
 		// The group ended: the pending latest-below-watermark event survives
 		// only as a live ADD.
 		if pendingBelow != nil && !pendingIsAdd {
-			_ = batch.Delete(pendingBelow, nil)
-			pruned++
+			reclaimable = append(reclaimable, append([]byte(nil), pendingBelow...))
 		}
 		pendingBelow = nil
+
+		if !groupUnsafe {
+			for _, key := range reclaimable {
+				_ = batch.Delete(key, nil)
+				pruned++
+			}
+		}
+
+		reclaimable = reclaimable[:0]
+		groupUnsafe = false
 	}
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -74,17 +89,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 			continue // malformed keys are the checker's business, not GC's
 		}
 
-		op := key[tpos+9]
-		if !validEventOp(op) {
-			// Unreadable: reclaiming around it could drop a live ADD, so the
-			// group is left whole for the query path to reject loudly.
-			scanned++
-
-			continue
-		}
-
 		identity := key[:tpos]
-		seq := binary.BigEndian.Uint64(key[tpos+1 : tpos+9])
 
 		if !bytes.Equal(identity, group) {
 			flush()
@@ -102,6 +107,19 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 
 		scanned++
 
+		op := key[tpos+9]
+		if !validEventOp(op) {
+			// Unreadable: the events around it are the only evidence of what
+			// this group holds, and one of them may be the live ADD the
+			// unreadable event was meant to supersede. Preserve the group and
+			// let the query path reject it loudly.
+			groupUnsafe = true
+
+			continue
+		}
+
+		seq := binary.BigEndian.Uint64(key[tpos+1 : tpos+9])
+
 		if seq >= watermark {
 			// Above the watermark nothing is reclaimable, and the group's
 			// pending below-watermark event gets judged now: a pending ADD
@@ -114,8 +132,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 
 		// A newer below-watermark event supersedes the previous pending one.
 		if pendingBelow != nil {
-			_ = batch.Delete(pendingBelow, nil)
-			pruned++
+			reclaimable = append(reclaimable, append([]byte(nil), pendingBelow...))
 		}
 
 		pendingBelow = append(pendingBelow[:0], key...)

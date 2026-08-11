@@ -208,7 +208,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	s, prefix := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
 
 	kb := dal.NewKeyBuilder()
-	corrupt := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)
+	corrupt := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)...)
 	require.NoError(t, s.DB().Set(corrupt, nil, pebble.NoSync))
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
@@ -224,15 +224,53 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 
 	require.Error(t, it.Err(), "an unknown op must be reported, not read as a delete")
 
-	// The GC must not reclaim around it either.
-	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
+	// The GC must preserve the whole group, not just the unreadable event:
+	// a:3's ADD is superseded by its DEL and would ordinarily be reclaimed,
+	// but the unreadable event between them may be what re-added it.
+	// The key builder reuses its buffer, so each key is copied before the next.
+	event := func(seq uint64, op byte) []byte {
+		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:3"), seq, op)...)
+	}
+	survivors := [][]byte{
+		event(5, MetadataEventAdd),
+		event(6, 0x7f),
+		event(7, MetadataEventDel),
+	}
+	for _, key := range survivors {
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	_, _, err = GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
 	require.NoError(t, err)
 
-	_, closer, getErr := s.DB().Get(corrupt)
-	require.NoError(t, getErr, "the unreadable event must survive the sweep")
+	for i, key := range append(survivors, corrupt) {
+		_, closer, getErr := s.DB().Get(key)
+		require.NoError(t, getErr, "event %d of an unreadable group must survive the sweep", i)
 
-	_ = closer.Close()
-	_ = pruned
+		require.NoError(t, closer.Close())
+	}
+}
+
+// The deferred reclamation must not cost the GC its actual job: a group with
+// no unreadable event still collapses to its latest below-watermark ADD.
+func TestGCEventZone_ReclaimsReadableGroups(t *testing.T) {
+	t.Parallel()
+
+	s, _ := eventFixture(t, "v",
+		ev{"a:1", 5, MetadataEventAdd},
+		ev{"a:1", 6, MetadataEventDel},
+		ev{"a:1", 7, MetadataEventAdd},
+	)
+
+	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
+	require.NoError(t, err)
+	require.Equal(t, 2, pruned, "the two superseded events are reclaimed")
+
+	kb := dal.NewKeyBuilder()
+	live := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 7, MetadataEventAdd)
+	_, closer, err := s.DB().Get(live)
+	require.NoError(t, err, "the latest below-watermark ADD decides membership and must survive")
+	require.NoError(t, closer.Close())
 }
 
 // Introspection reports statistics, so a key it cannot read must fail the scan
