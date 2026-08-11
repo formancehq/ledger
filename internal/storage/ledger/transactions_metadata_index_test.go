@@ -535,3 +535,197 @@ func TestIndexedMetadataKeys_ResolveWithCancelledContext(t *testing.T) {
 	require.Empty(t, store.IndexedMetadataKeys(),
 		"all keys must fall back to @> when the pg_index query fails")
 }
+
+// createRawIndex creates an index on this test ledger's transactions table from a
+// caller-supplied column/predicate clause, so tests can build index shapes the
+// resolver must reject.  clause is appended after the table name, e.g.
+// `(id DESC, (metadata->>'k')) WHERE ledger = 'x'`.
+func createRawIndex(t *testing.T, store *ledgerstore.Store, name, clause string) {
+	t.Helper()
+	ctx := logging.TestingContext()
+	_, err := store.GetDB().ExecContext(ctx, fmt.Sprintf(
+		`CREATE INDEX IF NOT EXISTS %q ON %q.transactions %s`,
+		name, store.GetLedger().Bucket, clause,
+	))
+	require.NoError(t, err)
+}
+
+// TestIndexedMetadataKeys_RejectsNonLeadingMetadataKey verifies that an index whose
+// metadata expression is not the leading key is not confirmed.  For an index on
+// (id DESC, (metadata->>'key')) the planner has to walk the whole id ordering before
+// it can use the metadata expression, which is the sparse scan this feature exists to
+// avoid — yet indexprs alone still renders the metadata expression, because regular
+// columns are not represented there.
+func TestIndexedMetadataKeys_RejectsNonLeadingMetadataKey(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	ledgerName := store.GetLedger().Name
+	createRawIndex(t, store,
+		fmt.Sprintf("test_%s_nonleading_idx", ledgerName),
+		fmt.Sprintf(`(id DESC, (metadata->>'source_wallet_id')) WHERE ledger = '%s'`, ledgerName),
+	)
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"an index whose metadata expression is not the leading key must not be confirmed")
+}
+
+// TestIndexedMetadataKeys_RejectsDerivedExpression verifies that an index over a
+// derived expression such as lower(metadata->>'key') is not confirmed: the production
+// filter emits a plain metadata ->> 'key' = ? predicate, which the planner cannot
+// answer from that index.
+func TestIndexedMetadataKeys_RejectsDerivedExpression(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	ledgerName := store.GetLedger().Name
+	createRawIndex(t, store,
+		fmt.Sprintf("test_%s_derived_idx", ledgerName),
+		fmt.Sprintf(`(lower(metadata->>'source_wallet_id'), id DESC) WHERE ledger = '%s'`, ledgerName),
+	)
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"an index over a derived expression must not be confirmed")
+}
+
+// TestIndexedMetadataKeys_RejectsForeignLedgerPartialIndex verifies that a partial
+// index belonging to another ledger in the same bucket is not confirmed, including
+// the case where this ledger's name is a prefix of the index owner's name.  This
+// ledger's queries cannot satisfy the foreign predicate, so the rewrite would turn an
+// indexed containment scan into a sequential one.
+func TestIndexedMetadataKeys_RejectsForeignLedgerPartialIndex(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	ledgerName := store.GetLedger().Name
+	// Same key, correct leading position, but scoped to a ledger whose name merely
+	// has this ledger's name as a prefix.
+	createRawIndex(t, store,
+		fmt.Sprintf("test_%s_foreign_idx", ledgerName),
+		fmt.Sprintf(`((metadata->>'source_wallet_id'), id DESC) WHERE ledger = '%s-other'`, ledgerName),
+	)
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"a partial index scoped to another ledger must not be confirmed")
+}
+
+// TestIndexedMetadataKeys_RejectsOverConstrainedPartialIndex verifies that a partial
+// index carrying conditions beyond `ledger = <this ledger>` is not confirmed.  The
+// query does not imply the extra condition, so the planner cannot use the index.
+func TestIndexedMetadataKeys_RejectsOverConstrainedPartialIndex(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	ledgerName := store.GetLedger().Name
+	createRawIndex(t, store,
+		fmt.Sprintf("test_%s_overconstrained_idx", ledgerName),
+		fmt.Sprintf(
+			`((metadata->>'source_wallet_id'), id DESC) WHERE ledger = '%s' AND reverted_at IS NULL`,
+			ledgerName,
+		),
+	)
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Empty(t, store.IndexedMetadataKeys(),
+		"a partial index with conditions the query does not imply must not be confirmed")
+}
+
+// TestIndexedMetadataKeys_ConfirmsNonPartialIndex verifies the resolver still accepts a
+// non-partial index on the metadata expression, which every ledger in the bucket can use.
+//
+// The key is unique to this test: all test ledgers share the _default bucket, so a
+// non-partial index — unlike the partial ones the other tests create — is visible to
+// every parallel test and would confirm their keys too.
+func TestIndexedMetadataKeys_ConfirmsNonPartialIndex(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	const key = "nonpartial_wallet_id"
+
+	store := newLedgerStore(t, withIndexedMetadataKeys(key))
+	createRawIndex(t, store,
+		fmt.Sprintf("test_%s_nonpartial_idx", store.GetLedger().Name),
+		fmt.Sprintf(`((metadata->>'%s'), id DESC)`, key),
+	)
+
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Contains(t, store.IndexedMetadataKeys(), key,
+		"a non-partial index on the metadata expression must be confirmed")
+}
+
+// TestIndexedMetadataKeys_NonEqualityOperatorsFallBackToContainment verifies that the
+// rewrite only applies to $match.  Metadata filters also accept $like and $in, whose
+// semantics the ->> equality form cannot express; binding their value into `= ?` would
+// silently discard the operator and return the wrong rows.
+func TestIndexedMetadataKeys_NonEqualityOperatorsFallBackToContainment(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	createFunctionalIndexForKey(t, store, "source_wallet_id")
+	store.ResolveIndexedMetadataKeys(ctx)
+	require.Contains(t, store.IndexedMetadataKeys(), "source_wallet_id",
+		"index must be confirmed so this test proves the operator guard, not a missing index")
+
+	for _, tx := range []ledger.Transaction{
+		ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "w-alpha"}).
+			WithTimestamp(time.Now()),
+		ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bob", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "w-beta"}).
+			WithTimestamp(time.Now()),
+	} {
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+	}
+
+	t.Run("$match still uses the rewrite", func(t *testing.T) {
+		captureCtx, cap := withSQLCapture(ctx)
+		cursor, err := store.Transactions().Paginate(captureCtx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Match("metadata[source_wallet_id]", "w-alpha"),
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, cursor.Data, 1)
+		require.NotEmpty(t, cap.lastContaining("metadata ->> 'source_wallet_id'"),
+			"$match on a confirmed key must use the ->> rewrite")
+	})
+
+	t.Run("$like falls back to containment", func(t *testing.T) {
+		captureCtx, cap := withSQLCapture(ctx)
+		_, err := store.Transactions().Paginate(captureCtx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.Like("metadata[source_wallet_id]", "w-%"),
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, cap.lastContaining("metadata ->> 'source_wallet_id'"),
+			"$like must not be rewritten to an equality predicate")
+	})
+
+	t.Run("$in falls back to containment", func(t *testing.T) {
+		captureCtx, cap := withSQLCapture(ctx)
+		_, err := store.Transactions().Paginate(captureCtx, common.InitialPaginatedQuery[any]{
+			Options: common.ResourceQuery[any]{
+				Builder: query.In("metadata[source_wallet_id]", []any{"w-alpha", "w-beta"}),
+			},
+		})
+		require.NoError(t, err)
+		require.Empty(t, cap.lastContaining("metadata ->> 'source_wallet_id'"),
+			"$in must not be rewritten to a single-value equality predicate")
+	})
+}

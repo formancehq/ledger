@@ -159,6 +159,26 @@ func (store *Store) IndexedMetadataKeys() []string {
 	return store.ledger.GetIndexedMetadataKeys()
 }
 
+// normalizeRenderedSQL wraps a SQL expression yielding pg_get_expr output so that
+// incidental syntax — explicit ::text casts, parentheses and whitespace — is stripped
+// before comparison.
+//
+// Postgres renders the same index definition differently depending on version and
+// column type: `WHERE ledger = 'x'` on a varchar column comes back as
+// ((ledger)::text = 'x'::text), while `(metadata->>'k')` may or may not carry an
+// explicit ::text cast on the key.  Normalising makes the comparison independent of
+// those variations while keeping it exact, so derived expressions and predicates with
+// extra conditions are still rejected.
+//
+// Ledger names and metadata keys are validated as [0-9a-zA-Z_-]+ / [a-zA-Z0-9_]+, so a
+// normalised form never loses meaningful characters.
+func normalizeRenderedSQL(expr string) string {
+	return fmt.Sprintf(
+		`replace(replace(replace(replace(%s, '::text', ''), '(', ''), ')', ''), ' ', '')`,
+		expr,
+	)
+}
+
 func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 	store.indexedKeysResolved = true
 	requested := store.ledger.GetIndexedMetadataKeys()
@@ -171,16 +191,6 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 	})
 	confirmed := make([]string, 0, len(requested))
 	for _, key := range requested {
-		// Use pg_get_expr so we match the exact functional expression rather than
-		// substring-matching the full CREATE INDEX text.  Key names are validated
-		// as [a-zA-Z0-9_]+, so embedding in the LIKE pattern is safe.
-		//
-		// The partial-predicate filter ensures we only confirm indexes usable by
-		// this ledger: either a non-partial index (indpred IS NULL, covers all rows)
-		// or a partial index whose WHERE clause mentions the current ledger name.
-		// Without this check, a partial index created for ledger A would be confirmed
-		// for ledger B, yet ledger B's queries cannot satisfy ledger A's partial
-		// predicate — causing a sequential scan instead of an index scan.
 		var count int
 		err := store.db.NewSelect().
 			TableExpr("pg_index i").
@@ -193,20 +203,31 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 			// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
 			// with indisvalid=false that the planner will not use.
 			Where("i.indisvalid = true").
-			// Use an exact IN match against the two canonical forms that pg_get_expr
-			// produces for (metadata->>'key'): the variant with an explicit ::text cast
-			// (Postgres 14+) and the variant without. A substring/position check would
-			// also match derived expressions such as lower(metadata->>'key') or
-			// (metadata->>'key') || '', which the production filter cannot use.
-			Where("pg_get_expr(i.indexprs, i.indrelid) IN (?)", bun.In([]string{
-				fmt.Sprintf("(metadata ->> '%s'::text)", key),
-				fmt.Sprintf("(metadata ->> '%s')", key),
-			})).
-			// Search for '= ''ledger_name''' rather than 'ledger = ''ledger_name''' because
-			// pg_get_expr renders varchar predicates with explicit casts, e.g.
-			// ((ledger)::text = 'name'::text).  The column-side cast varies by Postgres
-			// version; the '= ''name''' substring is present in all observed forms.
-			Where("(i.indpred IS NULL OR position(? IN pg_get_expr(i.indpred, i.indrelid)) > 0)", "= '"+store.ledger.Name+"'").
+			// The metadata expression must be the *leading* index key.  indkey is an
+			// int2vector of column attnums where 0 marks an expression, so indkey[0] = 0
+			// means the first key is an expression rather than a regular column.
+			// Combined with the single-expression match below, this proves our metadata
+			// expression is the first usable key.  Without it an index such as
+			// (id DESC, (metadata->>'key')) would be confirmed even though the planner
+			// can only reach the metadata expression after a full scan of the id column —
+			// exactly the sparse scan this feature exists to avoid.
+			Where("i.indkey[0] = 0").
+			// Compare the rendered functional expression to the exact form the query
+			// builder emits.  pg_get_expr renders a list of expressions comma-separated,
+			// so an exact match also guarantees the index carries a single expression.
+			// An exact match (rather than a substring test) rejects derived expressions
+			// such as lower(metadata->>'key') or (metadata->>'key') || '', which the
+			// planner cannot use for our predicate.
+			Where(normalizeRenderedSQL("pg_get_expr(i.indexprs, i.indrelid)")+" = ?",
+				fmt.Sprintf("metadata->>'%s'", key)).
+			// Only confirm indexes this ledger's queries can actually use: either a
+			// non-partial index (indpred IS NULL, covers all rows) or a partial index
+			// whose predicate is exactly `ledger = <this ledger>`.  An exact match is
+			// required — a substring test would confirm an index for an unrelated column
+			// holding the same value, or one whose predicate carries extra conditions
+			// the query does not imply, both of which force a sequential scan.
+			Where("(i.indpred IS NULL OR "+normalizeRenderedSQL("pg_get_expr(i.indpred, i.indrelid)")+" = ?)",
+				fmt.Sprintf("ledger='%s'", store.ledger.Name)).
 			Scan(ctx, &count)
 		if err != nil {
 			logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed for key %q, all keys fall back to @>: %s", key, err)
