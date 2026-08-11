@@ -6,13 +6,17 @@ package ledger_test
 // ResolveFilter fallthrough branches, all of which were previously untested.
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/query"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -85,13 +89,36 @@ func TestTransactionsResolveFilter_Fallthrough(t *testing.T) {
 
 	t.Run("bare metadata property uses key-existence", func(t *testing.T) {
 		// "metadata" (no [key]) does not match MetadataRegex, so it falls through to the
-		// `metadata -> ? is not null` branch.
-		_, err := store.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
+		// `metadata -> ? is not null` branch, which filters on key *existence* rather
+		// than value. Use a dedicated store so the row set is exactly what we seed.
+		keyStore := newLedgerStore(t)
+
+		withKey := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"some_key": "any-value"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, keyStore, &withKey))
+
+		otherKey := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bob", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"another_key": "any-value"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, keyStore, &otherKey))
+
+		noMetadata := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "carol", "USD", big.NewInt(100))).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, keyStore, &noMetadata))
+
+		cursor, err := keyStore.Transactions().Paginate(ctx, common.InitialPaginatedQuery[any]{
 			Options: common.ResourceQuery[any]{
 				Builder: query.Match("metadata", "some_key"),
 			},
 		})
 		require.NoError(t, err)
+		require.Len(t, cursor.Data, 1,
+			"only the transaction carrying some_key may match; a dropped predicate would return all three")
+		require.Equal(t, *withKey.ID, *cursor.Data[0].ID)
 	})
 
 	// $in requires full addresses. "users:" has an empty trailing segment, so it is a
