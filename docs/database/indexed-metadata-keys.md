@@ -27,6 +27,28 @@ exist.** Ledger checks `pg_index` (via `pg_get_expr`) at store-open time (per
 ledger, per request). If the index is absent, the query falls back to the
 standard `@>` form.
 
+The rewrite also only applies to **exact-match filters on string values**
+(`$match`). Metadata filters accept `$like` and `$in` as well, and those keep
+using `@>`: the equality form cannot express their semantics.
+
+### What counts as a matching index
+
+Confirmation is deliberately strict, because a rewrite pointing at an index the
+planner cannot use is slower than the `@>` path it replaced. An index is
+confirmed only when all of the following hold:
+
+- It is a **valid** index (`indisvalid`). A cancelled or failed
+  `CREATE INDEX CONCURRENTLY` leaves an invalid entry the planner ignores.
+- `metadata->>'<key>'` is its **leading key**. An index on
+  `(id DESC, (metadata->>'<key>'))` is rejected — the planner would still have
+  to walk the whole `id` ordering.
+- The expression is exactly `metadata->>'<key>'`, not a derived form such as
+  `lower(metadata->>'<key>')` or `(metadata->>'<key>') || ''`.
+- It is either non-partial, or partial with the predicate **exactly**
+  `ledger = '<ledger>'`. A predicate belonging to another ledger, or one
+  carrying extra conditions the query does not imply (say
+  `AND reverted_at IS NULL`), is rejected.
+
 ---
 
 ## Lifecycle
@@ -48,8 +70,12 @@ Wait for `CREATE INDEX` to complete before proceeding.
 **Index design notes:**
 - The composite `((metadata->>'<key>'), id DESC)` covers both the equality
   filter and the `ORDER BY id DESC` in a single scan, avoiding a sort step.
+  Keep the metadata expression **first** — with the columns swapped the index is
+  not confirmed.
 - The `WHERE ledger = '<ledger>'` partial condition keeps the index small —
-  it only covers rows for that ledger.
+  it only covers rows for that ledger. Write it as exactly `ledger = '<ledger>'`;
+  additional conditions prevent confirmation. A non-partial index is also
+  accepted, and is the simpler choice for a bucket holding a single ledger.
 - For multiple keys, create one index per key.
 
 ### 2. Enable the feature flag
