@@ -48,6 +48,14 @@ const (
 	metadataEventTerminator byte = 0x00
 )
 
+// validEventOp reports whether op is one this package writes. Anything else in
+// that byte is a corrupt or foreign key: readers must refuse it rather than
+// fold it into the DEL arm of an `op == MetadataEventAdd` test, which would
+// silently drop matching entities.
+func validEventOp(op byte) bool {
+	return op == MetadataEventAdd || op == MetadataEventDel
+}
+
 // MetadataIndexEventKeyV builds one event key. Layout mirrors
 // MetadataIndexKeyV with the entity terminated and the (seq, op) suffix
 // appended.

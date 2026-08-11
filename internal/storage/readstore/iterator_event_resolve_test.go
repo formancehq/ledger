@@ -197,3 +197,40 @@ func TestEventResolveIterator_SeekFloorIgnoresFaults(t *testing.T) {
 }
 
 var errFaultProbe = errors.New("probe: simulated storage fault")
+
+// An op byte this package never writes is unreadable, not a DEL. Folding it
+// into the `op == ADD` test would silently drop matching entities, so the
+// query path refuses it the way it refuses any malformed key, and the GC
+// leaves the group whole rather than reclaiming around bytes it cannot read.
+func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
+	t.Parallel()
+
+	s, prefix := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+
+	kb := dal.NewKeyBuilder()
+	corrupt := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)
+	require.NoError(t, s.DB().Set(corrupt, nil, pebble.NoSync))
+
+	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
+	require.NoError(t, err)
+
+	defer it.Close()
+
+	// Iteration stops with an error rather than reporting a membership it
+	// cannot vouch for — the scan reaches the corrupt key while walking the
+	// preceding group, so it surfaces before any row is trusted.
+	for it.Next() {
+	}
+
+	require.Error(t, it.Err(), "an unknown op must be reported, not read as a delete")
+
+	// The GC must not reclaim around it either.
+	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
+	require.NoError(t, err)
+
+	_, closer, getErr := s.DB().Get(corrupt)
+	require.NoError(t, getErr, "the unreadable event must survive the sweep")
+
+	_ = closer.Close()
+	_ = pruned
+}

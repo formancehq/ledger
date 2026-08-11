@@ -86,11 +86,18 @@ func NewEventResolveRangeIterator(reader dal.PebbleReader, lower, upper []byte, 
 }
 
 // parse splits an event key into (group, seq, op). The terminator position
-// is computed from the right — the fixed suffix makes it unambiguous.
+// is computed from the right — the fixed suffix makes it unambiguous. ok is
+// false for anything this package would not have written, unknown ops
+// included: the caller turns that into a loud error rather than resolving a
+// group from bytes it cannot read.
 func (it *EventResolveIterator) parse(key []byte) (group []byte, seq uint64, op byte, ok bool) {
 	rest := key[it.prefixLen:]
 	tpos := len(rest) - metadataEventSuffixLen - 1
 	if tpos < 0 || rest[tpos] != metadataEventTerminator {
+		return nil, 0, 0, false
+	}
+
+	if op := rest[tpos+9]; !validEventOp(op) {
 		return nil, 0, 0, false
 	}
 

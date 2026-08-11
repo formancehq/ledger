@@ -74,9 +74,17 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 			continue // malformed keys are the checker's business, not GC's
 		}
 
+		op := key[tpos+9]
+		if !validEventOp(op) {
+			// Unreadable: reclaiming around it could drop a live ADD, so the
+			// group is left whole for the query path to reject loudly.
+			scanned++
+
+			continue
+		}
+
 		identity := key[:tpos]
 		seq := binary.BigEndian.Uint64(key[tpos+1 : tpos+9])
-		op := key[tpos+9]
 
 		if !bytes.Equal(identity, group) {
 			flush()

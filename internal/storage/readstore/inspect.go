@@ -98,6 +98,10 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 			started = true
 		}
 
+		if !validEventOp(key[tpos+9]) {
+			continue
+		}
+
 		// Events are seq-ascending within a group: the last op wins.
 		live = key[tpos+9] == MetadataEventAdd
 	}
