@@ -148,7 +148,15 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 		key := match[0][1]
 
-		if slices.Contains(h.store.IndexedMetadataKeys(), key) {
+		// The rewrite below is an equality-only form, so it is restricted to $match with
+		// a string value.  Metadata filters also accept $in and $like, whose semantics
+		// the `->>` equality cannot express; binding their value into `= ?` would
+		// silently discard the operator and return the wrong rows.  A non-string value
+		// is excluded too: `@>` compares the JSON value by type, while `->>` coerces it
+		// to text, so a numeric 123 would start matching the string "123".  Both cases
+		// fall through to the `@>` containment path, which handles them correctly.
+		stringValue, valueIsString := value.(string)
+		if operator == queries.OperatorMatch && valueIsString && slices.Contains(h.store.IndexedMetadataKeys(), key) {
 			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
 			// The literal form is required: Postgres matches functional indexes by exact expression
 			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
@@ -162,7 +170,7 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			// Without it, metadata ->> 'key' = ? is NULL for absent-key rows, which means
 			// NOT(...) remains NULL instead of TRUE, silently changing result sets for negated
 			// metadata filters compared to the NOT (metadata @> ...) path.
-			return fmt.Sprintf("ledger = ? AND metadata \\? '%s' AND metadata ->> '%s' = ?", key, key), []any{h.store.GetLedger().Name, value}, nil
+			return fmt.Sprintf("ledger = ? AND metadata \\? '%s' AND metadata ->> '%s' = ?", key, key), []any{h.store.GetLedger().Name, stringValue}, nil
 		}
 		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
