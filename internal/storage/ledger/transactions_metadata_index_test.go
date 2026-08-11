@@ -142,6 +142,12 @@ func explainSQL(t *testing.T, store *ledgerstore.Store, sql string) string {
 		plan.WriteString(line)
 		plan.WriteByte('\n')
 	}
+	// rows.Next() returns false on iteration error as well as exhaustion. Without these
+	// checks a driver error yields an empty plan, and the callers' NotContains
+	// assertions would pass against it for the wrong reason.
+	require.NoError(t, rows.Err())
+	require.NotEmpty(t, plan.String(), "EXPLAIN returned no plan rows")
+
 	return plan.String()
 }
 
@@ -543,6 +549,12 @@ func TestIndexedMetadataKeys_ResolveWithCancelledContext(t *testing.T) {
 func createRawIndex(t *testing.T, store *ledgerstore.Store, name, clause string) {
 	t.Helper()
 	ctx := logging.TestingContext()
+	// Postgres truncates identifiers at 63 bytes. Two distinct names collapsing to the
+	// same stored name would make CREATE INDEX IF NOT EXISTS skip creation silently and
+	// the caller's confirmation assertion fail for an unrelated reason — fail loudly here
+	// instead.
+	require.LessOrEqual(t, len(name), 63, "index name would be truncated by Postgres")
+
 	_, err := store.GetDB().ExecContext(ctx, fmt.Sprintf(
 		`CREATE INDEX IF NOT EXISTS %q ON %q.transactions %s`,
 		name, store.GetLedger().Bucket, clause,
@@ -728,4 +740,29 @@ func TestIndexedMetadataKeys_NonEqualityOperatorsFallBackToContainment(t *testin
 		require.Empty(t, cap.lastContaining("metadata ->> 'source_wallet_id'"),
 			"$in must not be rewritten to a single-value equality predicate")
 	})
+}
+
+// TestIndexedMetadataKeys_PartialConfirmationAcrossKeys verifies that with several
+// configured keys, only the ones backed by an index are confirmed — and that the
+// resolved list keeps the configured order.  The resolver confirms all keys in a single
+// catalog query, so the per-key mapping of results is worth pinning down.
+func TestIndexedMetadataKeys_PartialConfirmationAcrossKeys(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id,destination_wallet_id"))
+
+	// Index only the second configured key.
+	createFunctionalIndexForKey(t, store, "destination_wallet_id")
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Equal(t, []string{"destination_wallet_id"}, store.IndexedMetadataKeys(),
+		"only the indexed key may be confirmed")
+
+	// Index the first one too; both are now confirmed, in configured order.
+	createFunctionalIndexForKey(t, store, "source_wallet_id")
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	require.Equal(t, []string{"source_wallet_id", "destination_wallet_id"}, store.IndexedMetadataKeys(),
+		"both keys confirmed, in the order they were configured")
 }

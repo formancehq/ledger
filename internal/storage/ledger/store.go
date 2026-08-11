@@ -189,56 +189,76 @@ func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
 	logger := logging.FromContext(ctx).WithFields(map[string]any{
 		"ledger": store.ledger.Name,
 	})
-	confirmed := make([]string, 0, len(requested))
+	// One query for all keys, not one per key: this runs on every store open, so the
+	// cost is paid per request by every ledger that opts into the feature.
+	wanted := make([]string, 0, len(requested))
+	keyByExpr := make(map[string]string, len(requested))
 	for _, key := range requested {
-		var count int
-		err := store.db.NewSelect().
-			TableExpr("pg_index i").
-			Join("JOIN pg_class c ON c.oid = i.indrelid").
-			Join("JOIN pg_namespace n ON n.oid = c.relnamespace").
-			ColumnExpr("COUNT(*)").
-			Where("n.nspname = ?", schema).
-			Where("c.relname = ?", "transactions").
-			Where("i.indexprs IS NOT NULL").
-			// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
-			// with indisvalid=false that the planner will not use.
-			Where("i.indisvalid = true").
-			// The metadata expression must be the *leading* index key.  indkey is an
-			// int2vector of column attnums where 0 marks an expression, so indkey[0] = 0
-			// means the first key is an expression rather than a regular column.
-			// Combined with the single-expression match below, this proves our metadata
-			// expression is the first usable key.  Without it an index such as
-			// (id DESC, (metadata->>'key')) would be confirmed even though the planner
-			// can only reach the metadata expression after a full scan of the id column —
-			// exactly the sparse scan this feature exists to avoid.
-			Where("i.indkey[0] = 0").
-			// Compare the rendered functional expression to the exact form the query
-			// builder emits.  pg_get_expr renders a list of expressions comma-separated,
-			// so an exact match also guarantees the index carries a single expression.
-			// An exact match (rather than a substring test) rejects derived expressions
-			// such as lower(metadata->>'key') or (metadata->>'key') || '', which the
-			// planner cannot use for our predicate.
-			Where(normalizeRenderedSQL("pg_get_expr(i.indexprs, i.indrelid)")+" = ?",
-				fmt.Sprintf("metadata->>'%s'", key)).
-			// Only confirm indexes this ledger's queries can actually use: either a
-			// non-partial index (indpred IS NULL, covers all rows) or a partial index
-			// whose predicate is exactly `ledger = <this ledger>`.  An exact match is
-			// required — a substring test would confirm an index for an unrelated column
-			// holding the same value, or one whose predicate carries extra conditions
-			// the query does not imply, both of which force a sequential scan.
-			Where("(i.indpred IS NULL OR "+normalizeRenderedSQL("pg_get_expr(i.indpred, i.indrelid)")+" = ?)",
-				fmt.Sprintf("ledger='%s'", store.ledger.Name)).
-			Scan(ctx, &count)
-		if err != nil {
-			logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed for key %q, all keys fall back to @>: %s", key, err)
-			store.indexedMetadataKeys = nil
-			return
+		expr := fmt.Sprintf("metadata->>'%s'", key)
+		wanted = append(wanted, expr)
+		keyByExpr[expr] = key
+	}
+
+	indexedExpr := normalizeRenderedSQL("pg_get_expr(i.indexprs, i.indrelid)")
+
+	var found []string
+	err := store.db.NewSelect().
+		TableExpr("pg_index i").
+		Join("JOIN pg_class c ON c.oid = i.indrelid").
+		Join("JOIN pg_namespace n ON n.oid = c.relnamespace").
+		ColumnExpr("DISTINCT "+indexedExpr+" AS expr").
+		Where("n.nspname = ?", schema).
+		Where("c.relname = ?", "transactions").
+		Where("i.indexprs IS NOT NULL").
+		// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
+		// with indisvalid=false that the planner will not use.
+		Where("i.indisvalid = true").
+		// The metadata expression must be the *leading* index key.  indkey is an
+		// int2vector of column attnums where 0 marks an expression, so indkey[0] = 0
+		// means the first key is an expression rather than a regular column.
+		// Combined with the single-expression match below, this proves our metadata
+		// expression is the first usable key.  Without it an index such as
+		// (id DESC, (metadata->>'key')) would be confirmed even though the planner
+		// can only reach the metadata expression after a full scan of the id column —
+		// exactly the sparse scan this feature exists to avoid.
+		Where("i.indkey[0] = 0").
+		// Compare the rendered functional expression to the exact form the query
+		// builder emits.  pg_get_expr renders a list of expressions comma-separated,
+		// so an exact match also guarantees the index carries a single expression.
+		// An exact match (rather than a substring test) rejects derived expressions
+		// such as lower(metadata->>'key') or (metadata->>'key') || '', which the
+		// planner cannot use for our predicate.
+		Where(indexedExpr+" IN (?)", bun.In(wanted)).
+		// Only confirm indexes this ledger's queries can actually use: either a
+		// non-partial index (indpred IS NULL, covers all rows) or a partial index
+		// whose predicate is exactly `ledger = <this ledger>`.  An exact match is
+		// required — a substring test would confirm an index for an unrelated column
+		// holding the same value, or one whose predicate carries extra conditions
+		// the query does not imply, both of which force a sequential scan.
+		Where("(i.indpred IS NULL OR "+normalizeRenderedSQL("pg_get_expr(i.indpred, i.indrelid)")+" = ?)",
+			fmt.Sprintf("ledger='%s'", store.ledger.Name)).
+		Scan(ctx, &found)
+	if err != nil {
+		logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed, all keys fall back to @>: %s", err)
+		store.indexedMetadataKeys = nil
+		return
+	}
+
+	confirmedSet := make(map[string]struct{}, len(found))
+	for _, expr := range found {
+		if key, ok := keyByExpr[expr]; ok {
+			confirmedSet[key] = struct{}{}
 		}
-		if count > 0 {
+	}
+
+	// Preserve the configured order so the resolved list is deterministic.
+	confirmed := make([]string, 0, len(confirmedSet))
+	for _, key := range requested {
+		if _, ok := confirmedSet[key]; ok {
 			confirmed = append(confirmed, key)
-		} else {
-			logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
+			continue
 		}
+		logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
 	}
 	store.indexedMetadataKeys = confirmed
 }
