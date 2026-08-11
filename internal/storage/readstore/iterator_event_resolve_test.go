@@ -234,3 +234,29 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 	_ = closer.Close()
 	_ = pruned
 }
+
+// Introspection reports statistics, so a key it cannot read must fail the scan
+// rather than be counted around: a plausible cardinality computed over the
+// events surrounding corruption hides the corruption it was computed over.
+func TestInspectIndex_RejectsUnknownOp(t *testing.T) {
+	t.Parallel()
+
+	s, _ := eventFixture(t, "v", ev{"a:1", 10, MetadataEventAdd})
+
+	kb := dal.NewKeyBuilder()
+	corrupt := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)
+	require.NoError(t, s.DB().Set(corrupt, nil, pebble.NoSync))
+
+	for _, mode := range []InspectMode{InspectDistinctValuesMode, InspectFacetsMode, InspectSummaryMode} {
+		_, err := InspectIndex(InspectParams{
+			Reader:      s.DB(),
+			KB:          kb,
+			LedgerName:  "l",
+			Namespace:   NamespaceAccount,
+			MetadataKey: "k",
+			Version:     1,
+			Mode:        mode,
+		})
+		require.Error(t, err, "mode %d must refuse to report statistics over an unreadable event", mode)
+	}
+}

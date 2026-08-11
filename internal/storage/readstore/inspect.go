@@ -61,6 +61,10 @@ type InspectFacetEntry struct {
 // every group (the bytes between prefixLen and the entity terminator) whose
 // latest event is an ADD — i.e. current membership. fn returns false to stop
 // early; its argument is only valid for the duration of the call.
+//
+// A key it cannot read is an error, not a skipped row: statistics derived from
+// the events around it would be plausible and wrong, hiding the corruption
+// they were computed over.
 func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, fn func(group []byte) bool) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
@@ -85,7 +89,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 
 		tpos := len(key) - suffix
 		if tpos < prefixLen || key[tpos] != metadataEventTerminator {
-			continue
+			return fmt.Errorf("malformed metadata event key %x", key)
 		}
 
 		g := key[prefixLen:tpos]
@@ -99,7 +103,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 		}
 
 		if !validEventOp(key[tpos+9]) {
-			continue
+			return fmt.Errorf("malformed metadata event key %x", key)
 		}
 
 		// Events are seq-ascending within a group: the last op wins.
