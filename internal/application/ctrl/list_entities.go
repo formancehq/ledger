@@ -70,13 +70,10 @@ func listEntities[T interface{ ~string | ~uint64 }](
 ) (entityListResult, error) {
 	var result entityListResult
 
-	// Alignment is owed only to a read that actually consults the read index.
-	// An unfiltered ACCOUNTS or TRANSACTIONS list draws its universe from the
-	// main store alone (compileUniverse / newReverseIterator both iterate
-	// params.pebbleReader), so waiting for the fold — and failing the request
-	// when it lags — would gate a read on data it never touches. LOGS is not
-	// in that class: its universe is the read index's per-ledger log limb.
-	if params.filter == nil && params.target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
+	// Alignment is owed only to a read that actually consults the read index
+	// (query.AlignmentOwed); here that also covers newReverseIterator, which
+	// iterates params.pebbleReader like compileUniverse does.
+	if !query.AlignmentOwed(params.filter, params.target) {
 		snap := readStore.NewSnapshot()
 		defer func() { _ = snap.Close() }()
 

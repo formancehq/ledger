@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -118,9 +119,30 @@ func Execute(
 	defer releaseHold()
 	defer func() { _ = handle.Close() }()
 
-	indexSnap, mainSeq, releaseLease, err := AlignedIndexSnapshot(ctx, rs, handle)
-	if err != nil {
-		return nil, err
+	var (
+		indexSnap    *pebble.Snapshot
+		mainSeq      uint64
+		releaseLease func()
+	)
+
+	aligned := AlignmentOwed(pq.GetFilter(), pq.GetTarget())
+	if aligned {
+		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Both the universe and the enrichment come from the handle, so there
+		// is no index leaf to align against it and no pinned resolution for
+		// the event GC to respect. The snapshot is still opened: it backs the
+		// version resolver and the compile-time reads that every target shape
+		// shares.
+		mainSeq, err = ReadLastSequence(handle)
+		if err != nil {
+			return nil, fmt.Errorf("reading main-store sequence: %w", err)
+		}
+
+		indexSnap, releaseLease = rs.NewSnapshot(), func() {}
 	}
 
 	defer releaseLease()
@@ -155,8 +177,10 @@ func Execute(
 
 	// Trim to the handle's horizon: the aligned snapshot may hold entities
 	// committed after it, which the handle cannot enrich.
+	// Only an aligned read can hold membership the handle has not caught up
+	// to; an unaligned one drew every row from the handle itself.
 	var iter = compiled
-	if keep := MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq); keep != nil {
+	if keep := MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq); aligned && keep != nil {
 		iter = readstore.NewFilterIterator(compiled, keep)
 	}
 	defer iter.Close()

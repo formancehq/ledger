@@ -28,6 +28,21 @@ import (
 // membership can then only exceed the main store (entities committed after
 // the handle), and MainHorizonKeep trims those back. The result is exactly
 // the state at the main reader's sequence.
+// AlignmentOwed reports whether a query of this shape must wait for the read
+// index to fold up to the main reader's sequence before it can be answered.
+//
+// Only a read that consults the index is owed alignment. An unfiltered
+// ACCOUNTS or TRANSACTIONS query draws its universe from the main store
+// (compileUniverse iterates the main reader) and enriches from that same
+// reader, so it never observes the two stores at different fold points —
+// waiting for the fold would gate it on data it does not read, and a lagging
+// or stopped builder would stall a read that is independent of it. LOGS is
+// not in that class even unfiltered: its universe is the read index's
+// per-ledger log limb.
+func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
+	return filter != nil || target == commonpb.QueryTarget_QUERY_TARGET_LOGS
+}
+
 // AlignedIndexSnapshot returns a read-index snapshot whose fold cursor is at
 // or beyond mainReader's last applied log sequence, plus that sequence and a
 // release closure. The cursor is verified through the snapshot itself, so the
