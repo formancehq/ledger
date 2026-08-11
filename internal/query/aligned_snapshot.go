@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -37,6 +38,10 @@ import (
 // sequence — the pin the event GC must not reclaim past (read_lease.go). The
 // caller must invoke it when iteration ends, alongside closing the snapshot.
 //
+// Callers must obtain mainReader from OpenAlignedHandle, which reserves the
+// reclaim floor before opening the handle so the pin registered here can never
+// be refused.
+//
 // The wait is bounded by the caller's context and nothing else. Alignment is
 // not optional — a filtered read cannot answer correctly until the fold
 // reaches the pin — so how long to spend on it is the caller's call, exactly
@@ -48,13 +53,6 @@ import (
 //
 // The lease is released before waiting, so a long wait pins no history and
 // creates no reclamation pressure.
-//
-// The pin is read from the handle before it can be registered, so a GC pass
-// may begin reclaiming at or above it in that gap. Acquire refuses such a pin
-// and the read fails with ErrReadPinReclaimed: mainReader is a fixed snapshot,
-// so the pin cannot be moved forward here, and it has to keep matching the
-// reader the caller enriches through. A retry opens a fresh handle, whose
-// sequence is at or above the floor by construction.
 func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
@@ -74,7 +72,20 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 	for {
 		lease, ok := rs.Leases().Acquire(mainSeq)
 		if !ok {
-			return nil, 0, nil, &ErrReadPinReclaimed{Pin: mainSeq, Floor: rs.Leases().ReclaimFloor()}
+			// OpenAlignedHandle holds the floor across the handle's creation,
+			// so a pin beneath it means this read bypassed that helper and
+			// may resolve a group whose history is already reclaimed. There is
+			// no recovery here: the pin cannot move (the handle is a fixed
+			// snapshot) and it must keep matching the reader enrichment uses.
+			assert.Unreachable("query: aligned read pinned below the reclaim floor", map[string]any{
+				"pin":   mainSeq,
+				"floor": rs.Leases().ReclaimFloor(),
+			})
+
+			return nil, 0, nil, fmt.Errorf(
+				"invariant: aligned read pinned at %d, below the reclaim floor %d — the handle was not opened through OpenAlignedHandle",
+				mainSeq, rs.Leases().ReclaimFloor(),
+			)
 		}
 
 		snap := rs.NewSnapshot()

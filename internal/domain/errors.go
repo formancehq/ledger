@@ -202,7 +202,6 @@ const (
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
 	ErrReasonReadIndexNotCaughtUp          = "READ_INDEX_NOT_CAUGHT_UP"
-	ErrReasonReadPinReclaimed              = "READ_PIN_RECLAIMED"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
 	ErrReasonMetadataFieldNotInSchema      = "METADATA_FIELD_NOT_IN_SCHEMA"
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"

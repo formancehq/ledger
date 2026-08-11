@@ -49,31 +49,6 @@ func (e *ErrReadIndexNotCaughtUp) Metadata() map[string]string {
 // opaque 500 rather than a retryable 503.
 var _ domain.Describable = (*ErrReadIndexNotCaughtUp)(nil)
 
-// ErrReadPinReclaimed is returned when a read holds a main-store handle whose
-// sequence the event GC has already reclaimed past. The pin cannot be moved
-// forward in place — the handle is a fixed snapshot, and the sequence has to
-// keep matching the reader enrichment uses — so the request fails and a retry
-// opens a fresh handle.
-type ErrReadPinReclaimed struct {
-	Pin   uint64
-	Floor uint64
-}
-
-func (e *ErrReadPinReclaimed) Error() string {
-	return fmt.Sprintf("read pin %d is below the reclaimed floor %d", e.Pin, e.Floor)
-}
-
-func (*ErrReadPinReclaimed) Reason() string { return domain.ErrReasonReadPinReclaimed }
-
-func (e *ErrReadPinReclaimed) Metadata() map[string]string {
-	return map[string]string{
-		"pin":   strconv.FormatUint(e.Pin, 10),
-		"floor": strconv.FormatUint(e.Floor, 10),
-	}
-}
-
-var _ domain.Describable = (*ErrReadPinReclaimed)(nil)
-
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
 	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)

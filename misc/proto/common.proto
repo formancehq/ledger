@@ -1258,12 +1258,6 @@ enum ErrorReason {
   // there within the alignment grace. Retryable (Kind=Unavailable): the fold
   // is behind, not broken. See EN-1748.
   ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
-  // ERROR_REASON_READ_PIN_RECLAIMED: an indexed read holds a main-store
-  // handle whose sequence the read-index event GC has already reclaimed
-  // past, so the history that pin needs may be gone. Retryable
-  // (Kind=Unavailable): a retry opens a fresh handle and pins forward.
-  // See EN-1748.
-  ERROR_REASON_READ_PIN_RECLAIMED = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

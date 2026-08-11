@@ -156,10 +156,10 @@ func txIDBytesQ(id uint64) []byte {
 	return b
 }
 
-// A pin the event GC has already reclaimed past cannot be salvaged in place:
-// mainReader is a fixed snapshot, so re-reading it returns the same rejected
-// sequence. The read must fail immediately so a retry can open a fresh handle.
-func TestAlignedIndexSnapshot_ReclaimedPinFailsFast(t *testing.T) {
+// OpenAlignedHandle holds the reclaim floor across the handle's creation, so
+// the pin it yields can never sit beneath it — the refusal path inside
+// AlignedIndexSnapshot is an invariant guard, not a condition reads meet.
+func TestOpenAlignedHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
@@ -168,23 +168,26 @@ func TestAlignedIndexSnapshot_ReclaimedPinFailsFast(t *testing.T) {
 
 	rs := newTestReadStore(t)
 
-	handle, err := store.NewReadHandle()
+	handle, releaseHold, err := query.OpenAlignedHandle(rs, store)
 	require.NoError(t, err)
+
+	defer releaseHold()
 	defer func() { _ = handle.Close() }()
 
 	lastSeq, err := query.ReadLastSequence(handle)
 	require.NoError(t, err)
-
 	setReadStoreProgress(t, rs, lastSeq)
 
-	// A GC pass sweeps past the handle's sequence while no lease holds it down.
-	rs.Leases().BeginGC(lastSeq + 1)
+	// A sweep proposing a watermark far past the handle cannot pass it: the
+	// reservation taken before the handle holds the floor down.
+	require.Equal(t, uint64(0), rs.Leases().BeginGC(lastSeq+1_000),
+		"the reservation pins the floor at its pre-handle value")
 
-	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(t.Context(), rs, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
+	require.NoError(t, err, "a handle from OpenAlignedHandle must always be admissible")
 
-	var reclaimed *query.ErrReadPinReclaimed
-	require.ErrorAs(t, err, &reclaimed)
-	require.Equal(t, lastSeq, reclaimed.Pin)
-	require.Less(t, time.Since(start), time.Second, "must not spin against the frozen handle until the deadline")
+	defer releaseLease()
+	defer func() { _ = snap.Close() }()
+
+	require.Equal(t, lastSeq, mainSeq)
 }
