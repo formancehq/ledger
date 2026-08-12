@@ -282,6 +282,78 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 		"statement_timeout must be '0' (disabled) on a pool connection after Paginate")
 }
 
+// TestTransactionListAdaptive_NoHedgeWithoutJSONBFilter verifies that a list
+// query carrying no JSONB predicate (no metadata/account/source/destination
+// filter) keeps the plain path. Hedging such a query would duplicate work the
+// id index already serves well, with a plan override that cannot help it.
+func TestTransactionListAdaptive_NoHedgeWithoutJSONBFilter(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 4, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          1,
+		ChaserTimeoutMs:        30_000,
+	})
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx, _ bool) error {
+		t.Error("hedging must not run for a query without a JSONB predicate")
+		return nil
+	})
+
+	order := paginate.Order(paginate.OrderDesc)
+	newQuery := func(builder query.Builder) common.ColumnPaginatedQuery[any] {
+		return common.ColumnPaginatedQuery[any]{
+			InitialPaginatedQuery: common.InitialPaginatedQuery[any]{
+				Column:   "id",
+				Order:    &order,
+				PageSize: 15,
+				Options:  common.ResourceQuery[any]{Builder: builder},
+			},
+		}
+	}
+
+	// No filter at all.
+	cursor, err := adaptive.Transactions().Paginate(ctx, newQuery(nil))
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, 6, "all 6 transactions must be returned")
+
+	// Filtered, but on a plain column.
+	cursor, err = adaptive.Transactions().Paginate(ctx, newQuery(query.Gte("id", 1)))
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, 6)
+}
+
+// TestTransactionListAdaptive_OriginalHardErrorNotMasked verifies that a hard
+// error from the original attempt reaches the caller even when the chaser could
+// have produced a result: both attempts run the same query, so a hard failure on
+// one of them is a real failure, not something a lucky second attempt hides.
+func TestTransactionListAdaptive_OriginalHardErrorNotMasked(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 4, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          1,
+		ChaserTimeoutMs:        30_000,
+	})
+
+	// Original fails immediately; the chaser would succeed if it were allowed to.
+	adaptive.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx, isChaser bool) error {
+		if isChaser {
+			return nil
+		}
+		return fmt.Errorf("simulated hard DB error")
+	})
+
+	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
+	require.ErrorContains(t, err, "simulated hard DB error",
+		"the original's hard error must surface instead of a chaser result")
+}
+
 // TestTransactionListAdaptive_BothFail verifies that when both the original and
 // the chaser fail, the error is propagated to the caller.
 func TestTransactionListAdaptive_BothFail(t *testing.T) {

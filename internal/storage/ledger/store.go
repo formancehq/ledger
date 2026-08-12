@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,7 @@ import (
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/query"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
@@ -212,6 +214,40 @@ type transactionsAdaptivePaginator struct {
 	store *Store
 }
 
+// jsonbFilteredProperties are the transaction properties whose filters compile
+// to a JSONB predicate (`metadata @>`, `sources ?|`, …). Combined with
+// ORDER BY id DESC LIMIT n these are the queries that lead Postgres onto the
+// pathological Index Scan Backward — and the only ones worth hedging.
+var jsonbFilteredProperties = []string{"metadata", "account", "source", "destination"}
+
+// queryFiltersOnJSONB reports whether the query carries at least one JSONB
+// predicate. A query without one (unfiltered, or filtered on id/timestamp/
+// reference only) is already served well by the id index, so hedging it would
+// only duplicate work.
+func queryFiltersOnJSONB(q common.PaginatedQuery[any]) bool {
+	var builder query.Builder
+	switch v := q.(type) {
+	case common.OffsetPaginatedQuery[any]:
+		builder = v.Options.Builder
+	case common.ColumnPaginatedQuery[any]:
+		builder = v.Options.Builder
+	case common.InitialPaginatedQuery[any]:
+		builder = v.Options.Builder
+	}
+	if builder == nil {
+		return false
+	}
+
+	found := false
+	_ = builder.Walk(func(_ string, key string, _ *any) error {
+		if slices.Contains(jsonbFilteredProperties, key) || common.MetadataRegex.MatchString(key) {
+			found = true
+		}
+		return nil
+	})
+	return found
+}
+
 // GetOne delegates straight to the base repository — no adaptive logic needed.
 func (a *transactionsAdaptivePaginator) GetOne(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Transaction, error) {
 	return a.store.transactionsBase().GetOne(ctx, q)
@@ -232,6 +268,14 @@ func (a *transactionsAdaptivePaginator) Paginate(
 	// and delegate directly to the base paginator. We cannot safely open
 	// nested transactions or race goroutines within someone else's transaction.
 	if _, ok := a.store.db.(bun.Tx); ok {
+		return a.store.transactionsBase().Paginate(ctx, q)
+	}
+
+	// Only the JSONB-predicate shape suffers from the Index Scan Backward
+	// pathology this mitigation targets. Any other list query keeps the plain
+	// path, so a slow unrelated query never launches a duplicate with
+	// enable_indexscan = off.
+	if !queryFiltersOnJSONB(q) {
 		return a.store.transactionsBase().Paginate(ctx, q)
 	}
 
@@ -283,7 +327,10 @@ func (a *transactionsAdaptivePaginator) Paginate(
 	var origErr error
 	for i := 0; i < 2; i++ {
 		r := <-ch
-		if r.err == nil {
+		// Once the original has failed, a chaser that happened to succeed in the
+		// meantime must not mask it: the two attempts run the same query, so a
+		// hard error on one of them is a real failure the caller has to see.
+		if r.err == nil && origErr == nil {
 			raceCancel()
 			if r.source == "chaser" {
 				a.store.txListChaserWonCounter.Add(ctx, 1)

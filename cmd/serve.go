@@ -142,7 +142,7 @@ func NewServeCommand() *cobra.Command {
 				storagefx.BunConnectModule(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
-					TransactionListConfig: ledgerstore.TransactionListConfig{
+					TransactionListConfig: &ledgerstore.TransactionListConfig{
 						EnableAdaptiveFallback: cfg.TxListAdaptiveFallback,
 						ChaserDelayMs:          cfg.TxListChaserDelayMs,
 						ChaserTimeoutMs:        cfg.TxListChaserTimeoutMs,
