@@ -54,6 +54,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		pendingIsAdd bool
 		reclaimable  [][]byte // the current group's condemned events, applied at its boundary
 		groupUnsafe  bool     // the current group holds an event this package cannot read
+		carryUnsafe  bool     // ...and so does the next one, for a key that could belong to either
 		scanned      int
 	)
 
@@ -83,19 +84,23 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		}
 
 		reclaimable = reclaimable[:0]
-		groupUnsafe = false
+		groupUnsafe = carryUnsafe
+		carryUnsafe = false
 	}
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		tpos := len(key) - suffix
 		if tpos < 1 || key[tpos] != metadataEventTerminator {
-			// The identity cannot be parsed, so the key is attributed to the
-			// group being accumulated: whichever group it sorts inside is the
-			// one whose events must not be reclaimed around it. Removing the
-			// key itself is the checker's business, not GC's.
+			// The identity cannot be parsed, so which group the key belongs to
+			// is unknowable: a truncated key sorts before the very events it
+			// shares an identity with, so it lands between two groups and
+			// could have come from either. Both are preserved — the one being
+			// accumulated and the one that follows. Removing the key itself is
+			// the checker's business, not GC's.
 			scanned++
 			groupUnsafe = true
+			carryUnsafe = true
 
 			continue
 		}

@@ -337,3 +337,43 @@ func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T
 		require.NoError(t, closer.Close())
 	}
 }
+
+// A truncated key sorts BEFORE the events it shares an identity with, since
+// it is their prefix. Its own identity cannot be parsed, so it lands between
+// two groups with no way to tell which one it came from: both must be
+// preserved, or the group it actually belongs to is reclaimed around it.
+func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
+	t.Parallel()
+
+	const watermark = 100
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	event := func(entity string, seq uint64, op byte) []byte {
+		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte(entity), seq, op)...)
+	}
+
+	// a:1 is condemnable on its own: an ADD superseded by a DEL, both below
+	// the watermark.
+	keys := [][]byte{event("a:1", 5, MetadataEventAdd), event("a:1", 7, MetadataEventDel)}
+
+	// The malformed key is a:1's own key with its tail cut off, so it sorts
+	// ahead of both — and its terminator is no longer where the layout says.
+	truncated := append([]byte(nil), keys[0][:len(keys[0])-3]...)
+	require.NoError(t, s.DB().Set(truncated, nil, pebble.NoSync))
+
+	for _, key := range keys {
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
+	require.NoError(t, err)
+	require.Zero(t, pruned, "the group behind an unattributable key must be preserved")
+
+	for i, key := range keys {
+		_, closer, getErr := s.DB().Get(key)
+		require.NoError(t, getErr, "event %d must survive the malformed key that precedes it", i)
+		require.NoError(t, closer.Close())
+	}
+}
