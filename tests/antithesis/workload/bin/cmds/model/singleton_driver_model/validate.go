@@ -377,7 +377,13 @@ func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log
 		}
 
 		ledger := oracle.LedgerOf(req)
-		data := logs[i].GetPayload().GetApply().GetLog().GetData()
+		entry := logs[i].GetPayload().GetApply().GetLog()
+		data := entry.GetData()
+
+		// The log's date is the one part of the stream the model cannot
+		// derive; its id is derived, so it is checked against the server
+		// rather than copied from it.
+		gs.LearnLogDate(ledger, entry.GetId(), entry.GetDate())
 
 		switch {
 		case data.GetCreatedTransaction() != nil:

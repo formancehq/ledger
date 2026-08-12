@@ -191,6 +191,47 @@ func (g GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, inserted
 	g.ledgers[ledger] = ls
 }
 
+// LearnLogDate fills in a log's server-assigned date, the one field of the
+// stream the model cannot derive. The id is not learned: it is derived from
+// the stream's density, so a server that assigned a different one must be
+// caught, not copied.
+func (g GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Timestamp) {
+	ls, ok := g.ledgers[ledger]
+	if !ok || id == 0 || id > uint64(ls.logs.Len()) {
+		return
+	}
+
+	rec := *ls.logs.Get(int(id - 1))
+	if rec.date == nil {
+		rec.date = date
+	}
+
+	ls.logs = ls.logs.Set(int(id-1), &rec)
+	g.ledgers[ledger] = ls
+}
+
+// LogDates returns each committed log's (id, date), ascending. A nil date is
+// one not yet learned from a commit response.
+func (s LedgerState) LogDates() []struct {
+	ID   uint64
+	Date *commonpb.Timestamp
+} {
+	out := make([]struct {
+		ID   uint64
+		Date *commonpb.Timestamp
+	}, 0, s.logs.Len())
+
+	for i := range s.logs.Len() {
+		rec := s.logs.Get(i)
+		out = append(out, struct {
+			ID   uint64
+			Date *commonpb.Timestamp
+		}{ID: rec.id, Date: rec.date})
+	}
+
+	return out
+}
+
 // FieldTypesFor returns the declared-type map for a metadata target — the
 // schema slice the generator consults for indexable fields.
 func (s LedgerState) FieldTypesFor(target commonpb.TargetType) Map[string, commonpb.MetadataType] {

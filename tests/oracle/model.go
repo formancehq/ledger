@@ -330,18 +330,25 @@ func txRefTerm(ref string, id int) Digest {
 // relationships (revertedBy, revertsTransaction, revertedAt) distinguish
 // serializations where the same id is reverted by, or reverts, a different
 // transaction.
-// logRecord is one entry of the ledger log stream. The date is server-assigned
-// and unpredictable, so it is not modelled: the log filters that read it are
-// checked against the server's own value rather than a prediction.
+// logRecord is one entry of the ledger log stream. The id is DERIVED, never
+// taken from the server: the stream is dense from 1, so the model can predict
+// it, and predicting it is what lets a mis-assigned id be caught at all. Only
+// the date is learned from the commit response (LearnLogDate) — it is
+// server-assigned with no derivable value, and nil means not yet learned.
 type logRecord struct {
 	id   uint64
 	kind string
+	date *commonpb.Timestamp
 }
 
 func logTerm(idx int, l *logRecord) Digest {
 	t := newTerm("LOG")
 	t.u64(uint64(idx), l.id)
 	t.str(l.kind)
+
+	// A nil date (not yet learned) must not collide with any concrete value.
+	t.boolean(l.date != nil)
+	t.u64(l.date.GetData())
 
 	return t.sum()
 }

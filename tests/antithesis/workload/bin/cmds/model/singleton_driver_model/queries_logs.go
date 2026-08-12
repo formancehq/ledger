@@ -96,35 +96,11 @@ func genLogUintCond() *commonpb.UintCondition {
 	return cond
 }
 
-// datePredicated reports whether the filter reads the log date, which the model
-// does not predict.
-func datePredicated(f *commonpb.QueryFilter) bool {
-	switch t := f.GetFilter().(type) {
-	case nil:
-		return false
-	case *commonpb.QueryFilter_LogBuiltinUint:
-		return true
-	case *commonpb.QueryFilter_And:
-		for _, sub := range t.And.GetFilters() {
-			if datePredicated(sub) {
-				return true
-			}
-		}
-	case *commonpb.QueryFilter_Or:
-		for _, sub := range t.Or.GetFilters() {
-			if datePredicated(sub) {
-				return true
-			}
-		}
-	case *commonpb.QueryFilter_Not:
-		return datePredicated(t.Not.GetFilter())
-	}
-
-	return false
-}
-
-// matchLogFilter evaluates a date-free LOGS filter against a modelled log.
-func matchLogFilter(ledger string, id uint64, f *commonpb.QueryFilter) bool {
+// matchLogFilter evaluates a LOGS filter against one modelled log. date is the
+// server-assigned value learned at commit; it is nil only for a log whose
+// response has not been folded yet, and a date leaf then matches nothing —
+// the caller must not compare such a window (logWindow skips those rows).
+func matchLogFilter(ledger string, id uint64, date *commonpb.Timestamp, f *commonpb.QueryFilter) bool {
 	switch t := f.GetFilter().(type) {
 	case nil:
 		return true
@@ -132,9 +108,11 @@ func matchLogFilter(ledger string, id uint64, f *commonpb.QueryFilter) bool {
 		return ledger == t.Ledger.GetCond().GetHardcoded()
 	case *commonpb.QueryFilter_LogId:
 		return matchUintCond(id, t.LogId.GetCond())
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		return date != nil && matchUintCond(date.GetData(), t.LogBuiltinUint.GetCond())
 	case *commonpb.QueryFilter_And:
 		for _, sub := range t.And.GetFilters() {
-			if !matchLogFilter(ledger, id, sub) {
+			if !matchLogFilter(ledger, id, date, sub) {
 				return false
 			}
 		}
@@ -142,14 +120,14 @@ func matchLogFilter(ledger string, id uint64, f *commonpb.QueryFilter) bool {
 		return true
 	case *commonpb.QueryFilter_Or:
 		for _, sub := range t.Or.GetFilters() {
-			if matchLogFilter(ledger, id, sub) {
+			if matchLogFilter(ledger, id, date, sub) {
 				return true
 			}
 		}
 
 		return false
 	case *commonpb.QueryFilter_Not:
-		return !matchLogFilter(ledger, id, t.Not.GetFilter())
+		return !matchLogFilter(ledger, id, date, t.Not.GetFilter())
 	}
 
 	// Every LOGS-valid condition is handled above; anything else means the
@@ -181,16 +159,16 @@ func matchUintCond(v uint64, c *commonpb.UintCondition) bool {
 func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int) []uint64 {
 	var window []uint64
 
-	for _, id := range ls.LogIDs() {
-		if id <= afterSeq {
+	for _, row := range ls.LogDates() {
+		if row.ID <= afterSeq {
 			continue
 		}
 
-		if !matchLogFilter(ledger, id, filter) {
+		if !matchLogFilter(ledger, row.ID, row.Date, filter) {
 			continue
 		}
 
-		window = append(window, id)
+		window = append(window, row.ID)
 		if len(window) == pageSize {
 			break
 		}
@@ -291,18 +269,7 @@ func (c *Checker) validateLogQuery(maxTicket uint64, ledger string, filter *comm
 		}
 	}
 
-	// A date leaf is not predictable — the date is server-assigned — so the
-	// model can only require that the page be drawn from the logs that exist
-	// and satisfy the filter's date-free part. Dropping the date leaf makes
-	// the predicate strictly weaker, so every row the server may legitimately
-	// return still passes; a row failing it is wrong under any date.
-	if datePredicated(filter) {
-		if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
-			return logsWithinRelaxed(base.Ledger(ledger), ledger, filter, afterSeq, ids)
-		}) {
-			return
-		}
-	} else if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
+	if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
 		return equalUint64(logWindow(base.Ledger(ledger), ledger, filter, afterSeq, pageSize), ids)
 	}) {
 		return
@@ -313,7 +280,6 @@ func (c *Checker) validateLogQuery(maxTicket uint64, ledger string, filter *comm
 		"filter":    describeFilter(filter),
 		"afterSeq":  afterSeq,
 		"pageSize":  pageSize,
-		"dated":     datePredicated(filter),
 		"rows":      len(ids),
 		"serverIds": joinUint64(ids),
 		"modelIds":  joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
@@ -343,63 +309,4 @@ func equalUint64(a, b []uint64) bool {
 	}
 
 	return true
-}
-
-// logsWithinRelaxed checks a date-predicated page: every returned id must be a
-// committed log of this ledger that passes the filter with its date leaves
-// treated as satisfiable. It catches rows that no date could justify — an id
-// the ledger never had, or one the date-free part excludes.
-func logsWithinRelaxed(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, ids []uint64) bool {
-	known := map[uint64]bool{}
-	for _, id := range ls.LogIDs() {
-		known[id] = true
-	}
-
-	for _, id := range ids {
-		if !known[id] || id <= afterSeq {
-			return false
-		}
-
-		if !matchLogFilter(ledger, id, relaxDates(filter)) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// relaxDates rewrites a filter so date leaves read as "true", leaving the rest
-// intact. A NOT above a date leaf then reads as "false", which is the correct
-// weakening: under negation an unpredictable term can exclude anything, so the
-// branch asserts nothing.
-func relaxDates(f *commonpb.QueryFilter) *commonpb.QueryFilter {
-	switch t := f.GetFilter().(type) {
-	case nil:
-		return nil
-	case *commonpb.QueryFilter_LogBuiltinUint:
-		return nil // nil matches everything
-	case *commonpb.QueryFilter_And:
-		out := make([]*commonpb.QueryFilter, 0, len(t.And.GetFilters()))
-		for _, sub := range t.And.GetFilters() {
-			out = append(out, relaxDates(sub))
-		}
-
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: out}}}
-	case *commonpb.QueryFilter_Or:
-		// An OR with a relaxed arm is satisfied by that arm alone, so it
-		// constrains nothing.
-		if datePredicated(f) {
-			return nil
-		}
-
-		return f
-	case *commonpb.QueryFilter_Not:
-		if datePredicated(f) {
-			return nil
-		}
-
-		return f
-	}
-
-	return f
 }
