@@ -298,3 +298,42 @@ func TestInspectIndex_RejectsUnknownOp(t *testing.T) {
 		require.Error(t, err, "mode %d must refuse to report statistics over an unreadable event", mode)
 	}
 }
+
+// The unreadable event can arrive after the group has already been judged:
+// an event at or above the watermark settles the pending one mid-group, and
+// only a later key reveals the group cannot be read. Reclamation must still
+// be withheld, so judging and reclaiming have to be separate steps.
+func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T) {
+	t.Parallel()
+
+	const watermark = 100
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	event := func(seq uint64, op byte) []byte {
+		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), seq, op)...)
+	}
+
+	// Two condemnable events below the watermark, then one above it (which
+	// settles them), then the unreadable one.
+	keys := [][]byte{
+		event(5, MetadataEventAdd),
+		event(7, MetadataEventDel),
+		event(150, MetadataEventAdd),
+		event(160, 0x7f),
+	}
+	for _, key := range keys {
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
+	require.NoError(t, err)
+	require.Zero(t, pruned, "an unreadable group is preserved whole, whenever the unreadable event appears")
+
+	for i, key := range keys {
+		_, closer, getErr := s.DB().Get(key)
+		require.NoError(t, getErr, "event %d must survive: the group is unreadable", i)
+		require.NoError(t, closer.Close())
+	}
+}

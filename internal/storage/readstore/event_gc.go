@@ -57,17 +57,23 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		scanned      int
 	)
 
-	// Reclamation is decided per event but applied per group, because whether
-	// it is safe at all is only known once the whole group has been read: an
-	// event superseded early can be condemned before a later unreadable one
-	// proves the group must be preserved.
-	flush := func() {
-		// The group ended: the pending latest-below-watermark event survives
-		// only as a live ADD.
+	// settle judges the pending latest-below-watermark event, which survives
+	// only as a live ADD. It condemns; it does not reclaim.
+	settle := func() {
 		if pendingBelow != nil && !pendingIsAdd {
 			reclaimable = append(reclaimable, append([]byte(nil), pendingBelow...))
 		}
+
 		pendingBelow = nil
+	}
+
+	// closeGroup applies what the group condemned. Reclamation is decided per
+	// event but applied only here, because whether it is safe at all is not
+	// known until the whole group has been read: an event superseded early is
+	// condemned long before a later unreadable one proves the group must be
+	// preserved whole.
+	closeGroup := func() {
+		settle()
 
 		if !groupUnsafe {
 			for _, key := range reclaimable {
@@ -97,7 +103,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		identity := key[:tpos]
 
 		if !bytes.Equal(identity, group) {
-			flush()
+			closeGroup()
 
 			// Budget is only enforced at group boundaries so a group is
 			// never judged from a partial view of its events.
@@ -129,8 +135,10 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 			// Above the watermark nothing is reclaimable, and the group's
 			// pending below-watermark event gets judged now: a pending ADD
 			// still decides pins in [watermark, seq) and survives; a pending
-			// DEL decides "dead", the same verdict as absence, and goes.
-			flush()
+			// DEL decides "dead", the same verdict as absence, and is
+			// condemned. Judging is not reclaiming — the group may still turn
+			// out to hold an event this package cannot read.
+			settle()
 
 			continue
 		}
@@ -145,7 +153,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 	}
 
 	if next == nil {
-		flush()
+		closeGroup()
 	}
 
 	if pruned > 0 {
