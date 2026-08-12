@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -266,6 +267,367 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrChapterNotClosed{ChapterID: 3},
 			wantReason:  domain.ErrReasonChapterNotClosed,
 			wantContext: map[string]string{"chapterId": "3"},
+		},
+		{
+			name:        "LedgerDeleted",
+			err:         &domain.ErrLedgerDeleted{Name: "deleted-ledger"},
+			wantReason:  domain.ErrReasonLedgerDeleted,
+			wantContext: map[string]string{"name": "deleted-ledger"},
+		},
+		{
+			name:        "IdempotencyKeyConflict",
+			err:         &domain.ErrIdempotencyKeyConflict{Key: "idem-key-9"},
+			wantReason:  domain.ErrReasonIdempotencyKeyConflict,
+			wantContext: map[string]string{"key": "idem-key-9"},
+		},
+		{
+			// ExistingTransactionID is gated on != 0 (errors.go:561), so a
+			// collision detected without the owning id projects two keys.
+			name: "TransactionReferenceConflictWithoutExistingID",
+			err: &domain.ErrTransactionReferenceConflict{
+				Ledger:    "main",
+				Reference: "invoice-7",
+			},
+			wantReason:  domain.ErrReasonTransactionReferenceConflict,
+			wantContext: map[string]string{"ledger": "main", "reference": "invoice-7"},
+		},
+		{
+			name: "TransactionReferenceConflictWithExistingID",
+			err: &domain.ErrTransactionReferenceConflict{
+				Ledger:                "main",
+				Reference:             "invoice-8",
+				ExistingTransactionID: 77,
+			},
+			wantReason: domain.ErrReasonTransactionReferenceConflict,
+			wantContext: map[string]string{
+				"ledger":                "main",
+				"reference":             "invoice-8",
+				"existingTransactionId": "77",
+			},
+		},
+		{
+			name:        "TransactionReferenceNotFound",
+			err:         &domain.ErrTransactionReferenceNotFound{Reference: "invoice-404"},
+			wantReason:  domain.ErrReasonTransactionReferenceNotFound,
+			wantContext: map[string]string{"reference": "invoice-404"},
+		},
+		{
+			name:        "TransactionAlreadyReverted",
+			err:         &domain.ErrTransactionAlreadyReverted{TransactionID: 91},
+			wantReason:  domain.ErrReasonTransactionAlreadyReverted,
+			wantContext: map[string]string{"transactionId": "91"},
+		},
+		{
+			name: "TransactionStateInconsistent",
+			err: &domain.ErrTransactionStateInconsistent{
+				TransactionID: 91,
+				Operation:     "reverting transaction",
+			},
+			wantReason: domain.ErrReasonTransactionStateInconsistent,
+			wantContext: map[string]string{
+				"transactionId": "91",
+				"operation":     "reverting transaction",
+			},
+		},
+		{
+			// The Provided enum is rendered through domain.ReasonString, so the
+			// projected value is the client-facing identifier, not the enum name.
+			name:        "InvalidSkippableReason",
+			err:         &domain.ErrInvalidSkippableReason{Provided: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"reason": domain.ErrReasonLedgerNotFound},
+		},
+		{
+			name:        "VolumeOverflow",
+			err:         &domain.ErrVolumeOverflow{Account: "user:dave", Asset: "USD/2", Color: "RESERVED", Side: "input", Amount: "9", Current: "8"},
+			wantReason:  domain.ErrReasonVolumeOverflow,
+			wantContext: map[string]string{"account": "user:dave", "asset": "USD/2", "color": "RESERVED", "side": "input", "amount": "9", "current": "8"},
+		},
+		{
+			name:        "BalanceNotFound",
+			err:         &domain.ErrBalanceNotFound{Account: "user:erin", Asset: "USD/2"},
+			wantReason:  domain.ErrReasonBalanceNotFound,
+			wantContext: map[string]string{"account": "user:erin", "asset": "USD/2"},
+		},
+		{
+			// Unlike ErrInsufficientFunds this type publishes color
+			// UNCONDITIONALLY (errors.go:1249) — only Error() branches on the
+			// empty color. Both rows therefore carry the same key set.
+			name:        "BalanceNotPreloadedColored",
+			err:         &domain.ErrBalanceNotPreloaded{Account: "user:frank", Asset: "USD/2", Color: "RESERVED"},
+			wantReason:  domain.ErrReasonBalanceNotPreloaded,
+			wantContext: map[string]string{"account": "user:frank", "asset": "USD/2", "color": "RESERVED"},
+		},
+		{
+			name:        "BalanceNotPreloadedUncolored",
+			err:         &domain.ErrBalanceNotPreloaded{Account: "user:grace", Asset: "EUR/2"},
+			wantReason:  domain.ErrReasonBalanceNotPreloaded,
+			wantContext: map[string]string{"account": "user:grace", "asset": "EUR/2", "color": ""},
+		},
+		{
+			name:        "VolumeNotMaterialized",
+			err:         &domain.ErrVolumeNotMaterialized{Account: "user:heidi", Asset: "USD/2", Color: "RESERVED", Side: "source"},
+			wantReason:  domain.ErrReasonVolumeNotMaterialized,
+			wantContext: map[string]string{"account": "user:heidi", "asset": "USD/2", "color": "RESERVED", "side": "source"},
+		},
+		{
+			// joinedAccounts renders "account/asset" for the uncolored bucket and
+			// "account/asset/color" otherwise (errors.go:1276-1287); one row with
+			// both shapes covers both branches. The producer pre-sorts, so this
+			// rendering is what the audit hash binds.
+			name: "TransientAccountNonZero",
+			err: &domain.ErrTransientAccountNonZero{Accounts: []domain.AccountAssetKey{
+				{Account: "transient:a", Asset: "USD/2"},
+				{Account: "transient:b", Asset: "EUR/2", Color: "RESERVED"},
+			}},
+			wantReason:  domain.ErrReasonTransientAccountNonZero,
+			wantContext: map[string]string{"accounts": "transient:a/USD/2, transient:b/EUR/2/RESERVED"},
+		},
+		{
+			name:        "SinkBatchSizeTooLarge",
+			err:         &domain.ErrSinkBatchSizeTooLarge{Name: "kafka-main", BatchSize: 200000, Max: domain.MaxSinkBatchSize},
+			wantReason:  domain.ErrReasonSinkBatchSizeTooLarge,
+			wantContext: map[string]string{"name": "kafka-main", "batchSize": "200000", "max": "100000"},
+		},
+		{
+			name:        "MetadataNotFound",
+			err:         &domain.ErrMetadataNotFound{Target: "transaction:42", Key: "invoice"},
+			wantReason:  domain.ErrReasonMetadataNotFound,
+			wantContext: map[string]string{"target": "transaction:42", "key": "invoice"},
+		},
+		{
+			name:        "MetadataFieldNotInSchema",
+			err:         &domain.ErrMetadataFieldNotInSchema{Target: "TRANSACTION", Key: "invoice"},
+			wantReason:  domain.ErrReasonMetadataFieldNotInSchema,
+			wantContext: map[string]string{"target": "TRANSACTION", "key": "invoice"},
+		},
+		{
+			name:        "ChapterNotFound",
+			err:         &domain.ErrChapterNotFound{ChapterID: 4},
+			wantReason:  domain.ErrReasonChapterNotFound,
+			wantContext: map[string]string{"chapterId": "4"},
+		},
+		{
+			name:        "ChapterNotClosing",
+			err:         &domain.ErrChapterNotClosing{ChapterID: 5},
+			wantReason:  domain.ErrReasonChapterNotClosing,
+			wantContext: map[string]string{"chapterId": "5"},
+		},
+		{
+			name:        "ChapterNotArchiving",
+			err:         &domain.ErrChapterNotArchiving{ChapterID: 6},
+			wantReason:  domain.ErrReasonChapterNotArchiving,
+			wantContext: map[string]string{"chapterId": "6"},
+		},
+		{
+			name:        "MirrorV2LogIDGap",
+			err:         &domain.ErrMirrorV2LogIDGap{Name: "mirror-ledger", Got: 12, Expected: 9},
+			wantReason:  domain.ErrReasonMirrorV2LogIDGap,
+			wantContext: map[string]string{"name": "mirror-ledger", "got": "12", "expected": "9"},
+		},
+		{
+			name:        "MirrorV2LogIDInvalid",
+			err:         &domain.ErrMirrorV2LogIDInvalid{Name: "mirror-ledger"},
+			wantReason:  domain.ErrReasonMirrorV2LogIDInvalid,
+			wantContext: map[string]string{"name": "mirror-ledger"},
+		},
+		{
+			name:        "PreparedQueryAlreadyExists",
+			err:         &domain.ErrPreparedQueryAlreadyExists{Ledger: "main", Name: "top-accounts"},
+			wantReason:  domain.ErrReasonPreparedQueryAlreadyExists,
+			wantContext: map[string]string{"ledger": "main", "name": "top-accounts"},
+		},
+		{
+			name:        "PreparedQueryNotFound",
+			err:         &domain.ErrPreparedQueryNotFound{Ledger: "main", Name: "missing-query"},
+			wantReason:  domain.ErrReasonPreparedQueryNotFound,
+			wantContext: map[string]string{"ledger": "main", "name": "missing-query"},
+		},
+		{
+			name:        "IndexNotFound",
+			err:         &domain.ErrIndexNotFound{Index: "main/TRANSACTION/invoice"},
+			wantReason:  domain.ErrReasonIndexNotFound,
+			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
+		},
+		{
+			name:        "IndexBuilding",
+			err:         &domain.ErrIndexBuilding{Index: "main/TRANSACTION/invoice"},
+			wantReason:  domain.ErrReasonIndexBuilding,
+			wantContext: map[string]string{"index": "main/TRANSACTION/invoice"},
+		},
+		{
+			name:        "IndexInconsistent",
+			err:         &domain.ErrIndexInconsistent{Index: "main/TRANSACTION/invoice", Detail: "logId 7 missing from the log index"},
+			wantReason:  domain.ErrReasonIndexInconsistent,
+			wantContext: map[string]string{"index": "main/TRANSACTION/invoice", "detail": "logId 7 missing from the log index"},
+		},
+		{
+			name:        "CheckpointNotReady",
+			err:         &domain.ErrCheckpointNotReady{CheckpointID: 18},
+			wantReason:  domain.ErrReasonCheckpointNotReady,
+			wantContext: map[string]string{"checkpointId": "18"},
+		},
+		{
+			// The Go field is Detail; the wire key is "reason" (legacy contract,
+			// errors.go:1051) — a rename here would break the audited key set.
+			name:        "InvalidReceipt",
+			err:         &domain.ErrInvalidReceipt{Detail: "signature verification failed"},
+			wantReason:  domain.ErrReasonInvalidReceipt,
+			wantContext: map[string]string{"reason": "signature verification failed"},
+		},
+		{
+			// Version is gated on != "" (errors.go:1073), and Error() branches on
+			// the same field.
+			name:        "NumscriptNotFoundWithoutVersion",
+			err:         &domain.ErrNumscriptNotFound{Name: "payout"},
+			wantReason:  domain.ErrReasonNumscriptNotFound,
+			wantContext: map[string]string{"name": "payout"},
+		},
+		{
+			name:        "NumscriptNotFoundWithVersion",
+			err:         &domain.ErrNumscriptNotFound{Name: "payout", Version: "1.2.3"},
+			wantReason:  domain.ErrReasonNumscriptNotFound,
+			wantContext: map[string]string{"name": "payout", "version": "1.2.3"},
+		},
+		{
+			name:        "NumscriptVersionAlreadyExists",
+			err:         &domain.ErrNumscriptVersionAlreadyExists{Name: "payout", Version: "1.2.3"},
+			wantReason:  domain.ErrReasonNumscriptVersionAlreadyExists,
+			wantContext: map[string]string{"name": "payout", "version": "1.2.3"},
+		},
+		{
+			name:        "NumscriptInvalidVersion",
+			err:         &domain.ErrNumscriptInvalidVersion{Version: "v1"},
+			wantReason:  domain.ErrReasonNumscriptInvalidVersion,
+			wantContext: map[string]string{"version": "v1"},
+		},
+		{
+			name:        "NumscriptParse",
+			err:         &domain.ErrNumscriptParse{Details: "unexpected token at line 3"},
+			wantReason:  domain.ErrReasonNumscriptParseError,
+			wantContext: map[string]string{"details": "unexpected token at line 3"},
+		},
+		{
+			name:        "NumscriptRuntime",
+			err:         &domain.ErrNumscriptRuntime{Detail: "posting amount is negative"},
+			wantReason:  domain.ErrReasonNumscriptRuntime,
+			wantContext: map[string]string{"detail": "posting amount is negative"},
+		},
+		{
+			name:        "AccountNotMatchingType",
+			err:         &domain.ErrAccountNotMatchingType{Address: "user:ivan"},
+			wantReason:  domain.ErrReasonAccountNotMatchingType,
+			wantContext: map[string]string{"address": "user:ivan"},
+		},
+		{
+			name:        "AccountTypeNotFound",
+			err:         &domain.ErrAccountTypeNotFound{Name: "missing-type"},
+			wantReason:  domain.ErrReasonAccountTypeNotFound,
+			wantContext: map[string]string{"name": "missing-type"},
+		},
+		{
+			name:        "AccountTypeAlreadyExists",
+			err:         &domain.ErrAccountTypeAlreadyExists{Name: "existing-type"},
+			wantReason:  domain.ErrReasonAccountTypeAlreadyExists,
+			wantContext: map[string]string{"name": "existing-type"},
+		},
+		{
+			name:        "AccountTypeHasAccounts",
+			err:         &domain.ErrAccountTypeHasAccounts{Name: "users"},
+			wantReason:  domain.ErrReasonAccountTypeHasAccounts,
+			wantContext: map[string]string{"name": "users"},
+		},
+		{
+			// NewPattern is projected under the key "pattern" — the field name
+			// and the audited key differ (errors.go:1159).
+			name: "AccountTypeConflict",
+			err: &domain.ErrAccountTypeConflict{
+				NewPattern:      "user:*",
+				ExistingName:    "users",
+				ExistingPattern: "user:**",
+			},
+			wantReason: domain.ErrReasonAccountTypeConflict,
+			wantContext: map[string]string{
+				"pattern":         "user:*",
+				"existingName":    "users",
+				"existingPattern": "user:**",
+			},
+		},
+		{
+			name:        "InvalidPattern",
+			err:         &domain.ErrInvalidPattern{Pattern: "user:[", Details: "unterminated character class"},
+			wantReason:  domain.ErrReasonInvalidPattern,
+			wantContext: map[string]string{"pattern": "user:[", "details": "unterminated character class"},
+		},
+		{
+			// Reason() delegates to the Cause when it is a Describable
+			// (errors.go:1218-1225) and falls back to VALIDATION otherwise, so
+			// each of the three Cause shapes gets a row. Metadata() projects
+			// details = Error(), which itself branches on a nil Cause.
+			name:        "DependencyDiscoveryFailedNilCause",
+			err:         &domain.ErrDependencyDiscoveryFailed{},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"details": "numscript dependency discovery failed"},
+		},
+		{
+			name:        "DependencyDiscoveryFailedOpaqueCause",
+			err:         &domain.ErrDependencyDiscoveryFailed{Cause: errors.New("resolver timed out")},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"details": "numscript dependency discovery failed: resolver timed out"},
+		},
+		{
+			name:        "DependencyDiscoveryFailedDescribableCause",
+			err:         &domain.ErrDependencyDiscoveryFailed{Cause: &domain.ErrLedgerNotFound{Name: "absent-ledger"}},
+			wantReason:  domain.ErrReasonLedgerNotFound,
+			wantContext: map[string]string{"details": "numscript dependency discovery failed: ledger does not exist: absent-ledger"},
+		},
+		{
+			name:        "FilterCompilation",
+			err:         &domain.ErrFilterCompilation{Detail: "cannot parse 'x' as int64"},
+			wantReason:  domain.ErrReasonFilterCompilation,
+			wantContext: map[string]string{"detail": "cannot parse 'x' as int64"},
+		},
+		{
+			name:        "InvalidOrderType",
+			err:         &domain.ErrInvalidOrderType{TypeName: "*raftcmdpb.Order_Unknown"},
+			wantReason:  domain.ErrReasonInvalidOrderType,
+			wantContext: map[string]string{"typeName": "*raftcmdpb.Order_Unknown"},
+		},
+		{
+			name:        "InvalidApplyType",
+			err:         &domain.ErrInvalidApplyType{TypeName: "*raftcmdpb.LedgerApplyOrder_Unknown"},
+			wantReason:  domain.ErrReasonInvalidApplyType,
+			wantContext: map[string]string{"typeName": "*raftcmdpb.LedgerApplyOrder_Unknown"},
+		},
+		{
+			// The Go field is Reason_ (the name Reason() is taken by the
+			// interface); the audited key is "reason" (errors.go:1531).
+			name:        "InvalidExecutionPlan",
+			err:         &domain.ErrInvalidExecutionPlan{Reason_: "coverage bit 9 past the attribute slice"},
+			wantReason:  domain.ErrReasonInvalidExecutionPlan,
+			wantContext: map[string]string{"reason": "coverage bit 9 past the attribute slice"},
+		},
+		{
+			name:        "ExecutionPlanTooLarge",
+			err:         &domain.ErrExecutionPlanTooLarge{Size: 4096, Limit: 1024},
+			wantReason:  domain.ErrReasonExecutionPlanTooLarge,
+			wantContext: map[string]string{"size": "4096", "limit": "1024"},
+		},
+		{
+			// Metadata() returns nil and Error() is a constant: the Cause is
+			// deliberately kept off the wire (#326), so a populated Cause must
+			// change neither the message nor the context.
+			name:        "IdempotencyCheckFailed",
+			err:         &domain.ErrIdempotencyCheckFailed{Cause: errors.New("pebble: /var/lib/ledger: io error")},
+			wantReason:  domain.ErrReasonIdempotencyCheckFailed,
+			wantContext: map[string]string{},
+		},
+		{
+			// Only Operation is projected; the Cause stays server-side (#326).
+			name:        "StorageOperation",
+			err:         &domain.ErrStorageOperation{Operation: "loading volume", Cause: errors.New("pebble: /var/lib/ledger: io error")},
+			wantReason:  domain.ErrReasonStorageOperation,
+			wantContext: map[string]string{"operation": "loading volume"},
 		},
 		{
 			// The EN-1379 key set, pinned on the surface that matters most: an
