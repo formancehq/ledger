@@ -951,7 +951,8 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 							Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 								CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 									NumscriptReference: &raftcmdpb.NumscriptReference{
-										Name: "pay",
+										Name:    "pay",
+										Version: "latest",
 										Vars: map[string]string{
 											"account": "users:alice",
 											"amount":  "USD/2 1000",
@@ -988,10 +989,10 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			Asset:      "USD/2",
 		}.Bytes()), "should discover destination account from reference vars")
 
-		// Admission no longer rewrites the reference — the audited order keeps the
-		// client's selector (empty = latest); only planning/discovery resolves it.
+		// Admission does not rewrite the reference — the audited order keeps the
+		// client's selector; only planning/discovery resolves it.
 		ref := orders[0].GetLedgerScoped().GetApply().GetCreateTransaction().GetNumscriptReference()
-		require.Equal(t, "", ref.GetVersion())
+		require.Equal(t, "latest", ref.GetVersion())
 		require.Equal(t, "users:alice", ref.GetVars()["account"])
 	})
 

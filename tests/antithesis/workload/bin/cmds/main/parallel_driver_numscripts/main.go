@@ -57,8 +57,9 @@ func main() {
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							ScriptReference: &servicepb.ScriptReference{
-								Name: scriptName,
-								Vars: vars,
+								Name:    scriptName,
+								Version: "latest",
+								Vars:    vars,
 							},
 							Force: true,
 						},
