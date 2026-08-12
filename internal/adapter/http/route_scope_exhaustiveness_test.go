@@ -64,6 +64,17 @@ type routeScope struct {
 	anyMethod bool               // registered with r.Handle, so answers all methods
 }
 
+// probeMethod is the method to send for a row: anyMethod rows share one handler
+// and one middleware chain across all 9 methods, so one representative method
+// asserts everything the other 8 would.
+func (row routeScope) probeMethod() string {
+	if row.anyMethod {
+		return http.MethodGet
+	}
+
+	return row.method
+}
+
 // anyMethodMethods is the method set chi fans a r.Handle registration out to
 // (see chi's methodMap). An anyMethod row expands to one walk entry per method.
 var anyMethodMethods = []string{
@@ -216,6 +227,12 @@ type walkKey struct {
 // Controller methods with AnyTimes, would make these tests break every time
 // Controller gains a method, which is the opposite of what a stable
 // authorization guard should do.
+//
+// Do NOT reuse this outside the route-scope probes. Because Errorf is a no-op
+// and nothing calls Finish, unmet expectations and calls with the wrong
+// arguments are never reported: a handler test built on it would pass while
+// asserting nothing. Ordinary handler tests take a gomock controller bound to
+// their own *testing.T (see newTestServer).
 func inertBackend() *MockBackend {
 	return NewMockBackend(gomock.NewController(panickingReporter{}))
 }
@@ -356,9 +373,17 @@ func TestRouteScopes_Exhaustive(t *testing.T) {
 }
 
 // TestRouteScopes_TableComposition checks the declared table is internally
-// well-formed, so the reconciliation and the probes actually cover every row:
-// no endpoint declared twice, the anyMethod fan-out expanding to the arithmetic
-// it claims, and a scope declared exactly on the rows that have a gate.
+// well-formed, so the reconciliation and the probes actually cover every row: no
+// endpoint declared twice, and a scope declared on exactly the rows that have a
+// gate — one that really exists.
+//
+// It deliberately does NOT pin row counts. The frozen 74/68/5/1 counts this
+// replaced trained the habit of bumping a number until green, and their failure
+// message ("expected 74, got 75") said nothing about what to do. Removing them
+// gave up one thing knowingly: detection of a partial truncation that deletes
+// rows *and* their routes together. That case is covered where it matters
+// instead, by the require.NotZero guard in each of the three probe tests, which
+// fails with a sentence rather than a number. Do not reintroduce the counts.
 func TestRouteScopes_TableComposition(t *testing.T) {
 	t.Parallel()
 
@@ -377,23 +402,37 @@ func TestRouteScopes_TableComposition(t *testing.T) {
 		}
 	}
 
-	// Derived, not frozen: adding a route changes the operands, so the identity
-	// still holds and nobody has to bump a magic number.
+	// A cross-check on expandTable rather than an independent fact: with the
+	// duplicates it just rejected, this identity holds by construction. It is kept
+	// because it would catch the helper dropping or double-counting a fan-out.
 	require.Len(t, expanded, singleMethodRows+len(anyMethodMethods)*anyMethodRows,
 		"expanding %d single-method rows and %d anyMethod rows must yield one entry per endpoint",
 		singleMethodRows, anyMethodRows)
 
-	// A scope is declared exactly on the guarded rows. Both directions are
-	// load-bearing: a kindGuarded row with an empty scope would make the positive
-	// probe blame the router for a malformed row, and a scope on a kindPublic or
-	// kindPerElement row is read by nothing at all, so it would drift unnoticed.
+	// A scope is declared on exactly the guarded rows, and it is a real granular
+	// scope. All three directions are load-bearing:
+	//
+	//   - a kindGuarded row with no scope, or one that is not in
+	//     AllGranularScopes, mints no token (scopeProbeFixture keys its tokens on
+	//     that set), so the probe sends no Authorization header and the failure
+	//     reads "must admit its declared scope X but answered 401" — blaming the
+	//     router for a malformed row. This check is also what makes the token
+	//     lookups in the probe tests safe without a per-read ok check.
+	//   - a scope on a kindPublic or kindPerElement row is read by nothing at all,
+	//     in either test, so it would drift unnoticed forever.
 	var malformed []string
 
 	for _, row := range rows {
+		_, granular := internalauth.AllGranularScopes[row.scope]
+
 		switch {
 		case row.kind == kindGuarded && row.scope == "":
 			malformed = append(malformed, fmt.Sprintf(
 				"%s %s is kindGuarded but declares no scope", row.method, row.pattern))
+		case row.kind == kindGuarded && !granular:
+			malformed = append(malformed, fmt.Sprintf(
+				"%s %s is kindGuarded but declares %q, which is not in internalauth.AllGranularScopes",
+				row.method, row.pattern, row.scope))
 		case row.kind != kindGuarded && row.scope != "":
 			malformed = append(malformed, fmt.Sprintf(
 				"%s %s is not kindGuarded but declares scope %s", row.method, row.pattern, row.scope))
@@ -407,9 +446,18 @@ func TestRouteScopes_TableComposition(t *testing.T) {
 }
 
 // pathParamValues instantiates chi patterns with concrete, plain-ASCII values.
-// ASCII matters: utf8PathParamValidator runs before RequireScope
-// (handler.go:102), so a value it rejects would short-circuit with 400 and hide
-// the scope decision under test.
+//
+// Two constraints on the values. ASCII matters: utf8PathParamValidator runs
+// before RequireScope (handler.go:102), so a value it rejects would
+// short-circuit with 400 and hide the scope decision under test. And a value
+// must not collide with a sibling static segment of any route it substitutes
+// into — "{canonicalId}" = "status" would make /v3/_/indexes/{canonicalId}
+// resolve to the static /v3/_/indexes/status instead, silently probing a
+// different route. The RoutePattern assertion in probe catches that class.
+//
+// Iterating this map in random order is safe: every key is brace-delimited, and
+// no placeholder is a substring of another, so no substitution can create or
+// destroy a match for a later one.
 var pathParamValues = map[string]string{
 	"{ledgerName}":    "main",
 	"{transactionId}": "1",
@@ -448,16 +496,36 @@ type probeRequest struct {
 	pattern string
 	token   string // empty means no Authorization header is sent
 	body    string
+
+	// reachesEndpoint says the request is expected to get past any scope gate.
+	// Only then has chi recorded the full matched pattern, so only then can probe
+	// verify it — see the note there.
+	reachesEndpoint bool
 }
 
 // probe drives one request through the real middleware chain and returns the
-// status.
+// status, asserting on the way that the request reached the route it claims to be
+// probing whenever that is observable.
 //
 // End-to-end requests are the only sound oracle for the scope a route requires.
 // The middleware slice chi.Walk exposes is not one: `With(mw).Route(...)`
 // attaches mw to the subrouter's handler rather than to Middlewares(), so
 // /v3/_/chapters shows no RequireScope yet answers 401 tokenless — and all ten
 // RequireScope closures share a single code pointer anyway.
+//
+// That same `Route` mechanic is why the pattern check is conditional. A gate
+// mounted with `With(mw).Route(prefix, ...)` runs on the SUB-mux's handler, i.e.
+// before the sub-mux routes the remainder of the path, so a request it refuses
+// records only the prefix: the pprof and /v3/_ subtrees report "/debug/pprof/*"
+// and "/v3/_/*" on a 403. A gate mounted with `With(mw).Group(...)` shares the
+// parent's route tree, so there the full pattern is recorded either way
+// (/v3/{ledgerName}/stats reports in full on a 403). The pattern is therefore
+// complete exactly when the request reaches the endpoint, which is what
+// reachesEndpoint declares.
+//
+// Skipping the check on a refused probe costs nothing: for a given row the
+// concrete target is byte-identical across its positive and negative probes, so
+// the positive one already proved that target matches the declared route.
 func probe(t *testing.T, in probeRequest) int {
 	t.Helper()
 
@@ -468,12 +536,43 @@ func probe(t *testing.T, in probeRequest) int {
 		req.Header.Set("Authorization", "Bearer "+in.token)
 	}
 
-	req = req.WithContext(cancelledProbeContext())
+	// chi.Mux.ServeHTTP reuses a route context already present on the request
+	// instead of taking one from its pool (chi mux.go:70-75), so after the request
+	// this context reports which route the probe actually reached.
+	rctx := chi.NewRouteContext()
+	ctx := context.WithValue(cancelledProbeContext(), chi.RouteCtxKey, rctx)
 
 	w := httptest.NewRecorder()
-	in.handler.ServeHTTP(w, req)
+	in.handler.ServeHTTP(w, req.WithContext(ctx))
+
+	if in.reachesEndpoint {
+		// require, not assert: a probe on the wrong route is a broken test rather
+		// than a finding about the router, and every status derived from it is
+		// meaningless. This is what keeps the positive assertion honest — see the
+		// note on TestRouteScopes_GuardedRoutesRequireExactlyOneScope.
+		require.Equal(t, chiRoutePattern(in.pattern), rctx.RoutePattern(),
+			"probing %s %s reached a different route — the concrete target built from pathParamValues "+
+				"matched something else, so this probe asserts nothing about the declared route",
+			in.method, in.pattern)
+	}
 
 	return w.Code
+}
+
+// chiRoutePattern normalizes a declared pattern the way chi reports a matched
+// one, so the two can be compared.
+//
+// Context.RoutePattern joins the patterns of every router the request passed
+// through and then drops a trailing slash unless the result is exactly "/"
+// (chi context.go:127-133). The two routes registered as "/" inside a subrouter
+// — "/v3/" and "/debug/pprof/" as chi.Walk reports them — therefore come back
+// without it. Nothing else in the declared table is affected.
+func chiRoutePattern(pattern string) string {
+	if pattern == "/" {
+		return pattern
+	}
+
+	return strings.TrimSuffix(pattern, "/")
 }
 
 // cancelledProbeContext returns an already-cancelled context for probe requests.
@@ -493,21 +592,10 @@ func cancelledProbeContext() context.Context {
 	return ctx
 }
 
-// probeMethod is the method to send for a row: anyMethod rows share one handler
-// and one middleware chain across all 9 methods, so one representative method
-// asserts everything the other 8 would.
-func (r routeScope) probeMethod() string {
-	if r.anyMethod {
-		return http.MethodGet
-	}
-
-	return r.method
-}
-
-// grantedScopes returns every granular scope in a deterministic order.
+// sortedGranularScopes returns every granular scope in a deterministic order.
 // internalauth.AllGranularScopes is a map, so probing it directly would name a
 // different offending scope on each run and read as flakiness.
-func grantedScopes() []internalauth.Scope {
+func sortedGranularScopes() []internalauth.Scope {
 	scopes := make([]internalauth.Scope, 0, len(internalauth.AllGranularScopes))
 	for scope := range internalauth.AllGranularScopes {
 		scopes = append(scopes, scope)
@@ -524,6 +612,11 @@ func grantedScopes() []internalauth.Scope {
 // One RSA key pair and one token per scope are minted per test, never inside the
 // per-route loop: authtest.KeyPair generates a 2048-bit key, which would
 // otherwise dominate the runtime of a route × scope sweep.
+//
+// tokens holds an entry for every granular scope, and every kindGuarded row is
+// asserted to declare one of those by
+// TestRouteScopes_TableComposition, so callers can index it with a row's scope
+// without checking the result.
 type scopeProbeFixture struct {
 	handler http.Handler
 	tokens  map[internalauth.Scope]string
@@ -536,7 +629,7 @@ func newScopeProbeFixture(t *testing.T) scopeProbeFixture {
 
 	tokens := make(map[internalauth.Scope]string, len(internalauth.AllGranularScopes))
 
-	for _, scope := range grantedScopes() {
+	for _, scope := range sortedGranularScopes() {
 		// A granular scope is not a key of DefaultMapping, so it reaches the
 		// gate through ExpandScopes' identity pass-through: exactly one granular
 		// scope per token, never an aggregate that would expand to several.
@@ -558,25 +651,40 @@ func newScopeProbeFixture(t *testing.T) scopeProbeFixture {
 // Only granular scopes are used, never the aggregate "ledger:read": that one
 // expands to both ScopeLedgersRead and ScopeOpsRead (scopes.go:70-77) and would
 // mask exactly this drift.
+//
+// The two halves are load-bearing together, and the positive one is the weaker.
+// "Neither 401 nor 403" also holds for a 404, so on its own it would pass for a
+// route the request never reached. Two things rule that out: probe asserts the
+// matched route pattern, and each of the 13 paired negatives demands an exact
+// 403, which is unreachable unless chi matched the route and ran its
+// RequireScope. Do not weaken the negatives to "not 200" — that would delete
+// half the argument.
 func TestRouteScopes_GuardedRoutesRequireExactlyOneScope(t *testing.T) {
 	t.Parallel()
 
 	fixture := newScopeProbeFixture(t)
-	scopes := grantedScopes()
+	scopes := sortedGranularScopes()
+	probed := 0
 
+	// Unlike the reconciliation loops, these do not aggregate-and-sort their
+	// findings: they walk a deterministically ordered slice of rows and scopes, so
+	// the failures come out in the same order on every run already.
 	for _, row := range expectedRouteScopes() {
 		if row.kind != kindGuarded {
 			continue
 		}
 
+		probed++
+
 		method := row.probeMethod()
 
 		admitted := probe(t, probeRequest{
-			handler: fixture.handler,
-			method:  method,
-			pattern: row.pattern,
-			token:   fixture.tokens[row.scope],
-			body:    probeBody,
+			handler:         fixture.handler,
+			method:          method,
+			pattern:         row.pattern,
+			token:           fixture.tokens[row.scope],
+			body:            probeBody,
+			reachesEndpoint: true,
 		})
 
 		// Anything but 401/403: past the gate, the unstubbed backend decides the
@@ -591,6 +699,8 @@ func TestRouteScopes_GuardedRoutesRequireExactlyOneScope(t *testing.T) {
 				continue
 			}
 
+			// reachesEndpoint stays false: the gate is expected to refuse this, and
+			// under a Route-mounted gate chi has not recorded the full pattern yet.
 			refused := probe(t, probeRequest{
 				handler: fixture.handler,
 				method:  method,
@@ -607,14 +717,22 @@ func TestRouteScopes_GuardedRoutesRequireExactlyOneScope(t *testing.T) {
 				method, row.pattern, foil, row.scope, refused)
 		}
 	}
+
+	require.NotZero(t, probed,
+		"no kindGuarded row left to probe — the scope contract went unverified")
 }
 
 // TestRouteScopes_PublicRoutesNeedNoToken checks the kindPublic rows are
 // reachable with no Authorization header at all.
+//
+// It builds a bare handler rather than a scopeProbeFixture: no token is ever
+// sent here, and minting a key pair plus 14 unused tokens would only obscure
+// that.
 func TestRouteScopes_PublicRoutesNeedNoToken(t *testing.T) {
 	t.Parallel()
 
-	fixture := newScopeProbeFixture(t)
+	_, keySet := authtest.KeyPair(t)
+	handler := newScopedHandler(t, keySet)
 
 	probed := 0
 
@@ -625,17 +743,20 @@ func TestRouteScopes_PublicRoutesNeedNoToken(t *testing.T) {
 
 		probed++
 
+		method := row.probeMethod()
+
 		status := probe(t, probeRequest{
-			handler: fixture.handler,
-			method:  row.probeMethod(),
-			pattern: row.pattern,
-			body:    probeBody,
+			handler:         handler,
+			method:          method,
+			pattern:         row.pattern,
+			body:            probeBody,
+			reachesEndpoint: true,
 		})
 
 		assert.NotEqual(t, http.StatusUnauthorized, status,
-			"%s %s is declared kindPublic but answered 401 without a token", row.method, row.pattern)
+			"%s %s is declared kindPublic but answered 401 without a token", method, row.pattern)
 		assert.NotEqual(t, http.StatusForbidden, status,
-			"%s %s is declared kindPublic but answered 403 without a token", row.method, row.pattern)
+			"%s %s is declared kindPublic but answered 403 without a token", method, row.pattern)
 	}
 
 	require.NotZero(t, probed, "no kindPublic row left to probe — the public contract went unverified")
@@ -673,17 +794,20 @@ func TestRouteScopes_PerElementRoutesHaveNoRouteGate(t *testing.T) {
 
 		probed++
 
+		method := row.probeMethod()
+
 		status := probe(t, probeRequest{
-			handler: fixture.handler,
-			method:  row.probeMethod(),
-			pattern: row.pattern,
-			token:   fixture.tokens[internalauth.ScopeClusterRead],
-			body:    emptyBatchBody,
+			handler:         fixture.handler,
+			method:          method,
+			pattern:         row.pattern,
+			token:           fixture.tokens[internalauth.ScopeClusterRead],
+			body:            emptyBatchBody,
+			reachesEndpoint: true,
 		})
 
 		assert.NotEqual(t, http.StatusForbidden, status,
 			"%s %s is declared kindPerElement but a route-level gate refused a token carrying only %s",
-			row.method, row.pattern, internalauth.ScopeClusterRead)
+			method, row.pattern, internalauth.ScopeClusterRead)
 	}
 
 	require.NotZero(t, probed,
