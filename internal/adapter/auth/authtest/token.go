@@ -49,8 +49,8 @@ func Claims(issuer string, scopes ...string) *oidc.AccessTokenClaims {
 	claims := &oidc.AccessTokenClaims{}
 	claims.Issuer = issuer
 	claims.Subject = "test-user"
-	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
-	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(1 * time.Hour).Unix()).AsTime())
+	claims.IssuedAt = oidc.Time(now.Unix())
+	claims.Expiration = oidc.Time(now.Add(1 * time.Hour).Unix())
 	claims.Scopes = oidc.SpaceDelimitedArray(scopes)
 
 	return claims

@@ -3,6 +3,7 @@ package authtest_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,8 @@ func TestSignToken_VerifiesAgainstKeySet(t *testing.T) {
 
 	_, err = oidc.CheckSignature(context.Background(), token, payload, []string{string(jose.RS256)}, keySet)
 	require.NoError(t, err)
-	require.NotEmpty(t, payload)
 	require.Equal(t, "https://issuer.test", claims.Issuer)
 	require.Equal(t, oidc.SpaceDelimitedArray{"ledger:LedgerRead"}, claims.Scopes)
+	require.True(t, claims.GetExpiration().Time.After(time.Now()),
+		"Claims must mint a token that is not already expired")
 }
