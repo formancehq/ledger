@@ -132,7 +132,162 @@ type auditFailureCase struct {
 // failure path. TestBuildAuditFailureCoversEveryDescribable fails if a type is
 // missing, so this list cannot silently fall behind.
 func auditFailureCases() []auditFailureCase {
-	return []auditFailureCase{}
+	return []auditFailureCase{
+		// ErrInsufficientFunds gates the color key on the separate ColorKnown
+		// boolean, NOT on Color != "": the empty color IS the uncolored bucket,
+		// so the type needs a third state for "the Numscript path could not
+		// resolve which bucket failed". All three branches of Error() and both
+		// branches of Metadata() get a row (errors.go:660-697).
+		{
+			name: "InsufficientFundsColoredBucket",
+			err: &domain.ErrInsufficientFunds{
+				Account:    "user:alice",
+				Asset:      "USD/2",
+				Color:      "RESERVED",
+				ColorKnown: true,
+				Amount:     "100",
+				Balance:    "10",
+			},
+			wantReason: domain.ErrReasonInsufficientFunds,
+			wantContext: map[string]string{
+				"account": "user:alice",
+				"asset":   "USD/2",
+				"amount":  "100",
+				"balance": "10",
+				"color":   "RESERVED",
+			},
+		},
+		{
+			// ColorKnown with an empty Color is the resolved UNCOLORED bucket,
+			// so the key is published as an empty string — that emptiness is
+			// the payload, not a missing value.
+			name: "InsufficientFundsUncoloredBucket",
+			err: &domain.ErrInsufficientFunds{
+				Account:    "user:bob",
+				Asset:      "EUR/2",
+				ColorKnown: true,
+				Amount:     "250",
+				Balance:    "40",
+			},
+			wantReason: domain.ErrReasonInsufficientFunds,
+			wantContext: map[string]string{
+				"account": "user:bob",
+				"asset":   "EUR/2",
+				"amount":  "250",
+				"balance": "40",
+				"color":   "",
+			},
+		},
+		{
+			// The Numscript path: Color is unresolved, so the key is OMITTED
+			// rather than emitted empty. Publishing "" here would tell a client
+			// the uncolored bucket definitely came up short.
+			name: "InsufficientFundsColorUnresolved",
+			err: &domain.ErrInsufficientFunds{
+				Account: "user:carol",
+				Asset:   "GBP/2",
+				Color:   "IGNORED-WHEN-UNKNOWN",
+				Amount:  "7",
+				Balance: "3",
+			},
+			wantReason: domain.ErrReasonInsufficientFunds,
+			wantContext: map[string]string{
+				"account": "user:carol",
+				"asset":   "GBP/2",
+				"amount":  "7",
+				"balance": "3",
+			},
+		},
+		{
+			name:        "LedgerNotFound",
+			err:         &domain.ErrLedgerNotFound{Name: "missing-ledger"},
+			wantReason:  domain.ErrReasonLedgerNotFound,
+			wantContext: map[string]string{"name": "missing-ledger"},
+		},
+		{
+			name:        "LedgerAlreadyExists",
+			err:         &domain.ErrLedgerAlreadyExists{Name: "existing-ledger"},
+			wantReason:  domain.ErrReasonLedgerAlreadyExists,
+			wantContext: map[string]string{"name": "existing-ledger"},
+		},
+		{
+			name:        "TransactionNotFound",
+			err:         &domain.ErrTransactionNotFound{TransactionID: 42},
+			wantReason:  domain.ErrReasonTransactionNotFound,
+			wantContext: map[string]string{"transactionId": "42"},
+		},
+		{
+			// validationSentinel.Metadata() returns nil (errors.go:297) and
+			// buildAuditFailure always allocates the map, so the projected
+			// Context is empty-but-non-nil.
+			name:        "ValidationSentinel",
+			err:         domain.ErrScriptRequired,
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "LedgerInMirrorMode",
+			err:         &domain.ErrLedgerInMirrorMode{Name: "mirror-ledger"},
+			wantReason:  domain.ErrReasonLedgerInMirrorMode,
+			wantContext: map[string]string{"name": "mirror-ledger"},
+		},
+		{
+			name:        "LedgerNotInMirrorMode",
+			err:         &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"},
+			wantReason:  domain.ErrReasonLedgerNotInMirrorMode,
+			wantContext: map[string]string{"name": "normal-ledger"},
+		},
+		{
+			name:        "MaintenanceMode",
+			err:         domain.ErrMaintenanceMode,
+			wantReason:  domain.ErrReasonMaintenanceMode,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "InvalidCronExpression",
+			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
+			wantReason:  domain.ErrReasonInvalidCronExpression,
+			wantContext: map[string]string{"expression": "* * * *", "details": "expected 5 or 6 fields"},
+		},
+		{
+			name:        "SinkAlreadyExists",
+			err:         &domain.ErrSinkAlreadyExists{Name: "kafka-main"},
+			wantReason:  domain.ErrReasonSinkAlreadyExists,
+			wantContext: map[string]string{"name": "kafka-main"},
+		},
+		{
+			name:        "SinkNotFound",
+			err:         &domain.ErrSinkNotFound{Name: "missing-sink"},
+			wantReason:  domain.ErrReasonSinkNotFound,
+			wantContext: map[string]string{"name": "missing-sink"},
+		},
+		{
+			name:        "ChapterNotClosed",
+			err:         &domain.ErrChapterNotClosed{ChapterID: 3},
+			wantReason:  domain.ErrReasonChapterNotClosed,
+			wantContext: map[string]string{"chapterId": "3"},
+		},
+		{
+			// The EN-1379 key set, pinned on the surface that matters most: an
+			// undeclared key is an admission bug, never a storage fault, and
+			// operator tooling greps these exact camelCase names out of the
+			// hash-chained Context.
+			name: "CoverageMiss",
+			err: &ErrCoverageMiss{
+				Attribute:    "volumes",
+				CanonicalHex: "deadbeef",
+				IDHex:        "0102",
+				RaftIndex:    42,
+			},
+			wantReason: domain.ErrReasonCoverageMiss,
+			wantContext: map[string]string{
+				"attribute":    "volumes",
+				"canonicalHex": "deadbeef",
+				"idHex":        "0102",
+				"raftIndex":    "42",
+			},
+		},
+	}
 }
 
 // describableTypeKey identifies a Describable implementation by package and type
@@ -266,6 +421,45 @@ func receiverTypeName(expr ast.Expr) string {
 		return e.Name
 	default:
 		return ""
+	}
+}
+
+// TestBuildAuditFailure asserts the full projection buildAuditFailure performs,
+// for every Describable the FSM can reach. The three assertions live in this
+// shared body rather than per row, so a row cannot assert a subset — which is
+// how AuditFailure.Message ended up pinned for exactly one error type while
+// Reason was pinned for all of them (EN-1772).
+//
+// The expected message is derived (tc.err.Error()) rather than a literal. That
+// proves the projection — the message reaches the proto unmodified — without
+// pinning the wording, because rewording a domain error is a legitimate change
+// and 74 literal strings would invite blind bulk-updates that destroy the signal.
+//
+// wantContext IS a literal, because the sorted context keys and values are folded
+// into the audit hash pre-image by buildAuditFailurePayload (audit_envelope.go).
+// A renamed key changes bytes that are immutable once written — the EN-1379 lesson,
+// where a snake_case to camelCase rename shipped green.
+func TestBuildAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range auditFailureCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			failure := buildAuditFailure(tc.err)
+
+			require.Equal(t, tc.wantReason, domain.ReasonString(failure.GetReason()))
+			require.Equal(t, tc.err.Error(), failure.GetMessage(),
+				"the error message must reach the hash-chained AuditFailure unmodified")
+			require.Equal(t, tc.wantContext, failure.GetContext())
+
+			// The audit projection and the idempotency projection must agree on
+			// both shared fields for every error type, not just the one exercised
+			// end to end by TestIdempotencyFailureMessageMatchesAudit.
+			reason, message := describeFailure(tc.err)
+			require.Equal(t, reason, failure.GetReason())
+			require.Equal(t, message, failure.GetMessage())
+		})
 	}
 }
 
