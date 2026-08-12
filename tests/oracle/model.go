@@ -791,6 +791,18 @@ func RequestsEqual(a, b []*servicepb.Request) bool {
 	return true
 }
 
+// LogIDs returns the ledger-local ids of every committed log, ascending. The
+// stream is dense from 1, so this is 1..Len() — returned explicitly so callers
+// need not depend on that density holding.
+func (s LedgerState) LogIDs() []uint64 {
+	out := make([]uint64, 0, s.logs.Len())
+	for i := range s.logs.Len() {
+		out = append(out, s.logs.Get(i).id)
+	}
+
+	return out
+}
+
 // logKindFor names the LedgerLogPayload arm a committed request produces. It
 // is derived from the request rather than declared by each apply* handler, so
 // a new request type cannot silently append a log of the wrong kind — or, if

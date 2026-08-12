@@ -208,6 +208,8 @@ func runWorker(
 				runTransactionQuery(ctx, client, c)
 			case 5:
 				runReplay(ctx, client, c)
+			case 6:
+				runLogQuery(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
