@@ -185,6 +185,99 @@ func TestIndexedMetadataKeys_SemanticEquivalence(t *testing.T) {
 	}
 }
 
+// TestIndexedMetadataKeys_NegatedFilterMatchesContainment verifies that a $not
+// filter on a rewritten key keeps the rows that do not carry the key at all,
+// exactly like `not (metadata @> …)` does. A bare `not (metadata ->> 'k' = ?)`
+// would evaluate to NULL for those rows and silently drop them.
+func TestIndexedMetadataKeys_NegatedFilterMatchesContainment(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	now := time.Now()
+
+	// Store with the flag + functional index: uses ->> path.
+	flagged := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	// Store without the flag: uses @> path.
+	plain := newLedgerStore(t)
+
+	for _, store := range []*ledgerstore.Store{flagged, plain} {
+		for i, walletID := range []string{"w-1", "w-2"} {
+			tx := ledger.NewTransaction().
+				WithPostings(ledger.NewPosting("world", "dest", "USD", big.NewInt(int64(100*(i+1))))).
+				WithMetadata(metadata.Metadata{"source_wallet_id": walletID}).
+				WithTimestamp(now.Add(time.Duration(i) * time.Hour))
+			require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+		}
+		// Carries no source_wallet_id at all — `not (…)` must keep it.
+		noKey := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "other", "USD", big.NewInt(9))).
+			WithMetadata(metadata.Metadata{"category": "premium"}).
+			WithTimestamp(now.Add(10 * time.Hour))
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &noKey))
+	}
+
+	createFunctionalIndex(t, flagged)
+	flagged.ResolveIndexedMetadataKeys(ctx)
+	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id",
+		"the ->> rewrite must be active for this test to be meaningful")
+
+	q := common.InitialPaginatedQuery[any]{
+		Options: common.ResourceQuery[any]{
+			Builder: query.Not(query.Match("metadata[source_wallet_id]", "w-1")),
+		},
+	}
+
+	flaggedCursor, err := flagged.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	plainCursor, err := plain.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	require.Len(t, flaggedCursor.Data, 2,
+		"$not must keep w-2 and the transaction carrying no source_wallet_id")
+	require.Equal(t, len(plainCursor.Data), len(flaggedCursor.Data),
+		"the ->> rewrite must select the same rows as the @> form under negation")
+
+	for i := range plainCursor.Data {
+		require.Equalf(t, *plainCursor.Data[i].ID, *flaggedCursor.Data[i].ID,
+			"row %d: id mismatch between @> path and ->> path under negation", i)
+	}
+}
+
+// TestIndexedMetadataKeys_PartialIndexSkippedWhenAloneInBucket verifies that a
+// key backed only by an index partial on `ledger = '<name>'` is not rewritten to
+// the ->> form once the scoped select stops emitting the `ledger = ?` predicate
+// (alone-in-bucket optimization): Postgres cannot use a partial index whose
+// predicate the query does not imply, so the rewrite would be slower than the
+// @> form it replaces. A non-partial index stays usable either way.
+func TestIndexedMetadataKeys_PartialIndexSkippedWhenAloneInBucket(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id,destination_wallet_id"))
+
+	// source_wallet_id: partial index scoped to this ledger.
+	createFunctionalIndex(t, base)
+	// destination_wallet_id: index over the whole table, no WHERE clause.
+	_, err := base.GetDB().ExecContext(ctx, fmt.Sprintf(`
+		CREATE INDEX IF NOT EXISTS %q
+		ON %q.transactions ((metadata->>'destination_wallet_id'), id DESC)
+	`, fmt.Sprintf("test_%s_dst_wallet_id_idx", base.GetLedger().Name), base.GetLedger().Bucket))
+	require.NoError(t, err)
+
+	// A private store so flipping the alone-in-bucket hint cannot disturb the
+	// other tests sharing the bucket-wide flag.
+	store := ledgerstore.New(base.GetDB(), base.GetBucket(), base.GetLedger())
+
+	store.SetAloneInBucketForTest(false)
+	store.ResolveIndexedMetadataKeys(ctx)
+	require.ElementsMatch(t, []string{"source_wallet_id", "destination_wallet_id"}, store.IndexedMetadataKeys(),
+		"both indexes are usable while the query still emits `ledger = ?`")
+
+	store.SetAloneInBucketForTest(true)
+	require.Equal(t, []string{"destination_wallet_id"}, store.IndexedMetadataKeys(),
+		"a ledger-partial index is unusable once the `ledger = ?` predicate is dropped")
+}
+
 // TestIndexedMetadataKeys_DestinationWalletID verifies destination_wallet_id
 // works the same way as source_wallet_id when flagged.
 func TestIndexedMetadataKeys_DestinationWalletID(t *testing.T) {
@@ -255,7 +348,7 @@ func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) s
 	// otherwise                               →  metadata @> '{"key":"value"}'
 	var predExpr string
 	if slices.Contains(store.IndexedMetadataKeys(), key) {
-		predExpr = fmt.Sprintf("metadata ->> '%s' = '%s'", key, value)
+		predExpr = fmt.Sprintf("(metadata ->> '%s' = '%s' and metadata ? '%s')", key, value, key)
 	} else {
 		predExpr = fmt.Sprintf(`metadata @> '{"%s": "%s"}'`, key, value)
 	}

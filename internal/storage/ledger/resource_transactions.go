@@ -152,7 +152,14 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
 			// The literal form is required: Postgres matches functional indexes by exact expression
 			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
-			return fmt.Sprintf("metadata ->> '%s' = ?", key), []any{value}, nil
+			//
+			// The `metadata ? 'key'` guard keeps the rewrite equivalent to the @>
+			// form under negation. For a row that does not carry the key,
+			// `metadata ->> 'key' = ?` evaluates to NULL, so `not (…)` would drop
+			// the row, while `not (metadata @> …)` keeps it. NULL AND FALSE is
+			// FALSE, so the guard makes the whole predicate FALSE (never NULL) for
+			// absent keys, and it leaves the `->>` comparison an indexable qual.
+			return fmt.Sprintf("(metadata ->> '%s' = ? and metadata \\? '%s')", key, key), []any{value}, nil
 		}
 		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
