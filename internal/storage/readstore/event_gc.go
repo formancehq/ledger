@@ -55,6 +55,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		reclaimable  [][]byte // the current group's condemned events, applied at its boundary
 		groupUnsafe  bool     // the current group holds an event this package cannot read
 		carryUnsafe  bool     // ...and so does the next one, for a key that could belong to either
+		unsafeFrom   []byte   // the unattributable key a carried mark came from
 		scanned      int
 	)
 
@@ -101,6 +102,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 			scanned++
 			groupUnsafe = true
 			carryUnsafe = true
+			unsafeFrom = append(unsafeFrom[:0], key...)
 
 			continue
 		}
@@ -113,7 +115,17 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 			// Budget is only enforced at group boundaries so a group is
 			// never judged from a partial view of its events.
 			if scanned >= budget {
-				next = append([]byte(nil), key...)
+				resume := key
+
+				// A mark carried into the group starting here lives only in
+				// memory. Resuming past the key that raised it would leave the
+				// next pass with no reason to preserve this group, so the scan
+				// rewinds to that key and re-derives the mark from storage.
+				if groupUnsafe && len(unsafeFrom) > 0 {
+					resume = unsafeFrom
+				}
+
+				next = append([]byte(nil), resume...)
 
 				break
 			}

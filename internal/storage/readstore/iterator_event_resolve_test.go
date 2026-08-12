@@ -377,3 +377,47 @@ func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
 		require.NoError(t, closer.Close())
 	}
 }
+
+// The mark an unattributable key raises lives in memory, so a budgeted pass
+// that ends at the very boundary it was carried across must not resume past
+// that key: the next pass would have no reason left to preserve the group and
+// would reclaim it, which is the same loss the mark exists to prevent.
+func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
+	t.Parallel()
+
+	const watermark = 100
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	event := func(entity string, seq uint64, op byte) []byte {
+		return append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte(entity), seq, op)...)
+	}
+
+	first := [][]byte{event("a:0", 5, MetadataEventAdd), event("a:0", 7, MetadataEventDel)}
+	second := [][]byte{event("a:1", 5, MetadataEventAdd), event("a:1", 7, MetadataEventDel)}
+
+	// Truncated a:1 key: sorts ahead of a:1's events, identity unparseable.
+	truncated := append([]byte(nil), second[0][:len(second[0])-3]...)
+
+	for _, key := range append(append(append([][]byte{}, first...), truncated), second...) {
+		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	}
+
+	// Budget 3 ends the pass exactly at the a:0 -> a:1 boundary, which is
+	// where the mark is handed to a:1.
+	pruned, next, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 3)
+	require.NoError(t, err)
+	require.Zero(t, pruned, "a:0 borders the unattributable key too, so it is preserved as well")
+	require.NotNil(t, next, "the pass stopped on budget")
+
+	// Whatever the resume point is, the second pass must still preserve a:1.
+	_, _, err = GCEventZone(s.DB(), PrefixMetadataIndex, next, watermark, 1<<20)
+	require.NoError(t, err)
+
+	for i, key := range second {
+		_, closer, getErr := s.DB().Get(key)
+		require.NoError(t, getErr, "a:1 event %d must survive a resume across the mark", i)
+		require.NoError(t, closer.Close())
+	}
+}
