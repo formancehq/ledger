@@ -7,8 +7,27 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// describeFailure derives the two fields both failure projections share from a
+// typed domain error: the wire reason code and the human-readable message.
+// buildAuditFailure writes them into the hash-chained AuditFailure and
+// recordIdempotencyFailure freezes them into the SubIdempKeys projection, and
+// checker.compareIdempotencyOutcomes (internal/application/check/checker.go:5399)
+// requires the two byte-equal. Single-sourcing the derivation makes that equality
+// structural instead of coincidental: a reshape of the message cannot reach one
+// projection without the other. Side A lives inside the audit hash chain, so a
+// drift there is not repairable after the fact (EN-1772).
+//
+// Metadata is deliberately NOT part of this helper. The two sites handle it
+// asymmetrically on purpose — buildAuditFailure copies into a non-nil map,
+// recordIdempotencyFailure passes Metadata() through possibly-nil — and
+// checker.metadataEqual (checker.go:5419) exists to tolerate exactly that.
+func describeFailure(d domain.Describable) (commonpb.ErrorReason, string) {
+	return domain.ReasonCode(d.Reason()), d.Error()
+}
 
 // buildAuditFailure projects a typed domain error into an AuditFailure proto.
 // It accepts domain.Describable — not a bare error — so the compiler
@@ -17,12 +36,14 @@ import (
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.Describable) *auditpb.AuditFailure {
+	reason, message := describeFailure(d)
+
 	failure := &auditpb.AuditFailure{
-		Message: d.Error(),
+		Reason:  reason,
+		Message: message,
 		Context: make(map[string]string),
 	}
 
-	failure.Reason = domain.ReasonCode(d.Reason())
 	maps.Copy(failure.GetContext(), d.Metadata())
 
 	return failure
