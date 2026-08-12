@@ -52,7 +52,7 @@ func main() {
 		// [assetBase\x00][precision 1B][account]
 		var asset, account string
 		var prec byte
-		for i := 0; i < len(rest); i++ {
+		for i := range rest {
 			if rest[i] == 0 {
 				asset = string(rest[:i])
 				if i+1 < len(rest) {

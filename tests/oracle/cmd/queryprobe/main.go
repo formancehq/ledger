@@ -44,6 +44,7 @@ func main() {
 	})
 	if err != nil {
 		fmt.Println("ERR:", err)
+
 		return
 	}
 
@@ -54,6 +55,7 @@ func main() {
 			if err.Error() != "EOF" {
 				fmt.Println("stream end:", err)
 			}
+
 			break
 		}
 		ids = append(ids, tx.GetId())

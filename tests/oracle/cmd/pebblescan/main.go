@@ -82,5 +82,6 @@ func hexdump(b []byte) string {
 	if len(b) > 96 {
 		b = b[:96]
 	}
+
 	return fmt.Sprintf("% x", b)
 }

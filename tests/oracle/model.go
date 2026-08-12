@@ -95,6 +95,15 @@ type LedgerState struct {
 	// MinLogSequence pin).
 	indexes Map[string, bool]
 
+	// logs is the ledger's log stream: index i holds the log with ledger-local
+	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
+	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
+	// committed ledger-scoped order appends exactly one entry; a rejected one
+	// appends none, since the workload never opts into skippable_reasons —
+	// which is what makes a skip consume a log id (processor.go's skip branch)
+	// without committing anything.
+	logs List[*logRecord]
+
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
 	// touched, on either side. This is the exact set the has-asset filter serves
@@ -133,6 +142,7 @@ func NewLedgerState() LedgerState {
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
 		indexes:   NewMap[string, bool](stringComparer{}, indexTerm),
+		logs:      NewList[*logRecord](logTerm),
 		everAsset: NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
 }
@@ -151,7 +161,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs, s.indexes, s.everAsset,
+		s.txs, s.indexes, s.everAsset, s.logs,
 	}
 }
 
@@ -320,6 +330,22 @@ func txRefTerm(ref string, id int) Digest {
 // relationships (revertedBy, revertsTransaction, revertedAt) distinguish
 // serializations where the same id is reverted by, or reverts, a different
 // transaction.
+// logRecord is one entry of the ledger log stream. The date is server-assigned
+// and unpredictable, so it is not modelled: the log filters that read it are
+// checked against the server's own value rather than a prediction.
+type logRecord struct {
+	id   uint64
+	kind string
+}
+
+func logTerm(idx int, l *logRecord) Digest {
+	t := newTerm("LOG")
+	t.u64(uint64(idx), l.id)
+	t.str(l.kind)
+
+	return t.sum()
+}
+
 func txTerm(idx int, tx *txRecord) Digest {
 	t := newTerm("TX")
 	t.u64(uint64(idx), tx.id)
@@ -697,6 +723,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		oc := ls.applyOne(req, cells)
+		if oc.OK {
+			// Appended centrally rather than per handler: every committed
+			// ledger-scoped order produces exactly one log, so a handler that
+			// forgot would silently shorten the stream and mis-id every log
+			// after it.
+			ls.appendLog(req)
+		}
+
 		// applyOne rebinds ls's persistent collections; write the updated value
 		// back so the working copy sees the mutation.
 		next.ledgers[name] = ls
@@ -755,6 +789,54 @@ func RequestsEqual(a, b []*servicepb.Request) bool {
 	}
 
 	return true
+}
+
+// logKindFor names the LedgerLogPayload arm a committed request produces. It
+// is derived from the request rather than declared by each apply* handler, so
+// a new request type cannot silently append a log of the wrong kind — or, if
+// it is unmodelled, reach the stream at all: the default panics in lockstep
+// with applyOne's own unmodelled-request panic.
+//
+// Every arm here emits exactly one log. Requests the server answers without
+// touching the ledger log stream must not appear.
+func logKindFor(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		return "added_account_type"
+	case *servicepb.Request_RemoveAccountType:
+		return "removed_account_type"
+	case *servicepb.Request_SaveLedgerMetadata:
+		return "saved_metadata"
+	case *servicepb.Request_DeleteLedgerMetadata:
+		return "deleted_metadata"
+	case *servicepb.Request_SetMetadataFieldType:
+		return "set_metadata_field_type"
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "removed_metadata_field_type"
+	case *servicepb.Request_CreateIndex:
+		return "create_index"
+	case *servicepb.Request_DropIndex:
+		return "drop_index"
+	case *servicepb.Request_Apply:
+		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			return "created_transaction"
+		case *servicepb.LedgerAction_AddMetadata:
+			return "saved_metadata"
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "deleted_metadata"
+		case *servicepb.LedgerAction_RevertTransaction:
+			return "reverted_transaction"
+		}
+	}
+
+	panic(fmt.Sprintf("model: no log kind for request %T", req.GetType()))
+}
+
+// appendLog records the log a committed request produced. The id is the
+// stream's position, dense from 1.
+func (s *LedgerState) appendLog(req *servicepb.Request) {
+	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: logKindFor(req)})
 }
 
 // applyOne mutates the (already-forked) working state for one request and
