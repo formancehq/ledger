@@ -52,7 +52,7 @@ const (
 // ListOptions.page_size and use the result as the rendered-page limit.
 
 // releasingCloser closes a read handle and drops the reclamation hold taken
-// with it (see query.OpenAlignedHandle), so a cursor that outlives the
+// with it (see query.OpenQueryHandle), so a cursor that outlives the
 // handler frees both at the same moment.
 type releasingCloser struct {
 	handle  io.Closer
@@ -415,7 +415,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, store)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, store, filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -511,7 +511,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -952,7 +952,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -1648,7 +1648,7 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 // by the indexbuilder, so every read uses the Compile framework — boolean
 // filters and date ranges are honored on the single code path.
 func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	handle, releaseHold, err := query.OpenAlignedHandle(ctrl.readStore, ctrl.store)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}

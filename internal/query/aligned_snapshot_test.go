@@ -156,10 +156,10 @@ func txIDBytesQ(id uint64) []byte {
 	return b
 }
 
-// OpenAlignedHandle holds the reclaim floor across the handle's creation, so
+// OpenQueryHandle holds the reclaim floor across the handle's creation, so
 // the pin it yields can never sit beneath it — the refusal path inside
 // AlignedIndexSnapshot is an invariant guard, not a condition reads meet.
-func TestOpenAlignedHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
+func TestOpenQueryHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
@@ -168,7 +168,15 @@ func TestOpenAlignedHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 
 	rs := newTestReadStore(t)
 
-	handle, releaseHold, err := query.OpenAlignedHandle(rs, store)
+	// Any filtered shape is owed alignment, so the handle takes a reservation.
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+		Field: &commonpb.FieldCondition{
+			Field:     &commonpb.FieldRef{Metadata: "tier"},
+			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+		},
+	}}
+
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	require.NoError(t, err)
 
 	defer releaseHold()
@@ -184,10 +192,33 @@ func TestOpenAlignedHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 		"the reservation pins the floor at its pre-handle value")
 
 	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
-	require.NoError(t, err, "a handle from OpenAlignedHandle must always be admissible")
+	require.NoError(t, err, "a handle from OpenQueryHandle must always be admissible")
 
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
 	require.Equal(t, lastSeq, mainSeq)
+}
+
+// The reservation is what makes the later Acquire un-refusable, so a read
+// that never acquires must not take one: holding the floor for the life of a
+// request — or of a streaming cursor — would stall event reclamation in
+// exchange for nothing.
+func TestOpenQueryHandle_UnalignedReadHoldsNoFloor(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+
+	rs := newTestReadStore(t)
+
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	require.NoError(t, err)
+
+	defer releaseHold()
+	defer func() { _ = handle.Close() }()
+
+	require.Equal(t, uint64(500), rs.Leases().BeginGC(500),
+		"an unaligned read must not hold the event GC back")
 }

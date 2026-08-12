@@ -13,21 +13,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// Cross-store alignment for indexed queries (EN-1748). A filter tree mixes
-// leaves from two stores — the main store (entity universe, tx-id ranges,
-// reverted bitset, enrichment) and the read index (builtin/metadata indexes).
-// The read index folds asynchronously behind the main store, so two
-// independently-taken views disagree about the freshest commits: an entity
-// visible in the main store whose index rows have not folded yet leaks
-// through complements ("no timestamp") and mis-windows conjunctions. No
-// single serialized state produces such a response.
-//
-// The alignment invariant: the read-index snapshot's fold cursor must cover
-// the main reader's last applied sequence. The fold is ordered, so such a
-// snapshot holds EVERY index row for the entities the main reader sees;
-// membership can then only exceed the main store (entities committed after
-// the handle), and MainHorizonKeep trims those back. The result is exactly
-// the state at the main reader's sequence.
 // AlignmentOwed reports whether a query of this shape must wait for the read
 // index to fold up to the main reader's sequence before it can be answered.
 //
@@ -43,6 +28,21 @@ func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bo
 	return filter != nil || target == commonpb.QueryTarget_QUERY_TARGET_LOGS
 }
 
+// Cross-store alignment for indexed queries (EN-1748). A filter tree mixes
+// leaves from two stores — the main store (entity universe, tx-id ranges,
+// reverted bitset, enrichment) and the read index (builtin/metadata indexes).
+// The read index folds asynchronously behind the main store, so two
+// independently-taken views disagree about the freshest commits: an entity
+// visible in the main store whose index rows have not folded yet leaks
+// through complements ("no timestamp") and mis-windows conjunctions. No
+// single serialized state produces such a response.
+//
+// The alignment invariant: the read-index snapshot's fold cursor must cover
+// the main reader's last applied sequence. The fold is ordered, so such a
+// snapshot holds EVERY index row for the entities the main reader sees;
+// membership can then only exceed the main store (entities committed after
+// the handle), and MainHorizonKeep trims those back. The result is exactly
+// the state at the main reader's sequence.
 // AlignedIndexSnapshot returns a read-index snapshot whose fold cursor is at
 // or beyond mainReader's last applied log sequence, plus that sequence and a
 // release closure. The cursor is verified through the snapshot itself, so the
@@ -53,9 +53,9 @@ func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bo
 // sequence — the pin the event GC must not reclaim past (read_lease.go). The
 // caller must invoke it when iteration ends, alongside closing the snapshot.
 //
-// Callers must obtain mainReader from OpenAlignedHandle, which reserves the
-// reclaim floor before opening the handle so the pin registered here can never
-// be refused.
+// Callers must obtain mainReader from OpenQueryHandle, passing the same
+// filter and target: it reserves the reclaim floor before opening the handle,
+// so the pin registered here can never be refused.
 //
 // The wait is bounded by the caller's context and nothing else. Alignment is
 // not optional — a filtered read cannot answer correctly until the fold
@@ -87,7 +87,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 	for {
 		lease, ok := rs.Leases().Acquire(mainSeq)
 		if !ok {
-			// OpenAlignedHandle holds the floor across the handle's creation,
+			// OpenQueryHandle holds the floor across the handle's creation,
 			// so a pin beneath it means this read bypassed that helper and
 			// may resolve a group whose history is already reclaimed. There is
 			// no recovery here: the pin cannot move (the handle is a fixed
@@ -98,7 +98,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 			})
 
 			return nil, 0, nil, fmt.Errorf(
-				"invariant: aligned read pinned at %d, below the reclaim floor %d — the handle was not opened through OpenAlignedHandle",
+				"invariant: aligned read pinned at %d, below the reclaim floor %d — the handle was not opened through OpenQueryHandle",
 				mainSeq, rs.Leases().ReclaimFloor(),
 			)
 		}
@@ -188,23 +188,28 @@ func MainHorizonKeep(
 	}
 }
 
-// OpenAlignedHandle opens a main-store handle for a read that will align an
-// index snapshot against it, holding reclamation still across the two steps.
+// OpenQueryHandle opens the main-store handle a query reads through, holding
+// reclamation still across the handle's creation when — and only when — the
+// query will align an index snapshot against it.
 //
-// The order is the point. A read's pin does not exist until its handle is
-// open, so no lease can protect it beforehand; under sustained load the fold
-// cursor — and with it the GC's reclaim floor — advances past a just-opened
-// handle within a tick, and the read is refused for history it never had a
-// chance to claim. Reserving first pins the floor where it is, and the handle
-// that follows is necessarily at or above it.
+// For an aligned read the order is the point. A read's pin does not exist
+// until its handle is open, so no lease can protect it beforehand; under
+// sustained load the fold cursor — and with it the GC's reclaim floor —
+// advances past a just-opened handle within a tick, and the read is refused
+// for history it never had a chance to claim. Reserving first pins the floor
+// where it is, and the handle that follows is necessarily at or above it.
 //
 // The returned release drops the reservation; callers must invoke it when the
 // read finishes, alongside closing the handle. Holding it for the request's
 // life is intended — a request retains exactly the history it may still need.
-func OpenAlignedHandle(rs *readstore.Store, store *dal.Store) (*dal.ReadHandle, func(), error) {
-	if rs.Frozen() {
+// That is also why an unaligned read must not take one: the reservation exists
+// to make the later Acquire un-refusable, which a read that never resolves an
+// event never performs, so it would hold the event GC's watermark for the life
+// of a request — or of a streaming cursor — in exchange for nothing.
+func OpenQueryHandle(rs *readstore.Store, store *dal.Store, filter *commonpb.QueryFilter, target commonpb.QueryTarget) (*dal.ReadHandle, func(), error) {
+	if rs.Frozen() || !AlignmentOwed(filter, target) {
 		// A checkpoint's index never advances and nothing reclaims against
-		// it, so there is no floor to hold.
+		// it, so there is no floor to hold either.
 		handle, err := store.NewReadHandle()
 
 		return handle, func() {}, err

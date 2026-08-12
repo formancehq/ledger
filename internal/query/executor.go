@@ -110,8 +110,8 @@ func Execute(
 	// Always open a read handle — needed for filter compilation and entity
 	// enrichment. Opened BEFORE the index snapshot: alignment guarantees the
 	// snapshot's fold cursor covers everything the handle sees (EN-1748), and
-	// OpenAlignedHandle holds reclamation still across the two steps.
-	handle, releaseHold, err := OpenAlignedHandle(rs, pebbleStore)
+	// OpenQueryHandle holds reclamation still across the two steps.
+	handle, releaseHold, err := OpenQueryHandle(rs, pebbleStore, pq.GetFilter(), pq.GetTarget())
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
