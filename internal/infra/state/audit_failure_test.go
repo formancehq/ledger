@@ -991,3 +991,29 @@ func sortedKeys(set map[describableTypeKey]bool) []string {
 
 	return out
 }
+
+// TestBuildAuditFailureDoesNotUnwrap is the negative control for the CoverageMiss
+// row in auditFailureCases: buildAuditFailure reads Reason()/Metadata() off the
+// OUTERMOST Describable and genuinely does NOT unwrap, so the no-wrap contract has
+// to be upheld by every FSM read site going through domain.StoreFailure. If someone
+// reintroduces a bare wrap, this is the shape the audit chain would record forever —
+// permanently STORAGE_OPERATION_FAILED with the identifying key stripped (EN-1379).
+//
+// It is deliberately NOT a row in the table. It exercises two errors and asserts a
+// negative, and a row would register ErrStorageOperation in the coverage set on the
+// strength of a test that is not about that type's own projection.
+func TestBuildAuditFailureDoesNotUnwrap(t *testing.T) {
+	t.Parallel()
+
+	miss := &ErrCoverageMiss{Attribute: "volumes", IDHex: "0102", RaftIndex: 42}
+
+	failure := buildAuditFailure(&domain.ErrStorageOperation{Operation: "loading volume", Cause: miss})
+
+	require.Equal(t, domain.ErrReasonStorageOperation, domain.ReasonString(failure.GetReason()))
+	require.Equal(t, map[string]string{"operation": "loading volume"}, failure.GetContext(),
+		"the wrap strips the identifying key — this is what EN-1379 prevents")
+
+	// And the supported path avoids exactly that.
+	require.Equal(t, domain.ErrReasonCoverageMiss,
+		domain.ReasonString(buildAuditFailure(domain.StoreFailure("loading volume", miss)).GetReason()))
+}
