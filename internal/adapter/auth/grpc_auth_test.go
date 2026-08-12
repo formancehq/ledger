@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+
+	"github.com/formancehq/ledger/v3/internal/adapter/auth/authtest"
 )
 
 func claimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
@@ -27,55 +29,11 @@ func claimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
 
 const testIssuer = "https://test-issuer.example.com"
 
-// testKeyPair generates an RSA key pair and returns both private key and a static JWKS KeySet.
-func testKeyPair(t *testing.T) (*rsa.PrivateKey, oidc.KeySet) {
-	t.Helper()
-
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	jwk := jose.JSONWebKey{
-		Key:       &privKey.PublicKey,
-		KeyID:     "test-key-id",
-		Algorithm: string(jose.RS256),
-		Use:       "sig",
-	}
-
-	return privKey, oidc.NewStaticKeySet(jwk)
-}
-
-// signToken creates a signed JWT with the given claims.
-func signToken(t *testing.T, privKey *rsa.PrivateKey, claims *oidc.AccessTokenClaims) string {
-	t.Helper()
-
-	signer, err := jose.NewSigner(jose.SigningKey{
-		Algorithm: jose.RS256,
-		Key:       &jose.JSONWebKey{Key: privKey, KeyID: "test-key-id"},
-	}, nil)
-	require.NoError(t, err)
-
-	payload, err := json.Marshal(claims)
-	require.NoError(t, err)
-
-	jws, err := signer.Sign(payload)
-	require.NoError(t, err)
-
-	token, err := jws.CompactSerialize()
-	require.NoError(t, err)
-
-	return token
-}
-
+// newTestClaims builds claims for the package-level test issuer. The single
+// implementation lives in authtest; this only binds testIssuer so the call
+// sites that use the default issuer stay terse.
 func newTestClaims(scopes ...string) *oidc.AccessTokenClaims {
-	now := time.Now()
-	claims := &oidc.AccessTokenClaims{}
-	claims.Issuer = testIssuer
-	claims.Subject = "test-user"
-	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
-	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(1 * time.Hour).Unix()).AsTime())
-	claims.Scopes = oidc.SpaceDelimitedArray(scopes)
-
-	return claims
+	return authtest.Claims(testIssuer, scopes...)
 }
 
 func ctxWithBearer(token string) context.Context {
@@ -107,11 +65,11 @@ func TestAuthenticate_Disabled(t *testing.T) {
 func TestAuthenticate_NoScopes(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Authenticate with no required scopes (public endpoint)
-	token := signToken(t, privKey, newTestClaims())
+	token := authtest.SignToken(t, privKey, newTestClaims())
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg)
@@ -125,7 +83,7 @@ func TestAuthenticate_NoScopes(t *testing.T) {
 func TestAuthenticate_MissingToken(t *testing.T) {
 	t.Parallel()
 
-	_, keySet := testKeyPair(t)
+	_, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// No authorization header
@@ -139,11 +97,11 @@ func TestAuthenticate_MissingToken(t *testing.T) {
 func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has virtual scope "ledger:read" which expands to include ScopeLedgersRead
-	token := signToken(t, privKey, newTestClaims("ledger:read"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
@@ -162,11 +120,11 @@ func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 func TestAuthenticate_WrongScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has only "ledger:write" (expands to write scopes), but we require a read scope
-	token := signToken(t, privKey, newTestClaims("ledger:write"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
 	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
@@ -179,14 +137,14 @@ func TestAuthenticate_WrongScope(t *testing.T) {
 func TestAuthenticate_ExpiredToken(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	claims := newTestClaims("ledger:read")
 	pastTime := time.Now().Add(-1 * time.Hour)
 	claims.Expiration = oidc.FromTime(oidc.Time(pastTime.Unix()).AsTime())
 
-	token := signToken(t, privKey, claims)
+	token := authtest.SignToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
 	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
@@ -199,11 +157,11 @@ func TestAuthenticate_ExpiredToken(t *testing.T) {
 func TestAuthenticate_NoScopesDenied(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has no scopes — should be denied when a scope is required
-	token := signToken(t, privKey, newTestClaims())
+	token := authtest.SignToken(t, privKey, newTestClaims())
 	ctx := ctxWithBearer(token)
 
 	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
@@ -216,11 +174,11 @@ func TestAuthenticate_NoScopesDenied(t *testing.T) {
 func TestAuthenticate_WriteScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has "ledger:write" → expands to include ScopeTransactionsWrite
-	token := signToken(t, privKey, newTestClaims("ledger:write"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsWrite)
@@ -231,11 +189,11 @@ func TestAuthenticate_WriteScope(t *testing.T) {
 func TestAuthenticate_AdminScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has "ledger:admin" → expands to ScopeClusterRead, ScopeClusterWrite
-	token := signToken(t, privKey, newTestClaims("ledger:admin"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:admin"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeClusterRead)
@@ -250,13 +208,13 @@ func TestAuthenticate_AdminScope(t *testing.T) {
 func TestAuthenticate_WrongIssuer(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	claims := newTestClaims("ledger:read")
 	claims.Issuer = "https://wrong-issuer.example.com"
 
-	token := signToken(t, privKey, claims)
+	token := authtest.SignToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
 	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
@@ -438,11 +396,11 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has granular scope directly (identity pass-through)
-	token := signToken(t, privKey, newTestClaims("ledger:TransactionRead"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:TransactionRead"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsRead)
@@ -457,13 +415,13 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 func TestAuthenticate_GodMode_OIDC(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	cfg := testAuthConfig(t, keySet)
 
 	// Token has no scopes but claims god mode — should get all scopes.
 	claims := newTestClaims()
 	claims.Claims = map[string]any{"god": true}
-	token := signToken(t, privKey, claims)
+	token := authtest.SignToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeClusterWrite)
@@ -539,7 +497,7 @@ func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
 func writesOnlyGRPCConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 	t.Helper()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 	mapping := DefaultMapping("ledger")
 
 	readScopes, ok := ExpandWildcardScope(WildcardRead)
@@ -597,7 +555,7 @@ func TestAuthenticate_WritesOnly_Write_ValidToken_Passes(t *testing.T) {
 	t.Parallel()
 
 	cfg, privKey := writesOnlyGRPCConfig(t)
-	token := signToken(t, privKey, newTestClaims("ledger:write"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsWrite)
@@ -716,7 +674,7 @@ func TestAuthenticate_ClusterSecret_MarksClusterInternal(t *testing.T) {
 func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := testKeyPair(t)
+	privKey, keySet := authtest.KeyPair(t)
 
 	cfg := AuthConfig{
 		Enabled:       true,
@@ -726,7 +684,7 @@ func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 		ClusterSecret: "shared-cluster-secret",
 	}
 
-	token := signToken(t, privKey, newTestClaims("ledger:read"))
+	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
 
 	newCtx, err := Authenticate(ctxWithBearer(token), cfg)
 	require.NoError(t, err)
