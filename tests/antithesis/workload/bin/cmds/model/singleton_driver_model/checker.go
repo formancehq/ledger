@@ -103,7 +103,8 @@ type pendingObservation struct {
 // (declared at creation, see setupLedgers); caller spawns the processor
 // goroutine. The schema is replayed as SetMetadataFieldType orders — the server
 // records the identical declared types at creation (populateInitialSchema), so
-// the model's schema state matches the server's from the first bulk.
+// the model's schema state matches the server's from the first bulk. They are
+// seeded rather than applied: at creation they produce no ledger log.
 func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
@@ -126,7 +127,9 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 			})
 		}
 
-		modelState = modelState.Apply(oracle.Bulk{Requests: reqs}).State
+		// Seeded, not applied: the server declares these at creation, so they
+		// emit no ledger log (see SeedInitialSchema).
+		modelState = modelState.SeedInitialSchema(reqs)
 	}
 
 	return &Checker{

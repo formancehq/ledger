@@ -680,6 +680,34 @@ func LedgerOf(req *servicepb.Request) string {
 // end-of-bulk transient violation on any touched ledger — rejects the whole bulk
 // and leaves every ledger unchanged. A bulk may span ledgers; each request is
 // routed to its own ledger's sub-state and the end-of-bulk checks run per ledger.
+// SeedInitialSchema declares a ledger's metadata field types the way
+// CreateLedger's initial_schema does: state only, no log.
+//
+// The distinction is load-bearing. Replaying the declarations as
+// SetMetadataFieldType requests through Apply reaches the same schema state,
+// but on the server those types are recorded at creation and never processed
+// as apply orders — they consume no ledger-local log id and never appear in
+// ListLogs. Seeding through Apply would therefore put one phantom log at the
+// head of the stream per declared field and shift every real log's id by that
+// many.
+func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
+	next := g.clone()
+
+	for _, req := range reqs {
+		name := LedgerOf(req)
+
+		ls, ok := next.ledgers[name]
+		if !ok {
+			ls = NewLedgerState()
+		}
+
+		ls.applyOne(req, map[VolumeKey]bool{})
+		next.ledgers[name] = ls
+	}
+
+	return next
+}
+
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
@@ -810,24 +838,28 @@ func (s LedgerState) LogIDs() []uint64 {
 	return out
 }
 
-// logKindFor names the LedgerLogPayload arm a committed request produces. It
-// is derived from the request rather than declared by each apply* handler, so
-// a new request type cannot silently append a log of the wrong kind — or, if
-// it is unmodelled, reach the stream at all: the default panics in lockstep
-// with applyOne's own unmodelled-request panic.
+// logKindFor names the LedgerLogPayload arm a committed request produces, or
+// "" for a request that appends nothing to the ledger log stream. It is
+// derived from the request rather than declared by each apply* handler, so a
+// new request type cannot silently append a log of the wrong kind — or, if it
+// is unmodelled, reach the stream at all: the default panics in lockstep with
+// applyOne's own unmodelled-request panic.
 //
-// Every arm here emits exactly one log. Requests the server answers without
-// touching the ledger log stream must not appear.
+// Only orders processed through processApply join the stream. processApply is
+// what consumes LedgerBoundaries.NextLogId, and the index builder folds a log
+// into the per-ledger limb ListLogs reads only when its payload is the Apply
+// arm. Ledger metadata is the exception: processAddLedgerMetadata and its
+// delete twin are dispatched as their own LedgerScopedOrder and return a
+// top-level SavedLedgerMetadata / DeletedLedgerMetadata payload, so they take
+// no ledger-local id and never appear in ListLogs.
 func logKindFor(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_AddAccountType:
 		return "added_account_type"
 	case *servicepb.Request_RemoveAccountType:
 		return "removed_account_type"
-	case *servicepb.Request_SaveLedgerMetadata:
-		return "saved_metadata"
-	case *servicepb.Request_DeleteLedgerMetadata:
-		return "deleted_metadata"
+	case *servicepb.Request_SaveLedgerMetadata, *servicepb.Request_DeleteLedgerMetadata:
+		return ""
 	case *servicepb.Request_SetMetadataFieldType:
 		return "set_metadata_field_type"
 	case *servicepb.Request_RemoveMetadataFieldType:
@@ -852,10 +884,15 @@ func logKindFor(req *servicepb.Request) string {
 	panic(fmt.Sprintf("model: no log kind for request %T", req.GetType()))
 }
 
-// appendLog records the log a committed request produced. The id is the
-// stream's position, dense from 1.
+// appendLog records the log a committed request produced, if it produced one.
+// The id is the stream's position, dense from 1.
 func (s *LedgerState) appendLog(req *servicepb.Request) {
-	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: logKindFor(req)})
+	kind := logKindFor(req)
+	if kind == "" {
+		return
+	}
+
+	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: kind})
 }
 
 // applyOne mutates the (already-forked) working state for one request and

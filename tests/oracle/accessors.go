@@ -210,6 +210,16 @@ func (g GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Times
 	g.ledgers[ledger] = ls
 }
 
+// LogKinds returns each committed log's kind, ascending by id.
+func (s LedgerState) LogKinds() []string {
+	out := make([]string, 0, s.logs.Len())
+	for i := range s.logs.Len() {
+		out = append(out, s.logs.Get(i).kind)
+	}
+
+	return out
+}
+
 // LogDates returns each committed log's (id, date), ascending. A nil date is
 // one not yet learned from a commit response.
 func (s LedgerState) LogDates() []struct {

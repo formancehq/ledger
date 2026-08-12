@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"strconv"
+	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"google.golang.org/grpc/metadata"
 
@@ -73,7 +77,10 @@ func genLogLeaf(ledger string) *commonpb.QueryFilter {
 		}}
 	default:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
-			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Cond: genLogUintCond()},
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+				Cond:  genLogUintCond(),
+			},
 		}}
 	}
 }
@@ -94,6 +101,31 @@ func genLogUintCond() *commonpb.UintCondition {
 	}
 
 	return cond
+}
+
+// hasDateLeaf reports whether the filter reads the log date, which is served
+// only when the log-date builtin index exists.
+func hasDateLeaf(f *commonpb.QueryFilter) bool {
+	switch t := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		return true
+	case *commonpb.QueryFilter_And:
+		for _, sub := range t.And.GetFilters() {
+			if hasDateLeaf(sub) {
+				return true
+			}
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range t.Or.GetFilters() {
+			if hasDateLeaf(sub) {
+				return true
+			}
+		}
+	case *commonpb.QueryFilter_Not:
+		return hasDateLeaf(t.Not.GetFilter())
+	}
+
+	return false
 }
 
 // matchLogFilter evaluates a LOGS filter against one modelled log. date is the
@@ -228,6 +260,13 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			return
 		}
 
+		// The log date is served by an opt-in builtin index this driver never
+		// creates, so a filter reading it is expected to be refused. That
+		// refusal is the coverage: it exercises the index gate on LOGS.
+		if hasDateLeaf(filter) && status.Code(err) == codes.FailedPrecondition {
+			return
+		}
+
 		assert.Unreachable("singleton_driver_model: ListLogs returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
@@ -237,7 +276,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
-	c.validateLogQuery(maxTicket, ledger, filter, afterSeq, pageSize, logs)
+	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs)
 }
 
 // serverLogIDs pulls the ledger-local ids out of a page.
@@ -250,7 +289,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 	return out
 }
 
-func (c *Checker) validateLogQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log) {
+func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log) {
 	ids := serverLogIDs(serverLogs)
 
 	// A page must always be ascending, within the cursor, and no longer than
@@ -276,13 +315,16 @@ func (c *Checker) validateLogQuery(maxTicket uint64, ledger string, filter *comm
 	}
 
 	assert.Unreachable("singleton_driver_model: log query outside model", internal.Details{
-		"ledger":    ledger,
-		"filter":    describeFilter(filter),
-		"afterSeq":  afterSeq,
-		"pageSize":  pageSize,
-		"rows":      len(ids),
-		"serverIds": joinUint64(ids),
-		"modelIds":  joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
+		"ledger":      ledger,
+		"filter":      describeFilter(filter),
+		"afterSeq":    afterSeq,
+		"pageSize":    pageSize,
+		"rows":        len(ids),
+		"serverIds":   joinUint64(ids),
+		"modelIds":    joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
+		"recheck":     joinUint64(recheckLogIDs(ctx, client, ledger)),
+		"modelKinds":  strings.Join(c.modelLogKinds(ledger), ","),
+		"serverKinds": strings.Join(recheckLogKinds(ctx, client, ledger), ","),
 	})
 }
 
@@ -309,4 +351,79 @@ func equalUint64(a, b []uint64) bool {
 	}
 
 	return true
+}
+
+// recheckLogIDs re-reads the ledger's logs unfiltered and unpinned, after the
+// finding. It separates "not yet visible at the read's pin" from "never
+// visible": if the ids the model expected show up here, the page was a
+// visibility question; if they never appear, the logs are absent.
+func recheckLogIDs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) []uint64 {
+	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+		Ledger:  ledger,
+		Options: &commonpb.ListOptions{PageSize: 200},
+	})
+	if err != nil {
+		return nil
+	}
+
+	logs, err := drainStream(stream)
+	if err != nil {
+		return nil
+	}
+
+	return serverLogIDs(logs)
+}
+
+func (c *Checker) modelLogKinds(ledger string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.modelState.Ledger(ledger).LogKinds()
+}
+
+// recheckLogKinds names the payload arm of each log the server actually holds,
+// so a surplus in the model can be attributed to a request kind.
+func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, ledger string) []string {
+	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+		Ledger:  ledger,
+		Options: &commonpb.ListOptions{PageSize: 200},
+	})
+	if err != nil {
+		return nil
+	}
+
+	logs, err := drainStream(stream)
+	if err != nil {
+		return nil
+	}
+
+	out := make([]string, 0, len(logs))
+	for _, l := range logs {
+		switch d := l.GetPayload().GetApply().GetLog().GetData(); {
+		case d.GetCreatedTransaction() != nil:
+			out = append(out, "created_transaction")
+		case d.GetRevertedTransaction() != nil:
+			out = append(out, "reverted_transaction")
+		case d.GetSavedMetadata() != nil:
+			out = append(out, "saved_metadata")
+		case d.GetDeletedMetadata() != nil:
+			out = append(out, "deleted_metadata")
+		case d.GetSetMetadataFieldType() != nil:
+			out = append(out, "set_metadata_field_type")
+		case d.GetRemovedMetadataFieldType() != nil:
+			out = append(out, "removed_metadata_field_type")
+		case d.GetCreateIndex() != nil:
+			out = append(out, "create_index")
+		case d.GetDropIndex() != nil:
+			out = append(out, "drop_index")
+		case d.GetAddedAccountType() != nil:
+			out = append(out, "added_account_type")
+		case d.GetRemovedAccountType() != nil:
+			out = append(out, "removed_account_type")
+		default:
+			out = append(out, "other")
+		}
+	}
+
+	return out
 }
