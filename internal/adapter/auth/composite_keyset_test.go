@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
-
-	"github.com/formancehq/ledger/v3/internal/adapter/auth/authtest"
 )
 
 func ed25519KeyPair(t *testing.T) (ed25519.PrivateKey, oidc.KeySet) {
@@ -68,7 +66,7 @@ func TestCompositeKeySet_EdDSAToken(t *testing.T) {
 	t.Parallel()
 
 	edPriv, edKeySet := ed25519KeyPair(t)
-	_, rsaKeySet := authtest.KeyPair(t)
+	_, rsaKeySet := testKeyPair(t)
 
 	composite := NewCompositeKeySet(edKeySet, rsaKeySet)
 
@@ -85,11 +83,11 @@ func TestCompositeKeySet_RSAToken(t *testing.T) {
 	t.Parallel()
 
 	_, edKeySet := ed25519KeyPair(t)
-	rsaPriv, rsaKeySet := authtest.KeyPair(t)
+	rsaPriv, rsaKeySet := testKeyPair(t)
 
 	composite := NewCompositeKeySet(edKeySet, rsaKeySet)
 
-	token := authtest.SignToken(t, rsaPriv, newTestClaims("ledger:read"))
+	token := signToken(t, rsaPriv, newTestClaims("ledger:read"))
 	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256})
 	require.NoError(t, err)
 
@@ -116,10 +114,10 @@ func TestCompositeKeySet_NilOIDC(t *testing.T) {
 func TestCompositeKeySet_NilEd25519(t *testing.T) {
 	t.Parallel()
 
-	rsaPriv, rsaKeySet := authtest.KeyPair(t)
+	rsaPriv, rsaKeySet := testKeyPair(t)
 	composite := NewCompositeKeySet(nil, rsaKeySet)
 
-	token := authtest.SignToken(t, rsaPriv, newTestClaims("ledger:read"))
+	token := signToken(t, rsaPriv, newTestClaims("ledger:read"))
 	jws, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256})
 	require.NoError(t, err)
 
@@ -141,7 +139,7 @@ func TestCompositeKeySet_ThreeKeySets(t *testing.T) {
 	// Create two Ed25519 key sets and one RSA key set.
 	edPriv1, edKeySet1 := ed25519KeyPair(t)
 	_, edKeySet2 := ed25519KeyPair(t) // different key, won't verify edPriv1 tokens
-	rsaPriv, rsaKeySet := authtest.KeyPair(t)
+	rsaPriv, rsaKeySet := testKeyPair(t)
 
 	composite := NewCompositeKeySet(edKeySet1, edKeySet2, rsaKeySet)
 
@@ -154,7 +152,7 @@ func TestCompositeKeySet_ThreeKeySets(t *testing.T) {
 	assert.NotEmpty(t, payload)
 
 	// RSA token should fall through to rsaKeySet (third).
-	rsaToken := authtest.SignToken(t, rsaPriv, newTestClaims("ledger:read"))
+	rsaToken := signToken(t, rsaPriv, newTestClaims("ledger:read"))
 	rsaJWS, err := jose.ParseSigned(rsaToken, []jose.SignatureAlgorithm{jose.RS256})
 	require.NoError(t, err)
 	payload, err = composite.VerifySignature(context.Background(), rsaJWS)

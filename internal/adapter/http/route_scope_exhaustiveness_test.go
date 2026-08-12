@@ -2,14 +2,19 @@ package http
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -18,7 +23,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/adapter/auth/authtest"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
@@ -248,6 +252,72 @@ func (panickingReporter) Fatalf(format string, args ...any) {
 	panic(fmt.Sprintf(format, args...))
 }
 
+// testTokenKeyID is the key ID carried by the key pair and the tokens below. Any
+// value works: no assertion reads it back, it only has to match between the JWKS
+// entry and the token header so the static key set resolves the key.
+const testTokenKeyID = "test-key-id"
+
+// testKeyPair generates an RSA key pair and returns the private key together with
+// a static JWKS key set that verifies tokens signed by it.
+//
+// internal/adapter/auth has an equivalent helper in its own test files, and this
+// is deliberately a package-local copy rather than a shared one: those tests are
+// in-package (package auth), so nothing outside the auth package can import them,
+// and the only way to share would be a package that exists solely for tests. A
+// ~40-line fixture over an API that does not churn is the cheaper duplication.
+func testKeyPair(t *testing.T) (*rsa.PrivateKey, oidc.KeySet) {
+	t.Helper()
+
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	jwk := jose.JSONWebKey{
+		Key:       &privKey.PublicKey,
+		KeyID:     testTokenKeyID,
+		Algorithm: string(jose.RS256),
+		Use:       "sig",
+	}
+
+	return privKey, oidc.NewStaticKeySet(jwk)
+}
+
+// testClaims builds access-token claims carrying the given token scopes, issued
+// by testAuthIssuer and valid for one hour.
+func testClaims(scopes ...string) *oidc.AccessTokenClaims {
+	now := time.Now()
+
+	claims := &oidc.AccessTokenClaims{}
+	claims.Issuer = testAuthIssuer
+	claims.Subject = "test-user"
+	claims.IssuedAt = oidc.Time(now.Unix())
+	claims.Expiration = oidc.Time(now.Add(1 * time.Hour).Unix())
+	claims.Scopes = oidc.SpaceDelimitedArray(scopes)
+
+	return claims
+}
+
+// signToken serialises claims as an RS256 compact JWS signed by key.
+func signToken(t *testing.T, key *rsa.PrivateKey, claims *oidc.AccessTokenClaims) string {
+	t.Helper()
+
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Algorithm: jose.RS256,
+		Key:       &jose.JSONWebKey{Key: key, KeyID: testTokenKeyID},
+	}, nil)
+	require.NoError(t, err)
+
+	payload, err := json.Marshal(claims)
+	require.NoError(t, err)
+
+	jws, err := signer.Sign(payload)
+	require.NoError(t, err)
+
+	token, err := jws.CompactSerialize()
+	require.NoError(t, err)
+
+	return token
+}
+
 // newScopedHandler builds the real router with authentication enabled.
 func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 	t.Helper()
@@ -333,7 +403,7 @@ func expandTable(t *testing.T, rows []routeScope) map[walkKey]routeScope {
 func TestRouteScopes_Exhaustive(t *testing.T) {
 	t.Parallel()
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 	walked := walkRoutes(t, newScopedHandler(t, keySet))
 	expanded := expandTable(t, expectedRouteScopes())
 
@@ -610,8 +680,8 @@ func sortedGranularScopes() []internalauth.Scope {
 // plus one bearer token per granular scope.
 //
 // One RSA key pair and one token per scope are minted per test, never inside the
-// per-route loop: authtest.KeyPair generates a 2048-bit key, which would
-// otherwise dominate the runtime of a route × scope sweep.
+// per-route loop: testKeyPair generates a 2048-bit key, which would otherwise
+// dominate the runtime of a route × scope sweep.
 //
 // tokens holds an entry for every granular scope, and every kindGuarded row is
 // asserted to declare one of those by
@@ -625,7 +695,7 @@ type scopeProbeFixture struct {
 func newScopeProbeFixture(t *testing.T) scopeProbeFixture {
 	t.Helper()
 
-	key, keySet := authtest.KeyPair(t)
+	key, keySet := testKeyPair(t)
 
 	tokens := make(map[internalauth.Scope]string, len(internalauth.AllGranularScopes))
 
@@ -633,7 +703,7 @@ func newScopeProbeFixture(t *testing.T) scopeProbeFixture {
 		// A granular scope is not a key of DefaultMapping, so it reaches the
 		// gate through ExpandScopes' identity pass-through: exactly one granular
 		// scope per token, never an aggregate that would expand to several.
-		tokens[scope] = authtest.SignToken(t, key, authtest.Claims(testAuthIssuer, string(scope)))
+		tokens[scope] = signToken(t, key, testClaims(string(scope)))
 	}
 
 	return scopeProbeFixture{handler: newScopedHandler(t, keySet), tokens: tokens}
@@ -731,7 +801,7 @@ func TestRouteScopes_GuardedRoutesRequireExactlyOneScope(t *testing.T) {
 func TestRouteScopes_PublicRoutesNeedNoToken(t *testing.T) {
 	t.Parallel()
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 	handler := newScopedHandler(t, keySet)
 
 	probed := 0

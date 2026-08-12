@@ -10,8 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/ledger/v3/internal/adapter/auth/authtest"
 )
 
 // ok200 is a simple handler that returns 200.
@@ -33,7 +31,7 @@ func TestHTTPAuthMiddleware_Disabled(t *testing.T) {
 func TestHTTPAuthMiddleware_PublicEndpoints(t *testing.T) {
 	t.Parallel()
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
@@ -57,7 +55,7 @@ func TestHTTPAuthMiddleware_MissingToken(t *testing.T) {
 	// 401 is then issued by RequireScope downstream if the anonymous scopes
 	// don't cover the required scope.
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 
 	var (
 		capturedAuthPresented bool
@@ -90,7 +88,7 @@ func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
 	// With anonymous scopes configured, an unauthenticated request inherits
 	// them so downstream RequireScope can let public reads through.
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 
 	mapping := DefaultMapping("ledger")
 	mapping[ScopeMappingAnonymousKey] = []Scope{ScopeLedgersRead, ScopeAccountsRead}
@@ -121,7 +119,7 @@ func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
 func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 
 	var capturedSubject string
 
@@ -140,7 +138,7 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 		Issuer:  testIssuer,
 	})(inner)
 
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -153,7 +151,7 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 
 	var capturedScopes map[Scope]struct{}
 
@@ -172,7 +170,7 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 	}
 	handler := HTTPAuthMiddleware(cfg)(inner)
 
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -189,7 +187,7 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	claims := newTestClaims("ledger:read")
 	claims.Expiration = claims.IssuedAt // expired immediately
 
@@ -199,7 +197,7 @@ func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 		Issuer:  testIssuer,
 	})(ok200)
 
-	token := authtest.SignToken(t, privKey, claims)
+	token := signToken(t, privKey, claims)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -210,7 +208,7 @@ func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 func TestHTTPAuthMiddleware_WrongIssuer(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	claims := newTestClaims("ledger:read")
 	claims.Issuer = "https://wrong-issuer.example.com"
 
@@ -220,7 +218,7 @@ func TestHTTPAuthMiddleware_WrongIssuer(t *testing.T) {
 		Issuer:  testIssuer,
 	})(ok200)
 
-	token := authtest.SignToken(t, privKey, claims)
+	token := signToken(t, privKey, claims)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -234,14 +232,14 @@ func TestHTTPAuthMiddleware_InvalidSignature(t *testing.T) {
 	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	_, keySet := authtest.KeyPair(t)
+	_, keySet := testKeyPair(t)
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled: true,
 		KeySet:  keySet,
 		Issuer:  testIssuer,
 	})(ok200)
 
-	token := authtest.SignToken(t, otherKey, newTestClaims("ledger:read"))
+	token := signToken(t, otherKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -293,7 +291,7 @@ func TestRequireScope_NoClaims(t *testing.T) {
 func TestRequireScope_MatchingScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -306,7 +304,7 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 	// Token has "ledger:write" which expands to include ScopeTransactionsWrite
 	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
+	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -317,7 +315,7 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 func TestRequireScope_WrongScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -329,7 +327,7 @@ func TestRequireScope_WrongScope(t *testing.T) {
 	// Token has "ledger:read" (expands to read scopes), route requires ScopeTransactionsWrite
 	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -340,7 +338,7 @@ func TestRequireScope_WrongScope(t *testing.T) {
 func TestRequireScope_WriteScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -352,7 +350,7 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
 	// With write scope → 200
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
+	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPut, "/test", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -360,7 +358,7 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// With read scope → 403
-	token = authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
+	token = signToken(t, privKey, newTestClaims("ledger:read"))
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPut, "/test", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -377,7 +375,7 @@ func TestRequireScope_WriteScope(t *testing.T) {
 func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -391,7 +389,7 @@ func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
 	t.Run("granular ledger-read token passes the gate", func(t *testing.T) {
 		t.Parallel()
 
-		token := authtest.SignToken(t, privKey, newTestClaims(string(ScopeLedgersRead)))
+		token := signToken(t, privKey, newTestClaims(string(ScopeLedgersRead)))
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/main/logs", nil)
 		r.Header.Set("Authorization", "Bearer "+token)
@@ -404,7 +402,7 @@ func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
 
 		// Regression guard: an OpsRead-only token (the scope the old code
 		// required) must NOT list a ledger's logs over HTTP.
-		token := authtest.SignToken(t, privKey, newTestClaims(string(ScopeOpsRead)))
+		token := signToken(t, privKey, newTestClaims(string(ScopeOpsRead)))
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, "/main/logs", nil)
 		r.Header.Set("Authorization", "Bearer "+token)
@@ -537,7 +535,7 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 
 	var capturedScopes map[Scope]struct{}
 
@@ -558,7 +556,7 @@ func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 
 	claims := newTestClaims()
 	claims.Claims = map[string]any{"god": true}
-	token := authtest.SignToken(t, privKey, claims)
+	token := signToken(t, privKey, claims)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
@@ -576,7 +574,7 @@ func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 	t.Parallel()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -590,7 +588,7 @@ func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 
 	claims := newTestClaims()
 	claims.Claims = map[string]any{"god": true}
-	token := authtest.SignToken(t, privKey, claims)
+	token := signToken(t, privKey, claims)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -604,7 +602,7 @@ func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 func writesOnlyConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 	t.Helper()
 
-	privKey, keySet := authtest.KeyPair(t)
+	privKey, keySet := testKeyPair(t)
 	mapping := DefaultMapping("ledger")
 
 	readScopes, ok := ExpandWildcardScope(WildcardRead)
@@ -665,7 +663,7 @@ func TestWritesOnly_Write_ValidToken_Passes(t *testing.T) {
 	cfg, privKey := writesOnlyConfig(t)
 	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:write"))
+	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test/transactions", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -682,7 +680,7 @@ func TestWritesOnly_Write_ValidTokenWrongScope_403(t *testing.T) {
 	// Token has read-only scopes — anonymous would suffice for reads but does
 	// not apply because the caller is authenticated; the token's scopes alone
 	// are used. So writes are forbidden.
-	token := authtest.SignToken(t, privKey, newTestClaims("ledger:read"))
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test/transactions", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
