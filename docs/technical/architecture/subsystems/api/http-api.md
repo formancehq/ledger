@@ -21,6 +21,44 @@ All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `
 
 The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
 
+#### The route-to-scope contract is pinned by a test
+
+`NewHandler` (`internal/adapter/http/handler.go`) expresses the scope a route requires **only** by
+which `RequireScope(...)` `Group`/`Route` block lexically encloses the route's line. Nothing in the
+router records that decision, so moving a route between two adjacent groups is a one-line diff that
+silently changes its authorization.
+
+`internal/adapter/http/route_scope_exhaustiveness_test.go` is what makes that binding a checked
+contract. It holds a declared table of every `(method, pattern)` the router registers and the granular
+scope each one requires, and it enforces the table two ways:
+
+- **Reconciliation** against `chi.Walk`, in both directions — a route with no table row fails ("no
+  scope decision"), and a table row matching no route fails ("stale row"). This is what stops a new
+  route under the `/v3/_/…` subtree from silently inheriting `ledger:OpsRead`.
+- **End-to-end probes** — for each guarded route, a token carrying the declared scope must be
+  admitted, and a token carrying **every** other granular scope must be refused with 403. That proves
+  exactly one scope opens each route.
+
+**When you add a route, add its table row.** The test names the route and tells you what to add.
+
+Two properties of this test are load-bearing and easy to break by "simplifying" it:
+
+- **The middleware chain is not a usable oracle for the scope.** `chi.Walk` hands you the middleware
+  slice, but `With(mw).Route(prefix, …)` attaches the middleware to the sub-mux's *handler* rather
+  than to `Middlewares()`, so `GET /v3/_/chapters` reports no `RequireScope` while returning 401 to a
+  tokenless request. All `RequireScope` closures also share one code pointer, so reflection cannot
+  tell them apart. Only a real request through `ServeHTTP` reveals the scope.
+- **Probes use granular scopes only, never the aggregate `ledger:read`.** The aggregate expands to
+  both `ledger:LedgerRead` and `ledger:OpsRead`, which is precisely what hid the EN-1508 drift from
+  every caller not using granular scopes.
+
+The same asymmetry noted above has a second consequence worth knowing: because a `Route` sub-mux
+refuses before routing the remainder of the path, `chi.Context.RoutePattern()` is only complete once
+the request reaches the endpoint — so the test asserts the matched pattern on admitted probes only.
+
+The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
+same guarantee for the `Request` oneof.
+
 ### Response Format
 
 #### Success

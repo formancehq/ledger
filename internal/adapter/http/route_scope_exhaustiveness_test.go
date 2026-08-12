@@ -104,7 +104,7 @@ func expectedRouteScopes() []routeScope {
 		// unlike /health, /livez and /readyz. So a tokenless request reaches the
 		// handler while an *invalid* token yields 401 — an asymmetry against the
 		// documented behaviour in docs/ops/authentication.md:94. Pinned as-is
-		// here; see the EN-1775 follow-up.
+		// here; the asymmetry is tracked in EN-1777.
 		{http.MethodGet, "/health", kindPublic, "", false},
 		{http.MethodGet, "/livez", kindPublic, "", false},
 		{http.MethodGet, "/readyz", kindPublic, "", false},
