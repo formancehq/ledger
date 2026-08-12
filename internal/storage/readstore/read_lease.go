@@ -16,8 +16,7 @@ import "sync"
 // that samples the watermark in that gap would be free to reclaim beneath a
 // pin that is about to be used. The registry therefore also publishes a
 // monotone reclaim floor: BeginGC records the watermark a pass is about to
-// sweep with, and Acquire refuses any pin below it. A refused reader re-reads
-// its handle and retries rather than resolving a truncated group.
+// sweep with, and Pin refuses any sequence below it.
 type LeaseRegistry struct {
 	mu     sync.Mutex
 	nextID uint64
@@ -36,31 +35,49 @@ type Lease struct {
 	once sync.Once
 }
 
-// Reserve holds reclamation where it is, for a reader that does not yet know
-// its pin. It is a lease at the current floor, so it can never be refused, and
-// while it is held every GC pass lowers its watermark to that floor.
+// Reserve holds reclamation at seq for a reader that does not yet know its
+// pin, and must be taken BEFORE the main-store handle is opened: the pin does
+// not exist until the handle is open, so no lease can protect it, and under
+// load the fold — and with it the reclaim floor — passes a just-opened handle
+// within a tick.
 //
-// A read must take this BEFORE opening its main-store handle. The handle's
-// sequence is then necessarily at or above the held floor (floor <= fold
-// cursor <= applied index), so the Acquire that follows cannot be refused.
-// Without it there is an unclosable window: the pin does not exist until the
-// handle is open, so no lease can protect it, and under sustained load the
-// fold and the GC pass it within a tick.
-func (r *LeaseRegistry) Reserve() *Lease {
+// Callers pass the read index's current fold cursor. The fold reads from the
+// main log and records its cursor only for logs already consumed, so the
+// cursor is at or below the main store's applied sequence at that instant;
+// the handle opens later and the applied sequence only moves forward, so the
+// pin that follows is at or above the reserved sequence and its Pin cannot be
+// refused. Reserving at the cursor rather than at the floor keeps the hold
+// shallow: everything below the cursor stays reclaimable while the read waits
+// for alignment.
+//
+// A sequence beneath the floor is raised to it — history below the floor may
+// already be gone, so pinning there would claim a protection the registry
+// cannot give.
+func (r *LeaseRegistry) Reserve(seq uint64) *Lease {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if seq < r.floor {
+		seq = r.floor
+	}
+
 	r.nextID++
-	r.leases[r.nextID] = r.floor
+	r.leases[r.nextID] = seq
 
 	return &Lease{r: r, id: r.nextID}
 }
 
-// Acquire registers a read pinned at seq. ok=false means a GC pass has already
-// begun reclaiming at or above seq, so events the pin needs may be gone; the
-// caller must re-pin against fresher state instead of reading at seq. A caller
-// holding a Reserve taken before its handle cannot be refused.
-func (r *LeaseRegistry) Acquire(seq uint64) (*Lease, bool) {
+// Pin registers a read at seq — the sequence the event GC must not reclaim
+// past for as long as the returned lease is held. Registration is the point:
+// the lease is how a live read enters the minimum BeginGC sweeps with, and
+// without it a pass would be free to collapse groups the read is still
+// resolving.
+//
+// ok=false means a GC pass has already begun reclaiming at or above seq, so
+// events the read needs may be gone. It is unreachable for a caller holding a
+// Reserve taken before its handle, and is a detector for one that opened a
+// handle without it — not a condition reads are expected to meet.
+func (r *LeaseRegistry) Pin(seq uint64) (*Lease, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

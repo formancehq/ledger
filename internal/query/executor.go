@@ -127,11 +127,13 @@ func Execute(
 
 	aligned := AlignmentOwed(pq.GetFilter(), pq.GetTarget())
 	if aligned {
-		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle)
+		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle, releaseHold)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		releaseHold()
+
 		// Both the universe and the enrichment come from the handle, so there
 		// is no index leaf to align against it and no pinned resolution for
 		// the event GC to respect. The snapshot is still opened: it backs the

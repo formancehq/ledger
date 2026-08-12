@@ -3,6 +3,7 @@ package ctrl
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -21,16 +22,20 @@ import (
 // iterates — see the comment on listEntities for why the resolver
 // MUST share the iteration snapshot.
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
-	target        commonpb.QueryTarget
-	ledgerName    string
-	pageSize      uint32
-	after         T
-	filter        *commonpb.QueryFilter
-	reverse       bool
-	schema        map[string]*commonpb.MetadataFieldSchema
-	info          *commonpb.LedgerInfo
-	profile       *query.QueryProfile
-	pebbleReader  dal.PebbleReader
+	target       commonpb.QueryTarget
+	ledgerName   string
+	pageSize     uint32
+	after        T
+	filter       *commonpb.QueryFilter
+	reverse      bool
+	schema       map[string]*commonpb.MetadataFieldSchema
+	info         *commonpb.LedgerInfo
+	profile      *query.QueryProfile
+	pebbleReader dal.PebbleReader
+	// releaseHold drops the reclaim-floor reservation OpenQueryHandle took
+	// before pebbleReader was opened. Alignment hands it back the moment the
+	// read's own pin exists; an unaligned read never needed it.
+	releaseHold   func()
 	indexRegistry indexes.Lookup
 	// indexVersionFor is filled in by listEntities (bound to the
 	// iteration snapshot); leaf compilers should never see a nil here.
@@ -70,10 +75,16 @@ func listEntities[T interface{ ~string | ~uint64 }](
 ) (entityListResult, error) {
 	var result entityListResult
 
+	if params.releaseHold == nil {
+		return result, errors.New("invariant: listEntities called without the reclaim-floor hold from OpenQueryHandle")
+	}
+
 	// Alignment is owed only to a read that actually consults the read index
 	// (query.AlignmentOwed); here that also covers newReverseIterator, which
 	// iterates params.pebbleReader like compileUniverse does.
 	if !query.AlignmentOwed(params.filter, params.target) {
+		params.releaseHold()
+
 		snap := readStore.NewSnapshot()
 		defer func() { _ = snap.Close() }()
 
@@ -88,7 +99,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader, params.releaseHold)
 	if err != nil {
 		return result, err
 	}

@@ -453,6 +453,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		info:          ledgerInfo,
 		profile:       profile,
 		pebbleReader:  handle,
+		releaseHold:   releaseHold,
 		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
 		// indexVersionFor deliberately omitted — listEntities binds
 		// it to its own iteration snapshot.
@@ -546,6 +547,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		info:          ledgerInfo,
 		profile:       profile,
 		pebbleReader:  handle,
+		releaseHold:   releaseHold,
 		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
 		// indexVersionFor deliberately omitted — listEntities binds
 		// it to its own iteration snapshot.
@@ -987,7 +989,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
 	if err != nil {
 		return nil, err
 	}
@@ -1692,7 +1694,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		}
 	}
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
 	if err != nil {
 		releaseHold()
 		_ = handle.Close()

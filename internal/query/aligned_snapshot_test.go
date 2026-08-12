@@ -65,7 +65,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 			setReadStoreProgress(t, rs, lastSeq)
 		}()
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -82,7 +82,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 	t.Run("already aligned", func(t *testing.T) {
 		setReadStoreProgress(t, rs, lastSeq+4)
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -113,7 +113,7 @@ func TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle)
+	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, func() {})
 
 	require.ErrorIs(t, err, context.DeadlineExceeded, "the caller's deadline is what ends the wait")
 	require.Less(t, time.Since(start), time.Second, "it must not outlive the caller's deadline")
@@ -191,7 +191,7 @@ func TestOpenQueryHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 	require.Equal(t, uint64(0), rs.Leases().BeginGC(lastSeq+1_000),
 		"the reservation pins the floor at its pre-handle value")
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
 	require.NoError(t, err, "a handle from OpenQueryHandle must always be admissible")
 
 	defer releaseLease()
@@ -221,4 +221,80 @@ func TestOpenQueryHandle_UnalignedReadHoldsNoFloor(t *testing.T) {
 
 	require.Equal(t, uint64(500), rs.Leases().BeginGC(500),
 		"an unaligned read must not hold the event GC back")
+}
+
+// The reservation covers the window before the read's pin exists, and no
+// longer. Once alignment has registered that pin, the read's own lease
+// retains everything it needs, so the GC watermark must be free to rise to
+// it — otherwise every request in flight drags the watermark down to the fold
+// cursor as of its own start, and the floor advances only in a moment when no
+// aligned read is running at all.
+func TestAlignedIndexSnapshot_ReleasesTheReservationOnceThePinExists(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+
+	rs := newTestReadStore(t)
+	setReadStoreProgress(t, rs, 0)
+
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+		Field: &commonpb.FieldCondition{
+			Field:     &commonpb.FieldRef{Metadata: "tier"},
+			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+		},
+	}}
+
+	// Reserved while the fold is still at 0, so the reservation sits well
+	// below the pin the read ends up with.
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	require.NoError(t, err)
+
+	defer releaseHold()
+	defer func() { _ = handle.Close() }()
+
+	lastSeq, err := query.ReadLastSequence(handle)
+	require.NoError(t, err)
+	setReadStoreProgress(t, rs, lastSeq)
+
+	snap, _, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, releaseHold)
+	require.NoError(t, err)
+
+	defer releaseLease()
+	defer func() { _ = snap.Close() }()
+
+	require.Equal(t, lastSeq, rs.Leases().BeginGC(lastSeq+1_000),
+		"the read's pin is the only thing still held, so the watermark rises to it")
+}
+
+// The reservation is taken at the fold cursor, not at the floor: a read
+// parked on a lagging fold must not pin reclamation to the bottom of retained
+// history for the length of its wait.
+func TestOpenQueryHandle_ReservesAtTheFoldCursor(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+
+	rs := newTestReadStore(t)
+	setReadStoreProgress(t, rs, 2)
+
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+		Field: &commonpb.FieldCondition{
+			Field:     &commonpb.FieldRef{Metadata: "tier"},
+			Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+		},
+	}}
+
+	handle, releaseHold, err := query.OpenQueryHandle(rs, store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	require.NoError(t, err)
+
+	defer releaseHold()
+	defer func() { _ = handle.Close() }()
+
+	// Before alignment runs: the only lease is the reservation.
+	require.Equal(t, uint64(2), rs.Leases().BeginGC(1_000),
+		"everything below the fold cursor stays reclaimable while the read waits")
 }

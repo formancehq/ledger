@@ -54,8 +54,12 @@ func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bo
 // caller must invoke it when iteration ends, alongside closing the snapshot.
 //
 // Callers must obtain mainReader from OpenQueryHandle, passing the same
-// filter and target: it reserves the reclaim floor before opening the handle,
-// so the pin registered here can never be refused.
+// filter and target, and hand its release closure here as releaseHold: it
+// reserves the reclaim floor before opening the handle, so the pin registered
+// here can never be refused. The reservation is dropped as soon as that pin
+// exists — from then on the read's own lease retains everything it needs,
+// while the reservation would only drag the GC watermark back down to the
+// fold cursor as of the request's start, for every request in flight.
 //
 // The wait is bounded by the caller's context and nothing else. Alignment is
 // not optional — a filtered read cannot answer correctly until the fold
@@ -68,7 +72,7 @@ func AlignmentOwed(filter *commonpb.QueryFilter, target commonpb.QueryTarget) bo
 //
 // The lease is released before waiting, so a long wait pins no history and
 // creates no reclamation pressure.
-func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader) (*pebble.Snapshot, uint64, func(), error) {
+func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader, releaseHold func()) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)
@@ -81,11 +85,13 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 	// still bounds the index-ahead direction. No GC runs against a frozen
 	// store, so there is no lease to hold.
 	if rs.Frozen() {
+		releaseHold()
+
 		return rs.NewSnapshot(), mainSeq, func() {}, nil
 	}
 
 	for {
-		lease, ok := rs.Leases().Acquire(mainSeq)
+		lease, ok := rs.Leases().Pin(mainSeq)
 		if !ok {
 			// OpenQueryHandle holds the floor across the handle's creation,
 			// so a pin beneath it means this read bypassed that helper and
@@ -114,6 +120,8 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		}
 
 		if lastIndexed >= mainSeq {
+			releaseHold()
+
 			return snap, mainSeq, lease.Release, nil
 		}
 
@@ -215,7 +223,12 @@ func OpenQueryHandle(rs *readstore.Store, store *dal.Store, filter *commonpb.Que
 		return handle, func() {}, err
 	}
 
-	hold := rs.Leases().Reserve()
+	cursor, err := rs.LastIndexedSequence()
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading index progress: %w", err)
+	}
+
+	hold := rs.Leases().Reserve(cursor)
 
 	handle, err := store.NewReadHandle()
 	if err != nil {

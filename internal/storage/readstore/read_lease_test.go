@@ -13,10 +13,10 @@ func TestLeaseRegistry_BeginGCRespectsLivePins(t *testing.T) {
 
 	r := NewLeaseRegistry()
 
-	a, ok := r.Acquire(10)
+	a, ok := r.Pin(10)
 	require.True(t, ok)
 
-	b, ok := r.Acquire(25)
+	b, ok := r.Pin(25)
 	require.True(t, ok)
 
 	require.Equal(t, uint64(10), r.BeginGC(100), "the lowest live pin bounds the sweep")
@@ -42,10 +42,10 @@ func TestLeaseRegistry_AcquireRefusesBelowFloor(t *testing.T) {
 	require.Equal(t, uint64(50), r.BeginGC(50))
 	require.Equal(t, uint64(50), r.ReclaimFloor())
 
-	_, ok := r.Acquire(49)
+	_, ok := r.Pin(49)
 	require.False(t, ok, "reclamation has passed 49")
 
-	lease, ok := r.Acquire(50)
+	lease, ok := r.Pin(50)
 	require.True(t, ok, "the floor itself is still resolvable")
 	lease.Release()
 }
@@ -58,14 +58,14 @@ func TestLeaseRegistry_LivePinHoldsTheFloor(t *testing.T) {
 
 	r := NewLeaseRegistry()
 
-	held, ok := r.Acquire(60)
+	held, ok := r.Pin(60)
 	require.True(t, ok)
 
 	require.Equal(t, uint64(60), r.BeginGC(200), "the sweep cannot pass the held pin")
 	require.Equal(t, uint64(60), r.ReclaimFloor())
 
 	// The holder is still admissible at its own pin for the whole lease.
-	again, ok := r.Acquire(60)
+	again, ok := r.Pin(60)
 	require.True(t, ok)
 	again.Release()
 
@@ -73,6 +73,6 @@ func TestLeaseRegistry_LivePinHoldsTheFloor(t *testing.T) {
 
 	require.Equal(t, uint64(200), r.BeginGC(200), "released: the fold cursor stands again")
 
-	_, ok = r.Acquire(60)
+	_, ok = r.Pin(60)
 	require.False(t, ok, "reclamation has now passed 60")
 }
