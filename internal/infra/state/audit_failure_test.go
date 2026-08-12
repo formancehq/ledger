@@ -861,7 +861,7 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 
 	for _, tc := range auditFailureCases() {
 		rt := reflect.TypeOf(tc.err)
-		for rt.Kind() == reflect.Ptr {
+		for rt.Kind() == reflect.Pointer {
 			rt = rt.Elem()
 		}
 
