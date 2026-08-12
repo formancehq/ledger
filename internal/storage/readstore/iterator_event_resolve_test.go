@@ -421,3 +421,26 @@ func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
 		require.NoError(t, closer.Close())
 	}
 }
+
+// The unreadable key can be the first of a group rather than one reached
+// while scanning it — a distinct parse site, and the one a truncated key
+// lands on, since it sorts ahead of the events it shares an identity with.
+func TestEventResolveIterator_RejectsAnUnreadableGroupHead(t *testing.T) {
+	t.Parallel()
+
+	s, prefix := eventFixture(t, "v", ev{"a:9", 10, MetadataEventAdd})
+
+	kb := dal.NewKeyBuilder()
+	head := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 10, MetadataEventAdd)...)
+	require.NoError(t, s.DB().Set(head[:len(head)-3], nil, pebble.NoSync))
+
+	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
+	require.NoError(t, err)
+
+	defer it.Close()
+
+	for it.Next() {
+	}
+
+	require.Error(t, it.Err(), "a group whose first key cannot be parsed must fail the scan")
+}

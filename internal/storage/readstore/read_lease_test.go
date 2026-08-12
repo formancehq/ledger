@@ -76,3 +76,24 @@ func TestLeaseRegistry_LivePinHoldsTheFloor(t *testing.T) {
 	_, ok = r.Pin(60)
 	require.False(t, ok, "reclamation has now passed 60")
 }
+
+// A reservation beneath the floor is raised to it. History below the floor
+// may already be reclaimed, so registering there would claim a protection the
+// registry cannot give — and would drag every concurrent sweep's watermark
+// down to a sequence nothing can be read at anyway.
+func TestLeaseRegistry_ReserveIsRaisedToTheFloor(t *testing.T) {
+	t.Parallel()
+
+	r := NewLeaseRegistry()
+	require.Equal(t, uint64(100), r.BeginGC(100))
+	require.Equal(t, uint64(100), r.ReclaimFloor())
+
+	lease := r.Reserve(40)
+	defer lease.Release()
+
+	require.Equal(t, uint64(100), r.BeginGC(500),
+		"the reservation holds at the floor, not beneath it")
+
+	_, ok := r.Pin(100)
+	require.True(t, ok, "a pin at the floor the reservation holds is admissible")
+}
