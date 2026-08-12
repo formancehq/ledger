@@ -1,0 +1,474 @@
+//go:build e2e && s3
+
+package cluster
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"google.golang.org/grpc"
+)
+
+// This suite pins the mirror resume position across a backup/restore cycle
+// (EN-1773, regression for EN-1776). Since EN-1513 there is no persisted mirror
+// cursor: LedgerBoundaries.last_mirror_v2_log_id — the FSM-applied high-water
+// mark — is the sole durable ingestion authority, and the worker resumes from
+// it. RebuildDelta replays the exported ledger logs to reconstruct the
+// boundaries, but it did not fold the mirror high-water mark, so a restored
+// mirror ledger came back with last_mirror_v2_log_id == 0.
+//
+// The consequence is not a stalled mirror — it is a silent double ingestion.
+// The worker restarts at source log 1, and processMirrorIngest sees v2LogID ==
+// last+1 for every already-applied log, so it re-applies them instead of
+// treating them as replays. Mirrored transactions carry the SOURCE transaction
+// id, so the re-apply overwrites the same transaction rows (the count stays
+// put) while applyPosting runs a second time with force=true: the account
+// volumes silently double. That is why the volume comparison, not the
+// transaction count, is the assertion that cannot be masked by a race with the
+// mirror worker.
+var _ = Describe("Restore mirror resume position", Ordered, func() {
+	const (
+		// Distinct from the other restore suites' ports so this suite can run
+		// alongside them.
+		httpPort   = 15250
+		grpcPort   = 15150
+		raftPort   = grpcPort - 1000
+		ledgerName = "mirror-restore-ledger"
+		s3Bucket   = "restore-mirror-cursor"
+		clusterID  = "mirror-restore-cluster"
+
+		account = "users:001"
+		asset   = "USD/2"
+
+		// Source logs 1..4 carry transactions 0..3, each crediting `account`
+		// with 100. sourceLogCount is therefore the cursor the mirror must hold
+		// when the delta is exported.
+		sourceLogCount = 4
+		perTxAmount    = "100"
+
+		// Appended after the restore to prove ingestion resumes rather than
+		// merely stopping in a correct-looking state.
+		postRestoreLogID = sourceLogCount + 1
+		postRestoreTxID  = sourceLogCount
+	)
+
+	var (
+		ctx            context.Context
+		restoreWalDir  string
+		restoreDataDir string
+		minioEndpoint  string
+
+		// The mock v2 source is an in-process httptest server: it must outlive
+		// all three phases and keep the same URL, because the mirror config
+		// persisted in the backup points at it and the restored node's worker
+		// reconnects to that exact address.
+		mockV2 *mockV2Server
+
+		// Captured on the live node before the delta is exported, then compared
+		// against the restored node.
+		preBackupCursor  uint64
+		preBackupTxCount int
+		// Recorded rather than hard-coded so the comparison pins "unchanged by
+		// the restore" instead of a particular amount encoding.
+		preBackupInput string
+
+		// Read on the restored node as early as the gRPC surface answers.
+		restoredCursor uint64
+	)
+
+	storage := func() *commonpb.BackupStorage {
+		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+			Bucket:   s3Bucket,
+			Region:   restoreS3Region,
+			Endpoint: minioEndpoint,
+		})
+	}
+
+	syncProgress := func(g Gomega, client servicepb.BucketServiceClient) *commonpb.MirrorSyncProgress {
+		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+		g.Expect(err).To(Succeed())
+
+		return info.GetMirrorSyncProgress()
+	}
+
+	// expectSingleIngestion asserts the two observables a second ingestion of
+	// the same source logs moves differently: the mirrored transaction count
+	// (unchanged, because a re-apply reuses the source transaction ids) and the
+	// account volumes (doubled, because the postings apply again).
+	expectSingleIngestion := func(g Gomega, client servicepb.BucketServiceClient, phase string) {
+		txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+		g.Expect(err).To(Succeed())
+		g.Expect(txs).To(HaveLen(preBackupTxCount), "%s: mirrored transaction count", phase)
+
+		acct, err := actions.GetAccount(ctx, client, ledgerName, account)
+		g.Expect(err).To(Succeed())
+
+		vol := acct.FindVolume(asset, "")
+		g.Expect(vol).ToNot(BeNil(), "%s: %s %s volumes missing", phase, account, asset)
+		g.Expect(vol.GetInput()).To(Equal(preBackupInput), "%s: %s %s input", phase, account, asset)
+	}
+
+	BeforeAll(func() {
+		ctx = logging.TestingContext()
+
+		mockV2 = newMockV2Server()
+		DeferCleanup(mockV2.Close)
+
+		for i := 1; i <= sourceLogCount; i++ {
+			// Source log ids are 1-based; the transactions they carry are
+			// 0-based, matching a real v2 ledger.
+			mockV2.addLog(newV2TransactionLog(uint64(i), uint64(i-1), "world", account, perTxAmount, asset))
+		}
+
+		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+			testcontainers.WithEnv(map[string]string{
+				"MINIO_ROOT_USER":     restoreMinioAccessKey,
+				"MINIO_ROOT_PASSWORD": restoreMinioSecretKey,
+			}),
+			testcontainers.WithCmd("server", "/data"),
+			testcontainers.WithExposedPorts("9000/tcp"),
+			testcontainers.WithWaitStrategy(
+				wait.ForHTTP("/minio/health/live").WithPort("9000/tcp").WithStartupTimeout(30*time.Second),
+			),
+		)
+		Expect(err).To(Succeed())
+		DeferCleanup(func() { _ = container.Terminate(context.Background()) })
+
+		minioEndpoint, err = container.Endpoint(context.Background(), "http")
+		Expect(err).To(Succeed())
+
+		cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+			awsconfig.WithRegion(restoreS3Region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				restoreMinioAccessKey, restoreMinioSecretKey, "",
+			)),
+		)
+		Expect(err).To(Succeed())
+
+		s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(minioEndpoint)
+			o.UsePathStyle = true
+		})
+		_, err = s3Client.CreateBucket(context.Background(), &s3.CreateBucketInput{Bucket: aws.String(s3Bucket)})
+		Expect(err).To(Succeed())
+
+		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", restoreMinioAccessKey)
+		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", restoreMinioSecretKey)
+
+		restoreWalDir, err = os.MkdirTemp("", "mirror-restore-wal-*")
+		Expect(err).To(Succeed())
+		restoreDataDir, err = os.MkdirTemp("", "mirror-restore-data-*")
+		Expect(err).To(Succeed())
+	})
+
+	Describe("Phase 1: a fully synced mirror ledger in the exported delta", Ordered, func() {
+		var (
+			sourceServer  *testservice.Service
+			client        servicepb.BucketServiceClient
+			clusterClient clusterpb.ClusterServiceClient
+			grpcConn      *grpc.ClientConn
+		)
+
+		BeforeAll(func() {
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    1,
+				ClusterID: clusterID,
+				HTTPPort:  httpPort,
+				RaftPort:  raftPort,
+				GRPCPort:  grpcPort,
+				WalDir:    GinkgoT().TempDir(),
+				DataDir:   GinkgoT().TempDir(),
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithBootstrap())
+
+			sourceServer = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			Expect(sourceServer.Start(ctx)).To(Succeed())
+
+			var err error
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) bool {
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				return state.Leader != 0
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+
+			// Full checkpoint on the EMPTY store: the mirror ledger and every
+			// ingest land in the incremental delta, so the restore has to
+			// reconstruct last_mirror_v2_log_id by replaying the exported log
+			// instead of copying a checkpoint that already holds it.
+			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+			Expect(err).To(Succeed())
+			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
+		})
+
+		AfterAll(func() {
+			_ = grpcConn.Close()
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
+		})
+
+		It("creates a mirror ledger pointed at the v2 source", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: ledgerName,
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(Succeed())
+		})
+
+		It("syncs every source log before the delta is exported", func() {
+			// FOLLOWING requires cursor >= source head, so it pins both that the
+			// worker consumed the whole source and that the FSM advanced the
+			// high-water mark for each ingest.
+			Eventually(func(g Gomega) {
+				progress := syncProgress(g, client)
+				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
+				g.Expect(progress.GetCursor()).To(Equal(uint64(sourceLogCount)))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+
+				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(sourceLogCount))
+			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+
+			txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+			Expect(err).To(Succeed())
+
+			preBackupTxCount = len(txs)
+			preBackupCursor = syncProgress(Default, client).GetCursor()
+
+			acct, err := actions.GetAccount(ctx, client, ledgerName, account)
+			Expect(err).To(Succeed())
+
+			vol := acct.FindVolume(asset, "")
+			Expect(vol).ToNot(BeNil(), "live: %s %s volumes missing", account, asset)
+			preBackupInput = vol.GetInput()
+
+			// Premise guard: without a single, complete ingestion on the live
+			// node the post-restore comparisons would be vacuous.
+			Expect(preBackupInput).ToNot(BeElementOf("", "0"), "live: %s %s input", account, asset)
+			expectSingleIngestion(Default, client, "live")
+		})
+
+		It("exports the delta", func() {
+			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
+			Expect(err).To(Succeed())
+			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+		})
+	})
+
+	Describe("Phase 2: restore", Ordered, func() {
+		var (
+			restoreClient restorepb.RestoreServiceClient
+			grpcConn      *grpc.ClientConn
+			server        *testservice.Service
+		)
+
+		BeforeAll(func() {
+			server = testservice.New(cmdserver.NewRunCommand,
+				testservice.WithInstruments(
+					testservice.DebugInstrumentation(testutil.Debug),
+					testservice.OutputInstrumentation(GinkgoWriter),
+					testserver.WithNodeID(1),
+					testserver.WithClusterID(clusterID),
+					testserver.WithHTTPPort(httpPort),
+					testserver.WithWalDir(restoreWalDir),
+					testserver.WithDataDir(restoreDataDir),
+					testserver.WithRaftPort(raftPort),
+					testserver.WithGRPCPort(grpcPort),
+					testserver.WithRestore(),
+				),
+			)
+			Expect(server.Start(ctx)).To(Succeed())
+
+			var err error
+			restoreClient, grpcConn, err = newRestoreGRPCClient(grpcPort)
+			Expect(err).To(Succeed())
+		})
+
+		AfterAll(func() {
+			_ = grpcConn.Close()
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(server.Stop(stopCtx)).To(Succeed())
+		})
+
+		It("downloads and finalizes the backup", func() {
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			Expect(err).To(Succeed())
+
+			Eventually(func() restorepb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+				Expect(statusErr).To(Succeed())
+				return resp.GetState()
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+
+			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			Expect(err).To(Succeed())
+		})
+	})
+
+	Describe("Phase 3: verify the restored mirror resume position", Ordered, func() {
+		var (
+			client        servicepb.BucketServiceClient
+			clusterClient clusterpb.ClusterServiceClient
+			grpcConn      *grpc.ClientConn
+			server        *testservice.Service
+		)
+
+		BeforeAll(func() {
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    1,
+				ClusterID: clusterID,
+				HTTPPort:  httpPort,
+				RaftPort:  raftPort,
+				GRPCPort:  grpcPort,
+				WalDir:    restoreWalDir,
+				DataDir:   restoreDataDir,
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithBootstrap())
+
+			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			Expect(server.Start(ctx)).To(Succeed())
+
+			var err error
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			Expect(err).To(Succeed())
+
+			// Sample the rebuilt high-water mark BEFORE waiting for leadership:
+			// Manager.reconcile only starts mirror workers once the node is
+			// leader, so the first answered read is the closest observation of
+			// what RebuildDelta actually wrote. GetLedger serves from local
+			// Pebble and needs no leader.
+			Eventually(func(g Gomega) {
+				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+				g.Expect(err).To(Succeed())
+				restoredCursor = info.GetMirrorSyncProgress().GetCursor()
+			}).Within(30 * time.Second).ProbeEvery(50 * time.Millisecond).Should(Succeed())
+
+			Eventually(func(g Gomega) bool {
+				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+				g.Expect(err).To(Succeed())
+				return state.Leader != 0
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
+		})
+
+		AfterAll(func() {
+			_ = grpcConn.Close()
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			Expect(server.Stop(stopCtx)).To(Succeed())
+			_ = os.RemoveAll(restoreWalDir)
+			_ = os.RemoveAll(restoreDataDir)
+		})
+
+		It("rebuilds the mirror high-water mark from the replayed delta", func() {
+			// EN-1776: RebuildDelta folded every other boundary field but left
+			// last_mirror_v2_log_id at 0, so this read returned 0.
+			Expect(restoredCursor).To(Equal(preBackupCursor),
+				"restored mirror cursor must match the position the backup captured")
+		})
+
+		It("resumes ingestion without error", func() {
+			// A rebuilt mark ahead of the applied prefix would be rejected by
+			// the FSM's contiguity guard and surface here as
+			// ERROR_REASON_MIRROR_V2_LOG_ID_GAP; a mark behind it re-ingests
+			// silently, which the next spec covers.
+			//
+			// State is deliberately NOT asserted here. ReadMirrorSyncProgress
+			// derives it from `sourceHead > 0 && cursor >= sourceHead`, and the
+			// source head lives in SubPLMirrorSourceHead, which the FSM writes
+			// only as a side effect of a mirror ingest proposal
+			// (WriteSet -> SetMirrorSourceHead). A correctly restored mirror has
+			// nothing left to ingest, so it proposes nothing, the head stays 0
+			// and the state reads SYNCING with zero remaining logs — for as long
+			// as the source has no new logs. The next spec asserts FOLLOWING
+			// once an ingest has actually run.
+			Eventually(func(g Gomega) {
+				progress := syncProgress(g, client)
+				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
+				g.Expect(progress.GetCursor()).To(Equal(preBackupCursor))
+				g.Expect(progress.GetRemainingLogs()).To(BeZero())
+			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("does not re-apply source logs it had already applied", func() {
+			// The deterministic half of the regression: a worker restarting at
+			// source log 1 re-applies all four ingests, and because mirrored
+			// transactions keep the source transaction id the damage shows up
+			// as doubled volumes rather than extra rows. Held over two poll
+			// intervals so a re-ingest that has not yet ticked cannot pass.
+			Consistently(func(g Gomega) {
+				expectSingleIngestion(g, client, "restored")
+			}, 12*time.Second, 1*time.Second).Should(Succeed())
+		})
+
+		It("ingests new source logs and keeps transaction ids aligned", func() {
+			mockV2.addLog(newV2TransactionLog(postRestoreLogID, postRestoreTxID, "world", account, perTxAmount, asset))
+
+			Eventually(func(g Gomega) {
+				progress := syncProgress(g, client)
+				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
+				g.Expect(progress.GetCursor()).To(Equal(uint64(postRestoreLogID)))
+
+				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(preBackupTxCount + 1))
+
+				ids := make([]uint64, 0, len(txs))
+				for _, tx := range txs {
+					ids = append(ids, tx.GetId())
+				}
+				// Mirrored transactions carry the source id verbatim, so a
+				// NextTransactionId that drifted across the restore would show
+				// up as a missing or renumbered id here.
+				g.Expect(ids).To(ContainElement(uint64(postRestoreTxID)),
+					fmt.Sprintf("mirrored transaction ids: %v", ids))
+
+				// This ingest is what persists SubPLMirrorSourceHead again, so
+				// FOLLOWING is only observable from here on — see the note in
+				// the previous spec.
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+				g.Expect(progress.GetRemainingLogs()).To(BeZero())
+			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+	})
+})

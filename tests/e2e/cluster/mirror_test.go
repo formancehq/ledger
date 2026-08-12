@@ -27,9 +27,10 @@ import (
 
 // mockV2Server simulates a v2 ledger API for mirror integration tests.
 type mockV2Server struct {
-	mu   sync.Mutex
-	logs []v2.V2Log
-	srv  *httptest.Server
+	mu       sync.Mutex
+	logs     []v2.V2Log
+	srv      *httptest.Server
+	requests int
 }
 
 func newMockV2Server() *mockV2Server {
@@ -53,9 +54,21 @@ func (m *mockV2Server) addLog(log v2.V2Log) {
 	m.logs = append(m.logs, log)
 }
 
+// requestCount reports how many fetches the mirror worker has made. A worker
+// that has been stopped makes no further requests, so a count that stops rising
+// is the observable for teardown.
+func (m *mockV2Server) requestCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.requests
+}
+
 func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	m.requests++
 
 	// Parse "after" query param
 	afterStr := r.URL.Query().Get("after")
@@ -553,6 +566,101 @@ var _ = Describe("Mirror", Ordered, func() {
 				actions.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
+		})
+	})
+
+	// Deleting a mirror ledger must tear its worker down. The teardown itself
+	// lives in Manager.reconcile (unit-tested), but reconcile only runs on a
+	// leadership change or a ConfigChanged notification — and that notification
+	// is raised solely for sink/mirror config changes. DeleteLedger therefore
+	// has to mark the mirror config as changed, or the worker survives the
+	// deletion and keeps polling the v2 source, proposing ingests the FSM
+	// rejects. The request counter is what pins that: it must stop rising.
+	Context("When deleting a mirror ledger", Ordered, func() {
+		var mockV2 *mockV2Server
+
+		BeforeAll(func() {
+			mockV2 = newMockV2Server()
+			DeferCleanup(mockV2.Close)
+
+			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "50", "USD/2"))
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-delete",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, "mirror-delete", 10, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(txs)).To(BeNumerically(">=", 1))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should stop the mirror worker once the ledger is deleted", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction("mirror-delete")))
+			Expect(err).To(Succeed())
+
+			// The worker may be mid-poll when the delete applies, so wait for the
+			// count to stop rising: two consecutive probes a poll interval apart
+			// reporting the same value means no fetch happened in between.
+			previous := -1
+			Eventually(func(g Gomega) {
+				current := mockV2.requestCount()
+				defer func() { previous = current }()
+				g.Expect(current).To(Equal(previous))
+			}, 30*time.Second, 2*time.Second).Should(Succeed(),
+				"mirror worker is still polling the source after its ledger was deleted")
+
+			// And it stays stopped rather than merely pausing between polls.
+			Consistently(mockV2.requestCount, 5*time.Second, 500*time.Millisecond).
+				Should(Equal(previous))
+		})
+
+		// EN-1773 asked for a "recreate under the same name restarts from source
+		// log 1" case. That lifecycle is not reachable: DeleteLedger soft-deletes
+		// and the tombstone is retained, so CreateLedger for the same name is
+		// rejected with ErrLedgerDeleted rather than starting a fresh mirror.
+		// The nil-boundary resume path the ticket wanted to cover is already
+		// pinned by TestWorker_FreshLedgerFetchesFromSourceIDOne; what belongs
+		// here is the guard that makes the recreate path unreachable in the
+		// first place.
+		It("Should reject recreating a deleted mirror ledger under the same name", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-delete",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+			Expect(st.Message()).To(ContainSubstring("ledger has been deleted"))
 		})
 	})
 

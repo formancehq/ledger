@@ -164,6 +164,22 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		require.True(t, b.MirrorConfigChanged())
 	})
 
+	// Deleting a ledger drops it from ReadMirrorLedgers (which filters
+	// DeletedAt == nil), so the mirror worker set must be reconciled. Without
+	// this signal no ConfigChanged notification fires and a deleted mirror
+	// ledger's worker keeps polling its v2 source. Set for every deletion,
+	// not just mirrors: the mode is not reachable here without an ungated
+	// overlay read, and a spurious reconcile is idempotent.
+	t.Run("DeleteLedger → mirrorConfigChanged", func(t *testing.T) {
+		t.Parallel()
+		b, _, _ := newTestBuffer(t)
+		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "d"}},
+		}})
+		require.True(t, b.MirrorConfigChanged())
+		require.Equal(t, []string{"d"}, b.deletedLedgers)
+	})
+
 	t.Run("CreatedQueryCheckpoint → queryCheckpointCreated", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)

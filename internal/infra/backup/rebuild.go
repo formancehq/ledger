@@ -857,6 +857,21 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 				b.NextTransactionId = next
 			}
 		}
+
+		// Mirror high-water mark. Only the FSM writes LastMirrorV2LogId on the
+		// live path, and the ledger-log stream does not carry the source id
+		// except for fill-gaps, so without this fold a restored mirror keeps
+		// the checkpoint's value while the delta's ingests are replayed. Worker
+		// and FSM both read that one row, so they agree on a stale position and
+		// the re-fetched logs arrive as v2LogID == last+1 — the APPLY branch,
+		// not the idempotent skip (EN-1776).
+		//
+		// Max, not assignment: audit items are folded in key order, which is
+		// audit sequence rather than v2 log id, and it matches the checker's
+		// own fold in recordMirrorIngestMutations.
+		if effects.MirrorV2LogID > b.GetLastMirrorV2LogId() {
+			b.LastMirrorV2LogId = effects.MirrorV2LogID
+		}
 	}
 
 	return iter.Error()
