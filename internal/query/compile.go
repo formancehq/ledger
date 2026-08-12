@@ -713,7 +713,10 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		Kind:   "Range",
 		Prefix: "midx",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -880,7 +883,10 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		Kind:   "Range",
 		Prefix: "midx",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -1345,7 +1351,10 @@ func compileTimestampRangeCondition(
 		Kind:   "Range",
 		Prefix: bucketLabel,
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -1452,7 +1461,10 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		Kind:   "Range",
 		Prefix: "llog",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -1852,7 +1864,12 @@ func paramTypeName(pv *commonpb.ParameterValue) string {
 // MaterializedItems counters; when stats is non-nil, it also accumulates the
 // same counts on the per-node stats so the iterator-tree dump can attribute
 // materialization cost to a specific branch.
-func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) *SliceIterator {
+// materializeIterator drains iter into a sorted slice. A drain that ended in
+// an error yields no iterator: the entities collected so far are a prefix of
+// the range, and a SliceIterator cannot carry the failure — its Err is nil by
+// construction, so returning one would present a truncated range as a
+// complete answer that every later check reads as clean.
+func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) (*SliceIterator, error) {
 	if profile != nil {
 		profile.MaterializedRanges++
 	}
@@ -1872,6 +1889,10 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 		entities = append(entities, cp)
 	}
 
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("materializing range: %w", err)
+	}
+
 	if profile != nil {
 		profile.MaterializedItems += len(entities)
 	}
@@ -1882,7 +1903,7 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 
 	sortEntities(entities)
 
-	return &SliceIterator{entities: entities}
+	return &SliceIterator{entities: entities}, nil
 }
 
 func sortEntities(entities [][]byte) {

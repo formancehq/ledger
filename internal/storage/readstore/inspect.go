@@ -163,12 +163,18 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 	}
 
 	result := &InspectResult{}
-	var prevValueBytes []byte
+
+	var (
+		prevValueBytes []byte
+		decodeErr      error
+	)
 
 	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
-			return true
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
 		currentValueBytes := group[:consumed]
@@ -192,6 +198,10 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata index events: %w", err)
+	}
+
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
 
 	return result, nil
@@ -221,12 +231,15 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		prevValueBytes []byte
 		currentValue   *commonpb.MetadataValue
 		currentCount   uint64
+		decodeErr      error
 	)
 
 	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
-			return true
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
 		currentValueBytes := group[:consumed]
@@ -261,6 +274,10 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		return nil, fmt.Errorf("scanning metadata index events: %w", err)
 	}
 
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
+
 	// Emit last facet.
 	if currentValue != nil && !result.HasMore {
 		if uint32(len(result.Facets)) < pageSize {
@@ -282,12 +299,17 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	upper := IncrementBytes(prefix)
 
-	var prevValueBytes []byte
+	var (
+		prevValueBytes []byte
+		decodeErr      error
+	)
 
 	err := forEachLiveGroup(params.Reader, prefix, upper, len(prefix), func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
-			return true
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
 		currentValueBytes := group[:consumed]
@@ -312,6 +334,10 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("scanning metadata index events: %w", err)
+	}
+
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
 
 	// Count entities with key (non-null).

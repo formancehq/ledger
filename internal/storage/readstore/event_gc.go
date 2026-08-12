@@ -84,9 +84,14 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		key := iter.Key()
 		tpos := len(key) - suffix
 		if tpos < 1 || key[tpos] != metadataEventTerminator {
+			// The identity cannot be parsed, so the key is attributed to the
+			// group being accumulated: whichever group it sorts inside is the
+			// one whose events must not be reclaimed around it. Removing the
+			// key itself is the checker's business, not GC's.
 			scanned++
+			groupUnsafe = true
 
-			continue // malformed keys are the checker's business, not GC's
+			continue
 		}
 
 		identity := key[:tpos]
