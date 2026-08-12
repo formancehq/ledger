@@ -629,6 +629,162 @@ func auditFailureCases() []auditFailureCase {
 			wantReason:  domain.ErrReasonStorageOperation,
 			wantContext: map[string]string{"operation": "loading volume"},
 		},
+		// The stateless sentinels below all return nil from Metadata(), so their
+		// projected Context is the empty-but-non-nil map buildAuditFailure
+		// allocates. They are reached through their exported Describable var —
+		// the concrete type is unexported, and that var IS the identity every
+		// call site compares against with errors.Is.
+		{
+			name:        "ColdStorageDisabled",
+			err:         domain.ErrColdStorageDisabled,
+			wantReason:  domain.ErrReasonColdStorageDisabled,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "AuditDisabled",
+			err:         domain.ErrAuditDisabled,
+			wantReason:  domain.ErrReasonAuditDisabled,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "StaleProposal",
+			err:         domain.ErrStaleProposal,
+			wantReason:  domain.ErrReasonStaleProposal,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "StaleInputsResolution",
+			err:         domain.ErrStaleInputsResolution,
+			wantReason:  domain.ErrReasonStaleInputsResolution,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "PreloadUnavailable",
+			err:         domain.ErrPreloadUnavailable,
+			wantReason:  domain.ErrReasonPreloadUnavailable,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "NoChapterOpen",
+			err:         domain.ErrNoChapterOpen,
+			wantReason:  domain.ErrReasonNoChapterOpen,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "WritesBlockedDiskFull",
+			err:         domain.ErrWritesBlockedDiskFull,
+			wantReason:  domain.ErrReasonWritesBlockedDiskFull,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "WritesBlockedClockSkew",
+			err:         domain.ErrWritesBlockedClockSkew,
+			wantReason:  domain.ErrReasonWritesBlockedClockSkew,
+			wantContext: map[string]string{},
+		},
+		{
+			name:        "CheckpointIDRequired",
+			err:         domain.ErrCheckpointIDRequired,
+			wantReason:  domain.ErrReasonCheckpointIDRequired,
+			wantContext: map[string]string{},
+		},
+		{
+			// errValidation wraps a github.com/formancehq/invariants primitive so
+			// it satisfies Describable; Metadata() is nil (validation.go:66), so
+			// the invariants message reaches the chain with no structured context.
+			name:        "ValidationWrappedInvariant",
+			err:         domain.ErrLedgerNameRequired,
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{},
+		},
+		{
+			// BusinessError delegates Error/Reason/Metadata to the wrapped
+			// Describable (errors.go:256-259), so the projection must be
+			// indistinguishable from projecting the inner error directly.
+			name:        "BusinessErrorDelegatesToInner",
+			err:         &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "wrapped-ledger"}},
+			wantReason:  domain.ErrReasonLedgerNotFound,
+			wantContext: map[string]string{"name": "wrapped-ledger"},
+		},
+		{
+			// ErrMetadataKeyValidation adds {"key": Key} and merges the Cause's
+			// metadata over it (errors.go:1483-1489); Reason() delegates to the
+			// Cause. The practical Cause is a nil-metadata validation sentinel.
+			name: "MetadataKeyValidationNilCauseMetadata",
+			err: &domain.ErrMetadataKeyValidation{
+				Key:   "invoice",
+				Cause: domain.ErrMetadataValueContainsNullByte,
+			},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"key": "invoice"},
+		},
+		{
+			// A Cause that carries its own metadata: both key sets must land, and
+			// the Reason must be the Cause's, not VALIDATION.
+			name: "MetadataKeyValidationMergesCauseMetadata",
+			err: &domain.ErrMetadataKeyValidation{
+				Key:   "invoice",
+				Cause: &domain.ErrNumscriptRuntime{Detail: "metadata key produced by expression is malformed"},
+			},
+			wantReason: domain.ErrReasonNumscriptRuntime,
+			wantContext: map[string]string{
+				"key":    "invoice",
+				"detail": "metadata key produced by expression is malformed",
+			},
+		},
+		{
+			// Same shape as ErrMetadataKeyValidation but keyed on the account
+			// (errors.go:1506-1512).
+			name: "AccountValidationNilCauseMetadata",
+			err: &domain.ErrAccountValidation{
+				Account: "user:jack",
+				Cause:   domain.ErrAccountAddressInvalidChar,
+			},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{"account": "user:jack"},
+		},
+		{
+			name: "AccountValidationMergesCauseMetadata",
+			err: &domain.ErrAccountValidation{
+				Account: "user:jack",
+				Cause:   &domain.ErrMetadataNotFound{Target: "account:user:jack", Key: "tier"},
+			},
+			wantReason: domain.ErrReasonMetadataNotFound,
+			wantContext: map[string]string{
+				"account": "user:jack",
+				"target":  "account:user:jack",
+				"key":     "tier",
+			},
+		},
+		{
+			// ReplayedFailure carries reason, message and metadata verbatim from a
+			// stored idempotency outcome rather than deriving them, so this row
+			// pins the pass-through — including that ReasonCode round-trips the
+			// stored reason string.
+			name: "ReplayedFailure",
+			err: &domain.ReplayedFailure{
+				ErrReason: domain.ErrReasonTransactionAlreadyReverted,
+				Msg:       "transaction 91 is already reverted",
+				Meta:      map[string]string{"transactionId": "91"},
+			},
+			wantReason:  domain.ErrReasonTransactionAlreadyReverted,
+			wantContext: map[string]string{"transactionId": "91"},
+		},
+		{
+			// RemoteError is the client-side boundary representation. It never
+			// originates on the server, but it satisfies Describable, so the
+			// method-set scan finds it and the projection is pinned like any
+			// other: reason, message and metadata pass through untouched.
+			name: "RemoteError",
+			err: &domain.RemoteError{
+				KindValue:   domain.KindNotFound,
+				ReasonValue: domain.ErrReasonLedgerNotFound,
+				Message:     "ledger does not exist: remote-ledger",
+				Meta:        map[string]string{"name": "remote-ledger"},
+			},
+			wantReason:  domain.ErrReasonLedgerNotFound,
+			wantContext: map[string]string{"name": "remote-ledger"},
+		},
 		{
 			// The EN-1379 key set, pinned on the surface that matters most: an
 			// undeclared key is an admission bug, never a storage fault, and
