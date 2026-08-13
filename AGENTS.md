@@ -10,6 +10,10 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 - When removing protobuf fields, delete them and realign field numbers sequentially. Do not add new `reserved` declarations for removed v3 fields.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
+## Configuration safety checks
+
+Critical persisted configuration such as node/cluster identity and storage schema is validated on boot. Do not weaken or bypass those checks without an explicit task requiring it. Read `docs/ops/deployment.md` and the relevant `internal/bootstrap/**` code before changing persisted/config-validation behavior.
+
 ## How to load context
 
 1. Start with this file only.
@@ -21,6 +25,7 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 
 Do not preload the whole documentation tree. Prefer the smallest authoritative context that covers the change.
 
+<a id="invariants"></a>
 ## Non-negotiable architecture invariants
 
 These are guardrails, not complete explanations. Before changing the affected subsystem, read the linked documentation.
