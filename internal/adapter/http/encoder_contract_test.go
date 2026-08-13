@@ -106,6 +106,16 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 // reachable as protojson.Marshal(m), as protojson.MarshalOptions{...}.Marshal(m)
 // (the idiom used in cmd/ledgerctl), through a variable, or under an import
 // alias. An import cannot be disguised, so gating it catches every form.
+//
+// KNOWN LIMIT: this allowlist is per-FILE, so an allowlisted file could later
+// add a response-side protojson call and slip past both checks — the import
+// gate because the file is exempt, and TestProtojsonRoutes_TableIsComplete
+// because calleeName cannot see a protojson.MarshalOptions{...}.Marshal(...)
+// receiver either. Closing that gap would require symbol-level analysis, which
+// reopens the call-shape unsoundness this gate replaced, so it is accepted
+// rather than closed. Keep the allowlist minimal, justify every entry, and
+// treat a new entry as a review checkpoint: state whether the file marshals a
+// RESPONSE (needs a protojsonRoutes row) or only decodes a REQUEST (does not).
 var allowedProtojsonImporters = map[string]bool{
 	"response.go":                  true,
 	"handlers_get_events_sinks.go": true,
