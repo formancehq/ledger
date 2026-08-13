@@ -44,7 +44,7 @@ func TestPinnedVersionResolver_HidesAVersionAboveThePin(t *testing.T) {
 			v, primed, err := PinnedVersionResolver(snap, ledger, tc.pin)(canonical)
 			require.NoError(t, err)
 			require.True(t, primed, "the record exists; only the version is withheld")
-			require.Equal(t, tc.want, v)
+			require.Equal(t, tc.want, v.Version)
 		})
 	}
 }
@@ -74,7 +74,7 @@ func TestPinnedVersionResolver_BackfilledVersionServesAtAnyPin(t *testing.T) {
 	v, primed, err := PinnedVersionResolver(snap, ledger, 1)(canonical)
 	require.NoError(t, err)
 	require.True(t, primed)
-	require.Equal(t, uint32(1), v)
+	require.Equal(t, uint32(1), v.Version)
 }
 
 // The activation sequence survives the encode/decode round trip alongside a

@@ -400,6 +400,30 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
 // ErrIndexBuilding.
+// boundTypeAtCreation resolves the declared type an index's first version is
+// bound to: the schema entry in force when the CreateIndex log folds. Only
+// metadata indexes carry one; for every other kind — and for a key declared
+// after the index — the version is bound to no type and rows keep each
+// value's natural encoding.
+func (b *Builder) boundTypeAtCreation(ledgerName string, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
+	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	if !ok || meta.Metadata == nil || b.batchSchema == nil {
+		return 0, false
+	}
+
+	schema, err := b.batchSchema.For(ledgerName)
+	if err != nil || schema == nil {
+		return 0, false
+	}
+
+	_, fs := commonpb.SchemaFieldForTarget(schema, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	if fs == nil {
+		return 0, false
+	}
+
+	return fs.GetType(), true
+}
+
 func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
 	id := log.GetId()
 	if id == nil {
@@ -442,10 +466,13 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	next := prior.HighWater + 1
 
 	if log.GetInitial() {
+		boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 		state := readstore.IndexVersionState{
-			CurrentVersion: next,
-			PendingVersion: 0,
-			HighWater:      next,
+			CurrentVersion:      next,
+			PendingVersion:      0,
+			HighWater:           next,
+			CurrentType:         boundType,
+			CurrentTypeDeclared: declared,
 		}
 
 		if b.wb != nil && b.readStore != nil {
@@ -473,10 +500,13 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// boot recovery would otherwise have to guess from cfg.byCanonical
 	// alone, which loses the distinction between "fresh index" and
 	// "stale READY index from a snapshot install".
+	boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 	state := readstore.IndexVersionState{
-		CurrentVersion: 0,
-		PendingVersion: next,
-		HighWater:      next,
+		CurrentVersion:      0,
+		PendingVersion:      next,
+		HighWater:           next,
+		PendingType:         boundType,
+		PendingTypeDeclared: declared,
 	}
 
 	if b.wb != nil && b.readStore != nil {

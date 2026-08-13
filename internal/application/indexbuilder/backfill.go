@@ -274,7 +274,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			continue
 		}
 
-		if err := b.bumpPendingVersion(ledgerName, indexID); err != nil {
+		if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
 			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
 
@@ -294,6 +294,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			}).Errorf("Deleting persisted backfill cursor on retype reset")
 		}
 
+
 		return nil
 	}
 
@@ -308,7 +309,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 	// current batch. The rewrite task will read pending_version from
 	// the cache at processSchemaRewrite time to know its target
 	// keyspace, and the live write path will dual-write into it.
-	if err := b.bumpPendingVersion(ledgerName, indexID); err != nil {
+	if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
 		return fmt.Errorf("bumping pending_version on retype: %w", err)
 	}
 
@@ -357,17 +358,28 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 // Index.ForwardEncodingVersion in processSetMetadataFieldType — each
 // replica derives its own pending the same way, so the two converge as
 // long as every log is seen.
-func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID) error {
+func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType) error {
 	canonical := indexes.Canonical(indexID)
-	current, pending := b.versionFor(ledgerName, canonical)
-
 	prior, _ := b.versionStateFor(ledgerName, canonical)
-	base := max(pending, current, prior.HighWater)
 
+	base := max(prior.PendingVersion, prior.CurrentVersion, prior.HighWater)
+
+	// CurrentVersion keeps everything that describes it: its activation
+	// sequence and its bound type both belong to the version still being
+	// served, and dropping them here would let a stale pin resolve the
+	// promoted keyspace as complete (activation) or re-encode live writes
+	// under the wrong type mid-window (bound type). Only the pending slot
+	// is new: the rewrite's target version, bound to the retype's target
+	// type, with a fresh cursor.
 	newState := readstore.IndexVersionState{
-		CurrentVersion: current,
-		PendingVersion: base + 1,
-		HighWater:      base + 1,
+		CurrentVersion:      prior.CurrentVersion,
+		PendingVersion:      base + 1,
+		ActivationSequence:  prior.ActivationSequence,
+		HighWater:           base + 1,
+		CurrentType:         prior.CurrentType,
+		CurrentTypeDeclared: prior.CurrentTypeDeclared,
+		PendingType:         toType,
+		PendingTypeDeclared: true,
 	}
 
 	batch := b.wb.Batch()
@@ -387,6 +399,7 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 
 	return nil
 }
+
 
 // removeSchemaRewriteTask removes a schema rewrite task and deletes its persisted progress.
 func (b *Builder) removeSchemaRewriteTask(idx int) {
@@ -869,11 +882,14 @@ scan:
 			// tick via the scanComplete branch at the top of the function.
 			done = false
 		} else {
+			prior, _ := b.versionStateFor(task.ledger, canonical)
 			newState = readstore.IndexVersionState{
-				CurrentVersion:     pendingVersion,
-				PendingVersion:     0,
-				ActivationSequence: task.requiredIndexedSeq,
-				HighWater:          pendingVersion,
+				CurrentVersion:      pendingVersion,
+				PendingVersion:      0,
+				ActivationSequence:  task.requiredIndexedSeq,
+				HighWater:           pendingVersion,
+				CurrentType:         prior.PendingType,
+				CurrentTypeDeclared: prior.PendingTypeDeclared,
 			}
 
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
@@ -947,11 +963,14 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		}
 	}()
 
+	prior, _ := b.versionStateFor(task.ledger, canonical)
 	newState := readstore.IndexVersionState{
-		CurrentVersion:     pendingVersion,
-		PendingVersion:     0,
-		ActivationSequence: task.requiredIndexedSeq,
-		HighWater:          pendingVersion,
+		CurrentVersion:      pendingVersion,
+		PendingVersion:      0,
+		ActivationSequence:  task.requiredIndexedSeq,
+		HighWater:           pendingVersion,
+		CurrentType:         prior.PendingType,
+		CurrentTypeDeclared: prior.PendingTypeDeclared,
 	}
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
@@ -1233,10 +1252,13 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 			task.ledger, canonical)
 	}
 
+	prior, _ := b.versionStateFor(task.ledger, canonical)
 	newState := readstore.IndexVersionState{
-		CurrentVersion: pending,
-		PendingVersion: 0,
-		HighWater:      pending,
+		CurrentVersion:      pending,
+		PendingVersion:      0,
+		HighWater:           pending,
+		CurrentType:         prior.PendingType,
+		CurrentTypeDeclared: prior.PendingTypeDeclared,
 	}
 
 	batch := b.readStore.NewBatch()

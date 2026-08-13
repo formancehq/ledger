@@ -166,7 +166,7 @@ func TestSnapshotVersionResolver_TornReadIsImpossible(t *testing.T) {
 	gotSnap, primed, err := resolveFromSnap(canonical)
 	require.NoError(t, err)
 	require.True(t, primed)
-	assert.Equal(t, uint32(1), gotSnap,
+	assert.Equal(t, uint32(1), gotSnap.Version,
 		"snapshot resolver must hold the pre-switch version — otherwise a query that already iterates a pre-switch keyspace would receive a post-switch version, scanning a half-populated v_new range")
 
 	// Sanity: the live store has of course flipped.
@@ -240,7 +240,7 @@ func TestSnapshotVersionResolver_AbsentReturnsZero(t *testing.T) {
 
 	got, primed, err := readstore.SnapshotVersionResolver(snap, "ledger1")("acct:metadata:never-built")
 	require.NoError(t, err, "absent state must NOT be reported as an error — the query layer decides what an absent record means")
-	assert.Equal(t, uint32(0), got)
+	assert.Equal(t, uint32(0), got.Version)
 	assert.False(t, primed, "absent means no record was ever written for this index on this replica")
 }
 

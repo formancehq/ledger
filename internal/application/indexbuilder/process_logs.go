@@ -623,17 +623,11 @@ func (b *Builder) indexCreatedTransaction(
 					continue
 				}
 
-				coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-				if err != nil {
-					return err
-				}
-				newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 				if err := b.dualWriteMetadataIndex(
 					kb,
 					ledger, readstore.NamespaceAccount, key,
 					commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-					newEncoded, []byte(account),
+					value, []byte(account),
 					func(version uint32) []byte {
 						return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 					},
@@ -659,17 +653,11 @@ func (b *Builder) indexCreatedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -753,17 +741,11 @@ func (b *Builder) indexRevertedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -996,17 +978,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceAccount, key,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				newEncoded, []byte(account),
+				value, []byte(account),
 				func(version uint32) []byte {
 					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 				},
@@ -1024,17 +1000,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},

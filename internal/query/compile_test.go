@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // TestCompile_RejectsDeeplyNestedFilter is the regression for #341 /
@@ -786,7 +787,9 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 	// indexResolverZero simulates a replica whose initial backfill
 	// has not yet completed. Real production wiring uses
 	// readstore.SnapshotVersionResolver against the iteration snapshot.
-	indexResolverZero := func(string) (uint32, bool, error) { return 0, true, nil }
+	indexResolverZero := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
+	}
 
 	info := &commonpb.LedgerInfo{Name: ledgerName}
 
@@ -895,11 +898,13 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 	}
 
 	ctx := &compileCtx{
-		target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		indexRegistry:   indexRegistry,
-		ledgerName:      "ledger1",
-		info:            info,
-		indexVersionFor: func(string) (uint32, bool, error) { return 0, false, pebbleErr },
+		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		indexRegistry: indexRegistry,
+		ledgerName:    "ledger1",
+		info:          info,
+		indexVersionFor: func(string) (readstore.ResolvedIndexVersion, bool, error) {
+			return readstore.ResolvedIndexVersion{}, false, pebbleErr
+		},
 	}
 
 	_, err := requireIndexReady(ctx,
@@ -1053,7 +1058,9 @@ func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
 				nil, nil, filter,
 				commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
 				nil, schema, info, indexRegistry,
-				func(string) (uint32, bool, error) { return 0, tc.primed, nil },
+				func(string) (readstore.ResolvedIndexVersion, bool, error) {
+					return readstore.ResolvedIndexVersion{BindingKnown: true}, tc.primed, nil
+				},
 				nil, nil, 0,
 			)
 			require.Error(t, err)
