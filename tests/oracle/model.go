@@ -104,6 +104,16 @@ type LedgerState struct {
 	// without committing anything.
 	logs List[*logRecord]
 
+	// retypeWindows holds, per canonical metadata-index ID, the declared type
+	// the index's SERVED version is still bound to while a retype's rewrite
+	// converges (EN-1724). The schema flips at commit — fieldTypes above hold
+	// the new type — but each replica serves the old-typed index until its
+	// atomic switch, so a query during the window is legal under EITHER type,
+	// each as a whole window. Opened when a SetMetadataFieldType commits on an
+	// indexed key; closed by the driver once every replica provably switched;
+	// dies with the index on removal.
+	retypeWindows Map[string, commonpb.MetadataType]
+
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
 	// touched, on either side. This is the exact set the has-asset filter serves
@@ -141,9 +151,10 @@ func NewLedgerState() LedgerState {
 		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
-		indexes:   NewMap[string, bool](stringComparer{}, indexTerm),
-		logs:      NewList[*logRecord](logTerm),
-		everAsset: NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
+		indexes:       NewMap[string, bool](stringComparer{}, indexTerm),
+		retypeWindows: NewMap[string, commonpb.MetadataType](stringComparer{}, retypeWindowTerm),
+		logs:          NewList[*logRecord](logTerm),
+		everAsset:     NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
 }
 
@@ -161,7 +172,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs, s.indexes, s.everAsset, s.logs,
+		s.txs, s.indexes, s.everAsset, s.logs, s.retypeWindows,
 	}
 }
 
@@ -273,6 +284,17 @@ func indexTerm(canonical string, active bool) Digest {
 	t := newTerm("IX")
 	t.str(canonical)
 	t.boolean(active)
+
+	return t.sum()
+}
+
+// retypeWindowTerm fingerprints one open retype window. Part of the identity:
+// bases differing only in whether a window is open accept different query
+// outcomes, so they must not dedup.
+func retypeWindowTerm(canonical string, oldType commonpb.MetadataType) Digest {
+	t := newTerm("RW")
+	t.str(canonical)
+	t.u64(uint64(oldType))
 
 	return t.sum()
 }
@@ -1436,7 +1458,9 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // the committed prefix, a MinLogSequence-pinned read is guaranteed to observe it
 // gone. Dropping an absent index is a harmless no-op.
 func (s *LedgerState) applyDropIndex(req *servicepb.DropIndexRequest) OrderResult {
-	s.indexes = s.indexes.Delete(indexes.Canonical(req.GetId()))
+	canonical := indexes.Canonical(req.GetId())
+	s.indexes = s.indexes.Delete(canonical)
+	s.retypeWindows = s.retypeWindows.Delete(canonical)
 
 	return OrderResult{OK: true}
 }
@@ -1448,6 +1472,22 @@ func (s *LedgerState) applyDropIndex(req *servicepb.DropIndexRequest) OrderResul
 // a value survives any retype chain losslessly (a STRING "01" retyped INT64 then
 // back to STRING still reads "01"). Always succeeds.
 func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldTypeRequest) OrderResult {
+	// A retype of an indexed key opens a serving window: the index keeps
+	// answering under the type it was built with until the background rewrite
+	// switches, so both types stay legal until the driver observes the switch
+	// on every replica. Only the FIRST retype records the old type — a chained
+	// retype mid-window replaces the rewrite target, never what v_current
+	// still serves. CreateIndex requires a declared field, so the previous
+	// type always exists here. Ledger-target keys have no metadata index.
+	if tt := req.GetTargetType(); tt == commonpb.TargetType_TARGET_TYPE_ACCOUNT || tt == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+		canonical := indexes.Canonical(indexes.MetadataID(tt, req.GetKey()))
+		if s.indexes.Has(canonical) && !s.retypeWindows.Has(canonical) {
+			if oldType, declared := s.FieldTypeFor(tt, req.GetKey()); declared {
+				s.retypeWindows = s.retypeWindows.Set(canonical, oldType)
+			}
+		}
+	}
+
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Set(req.GetKey(), req.GetType())
@@ -1481,7 +1521,9 @@ func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadata
 		panic(fmt.Sprintf("model: RemoveMetadataFieldType target %v is unmodeled", req.GetTargetType()))
 	}
 
-	s.indexes = s.indexes.Delete(indexes.Canonical(indexes.MetadataID(req.GetTargetType(), req.GetKey())))
+	removedCanonical := indexes.Canonical(indexes.MetadataID(req.GetTargetType(), req.GetKey()))
+	s.indexes = s.indexes.Delete(removedCanonical)
+	s.retypeWindows = s.retypeWindows.Delete(removedCanonical)
 
 	return OrderResult{OK: true}
 }

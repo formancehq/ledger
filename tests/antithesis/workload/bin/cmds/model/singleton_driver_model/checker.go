@@ -69,6 +69,10 @@ type Checker struct {
 	receiptsMu   sync.Mutex
 	receiptByRef map[string]string
 
+	// retypeObs tracks each open retype window's per-node closure progress —
+	// see retypeObservation. Keyed by retypeObsKey. Guarded by mu.
+	retypeObs map[string]*retypeObservation
+
 	// replayable holds committed bulks that carried a tracked idempotency key —
 	// the originals runReplay re-sends to exercise the server's idempotency
 	// replay. Populated at commit (rememberReplayable), capped at
@@ -139,7 +143,70 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		incoming:     make(chan observation, incomingBuffer),
 		modelState:   modelState,
 		receiptByRef: map[string]string{},
+		retypeObs:    map[string]*retypeObservation{},
 	}
+}
+
+// retypeObservation drives one retype window's closure, two-phase per node so
+// the close can never race the fold: a poll proving the retype's own log
+// folded (last_indexed_sequence >= openSeq) arms the node, and only a LATER
+// poll showing pending_version == 0 confirms its switch — the two fields need
+// not be sampled atomically within one response, but pending cannot return to
+// zero before the switch once the bump is known applied. The window closes
+// when every node confirmed. openSeq extends and phases reset on a chained
+// retype, whose new rewrite must be observed afresh. Guarded by c.mu.
+type retypeObservation struct {
+	ledger    string
+	canonical string
+	openSeq   uint64
+	foldSeen  map[int]bool
+	pendClear map[int]bool
+
+	// confirmedAt is the dispatch-ticket frontier at the moment every node
+	// confirmed its switch; zero until then. The window itself closes only
+	// once every read ticketed at or before it has finished: a read served
+	// from a pre-switch snapshot is validated against the model AFTER its
+	// response arrives, and closing under it would judge a legitimately
+	// old-typed answer by post-switch rules.
+	confirmedAt uint64
+}
+
+// closeAllRetypeWindows ends every open retype window, for the restore cycle:
+// rebuilt read-stores encode under the live schema, so no replica serves an
+// old-typed index after a restore.
+func (c *Checker) closeAllRetypeWindows() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key, obs := range c.retypeObs {
+		c.modelState.CloseRetypeWindow(obs.ledger, obs.canonical)
+		delete(c.retypeObs, key)
+	}
+}
+
+func retypeObsKey(ledger, canonical string) string {
+	return ledger + "\x00" + canonical
+}
+
+// noteRetypeCommit registers (or re-arms) the closure observation for a
+// committed retype whose window the fold just opened or extended. Caller
+// holds c.mu.
+func (c *Checker) noteRetypeCommit(ledger, canonical string, seq uint64) {
+	key := retypeObsKey(ledger, canonical)
+
+	obs, ok := c.retypeObs[key]
+	if !ok {
+		obs = &retypeObservation{ledger: ledger, canonical: canonical}
+		c.retypeObs[key] = obs
+	}
+
+	if seq > obs.openSeq {
+		obs.openSeq = seq
+	}
+
+	obs.foldSeen = map[int]bool{}
+	obs.pendClear = map[int]bool{}
+	obs.confirmedAt = 0
 }
 
 // receiptFor returns the captured receipt for ref ("" when none). Safe without

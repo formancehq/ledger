@@ -101,6 +101,18 @@ func workloadIndexes() []workloadIndex {
 }
 
 // indexStateLabel renders an index's model lifecycle state for finding details.
+// indexStateLabelFull renders one canonical's model state, retype window
+// included, for finding diagnostics.
+func indexStateLabelFull(ls oracle.LedgerState, canon string) string {
+	exists, active := ls.IndexState(canon)
+	label := indexStateLabel(exists, active)
+	if oldType, open := ls.RetypeWindow(canon); open {
+		label += fmt.Sprintf("+window(old=%d)", oldType)
+	}
+
+	return label
+}
+
 func indexStateLabel(exists, active bool) string {
 	switch {
 	case !exists:
@@ -430,7 +442,15 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 			readyAll[canon] = true
 		}
 
-		for _, pc := range conns {
+		// Per-node observations for retype-window closure: the node's fold
+		// cursor and each index's in-flight rewrite target. nodeOK marks the
+		// nodes actually sampled this tick — an unreachable node makes no
+		// progress, in either phase.
+		nodeOK := make([]bool, len(conns))
+		nodeLastIndexed := make([]uint64, len(conns))
+		nodePending := make([]map[string]uint32, len(conns))
+
+		for i, pc := range conns {
 			resp, err := pc.Bucket.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 			if err != nil {
 				for _, canon := range canons {
@@ -440,9 +460,15 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 				continue
 			}
 
+			nodeOK[i] = true
+			nodeLastIndexed[i] = resp.GetLastIndexedSequence()
+			nodePending[i] = make(map[string]uint32, len(resp.GetIndexes()))
+
 			version := make(map[string]uint32, len(resp.GetIndexes()))
 			for _, e := range resp.GetIndexes() {
-				version[indexes.Canonical(e.GetIndex().GetId())] = e.GetCurrentVersion()
+				canon := indexes.Canonical(e.GetIndex().GetId())
+				version[canon] = e.GetCurrentVersion()
+				nodePending[i][canon] = e.GetPendingVersion()
 			}
 
 			for _, canon := range canons {
@@ -472,6 +498,63 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 					// Coverage: a replica reported the index not-ready again (node
 					// down / restored node rebuilding), demoting it back to ambiguous.
 					assert.Reachable("singleton_driver_model: index demoted to ambiguous", internal.Details{"ledger": ledger, "index": canon})
+				}
+			}
+		}
+
+		// Retype-window closure, two-phase per node (see retypeObservation):
+		// a node is armed once a poll proves this retype's log folded, and
+		// confirmed only by a LATER poll with no rewrite pending. Closing on a
+		// single poll would race the fold — pending may read 0 before the
+		// bump this retype is about to apply.
+		for key, obs := range c.retypeObs {
+			if obs.ledger != ledger {
+				continue
+			}
+
+			if _, open := c.modelState.Ledger(ledger).RetypeWindow(obs.canonical); !open {
+				delete(c.retypeObs, key) // window died with its index
+
+				continue
+			}
+
+			confirmed := 0
+			for i := range conns {
+				switch {
+				case obs.pendClear[i]:
+					confirmed++
+				case !nodeOK[i]:
+				case !obs.foldSeen[i]:
+					if nodeLastIndexed[i] >= obs.openSeq {
+						obs.foldSeen[i] = true
+					}
+				default:
+					// Presence is part of the proof: an index this node's
+					// response does not list at all (e.g. temporarily hidden
+					// while its config rebuilds) reads as pending==0 through
+					// the map's zero value, and closing on that would end the
+					// window with the replica still serving the old encoding.
+					if p, listed := nodePending[i][obs.canonical]; listed && p == 0 {
+						obs.pendClear[i] = true
+						confirmed++
+					}
+				}
+			}
+
+			if confirmed == len(conns) && obs.confirmedAt == 0 {
+				obs.confirmedAt = c.ticketSeq.Load()
+			}
+
+			// The switch is proven everywhere, but reads dispatched before the
+			// confirmation may still hold pre-switch snapshots; the window
+			// outlives them so their old-typed answers stay legal.
+			if obs.confirmedAt != 0 {
+				if minTicket, empty := c.earliestOutstanding(); empty || minTicket > obs.confirmedAt {
+					c.modelState.CloseRetypeWindow(ledger, obs.canonical)
+					delete(c.retypeObs, key)
+					assert.Reachable("singleton_driver_model: retype window closed", internal.Details{
+						"ledger": ledger, "index": obs.canonical,
+					})
 				}
 			}
 		}
@@ -526,8 +609,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 	modelLS := c.modelState.Ledger(ledger)
 	idxStates := make([]string, 0, len(needed))
 	for canon := range needed {
-		exists, active := modelLS.IndexState(canon)
-		idxStates = append(idxStates, canon+"="+indexStateLabel(exists, active))
+		idxStates = append(idxStates, canon+"="+indexStateLabelFull(modelLS, canon))
 	}
 	modelWindow := transactionWindow(modelLS, filter, afterID, pageSize, reverse)
 	c.mu.Unlock()
@@ -645,7 +727,105 @@ func metadataCanonical(target commonpb.QueryTarget, key string) string {
 //     surfaces, and both are legal;
 //   - results are legal iff there is no kind mismatch, every needed index
 //     exists, and the window matches (windowMatches).
+//
+// A retype of an indexed key opens a serving window (EN-1724): the schema
+// flips at commit, but each replica keeps serving the index under the OLD
+// declared type until its rewrite's atomic switch. A query during the window
+// is therefore legal under either type — each as a WHOLE window, since one
+// query is served from one snapshot of one replica — and the flip is
+// per-index, so a filter touching several windowed keys may see any
+// combination. The verdict enumerates those assignments over the existing
+// single-view legality and accepts any.
 func indexedQueryOutcomeLegal(
+	ls oracle.LedgerState,
+	target commonpb.QueryTarget,
+	filter *commonpb.QueryFilter,
+	needed map[string]struct{},
+	errKind indexedErrKind,
+	windowMatches func(oracle.LedgerState) bool,
+) bool {
+	refs := windowedFieldRefs(ls, target, filter, nil)
+
+	// While any referenced key's window is open, a switch may just have
+	// landed above the query's pin, in which case the server honestly
+	// refuses the read (pin below the promoted version's activation
+	// sequence) instead of serving it — the same not-ready class a building
+	// index produces.
+	if errKind == indexedErrNotReady && len(refs) > 0 {
+		return true
+	}
+
+	// One filter referencing this many windowed keys is beyond anything the
+	// generator produces; enumerating further would only burn the checker.
+	if len(refs) > 6 {
+		refs = refs[:6]
+	}
+
+	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	}
+
+	for mask := 0; mask < 1<<len(refs); mask++ {
+		view := ls
+		for i, r := range refs {
+			if mask&(1<<i) != 0 {
+				view = view.WithDeclaredType(tt, r.key, r.oldType)
+			}
+		}
+
+		if indexedQueryOutcomeLegalUnder(view, target, filter, needed, errKind, windowMatches) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// windowedFieldRefs collects the filter's distinct metadata keys whose index
+// has an open retype window on this base, with the old type each window
+// still serves.
+func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *commonpb.QueryFilter, seen map[string]bool) []windowedRef {
+	if f == nil {
+		return nil
+	}
+
+	if seen == nil {
+		seen = map[string]bool{}
+	}
+
+	var out []windowedRef
+
+	switch x := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_And:
+		for _, child := range x.And.GetFilters() {
+			out = append(out, windowedFieldRefs(ls, target, child, seen)...)
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, child := range x.Or.GetFilters() {
+			out = append(out, windowedFieldRefs(ls, target, child, seen)...)
+		}
+	case *commonpb.QueryFilter_Not:
+		out = windowedFieldRefs(ls, target, x.Not.GetFilter(), seen)
+	case *commonpb.QueryFilter_Field:
+		key := x.Field.GetField().GetMetadata()
+		if !seen[key] {
+			seen[key] = true
+			if oldType, open := ls.RetypeWindow(metadataCanonical(target, key)); open {
+				out = append(out, windowedRef{key: key, oldType: oldType})
+			}
+		}
+	}
+
+	return out
+}
+
+type windowedRef struct {
+	key     string
+	oldType commonpb.MetadataType
+}
+
+func indexedQueryOutcomeLegalUnder(
 	ls oracle.LedgerState,
 	target commonpb.QueryTarget,
 	filter *commonpb.QueryFilter,
@@ -749,8 +929,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 	modelLS := c.modelState.Ledger(ledger)
 	idxStates := make([]string, 0, len(needed))
 	for canon := range needed {
-		exists, active := modelLS.IndexState(canon)
-		idxStates = append(idxStates, canon+"="+indexStateLabel(exists, active))
+		idxStates = append(idxStates, canon+"="+indexStateLabelFull(modelLS, canon))
 	}
 	modelWindow := accountWindow(modelLS, filter, cursor, pageSize, reverse)
 	c.mu.Unlock()

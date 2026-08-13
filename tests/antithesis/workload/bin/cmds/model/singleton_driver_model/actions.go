@@ -10,7 +10,6 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
-	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -928,17 +927,13 @@ func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 // reads of those keys coerce.
 //
 // A retype of a key that currently has a metadata index triggers a background
-// index REWRITE (version bump + re-encode) whose serving window the model does
-// not yet track — until it does, the generator skips those keys (nil) rather
-// than emit an outcome the validation cannot pin.
+// index REWRITE (version bump + re-encode). The model tracks its serving
+// window (oracle.RetypeWindow): until the driver observes every replica's
+// atomic switch, queries on the key are legal under the old type or the new,
+// each as a whole window — so indexed keys are retyped like any other.
 func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	target := random.RandomChoice(metaTargetPool)
 	key := metaKey()
-
-	canonical := indexes.Canonical(indexes.MetadataID(target, key))
-	if exists, _ := ls.IndexState(canonical); exists {
-		return nil
-	}
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_SetMetadataFieldType{

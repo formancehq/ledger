@@ -356,6 +356,29 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	}
 
 	c.modelState = res.State
+
+	// A committed retype of an indexed key opened (or chained onto) a serving
+	// window in the fold above; arm its closure observation at this bulk's
+	// frontier so the poller can prove the per-replica switch happened after
+	// THIS retype, not a previous one.
+	for _, req := range bulk.Requests {
+		smft := req.GetSetMetadataFieldType()
+		if smft == nil {
+			continue
+		}
+
+		tt := smft.GetTargetType()
+		if tt != commonpb.TargetType_TARGET_TYPE_ACCOUNT && tt != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+			continue
+		}
+
+		ledger := oracle.LedgerOf(req)
+		canonical := indexes.Canonical(indexes.MetadataID(tt, smft.GetKey()))
+
+		if _, open := c.modelState.Ledger(ledger).RetypeWindow(canonical); open {
+			c.noteRetypeCommit(ledger, canonical, maxLogSequence(resp.GetLogs()))
+		}
+	}
 	learnTxStamps(c.modelState, bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the

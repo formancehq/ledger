@@ -247,3 +247,49 @@ func (s LedgerState) LogDates() []struct {
 func (s LedgerState) FieldTypesFor(target commonpb.TargetType) Map[string, commonpb.MetadataType] {
 	return s.fieldTypes(target)
 }
+
+// FieldTypeFor returns the declared type of one (target, key), false when
+// undeclared. Ledger-target keys resolve like the map accessors do.
+func (s LedgerState) FieldTypeFor(target commonpb.TargetType, key string) (commonpb.MetadataType, bool) {
+	return s.FieldTypesFor(target).Get(key)
+}
+
+// RetypeWindow returns the declared type an index's served version is still
+// bound to while a retype's rewrite converges, false when no window is open
+// for that canonical index ID.
+func (s LedgerState) RetypeWindow(canonical string) (commonpb.MetadataType, bool) {
+	return s.retypeWindows.Get(canonical)
+}
+
+// WithDeclaredType returns a view of the state whose declared type for one
+// (target, key) is overridden — the evaluation view for one side of a retype
+// window. The receiver is untouched; the view shares every other collection.
+func (s LedgerState) WithDeclaredType(target commonpb.TargetType, key string, t commonpb.MetadataType) LedgerState {
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		s.accountFieldTypes = s.accountFieldTypes.Set(key, t)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		s.transactionFieldTypes = s.transactionFieldTypes.Set(key, t)
+	}
+
+	// The memoized chart derives from types (account types, not metadata
+	// types), but keep the view self-contained regardless.
+	return s
+}
+
+// CloseRetypeWindow removes an index's retype window on the committed state,
+// for the driver once it has PROVEN every replica switched: a poll showed the
+// retype's own log folded, and a later poll showed no rewrite pending. From
+// then on only the new type is legal. Same no-op / rebind semantics as
+// SetIndexActive.
+func (g GlobalState) CloseRetypeWindow(ledger, canonical string) {
+	ls, ok := g.ledgers[ledger]
+	if !ok {
+		return
+	}
+
+	if ls.retypeWindows.Has(canonical) {
+		ls.retypeWindows = ls.retypeWindows.Delete(canonical)
+		g.ledgers[ledger] = ls
+	}
+}

@@ -392,7 +392,6 @@ func logSeqs(logs []*commonpb.Log) string {
 	return "[" + strings.Join(ids, ",") + "]"
 }
 
-
 // modelTxMetaDump renders the model's metadata for a transaction, so a row the
 // server returned but the model excluded can be classified: a DIFFERENT value
 // for the filtered key means a stale index entry, no value means a phantom.
@@ -417,9 +416,15 @@ func (c *Checker) modelTxMetaDump(ledger string, id uint64) string {
 
 	sort.Strings(keys)
 
+	ls := c.modelState.Ledger(ledger)
+
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
-		parts = append(parts, k+"="+oracle.MetaValueString(meta[k]))
+		ft := "none"
+		if t, ok := ls.FieldTypeFor(commonpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
+			ft = fmt.Sprintf("%d", t)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(meta[k]), ft))
 	}
 
 	return strings.Join(parts, ",")
