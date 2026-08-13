@@ -111,13 +111,17 @@ type Store struct {
 	txListChaserWonCounter   metric.Int64Counter // chaser beat the original
 
 	// testHookBeforePaginateSelect is called inside paginateInTx after SET LOCAL
-	// is issued but before the main SELECT. Nil in production. Tests set this to
+	// is issued but before the main SELECT. Unset in production. Tests set this to
 	// inject artificial latency (e.g. SELECT pg_sleep(0.005)) so that
 	// statement_timeout fires deterministically regardless of query execution speed.
-	// Stored as an atomic.Value to avoid a data race between
-	// SetTestHookBeforePaginateSelect and the read on the Paginate hot path.
-	// The underlying type, when non-nil, is paginateSelectHookWrapper.
-	testHookBeforePaginateSelect atomic.Value
+	// The underlying type, when set, is paginateSelectHookWrapper.
+	//
+	// It is an atomic.Value to avoid a data race between
+	// SetTestHookBeforePaginateSelect and the read on the Paginate hot path, and a
+	// *pointer* to one because Store is shallow-copied by WithDB, BeginTX and
+	// LockLedger: an atomic.Value must not be copied after first use, and sharing
+	// the container also keeps every derived store seeing the same hook.
+	testHookBeforePaginateSelect *atomic.Value
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -167,6 +171,9 @@ type paginateSelectHookWrapper struct {
 // The isChaser parameter is true when the call is from the chaser goroutine
 // (planOverride=true) and false for the original. For tests only; nil in production.
 func (store *Store) SetTestHookBeforePaginateSelect(hook func(ctx context.Context, tx bun.Tx, isChaser bool) error) {
+	if store.testHookBeforePaginateSelect == nil {
+		return
+	}
 	store.testHookBeforePaginateSelect.Store(paginateSelectHookWrapper{fn: hook})
 }
 
@@ -381,9 +388,11 @@ func (a *transactionsAdaptivePaginator) paginateInTx(
 		if err := a.issueSetLocal(ctx, tx, timeoutMs, planOverride); err != nil {
 			return err
 		}
-		if v := a.store.testHookBeforePaginateSelect.Load(); v != nil {
-			if err := v.(paginateSelectHookWrapper).fn(ctx, tx, planOverride); err != nil {
-				return err
+		if hook := a.store.testHookBeforePaginateSelect; hook != nil {
+			if v := hook.Load(); v != nil {
+				if err := v.(paginateSelectHookWrapper).fn(ctx, tx, planOverride); err != nil {
+					return err
+				}
 			}
 		}
 		txStore := a.store.WithDB(tx)
@@ -571,9 +580,10 @@ func (store *Store) SetAloneInBucket(alone bool) {
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
 	ret := &Store{
-		db:     db,
-		ledger: l,
-		bucket: bucket,
+		db:                           db,
+		ledger:                       l,
+		bucket:                       bucket,
+		testHookBeforePaginateSelect: &atomic.Value{},
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
