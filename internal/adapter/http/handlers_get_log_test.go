@@ -70,11 +70,12 @@ func TestHandleGetLog_Success(t *testing.T) {
 	require.NotContains(t, body, `"id":"1"`)
 }
 
-// TestHandleGetLog_ShapeMatchesLogsList pins the property EN-1622 is about: the
-// single-log and logs-list routes must serialize the same commonpb.Log
-// identically. They diverged because get-log used protojson while the list used
-// sonic, so the same type had two wire shapes depending on which route you asked.
-func TestHandleGetLog_ShapeMatchesLogsList(t *testing.T) {
+// TestHandleGetLog_SerializesThroughMarshalJSON pins the property EN-1622 is
+// about: the single-log route must serialize its commonpb.Log through
+// Log.MarshalJSON, matching the shape the logs-list route also produces. It
+// diverged because get-log used protojson while the list used sonic, so the
+// same type had two wire shapes depending on which route you asked.
+func TestHandleGetLog_SerializesThroughMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	logValue := func() *commonpb.Log {
