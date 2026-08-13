@@ -36,17 +36,18 @@ import (
 // See docs/technical/architecture/subsystems/api/http-api.md for the rule.
 var protojsonRoutes = []struct {
 	route string
+	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/{ledgerName}/indexes", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}", &commonpb.Index{}},
-	{"GET /v3/_/indexes", &commonpb.Index{}},
-	{"GET /v3/_/indexes/{canonicalId}", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/{canonicalId}/status", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/status", &servicepb.GetIndexStatusResponse{}},
-	{"GET /v3/_/signing-keys", &commonpb.SigningKey{}},
-	{"GET /v3/_/events-sinks", &servicepb.GetEventsSinksResponse{}},
+	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &commonpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &commonpb.Index{}},
+	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &commonpb.Index{}},
+	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &commonpb.Index{}},
+	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &servicepb.IndexEntry{}},
+	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
+	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
+	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
+	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
 func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
@@ -91,14 +92,71 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 	}
 }
 
+// allowedProtojsonImporters are the only files in this package permitted to
+// import protojson directly. response.go implements writeProtoOK and
+// writeProtoListOK; handlers_get_events_sinks.go predates those helpers and
+// calls protojson inline; handlers_create_ledger.go is the odd one out — it
+// uses protojson.Unmarshal (decode-side) to parse a MirrorRewriteRule oneof
+// out of an incoming request body, which sonic's decoder cannot dispatch.
+// That file never marshals a response through protojson, so it carries no
+// protojsonRoutes row, but the gate below fires on the import itself, so it
+// still needs an entry here.
+//
+// This gate exists because matching call SHAPES is not sound: protojson is
+// reachable as protojson.Marshal(m), as protojson.MarshalOptions{...}.Marshal(m)
+// (the idiom used in cmd/ledgerctl), through a variable, or under an import
+// alias. An import cannot be disguised, so gating it catches every form.
+var allowedProtojsonImporters = map[string]bool{
+	"response.go":                  true,
+	"handlers_get_events_sinks.go": true,
+	"handlers_create_ledger.go":    true,
+}
+
+func TestProtojsonImportIsRestricted(t *testing.T) {
+	t.Parallel()
+
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+
+	fset := token.NewFileSet()
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
+		require.NoError(t, err)
+
+		for _, imp := range file.Imports {
+			if imp.Path.Value != `"google.golang.org/protobuf/encoding/protojson"` {
+				continue
+			}
+
+			require.Truef(t, allowedProtojsonImporters[name],
+				"%s imports protojson directly. Serialize through writeProtoOK or "+
+					"writeProtoListOK and add the route to protojsonRoutes with the exact "+
+					"message type the handler writes. If the handler genuinely must call "+
+					"protojson itself, add %s to allowedProtojsonImporters AND add its "+
+					"protojsonRoutes row — do not do only one.",
+				name, name)
+		}
+	}
+}
+
 // TestProtojsonRoutes_TableIsComplete keeps protojsonRoutes honest. The table
 // above is hand-written, so a new protojson handler added without a row would
-// escape the guard entirely. Parse this package and assert the number of
-// protojson call sites matches the number of rows.
+// escape the guard entirely. Parse this package and compare the SET of files
+// containing a protojson call site against the set of files the table expects.
 //
-// Counting is deliberate rather than name-matching: a call site cannot be mapped
-// back to a route path statically without much heavier analysis, and a count
-// mismatch is enough to force the author to look at the table.
+// A bare count is not enough: a compensating add/remove pair (one handler
+// added, one removed) leaves the total unchanged, so a stale row plus an
+// unguarded new route would both pass a count check. Comparing sets keyed by
+// filename catches that, since the added file is present but unexpected and
+// the removed file is expected but absent. A call site still cannot be mapped
+// back to a specific route path without much heavier analysis, which is why
+// the table's `file` field — not `route` — is what this test checks against.
 func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	t.Parallel()
 
@@ -109,7 +167,8 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 
 	fset := token.NewFileSet()
 
-	var sites []string
+	var sites []string     // "filename: calleeName", for the diagnosable failure message.
+	var siteFiles []string // filename only, for the set comparison below.
 
 	for _, entry := range entries {
 		filename := entry.Name()
@@ -129,20 +188,32 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 			name := calleeName(call.Fun)
 			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protojson.Marshal" {
 				sites = append(sites, filename+": "+name)
+				siteFiles = append(siteFiles, filename)
 			}
 
 			return true
 		})
 	}
 
-	// response.go defines writeProtoOK and writeProtoListOK, each containing one
-	// protojson.Marshal call. Those two are implementations, not routes.
-	const implementationSites = 2
+	// Built from the table so it cannot drift: one entry per route row, plus
+	// response.go twice for the two implementation call sites inside
+	// writeProtoOK and writeProtoListOK themselves — those two functions are
+	// what every route row calls through, not routes of their own.
+	expected := make([]string, 0, len(protojsonRoutes)+2)
+	for _, tc := range protojsonRoutes {
+		expected = append(expected, tc.file)
+	}
 
-	require.Lenf(t, sites, len(protojsonRoutes)+implementationSites,
-		"protojson call sites (%v) do not match protojsonRoutes (%d rows) + %d implementation sites. "+
-			"If you added a protojson handler, add it to protojsonRoutes. If you removed one, delete its row.",
-		sites, len(protojsonRoutes), implementationSites)
+	expected = append(expected, "response.go", "response.go")
+
+	require.ElementsMatchf(t, siteFiles, expected,
+		"protojson call sites %v do not match the expected set %v. If you added a "+
+			"protojson handler, add a row with the exact message type the handler "+
+			"writes — a placeholder type satisfies this check while guarding nothing. "+
+			"If you removed a handler, delete its row. If you added neither, calleeName "+
+			"probably did not recognise your call shape — fix the parser, do not delete "+
+			"a row.",
+		sites, expected)
 }
 
 // calleeName renders a call's function as "name" or "pkg.name".
@@ -151,6 +222,8 @@ func calleeName(fun ast.Expr) string {
 	case *ast.Ident:
 		return f.Name
 	case *ast.IndexExpr: // Generic instantiation, e.g. writeProtoListOK[T].
+		return calleeName(f.X)
+	case *ast.IndexListExpr: // Generic instantiation with multiple type parameters.
 		return calleeName(f.X)
 	case *ast.SelectorExpr:
 		if x, ok := f.X.(*ast.Ident); ok {
