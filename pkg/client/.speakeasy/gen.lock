@@ -1,16 +1,16 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 2093f8d6a23099ba44133f2398e87c8d
+  docChecksum: 9c367685731e2f1270ed6ceaff477cab
   docVersion: v2
   speakeasyVersion: 1.758.0
   generationVersion: 2.866.2
   releaseVersion: 0.10.2
   configChecksum: dd46b48d25fdb2a8e05e819ac208a15f
 persistentEdits:
-  generation_id: b6a35582-e42c-4c4b-baa0-d4d1b151937a
-  pristine_commit_hash: bd51fa9560a142fdaefddf3adcb3c73ecd83313a
-  pristine_tree_hash: 92609235a6bfb071bf33332e1774d8a965a9f267
+  generation_id: 1d4e67d3-dfef-4256-96d6-d09ee53b425c
+  pristine_commit_hash: 940dd2085a54a98fdf01fa5531f20f2b95b1732b
+  pristine_tree_hash: 0532d0c967ad0a8ceccbfddf9b05178bec05a39a
 features:
   go:
     additionalDependencies: 0.1.0
@@ -897,8 +897,8 @@ trackedFiles:
     pristine_git_object: 4b4a255ed706605cf45d725cd8329f841456f4e9
   docs/models/operations/v2createtransactionrequest.md:
     id: b17eca13e5a7
-    last_write_checksum: sha1:2b22d3e562cdce7565c2d63a5ecba21ff6c6040b
-    pristine_git_object: dd15f42b2fe3cbd776a0fe439fd0da9b01f26b99
+    last_write_checksum: sha1:f01fc607479bc1552593195a5ef4aa5d9262bcbf
+    pristine_git_object: 69050cc5fa865899ee66818b335fd3523801ebd2
   docs/models/operations/v2createtransactionresponse.md:
     id: bc4ffa0d7ca1
     last_write_checksum: sha1:bce4b75e895ad9b76dd22427ddb1c82569f08381
@@ -961,16 +961,16 @@ trackedFiles:
     pristine_git_object: 743f5be12d2ab5fe4c266d15b509ca3143f9685d
   docs/models/operations/v2getaccountrequest.md:
     id: af5bce1f6736
-    last_write_checksum: sha1:087a9e421af62f297eb6aea85de7cd4104f550eb
-    pristine_git_object: 10d9bcb22da01ba3625b3cf5d42091a246c14792
+    last_write_checksum: sha1:2e639ce196728fb8b462751153b8b4b1ef375abb
+    pristine_git_object: 55a4d2fbec30a5b9161bcc028388d804294dbffa
   docs/models/operations/v2getaccountresponse.md:
     id: 4db5ec2bf3d1
     last_write_checksum: sha1:c92ca537d6dc0b04624a4fa5c6fbacc3ed84a6fb
     pristine_git_object: 9a9d7e5a3aabd60f93214169312a430090a73f12
   docs/models/operations/v2getbalancesaggregatedrequest.md:
     id: ddb1a8221cd5
-    last_write_checksum: sha1:2956ae34442348ca37cfdefba72c0b1e3e39881b
-    pristine_git_object: d20153c98e3b5519ca07450b280d2c54b604d71d
+    last_write_checksum: sha1:20a742560f3f20491aa5165d651424388cceea49
+    pristine_git_object: e0146a1702bc11b649a14a3047928591803e076b
   docs/models/operations/v2getbalancesaggregatedresponse.md:
     id: 62479206930c
     last_write_checksum: sha1:202035e0f30a9ceb913eb3fc25bdd40fa7f19f6a
@@ -1021,16 +1021,16 @@ trackedFiles:
     pristine_git_object: c63af652ee11d4803496271af75da736c948331f
   docs/models/operations/v2gettransactionrequest.md:
     id: 9c1889d2e283
-    last_write_checksum: sha1:009fa4df5823c1a97a7d4acc4ea1c39e149b9336
-    pristine_git_object: 9e6dc5cce07ff16c8a1be542de72c182d8919c79
+    last_write_checksum: sha1:010a15f5babb550183a3d7b9572f7a318ad9b15c
+    pristine_git_object: 5cb731af932d04c3a134b7c781665c2ca5ded0cb
   docs/models/operations/v2gettransactionresponse.md:
     id: e6f0ec29c2f5
     last_write_checksum: sha1:5ad6c58d70000cf5ee119832c8f2a7e1112efaf9
     pristine_git_object: 3d99fcecb043f9c6a42786ec630e01053e36283e
   docs/models/operations/v2getvolumeswithbalancesrequest.md:
     id: 4c7a30b7c074
-    last_write_checksum: sha1:cc0bc16e37c9304312a46f969e7129223e4306b6
-    pristine_git_object: b33197c3d94419e1aa0dc0acaf03557fe35a2392
+    last_write_checksum: sha1:1e16db551a97cf7e2ef9ec5d77003c835ef7f894
+    pristine_git_object: 12ac4a0d65c11582aa0f346a7038f07a704d6c6a
   docs/models/operations/v2getvolumeswithbalancesresponse.md:
     id: 359acead1b1c
     last_write_checksum: sha1:a3b6e61b1779ffc3be7f9ec7e2f8eb5c8360f16b
@@ -1053,8 +1053,8 @@ trackedFiles:
     pristine_git_object: dc35fcec3d721dce702987ab44e852259b7fe980
   docs/models/operations/v2listaccountsrequest.md:
     id: 386458e80375
-    last_write_checksum: sha1:65def413c6edf587cb2099adbba5a9f80a643d69
-    pristine_git_object: 16f2b2e61b3c53b68a3e95cb8b9636ac1e1a7001
+    last_write_checksum: sha1:6c06d7eaec2094e1c353f0298bc078e3a1c17046
+    pristine_git_object: ae902f96565a2a00478615a0f9ba23fdd388f080
   docs/models/operations/v2listaccountsresponse.md:
     id: 02ef7a53fb2d
     last_write_checksum: sha1:5c5385310ce5446d0c62ddc8674a8d2bb45c45b5
@@ -1073,8 +1073,8 @@ trackedFiles:
     pristine_git_object: d5c67c727ae1f4878cff8ff686c2a7f72f4766e1
   docs/models/operations/v2listlogsrequest.md:
     id: d33a3ec5a322
-    last_write_checksum: sha1:500f0eb235ff28264044860d9f73875e187132e6
-    pristine_git_object: 0f5fc390dba66ef4eefcaee7aad78c13160c2da9
+    last_write_checksum: sha1:f5cefc549c8e61f2b45c5e2010b6607a2a0da185
+    pristine_git_object: 10752c5a8b5f9f3b06a1044cc5e8c95448a1877d
   docs/models/operations/v2listlogsresponse.md:
     id: b9f87c54e9ff
     last_write_checksum: sha1:ea08635e0b26e6f58b8cef0a030a53e5c6e57dab
@@ -1097,8 +1097,8 @@ trackedFiles:
     pristine_git_object: a151423a0b92c5be455e39e2726a084b47cd7710
   docs/models/operations/v2listtransactionsrequest.md:
     id: d9cfa5b900e8
-    last_write_checksum: sha1:f16a185d69019d8d0ee8fce8a45dbb5d4e4d3a18
-    pristine_git_object: f80eec46f3d02ced5177a1756b991757659f5e63
+    last_write_checksum: sha1:b680ba71adf0993eeaba58fba0c3992787f713db
+    pristine_git_object: cafa1b6dfa33447494cfddb2cde42c186c4e06c8
   docs/models/operations/v2listtransactionsresponse.md:
     id: a930ed42e5d9
     last_write_checksum: sha1:93594f2ed33985d3b02c3dcca8a04c09ad9ccd87
@@ -1129,8 +1129,8 @@ trackedFiles:
     pristine_git_object: 41b849ebf7e3bc808868415076964dd78a0dad70
   docs/models/operations/v2reverttransactionrequest.md:
     id: f305cf244085
-    last_write_checksum: sha1:455e77d2a72500343665f31eedabdf271ee91764
-    pristine_git_object: 0d0ec8e6f1e1c7ed5915be630845e15adb34dad2
+    last_write_checksum: sha1:584cfec233767517c3a7377ba1ef4752f5890067
+    pristine_git_object: bae5e43092f4280fc76952df9141de9dd7a6b7ec
   docs/models/operations/v2reverttransactionresponse.md:
     id: 4a24eec5dd11
     last_write_checksum: sha1:9c40f8f9d46ecb7523d4ebc63aa5b2c4551d1eef
@@ -1141,8 +1141,8 @@ trackedFiles:
     pristine_git_object: 30827d15eee00ed9cb54b30d66fb29d926005005
   docs/models/operations/v2runqueryrequest.md:
     id: 7a3572f04cc2
-    last_write_checksum: sha1:b31080fe2cb216040d9cd90815e97dcd008cd490
-    pristine_git_object: 9879abb7be0e1fdff7efe2345707bc7a7f4dff4d
+    last_write_checksum: sha1:95d5acce033bf51700ad8f6df598cae827f8655f
+    pristine_git_object: 2ab1242b117faa84da2508597584e91e8be75105
   docs/models/operations/v2runqueryrequestbody.md:
     id: 164a1214f9ca
     last_write_checksum: sha1:79cf3ad8d2a06f80bc0fdf0f21079c9aa3b4f77d
@@ -1825,8 +1825,8 @@ trackedFiles:
     pristine_git_object: f5ee323bd8285a01f5a925e83e4e612f2e651f33
   models/operations/v2createtransaction.go:
     id: d888f07565b1
-    last_write_checksum: sha1:462d9cf2dd3701abcd571a6d30907f6a80b32f6a
-    pristine_git_object: 4d63af8e3e9449e2805650f1e437427e7fbc42cc
+    last_write_checksum: sha1:9bd7c1750580cc6834a722b981d954cb9e3872f4
+    pristine_git_object: 742f93797174105dfffbb03351976a2afc8b1daa
   models/operations/v2deleteaccountmetadata.go:
     id: b7529c1191a1
     last_write_checksum: sha1:53811a1e2f91eeace72377a91957b98422a1b5d1
@@ -1857,12 +1857,12 @@ trackedFiles:
     pristine_git_object: 5c7231f29f79a454832fe0c9f863bc0bdac0b800
   models/operations/v2getaccount.go:
     id: c8f3948ab2fc
-    last_write_checksum: sha1:a093b59807e7a1926cd054233463820f031e4083
-    pristine_git_object: 85661b9482a1ee9bd5a6a4e5e2bb96e036218034
+    last_write_checksum: sha1:f4ebebb1995827bc11274e4ac63f2e6541c2ddb0
+    pristine_git_object: cabc3f76459cf8a3b34b56a0000fe393016bd61e
   models/operations/v2getbalancesaggregated.go:
     id: 836696f8bbfb
-    last_write_checksum: sha1:16c9bba321c474a451f9fcfcc6ee484125a64f3f
-    pristine_git_object: 2713e9eb6a78c9326ed0b221f66430277fe1efd7
+    last_write_checksum: sha1:e002085bdaa1de1e688f7e306b8daa368fc34222
+    pristine_git_object: 74125461c5769ec0043fb9aa4bb6c8a991078427
   models/operations/v2getexporterstate.go:
     id: 6aa999586c70
     last_write_checksum: sha1:b05670386d35a2600cc6a6f1cbd63403f017535c
@@ -1889,12 +1889,12 @@ trackedFiles:
     pristine_git_object: 3b0d33fd4d19bfddfef73e5217e696c8fd3353e8
   models/operations/v2gettransaction.go:
     id: d173ca4b10b8
-    last_write_checksum: sha1:8e60dcda8ac065124fb494b640df36812fefde35
-    pristine_git_object: cf2f1de86ab918c0dc7eeb5825a1aa8d3524214f
+    last_write_checksum: sha1:2f6e2038672e1a2f91b720614484637c09cf9e0a
+    pristine_git_object: 1ece4f91dff78047ba540d26bfb0f59041daf562
   models/operations/v2getvolumeswithbalances.go:
     id: ff54c66d8fe4
-    last_write_checksum: sha1:5a3bc00ad3623ab91ead2963bc01d4e4880b28eb
-    pristine_git_object: 177d242aa3959dfde8851a938a8be20b8f413066
+    last_write_checksum: sha1:e470d2d5f35421ca8ef3132d989ce17d4768142c
+    pristine_git_object: 196d9ef579136355282c7194672e30372d0f5f13
   models/operations/v2importlogs.go:
     id: b0eb202712bd
     last_write_checksum: sha1:9427f47cb6b7684b42ef5eb53ea5789a1a988d4a
@@ -1905,8 +1905,8 @@ trackedFiles:
     pristine_git_object: 6f3261e492c07c404aab6d55d5ee2ec4136934c5
   models/operations/v2listaccounts.go:
     id: 66e94cf6e16b
-    last_write_checksum: sha1:7717f6b7cc5758a61ef73bc8c36ce21257a50554
-    pristine_git_object: a5faf7d373d67523bc85f5174269d00b2c4a2c79
+    last_write_checksum: sha1:4218000e3462d85bd3dcd872dbb9608711a347ad
+    pristine_git_object: f6e63dd2a9d3c3ea2e38ce846cb98661f4df1f9a
   models/operations/v2listexporters.go:
     id: ea2dc627b6b8
     last_write_checksum: sha1:9dec9d9118af61867a2dd011d65843d5f561686f
@@ -1917,8 +1917,8 @@ trackedFiles:
     pristine_git_object: f49dee7ec0cb3d2acad1b7d81f6c33991ef9fa62
   models/operations/v2listlogs.go:
     id: 5d769531a5c7
-    last_write_checksum: sha1:cf5569fb20bc2f1a9c776b839b52768f099fdf1d
-    pristine_git_object: 4b97c61263096e96ae7170f9ec160bdd917d51ea
+    last_write_checksum: sha1:ce7a8c590a326b1c2433384d60aa0553b062bc25
+    pristine_git_object: 2a166d15e350b997ac0c498521c68999de568876
   models/operations/v2listpipelines.go:
     id: 10c8cebb18ee
     last_write_checksum: sha1:e8e8f00ec727f129d0f48c7ab7ddf74fb434dce4
@@ -1929,8 +1929,8 @@ trackedFiles:
     pristine_git_object: f22355fc2ffbc8c88999b828ce7e1238ef8e3a74
   models/operations/v2listtransactions.go:
     id: f83702225349
-    last_write_checksum: sha1:21e51a78cc75faff8d94202112fbe1fdf5d3669c
-    pristine_git_object: 1455015dea2dd2939d07aea81800fdc3db7949af
+    last_write_checksum: sha1:ecd569ba51ee2e5cae1a5b6c848eb9d37a8cad2b
+    pristine_git_object: 2e5014012c8bee1bb1a583e8c181a1378e7db792
   models/operations/v2readstats.go:
     id: a276edf30a38
     last_write_checksum: sha1:3b9590630487b6b8dae851bd671682d3122c79eb
@@ -1945,12 +1945,12 @@ trackedFiles:
     pristine_git_object: 7f1451bd5087fcda822731f453b41006a704482c
   models/operations/v2reverttransaction.go:
     id: 2bd797b98bdd
-    last_write_checksum: sha1:f972696710298facfaad942e4e6203adfe576e62
-    pristine_git_object: 4f5b259c854562cf2cd596181d47c08b128cbf84
+    last_write_checksum: sha1:6d03a4c69421cf3bec973cf0060aaca7a01f50f1
+    pristine_git_object: 5ef96ec22ee33908403e28cc251ea649df1d0d43
   models/operations/v2runquery.go:
     id: 4e748ce875ba
-    last_write_checksum: sha1:a22fbad921d66a759df3c43f8f92b8328c53c098
-    pristine_git_object: 9a358c7a15f65bdce0460400dd1aa9cdf1f35d11
+    last_write_checksum: sha1:450c4b1caea41d5775bef5e94912fe37c3947be6
+    pristine_git_object: 0a1ad5df205dbcb0eebee55763c9858a3629a8e1
   models/operations/v2startpipeline.go:
     id: ac20901b294a
     last_write_checksum: sha1:aba224f666738ff6eb59f2698a3a896768ecc5d5
@@ -2013,8 +2013,8 @@ trackedFiles:
     pristine_git_object: 826e59e393c569765d0cd3cefd6859f4e3c6513a
   v2.go:
     id: eeaf7a3656c7
-    last_write_checksum: sha1:78d01d7db74060bca171e0e77563d870c3dad869
-    pristine_git_object: 78d32f8f3a1233532e8bfb6e961ddc7a12130712
+    last_write_checksum: sha1:277568bfcce0a5da827c39d2d3011a388b6fe2c8
+    pristine_git_object: 175da0777ff15c3ac93c24ee26c5beaaed8823ad
 examples:
   v2GetInfo:
     speakeasy-default-v2-get-info:
@@ -2380,6 +2380,8 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {}
       responses:
@@ -2393,6 +2395,8 @@ examples:
         path:
           ledger: "ledger001"
           address: "users:001"
+        header:
+          Formance-Bigint-As-String: false
       responses:
         "200":
           application/json: {"data": {"address": "users:001", "metadata": {"admin": "true"}, "insertionDate": "2023-01-01T00:00:00Z", "updatedAt": "2023-01-01T00:00:00Z", "firstUsage": "2023-01-01T00:00:00Z", "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}}
@@ -2451,6 +2455,8 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {}
       responses:
@@ -2467,6 +2473,8 @@ examples:
           dryRun: true
           schemaVersion: "v1.0.0"
           force: true
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"template": "CUSTOMER_DEPOSIT", "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
@@ -2480,6 +2488,8 @@ examples:
         path:
           ledger: "ledger001"
           id: 1234
+        header:
+          Formance-Bigint-As-String: false
       responses:
         "200":
           application/json: {"data": {"timestamp": "2024-10-06T11:21:14.840Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 232775, "reverted": false, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -2518,6 +2528,8 @@ examples:
         query:
           dryRun: true
           schemaVersion: "v1.0.0"
+        header:
+          Formance-Bigint-As-String: false
       responses:
         "201":
           application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -2528,6 +2540,8 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
@@ -2545,6 +2559,8 @@ examples:
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           groupBy: 3
           sort: "id:desc"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {"key": "<value>"}
       responses:
@@ -2561,6 +2577,8 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {}
       responses:
@@ -2802,6 +2820,8 @@ examples:
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
           schemaVersion: "v1.0.0"
+        header:
+          Formance-Bigint-As-String: false
       requestBody:
         application/json: {"params": {"resource": "volumes", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==", "sort": "id:desc"}}
       responses:

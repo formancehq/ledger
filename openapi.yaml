@@ -1824,6 +1824,7 @@ paths:
       tags:
         - ledger.v2
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -1899,6 +1900,7 @@ paths:
       tags:
         - ledger.v2
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2164,6 +2166,7 @@ paths:
       operationId: v2ListTransactions
       x-speakeasy-name-override: ListTransactions
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2252,6 +2255,7 @@ paths:
       operationId: v2CreateTransaction
       x-speakeasy-name-override: CreateTransaction
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2323,6 +2327,7 @@ paths:
       operationId: v2GetTransaction
       x-speakeasy-name-override: GetTransaction
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2499,6 +2504,7 @@ paths:
       x-speakeasy-name-override: RevertTransaction
       summary: Revert a ledger transaction by its ID
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2580,6 +2586,7 @@ paths:
       operationId: v2GetBalancesAggregated
       x-speakeasy-name-override: GetBalancesAggregated
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2630,6 +2637,7 @@ paths:
       operationId: v2GetVolumesWithBalances
       x-speakeasy-name-override: GetVolumesWithBalances
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: pageSize
           in: query
           description: |
@@ -2721,6 +2729,7 @@ paths:
       operationId: v2ListLogs
       x-speakeasy-name-override: ListLogs
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -2856,6 +2865,7 @@ paths:
       operationId: v2RunQuery
       x-speakeasy-name-override: RunQuery
       parameters:
+        - $ref: "#/components/parameters/bigintAsString"
         - name: ledger
           in: path
           description: Name of the ledger.
@@ -5275,6 +5285,17 @@ components:
             - id
             - createdAt
   parameters:
+    bigintAsString:
+      name: Formance-Bigint-As-String
+      in: header
+      description: |
+        When set to `true`, all bigint values in the response will be serialized
+        as strings instead of JSON numbers.
+        Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
+      required: false
+      schema:
+        type: boolean
+        default: false
     sort:
       name: sort
       in: query

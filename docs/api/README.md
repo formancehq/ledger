@@ -1108,6 +1108,7 @@ GET http://localhost:8080/v2/{ledger}/accounts HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1125,6 +1126,7 @@ List accounts from a ledger, sorted by address in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -1134,6 +1136,10 @@ List accounts from a ledger, sorted by address in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -1218,6 +1224,7 @@ Authorization ( Scopes: ledger:read )
 GET http://localhost:8080/v2/{ledger}/accounts/{address} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1227,12 +1234,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **address**: Exact address of the account. It must match the following regular expressions pattern:
 ```
@@ -1546,6 +1558,7 @@ GET http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1563,6 +1576,7 @@ List transactions from a ledger, sorted by id in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -1574,6 +1588,10 @@ List transactions from a ledger, sorted by id in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -1717,6 +1735,7 @@ POST http://localhost:8080/v2/{ledger}/transactions HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 Idempotency-Key: string
 
 ```
@@ -1764,6 +1783,7 @@ Idempotency-Key: string
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
@@ -1772,6 +1792,10 @@ Idempotency-Key: string
 |body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **body**: The request body must contain at least one of the following objects:
   - `postings`: suitable for simple transactions
@@ -1899,6 +1923,7 @@ Authorization ( Scopes: ledger:write )
 GET http://localhost:8080/v2/{ledger}/transactions/{id} HTTP/1.1
 Host: localhost:8080
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -1908,10 +1933,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2098,6 +2130,7 @@ POST http://localhost:8080/v2/{ledger}/transactions/{id}/revert HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 Idempotency-Key: string
 
 ```
@@ -2119,6 +2152,7 @@ Idempotency-Key: string
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |id|path|integer(bigint)|true|Transaction ID.|
 |force|query|boolean|false|Force revert|
@@ -2127,6 +2161,12 @@ Idempotency-Key: string
 |schemaVersion|query|string|false|Schema version to use for validation|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2251,6 +2291,7 @@ GET http://localhost:8080/v2/{ledger}/aggregate/balances HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2266,10 +2307,17 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pit|query|string(date-time)|false|none|
 |useInsertionDate|query|boolean|false|Use insertion date instead of effective date|
 |body|body|object|true|none|
+
+#### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 > Example responses
 
@@ -2307,6 +2355,7 @@ GET http://localhost:8080/v2/{ledger}/volumes HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2322,6 +2371,7 @@ Accept: application/json
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |ledger|path|string|true|Name of the ledger.|
@@ -2333,6 +2383,10 @@ Accept: application/json
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -2392,6 +2446,7 @@ GET http://localhost:8080/v2/{ledger}/logs HTTP/1.1
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2409,6 +2464,7 @@ List the logs from a ledger, sorted by ID in descending order.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
@@ -2417,6 +2473,10 @@ List the logs from a ledger, sorted by ID in descending order.
 |body|body|object|true|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
@@ -2599,6 +2659,7 @@ POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 HTT
 Host: localhost:8080
 Content-Type: application/json
 Accept: application/json
+Formance-Bigint-As-String: false
 
 ```
 
@@ -2630,6 +2691,7 @@ Run a query template on a ledger
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
+|Formance-Bigint-As-String|header|boolean|false|When set to `true`, all bigint values in the response will be serialized|
 |ledger|path|string|true|Name of the ledger.|
 |schemaVersion|query|string|true|Schema version to use for validation|
 |id|path|string|true|Query template ID.|
@@ -2662,6 +2724,10 @@ Run a query template on a ledger
 |»» **additionalProperties**|body|string|false|none|
 
 #### Detailed descriptions
+
+**Formance-Bigint-As-String**: When set to `true`, all bigint values in the response will be serialized
+as strings instead of JSON numbers.
+Useful for clients that cannot handle large numbers natively (e.g. JavaScript).
 
 **pageSize**: The maximum number of results to return per page.
 
