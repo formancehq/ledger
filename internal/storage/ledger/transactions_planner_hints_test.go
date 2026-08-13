@@ -282,6 +282,46 @@ func TestTransactionListAdaptive_NoLeakage(t *testing.T) {
 		"statement_timeout must be '0' (disabled) on a pool connection after Paginate")
 }
 
+// TestTransactionListAdaptive_ExpandIsNotSharedBetweenAttempts verifies that the
+// two racing attempts do not share the query's Expand slice. The repository sorts
+// it in place, so a shared backing array is a data race — run this test under
+// -race to see it.
+func TestTransactionListAdaptive_ExpandIsNotSharedBetweenAttempts(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 6, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          1,
+		ChaserTimeoutMs:        30_000,
+	})
+
+	// Hold the original long enough that both attempts paginate concurrently.
+	adaptive.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
+		if !isChaser {
+			_, err := tx.ExecContext(ctx, "SELECT pg_sleep(10)")
+			return err
+		}
+		return nil
+	})
+
+	q := walletQuery(15)
+	// Deliberately unsorted so the in-place sort actually reorders the slice.
+	q.Options.Expand = []string{"volumes", "effectiveVolumes"}
+
+	cursor, err := adaptive.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, 6)
+	require.Equal(t, []string{"volumes", "effectiveVolumes"}, q.Options.Expand,
+		"the caller's Expand slice must not be reordered by the paginator")
+
+	for _, tx := range cursor.Data {
+		require.NotEmpty(t, tx.PostCommitVolumes, "expand=volumes must be populated")
+	}
+}
+
 // TestTransactionListAdaptive_NoHedgeWithoutJSONBFilter verifies that a list
 // query carrying no JSONB predicate (no metadata/account/source/destination
 // filter) keeps the plain path. Hedging such a query would duplicate work the

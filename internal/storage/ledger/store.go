@@ -248,6 +248,24 @@ func queryFiltersOnJSONB(q common.PaginatedQuery[any]) bool {
 	return found
 }
 
+// withOwnExpand returns a copy of q whose Options.Expand slice is independent of
+// the caller's. The repository sorts Expand in place, so the two racing attempts
+// would otherwise write the same backing array concurrently.
+func withOwnExpand(q common.PaginatedQuery[any]) common.PaginatedQuery[any] {
+	switch v := q.(type) {
+	case common.OffsetPaginatedQuery[any]:
+		v.Options.Expand = slices.Clone(v.Options.Expand)
+		return v
+	case common.ColumnPaginatedQuery[any]:
+		v.Options.Expand = slices.Clone(v.Options.Expand)
+		return v
+	case common.InitialPaginatedQuery[any]:
+		v.Options.Expand = slices.Clone(v.Options.Expand)
+		return v
+	}
+	return q
+}
+
 // GetOne delegates straight to the base repository — no adaptive logic needed.
 func (a *transactionsAdaptivePaginator) GetOne(ctx context.Context, q common.ResourceQuery[any]) (*ledger.Transaction, error) {
 	return a.store.transactionsBase().GetOne(ctx, q)
@@ -292,10 +310,13 @@ func (a *transactionsAdaptivePaginator) Paginate(
 
 	ch := make(chan raceResult, 2)
 
+	// Each attempt gets its own Expand slice: the repository sorts it in place.
+	originalQuery, chaserQuery := withOwnExpand(q), withOwnExpand(q)
+
 	// ── original query ─────────────────────────────────────────────────────
 	// No timeout, no plan override — let Postgres use whichever plan it picks.
 	go func() {
-		cursor, err := a.paginateInTx(raceCtx, q, 0, false)
+		cursor, err := a.paginateInTx(raceCtx, originalQuery, 0, false)
 		ch <- raceResult{cursor, err, "original"}
 	}()
 
@@ -316,7 +337,7 @@ func (a *transactionsAdaptivePaginator) Paginate(
 			logging.FromContext(ctx).WithFields(map[string]any{
 				"chaser_delay_ms": cfg.ChaserDelayMs,
 			}).Infof("transactions list chaser fired")
-			cursor, err := a.paginateInTx(raceCtx, q, cfg.ChaserTimeoutMs, true)
+			cursor, err := a.paginateInTx(raceCtx, chaserQuery, cfg.ChaserTimeoutMs, true)
 			ch <- raceResult{cursor, err, "chaser"}
 		case <-raceCtx.Done():
 			ch <- raceResult{nil, raceCtx.Err(), "chaser"}
