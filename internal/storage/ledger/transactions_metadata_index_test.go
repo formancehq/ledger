@@ -43,6 +43,22 @@ import (
 	"github.com/formancehq/ledger/pkg/features"
 )
 
+// scopedStore returns a private store over the same ledger that always emits the
+// `ledger = ?` predicate, with the indexed keys resolved against pg_indexes.
+//
+// Tests that assert the ->> rewrite is used need this: a ledger-partial
+// functional index is unusable when the alone-in-bucket optimization drops the
+// ledger predicate, so IndexedMetadataKeys() would legitimately return nothing
+// depending on how many ledgers happen to share the bucket at that moment.
+func scopedStore(t *testing.T, base *ledgerstore.Store) *ledgerstore.Store {
+	t.Helper()
+
+	store := ledgerstore.New(base.GetDB(), base.GetBucket(), base.GetLedger(),
+		ledgerstore.WithDisableScopedSelectOptimization(true))
+	store.ResolveIndexedMetadataKeys(logging.TestingContext())
+	return store
+}
+
 // withIndexedMetadataKeys returns a newLedgerStore option that sets the
 // INDEXED_METADATA_KEYS feature to the given comma-separated list.
 func withIndexedMetadataKeys(keys string) func(cfg *ledger.Configuration) {
@@ -216,7 +232,7 @@ func TestIndexedMetadataKeys_NegatedFilterMatchesContainment(t *testing.T) {
 	}
 
 	createFunctionalIndex(t, flagged)
-	flagged.ResolveIndexedMetadataKeys(ctx)
+	flagged = scopedStore(t, flagged)
 	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id",
 		"the ->> rewrite must be active for this test to be meaningful")
 
@@ -241,6 +257,130 @@ func TestIndexedMetadataKeys_NegatedFilterMatchesContainment(t *testing.T) {
 		require.Equalf(t, *plainCursor.Data[i].ID, *flaggedCursor.Data[i].ID,
 			"row %d: id mismatch between @> path and ->> path under negation", i)
 	}
+}
+
+// TestIndexedMetadataKeys_NonMatchOperatorsFallBackToContainment verifies that
+// operators the `->>` equality cannot express ($like, $in) keep using the @>
+// path, so a flagged key behaves exactly like an unflagged one for them.
+// Binding their value into `= ?` would silently discard the operator.
+//
+// Note the @> path itself treats these operators as containment (a $like
+// pattern is matched literally); that is pre-existing behaviour which this PR
+// does not change — what matters here is that the two stores agree.
+func TestIndexedMetadataKeys_NonMatchOperatorsFallBackToContainment(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+	now := time.Now()
+
+	flagged := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	createFunctionalIndex(t, flagged)
+	flagged = scopedStore(t, flagged)
+	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id")
+
+	plain := newLedgerStore(t)
+
+	for _, store := range []*ledgerstore.Store{flagged, plain} {
+		for i, walletID := range []string{"wallet-alpha", "wallet-beta"} {
+			tx := ledger.NewTransaction().
+				WithPostings(ledger.NewPosting("world", "dest", "USD", big.NewInt(int64(100*(i+1))))).
+				WithMetadata(metadata.Metadata{"source_wallet_id": walletID}).
+				WithTimestamp(now.Add(time.Duration(i) * time.Hour))
+			require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &tx))
+		}
+	}
+
+	for name, builder := range map[string]query.Builder{
+		"like_exact":    query.Like("metadata[source_wallet_id]", "wallet-alpha"),
+		"like_wildcard": query.Like("metadata[source_wallet_id]", "wallet-a%"),
+		"in":            query.In("metadata[source_wallet_id]", []any{"wallet-beta"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := common.InitialPaginatedQuery[any]{
+				Options: common.ResourceQuery[any]{Builder: builder},
+			}
+
+			flaggedCursor, err := flagged.Transactions().Paginate(ctx, q)
+			require.NoError(t, err, "%s must not be rewritten into an equality", name)
+
+			plainCursor, err := plain.Transactions().Paginate(ctx, q)
+			require.NoError(t, err)
+
+			require.Equal(t, len(plainCursor.Data), len(flaggedCursor.Data),
+				"flagged and unflagged stores must agree for %s", name)
+		})
+	}
+}
+
+// TestIndexedMetadataKeys_NonStringStoredValueSemantics verifies the ->> rewrite
+// stays equivalent to @> when the stored metadata value is not a JSON string.
+// @> compares JSON values by type, so {"k":"123"} does not match a stored number
+// 123, while a bare `metadata ->> 'k' = '123'` would. Ledger metadata is
+// map[string]string, so this only arises for values written outside the API —
+// which is precisely where a silent divergence would go unnoticed.
+func TestIndexedMetadataKeys_NonStringStoredValueSemantics(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	flagged := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
+	createFunctionalIndex(t, flagged)
+	flagged = scopedStore(t, flagged)
+	require.Contains(t, flagged.IndexedMetadataKeys(), "source_wallet_id",
+		"index must be confirmed so this test exercises the ->> path")
+
+	plain := newLedgerStore(t)
+
+	// One row holding the string "123", one holding the number 123. The latter
+	// has to go in via SQL: WithMetadata cannot express a non-string value.
+	seed := func(store *ledgerstore.Store) {
+		strTx := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "123"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &strTx))
+
+		numTx := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bob", "USD", big.NewInt(100))).
+			WithMetadata(metadata.Metadata{"source_wallet_id": "placeholder"}).
+			WithTimestamp(time.Now())
+		require.NoError(t, commitTransactionAndUpsertAccounts(ctx, store, &numTx))
+
+		// jsonb_build_object turns the bare 123 into a JSON *number*; there is no
+		// integer -> jsonb cast to lean on. The ledger name is a uuid prefix and
+		// the id an integer, both safe to embed.
+		_, err := store.GetDB().ExecContext(ctx, fmt.Sprintf(
+			`UPDATE %q.transactions SET metadata = jsonb_build_object('source_wallet_id', 123)
+			 WHERE ledger = '%s' AND id = %d`,
+			store.GetLedger().Bucket, store.GetLedger().Name, *numTx.ID,
+		))
+		require.NoError(t, err)
+
+		// Guard the premise: the row must really hold a JSON number.
+		var typ string
+		require.NoError(t, store.GetDB().QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT jsonb_typeof(metadata -> 'source_wallet_id') FROM %q.transactions
+			 WHERE ledger = '%s' AND id = %d`,
+			store.GetLedger().Bucket, store.GetLedger().Name, *numTx.ID,
+		)).Scan(&typ))
+		require.Equal(t, "number", typ, "seed must store a JSON number for this test to mean anything")
+	}
+	seed(plain)
+	seed(flagged)
+
+	q := common.InitialPaginatedQuery[any]{
+		Options: common.ResourceQuery[any]{
+			Builder: query.Match("metadata[source_wallet_id]", "123"),
+		},
+	}
+
+	plainCursor, err := plain.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	flaggedCursor, err := flagged.Transactions().Paginate(ctx, q)
+	require.NoError(t, err)
+
+	require.Len(t, plainCursor.Data, 1, "@> must match the string row only")
+	require.Equal(t, len(plainCursor.Data), len(flaggedCursor.Data),
+		"the ->> rewrite must not match the row storing a JSON number")
 }
 
 // TestIndexedMetadataKeys_PartialIndexSkippedWhenAloneInBucket verifies that a
@@ -378,15 +518,16 @@ func captureExplain(t *testing.T, store *ledgerstore.Store, key, value string) s
 // can match it to the functional index.
 func TestIndexedMetadataKeys_ExplainUsesLiteralPredicate(t *testing.T) {
 	t.Parallel()
-	ctx := logging.TestingContext()
 
 	store := newLedgerStore(t, withIndexedMetadataKeys("source_wallet_id"))
 
 	// Create the functional index for this test's ledger.
 	createFunctionalIndex(t, store)
 
-	// Resolve against pg_indexes so the store confirms the index.
-	store.ResolveIndexedMetadataKeys(ctx)
+	// Resolve against pg_indexes so the store confirms the index. The scoped
+	// store keeps the `ledger = ?` predicate, without which the ledger-partial
+	// index would be (correctly) rejected.
+	store = scopedStore(t, store)
 
 	plan := captureExplain(t, store, "source_wallet_id", "w-target")
 	t.Logf("EXPLAIN plan:\n%s", plan)
