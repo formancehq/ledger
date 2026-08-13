@@ -64,6 +64,15 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
+// metadataOrEmpty projects an account's metadata for a filter to test, standing in
+// an empty object where the join found none. An account can legitimately have no
+// metadata row — none was ever written, or none as of the requested point in time —
+// and metadata a filter cannot find has to read as absent rather than as unknown:
+// on a NULL, a containment test is NULL instead of false and its negation is NULL
+// instead of true, so every such account would be dropped from the result rather
+// than selected by it.
+const metadataOrEmpty = `coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata`
+
 // collectAddressFilters visits all address filter values (without short-circuiting)
 // and returns the collected addresses and whether any partial address was found.
 func collectAddressFilters(q interface {

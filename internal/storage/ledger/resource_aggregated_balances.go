@@ -71,7 +71,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 
 				ret = ret.
 					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-					Column("metadata")
+					ColumnExpr(metadataOrEmpty)
 			} else {
 				subQuery := h.store.newScopedSelect().
 					TableExpr(h.store.GetPrefixedRelationName("accounts")).
@@ -80,7 +80,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 
 				ret = ret.
 					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-					Column("metadata")
+					ColumnExpr(metadataOrEmpty)
 			}
 		}
 

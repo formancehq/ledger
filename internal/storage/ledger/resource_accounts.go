@@ -41,7 +41,7 @@ func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuild
 				`left join (?) accounts_metadata on accounts_metadata.accounts_address = accounts.address`,
 				selectDistinctAccountMetadataHistories,
 			).
-			ColumnExpr("coalesce(accounts_metadata.metadata, '{}'::jsonb) as metadata")
+			ColumnExpr(metadataOrEmpty)
 	} else {
 		ret = ret.ColumnExpr("accounts.metadata")
 	}
