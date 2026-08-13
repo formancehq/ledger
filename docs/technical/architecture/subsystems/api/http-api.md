@@ -597,6 +597,25 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 }
 ```
 
+## Response serialization
+
+Two encoders serve HTTP response bodies, and the choice is **not** a matter of taste:
+
+| Writer | Encoder | Use for |
+|---|---|---|
+| `writeOK` / `writeOKChecked` | sonic (`internal/adapter/json`) | Anything whose type has a custom `MarshalJSON`, and all hand-written DTOs |
+| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom `MarshalJSON` |
+
+**The rule: when a type has a hand-written `MarshalJSON`, that method is the public contract.** Route it through `writeOKChecked`. `protojson` works off protobuf reflection and ignores `json.Marshaler`, so sending such a type through it silently discards the intended shape.
+
+The camelCase convention cannot arbitrate between the two — both encoders satisfy it. The deciding fact is whether a marshaller exists. `internal/adapter/http/encoder_contract_test.go` enforces this in both directions.
+
+Prefer `writeOKChecked` over `writeOK` when the marshaller can fail (e.g. it marshals a metadata map): `writeOK` streams, so a mid-encode failure appends an error object to an already-committed 200.
+
+This was EN-1622: the transactions list, chapters and single-log routes sent marshaller-carrying types through `protojson` and shipped `amount: {"v0":"12345"}`, `timestamp: {"data":"1786540255458491"}`, base64 hashes where the contract is hex, and quoted numeric ids.
+
+**Before adding a `MarshalJSON` to a proto type, check the blast radius.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. For types that need a clean HTTP shape without moving the CLI, use an HTTP-local response DTO instead.
+
 ## OpenAPI Documentation
 
 The OpenAPI specification is available in `openapi.yml`. It can be used for:
