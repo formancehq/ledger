@@ -31,6 +31,7 @@ import (
 	"math/big"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -392,6 +393,48 @@ func TestTransactionListAdaptive_OriginalHardErrorNotMasked(t *testing.T) {
 	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
 	require.ErrorContains(t, err, "simulated hard DB error",
 		"the original's hard error must surface instead of a chaser result")
+}
+
+// TestTransactionListAdaptive_OriginalErrorDoesNotWaitForInFlightChaser covers
+// the case where the original fails while the chaser is already running: the
+// caller must get the original's error without waiting for the cancelled chaser
+// to unwind, which can stall in the database.
+func TestTransactionListAdaptive_OriginalErrorDoesNotWaitForInFlightChaser(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 4, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          1,
+		ChaserTimeoutMs:        30_000,
+	})
+
+	// The chaser starts first and then stalls in a way cancellation cannot cut
+	// short — the sleep deliberately ignores ctx, standing in for a cancellation
+	// that hangs in the database. The original fails only once the chaser is in
+	// flight, which is the ordering the drain loop has to handle.
+	const chaserStall = 3 * time.Second
+	chaserStarted := make(chan struct{})
+	adaptive.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
+		if isChaser {
+			close(chaserStarted)
+			time.Sleep(chaserStall)
+			return nil
+		}
+		<-chaserStarted
+		return fmt.Errorf("simulated hard DB error")
+	})
+
+	start := time.Now()
+	_, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
+	elapsed := time.Since(start)
+
+	require.ErrorContains(t, err, "simulated hard DB error",
+		"the original's hard error must surface even with a chaser in flight")
+	require.Less(t, elapsed, chaserStall,
+		"must return on the original's error instead of waiting for the stalled chaser")
 }
 
 // TestTransactionListAdaptive_BothFail verifies that when both the original and

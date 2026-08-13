@@ -341,36 +341,44 @@ func (a *transactionsAdaptivePaginator) Paginate(
 		}
 	}()
 
-	// ── drain both results ─────────────────────────────────────────────────
-	var origErr error
+	// ── take the first decisive result ─────────────────────────────────────
+	// Whichever attempt succeeds first wins the race — that is the point of
+	// hedging, and it is why a chaser result returned while the original is
+	// still running is a genuine success rather than a masked failure: the
+	// original has not failed at that moment, and waiting to find out whether
+	// it eventually would is exactly the latency the chaser exists to avoid.
+	//
+	// A hard error on the original, on the other hand, ends the race: both
+	// attempts run the same query, so it is a real failure the caller has to
+	// see, and a chaser result arriving afterwards would be discarded anyway.
+	// Returning straight away also keeps a chaser whose cancellation stalls in
+	// the database from holding up the caller.
+	var chaserErr error
 	for i := 0; i < 2; i++ {
 		r := <-ch
-		// Once the original has failed, a chaser that happened to succeed in the
-		// meantime must not mask it: the two attempts run the same query, so a
-		// hard error on one of them is a real failure the caller has to see.
-		if r.err == nil && origErr == nil {
+		switch {
+		case r.err == nil:
 			raceCancel()
 			if r.source == "chaser" {
 				a.store.txListChaserWonCounter.Add(ctx, 1)
 				logging.FromContext(ctx).Infof("transactions list chaser won the race (GIN override)")
 			}
 			return r.cursor, nil
-		}
-		if r.source == "original" {
-			origErr = r.err
-			// Original failed with a hard error — cancel the chaser immediately
-			// so we don't wait up to ChaserDelayMs before returning. If the
-			// chaser hasn't fired yet its select sees raceCtx.Done(); if it's
-			// already running the in-flight query is interrupted via context.
+
+		case r.source == "original":
+			// Cancels the chaser: if it has not fired yet its select sees
+			// raceCtx.Done(), and an in-flight query is interrupted via context.
 			raceCancel()
+			return nil, r.err
+
+		default:
+			// The chaser failed; the original may still succeed.
+			chaserErr = r.err
 		}
 	}
 
-	// Both failed — return the original's error as it's most informative.
-	if origErr != nil {
-		return nil, origErr
-	}
-	return nil, fmt.Errorf("both original and chaser queries failed")
+	// Unreachable: the original always produces one of the two results above.
+	return nil, chaserErr
 }
 
 // paginateInTx runs one query attempt inside a dedicated read-only
