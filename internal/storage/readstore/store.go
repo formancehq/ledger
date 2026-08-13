@@ -15,6 +15,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
@@ -377,6 +378,30 @@ type IndexVersionState struct {
 	// retraction such a pass emits loses the same-sequence tie to the
 	// standing ADD — an immortal row. Reuse is the only way into that state.
 	HighWater uint32
+
+	// CurrentType is the declared metadata type CurrentVersion's rows are
+	// encoded under, bound when the version was built and changed only by
+	// the atomic switch. It is what makes a retype invisible to queries
+	// until the switch: the schema flips at FSM apply, but a query serves
+	// CurrentVersion and must validate and encode its conditions under the
+	// type those rows actually carry — a condition compiled under the new
+	// declared type over old-encoded rows sees only the rows written after
+	// the retype (type-tagged encodings occupy disjoint byte ranges), i.e.
+	// partial results (EN-1724).
+	//
+	// CurrentTypeDeclared distinguishes "bound to no declared type" (the
+	// key had no schema entry when the version was built; rows carry each
+	// value's natural encoding) from METADATA_TYPE_STRING, which is enum
+	// value zero. Only meaningful on metadata indexes.
+	CurrentType         commonpb.MetadataType
+	CurrentTypeDeclared bool
+
+	// PendingType is the declared type PendingVersion's rows are encoded
+	// under: the retype's target, bound when the rewrite starts. Live
+	// dual-writes encode each value once per version, under that version's
+	// bound type.
+	PendingType         commonpb.MetadataType
+	PendingTypeDeclared bool
 }
 
 // Tombstoned reports whether the record marks a dropped index: no servable
@@ -396,19 +421,40 @@ type IndexVersionStateEntry struct {
 }
 
 // encodeIndexVersionState packs the state to a single byte slice.
-// Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)][rewrite_progress…].
+// Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)]
+// [current_type(1B)][pending_type(1B)][rewrite_progress…].
+// A type byte holds 0 for "no declared type bound" and 1+MetadataType
+// otherwise, so undeclared stays distinct from METADATA_TYPE_STRING (0).
 func encodeIndexVersionState(s IndexVersionState) []byte {
 	out := make([]byte, indexVersionStateHeaderLen+len(s.RewriteProgress))
 	binary.BigEndian.PutUint32(out[0:4], s.CurrentVersion)
 	binary.BigEndian.PutUint32(out[4:8], s.PendingVersion)
 	binary.BigEndian.PutUint64(out[8:16], s.ActivationSequence)
 	binary.BigEndian.PutUint32(out[16:20], s.HighWater)
+	out[20] = encodeBoundType(s.CurrentType, s.CurrentTypeDeclared)
+	out[21] = encodeBoundType(s.PendingType, s.PendingTypeDeclared)
 	copy(out[indexVersionStateHeaderLen:], s.RewriteProgress)
 
 	return out
 }
 
-const indexVersionStateHeaderLen = 20
+const indexVersionStateHeaderLen = 22
+
+func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
+	if !declared {
+		return 0
+	}
+
+	return byte(t) + 1
+}
+
+func decodeBoundType(b byte) (commonpb.MetadataType, bool) {
+	if b == 0 {
+		return 0, false
+	}
+
+	return commonpb.MetadataType(b - 1), true
+}
 
 // decodeIndexVersionState parses a stored value back to IndexVersionState.
 // Returns (zero, false) on any malformed input — caller treats it as
@@ -421,13 +467,17 @@ func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
 	progress := make([]byte, len(v)-indexVersionStateHeaderLen)
 	copy(progress, v[indexVersionStateHeaderLen:])
 
-	return IndexVersionState{
+	st := IndexVersionState{
 		CurrentVersion:     binary.BigEndian.Uint32(v[0:4]),
 		PendingVersion:     binary.BigEndian.Uint32(v[4:8]),
 		ActivationSequence: binary.BigEndian.Uint64(v[8:16]),
 		HighWater:          binary.BigEndian.Uint32(v[16:20]),
 		RewriteProgress:    progress,
-	}, true
+	}
+	st.CurrentType, st.CurrentTypeDeclared = decodeBoundType(v[20])
+	st.PendingType, st.PendingTypeDeclared = decodeBoundType(v[21])
+
+	return st, true
 }
 
 // WriteIndexVersionState persists the per-replica version state for an
@@ -488,9 +538,35 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, bool, error) {
+func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
 	return PinnedVersionResolver(reader, ledgerName, 0)
 }
+
+// ResolvedIndexVersion is what a query learns about an index from the
+// version state at its pin: the version to scan and the declared type
+// bound to it. The bound type — not the live schema — is what the
+// version's rows are encoded under, so conditions must be validated and
+// encoded against it (EN-1724); during a retype's conversion window the
+// two legitimately differ.
+type ResolvedIndexVersion struct {
+	Version uint32
+	// Type/TypeDeclared mirror IndexVersionState.CurrentType*: the type
+	// Version's rows carry, or "none was declared when it was built".
+	Type         commonpb.MetadataType
+	TypeDeclared bool
+	// BindingKnown is true for every resolution built from a stored version
+	// state — TypeDeclared=false is then an affirmative "built with no
+	// declared type", not missing information. Only query.Compile's
+	// pre-versioning test default leaves it false, telling the compiler to
+	// fall back to the live schema.
+	BindingKnown bool
+}
+
+// IndexVersionResolver resolves an index's servable version at the pin of
+// the snapshot it was built over. ok=false means no version state exists —
+// the index was removed (callers tell it apart from building via the
+// registry, see requireIndexReady).
+type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, error)
 
 // PinnedVersionResolver is the pin-aware variant: a version promoted by a
 // schema rewrite is only servable at pins at or above its activation
@@ -502,17 +578,17 @@ func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(ca
 //
 // A pin of 0 means "no pin" (introspection paths that do not resolve rows
 // at a sequence) and skips the check.
-func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) func(canonical string) (uint32, bool, error) {
-	return func(canonical string) (uint32, bool, error) {
+func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
-			return 0, false, err
+			return ResolvedIndexVersion{}, false, err
 		}
 
 		if !present {
 			// No record at all. Callers use this to tell a removed index
 			// apart from one still being built — see requireIndexReady.
-			return 0, false, nil
+			return ResolvedIndexVersion{}, false, nil
 		}
 
 		if state.Tombstoned() {
@@ -520,14 +596,19 @@ func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint6
 			// high-water version for the next incarnation; to queries it
 			// must read exactly like the removed index it is, never as one
 			// still building.
-			return 0, false, nil
+			return ResolvedIndexVersion{}, false, nil
 		}
 
 		if pin > 0 && state.ActivationSequence > pin {
-			return 0, true, nil
+			return ResolvedIndexVersion{}, true, nil
 		}
 
-		return state.CurrentVersion, true, nil
+		return ResolvedIndexVersion{
+			Version:      state.CurrentVersion,
+			Type:         state.CurrentType,
+			TypeDeclared: state.CurrentTypeDeclared,
+			BindingKnown: true,
+		}, true, nil
 	}
 }
 
