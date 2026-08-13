@@ -2295,8 +2295,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Chapter (protobuf JSON representation)
+                      $ref: '#/components/schemas/Chapter'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3964,6 +3963,52 @@ components:
             uncolored bucket. Always present on responses (never omitted); two
             postings on the same (account, asset) but different colors operate
             on strictly isolated balances.
+
+    Chapter:
+      type: object
+      description: |
+        A bucket chapter. Serialized by Chapter.MarshalJSON: the hash fields are
+        hex-encoded (not base64) and status is the protobuf enum name.
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [CHAPTER_OPEN, CHAPTER_CLOSING, CHAPTER_CLOSED, CHAPTER_ARCHIVED, CHAPTER_ARCHIVING]
+        closeSequence:
+          type: integer
+          format: int64
+        startSequence:
+          type: integer
+          format: int64
+        startAuditSequence:
+          type: integer
+          format: int64
+        closeAuditSequence:
+          type: integer
+          format: int64
+        sealingHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded sealing hash.
+        lastAuditHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded audit-chain hash at chapter close.
+        stateHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded BLAKE3 hash of computed attributes at seal time.
 
     LedgerClusterStateResponse:
       type: object
