@@ -294,7 +294,6 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			}).Errorf("Deleting persisted backfill cursor on retype reset")
 		}
 
-
 		return nil
 	}
 
@@ -399,7 +398,6 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 
 	return nil
 }
-
 
 // removeSchemaRewriteTask removes a schema rewrite task and deletes its persisted progress.
 func (b *Builder) removeSchemaRewriteTask(idx int) {
