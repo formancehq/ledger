@@ -168,21 +168,21 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 	// Collections are emitted unconditionally and must never be null: the
 	// OpenAPI schema types them as non-nullable and lists them in `required`.
 	// GetPostings() and MetadataToAnyMap() both return nil for an absent value,
-	// so normalise here rather than in MetadataToAnyMap, which has 7+ non-test
-	// callers whose payloads must not change.
+	// so normalise here rather than in MetadataToAnyMap, which has 7 non-test
+	// callers (this one included) whose payloads must not change.
 	postings := tx.GetPostings()
 	if postings == nil {
 		postings = []*Posting{}
 	}
 
-	metadata := MetadataToAnyMap(tx.GetMetadata())
-	if metadata == nil {
-		metadata = map[string]any{}
+	metadataMap := MetadataToAnyMap(tx.GetMetadata())
+	if metadataMap == nil {
+		metadataMap = map[string]any{}
 	}
 
 	aux := Aux{
 		Postings:                postings,
-		Metadata:                metadata,
+		Metadata:                metadataMap,
 		Reference:               tx.GetReference(),
 		ID:                      tx.GetId(),
 		Reverted:                tx.IsReverted(),
