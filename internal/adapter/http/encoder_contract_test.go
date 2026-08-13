@@ -2,7 +2,13 @@ package http
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -83,5 +89,70 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 					"MarshalJSON: without it sonic emits the protoc-gen snake_case tags.",
 				msg)
 		})
+	}
+}
+
+// TestProtojsonRoutes_TableIsComplete keeps protojsonRoutes honest. The table
+// above is hand-written, so a new protojson handler added without a row would
+// escape the guard entirely. Parse this package and assert the number of
+// protojson call sites matches the number of rows.
+//
+// Counting is deliberate rather than name-matching: a call site cannot be mapped
+// back to a route path statically without much heavier analysis, and a count
+// mismatch is enough to force the author to look at the table.
+func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
+	t.Parallel()
+
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	require.NoError(t, err)
+
+	var sites []string
+
+	for _, pkg := range pkgs {
+		for path, file := range pkg.Files {
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+
+				name := calleeName(call.Fun)
+				if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protojson.Marshal" {
+					sites = append(sites, filepath.Base(path)+": "+name)
+				}
+
+				return true
+			})
+		}
+	}
+
+	// response.go defines writeProtoOK and writeProtoListOK, each containing one
+	// protojson.Marshal call. Those two are implementations, not routes.
+	const implementationSites = 2
+
+	require.Lenf(t, sites, len(protojsonRoutes)+implementationSites,
+		"protojson call sites (%v) do not match protojsonRoutes (%d rows) + %d implementation sites. "+
+			"If you added a protojson handler, add it to protojsonRoutes. If you removed one, delete its row.",
+		sites, len(protojsonRoutes), implementationSites)
+}
+
+// calleeName renders a call's function as "name" or "pkg.name".
+func calleeName(fun ast.Expr) string {
+	switch f := fun.(type) {
+	case *ast.Ident:
+		return f.Name
+	case *ast.IndexExpr: // Generic instantiation, e.g. writeProtoListOK[T].
+		return calleeName(f.X)
+	case *ast.SelectorExpr:
+		if x, ok := f.X.(*ast.Ident); ok {
+			return x.Name + "." + f.Sel.Name
+		}
+
+		return f.Sel.Name
+	default:
+		return ""
 	}
 }
