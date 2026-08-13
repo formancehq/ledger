@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -26,6 +27,12 @@ func TestIndexVersionState_RoundTrip(t *testing.T) {
 		CurrentVersion:  3,
 		PendingVersion:  4,
 		RewriteProgress: []byte("cursor-bytes"),
+		// STRING is enum value zero, so it is exactly the value that would
+		// vanish if "declared" were conflated with the type's zero value.
+		CurrentType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		CurrentTypeDeclared: true,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_UINT32,
+		PendingTypeDeclared: true,
 	}
 
 	batch := store.NewBatch()
@@ -38,6 +45,10 @@ func TestIndexVersionState_RoundTrip(t *testing.T) {
 	assert.Equal(t, state.CurrentVersion, got.CurrentVersion)
 	assert.Equal(t, state.PendingVersion, got.PendingVersion)
 	assert.Equal(t, state.RewriteProgress, got.RewriteProgress)
+	assert.Equal(t, state.CurrentType, got.CurrentType)
+	assert.True(t, got.CurrentTypeDeclared, "declared STRING must not decode as undeclared")
+	assert.Equal(t, state.PendingType, got.PendingType)
+	assert.True(t, got.PendingTypeDeclared)
 }
 
 func TestIndexVersionState_NoRewriteProgress(t *testing.T) {
