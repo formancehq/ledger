@@ -1,0 +1,112 @@
+# Agent Context Routing
+
+This document maps code areas and task types to the **minimum authoritative documentation** an AI agent should load before making changes. The goal is to keep the always-loaded prompt small while preserving access to deep subsystem knowledge.
+
+## Documentation authority
+
+Use documentation according to this order:
+
+1. `AGENTS.md` — repository-wide guardrails and workflow.
+2. `docs/technical/**` — authoritative engineering architecture and contributor documentation.
+3. `docs/ops/**` — authoritative operational behavior and CLI/deployment documentation.
+4. `docs/sales/**` — product-facing material; useful for product context, **not** an engineering specification.
+5. `docs/drafts/**` — experimental/future designs; **non-authoritative unless the task explicitly targets that RFC/design**.
+
+When current code and authoritative documentation disagree, stop treating the documentation as proof of behavior. Inspect the implementation and flag the documentation drift as part of the task.
+
+`docs/technical/agent-reference-legacy.md` is a temporary snapshot of the former monolithic `AGENTS.md`. It exists to preserve details during the context refactor. It is not required reading and must not override current subsystem documentation.
+
+## Routing by code area
+
+| Code / change area | Read before editing |
+|---|---|
+| `internal/application/admission/**` | `docs/technical/architecture/subsystems/admission/`, `docs/technical/architecture/subsystems/fsm/` when proposal coverage/order semantics are involved |
+| `internal/infra/state/**` | `docs/technical/architecture/subsystems/fsm/`, especially deterministic FSM / coverage / preload docs |
+| `internal/infra/plan/**`, `internal/infra/preload/**` | `docs/technical/architecture/subsystems/fsm/` |
+| `internal/infra/cache/**`, `internal/infra/attributes/**`, `internal/infra/bloom/**` | `docs/technical/architecture/subsystems/attributes/` and relevant FSM docs |
+| `internal/application/check/**`, `internal/domain/replay/**` | `docs/technical/architecture/subsystems/checker/`, `docs/technical/architecture/audit-vs-technical-state.md` |
+| `internal/storage/dal/**`, `wal/**`, `spool/**`, `pebblecfg/**` | `docs/technical/architecture/subsystems/storage/` |
+| `internal/storage/readstore/**`, `internal/application/indexbuilder/**` | `docs/technical/architecture/subsystems/indexer/`, `docs/technical/architecture/subsystems/read-path/` |
+| `internal/storage/usagestore/**` | relevant usage-builder/subsystem docs plus `docs/technical/architecture/audit-vs-technical-state.md` when integrity/rebuild semantics change |
+| `internal/application/ctrl/**`, `internal/query/**` | `docs/technical/architecture/subsystems/read-path/` |
+| `internal/adapter/grpc/**` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
+| `internal/adapter/http/**`, `openapi.yml` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
+| `internal/infra/node/**`, `internal/infra/transport/**`, `internal/infra/membership/**` | `docs/technical/architecture/subsystems/consensus/` |
+| `internal/infra/coldstorage/**`, `internal/infra/receipt/**`, `internal/application/backup/**` | `docs/technical/architecture/subsystems/chapters/`, relevant `docs/ops/` backup/restore docs |
+| `internal/application/events/**`, `internal/application/mirror/**` | `docs/technical/architecture/subsystems/events-mirror/` |
+| Numscript runtime/library | `docs/technical/architecture/subsystems/scripting/`, `docs/technical/contributing/numscript.md` |
+| `misc/proto/**`, generated protobuf code | `docs/technical/contributing/protobuf.md` |
+| `cmd/ledgerctl/**` | `docs/ops/cli.md`, `docs/technical/contributing/conventions.md` |
+| `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
+| tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
+| contributor/build tooling | `docs/technical/contributing/getting-started.md`, `development.md`, `conventions.md` as relevant |
+
+## Routing by task type
+
+### Architecture exploration
+
+Start with:
+
+- `docs/technical/architecture/overview.md`
+- the matching subsystem README
+- `docs/technical/architecture/data-flows.md` only for cross-subsystem request/read/sync flows
+
+Do not load every architecture document up front.
+
+### Persistence or integrity changes
+
+Always determine which class the state belongs to before implementation:
+
+- audit-bound business truth;
+- primary-store projection;
+- peer secondary/rebuildable state;
+- operational/informational state.
+
+Read:
+
+- `docs/technical/architecture/audit-vs-technical-state.md`
+- `docs/technical/architecture/subsystems/checker/`
+- the storage/FSM subsystem docs touched by the change
+
+A new primary-store projection requires checker coverage or an explicitly justified documented exemption.
+
+### FSM / proposal changes
+
+Read the FSM subsystem documentation before coding. Explicitly check:
+
+- determinism;
+- proposal coverage/preload completeness;
+- coverage-gate usage;
+- order business-payload immutability;
+- cache generation/eviction rules;
+- hot-path storage capabilities.
+
+### API changes
+
+Read the API subsystem docs and update the compatibility/spec material required by `AGENTS.md`:
+
+- `docs/technical/contributing/api-comparison.md`
+- `openapi.yml` for HTTP surface changes
+
+### CLI changes
+
+Read `docs/ops/cli.md` and keep it synchronized with flags/commands/behavior. Regenerate demos when applicable.
+
+### Protocol Buffers
+
+Read `docs/technical/contributing/protobuf.md`, then run `just generate-proto` immediately after modifying proto definitions.
+
+### Refactors and shared-symbol changes
+
+Use GitNexus impact analysis when available before changing shared/high-fan-in symbols or cross-subsystem contracts. Local helpers inside an already-understood component do not require independent blast-radius analysis unless the scope grows.
+
+## Context budget rule
+
+Prefer **progressive disclosure**:
+
+1. repository guardrails;
+2. one subsystem's docs;
+3. targeted code/context;
+4. additional cross-cutting docs only when impact analysis or implementation requires them.
+
+If an agent has loaded unrelated sales material, drafts, or multiple subsystem deep-dives without a task-specific reason, it is carrying too much context.
