@@ -21,11 +21,12 @@ When current code and authoritative documentation disagree, stop treating the do
 | Code / change area | Read before editing |
 |---|---|
 | `internal/application/admission/**` | `docs/technical/architecture/subsystems/admission/`, `docs/technical/architecture/subsystems/fsm/` when proposal coverage/order semantics are involved |
+| `internal/domain/processing/**` | `docs/technical/architecture/subsystems/fsm/`; this package executes business orders on the FSM path, so determinism, coverage/preload, cache, rollback/skip, and order-immutability rules apply |
 | `internal/infra/state/**` | `docs/technical/architecture/subsystems/fsm/`, especially deterministic FSM / coverage / preload docs |
 | `internal/infra/plan/**`, `internal/infra/preload/**` | `docs/technical/architecture/subsystems/fsm/` |
 | `internal/infra/cache/**`, `internal/infra/attributes/**`, `internal/infra/bloom/**` | `docs/technical/architecture/subsystems/attributes/` and relevant FSM docs |
 | `internal/application/check/**`, `internal/domain/replay/**` | `docs/technical/architecture/subsystems/checker/`, `docs/technical/architecture/audit-vs-technical-state.md` |
-| `internal/storage/dal/**`, `wal/**`, `spool/**`, `pebblecfg/**` | `docs/technical/architecture/subsystems/storage/` |
+| `internal/storage/dal/**`, `internal/storage/wal/**`, `internal/storage/spool/**`, `internal/storage/pebblecfg/**` | `docs/technical/architecture/subsystems/storage/` |
 | `internal/storage/readstore/**`, `internal/application/indexbuilder/**` | `docs/technical/architecture/subsystems/indexer/`, `docs/technical/architecture/subsystems/read-path/` |
 | `internal/storage/usagestore/**` | relevant usage-builder/subsystem docs plus `docs/technical/architecture/audit-vs-technical-state.md` when integrity/rebuild semantics change |
 | `internal/application/ctrl/**`, `internal/query/**` | `docs/technical/architecture/subsystems/read-path/` |
@@ -39,7 +40,9 @@ When current code and authoritative documentation disagree, stop treating the do
 | `cmd/ledgerctl/**` | `docs/ops/cli.md`, `docs/technical/contributing/conventions.md` |
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
-| contributor/build tooling | `docs/technical/contributing/getting-started.md`, `development.md`, `conventions.md` as relevant |
+| contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md` as relevant |
+
+If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
 
 ## Routing by task type
 
