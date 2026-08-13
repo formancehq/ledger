@@ -561,6 +561,22 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		details["error"] = err.Error()
 	}
 
+	if err == nil {
+		inModel := map[uint64]bool{}
+		for _, id := range modelWindow {
+			inModel[id] = true
+		}
+
+		var surplus []string
+		for _, t := range serverTxs {
+			if id := t.GetId(); !inModel[id] {
+				surplus = append(surplus, strconv.FormatUint(id, 10)+"{"+c.modelTxMetaDump(ledger, id)+"}")
+			}
+		}
+
+		details["surplusModelMeta"] = strings.Join(surplus, " ; ")
+	}
+
 	assert.Unreachable("singleton_driver_model: indexed transaction query outside model", details)
 }
 
@@ -760,6 +776,22 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		details["serverAddrs"] = strings.Join(serverAddrs, ",")
 	} else {
 		details["error"] = err.Error()
+	}
+
+	if err == nil {
+		inModel := map[string]bool{}
+		for _, a := range modelWindow {
+			inModel[a] = true
+		}
+
+		var surplus []string
+		for _, a := range serverAccts {
+			if addr := a.GetAddress(); !inModel[addr] {
+				surplus = append(surplus, addr+"{"+c.modelAccountMetaDump(ledger, addr)+"}")
+			}
+		}
+
+		details["surplusModelMeta"] = strings.Join(surplus, " ; ")
 	}
 
 	assert.Unreachable("singleton_driver_model: indexed account query outside model", details)
