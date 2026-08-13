@@ -48,10 +48,16 @@ import (
 //
 // This is a stopgap. The real fix is a composite/denormalised index that serves
 // both the wallet filter and the id ordering without a full sort step.
+//
+// It is off by default and opted into per deployment. Only workloads with the
+// sparse-wallet shape are affected by the plan the hedge works around, so the
+// deployments that do not have the problem should not pay for a second
+// connection, a second running query, or a behaviour they never asked for.
 type TransactionListConfig struct {
 	// EnableAdaptiveFallback turns on the hedged-request strategy described
-	// above. Default true — when no chaser fires (dense wallets, fast queries)
-	// the only overhead is the explicit read-only transaction wrapping.
+	// above. Default false: enable it only for deployments observed to hit the
+	// sparse-wallet timeout. When on and no chaser fires (dense wallets, fast
+	// queries) the only overhead is the explicit read-only transaction wrapping.
 	EnableAdaptiveFallback bool
 
 	// ChaserDelayMs is the delay in milliseconds before firing the chaser
@@ -150,7 +156,7 @@ func (store *Store) transactionsBase() common.PaginatedResource[ledger.Transacti
 }
 
 // Transactions returns a PaginatedResource for transactions.
-// When EnableAdaptiveFallback is true (the default), Paginate uses a hedged-
+// When EnableAdaptiveFallback is true (opt-in, off by default), Paginate uses a hedged-
 // request strategy: the original query races against a delayed chaser with a
 // GIN plan override. See transactionsAdaptivePaginator.
 func (store *Store) Transactions() common.PaginatedResource[ledger.Transaction, any] {
@@ -725,10 +731,13 @@ func WithTracer(tracer trace.Tracer) Option {
 }
 
 // DefaultTransactionListConfig returns a TransactionListConfig with the
-// production-safe defaults: hedging enabled, 5 s chaser delay, 40 s chaser timeout.
+// production-safe defaults: hedging off, 5 s chaser delay, 40 s chaser timeout.
+//
+// The delay and timeout are populated even though hedging is off, so turning it
+// on for a deployment is a single boolean and not a set of values to rediscover.
 func DefaultTransactionListConfig() TransactionListConfig {
 	return TransactionListConfig{
-		EnableAdaptiveFallback: true,
+		EnableAdaptiveFallback: false,
 		ChaserDelayMs:          5_000,
 		ChaserTimeoutMs:        40_000,
 	}

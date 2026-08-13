@@ -68,10 +68,11 @@ type ServeCommandConfig struct {
 	AuditAsyncWorkerCount   int    `mapstructure:"audit-async-worker-count"`
 
 	// TxListAdaptiveFallback enables the hedged-request strategy for the
-	// transactions-list SELECT. Default true. When enabled, the original query
-	// races against a delayed chaser with GIN plan override; whichever finishes
-	// first wins. Dense/fast wallets finish before the chaser fires and see no
-	// behaviour change. See ledgerstore.TransactionListConfig for details.
+	// transactions-list SELECT. Default false — it is opted into per deployment,
+	// for the ones observed to hit the sparse-wallet timeout. When enabled, the
+	// original query races against a delayed chaser with GIN plan override;
+	// whichever finishes first wins. Dense/fast wallets finish before the chaser
+	// fires and see no behaviour change. See ledgerstore.TransactionListConfig.
 	TxListAdaptiveFallback bool `mapstructure:"tx-list-adaptive-fallback"`
 
 	// TxListChaserDelayMs is the delay before firing the chaser query (ms).
@@ -249,12 +250,13 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(AuditAsyncEnabledFlag, true, "Publish HTTP audit events asynchronously")
 	cmd.Flags().Int(AuditAsyncQueueCapacityFlag, api.DefaultAuditAsyncQueueCapacity, "HTTP audit async publish queue capacity")
 	cmd.Flags().Int(AuditAsyncWorkerCountFlag, api.DefaultAuditAsyncWorkerCount, "HTTP audit async publish worker count")
-	cmd.Flags().Bool(TxListAdaptiveFallbackFlag, true,
+	cmd.Flags().Bool(TxListAdaptiveFallbackFlag, false,
 		"Enable the hedged-request strategy for the transactions-list SELECT. "+
-			"When enabled (default), the original query runs with no timeout; "+
-			"after --tx-list-chaser-delay-ms a parallel chaser fires with GIN plan override. "+
-			"Whichever finishes first wins, the other is cancelled. "+
-			"Dense/fast wallets finish before the chaser fires and see no behaviour change.")
+			"Off by default: turn it on only for deployments observed to hit the sparse-wallet "+
+			"timeout, since it costs a second connection and a second running query when it fires. "+
+			"When enabled, the original query runs with no timeout; after --tx-list-chaser-delay-ms "+
+			"a parallel chaser fires with GIN plan override. Whichever finishes first wins, the other "+
+			"is cancelled. Dense/fast wallets finish before the chaser fires and see no behaviour change.")
 	cmd.Flags().Int64(TxListChaserDelayMsFlag, 5_000,
 		"Delay in ms before firing the chaser query for the transactions-list SELECT. "+
 			"If the original finishes within this budget, no chaser fires.")

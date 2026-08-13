@@ -642,10 +642,36 @@ func TestTransactionListAdaptive_ZeroDelayFiresChaserImmediately(t *testing.T) {
 	base := setupHintsTestData(t, 4, 2)
 
 	cfg := ledgerstore.DefaultTransactionListConfig()
+	cfg.EnableAdaptiveFallback = true // off by default; this test is about the delay
 	cfg.ChaserDelayMs = 0
 	adaptive := storeWithConfig(t, base, cfg)
 
 	cursor, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, 4)
+}
+
+// TestTransactionListAdaptive_DefaultConfigIsOff verifies that hedging is opt-in:
+// a store built with the defaults must take the plain path, so a deployment that
+// never sets --tx-list-adaptive-fallback keeps exactly the previous behaviour.
+func TestTransactionListAdaptive_DefaultConfigIsOff(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	cfg := ledgerstore.DefaultTransactionListConfig()
+	require.False(t, cfg.EnableAdaptiveFallback,
+		"hedging must stay opt-in — enabling it by default turns it on for every deployment")
+	require.NotZero(t, cfg.ChaserDelayMs, "the delay must still be populated so enabling is one boolean")
+	require.NotZero(t, cfg.ChaserTimeoutMs, "the timeout must still be populated so enabling is one boolean")
+
+	base := setupHintsTestData(t, 4, 2)
+	store := storeWithConfig(t, base, cfg)
+	store.SetTestHookBeforePaginateSelect(func(_ context.Context, _ bun.Tx, _ bool) error {
+		t.Error("the hedging path must not run when the fallback is disabled")
+		return nil
+	})
+
+	cursor, err := store.Transactions().Paginate(ctx, walletQuery(15))
 	require.NoError(t, err)
 	require.Len(t, cursor.Data, 4)
 }
