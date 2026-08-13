@@ -835,29 +835,34 @@ func TestRouteScopes_PublicRoutesNeedNoToken(t *testing.T) {
 // TestRouteScopes_PerElementRoutesHaveNoRouteGate checks the kindPerElement rows
 // carry no route-level gate.
 //
-// The foil is a token carrying ScopeClusterRead, which opens no route in the
-// declared table, so a route-level RequireScope would answer 403. Reaching the
-// handler with an empty batch — which has no element to authorize
-// (handlers_bulk.go:64) — therefore proves the router did not gate the route,
+// The probe sends no token at all, which is what makes it exhaustive: a
+// tokenless request reaches RequireScope with the anonymous scope set, so *any*
+// route-level gate answers 401 (http_middleware.go:110-125) whatever scope it
+// demands. A foil token could only rule out the one scope it carries — a gate
+// requiring exactly that scope would admit it, leave the row kindPerElement, and
+// keep this test green over a route that just acquired a route-level gate.
+//
+// Reaching the handler with an empty batch — which has no element to authorize
+// (handlers_bulk.go:66-91) — therefore proves the router did not gate the route,
 // while leaving the per-element decision to the bulk handler's own tests.
 func TestRouteScopes_PerElementRoutesHaveNoRouteGate(t *testing.T) {
 	t.Parallel()
 
-	fixture := newScopeProbeFixture(t)
-	rows := expectedRouteScopes()
+	// The premise the tokenless oracle rests on, asserted rather than assumed:
+	// were the mapping to grant scopes anonymously, a route-level gate could
+	// admit this probe and the test would silently stop proving anything. It is
+	// read off the mapping newScopedHandler builds the router with, not off the
+	// declared table this test verifies, so it stays a real check.
+	require.Empty(t, internalauth.DefaultMapping("ledger").AnonymousScopes(),
+		"the default mapping now grants scopes anonymously, so a tokenless request no longer "+
+			"proves the absence of a route-level gate — probe with an explicitly empty scope mapping")
 
-	// The foil's premise, asserted rather than assumed: the moment some route
-	// requires ScopeClusterRead, this test silently stops proving anything.
-	for _, row := range rows {
-		require.NotEqual(t, internalauth.ScopeClusterRead, row.scope,
-			"%s %s now requires ScopeClusterRead, which the per-element probe uses as a foil "+
-				"precisely because no route accepts it — pick another unused scope",
-			row.method, row.pattern)
-	}
+	_, keySet := testKeyPair(t)
+	handler := newScopedHandler(t, keySet)
 
 	probed := 0
 
-	for _, row := range rows {
+	for _, row := range expectedRouteScopes() {
 		if row.kind != kindPerElement {
 			continue
 		}
@@ -867,17 +872,22 @@ func TestRouteScopes_PerElementRoutesHaveNoRouteGate(t *testing.T) {
 		method := row.probeMethod()
 
 		status := probe(t, probeRequest{
-			handler:         fixture.handler,
+			handler:         handler,
 			method:          method,
 			pattern:         row.pattern,
-			token:           fixture.tokens[internalauth.ScopeClusterRead],
 			body:            emptyBatchBody,
 			reachesEndpoint: true,
 		})
 
+		assert.NotEqual(t, http.StatusUnauthorized, status,
+			"%s %s is declared kindPerElement but a route-level gate refused a tokenless request",
+			method, row.pattern)
+		// Unreachable through either gate tokenless — RequireScope answers 401
+		// when no token was presented, and the bulk handler's per-element loop
+		// has no element to refuse — so a 403 here is an unmodelled gate.
 		assert.NotEqual(t, http.StatusForbidden, status,
-			"%s %s is declared kindPerElement but a route-level gate refused a token carrying only %s",
-			method, row.pattern, internalauth.ScopeClusterRead)
+			"%s %s is declared kindPerElement but answered 403 to a tokenless request",
+			method, row.pattern)
 	}
 
 	require.NotZero(t, probed,
