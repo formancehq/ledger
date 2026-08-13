@@ -393,7 +393,11 @@ paths:
                     type: array
                     items:
                       type: object
-                      description: System log entry (protobuf JSON representation)
+                      description: |
+                        System log entry, serialized by Log.MarshalJSON (camelCase,
+                        RFC3339 timestamps, synthetic `type` discriminator on each
+                        ledger log). A dedicated schema is tracked separately — the
+                        payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2253,7 +2257,11 @@ paths:
                 properties:
                   data:
                     type: object
-                    description: System log entry (protobuf JSON representation)
+                    description: |
+                      System log entry, serialized by Log.MarshalJSON (camelCase,
+                      RFC3339 timestamps, synthetic `type` discriminator on each
+                      ledger log). A dedicated schema is tracked separately — the
+                      payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -5309,7 +5317,11 @@ components:
               type: array
               items:
                 type: object
-                description: System log entry (protobuf JSON representation)
+                description: |
+                  System log entry, serialized by Log.MarshalJSON (camelCase,
+                  RFC3339 timestamps, synthetic `type` discriminator on each
+                  ledger log). A dedicated schema is tracked separately — the
+                  payload is a deeply recursive protobuf oneof.
         aggregateResult:
           $ref: '#/components/schemas/AggregateVolumesData'
 
