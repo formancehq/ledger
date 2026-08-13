@@ -490,12 +490,22 @@ func TestRouteScopes_TableComposition(t *testing.T) {
 	//     lookups in the probe tests safe without a per-read ok check.
 	//   - a scope on a kindPublic or kindPerElement row is read by nothing at all,
 	//     in either test, so it would drift unnoticed forever.
+	//   - a row whose kind is none of the three is skipped by every probe test —
+	//     each loop is a `row.kind != kindX { continue }` — while still satisfying
+	//     route reconciliation, which compares (method, pattern) only. That route's
+	//     authorization would go entirely unverified, and the per-loop
+	//     require.NotZero guards stay green off the other rows. So a fourth kind
+	//     fails here until its own probe loop exists.
 	var malformed []string
 
 	for _, row := range rows {
 		_, granular := internalauth.AllGranularScopes[row.scope]
 
 		switch {
+		case row.kind != kindGuarded && row.kind != kindPublic && row.kind != kindPerElement:
+			malformed = append(malformed, fmt.Sprintf(
+				"%s %s declares routeKind %d, which no probe test covers — add its probe loop",
+				row.method, row.pattern, row.kind))
 		case row.kind == kindGuarded && row.scope == "":
 			malformed = append(malformed, fmt.Sprintf(
 				"%s %s is kindGuarded but declares no scope", row.method, row.pattern))
@@ -511,7 +521,8 @@ func TestRouteScopes_TableComposition(t *testing.T) {
 
 	slices.Sort(malformed)
 	require.Empty(t, malformed,
-		"a row must declare a scope if and only if it is kindGuarded: %s",
+		"a row must carry one of the three known kinds, and declare a scope if and only if it is "+
+			"kindGuarded: %s",
 		strings.Join(malformed, "; "))
 }
 
