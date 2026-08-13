@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -103,30 +102,37 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	t.Parallel()
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	// parser.ParseDir is deprecated as of Go 1.25 (SA1019); walk the directory
+	// and parse each non-test file individually instead of grouping by package.
+	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
+
+	fset := token.NewFileSet()
 
 	var sites []string
 
-	for _, pkg := range pkgs {
-		for path, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				call, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-
-				name := calleeName(call.Fun)
-				if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protojson.Marshal" {
-					sites = append(sites, filepath.Base(path)+": "+name)
-				}
-
-				return true
-			})
+	for _, entry := range entries {
+		filename := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(filename, ".go") || strings.HasSuffix(filename, "_test.go") {
+			continue
 		}
+
+		file, err := parser.ParseFile(fset, filename, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+
+			name := calleeName(call.Fun)
+			if name == "writeProtoOK" || name == "writeProtoListOK" || name == "protojson.Marshal" {
+				sites = append(sites, filename+": "+name)
+			}
+
+			return true
+		})
 	}
 
 	// response.go defines writeProtoOK and writeProtoListOK, each containing one
