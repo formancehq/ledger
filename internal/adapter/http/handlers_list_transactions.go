@@ -128,5 +128,5 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		writeProfileHeader(w, profile)
 	}
 
-	writeProtoListOK(w, transactions)
+	writeOKChecked(w, r, transactions)
 }
