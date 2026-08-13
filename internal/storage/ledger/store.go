@@ -273,14 +273,6 @@ func (a *transactionsAdaptivePaginator) Count(ctx context.Context, q common.Reso
 	return a.store.transactionsBase().Count(ctx, q)
 }
 
-// raceResult carries the outcome of one hedged attempt back to the arbitration
-// loop in Paginate.
-type raceResult struct {
-	cursor *paginate.Cursor[ledger.Transaction]
-	err    error
-	source string // "original" or "chaser"
-}
-
 // Paginate runs the hedged-request logic described on the type.
 func (a *transactionsAdaptivePaginator) Paginate(
 	ctx context.Context,
@@ -303,6 +295,12 @@ func (a *transactionsAdaptivePaginator) Paginate(
 	}
 
 	cfg := a.store.txListConfig
+
+	type raceResult struct {
+		cursor *paginate.Cursor[ledger.Transaction]
+		err    error
+		source string // "original" or "chaser"
+	}
 
 	raceCtx, raceCancel := context.WithCancel(ctx)
 	defer raceCancel()
@@ -344,17 +342,23 @@ func (a *transactionsAdaptivePaginator) Paginate(
 	}()
 
 	// ── take the first decisive result ─────────────────────────────────────
-	// Whichever attempt succeeds first wins the race — that is the point of
-	// hedging, and it is why a chaser result returned while the original is
-	// still running is a genuine success rather than a masked failure: the
-	// original has not failed at that moment, and waiting to find out whether
-	// it eventually would is exactly the latency the chaser exists to avoid.
+	// The first attempt to produce a result decides the request:
 	//
-	// A hard error on the original, on the other hand, ends the race: both
-	// attempts run the same query, so it is a real failure the caller has to
-	// see, and a chaser result arriving afterwards would be discarded anyway.
-	// Returning straight away also keeps a chaser whose cancellation stalls in
-	// the database from holding up the caller.
+	//   - A success is returned as it stands. Both attempts run the same query
+	//     against the same database, so the rows are a valid answer whichever
+	//     one produced them.
+	//   - A failure of the original ends the race and is returned. Any chaser
+	//     result arriving afterwards would be discarded, so there is nothing to
+	//     wait for, and returning at once keeps a chaser whose cancellation
+	//     stalls in the database from holding up the caller.
+	//   - A failure of the chaser is held: the original may still succeed.
+	//
+	// The losing attempt's outcome is deliberately not consulted. In the normal
+	// case the loser is cancelled mid-flight and its verdict is unknowable by
+	// design, so preferring an original error that happened to land first would
+	// make one infrastructure event — a dropped connection, a cancelled backend
+	// — return rows or an error depending on nanosecond timing, over data that
+	// is equally valid either way.
 	var chaserErr error
 	for i := 0; i < 2; i++ {
 		r := <-ch
@@ -364,7 +368,6 @@ func (a *transactionsAdaptivePaginator) Paginate(
 			if r.source == "chaser" {
 				a.store.txListChaserWonCounter.Add(ctx, 1)
 				logging.FromContext(ctx).Infof("transactions list chaser won the race (GIN override)")
-				a.logQueuedOriginalFailure(ctx, ch)
 			}
 			return r.cursor, nil
 
@@ -382,33 +385,6 @@ func (a *transactionsAdaptivePaginator) Paginate(
 
 	// Unreachable: the original always produces one of the two results above.
 	return nil, chaserErr
-}
-
-// logQueuedOriginalFailure reports an original attempt that had already failed
-// when the chaser's success was picked up first.
-//
-// The chaser's rows are a valid answer to the same query, so the request is
-// still served — failing it because the other attempt errored would turn a
-// recoverable moment into an outage. But a hard error that genuinely happened
-// should not vanish, so it is logged. The read is non-blocking on purpose: if
-// the original is still running there is no verdict to report, and waiting for
-// one is the latency the chaser exists to avoid.
-//
-// Cancellation errors are skipped — those are ours, from cancelling the loser.
-func (a *transactionsAdaptivePaginator) logQueuedOriginalFailure(ctx context.Context, ch <-chan raceResult) {
-	select {
-	case other := <-ch:
-		if other.err == nil || other.source != "original" {
-			return
-		}
-		if errors.Is(other.err, context.Canceled) || errors.Is(other.err, context.DeadlineExceeded) {
-			return
-		}
-		logging.FromContext(ctx).WithFields(map[string]any{
-			"error": other.err.Error(),
-		}).Errorf("transactions list original attempt had already failed when the chaser won")
-	default:
-	}
 }
 
 // paginateInTx runs one query attempt inside a dedicated read-only
