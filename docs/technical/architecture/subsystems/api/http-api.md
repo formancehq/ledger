@@ -423,7 +423,7 @@ Returns the `Index` registry entries owned by the ledger.
 GET /v3/{ledgerName}/indexes/{canonicalId}
 ```
 
-Returns the `Index` registry entry (id, build_status, ledger, created_at, last_built_at, forward_encoding_version).
+Returns the `Index` registry entry (id, build_status, ledger, created_at, forward_encoding_version).
 
 #### Get per-replica index status
 

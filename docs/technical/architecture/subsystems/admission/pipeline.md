@@ -91,7 +91,7 @@ This stage is the reason numscript is admission-time work, not FSM work: the FSM
 
 ### 8. Marshal + predicted-index trick
 
-The proposal is serialized with `vtprotobuf.MarshalCopy(cmd)` (`internal/pkg/vtmarshal`) **before** the proposal guard is acquired, so the heavy CPU work happens outside the critical section. Then, once the guard is acquired (next step) and the predicted Raft index is known under the lock, `AppendProposalPredictedIndex(buf, idx)` (`internal/infra/plan/predicted_index.go`) appends the index as raw wire bytes for proto field 7 (a `fixed64`) onto the already-marshalled buffer — no re-marshalling of the whole proposal just to stamp a single field. The trick is what keeps the critical section short while still letting the predicted index live inside the signed proposal payload.
+The proposal is serialized with `vtprotobuf.MarshalCopy(cmd)` (`internal/pkg/vtmarshal`) **before** the proposal guard is acquired, so the heavy CPU work happens outside the critical section. Then, once the guard is acquired (next step) and the predicted Raft index is known under the lock, `AppendProposalPredictedIndex(buf, idx)` (`internal/infra/plan/predicted_index.go`) appends the index as raw wire bytes (a `fixed64`, under the field number read from the `Proposal` descriptor at init rather than a hardcoded literal) onto the already-marshalled buffer — no re-marshalling of the whole proposal just to stamp a single field. The trick is what keeps the critical section short while still letting the predicted index live inside the signed proposal payload.
 
 ### 9. Acquire guard → propose → release
 

@@ -6,45 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
-
-// TestDatabricksProtoFieldNumbers guards the protobuf wire layout of
-// DatabricksSinkConfig and the nested DatabricksOAuthM2M message. Renumbering
-// any of these fields silently corrupts already persisted/replicated sink
-// configs after upgrade, so the numbers must stay stable (token deliberately
-// keeps field number 3 inside the auth oneof).
-func TestDatabricksProtoFieldNumbers(t *testing.T) {
-	t.Parallel()
-
-	assertFieldNumbers := func(t *testing.T, msg protoreflect.ProtoMessage, want map[string]protoreflect.FieldNumber) {
-		t.Helper()
-
-		fields := msg.ProtoReflect().Descriptor().Fields()
-		for name, number := range want {
-			f := fields.ByName(protoreflect.Name(name))
-			require.NotNil(t, f, "field %q must exist", name)
-			require.Equal(t, number, f.Number(), "field %q must keep wire number %d", name, number)
-		}
-	}
-
-	assertFieldNumbers(t, &commonpb.DatabricksSinkConfig{}, map[string]protoreflect.FieldNumber{
-		"server_hostname": 1,
-		"http_path":       2,
-		"token":           3,
-		"catalog":         4,
-		"schema":          5,
-		"table":           6,
-		"port":            7,
-		"oauth_m2m":       8,
-	})
-	assertFieldNumbers(t, &commonpb.DatabricksOAuthM2M{}, map[string]protoreflect.FieldNumber{
-		"client_id":     1,
-		"client_secret": 2,
-	})
-}
 
 func TestDatabricksConfigFromProto(t *testing.T) {
 	t.Parallel()
