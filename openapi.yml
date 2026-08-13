@@ -734,8 +734,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Transaction (protobuf JSON representation)
+                      $ref: '#/components/schemas/TransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3853,8 +3852,15 @@ components:
 
     TransactionResponse:
       type: object
+      # required <=> always emitted. postings and metadata are emitted
+      # unconditionally as [] / {} (see Transaction.MarshalJSON), reverted is a
+      # non-pointer bool, and id is emitted even when 0. Anything not listed
+      # here carries omitempty and is legitimately absent.
       required:
         - id
+        - postings
+        - metadata
+        - reverted
       properties:
         postings:
           type: array
