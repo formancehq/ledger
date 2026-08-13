@@ -114,9 +114,11 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				subQuery = subQuery.Where("date <= ?", query.PIT)
 			}
 
+			// Stands in an empty object where the join found none, for the reason
+			// metadataOrEmpty documents.
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-				ColumnExpr("(array_agg(metadata))[1] as metadata")
+				ColumnExpr("coalesce((array_agg(metadata))[1], '{}'::jsonb) as metadata")
 		}
 	}
 
