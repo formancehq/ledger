@@ -706,6 +706,38 @@ func TestTransactionListAdaptive_NegativeChaserTimeoutIsClamped(t *testing.T) {
 	require.Len(t, cursor.Data, 5)
 }
 
+// TestTransactionListAdaptive_NegativeChaserDelayIsClamped verifies that a
+// misconfigured negative delay is treated as "fire immediately" rather than
+// being handed to time.NewTimer, which would fire instantly anyway but for
+// reasons the config does not express.
+func TestTransactionListAdaptive_NegativeChaserDelayIsClamped(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	base := setupHintsTestData(t, 5, 2)
+
+	adaptive := storeWithConfig(t, base, ledgerstore.TransactionListConfig{
+		EnableAdaptiveFallback: true,
+		ChaserDelayMs:          -1,
+		ChaserTimeoutMs:        30_000,
+	})
+
+	var chaserRan atomic.Bool
+	adaptive.SetTestHookBeforePaginateSelect(func(ctx context.Context, tx bun.Tx, isChaser bool) error {
+		if !isChaser {
+			_, err := tx.ExecContext(ctx, "SELECT pg_sleep(10)")
+			return err
+		}
+		chaserRan.Store(true)
+		return nil
+	})
+
+	cursor, err := adaptive.Transactions().Paginate(ctx, walletQuery(15))
+	require.NoError(t, err)
+	require.Len(t, cursor.Data, 5)
+	require.True(t, chaserRan.Load(), "a negative delay must fire the chaser immediately")
+}
+
 // TestTransactionListAdaptive_ServerSideCancelReturnsError verifies that a
 // server-side 57014 (e.g. from pg_cancel_backend) with a live Go context
 // surfaces as an error. In the hedged pattern, if the original fails with a
