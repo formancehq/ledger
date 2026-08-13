@@ -146,39 +146,10 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
-		key := match[0][1]
 
-		// The rewrite below is an equality-only form, so it is restricted to $match with
-		// a string filter value. Metadata filters also accept $like, $in and $exists,
-		// whose semantics the `->>` equality cannot express; binding their value into
-		// `= ?` would silently discard the operator and return the wrong rows. Those
-		// cases fall through to the `@>` containment path, which handles them correctly.
-		stringValue, valueIsString := value.(string)
-		if operator == queries.OperatorMatch && valueIsString && slices.Contains(h.store.IndexedMetadataKeys(), key) {
-			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
-			// The literal form is required: Postgres matches functional indexes by exact expression
-			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
-			//
-			// `metadata ? 'key'` keeps the rewrite equivalent to the @> form under
-			// negation. For a row that does not carry the key, `metadata ->> 'key' = ?`
-			// is NULL, so `not (…)` would drop the row while `not (metadata @> …)` keeps
-			// it. NULL AND FALSE is FALSE, so the guard makes the predicate FALSE rather
-			// than NULL for absent keys.
-			//
-			// `jsonb_typeof(…) = 'string'` keeps them equivalent for non-string stored
-			// values: @> compares the JSON value by type, so {"key":"123"} does not match
-			// a stored number 123, while ->> renders that number as the text '123' and
-			// would. Ledger metadata is map[string]string, so this only arises for values
-			// written outside the API — exactly where the divergence would go unnoticed.
-			//
-			// Both guards are rechecks applied after the functional index lookup; they do
-			// not stop the planner using the index for the equality.
-			return fmt.Sprintf(
-				"(metadata ->> '%s' = ? and metadata \\? '%s' and jsonb_typeof(metadata -> '%s') = 'string')",
-				key, key, key,
-			), []any{stringValue}, nil
-		}
-		return "metadata @> ?", []any{map[string]any{key: value}}, nil
+		return "metadata @> ?", []any{map[string]any{
+			match[0][1]: value,
+		}}, nil
 
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil

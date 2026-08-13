@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -119,21 +118,6 @@ type Store struct {
 	// SetTestHookBeforePaginateSelect and the read on the Paginate hot path.
 	// The underlying type, when non-nil, is paginateSelectHookWrapper.
 	testHookBeforePaginateSelect atomic.Value
-
-	// indexedMetadataKeys is the subset of INDEXED_METADATA_KEYS that have been
-	// confirmed to have a matching functional index in pg_indexes. Set by
-	// ResolveIndexedMetadataKeys; nil means unresolved (falls back to the full
-	// feature-flag list, which is the behaviour for direct test store construction).
-	indexedMetadataKeys []string
-
-	// indexedMetadataKeysUnscoped is the subset of indexedMetadataKeys whose
-	// functional index is *not* partial. A partial index (…WHERE ledger = 'x')
-	// is only usable when the query carries the `ledger = ?` predicate, which
-	// newScopedSelect omits when the ledger is alone in its bucket. See
-	// IndexedMetadataKeys.
-	indexedMetadataKeysUnscoped []string
-
-	indexedKeysResolved bool
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -512,100 +496,6 @@ func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
 }
 
-// IndexedMetadataKeys returns the set of metadata keys for which the query
-// builder should use the functional-index rewrite (metadata ->> 'key' = ?).
-// After ResolveIndexedMetadataKeys has been called this is the pg_indexes-
-// confirmed subset; before that call it falls back to the raw feature flag
-// list (used in direct test construction where no driver is involved).
-//
-// When the scoped select omits the `ledger = ?` predicate (alone-in-bucket
-// optimization, see newScopedSelect) only keys backed by a non-partial index
-// are returned: Postgres can use a partial index only when the query quals
-// imply its predicate, so a `WHERE ledger = 'x'` index would be unusable and
-// the rewrite would end up slower than the @> form it replaces.
-func (store *Store) IndexedMetadataKeys() []string {
-	if !store.indexedKeysResolved {
-		return store.ledger.GetIndexedMetadataKeys()
-	}
-	if store.emitsLedgerPredicate() {
-		return store.indexedMetadataKeys
-	}
-	return store.indexedMetadataKeysUnscoped
-}
-
-// ResolveIndexedMetadataKeys validates each key listed in the ledger's
-// INDEXED_METADATA_KEYS feature against pg_indexes and retains only those that
-// have a matching functional index usable by this ledger's queries. Keys
-// without such an index fall back silently to the @> containment predicate; a
-// message is logged for each one.
-// Call this once after the store is created (the driver does this automatically).
-func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
-	store.indexedKeysResolved = true
-	store.indexedMetadataKeys = nil
-	store.indexedMetadataKeysUnscoped = nil
-
-	requested := store.ledger.GetIndexedMetadataKeys()
-	if len(requested) == 0 {
-		return
-	}
-
-	schema := store.ledger.Bucket
-	logger := logging.FromContext(ctx).WithFields(map[string]any{
-		"ledger": store.ledger.Name,
-	})
-	confirmed := make([]string, 0, len(requested))
-	unscoped := make([]string, 0, len(requested))
-	escaper := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-	for _, key := range requested {
-		var defs []string
-		escapedKey := escaper.Replace(key)
-		err := store.db.NewSelect().
-			TableExpr("pg_indexes").
-			ColumnExpr("indexdef").
-			Where("schemaname = ?", schema).
-			Where("tablename = ?", "transactions").
-			Where("indexdef LIKE ? ESCAPE '\\'", "%metadata ->> '"+escapedKey+"'%").
-			Scan(ctx, &defs)
-		if err != nil {
-			logger.Errorf("INDEXED_METADATA_KEYS: pg_indexes query failed for key %q, all keys fall back to @>: %s", key, err)
-			store.indexedMetadataKeys = nil
-			store.indexedMetadataKeysUnscoped = nil
-			return
-		}
-
-		var hasFullIndex, hasLedgerPartialIndex bool
-		for _, def := range defs {
-			// pg_indexes renders a partial index as `… ) WHERE (ledger = 'name'::text)`.
-			// Anything before the WHERE is the index expression, already matched above.
-			if at := strings.Index(def, " WHERE "); at >= 0 {
-				// A partial index only helps when its predicate is implied by the
-				// query, i.e. when the predicate selects exactly this ledger.
-				if strings.Contains(def[at:], "'"+store.ledger.Name+"'") {
-					hasLedgerPartialIndex = true
-				}
-				continue
-			}
-			hasFullIndex = true
-		}
-
-		switch {
-		case hasFullIndex:
-			confirmed = append(confirmed, key)
-			unscoped = append(unscoped, key)
-		case hasLedgerPartialIndex:
-			confirmed = append(confirmed, key)
-			if !store.emitsLedgerPredicate() {
-				logger.Infof("INDEXED_METADATA_KEYS: key %q is backed only by an index partial on this ledger, "+
-					"which the planner cannot use while the ledger is alone in its bucket — falling back to @>", key)
-			}
-		default:
-			logger.Infof("INDEXED_METADATA_KEYS: no usable functional index found for key %q — rewrite disabled, falling back to @>", key)
-		}
-	}
-	store.indexedMetadataKeys = confirmed
-	store.indexedMetadataKeysUnscoped = unscoped
-}
-
 func (store *Store) GetDB() bun.IDB {
 	return store.db
 }
@@ -667,17 +557,10 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 // the `ledger = ?` predicate is always emitted.
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	if store.emitsLedgerPredicate() {
+	if store.disableScopedSelectOptimization || store.aloneInBucket == nil || !store.aloneInBucket.Load() {
 		q = q.Where("ledger = ?", store.ledger.Name)
 	}
 	return q
-}
-
-// emitsLedgerPredicate reports whether newScopedSelect emits the `ledger = ?`
-// predicate. Callers that depend on a partial index scoped to this ledger must
-// check it: without the predicate the planner cannot prove the index applies.
-func (store *Store) emitsLedgerPredicate() bool {
-	return store.disableScopedSelectOptimization || store.aloneInBucket == nil || !store.aloneInBucket.Load()
 }
 
 func (store *Store) SetAloneInBucket(alone bool) {
