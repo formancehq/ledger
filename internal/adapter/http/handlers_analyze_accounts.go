@@ -32,6 +32,20 @@ type patternSegmentJSON struct {
 	Examples        []string `json:"examples"`
 }
 
+// nonNilStrings returns s unchanged when non-nil, or an empty (non-nil) slice
+// otherwise. The OpenAPI schema types these fields as plain (non-nullable)
+// arrays; a proto GetX() getter returns nil for an absent repeated field,
+// which would otherwise serialize as JSON null and violate the schema. Shared
+// with handlers_analyze_transactions.go, whose FlowPattern.MetadataKeys has
+// the same shape.
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+
+	return s
+}
+
 func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAccountsResponseJSON {
 	result := &analyzeAccountsResponseJSON{
 		TotalAccounts: resp.GetTotalAccounts(),
@@ -49,8 +63,8 @@ func toAccountPatternJSON(p *servicepb.AccountPattern) *accountPatternJSON {
 	result := &accountPatternJSON{
 		Pattern:      p.GetPattern(),
 		AccountCount: p.GetAccountCount(),
-		Assets:       p.GetAssets(),
-		MetadataKeys: p.GetMetadataKeys(),
+		Assets:       nonNilStrings(p.GetAssets()),
+		MetadataKeys: nonNilStrings(p.GetMetadataKeys()),
 	}
 
 	result.Segments = make([]*patternSegmentJSON, 0, len(p.GetSegments()))
@@ -74,7 +88,7 @@ func toPatternSegmentJSON(s *servicepb.PatternSegment) *patternSegmentJSON {
 		VariableName:    s.GetVariableName(),
 		InferredPattern: s.GetInferredPattern(),
 		UniqueValues:    s.GetUniqueValues(),
-		Examples:        s.GetExamples(),
+		Examples:        nonNilStrings(s.GetExamples()),
 	}
 }
 

@@ -155,7 +155,7 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		Metadata                map[string]any     `json:"metadata"`
 		Timestamp               *time.Time         `json:"timestamp,omitempty"`
 		Reference               string             `json:"reference,omitempty"`
-		ID                      *uint64            `json:"id,omitempty"`
+		ID                      uint64             `json:"id"`
 		InsertedAt              *time.Time         `json:"insertedAt,omitempty"`
 		UpdatedAt               *time.Time         `json:"updatedAt,omitempty"`
 		RevertedAt              *time.Time         `json:"revertedAt,omitempty"`
@@ -165,18 +165,30 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		PostCommitVolumes       *PostCommitVolumes `json:"postCommitVolumes,omitempty"`
 	}
 
+	// Collections are emitted unconditionally and must never be null: the
+	// OpenAPI schema types them as non-nullable and lists them in `required`.
+	// GetPostings() and MetadataToAnyMap() both return nil for an absent value,
+	// so normalise here rather than in MetadataToAnyMap, which has 7 non-test
+	// callers (this one included) whose payloads must not change.
+	postings := tx.GetPostings()
+	if postings == nil {
+		postings = []*Posting{}
+	}
+
+	metadataMap := MetadataToAnyMap(tx.GetMetadata())
+	if metadataMap == nil {
+		metadataMap = map[string]any{}
+	}
+
 	aux := Aux{
-		Postings:                tx.GetPostings(),
-		Metadata:                MetadataToAnyMap(tx.GetMetadata()),
+		Postings:                postings,
+		Metadata:                metadataMap,
 		Reference:               tx.GetReference(),
+		ID:                      tx.GetId(),
 		Reverted:                tx.IsReverted(),
 		RevertedByTransactionID: tx.GetRevertedByTransaction(),
 		RevertsTransactionID:    tx.GetRevertsTransaction(),
 		PostCommitVolumes:       tx.GetPostCommitVolumes(),
-	}
-
-	if tx.GetId() != 0 {
-		aux.ID = new(tx.GetId())
 	}
 
 	if tx.GetTimestamp() != nil {

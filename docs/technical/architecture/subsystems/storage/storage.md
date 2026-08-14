@@ -211,25 +211,19 @@ The snapshot captures the complete in-memory FSM cache state:
 
 ### Snapshot Mechanism
 
-The FSM cache is persisted via `CacheSnapshotter` to Pebble zone `0x02`. There is no single `MemorySnapshot` protobuf message -- instead, the cache is serialized per generation using the `GenerationSnapshot` proto:
+The FSM cache is persisted via `CacheSnapshotter` to Pebble zone `0x02` (`ZoneCache`). There is no aggregate snapshot message -- no `MemorySnapshot`, and no per-generation envelope either. The cache is written **one Pebble row per cache entry**, so a batch persists only the keys it touched instead of re-serializing a whole generation.
 
-```protobuf
-message GenerationSnapshot {
-  fixed64 base_index = 1;
-  repeated VolumeAttributeSnapshotEntry volumes = 2;
-  repeated MetadataAttributeEntry metadata = 3;       // Account metadata
-  repeated MetadataAttributeEntry ledger_metadata = 4; // Ledger metadata
-  repeated LedgerAttributeEntry ledgers = 5;
-  repeated BoundaryAttributeEntry boundaries = 6;
-  repeated TransactionReferenceAttributeEntry references = 7;
-  repeated TransactionStateAttributeEntry transactions = 8;
-  reserved 9; // was: idempotency_keys (moved to dedicated prefix 0x03)
-}
+Each row is keyed by generation and cache type:
+
+```
+[ZoneCache][gen][cacheType][U128]  ->  [8-byte tag LE][1-byte flag][value bytes]
 ```
 
-Reversions are **not** included in `GenerationSnapshot`. They are stored per-word in Pebble zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble via `ReadReversions` on startup or snapshot restore.
+The value uses the "lean" format (`internal/infra/state/cache_incremental.go`, `cacheValueHeaderLen = 9`): an 8-byte little-endian tag, a one-byte live/tombstone flag, then the attribute value marshalled with vtproto. `protoSnapshotSlot[V]` (`internal/infra/state/cache_snapshotter.go`) supplies the per-type marshalling, so each cache type (volumes, metadata, ledger info, boundaries, references, transaction state) persists its own proto value rather than a field in a shared message.
 
-The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references, transaction state) serialized per generation, allowing fast in-memory restoration.
+Tombstones are exactly the 9-byte header with no payload -- the pre-delete value is deliberately not marshalled, since `AttributeCache.Del` only flips the `Deleted` flag and keeps the payload in memory, which would otherwise resurrect the entry on restore. On the read path `parseLeanValue` fails closed on any malformed row (short buffer, unknown flag byte, or a tombstone carrying trailing bytes) rather than restoring partial or forged cache state (EN-1527).
+
+Reversions are **not** part of the cache snapshot. They are stored per-word in Pebble zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble via `ReadReversions` on startup or snapshot restore.
 
 ### Restoration from Snapshot
 

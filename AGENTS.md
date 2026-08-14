@@ -7,7 +7,7 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 **CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
 
 - Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
-- When removing protobuf fields, delete them and realign field numbers sequentially. Do not add new `reserved` declarations for removed v3 fields.
+- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
 ## Configuration safety checks

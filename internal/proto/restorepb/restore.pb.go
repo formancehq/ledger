@@ -83,8 +83,8 @@ func (DownloadState) EnumDescriptor() ([]byte, []int) {
 
 type StartDownloadBackupRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	BucketId      string                  `protobuf:"bytes,4,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id from server config)
-	Storage       *commonpb.BackupStorage `protobuf:"bytes,7,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
+	BucketId      string                  `protobuf:"bytes,1,opt,name=bucket_id,json=bucketId,proto3" json:"bucket_id,omitempty"` // Namespace prefix for backup files (default: cluster-id from server config)
+	Storage       *commonpb.BackupStorage `protobuf:"bytes,2,opt,name=storage,proto3" json:"storage,omitempty"`                   // Backup storage backend (s3 or azure)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -819,10 +819,10 @@ var File_restore_proto protoreflect.FileDescriptor
 
 const file_restore_proto_rawDesc = "" +
 	"\n" +
-	"\rrestore.proto\x12\arestore\x1a\fcommon.proto\"\xd3\x01\n" +
+	"\rrestore.proto\x12\arestore\x1a\fcommon.proto\"j\n" +
 	"\x1aStartDownloadBackupRequest\x12\x1b\n" +
-	"\tbucket_id\x18\x04 \x01(\tR\bbucketId\x12/\n" +
-	"\astorage\x18\a \x01(\v2\x15.common.BackupStorageR\astorageJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\ts3_bucketR\ts3_regionR\vs3_endpointR\x10s3_access_key_idR\x14s3_secret_access_key\"4\n" +
+	"\tbucket_id\x18\x01 \x01(\tR\bbucketId\x12/\n" +
+	"\astorage\x18\x02 \x01(\v2\x15.common.BackupStorageR\astorage\"4\n" +
 	"\x1bStartDownloadBackupResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"1\n" +
 	"\x18GetDownloadStatusRequest\x12\x15\n" +

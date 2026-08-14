@@ -19,7 +19,7 @@ Each index is described by a `common.Index` proto, persisted in the `SubAttrInde
 |-------|------|
 | `id` (`IndexID`) | Tagged identifier — built-in (txn/log/account) or `Metadata(target, key)`. |
 | `build_status` | **Informational only**, set by the FSM at `CreateIndex` / `SetMetadataFieldType`. NOT consulted by the query path. |
-| `created_at`, `last_built_at`, `last_error` | Bookkeeping. |
+| `created_at` | Bookkeeping. |
 | `ledger` | Empty for bucket-scoped indexes (e.g. address ranges); set for ledger-scoped indexes. |
 | `forward_encoding_version` | **Cluster-wide** version bumped on every audit event that requires the indexer to rewrite the forward index (`CreateIndex`, `SetMetadataFieldType`). |
 

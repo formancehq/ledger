@@ -393,7 +393,11 @@ paths:
                     type: array
                     items:
                       type: object
-                      description: System log entry (protobuf JSON representation)
+                      description: |
+                        System log entry, serialized by Log.MarshalJSON (camelCase,
+                        RFC3339 timestamps, synthetic `type` discriminator on each
+                        ledger log). A dedicated schema is tracked separately — the
+                        payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -734,8 +738,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Transaction (protobuf JSON representation)
+                      $ref: '#/components/schemas/TransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2254,7 +2257,11 @@ paths:
                 properties:
                   data:
                     type: object
-                    description: System log entry (protobuf JSON representation)
+                    description: |
+                      System log entry, serialized by Log.MarshalJSON (camelCase,
+                      RFC3339 timestamps, synthetic `type` discriminator on each
+                      ledger log). A dedicated schema is tracked separately — the
+                      payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2296,8 +2303,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Chapter (protobuf JSON representation)
+                      $ref: '#/components/schemas/Chapter'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2710,7 +2716,7 @@ paths:
       summary: Get a single index registry entry
       description: |
         Returns the `Index` registry entry (id, buildStatus, ledger,
-        createdAt, lastBuiltAt, forwardEncodingVersion) for a single
+        createdAt, forwardEncodingVersion) for a single
         index, serialized in protobuf-JSON camelCase. Requires
         `ledger:LedgerRead` scope.
       operationId: getIndex
@@ -3853,8 +3859,15 @@ components:
 
     TransactionResponse:
       type: object
+      # required <=> always emitted. postings and metadata are emitted
+      # unconditionally as [] / {} (see Transaction.MarshalJSON), reverted is a
+      # non-pointer bool, and id is emitted even when 0. Anything not listed
+      # here carries omitempty and is legitimately absent.
       required:
         - id
+        - postings
+        - metadata
+        - reverted
       properties:
         postings:
           type: array
@@ -3958,6 +3971,52 @@ components:
             uncolored bucket. Always present on responses (never omitted); two
             postings on the same (account, asset) but different colors operate
             on strictly isolated balances.
+
+    Chapter:
+      type: object
+      description: |
+        A bucket chapter. Serialized by Chapter.MarshalJSON: the hash fields are
+        hex-encoded (not base64) and status is the protobuf enum name.
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [CHAPTER_OPEN, CHAPTER_CLOSING, CHAPTER_CLOSED, CHAPTER_ARCHIVED, CHAPTER_ARCHIVING]
+        closeSequence:
+          type: integer
+          format: int64
+        startSequence:
+          type: integer
+          format: int64
+        startAuditSequence:
+          type: integer
+          format: int64
+        closeAuditSequence:
+          type: integer
+          format: int64
+        sealingHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded sealing hash.
+        lastAuditHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded audit-chain hash at chapter close.
+        stateHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded BLAKE3 hash of computed attributes at seal time.
 
     LedgerClusterStateResponse:
       type: object
@@ -5258,7 +5317,11 @@ components:
               type: array
               items:
                 type: object
-                description: System log entry (protobuf JSON representation)
+                description: |
+                  System log entry, serialized by Log.MarshalJSON (camelCase,
+                  RFC3339 timestamps, synthetic `type` discriminator on each
+                  ledger log). A dedicated schema is tracked separately — the
+                  payload is a deeply recursive protobuf oneof.
         aggregateResult:
           $ref: '#/components/schemas/AggregateVolumesData'
 

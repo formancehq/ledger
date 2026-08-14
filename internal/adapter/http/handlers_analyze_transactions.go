@@ -91,7 +91,7 @@ func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
 		Signature:        fp.GetSignature(),
 		Structure:        postingStructureToString(fp.GetStructure()),
 		TransactionCount: fp.GetTransactionCount(),
-		MetadataKeys:     fp.GetMetadataKeys(),
+		MetadataKeys:     nonNilStrings(fp.GetMetadataKeys()),
 	}
 
 	result.Postings = make([]*normalizedPostingJSON, 0, len(fp.GetPostings()))

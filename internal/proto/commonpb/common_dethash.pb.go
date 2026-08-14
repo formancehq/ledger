@@ -717,17 +717,6 @@ func (m *Idempotency) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *IdempotencyEntry) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *Log) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
@@ -752,14 +741,14 @@ func (m *Log) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x22
 	}
 	if len(m.Receipt) > 0 {
 		i -= len(m.Receipt)
 		copy(dAtA[i:], m.Receipt)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Receipt)))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x1a
 	}
 	if m.Payload != nil {
 		size, _ := m.Payload.MarshalToSizedBufferDeterministicVT(dAtA[:i])
@@ -925,7 +914,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x8a
+			dAtA[i] = 0x82
 		}
 	case *LogPayload_CreatedPreparedQuery:
 		if v.CreatedPreparedQuery != nil {
@@ -935,7 +924,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x92
+			dAtA[i] = 0x8a
 		}
 	case *LogPayload_UpdatedPreparedQuery:
 		if v.UpdatedPreparedQuery != nil {
@@ -945,7 +934,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x9a
+			dAtA[i] = 0x92
 		}
 	case *LogPayload_DeletedPreparedQuery:
 		if v.DeletedPreparedQuery != nil {
@@ -955,7 +944,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xa2
+			dAtA[i] = 0x9a
 		}
 	case *LogPayload_SavedNumscript:
 		if v.SavedNumscript != nil {
@@ -965,7 +954,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xaa
+			dAtA[i] = 0xa2
 		}
 	case *LogPayload_CreatedQueryCheckpoint:
 		if v.CreatedQueryCheckpoint != nil {
@@ -975,7 +964,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xba
+			dAtA[i] = 0xaa
 		}
 	case *LogPayload_DeletedQueryCheckpoint:
 		if v.DeletedQueryCheckpoint != nil {
@@ -985,7 +974,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xc2
+			dAtA[i] = 0xb2
 		}
 	case *LogPayload_SetQueryCheckpointSchedule:
 		if v.SetQueryCheckpointSchedule != nil {
@@ -995,7 +984,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xca
+			dAtA[i] = 0xba
 		}
 	case *LogPayload_DeleteQueryCheckpointSchedule:
 		if v.DeleteQueryCheckpointSchedule != nil {
@@ -1005,7 +994,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xd2
+			dAtA[i] = 0xc2
 		}
 	case *LogPayload_SavedLedgerMetadata:
 		if v.SavedLedgerMetadata != nil {
@@ -1015,7 +1004,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xda
+			dAtA[i] = 0xca
 		}
 	case *LogPayload_DeletedLedgerMetadata:
 		if v.DeletedLedgerMetadata != nil {
@@ -1025,7 +1014,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xe2
+			dAtA[i] = 0xd2
 		}
 	}
 	return len(dAtA) - i, nil
@@ -1756,7 +1745,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x4a
+			dAtA[i] = 0x3a
 		}
 	case *LedgerLogPayload_CreateIndex:
 		if v.CreateIndex != nil {
@@ -1764,7 +1753,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
+			dAtA[i] = 0x42
 		}
 	case *LedgerLogPayload_DropIndex:
 		if v.DropIndex != nil {
@@ -1772,7 +1761,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x5a
+			dAtA[i] = 0x4a
 		}
 	case *LedgerLogPayload_AddedAccountType:
 		if v.AddedAccountType != nil {
@@ -1780,7 +1769,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x6a
+			dAtA[i] = 0x52
 		}
 	case *LedgerLogPayload_RemovedAccountType:
 		if v.RemovedAccountType != nil {
@@ -1788,7 +1777,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x72
+			dAtA[i] = 0x5a
 		}
 	case *LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		if v.UpdatedDefaultEnforcementMode != nil {
@@ -1796,7 +1785,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x7a
+			dAtA[i] = 0x62
 		}
 	case *LedgerLogPayload_OrderSkipped:
 		if v.OrderSkipped != nil {
@@ -1804,9 +1793,7 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x82
+			dAtA[i] = 0x6a
 		}
 	}
 	return len(dAtA) - i, nil
@@ -2451,7 +2438,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	if m.Id != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Id))
 		i--
-		dAtA[i] = 0x68
+		dAtA[i] = 0x58
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
@@ -2475,7 +2462,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x62
+			dAtA[i] = 0x52
 		}
 		clear(keys)
 		*keysPtr = keys
@@ -2484,7 +2471,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 	if m.DefaultEnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
 		i--
-		dAtA[i] = 0x58
+		dAtA[i] = 0x48
 	}
 	if len(m.AccountTypes) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
@@ -2508,7 +2495,7 @@ func (m *LedgerInfo) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x52
+			dAtA[i] = 0x42
 		}
 		clear(keys)
 		*keysPtr = keys
