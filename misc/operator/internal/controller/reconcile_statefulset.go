@@ -162,6 +162,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			}); err != nil {
 				return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate growth: %w", err)
 			}
+
 			return ctrl.Result{}, nil
 		}
 	}

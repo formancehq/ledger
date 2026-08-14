@@ -65,7 +65,7 @@ func (r *ClusterReconciler) expandClusterPVCs(ctx context.Context, ledger *ledge
 	}
 
 	for tmplName, size := range grown {
-		for ordinal := int32(0); ordinal < replicas; ordinal++ {
+		for ordinal := range replicas {
 			pvcName := fmt.Sprintf("%s-%s-%d", tmplName, sts.Name, ordinal)
 			pvc := &corev1.PersistentVolumeClaim{}
 			err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: sts.Namespace}, pvc)
@@ -88,6 +88,7 @@ func (r *ClusterReconciler) expandClusterPVCs(ctx context.Context, ledger *ledge
 					r.Recorder.Eventf(ledger, corev1.EventTypeWarning, "VolumeExpansionFailed",
 						"Failed to grow PVC %s to %s: %v", pvcName, size.String(), err)
 				}
+
 				return fmt.Errorf("growing PVC %s: %w", pvcName, err)
 			}
 
