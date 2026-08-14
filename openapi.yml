@@ -5778,11 +5778,9 @@ components:
           type: array
           items:
             type: string
-          nullable: true
           description: >
-            Broker addresses. Passed through from the stored configuration
-            without reallocation, so a sink configured with no broker serializes
-            this as `null` rather than `[]`.
+            Broker addresses. An empty array means no broker is configured,
+            which is a misconfigured sink.
           example: ["localhost:9092"]
         topic:
           type: string

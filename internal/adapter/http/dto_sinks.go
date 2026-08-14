@@ -40,6 +40,9 @@ type clickhouseSinkDTO struct {
 }
 
 type kafkaSinkDTO struct {
+	// Allocated by the converter so it marshals as [] rather than null: the
+	// proto getter returns a nil slice for a sink with no configured broker.
+	// No omitempty, so [] is what the OpenAPI `required` membership promises.
 	Brokers []string `json:"brokers"`
 	Topic   string   `json:"topic"`
 	// No omitempty: tls=false is a real setting, not an absent one.
@@ -170,8 +173,11 @@ func newSinkConfigDTO(cfg *commonpb.SinkConfig) *sinkConfigDTO {
 		}
 	case *commonpb.SinkConfig_Kafka:
 		if t.Kafka != nil {
+			brokers := make([]string, 0, len(t.Kafka.GetBrokers()))
+			brokers = append(brokers, t.Kafka.GetBrokers()...)
+
 			dto.Kafka = &kafkaSinkDTO{
-				Brokers:       t.Kafka.GetBrokers(),
+				Brokers:       brokers,
 				Topic:         t.Kafka.GetTopic(),
 				TLS:           t.Kafka.GetTls(),
 				SaslMechanism: t.Kafka.GetSaslMechanism(),

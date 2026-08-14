@@ -127,6 +127,31 @@ func TestNewSinkConfigDTO_KafkaShape(t *testing.T) {
 	require.Contains(t, string(raw), `"batchDelayMs":10`)
 }
 
+// TestNewSinkConfigDTO_KafkaBrokersAllocated pins the empty-broker case. The
+// proto getter returns a nil slice when no broker is configured, which would
+// marshal as null; brokers has no omitempty, so it is in the OpenAPI `required`
+// set and a null there contradicts the schema.
+func TestNewSinkConfigDTO_KafkaBrokersAllocated(t *testing.T) {
+	t.Parallel()
+
+	dto := newSinkConfigDTO(&commonpb.SinkConfig{
+		Name: "k",
+		Type: &commonpb.SinkConfig_Kafka{Kafka: &commonpb.KafkaSinkConfig{
+			Topic: "events",
+		}},
+	})
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.Kafka)
+
+	require.NotNil(t, dto.Kafka.Brokers)
+	require.Empty(t, dto.Kafka.Brokers)
+
+	raw, err := json.Marshal(dto)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"brokers":[]`)
+	require.NotContains(t, string(raw), `"brokers":null`)
+}
+
 func TestNewSinkConfigDTO_DatabricksAuthMethod(t *testing.T) {
 	t.Parallel()
 
