@@ -14,7 +14,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // protojsonRoutes lists every HTTP route whose 200 body is serialized by
@@ -39,7 +38,11 @@ var protojsonRoutes = []struct {
 	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
+	// Empty as of EN-1791: events-sinks was the last response-side protojson
+	// call site and now renders through dto_sinks.go. Keep the table (and the
+	// tests over it) so a newly added protojson handler still has a home —
+	// TestProtojsonRoutes_TableIsComplete fails on an unexpected call site
+	// whether or not there are rows.
 }
 
 func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {

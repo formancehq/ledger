@@ -2,17 +2,15 @@ package http
 
 import (
 	"net/http"
-
-	"google.golang.org/protobuf/encoding/protojson"
-
-	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleGetEventsSinks handles GET /_/events-sinks to list configured event
 // sinks together with their per-sink status (error status + last-emitted
-// cursor), at parity with the gRPC GetEventsSinks RPC. The response shape is
-// {sinks, sinkStatuses}.
+// cursor). The response shape is {sinks, sinkStatuses}.
+//
+// It is NOT at parity with the gRPC GetEventsSinks RPC any more: the DTOs omit
+// every secret-bearing sink field, which the RPC still returns. See
+// dto_sinks.go for the list and the rule.
 func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 	sinks, statuses, err := s.backend.GetEventsSinks(r.Context())
 	if err != nil {
@@ -21,19 +19,5 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Marshal via protojson so SinkConfig/SinkStatus (and the nested oneof sink
-	// configs) serialize in camelCase — the sonic default would leak snake_case
-	// proto tags (sink_name) and the untagged oneof wrapper field. Reusing the
-	// gRPC GetEventsSinksResponse gives both transports an identical shape.
-	raw, err := protojson.Marshal(&servicepb.GetEventsSinksResponse{
-		Sinks:        sinks,
-		SinkStatuses: statuses,
-	})
-	if err != nil {
-		handleError(w, r, err)
-
-		return
-	}
-
-	writeOK(w, json.RawValue(raw))
+	writeOKChecked(w, r, newEventsSinksDTO(sinks, statuses))
 }
