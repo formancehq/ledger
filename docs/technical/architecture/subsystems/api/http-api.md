@@ -599,22 +599,54 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 
 ## Response serialization
 
-Two encoders serve HTTP response bodies, and the choice is **not** a matter of taste:
+**One encoder serves HTTP response bodies: sonic, through `internal/adapter/json`.** The three writers are `writeOK`, `writeOKChecked` and `writeCreated`, all in `internal/adapter/http/response.go`.
 
-| Writer | Encoder | Use for |
-|---|---|---|
-| `writeOK` / `writeOKChecked` | sonic (`internal/adapter/json`) | Anything whose type has a custom `MarshalJSON`, and all hand-written DTOs |
-| `writeProtoOK` / `writeProtoListOK` | `protojson` | Proto messages with **no** custom `MarshalJSON` |
+**No response body in this package is serialized by `protojson`.** This is the invariant, and it is stated deliberately about the *encoder*, not about the payload types. It does **not** say that no `proto.Message` reaches a response body: `handlers_list_numscript_versions.go` embeds a `*commonpb.Timestamp` in a DTO served by `writeOK`, and that is correct — sonic calls that type's own `MarshalJSON`, which emits RFC3339Nano.
 
-**The rule: when a type has a hand-written `MarshalJSON`, that method is the public contract.** Route it through `writeOKChecked`. `protojson` works off protobuf reflection and ignores `json.Marshaler`, so sending such a type through it silently discards the intended shape.
+### Why `protojson` is not used for responses
 
-The camelCase convention cannot arbitrate between the two — both encoders satisfy it. The deciding fact is whether a marshaller exists. `internal/adapter/http/encoder_contract_test.go` enforces this in both directions.
+`protojson` is descriptor-driven, so the wire shape follows the `.proto` file rather than this package:
 
-Prefer `writeOKChecked` over `writeOK` when the marshaller can fail (e.g. it marshals a metadata map): `writeOK` streams, so a mid-encode failure appends an error object to an already-committed 200.
+- `uint64` is emitted quoted;
+- `commonpb.Timestamp` renders as `{"data":<micros>}`;
+- meaningful zero values are dropped under default options;
+- most importantly, it **ignores `json.Marshaler`**.
 
-This was EN-1622: the transactions list, chapters and single-log routes sent marshaller-carrying types through `protojson` and shipped `amount: {"v0":"12345"}`, `timestamp: {"data":"1786540255458491"}`, base64 hashes where the contract is hex, and quoted numeric ids.
+That last point is the EN-1622 defect. `Transaction`, `Chapter` and `Log` each carry a hand-written `MarshalJSON`, but the proto writers bypassed it, so the list routes disagreed with their sibling detail routes and shipped `amount: {"v0":"12345"}`, `timestamp: {"data":"1786540255458491"}`, base64 hashes where the contract is hex, and quoted numeric ids. A type that carries both a `MarshalJSON` and a proto descriptor is silently rendered by the wrong one.
 
-**Before adding a `MarshalJSON` to a proto type, check the blast radius.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. For types that need a clean HTTP shape without moving the CLI, use an HTTP-local response DTO instead.
+EN-1791 removed the last response-side `protojson` call sites and deleted `writeProtoOK` and `writeProtoListOK` rather than keeping them.
+
+### Choosing a writer
+
+`writeOK` streams the body, so it writes the 200 header before the encoder finishes. `writeOKChecked` marshals to a buffer first and writes no header until the marshal succeeds, so a failure becomes a clean 500 through `handleError` instead of an error object appended to an already-committed 200.
+
+Use `writeOKChecked` when the marshaller can genuinely fail:
+
+- the audit DTOs, which render chain-bound submessages whose marshalling can fail on invalid UTF-8 (invariant #7 — a truncated record that still looks valid must not be served);
+- the EN-1622 types, whose `MarshalJSON` marshals a metadata map.
+
+The remaining routes keep `writeOK`: plain struct marshalling cannot fail, so buffering would only add an allocation. The reasoning is also on the doc comment of `writeOKChecked`.
+
+### The replacement pattern
+
+A route that would otherwise need `protojson` gets an HTTP-local response DTO in `internal/adapter/http/dto_*.go`, using the `xxxDTO` type / `newXxxDTO` constructor convention. The DTO owns the wire shape, and the response is typed in `openapi.yml`. See `dto_indexes.go` for the reference example.
+
+One `protojson` import survives in the package, in `handlers_create_ledger.go`. It is request-side `Unmarshal`: it parses a `MirrorRewriteRule` oneof out of an incoming body, which sonic's decoder cannot dispatch. Decoding a request is not a response-path concern.
+
+### Blast radius: do not add a `MarshalJSON` to a proto type
+
+**This is why the DTOs exist instead of a `MarshalJSON` on the proto types.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. Breakage there is therefore silent. `cmd/ledgerctl/cmdutil/cli_shape_contract_test.go` now pins that CLI shape against a copy of the operator's parser.
+
+### Enforcement
+
+`internal/adapter/http/encoder_contract_test.go` holds four tests:
+
+1. a custom-`MarshalJSON` guard for the three EN-1622 types, whose marshaller is their contract;
+2. an import allowlist, because a `protojson` call cannot be matched by shape (it is reachable as a package function, through `MarshalOptions{...}.Marshal`, through a variable, or under an alias) while an import cannot be disguised;
+3. an AST scan for `protojson.Marshal`, `writeProtoOK` and `writeProtoListOK` call sites — the two deleted writer names are still matched, because re-adding either one is exactly the regression this guards;
+4. a reflection walk over the `responsePayloads` table, which fails if a declared DTO holds a `proto.Message`.
+
+That table is a **declared list, not a package-wide law**. Read the comment on `responsePayloads` before extending the rule: `numscriptVersionsDTO` is deliberately absent from it, because its embedded `*commonpb.Timestamp` already renders correctly and rewriting it would churn a non-defective DTO.
 
 ## OpenAPI Documentation
 
