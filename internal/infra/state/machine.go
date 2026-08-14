@@ -1739,12 +1739,14 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
+	reason, message := describeFailure(d)
+
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   domain.ReasonCode(d.Reason()),
-			Message:  d.Error(),
+			Reason:   reason,
+			Message:  message,
 			Metadata: d.Metadata(),
 		},
 	}
