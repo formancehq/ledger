@@ -31,7 +31,7 @@ Ledger v2 required an external PostgreSQL database:
 
 ### v3 Solution
 
-Ledger v3 uses **embedded storage** with no external dependencies. Where v2 required a PostgreSQL connection string, v3 simply points to a local data directory and manages its own storage. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
+Ledger v3 uses **embedded storage** with no external dependencies. Where v2 required a PostgreSQL connection string, v3 simply points to a local data directory and manages its own storage. See [Architecture Overview](../technical/architecture/overview.md) for the system-level design and [Storage and Persistence](../technical/architecture/subsystems/storage/storage.md) for implementation details.
 
 **Benefits**:
 - Zero external dependencies
@@ -88,7 +88,7 @@ Managing multiple ledgers in v2 could lead to:
 
 ### v3 Solution
 
-v3 uses a **single Raft group** for all ledgers. The FSM state holds every ledger in one unified structure, so all operations are ordered by a single consensus group. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
+v3 uses a **single Raft group** for all ledgers. The FSM state holds every ledger in one unified structure, so all operations are ordered by a single consensus group. See [Architecture Overview](../technical/architecture/overview.md) for the system-level design and [Consensus](../technical/architecture/subsystems/consensus/) for implementation details.
 
 **Benefits**:
 - **Simplified operations**: One Raft group to manage
@@ -198,7 +198,7 @@ v2 had limited observability:
 
 ### v3 Solution
 
-v3 has **comprehensive observability**. OpenTelemetry is built in for traces, metrics, and logs -- configure the standard OTLP environment variables to send telemetry to your backend of choice. Optional Pyroscope continuous profiling is available via build tag for CPU, allocation, and goroutine profiling. Pebble storage metrics (compaction, write stalls, cache hit rates, level statistics) are exposed alongside application metrics. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
+v3 has **comprehensive observability**. OpenTelemetry is built in for traces, metrics, and logs -- configure the standard OTLP environment variables to send telemetry to your backend of choice. Optional Pyroscope continuous profiling is available via build tag for CPU, allocation, and goroutine profiling. Pebble storage metrics (compaction, write stalls, cache hit rates, level statistics) are exposed alongside application metrics. See [Architecture Overview](../technical/architecture/overview.md) for system context.
 
 **Benefits**:
 - End-to-end request tracing
@@ -350,7 +350,7 @@ On the **write path**, each transaction appends a new balance diff entry keyed b
 
 On the **read path**, the current balance is reconstructed by iterating over all diffs for a given account/asset and summing them. Pebble's efficient range scans make this fast even with many entries.
 
-See [Architecture Overview](../technical/architecture-overview.md) for implementation details on the storage key format and balance reconstruction.
+See [Storage and Persistence](../technical/architecture/subsystems/storage/storage.md#what-the-store-persists) for the persisted key zones and schema, and [Read Path](../technical/architecture/subsystems/read-path/) for read-side behavior.
 
 #### Performance Comparison
 
@@ -448,7 +448,7 @@ v3 introduces **system-level atomic bulk operations** thanks to the global log a
 
 #### Usage
 
-Via **gRPC**, the `Apply` call accepts multiple actions targeting different ledgers in a single request -- all actions succeed or all fail together. Via **HTTP**, the bulk endpoint supports an `atomic=true` query parameter that wraps all operations in the request into a single Raft command, even when individual operations target different ledgers. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
+Via **gRPC**, the `Apply` call accepts multiple actions targeting different ledgers in a single request -- all actions succeed or all fail together. Via **HTTP**, the bulk endpoint supports an `atomic=true` query parameter that wraps all operations in the request into a single Raft command, even when individual operations target different ledgers. See [Architecture Overview](../technical/architecture/overview.md) for system context.
 
 **Benefits**:
 - **Cross-ledger transfers**: Atomic transfers between accounts in different ledgers
