@@ -194,7 +194,7 @@ If the leader changes during conversion, the new leader detects `CONVERTING` sta
 
 ### Conversion Status
 
-The `GetMetadataSchemaStatus` RPC returns per-key status (`CONVERTING` or `COMPLETE`).
+The `GetMetadataSchemaStatus` RPC returns the per-key declared type only. `MetadataFieldStatus` in `misc/proto/bucket.proto` carries `declared_type` and nothing else — the `CONVERTING` / `COMPLETE` status field went away with the value converter, so there is no conversion state to report over the RPC or over REST.
 
 ## Raft Commands
 
@@ -239,7 +239,7 @@ The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (per-field declared type and `COMPLETE`/`CONVERTING` status) |
+| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (per-field declared type) |
 | `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
 | `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
 

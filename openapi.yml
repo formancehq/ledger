@@ -1242,7 +1242,7 @@ paths:
   /v3/{ledgerName}/metadata-schema:
     get:
       summary: Get metadata schema status
-      description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status. Requires `ledger:read` scope.
+      description: Returns the metadata schema for a ledger as the per-field declared types. Requires `ledger:read` scope.
       operationId: getMetadataSchemaStatus
       tags:
         - Metadata Schema
@@ -4253,9 +4253,14 @@ components:
 
     MetadataFieldStatus:
       type: object
+      description: >
+        The declared type of one metadata field. There is no conversion-status
+        field: the FSM-side value converter was removed with the immutable
+        stored values change, so `MetadataFieldStatus` in bucket.proto carries
+        `declared_type` alone and no `COMPLETE` / `CONVERTING` state exists to
+        report.
       required:
         - declaredType
-        - status
       properties:
         declaredType:
           type: string
@@ -4272,12 +4277,6 @@ components:
             - uint32
             - datetime
           description: Declared type for this metadata field
-        status:
-          type: string
-          enum:
-            - COMPLETE
-            - CONVERTING
-          description: Conversion status for this field
 
     SetMetadataTypeRequest:
       type: object
