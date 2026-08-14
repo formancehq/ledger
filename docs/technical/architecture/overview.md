@@ -83,6 +83,7 @@ Several important mechanisms operate outside the core request path while remaini
 - chapter archival, backup and restore — [`subsystems/chapters/`](subsystems/chapters/)
 - event sinks and mirror ingest — [`subsystems/events-mirror/`](subsystems/events-mirror/)
 - indexing and read projections — [`subsystems/indexer/`](subsystems/indexer/)
+- usage counters and usage-store projections — [`subsystems/usage/`](subsystems/usage/)
 - integrity verification — [`subsystems/checker/`](subsystems/checker/)
 - cluster membership and consensus lifecycle — [`subsystems/consensus/`](subsystems/consensus/)
 - reusable Numscript programs — [`subsystems/scripting/`](subsystems/scripting/)
