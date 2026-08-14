@@ -31,6 +31,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [read-path](subsystems/read-path/) | `internal/application/ctrl` (reads), `internal/query`, `internal/storage/readstore` | Query pipeline, prepared queries, query checkpoints, typed metadata. |
 | [scripting](subsystems/scripting/) | numscript runtime + library | Reusable numscript programs and their lifecycle. |
 | [storage](subsystems/storage/) | `internal/storage/dal`, `wal`, `spool`, `pebblecfg` | Pebble main store, WAL, snapshots, spool. |
+| [usage](subsystems/usage/) | `internal/application/usagebuilder`, `internal/storage/usagestore` | Rebuildable usage counters and their peer-store lifecycle. |
 
 ## Cross-cutting
 
