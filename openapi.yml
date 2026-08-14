@@ -2365,28 +2365,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: >
-                      Configured sinks together with their per-sink status, at
-                      parity with the gRPC GetEventsSinks response.
-                    properties:
-                      sinks:
-                        type: array
-                        items:
-                          type: object
-                          description: SinkConfig (protobuf JSON representation)
-                      sinkStatuses:
-                        type: array
-                        items:
-                          type: object
-                          description: >
-                            SinkStatus (protobuf JSON representation): per-sink
-                            error status and last-emitted cursor.
+                $ref: '#/components/schemas/GetEventsSinksResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2417,15 +2396,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      description: SigningKey (protobuf JSON representation)
+                $ref: '#/components/schemas/ListSigningKeysResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2463,15 +2434,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      description: Index (protobuf JSON representation)
+                $ref: '#/components/schemas/ListIndexesResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2510,13 +2473,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: Index (protobuf JSON representation)
+                $ref: '#/components/schemas/GetIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2554,13 +2511,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: IndexEntry (protobuf JSON representation)
+                $ref: '#/components/schemas/GetIndexEntryStatusResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2599,13 +2550,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: GetIndexStatusResponse (protobuf JSON representation)
+                $ref: '#/components/schemas/GetIndexStatusResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2633,15 +2578,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      description: Index (protobuf JSON representation)
+                $ref: '#/components/schemas/ListIndexesResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2715,9 +2652,9 @@ paths:
     get:
       summary: Get a single index registry entry
       description: |
-        Returns the `Index` registry entry (id, buildStatus, ledger,
-        createdAt, forwardEncodingVersion) for a single
-        index, serialized in protobuf-JSON camelCase. Requires
+        Returns the `Index` registry entry (id, canonicalId, buildStatus,
+        ledger, forwardEncodingVersion, createdAt) for a single index. The
+        response body is the documented `Index` schema. Requires
         `ledger:LedgerRead` scope.
       operationId: getIndex
       tags:
@@ -2739,13 +2676,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: Index (protobuf JSON representation)
+                $ref: '#/components/schemas/GetIndexResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2825,13 +2756,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    description: IndexEntry (protobuf JSON representation)
+                $ref: '#/components/schemas/GetIndexEntryStatusResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -5583,3 +5508,548 @@ components:
           additionalProperties:
             type: string
           description: Additional structured context for the failure
+
+    MetadataIndexID:
+      type: object
+      description: >
+        Identifies a metadata index by the entity kind it targets and the
+        metadata key it covers. Serialized by the HTTP adapter's response DTO
+        with camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - target
+        - key
+      properties:
+        target:
+          type: string
+          enum:
+            - TARGET_TYPE_ACCOUNT
+            - TARGET_TYPE_TRANSACTION
+            - TARGET_TYPE_LEDGER
+          description: Entity kind the metadata key belongs to.
+        key:
+          type: string
+          description: Metadata key covered by the index.
+          example: color
+
+    IndexID:
+      type: object
+      description: >
+        Identifies an index. At most one variant field is present — the index is
+        either one of the three built-in kinds or a metadata index. An `IndexID`
+        whose kind is unset or unrecognised by this node serializes as an empty
+        object, which `Index.canonicalId` reports as `unknown`. Serialized by
+        the HTTP adapter's response DTO with camelCase keys, integers as JSON
+        numbers and RFC3339 timestamps.
+      maxProperties: 1
+      properties:
+        txBuiltin:
+          type: string
+          enum:
+            - TX_BUILTIN_INDEX_REFERENCE
+            - TX_BUILTIN_INDEX_TIMESTAMP
+            - TX_BUILTIN_INDEX_ID
+            - TX_BUILTIN_INDEX_ADDRESS
+            - TX_BUILTIN_INDEX_SOURCE_ADDRESS
+            - TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+            - TX_BUILTIN_INDEX_INSERTED_AT
+            - TX_BUILTIN_INDEX_REVERTED_AT
+          description: Built-in transaction field this index covers.
+        logBuiltin:
+          type: string
+          enum:
+            - LOG_BUILTIN_INDEX_UNSPECIFIED
+            - LOG_BUILTIN_INDEX_DATE
+          description: Built-in log field this index covers.
+        accountBuiltin:
+          type: string
+          enum:
+            - ACCT_BUILTIN_INDEX_UNSPECIFIED
+            - ACCT_BUILTIN_INDEX_ASSET
+          description: Built-in account field this index covers.
+        metadata:
+          $ref: '#/components/schemas/MetadataIndexID'
+
+    Index:
+      type: object
+      description: >
+        An index registry entry: the cluster-wide declaration of an index, as
+        opposed to the per-replica build state carried by `IndexEntry`.
+        Serialized by the HTTP adapter's response DTO with camelCase keys,
+        integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - canonicalId
+        - buildStatus
+        - ledger
+        - forwardEncodingVersion
+      properties:
+        id:
+          $ref: '#/components/schemas/IndexID'
+        canonicalId:
+          type: string
+          description: >
+            Canonical form of `id`, formatted as `<prefix>:<value>`. This is the
+            identifier the per-index routes accept as their `{canonicalId}` path
+            parameter, so a list item carries the address of its own detail
+            route. Reads `unknown` when the index kind is unset or unrecognised.
+          example: metadata:TARGET_TYPE_ACCOUNT:color
+        buildStatus:
+          type: string
+          enum:
+            - INDEX_BUILD_STATUS_UNSPECIFIED
+            - INDEX_BUILD_STATUS_BUILDING
+            - INDEX_BUILD_STATUS_READY
+          description: >
+            Informational cluster-wide build status. The query path does not
+            consult it — poll `IndexEntry.currentVersion` instead.
+        ledger:
+          type: string
+          description: >
+            Owning ledger. An empty string means the index is bucket-scoped
+            (e.g. an audit index) rather than owned by a named ledger; that is
+            a distinct state from the field being absent.
+        forwardEncodingVersion:
+          type: integer
+          format: uint32
+          description: >
+            Cluster-wide forward-encoding version, bumped whenever the indexer
+            must rewrite its forward index.
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp; absent when the entry carries none.
+
+    IndexEntry:
+      type: object
+      description: >
+        An index registry entry joined with the backfill cursor and the
+        per-replica build versions. Serialized by the HTTP adapter's response
+        DTO with camelCase keys, integers as JSON numbers and RFC3339
+        timestamps.
+      required:
+        - ledger
+        - cursor
+        - currentVersion
+        - pendingVersion
+      properties:
+        ledger:
+          type: string
+          description: >
+            Owning ledger. An empty string means the entry is bucket-scoped
+            rather than owned by a named ledger, the same distinction as
+            `Index.ledger`.
+        index:
+          $ref: '#/components/schemas/Index'
+        cursor:
+          type: integer
+          format: uint64
+          description: >
+            Backfill cursor. `0` when no backfill is in progress or it has
+            completed.
+        currentVersion:
+          type: integer
+          format: uint32
+          description: >
+            Per-replica live keyspace version. `0` means this replica has never
+            built the index, so clients polling for readiness after a
+            `POST /v3/{ledgerName}/indexes` wait for a value greater than `0`.
+        pendingVersion:
+          type: integer
+          format: uint32
+          description: >
+            Per-replica in-flight rewrite target. `0` means idle — no rewrite is
+            under way.
+
+    IndexStatus:
+      type: object
+      description: >
+        Aggregated index registry status: bucket-wide indexing counters plus one
+        entry per index. Serialized by the HTTP adapter's response DTO with
+        camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - lastIndexedSequence
+        - lastLogSequence
+        - lag
+        - indexFileSize
+        - indexes
+      properties:
+        lastIndexedSequence:
+          type: integer
+          format: uint64
+          description: >
+            Highest log sequence the indexer has folded. `0` means nothing has
+            been indexed yet, a real state on a fresh bucket.
+        lastLogSequence:
+          type: integer
+          format: uint64
+          description: >
+            Highest log sequence written to the bucket. `0` means nothing has
+            been logged yet.
+        lag:
+          type: integer
+          format: uint64
+          description: >
+            Number of logs the indexer still has to fold. `0` means the indexer
+            is fully caught up, the healthy case.
+        indexFileSize:
+          type: integer
+          format: uint64
+          description: >
+            On-disk size of the read index in bytes. `0` is a real size for an
+            index that holds no rows yet.
+        indexes:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexEntry'
+          description: >
+            Per-index entries, narrowed to a single ledger when the `ledger`
+            query parameter is set. Empty when no index is registered.
+
+    SigningKey:
+      type: object
+      description: >
+        A registered Ed25519 signing key. Serialized by the HTTP adapter's
+        response DTO with camelCase keys, integers as JSON numbers and RFC3339
+        timestamps.
+      required:
+        - keyId
+        - publicKey
+        - parentKeyId
+      properties:
+        keyId:
+          type: string
+          description: Stable identifier of the key.
+        publicKey:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded Ed25519 public key.
+        parentKeyId:
+          type: string
+          description: >
+            Identifier of the key this one was registered under. An empty string
+            means the key is a root key, which is a distinct state from the
+            field being absent.
+
+    NatsSinkConfig:
+      type: object
+      description: >
+        NATS JetStream sink settings. Serialized by the HTTP adapter's response
+        DTO with camelCase keys, integers as JSON numbers and RFC3339
+        timestamps.
+      required:
+        - url
+        - topic
+      properties:
+        url:
+          type: string
+          description: NATS server URL.
+        topic:
+          type: string
+          description: Target subject.
+
+    ClickHouseSinkConfig:
+      type: object
+      description: >
+        ClickHouse sink settings. The `dsn` is never returned: it embeds
+        credentials (`clickhouse://user:pass@host/db`), so no field carries it —
+        not even masked. Serialized by the HTTP adapter's response DTO with
+        camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - table
+      properties:
+        table:
+          type: string
+          description: Destination table name.
+
+    KafkaSinkConfig:
+      type: object
+      description: >
+        Apache Kafka sink settings. The SASL password is never returned: no
+        field carries it — not even masked. Serialized by the HTTP adapter's
+        response DTO with camelCase keys, integers as JSON numbers and RFC3339
+        timestamps.
+      required:
+        - brokers
+        - topic
+        - tls
+        - saslMechanism
+        - saslUsername
+      properties:
+        brokers:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: >
+            Broker addresses. Passed through from the stored configuration
+            without reallocation, so a sink configured with no broker serializes
+            this as `null` rather than `[]`.
+          example: ["localhost:9092"]
+        topic:
+          type: string
+          description: Kafka topic name.
+        tls:
+          type: boolean
+          description: >
+            Whether TLS is enabled. `false` is a real setting, not an absent
+            one.
+        saslMechanism:
+          type: string
+          description: >
+            SASL mechanism. Empty when SASL is disabled; otherwise one of
+            `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`. Not enum-constrained on
+            the wire.
+        saslUsername:
+          type: string
+          description: SASL username. Empty when SASL is disabled.
+
+    HttpSinkConfig:
+      type: object
+      description: >
+        HTTP webhook sink settings. The HMAC-SHA256 signing secret is never
+        returned: no field carries it — not even masked. Serialized by the HTTP
+        adapter's response DTO with camelCase keys, integers as JSON numbers and
+        RFC3339 timestamps.
+      required:
+        - endpoint
+      properties:
+        endpoint:
+          type: string
+          description: Target webhook URL.
+          example: https://example.com/webhooks/ledger
+
+    DatabricksOAuthM2M:
+      type: object
+      description: >
+        OAuth M2M (client credentials) identity of a Databricks service
+        principal. The client secret is never returned: no field carries it —
+        not even masked. Serialized by the HTTP adapter's response DTO with
+        camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - clientId
+      properties:
+        clientId:
+          type: string
+          description: OAuth client identifier of the service principal.
+
+    DatabricksSinkConfig:
+      type: object
+      description: >
+        Databricks SQL Warehouse sink settings. The personal access token is
+        never returned: no field carries it — not even masked — and neither is
+        the OAuth client secret. Serialized by the HTTP adapter's response DTO
+        with camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - serverHostname
+        - httpPath
+        - catalog
+        - schema
+        - table
+        - port
+        - authMethod
+      properties:
+        serverHostname:
+          type: string
+          description: Workspace hostname.
+          example: adb-123456.azuredatabricks.net
+        httpPath:
+          type: string
+          description: SQL Warehouse HTTP path.
+          example: /sql/1.0/warehouses/abc123
+        catalog:
+          type: string
+          description: Unity Catalog name.
+        schema:
+          type: string
+          description: Schema name.
+        table:
+          type: string
+          description: Destination table name.
+        port:
+          type: integer
+          format: int32
+          description: Port number.
+        authMethod:
+          type: string
+          enum:
+            - ""
+            - token
+            - oauthM2m
+          description: >
+            Which credential is configured. This field has no counterpart in the
+            stored configuration: it exists because the personal access token is
+            entirely secret, so omitting the token would otherwise erase the
+            fact that token auth is configured at all. `oauthM2m` pairs with
+            `oauthM2m` below. An empty string means no credential is configured,
+            a misconfigured sink.
+        oauthM2m:
+          $ref: '#/components/schemas/DatabricksOAuthM2M'
+
+    SinkConfig:
+      type: object
+      description: >
+        An event sink configuration. At most one of `nats`, `clickhouse`,
+        `kafka`, `http` and `databricks` is present, naming the sink kind; all
+        five are absent when the stored configuration names no kind. Every
+        credential-bearing setting is deliberately omitted — see the individual
+        sink schemas. Serialized by the HTTP adapter's response DTO with
+        camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+      required:
+        - name
+        - format
+        - batchSize
+        - batchDelayMs
+        - eventTypes
+      properties:
+        name:
+          type: string
+          description: >
+            Stable sink identifier, used as the key of the per-sink cursor and
+            status.
+        nats:
+          $ref: '#/components/schemas/NatsSinkConfig'
+        clickhouse:
+          $ref: '#/components/schemas/ClickHouseSinkConfig'
+        kafka:
+          $ref: '#/components/schemas/KafkaSinkConfig'
+        http:
+          $ref: '#/components/schemas/HttpSinkConfig'
+        databricks:
+          $ref: '#/components/schemas/DatabricksSinkConfig'
+        format:
+          type: string
+          description: >
+            Payload encoding, `json` or `protobuf`. Not enum-constrained on the
+            wire.
+        batchSize:
+          type: integer
+          format: int32
+          description: Maximum number of events per published batch.
+        batchDelayMs:
+          type: integer
+          format: int64
+          description: Maximum delay in milliseconds before a partial batch is flushed.
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum:
+              - EVENT_TYPE_UNSPECIFIED
+              - COMMITTED_TRANSACTION
+              - REVERTED_TRANSACTION
+              - SAVED_METADATA
+              - DELETED_METADATA
+              - CREATED_LEDGER
+              - DELETED_LEDGER
+              - SKIPPED_ORDER
+          description: >
+            Event types this sink publishes. An empty array means all event
+            types.
+
+    SinkError:
+      type: object
+      description: >
+        The most recent failure recorded for a sink. Serialized by the HTTP
+        adapter's response DTO with camelCase keys, integers as JSON numbers and
+        RFC3339 timestamps.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Failure message.
+        occurredAt:
+          type: string
+          format: date-time
+          description: When the failure occurred; absent when the record carries no timestamp.
+
+    SinkStatus:
+      type: object
+      description: >
+        Operational state of a single sink. Serialized by the HTTP adapter's
+        response DTO with camelCase keys, integers as JSON numbers and RFC3339
+        timestamps.
+      required:
+        - sinkName
+        - cursor
+      properties:
+        sinkName:
+          type: string
+          description: Name of the sink this status belongs to, matching `SinkConfig.name`.
+        cursor:
+          type: integer
+          format: uint64
+          description: >
+            Last published sequence. `0` means nothing has been emitted yet, a
+            real state.
+        error:
+          $ref: '#/components/schemas/SinkError'
+
+    GetEventsSinksResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - sinks
+            - sinkStatuses
+          properties:
+            sinks:
+              type: array
+              items:
+                $ref: '#/components/schemas/SinkConfig'
+              description: Configured sinks. Empty when the cluster configures none.
+            sinkStatuses:
+              type: array
+              items:
+                $ref: '#/components/schemas/SinkStatus'
+              description: >
+                Per-sink error status and last-emitted cursor. Empty when no
+                sink has reported a status yet.
+
+    ListSigningKeysResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SigningKey'
+          description: Registered signing keys. Empty when none is registered.
+
+    ListIndexesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Index'
+          description: Index registry entries. Empty when none matches.
+
+    GetIndexResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/Index'
+
+    GetIndexEntryStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/IndexEntry'
+
+    GetIndexStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/IndexStatus'
