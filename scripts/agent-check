@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> agent-check: repository pre-commit validation"
+just pre-commit
+
+echo "==> agent-check: compile all root-module packages"
+GOROOT= go build ./...
+
+echo "==> agent-check: verify diff whitespace"
+git diff --check
+
+echo "==> agent-check: PASS"
