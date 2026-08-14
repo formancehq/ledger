@@ -11,6 +11,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("InspectIndex", Ordered, func() {
@@ -143,6 +145,25 @@ var _ = Describe("InspectIndex", Ordered, func() {
 			Expect(dv.GetValues()).To(HaveLen(1))
 			Expect(dv.GetValues()[0].GetStringValue()).To(Equal("premium"))
 			Expect(dv.GetHasMore()).To(BeFalse())
+		})
+
+		// A cursor that is not valid base64 is caller input. It used to be
+		// wrapped in a bare error, so it reached the client as codes.Internal
+		// and as an HTTP 500 on
+		// GET /{ledgerName}/indexes/{canonicalId}/inspect. The schemathesis
+		// gate found it once that route was finally seeded with a built index
+		// (EN-1791). Assert the code, not just that it failed: "an error
+		// occurred" is exactly what the 500 satisfied too.
+		It("Should reject a malformed cursor as InvalidArgument, not Internal", func() {
+			_, err := sharedClient.InspectIndex(sharedCtx, &servicepb.InspectIndexRequest{
+				Ledger:      ledgerName,
+				TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				MetadataKey: "category",
+				Mode:        servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+				Cursor:      "???not-base64???",
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		})
 
 		It("Should return correct facets", func() {

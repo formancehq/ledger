@@ -1084,8 +1084,13 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	var cursorBytes []byte
 	if c := req.GetCursor(); c != "" {
 		cursorBytes, err = decodeCursor(c)
+		// A cursor that is not valid base64 is caller input, not a server
+		// fault: wrapped in a bare error it reached the HTTP layer's 500
+		// sanitizer (and codes.Internal over gRPC). Return a validation
+		// Describable so it maps to 400 / InvalidArgument like every other
+		// malformed parameter on this route.
 		if err != nil {
-			return nil, fmt.Errorf("invalid cursor: %w", err)
+			return nil, domain.NewValidationSentinel(fmt.Sprintf("invalid cursor: %v", err))
 		}
 	}
 

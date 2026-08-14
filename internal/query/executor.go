@@ -188,8 +188,10 @@ func executeList(
 		var err error
 
 		afterEntity, err = decodeCursor(req.GetCursor())
+		// Caller input, not a server fault — same reasoning as the inspect
+		// route in ctrl.InspectIndex. A bare error here maps to 500 / Internal.
 		if err != nil {
-			return nil, fmt.Errorf("invalid cursor: %w", err)
+			return nil, domain.NewValidationSentinel(fmt.Sprintf("invalid cursor: %v", err))
 		}
 	}
 
