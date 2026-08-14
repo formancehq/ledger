@@ -30,7 +30,7 @@ The major boundaries are:
 | Consensus | `internal/infra/node`, `internal/infra/transport`, `internal/infra/membership` | Raft lifecycle, replication, cluster membership, WAL/snapshot coordination. |
 | FSM | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload`, `internal/domain/processing` | Deterministic application of accepted orders and mutation of authoritative replicated state. |
 | Main storage | `internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool` | Pebble-backed state, Raft WAL, snapshot/replay support. |
-| Read path | `internal/application/ctrl`, `internal/query`, `internal/storage/readstore` | Linearizable reads, query planning, inverted-index lookup, result materialization. |
+| Read path | `internal/application/ctrl`, `internal/query`, `internal/storage/readstore` | Consistency-aware reads, query planning, inverted-index lookup, result materialization. |
 | Projection builders | `internal/application/indexbuilder`, `internal/application/usagebuilder` | Rebuildable peer-side projections derived from committed/audited state. |
 | Integrity checker | `internal/application/check`, `internal/domain/replay` | Verify the audit chain and persisted primary-store projections. |
 
@@ -38,7 +38,7 @@ See [`README.md`](README.md) for the complete subsystem map.
 
 ## Write path
 
-A mutation enters through the API adapters and is handled by the application/admission layer. Admission performs request validation and resolves all state the FSM will need before proposal. The resulting proposal is replicated through the single Raft group and applied identically on every node.
+A mutation enters through the API adapters. If a follower receives a write request, it forwards the request over gRPC to the current Raft leader before the write reaches admission; only the leader admits and proposes mutations. Admission performs request validation and resolves all state the FSM will need before proposal. The resulting proposal is replicated through the single Raft group and applied identically on every node.
 
 The apply path is deliberately capability constrained:
 
@@ -60,9 +60,9 @@ For primary-store projections, the default requirement is checker verification u
 
 ## Read path
 
-Reads are served only after the node has established an appropriate Raft read barrier and waited for local application to catch up. Query execution then combines a stable view of the main store with the read-side indexes maintained in the peer read store.
+Read consistency depends on the request mode. Consistent reads establish the appropriate Raft read barrier and wait for local application to catch up before querying a stable local view. Requests using `x-consistency: stale` may read local state without that ReadIndex barrier and therefore may observe state behind the leader.
 
-The read store is derived state, not an independent source of business truth. Index lifecycle, schema rewrites, checkpoints, and query semantics are documented in:
+Query execution combines the selected view of the main store with the read-side indexes maintained in the peer read store. The read store is derived state, not an independent source of business truth. Index lifecycle, schema rewrites, checkpoints, and query semantics are documented in:
 
 - [`subsystems/read-path/`](subsystems/read-path/)
 - [`subsystems/indexer/`](subsystems/indexer/)
