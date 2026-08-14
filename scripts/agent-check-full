@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> agent-check-full: baseline validation"
+bash scripts/agent-check
+
+echo "==> agent-check-full: root-module unit tests"
+just test
+
+echo "==> agent-check-full: PASS"
