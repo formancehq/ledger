@@ -259,3 +259,44 @@ func TestNewEventsSinksDTO_EmptyMarshalsAsArrays(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, `{"sinks":[],"sinkStatuses":[]}`, string(raw))
 }
+
+// TestNewEventsSinksDTO_SortsByName pins the ordering guarantee openapi.yml
+// states for both arrays. query.BuildSinkStatuses collects its result by
+// ranging over a map, so statuses reach the converter in map-iteration order:
+// without the sort, two identical requests returned the same set in a different
+// array order. Both inputs are supplied unsorted so neither sort can pass by
+// accident.
+func TestNewEventsSinksDTO_SortsByName(t *testing.T) {
+	t.Parallel()
+
+	dto := newEventsSinksDTO(
+		[]*commonpb.SinkConfig{
+			{Name: "nats"},
+			{Name: "clickhouse"},
+			{Name: "kafka"},
+		},
+		[]*commonpb.SinkStatus{
+			{SinkName: "kafka", Cursor: 2},
+			{SinkName: "nats", Cursor: 3},
+			{SinkName: "clickhouse", Cursor: 1},
+		},
+	)
+
+	names := make([]string, 0, len(dto.Sinks))
+	for _, s := range dto.Sinks {
+		names = append(names, s.Name)
+	}
+
+	statusNames := make([]string, 0, len(dto.SinkStatuses))
+	for _, s := range dto.SinkStatuses {
+		statusNames = append(statusNames, s.SinkName)
+	}
+
+	require.Equal(t, []string{"clickhouse", "kafka", "nats"}, names)
+	require.Equal(t, []string{"clickhouse", "kafka", "nats"}, statusNames)
+
+	// The sort must reorder whole elements, not just the name field.
+	require.Equal(t, uint64(1), dto.SinkStatuses[0].Cursor)
+	require.Equal(t, uint64(2), dto.SinkStatuses[1].Cursor)
+	require.Equal(t, uint64(3), dto.SinkStatuses[2].Cursor)
+}

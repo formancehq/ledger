@@ -5996,14 +5996,16 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/SinkConfig'
-              description: Configured sinks. Empty when the cluster configures none.
+              description: >
+                Configured sinks, sorted by `name`. Empty when the cluster
+                configures none.
             sinkStatuses:
               type: array
               items:
                 $ref: '#/components/schemas/SinkStatus'
               description: >
-                Per-sink error status and last-emitted cursor. Empty when no
-                sink has reported a status yet.
+                Per-sink error status and last-emitted cursor, sorted by
+                `sinkName`. Empty when no sink has reported a status yet.
 
     ListSigningKeysResponse:
       type: object

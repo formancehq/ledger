@@ -1,6 +1,9 @@
 package http
 
 import (
+	"cmp"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -217,6 +220,15 @@ func newSinkStatusDTO(status *commonpb.SinkStatus) *sinkStatusDTO {
 
 // newEventsSinksDTO converts both lists, allocating each so an empty input
 // marshals as [] rather than null.
+//
+// Both arrays are sorted by name before they are returned, so two identical
+// requests produce byte-identical bodies. The DTO owns that guarantee outright
+// rather than inheriting it from the caller: query.BuildSinkStatuses collects
+// its result by ranging over a map, so statuses arrive in Go map-iteration
+// order and the array order changed between requests. Configs happen to arrive
+// sorted today (query.ReadAllSinkConfigs scans a key prefix), but the wire
+// promise is documented in openapi.yml, so it is enforced here instead of
+// resting on that upstream detail.
 func newEventsSinksDTO(sinks []*commonpb.SinkConfig, statuses []*commonpb.SinkStatus) eventsSinksDTO {
 	out := eventsSinksDTO{
 		Sinks:        make([]sinkConfigDTO, 0, len(sinks)),
@@ -244,6 +256,13 @@ func newEventsSinksDTO(sinks []*commonpb.SinkConfig, statuses []*commonpb.SinkSt
 
 		out.SinkStatuses = append(out.SinkStatuses, *dto)
 	}
+
+	slices.SortFunc(out.Sinks, func(a, b sinkConfigDTO) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
+	slices.SortFunc(out.SinkStatuses, func(a, b sinkStatusDTO) int {
+		return cmp.Compare(a.SinkName, b.SinkName)
+	})
 
 	return out
 }

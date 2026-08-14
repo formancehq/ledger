@@ -38,9 +38,10 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_ALL, capturedScope)
 
-	// Each list element must serialize in protobuf-JSON camelCase (buildStatus)
-	// inside the {data:[...]} envelope, not the snake_case Go struct tag
-	// (build_status). See writeProtoListOK.
+	// Each list element must serialize in camelCase (buildStatus) inside the
+	// {data:[...]} envelope, not the snake_case protoc-gen tag (build_status).
+	// The shape comes from indexDTO's json tags (see dto_indexes.go), not from
+	// the proto descriptor.
 	body := w.Body.String()
 	require.Contains(t, body, `"buildStatus":`)
 	require.NotContains(t, body, "build_status")
