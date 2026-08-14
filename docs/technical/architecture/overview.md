@@ -27,7 +27,7 @@ The major boundaries are:
 |---|---|---|
 | API | `internal/adapter/grpc`, `internal/adapter/http`, `internal/adapter/auth` | Transport, authentication, serialization, protocol compatibility. |
 | Admission | `internal/application/admission` | Validate write requests, resolve dependencies, build proposal coverage, and submit work to consensus. |
-| Consensus | `internal/infra/node`, `internal/infra/transport`, `internal/infra/membership` | Raft lifecycle, replication, cluster membership, WAL/snapshot coordination. |
+| Consensus | `internal/infra/node`, `internal/infra/transport`, `internal/application/membership` | Raft lifecycle, replication, cluster membership, WAL/snapshot coordination. |
 | FSM | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload`, `internal/domain/processing` | Deterministic application of accepted orders and mutation of authoritative replicated state. |
 | Main storage | `internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool` | Pebble-backed state, Raft WAL, snapshot/replay support. |
 | Read path | `internal/application/ctrl`, `internal/query`, `internal/storage/readstore` | Consistency-aware reads, query planning, inverted-index lookup, result materialization. |
