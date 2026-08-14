@@ -4,6 +4,8 @@ Architecture documentation is organised by **subsystem** — each `subsystems/<n
 
 Cross-cutting concerns (overall design, data flows shared across subsystems, the data model, the audit-and-checker invariants, low-level wire formats) live at the root.
 
+`overview.md` is the **single canonical high-level architecture overview**. Do not create or maintain a second architecture narrative elsewhere; the historical `../architecture-overview.md` path is a compatibility redirect only.
+
 ## Start here
 
 | Document | When to read it |
@@ -24,7 +26,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [checker](subsystems/checker/) | `internal/application/check`, `internal/domain/replay` | Audit hash chain and integrity verification of every persisted projection. |
 | [consensus](subsystems/consensus/) | `internal/infra/node`, `internal/infra/transport` | Raft replication, global log, hybrid logical clock. |
 | [events-mirror](subsystems/events-mirror/) | `internal/application/events`, `internal/application/mirror` | Event sinks (NATS / Kafka / ClickHouse / Databricks / HTTP) and mirror ingest. |
-| [fsm](subsystems/fsm/) | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload` | Deterministic apply path, cache layering, preload contract. |
+| [fsm](subsystems/fsm/) | `internal/infra/state`, `internal/infra/plan`, `internal/infra/preload`, `internal/domain/processing` | Deterministic apply path, business-order processing, cache layering, preload contract. |
 | [indexer](subsystems/indexer/) | `internal/application/indexbuilder`, `internal/storage/readstore` (key layout) | Inverted-index builder, schema rewrite, atomic switch. |
 | [read-path](subsystems/read-path/) | `internal/application/ctrl` (reads), `internal/query`, `internal/storage/readstore` | Query pipeline, prepared queries, query checkpoints, typed metadata. |
 | [scripting](subsystems/scripting/) | numscript runtime + library | Reusable numscript programs and their lifecycle. |
