@@ -43,6 +43,16 @@ FIXTURE_LEDGER_NAME = "test-ledger"
 # before_call hook below for why it needs its own name.
 DELETE_LEDGER_SACRIFICE_NAME = "delete-me-ledger"
 
+# Canonical id of the metadata index run.sh seeds on FIXTURE_LEDGER_NAME. Every
+# fuzzed {canonicalId} resolves to it, so the per-index routes return a real
+# Index / IndexEntry instead of the 404 body a generated canonical id would
+# produce — the 404 is validated against the 404 schema, leaving the typed 200
+# schemas unexercised.
+FIXTURE_INDEX_CANONICAL = "metadata:TARGET_TYPE_ACCOUNT:color"
+# Sacrificial canonical id for DELETE /v3/{ledgerName}/indexes/{canonicalId}
+# specifically — see the before_call hook below for why it needs its own index.
+DELETE_INDEX_SACRIFICE_CANONICAL = "metadata:TARGET_TYPE_TRANSACTION:sacrifice"
+
 SAMPLE_NUMSCRIPTS = [
     'send [USD/2 100] (\n  source = @world\n  destination = @user:001\n)',
     'send [EUR/2 50] (\n  source = @users:alice\n  destination = @users:bob\n)',
@@ -91,6 +101,33 @@ def before_call(context, case):
         name = case.path_parameters["ledgerName"]
         if not isinstance(name, str) or not VALID_LEDGER_NAME_RE.match(name):
             case.path_parameters["ledgerName"] = FIXTURE_LEDGER_NAME
+
+    # A generated {canonicalId} is either malformed (400 from ParseCanonical) or
+    # names an index nobody registered (404), so the typed Index / IndexEntry
+    # schemas are never reached. Point it at the seeded fixture index instead.
+    #
+    # DELETE /v3/{ledgerName}/indexes/{canonicalId} is itself a fuzzed
+    # operation, and pointing it at the fixture would drop that index on the
+    # first example — after which every other index route 404s and validates
+    # against the error schema, silently undoing this coercion's whole purpose
+    # while the suite still passed. Send index-level deletes to a sacrificial
+    # index, exactly as DELETE /v3/{ledgerName} goes to
+    # DELETE_LEDGER_SACRIFICE_NAME above. Unlike the ledger sacrifice, DropIndex
+    # is idempotent (204 on an already-dropped index) so later examples stay
+    # status-conformant; what they no longer do is exercise a real removal.
+    #
+    # This also covers the bucket-scoped routes /v3/_/indexes/{canonicalId} and
+    # /v3/_/indexes/{canonicalId}/status, but does NOT make them return 200:
+    # those look the entry up under an empty ledger, and no production path ever
+    # writes a registry entry with an empty ledger (see the comment on
+    # handleListBucketIndexes). They stay 404 for a structural reason, not a
+    # seeding gap, and their 200 schemas therefore stay unvalidated until
+    # bucket-scoped indexes exist.
+    if case.path_parameters and "canonicalId" in case.path_parameters:
+        if case.method == "DELETE":
+            case.path_parameters["canonicalId"] = DELETE_INDEX_SACRIFICE_CANONICAL
+        else:
+            case.path_parameters["canonicalId"] = FIXTURE_INDEX_CANONICAL
 
     if case.body and isinstance(case.body, dict):
         # Transaction: postings/script mutual exclusion
