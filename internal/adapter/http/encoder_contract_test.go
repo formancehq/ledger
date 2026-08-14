@@ -39,7 +39,6 @@ var protojsonRoutes = []struct {
 	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
 
@@ -198,17 +197,15 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 		})
 	}
 
-	// Built from the table so it cannot drift: one entry per route row, plus
-	// response.go once for the implementation call site inside writeProtoListOK
-	// itself — that function is what its route row calls through, not a route of
-	// its own. (It was twice while writeProtoOK also existed; EN-1791 deleted
-	// that writer once its last call site moved to a DTO.)
-	expected := make([]string, 0, len(protojsonRoutes)+1)
+	// Built from the table so it cannot drift: one entry per route row, and
+	// nothing else. response.go used to contribute a call site of its own — the
+	// protojson.Marshal inside writeProtoOK, then writeProtoListOK — but EN-1791
+	// deleted both writers as their last call sites moved to DTOs, so the only
+	// protojson call sites left are the inline ones in the handlers themselves.
+	expected := make([]string, 0, len(protojsonRoutes))
 	for _, tc := range protojsonRoutes {
 		expected = append(expected, tc.file)
 	}
-
-	expected = append(expected, "response.go")
 
 	require.ElementsMatchf(t, siteFiles, expected,
 		"protojson call sites %v do not match the expected set %v. If you added a "+

@@ -1,13 +1,11 @@
 package http
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -94,46 +92,6 @@ func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
-}
-
-// writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages, each serialized via protojson. Use it ONLY for messages
-// that have no custom MarshalJSON: protojson works off protobuf reflection and
-// ignores json.Marshaler, so for a message that has one it silently discards the
-// intended shape (that was EN-1622). When the message has a MarshalJSON, that
-// method IS the public contract — use writeOKChecked.
-//
-// protojson has no slice entry point, so each element is marshaled individually
-// and assembled into the array here; sonic needs no equivalent, since it walks a
-// slice and calls MarshalJSON per element. A nil/empty slice serializes as `[]`,
-// matching the drained-cursor list handlers.
-//
-// EN-1791 is retiring this: the last caller is handlers_list_signing_keys.go,
-// and once that route moves to a DTO this function and the protojson import go
-// with it.
-func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
-	var buf bytes.Buffer
-
-	buf.WriteByte('[')
-
-	for i, msg := range msgs {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-
-		raw, err := protojson.Marshal(msg)
-		if err != nil {
-			writeErrorResponse(w, http.StatusInternalServerError, "INTERNAL_ERROR", err)
-
-			return
-		}
-
-		buf.Write(raw)
-	}
-
-	buf.WriteByte(']')
-
-	writeOK(w, json.RawValue(buf.Bytes()))
 }
 
 // writeBadRequest writes a 400 Bad Request response.
