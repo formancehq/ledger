@@ -82,20 +82,30 @@ Documentation is part of the change when behavior, architecture, interfaces, CLI
 
 Do not use `docs/drafts/**` as evidence of current behavior unless the task explicitly references that design.
 
-## Validation before completion
+## Definition of done
 
-Run the repository's existing validation before declaring work complete:
+A task is not complete when the code merely looks correct. Before handing work to another agent or a human reviewer:
+
+1. finish the requested implementation and documentation;
+2. run the canonical baseline validation with `bash scripts/agent-check`;
+3. run tests appropriate to the touched subsystem and risk level;
+4. inspect the final diff for unrelated or generated changes;
+5. perform a self-review against the task, loaded subsystem docs, and the invariants above;
+6. report unresolved concerns instead of silently weakening or skipping a check.
+
+For broad or high-risk changes where the root-module unit suite is appropriate, run `bash scripts/agent-check-full`. Do not run the full suite mechanically for every local documentation or narrowly scoped change when targeted validation is sufficient.
+
+### Canonical validation commands
 
 ```bash
-# Preferred reproducible path
-nix develop --command bash -c "just pre-commit"
+# Required baseline for code changes
+bash scripts/agent-check
 
-# Alternative direnv path
-direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
-
-# Verify compilation
-GOROOT= go build ./...
+# Baseline + full root-module unit test suite
+bash scripts/agent-check-full
 ```
+
+`scripts/agent-check` runs the existing `just pre-commit` pipeline, compiles all root-module packages with `GOROOT= go build ./...`, and runs `git diff --check`. It deliberately does not choose task-specific tests for you.
 
 After modifying `.proto` files, run `just generate-proto` immediately.
 After changing a `//go:generate mockgen` interface, run `go generate ./...`.
