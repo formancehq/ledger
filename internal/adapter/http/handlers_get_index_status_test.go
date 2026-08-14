@@ -36,13 +36,17 @@ func TestHandleGetIndexStatus_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "ledger1", capturedLedger)
 
-	// The body must serialize the protobuf message in protobuf-JSON camelCase
-	// (lastIndexedSequence), wrapped in the {data:...} envelope — NOT the
-	// snake_case Go struct tags (last_indexed_sequence) that a plain sonic
-	// marshal would leak. See writeProtoOK.
+	// camelCase in the {data:...} envelope, and uint64 as an unquoted NUMBER.
+	// protojson quoted 64-bit ints ("42"); the DTO emits 42, matching
+	// Chapter.MarshalJSON and the rest of the API (EN-1791).
 	body := w.Body.String()
-	require.Contains(t, body, `"lastIndexedSequence":"42"`)
+	require.Contains(t, body, `"lastIndexedSequence":42`)
+	require.NotContains(t, body, `"lastIndexedSequence":"42"`)
 	require.NotContains(t, body, "last_indexed_sequence")
+	// lag 0 means fully caught up: it must be present, not omitted.
+	require.Contains(t, body, `"lag":0`)
+	// Empty collections are [], never null.
+	require.Contains(t, body, `"indexes":[]`)
 	require.True(t, strings.HasPrefix(strings.TrimSpace(body), `{"data":`), "response must be wrapped in the data envelope, got: %s", body)
 }
 

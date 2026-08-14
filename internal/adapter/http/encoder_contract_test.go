@@ -39,13 +39,6 @@ var protojsonRoutes = []struct {
 	file  string // Handler file containing this route's protojson call site.
 	msg   proto.Message
 }{
-	{"GET /v3/{ledgerName}/indexes", "handlers_list_ledger_indexes.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}", "handlers_get_index.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes", "handlers_list_bucket_indexes.go", &commonpb.Index{}},
-	{"GET /v3/_/indexes/{canonicalId}", "handlers_get_bucket_index.go", &commonpb.Index{}},
-	{"GET /v3/{ledgerName}/indexes/{canonicalId}/status", "handlers_get_index_entry_status.go", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/{canonicalId}/status", "handlers_get_bucket_index_entry_status.go", &servicepb.IndexEntry{}},
-	{"GET /v3/_/indexes/status", "handlers_get_index_status.go", &servicepb.GetIndexStatusResponse{}},
 	{"GET /v3/_/signing-keys", "handlers_list_signing_keys.go", &commonpb.SigningKey{}},
 	{"GET /v3/_/events-sinks", "handlers_get_events_sinks.go", &servicepb.GetEventsSinksResponse{}},
 }
@@ -206,15 +199,16 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 	}
 
 	// Built from the table so it cannot drift: one entry per route row, plus
-	// response.go twice for the two implementation call sites inside
-	// writeProtoOK and writeProtoListOK themselves — those two functions are
-	// what every route row calls through, not routes of their own.
-	expected := make([]string, 0, len(protojsonRoutes)+2)
+	// response.go once for the implementation call site inside writeProtoListOK
+	// itself — that function is what its route row calls through, not a route of
+	// its own. (It was twice while writeProtoOK also existed; EN-1791 deleted
+	// that writer once its last call site moved to a DTO.)
+	expected := make([]string, 0, len(protojsonRoutes)+1)
 	for _, tc := range protojsonRoutes {
 		expected = append(expected, tc.file)
 	}
 
-	expected = append(expected, "response.go", "response.go")
+	expected = append(expected, "response.go")
 
 	require.ElementsMatchf(t, siteFiles, expected,
 		"protojson call sites %v do not match the expected set %v. If you added a "+

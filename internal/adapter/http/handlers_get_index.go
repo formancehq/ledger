@@ -37,5 +37,5 @@ func (s *Server) handleGetIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeProtoOK(w, idx)
+	writeOKChecked(w, r, newIndexDTO(idx))
 }

@@ -42,6 +42,34 @@ func TestHandleListLedgerIndexes_Success(t *testing.T) {
 	require.Equal(t, "ledger1", capturedReq.GetLedger())
 }
 
+// TestHandleListLedgerIndexes_EmptyIsArrayNotNull pins that a ledger with no
+// index serializes as an empty ARRAY. A nil Go slice marshals to null, which
+// forces every client to branch before iterating; newIndexDTOList allocates so
+// the wire always carries [].
+func TestHandleListLedgerIndexes_EmptyIsArrayNotNull(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+			return cursor.NewSliceCursor[*commonpb.Index](nil), nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/ledger1/indexes", nil, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleListLedgerIndexes(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	require.Contains(t, body, `"data":[]`)
+	require.NotContains(t, body, `"data":null`)
+}
+
 func TestHandleListLedgerIndexes_MissingLedgerName(t *testing.T) {
 	t.Parallel()
 
