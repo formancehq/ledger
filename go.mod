@@ -84,7 +84,10 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require github.com/benbjohnson/immutable v0.4.3
+require (
+	github.com/benbjohnson/immutable v0.4.3
+	go.uber.org/goleak v1.3.0
+)
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
@@ -302,7 +305,6 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.41.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
