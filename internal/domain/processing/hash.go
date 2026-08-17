@@ -1,11 +1,17 @@
 // Package processing computes the chained audit hash that anchors every
 // FSM proposal to the cluster's append-only audit log.
 //
-// The hash is keyed by a value derived from the immutable ClusterID, so
-// an attacker who learns the hashing algorithm but not the ClusterID
-// cannot forge audit entries offline. ClusterID immutability is
-// enforced by bootstrap.ValidateOrPersistConfig; the per-algorithm key
-// derivation uses domain-separated BLAKE3.
+// The hash is keyed by a value derived from the immutable ClusterID using
+// domain-separated BLAKE3, so an actor who can write Pebble VALUES but cannot
+// read the ClusterID cannot forge a chained entry.
+//
+// This is a correctness detector, not a tamper defence against filesystem
+// access: the ClusterID is persisted in the same store the chain protects
+// (ZoneGlobal|SubGlobPersistedConfig), so anyone who can read that store can
+// derive the key and re-chain forged entries end to end. See
+// docs/technical/architecture/subsystems/checker/audit-chain.md for the threat
+// model. ClusterID immutability is checked by bootstrap.ValidateOrPersistConfig,
+// which can be overridden with --unsafe-skip-config-validation.
 //
 // The generator hashes opaque byte slices, never a proto. The apply
 // path assembles those slices from canonical binary encodings of every
