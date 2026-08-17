@@ -104,9 +104,10 @@ func TestFilterSet_SetReadyIfEpoch_RebuildInvalidates(t *testing.T) {
 // read ready=true from an earlier revision and then load a freshly-swapped
 // empty snapshot, treating present keys as absent.
 //
-// The test is deliberately tight: 200ms of pressure with goroutine yield
-// hints is enough to surface the race on the previous code (verified by
-// reverting the bloom.go changes locally), while keeping CI under a second.
+// The test waits for both sides to make substantial progress instead of
+// relying on a fixed runtime. The thresholds surface the race on the previous
+// code (verified by reverting the bloom.go changes locally) while adapting to
+// slower race-enabled CI workers.
 func TestFilterSet_NoReadyWithEmptyFilterUnderContention(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +165,10 @@ func TestFilterSet_NoReadyWithEmptyFilterUnderContention(t *testing.T) {
 		}
 	})
 
-	time.Sleep(200 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return writerCycles.Load() >= 100 && readerLookups.Load() >= 1000
+	}, 5*time.Second, time.Millisecond, "readers and writer should make progress under contention")
+
 	stop.Store(true)
 	wg.Wait()
 

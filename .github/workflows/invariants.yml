@@ -1,0 +1,31 @@
+name: Repository Invariants
+
+on:
+  merge_group:
+  pull_request:
+    types: [assigned, opened, synchronize, reopened, labeled]
+  push:
+    branches:
+      - main
+      - master
+      - release/*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  invariants:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Check repository invariants
+        run: nix develop --command bash scripts/check-repo-invariants

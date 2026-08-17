@@ -2,6 +2,7 @@ package node
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -296,36 +297,48 @@ func TestApplierMultipleBatchesOnlyLastResponsesFire(t *testing.T) {
 func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	t.Parallel()
 
-	// Unbuffered sink + zero consumer: any send blocks immediately.
-	sink := make(LocalResponses)
-	setup := newTestApplierSetupWithSink(t, sink)
+	synctest.Test(t, func(t *testing.T) {
+		// Unbuffered sink + zero consumer: any send blocks immediately.
+		sink := make(LocalResponses)
+		setup := newTestApplierSetupWithSink(t, sink)
 
-	// Deliberately non-cancellable ctx: mimics the real shutdown flow where
-	// node.Stop closes the stop channels without touching the runCtx.
-	ctx := logging.TestingContext()
+		// Deliberately non-cancellable ctx: mimics the real shutdown flow where
+		// node.Stop closes the stop channels without touching the runCtx.
+		ctx := logging.TestingContext()
 
-	runDone := make(chan error, 1)
-	go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
+		runDone := make(chan error, 1)
+		go func() { runDone <- setup.applier.Run(ctx, setup.stop) }()
 
-	entry, _ := makeCreateLedgerEntry(t, 1, "async-full-sink")
-	resp := makeApplyResp(1, entry.GetIndex())
-	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
+		entry, _ := makeCreateLedgerEntry(t, 1, "async-full-sink")
+		resp := makeApplyResp(1, entry.GetIndex())
+		setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
-	// Give runCommitter time to fire the response — it will block on the
-	// unbuffered send. If the deadlock regressed, the test hangs here.
-	time.Sleep(200 * time.Millisecond)
+		// Wait until every applier goroutine is durably blocked. The committed
+		// ledger proves runCommitter passed CommitPreparedBatch; with no sink
+		// consumer and no blocking operation between that commit and the send,
+		// runCommitter can only be blocked in fireResponses here.
+		synctest.Wait()
+		require.True(t, listLedgerContains(setup.store, "async-full-sink"),
+			"entry should commit before the response send blocks")
+		select {
+		case err := <-runDone:
+			t.Fatalf("Run returned before shutdown while response sink is blocked: %v", err)
+		default:
+		}
 
-	// Signal shutdown to Applier.Run without cancelling ctx. runCommitter
-	// must observe <-stop on the response-sink select, fall through to
-	// work.done, and let waitPendingCommit unblock.
-	close(setup.stop)
+		// Signal shutdown to Applier.Run without cancelling ctx. runCommitter
+		// must observe <-stop on the response-sink select, fall through to
+		// work.done, and let waitPendingCommit unblock.
+		close(setup.stop)
+		synctest.Wait()
 
-	select {
-	case err := <-runDone:
-		require.NoError(t, err, "clean shutdown expected")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Applier.Run did not return after stop close (ctx still live) — deadlock regression on finding 70740916")
-	}
+		select {
+		case err := <-runDone:
+			require.NoError(t, err, "clean shutdown expected")
+		default:
+			t.Fatal("Applier.Run did not return after stop close (ctx still live) — deadlock regression on finding 70740916")
+		}
+	})
 }
 
 // collectResponseIndices drains want messages from sink and returns their

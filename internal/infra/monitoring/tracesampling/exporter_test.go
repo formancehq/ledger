@@ -248,7 +248,9 @@ func TestErrorAwareSamplingExporter_PendingSpansExpire(t *testing.T) {
 
 	mock := &mockExporter{}
 	exporter := NewErrorAwareSamplingExporter(mock, 0.0)
-	exporter.pendingWindow = 1 * time.Millisecond // very short for testing
+	// A negative window makes every previously buffered entry expired on the
+	// next ExportSpans call without relying on wall-clock scheduling.
+	exporter.pendingWindow = -1
 
 	traceID := oteltrace.TraceID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
 
@@ -264,9 +266,6 @@ func TestErrorAwareSamplingExporter_PendingSpansExpire(t *testing.T) {
 	err := exporter.ExportSpans(context.Background(), []trace.ReadOnlySpan{okSpan})
 	require.NoError(t, err)
 	require.Empty(t, mock.spans)
-
-	// Wait for the pending window to expire
-	time.Sleep(5 * time.Millisecond)
 
 	// Export another batch — cleanup should drop the expired pending span
 	otherSpan := tracetest.SpanStub{
