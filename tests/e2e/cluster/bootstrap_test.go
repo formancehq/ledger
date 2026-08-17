@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -46,6 +47,22 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		ledgerName = "bootstrap-ledger"
 		ledger2    = "bootstrap-ledger-2"
 	)
+
+	// USD amounts posted to bootstrap-ledger. Phase 3 derives its expected
+	// volumes from these constants instead of restating them as literals, so
+	// adding or changing a posting cannot leave a stale expectation behind.
+	const (
+		bankFunding     = 10000 // world -> bank
+		aliceTransfer   = 3000  // bank -> alice
+		bobTransfer     = 2000  // bank -> bob
+		eveTransfer     = 500   // bank -> eve, posted after the first full backup
+		charlieTransfer = 1000  // bank -> charlie, posted after the bootstrap
+	)
+
+	// Everything bank paid out before the full backup that Phase 2 restores
+	// from. The eve posting is included because the second full backup taken
+	// in Phase 1 captures it.
+	const bankOutput = aliceTransfer + bobTransfer + eveTransfer
 
 	var (
 		ctx              context.Context
@@ -152,13 +169,13 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+				actions.NewPosting("world", "bank", big.NewInt(bankFunding), "USD"),
 			}, map[string]string{"type": "funding"}, nil)))
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
-				actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
+				actions.NewPosting("bank", "alice", big.NewInt(aliceTransfer), "USD"),
+				actions.NewPosting("bank", "bob", big.NewInt(bobTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -200,7 +217,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should run incremental backup after adding more data", func() {
 			// Add more data after the full backup
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
+				actions.NewPosting("bank", "eve", big.NewInt(eveTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -345,12 +362,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the correct account balances", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal("3000"))
+			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(aliceTransfer)))
 
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bankResp.FindVolume("USD", "").Input).To(Equal("10000"))
-			Expect(bankResp.FindVolume("USD", "").Output).To(Equal("5000"))
+			Expect(bankResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(bankFunding)))
+			Expect(bankResp.FindVolume("USD", "").Output).To(Equal(strconv.Itoa(bankOutput)))
 		})
 
 		It("should have the correct account metadata", func() {
@@ -362,18 +379,18 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the data added after the first backup (via second full backup)", func() {
 			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
-			Expect(eveResp.FindVolume("USD", "").Input).To(Equal("500"))
+			Expect(eveResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(eveTransfer)))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
+				actions.NewPosting("bank", "charlie", big.NewInt(charlieTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
+			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(charlieTransfer)))
 		})
 	})
 })

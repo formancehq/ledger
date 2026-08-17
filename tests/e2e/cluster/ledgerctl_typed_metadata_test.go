@@ -132,10 +132,10 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		// Disable pterm interactive/animated output for test stability
-		pterm.DisableColor()
-		pterm.DisableStyling()
-
+		// pterm's animated output is disabled once for the whole suite in
+		// TestCluster: its settings are package-level globals, so writing them
+		// here would race with a spinner goroutine left running by an earlier
+		// spec's ledgerctl invocation.
 		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 	})
 

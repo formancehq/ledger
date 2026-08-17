@@ -256,7 +256,9 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Prefix: aws.String("no-prior/"),
 		})
 		Expect(listErr).To(Succeed())
-		Expect(listOut.KeyCount).To(BeEquivalentTo(0),
+		// KeyCount is a *int32: compare the pointed-to value, otherwise the
+		// matcher compares the pointer itself and can never succeed.
+		Expect(aws.ToInt32(listOut.KeyCount)).To(BeZero(),
 			"no object of any kind must be published under the no-prior/ prefix")
 	})
 
