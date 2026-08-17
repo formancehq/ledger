@@ -8,13 +8,31 @@ import (
 	"golang.org/x/term"
 )
 
+// interactiveOutput reports whether stdout is a terminal.
+//
+// It is evaluated exactly once, during package initialisation and therefore
+// before any command or test spec runs, and is never written again. pterm keeps
+// its configuration in package-level variables that its printers read without
+// synchronisation, so every later write to that configuration is a potential
+// data race (EN-1781).
+var interactiveOutput = term.IsTerminal(int(os.Stdout.Fd()))
+
 func init() {
-	// Enable raw output mode when stdout is not a terminal (e.g. tests, CI,
-	// piped output). This disables the spinner animation goroutine, avoiding a
-	// known data race in pterm's SpinnerPrinter on the IsActive field.
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
-		pterm.RawOutput = true
+	if interactiveOutput {
+		return
 	}
+
+	// Non-interactive output (tests, CI, piped output): drop styling entirely,
+	// so nothing downstream has to strip escape codes.
+	//
+	// This does NOT prevent pterm from spawning spinner goroutines.
+	// SpinnerPrinter.Start launches its animation goroutine unconditionally
+	// (spinner_printer.go:157) and SpinnerPrinter.Stop returns early while
+	// RawOutput is set (spinner_printer.go:184), leaving IsActive true so the
+	// goroutine never exits and keeps reading pterm globals forever. That is
+	// why spinners must be created through StartSpinner, which creates no
+	// pterm spinner at all when output is non-interactive.
+	pterm.DisableStyling()
 }
 
 // RoutePtermForStructuredOutput inspects --json / --yaml on the command and,
