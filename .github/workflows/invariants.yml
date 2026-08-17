@@ -25,5 +25,7 @@ jobs:
         with:
           fetch-depth: 0
           dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
       - name: Check repository invariants
-        run: bash scripts/check-repo-invariants
+        run: nix develop --command bash scripts/check-repo-invariants

@@ -311,9 +311,12 @@ func TestApplierRunCommitterDoesNotDeadlockOnFullSink(t *testing.T) {
 	resp := makeApplyResp(1, entry.GetIndex())
 	setup.applier.Submit([]*raftpb.Entry{entry}, setup.confState, []*raftpb.Message{resp}, setup.stop)
 
-	// Give runCommitter time to fire the response — it will block on the
-	// unbuffered send. If the deadlock regressed, the test hangs here.
-	time.Sleep(200 * time.Millisecond)
+	// CommitPreparedBatch publishes the ledger immediately before runCommitter
+	// tries the response send. Once the ledger is visible, the unbuffered sink
+	// guarantees that runCommitter is blocked in fireResponses until stop closes.
+	require.Eventually(t, func() bool {
+		return listLedgerContains(setup.store, "async-full-sink")
+	}, 3*time.Second, 10*time.Millisecond, "entry should commit before the response send blocks")
 
 	// Signal shutdown to Applier.Run without cancelling ctx. runCommitter
 	// must observe <-stop on the response-sink select, fall through to

@@ -454,15 +454,21 @@ func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
 	_, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 
-	// Access repeatedly to keep it alive past the original TTL
-	for range 5 {
-		time.Sleep(80 * time.Millisecond)
+	cachePath := cacheDir + "/chapter-1"
 
-		_, err = reader.GetReader(ctx, 1)
-		require.NoError(t, err)
-	}
+	// Keep refreshing the entry beyond its original TTL. Never polls the state
+	// before each refresh, so an eviction or refresh error fails immediately.
+	require.Never(t, func() bool {
+		if _, statErr := os.Stat(cachePath); statErr != nil {
+			return true
+		}
+
+		_, getErr := reader.GetReader(ctx, 1)
+
+		return getErr != nil
+	}, 400*time.Millisecond, 80*time.Millisecond, "chapter-1 should remain cached while accesses refresh its TTL")
 
 	// Should still be cached (each access refreshes the TTL)
-	_, err = os.Stat(cacheDir + "/chapter-1")
+	_, err = os.Stat(cachePath)
 	require.NoError(t, err, "chapter-1 should still be cached after repeated access")
 }
