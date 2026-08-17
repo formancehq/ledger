@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+failed=0
+
+report_matches() {
+    local message="$1"
+    local pattern="$2"
+    local file="$3"
+
+    if grep -nH -E "$pattern" "$file"; then
+        echo "ERROR: $message" >&2
+        failed=1
+    fi
+}
+
+# Inspect every file that could be part of the handoff: tracked files plus
+# non-ignored untracked files. Keep the checks deliberately narrow so this
+# script remains a low-noise architectural guardrail rather than a style linter.
+while IFS= read -r -d '' file; do
+    [[ -f "$file" ]] || continue
+
+    case "$file" in
+        *_test.go)
+            report_matches \
+                "tests must not use time.Sleep; use deterministic synchronization or require.Eventually" \
+                'time\.Sleep[[:space:]]*\(' \
+                "$file"
+            ;;
+    esac
+
+    case "$file" in
+        internal/infra/state/*.go|internal/infra/plan/*.go|internal/infra/preload/*.go|internal/domain/processing/*.go)
+            if [[ "$file" != *_test.go ]]; then
+                report_matches \
+                    "deterministic FSM paths must not read node-local environment state directly; gate local policy in admission instead" \
+                    'os\.(Getenv|LookupEnv|Environ)[[:space:]]*\(' \
+                    "$file"
+            fi
+            ;;
+    esac
+
+    case "$file" in
+        misc/proto/*.proto)
+            report_matches \
+                "Ledger v3 is unreleased; protobuf reserved declarations are intentionally forbidden by AGENTS.md" \
+                '^[[:space:]]*reserved([[:space:]]|[0-9"])+.*' \
+                "$file"
+            ;;
+    esac
+done < <(
+    git ls-files -z
+    git ls-files --others --exclude-standard -z
+)
+
+if (( failed != 0 )); then
+    echo "check-repo-invariants: FAIL" >&2
+    exit 1
+fi
+
+echo "check-repo-invariants: PASS"
