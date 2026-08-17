@@ -96,6 +96,35 @@ The **FSM** is the deterministic state transition function:
 
 Preload provides **base values** (volumes and optionally metadata) aligned to a **canonical boundary index**.
 
+### 3.4 Node-local configuration and rolling upgrades
+
+A flag, environment variable, startup setting, operator value, or default compiled into a particular binary is **node-local configuration**. It is not part of the ordered Raft input, so two nodes may legitimately observe different values during configuration drift or a rolling upgrade.
+
+That creates a strict boundary:
+
+| Decision point | May use node-local configuration? | Required property |
+|----------------|-----------------------------------|-------------------|
+| Admission, before proposal | Yes | The active leader may accept or reject the request according to its local operational policy. |
+| Raft apply, after commit | No | Every replica must produce the same outcome and writes for the committed entry. |
+| Recovery or replay of committed entries | No | Replaying the log must not depend on the recovering node's flags, environment, or binary defaults. |
+
+An admission-only policy can therefore behave differently as leadership moves between differently configured nodes. During a rolling upgrade, an old leader may accept a request that an upgraded leader would reject, or the reverse. This is an availability/admission difference, not replicated-state divergence: once the command is committed, the FSM applies it without consulting the local policy.
+
+For example, a node-local limit on live query checkpoints may reject `CreateQueryCheckpoint` before proposal. A committed `CreateQueryCheckpoint` must remain unconditional with respect to that limit in the FSM. Moving the check into apply would let the same Raft entry succeed on one node and fail on another.
+
+Admission-side count checks are soft unless the admission path also serializes or reserves the constrained resource. Two concurrent requests can both observe `count = limit - 1`, both be proposed, and leave the live count above the configured limit until an item is deleted. If that overshoot is operationally acceptable, document it as a deliberate consequence of the design. If the limit must be strict, use an explicit leader-side serialization/reservation design or a replicated protocol whose rollout semantics have been reviewed; do not quietly turn a local setting into an FSM input.
+
+Replicating a setting is not, by itself, proof that a change is safe across mixed binaries: every binary participating in a supported rolling-upgrade window must understand the resulting command semantics identically. Ledger v3 is currently unreleased, so the repository-wide rule against compatibility shims and version guards still applies to development revisions. After release, any change to apply semantics that must support mixed binaries requires an explicit upgrade design rather than an implicit version-dependent default.
+
+Before allowing configuration to influence a write path, answer:
+
+1. Can the value differ between nodes or binary versions?
+2. Does it only decide whether admission proposes the command?
+3. Once committed, will every supported node produce the same outcome and writes without reading that value?
+4. Is a concurrent admission overshoot acceptable, or does the resource require strict reservation?
+
+If question 3 is not unconditionally true, the configuration is on the wrong side of the admission/FSM boundary.
+
 ---
 
 ## 4. Deterministic Cache via Generations
