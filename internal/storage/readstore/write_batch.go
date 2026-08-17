@@ -201,6 +201,10 @@ func (wb *WriteBatch) ReplaceMetadataIndexV(
 	// at the same sequence — a same-seq DEL cannot win against the
 	// standing ADD (op ordering), so it must not be emitted.
 	if bytes.Equal(oldEncodedValue, newEncodedValue) {
+		if traceKey != "" && (traceKey == "*" || metadataKey == traceKey) {
+			tracef("MIDXTRACE replace-noop ledger=%s ns=%s v=%d value=%x entity=%s seq=%d", ledgerName, ns, version, newEncodedValue, entityID, wb.eventSeq)
+		}
+
 		return nil
 	}
 
@@ -256,6 +260,8 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
 		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
 			return err
 		}
+	} else if traceKey != "" && (traceKey == "*" || metadataKey == traceKey) {
+		tracef("MIDXTRACE delete-noop ledger=%s ns=%s v=%d entity=%s seq=%d (no rmap row)", ledgerName, ns, version, entityID, wb.eventSeq)
 	}
 
 	if err := wb.del(reverseKey); err != nil {
