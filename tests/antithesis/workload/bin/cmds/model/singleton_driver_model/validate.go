@@ -154,9 +154,11 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 
-	// droppedInBulk collects the metadata-index canonicals earlier orders of
+	// droppedInBulk collects the (ledger, canonical) pairs earlier orders of
 	// THIS bulk already removed, so a duplicate remove-field-type correctly
-	// expects no second drop.
+	// expects no second drop. The ledger is part of the key: one bulk can
+	// remove the same (target, key) on several ledgers, and each ledger's
+	// index is dropped independently.
 	droppedInBulk := map[string]bool{}
 
 	// Check the remaining write ops against their response logs: the assigned
@@ -302,11 +304,12 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			// Compare against the pre-bulk model state, minus keys an earlier
 			// order of this bulk already removed (the second remove is a no-op).
 			canonical := indexes.Canonical(indexes.MetadataID(rq.GetTargetType(), rq.GetKey()))
+			bulkKey := oracle.LedgerOf(req) + "\x00" + canonical
 			hadIndex := false
-			if exists, _ := c.modelState.Ledger(oracle.LedgerOf(req)).IndexState(canonical); exists && !droppedInBulk[canonical] {
+			if exists, _ := c.modelState.Ledger(oracle.LedgerOf(req)).IndexState(canonical); exists && !droppedInBulk[bulkKey] {
 				hadIndex = true
 			}
-			droppedInBulk[canonical] = true
+			droppedInBulk[bulkKey] = true
 
 			if (lg.GetDroppedIndex() != nil) != hadIndex {
 				assert.Unreachable("singleton_driver_model: remove-field-type dropped-index mismatch", internal.Details{
