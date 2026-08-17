@@ -470,6 +470,34 @@ Expect(followerID).To(BeNumerically(">", 0))
 Expect(followerID).To(BeNumerically("<=", countInstances))
 ```
 
+### AWS SDK Pointer Fields
+
+The AWS SDK v2 models every optional scalar field as a pointer, so
+`ListObjectsV2Output.KeyCount` is `*int32`, not `int32`.
+
+`BeEquivalentTo` **converts**, it does not dereference. `*int32` is not convertible to
+`int`, so `reflect.DeepEqual` compares two different types, the matcher returns `false`
+for every possible input, and it reports no error. The result is a permanently failing
+assertion that neither the compiler nor `golangci-lint` can catch (EN-1783).
+
+❌ **Bad**:
+```go
+Expect(listOut.KeyCount).To(BeEquivalentTo(0))
+// Expected <*int32>: 0 to be equivalent to <int>: 0 — always fails
+```
+
+✅ **Good**:
+```go
+// Prefer the slice: no pointer, nil-safe, and the failure message names the objects.
+Expect(listOut.Contents).To(BeEmpty())
+
+// When only the scalar is available, dereference through the nil-safe AWS helper.
+Expect(aws.ToInt32(listOut.KeyCount)).To(BeZero())
+```
+
+Do not dereference with `*listOut.KeyCount`: the field is a pointer precisely because
+S3 can omit it, and a nil dereference panics the spec.
+
 ### Cleanup
 
 Use `DeferCleanup` for automatic cleanup:
