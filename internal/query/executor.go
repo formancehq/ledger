@@ -150,6 +150,9 @@ func Execute(
 	defer releaseLease()
 	defer func() { _ = indexSnap.Close() }()
 
+	readstore.DebugTracef("MIDXTRACE query ledger=%s target=%v aligned=%v mainSeq=%d minLogSeq=%d",
+		ledgerInfo.GetName(), pq.GetTarget(), aligned, mainSeq, req.GetMinLogSequence())
+
 	// Check min_log_sequence freshness against the handle: alignment makes
 	// the index snapshot at least as fresh, so the handle's sequence is the
 	// response's consistent state.

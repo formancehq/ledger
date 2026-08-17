@@ -485,6 +485,10 @@ func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
 func (s *Store) WriteIndexVersionState(batch *dal.WriteSession, ledgerName string, canonicalID string, state IndexVersionState) error {
 	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
 
+	tracef("MIDXTRACE vstate ledger=%s canon=%s cur=%d pend=%d act=%d hw=%d curType=%d/%v pendType=%d/%v",
+		ledgerName, canonicalID, state.CurrentVersion, state.PendingVersion, state.ActivationSequence,
+		state.HighWater, state.CurrentType, state.CurrentTypeDeclared, state.PendingType, state.PendingTypeDeclared)
+
 	return batch.SetBytes(key, encodeIndexVersionState(state))
 }
 
@@ -584,6 +588,10 @@ func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint6
 		if err != nil {
 			return ResolvedIndexVersion{}, false, err
 		}
+
+		tracef("MIDXTRACE resolve ledger=%s canon=%s pin=%d present=%v cur=%d pend=%d act=%d hw=%d",
+			ledgerName, canonical, pin, present, state.CurrentVersion, state.PendingVersion,
+			state.ActivationSequence, state.HighWater)
 
 		if !present {
 			// No record at all. Callers use this to tell a removed index

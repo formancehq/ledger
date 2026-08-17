@@ -2,11 +2,12 @@ package readstore
 
 import (
 	"errors"
-
 	"fmt"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"os"
 	"sync"
+	"time"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // traceKey enables MIDXTRACE event logging for one metadata key ("*" = all;
@@ -40,8 +41,13 @@ func tracef(format string, args ...any) {
 	}
 
 	traceMu.Lock()
-	fmt.Fprintf(traceFile, format+"\n", args...)
+	fmt.Fprintf(traceFile, time.Now().UTC().Format("15:04:05.000000")+" "+format+"\n", args...)
 	traceMu.Unlock()
+}
+
+// DebugTracef exposes the MIDXTRACE sink to other packages (debug only).
+func DebugTracef(format string, args ...any) {
+	tracef(format, args...)
 }
 
 // Write side of the event-suffixed metadata index (see event_keys.go). The
@@ -89,7 +95,7 @@ func (wb *WriteBatch) appendMetadataIndexEvent(
 	}
 
 	if traceKey != "" && (traceKey == "*" || metadataKey == traceKey) {
-		tracef("MIDXTRACE midx ledger=%s ns=%s v=%d value=%x entity=%s seq=%d op=%d", ledgerName, ns, version, encodedValue, entityID, seq, op)
+		tracef("MIDXTRACE midx ledger=%s ns=%s key=%s v=%d value=%x entity=%s/%x seq=%d op=%d", ledgerName, ns, metadataKey, version, encodedValue, entityID, entityID, seq, op)
 	}
 
 	return wb.put(MetadataIndexEventKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID, seq, op), nil)
@@ -110,7 +116,7 @@ func (wb *WriteBatch) appendEntityExistsEvent(
 	}
 
 	if traceKey != "" && (traceKey == "*" || metaKey == traceKey) {
-		tracef("MIDXTRACE eidx ledger=%s ns=%s v=%d null=%v entity=%s seq=%d op=%d", ledgerName, ns, version, isNull, entityID, seq, op)
+		tracef("MIDXTRACE eidx ledger=%s ns=%s key=%s v=%d null=%v entity=%s/%x seq=%d op=%d", ledgerName, ns, metaKey, version, isNull, entityID, entityID, seq, op)
 	}
 
 	return wb.put(EntityExistsEventKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID, seq, op), nil)
