@@ -202,8 +202,8 @@ func (s *skipSafeScope) GetArchivedThroughChapterID() uint64 {
 	return s.inner.GetArchivedThroughChapterID()
 }
 
-func (s *skipSafeScope) SetArchivedThroughChapterID(chapterID uint64) {
-	trapUnbuffered("SetArchivedThroughChapterID", nil)
+func (s *skipSafeScope) AdvanceArchivedThroughChapterID() {
+	trapUnbuffered("AdvanceArchivedThroughChapterID", nil)
 }
 
 func (s *skipSafeScope) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {

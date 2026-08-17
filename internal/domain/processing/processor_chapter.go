@@ -101,14 +101,6 @@ func processSealChapter(order *raftcmdpb.SealChapterOrder, ctx *Context) (*commo
 // sequence range the worker needs).
 func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
-	chapterReader, ok := s.GetChapterByID(order.GetChapterId())
-	if !ok {
-		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
-	}
-
-	if chapterReader.GetStatus() != commonpb.ChapterStatus_CHAPTER_CLOSED {
-		return nil, &domain.ErrChapterNotClosed{ChapterID: order.GetChapterId()}
-	}
 
 	// Archived chapters must form a contiguous prefix of history, so the only
 	// archivable chapter is the one right after the archived prefix. The purge
@@ -118,11 +110,34 @@ func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (
 	// them, leaving a permanently unverified window, and where cold storage has
 	// a hole no later archive ever fills.
 	//
-	// The prefix is read from the tracker's explicit marker rather than inferred
-	// from which chapters are still resident: the purge drops archived chapters
-	// from the tracker, so residency answers "does this chapter still have hot
-	// data", not "is it archived".
-	if archivedThrough := s.GetArchivedThroughChapterID(); order.GetChapterId() != archivedThrough+1 {
+	// The prefix comes from the tracker's explicit marker, and chapters inside it
+	// are rejected BEFORE the residency lookup below: an archived chapter is
+	// absent from the tracker on a running node (the purge drops it) and present
+	// with status ARCHIVED after a restart (recovery reloads its row), so a
+	// lookup-first order would answer the same Raft order with two different
+	// reasons — CHAPTER_NOT_FOUND or CHAPTER_NOT_CLOSED — and the audited
+	// failures, which are hash-chained, would diverge across replicas.
+	archivedThrough := s.GetArchivedThroughChapterID()
+	if order.GetChapterId() <= archivedThrough {
+		return nil, &domain.ErrChapterArchiveOutOfOrder{
+			ChapterID:         order.GetChapterId(),
+			BlockingChapterID: archivedThrough + 1,
+		}
+	}
+
+	// Past the prefix the lookup is representation-independent: a chapter that is
+	// not archived is never purged, so it is resident on every node, and one that
+	// never existed has no row anywhere.
+	chapterReader, ok := s.GetChapterByID(order.GetChapterId())
+	if !ok {
+		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
+	}
+
+	if chapterReader.GetStatus() != commonpb.ChapterStatus_CHAPTER_CLOSED {
+		return nil, &domain.ErrChapterNotClosed{ChapterID: order.GetChapterId()}
+	}
+
+	if order.GetChapterId() != archivedThrough+1 {
 		return nil, &domain.ErrChapterArchiveOutOfOrder{
 			ChapterID:         order.GetChapterId(),
 			BlockingChapterID: archivedThrough + 1,
@@ -149,6 +164,30 @@ func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (
 // from the ConfirmedArchiveChapterLog by deriveSignals.
 func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
+
+	// The confirm is what extends the archived prefix and triggers the purge, so
+	// it must land exactly on prefix + 1 — checked before any mutation, and
+	// before the residency lookup for the same reason as processArchiveChapter
+	// (an already-archived chapter reads as absent on a running node and as
+	// ARCHIVED after a restart, which would audit two different reasons for one
+	// order).
+	//
+	// A confirm past the prefix is not merely redundant: the recovery derivation
+	// stops at a gap while DispatchArchiveRequests republishes every ARCHIVING
+	// chapter, so a store holding {1 ARCHIVED, 2 un-archived, 3 ARCHIVING} would
+	// otherwise have reconciliation confirm 3 and carry the prefix past 2 —
+	// re-authorising archives while chapter 2's logs sit un-archived below the
+	// resulting archive boundary. That state is impossible through the ordering
+	// gate, so refusing it surfaces the anomaly (audited failure, and the
+	// archiver retries visibly) instead of silently papering over it.
+	archivedThrough := s.GetArchivedThroughChapterID()
+	if order.GetChapterId() != archivedThrough+1 {
+		return nil, &domain.ErrChapterArchiveOutOfOrder{
+			ChapterID:         order.GetChapterId(),
+			BlockingChapterID: archivedThrough + 1,
+		}
+	}
+
 	chapterReader, ok := s.GetChapterByID(order.GetChapterId())
 	if !ok {
 		return nil, &domain.ErrChapterNotFound{ChapterID: order.GetChapterId()}
@@ -179,11 +218,10 @@ func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, c
 	chapter.Status = commonpb.ChapterStatus_CHAPTER_ARCHIVED
 	s.UpdateChapter(chapter)
 
-	// Extend the archived prefix. The ordering rule (processArchiveChapter) only
-	// admits the chapter right after the prefix, so a confirm always lands on
-	// prefix + 1 and the prefix stays contiguous. Advancing here rather than in
-	// the purge means a later order in the same proposal sees it.
-	s.SetArchivedThroughChapterID(chapter.GetId())
+	// Advancing here rather than at purge time means a later order in the same
+	// proposal sees it. The Scope exposes only a one-step advance, so no caller
+	// can carry the prefix over a gap.
+	s.AdvanceArchivedThroughChapterID()
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchiveChapter{
