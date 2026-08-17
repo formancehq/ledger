@@ -32,23 +32,33 @@ func protoFieldJSON(msg proto.Message) json.RawValue {
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go
 
-// MarshalJSON implements json.Marshaler for Log (global log).
-func (x *Log) MarshalJSON() ([]byte, error) {
+// buildAux builds the JSON representation of Log (global log). When
+// amountsAsString is true, the payload renders posting amounts as quoted
+// decimals (see string_amounts.go); MarshalJSON delegates with false, and that
+// output is byte-identical to what it always emitted.
+func (x *Log) buildAux(amountsAsString bool) any {
 	type Aux struct {
 		Sequence          uint64        `json:"sequence,omitempty"`
-		Payload           *LogPayload   `json:"payload,omitempty"`
+		Payload           any           `json:"payload,omitempty"`
 		Receipt           string        `json:"receipt,omitempty"`
 		ResponseSignature json.RawValue `json:"responseSignature,omitempty"`
 	}
 
 	aux := Aux{
-		Sequence:          x.GetSequence(),
-		Payload:           x.GetPayload(),
+		Sequence: x.GetSequence(),
+		Payload: childValue(x.GetPayload(), amountsAsString, func(p *LogPayload) stringAmountLogPayload {
+			return stringAmountLogPayload{LogPayload: p}
+		}),
 		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
 		Receipt:           x.GetReceipt(),
 	}
 
-	return json.Marshal(aux)
+	return aux
+}
+
+// MarshalJSON implements json.Marshaler for Log (global log).
+func (x *Log) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.buildAux(false))
 }
 
 // MarshalJSON implements json.Marshaler for LogPayload (oneof dispatch).
@@ -69,6 +79,25 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 	default:
 		// Other variants (signing, sinks, chapters, etc.) — use protojson for camelCase
 		return protojson.Marshal(x)
+	}
+}
+
+// marshalStringAmounts renders the EN-1779 opt-in wire for LogPayload. Only the
+// posting-bearing variant is rebuilt here; every other variant delegates to
+// MarshalJSON so both modes stay byte-identical for payloads that carry no
+// amount. The non-posting variants are deliberately not re-listed: re-listing
+// them would let the hand-rolled and protojson outputs drift apart at some
+// variant no test covers.
+func (x *LogPayload) marshalStringAmounts() ([]byte, error) {
+	switch p := x.GetType().(type) {
+	case *LogPayload_Apply:
+		return json.Marshal(&struct {
+			Apply any `json:"apply,omitempty"`
+		}{Apply: childValue(p.Apply, true, func(a *ApplyLedgerLog) stringAmountApplyLedgerLog {
+			return stringAmountApplyLedgerLog{ApplyLedgerLog: a}
+		})})
+	default:
+		return x.MarshalJSON()
 	}
 }
 
@@ -104,15 +133,25 @@ func (x *DeletedLedgerLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for ApplyLedgerLog.
-func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		LedgerName string     `json:"ledgerName,omitempty"`
-		Log        *LedgerLog `json:"log,omitempty"`
+// buildAux builds the JSON representation of ApplyLedgerLog. When
+// amountsAsString is true, the nested ledger log renders posting amounts as
+// quoted decimals (see string_amounts.go); MarshalJSON delegates with false,
+// and that output is byte-identical to what it always emitted.
+func (x *ApplyLedgerLog) buildAux(amountsAsString bool) any {
+	return &struct {
+		LedgerName string `json:"ledgerName,omitempty"`
+		Log        any    `json:"log,omitempty"`
 	}{
 		LedgerName: x.GetLedgerName(),
-		Log:        x.GetLog(),
-	})
+		Log: childValue(x.GetLog(), amountsAsString, func(l *LedgerLog) stringAmountLedgerLog {
+			return stringAmountLedgerLog{LedgerLog: l}
+		}),
+	}
+}
+
+// MarshalJSON implements json.Marshaler for ApplyLedgerLog.
+func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.buildAux(false))
 }
 
 // MarshalJSON implements json.Marshaler for LedgerLogPayload (oneof dispatch).
@@ -139,6 +178,33 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 	default:
 		// Other variants — use protojson for camelCase
 		return protojson.Marshal(x)
+	}
+}
+
+// marshalStringAmounts renders the EN-1779 opt-in wire for LedgerLogPayload.
+// Only the posting-bearing variants are rebuilt here; every other variant
+// delegates to MarshalJSON so both modes stay byte-identical for payloads that
+// carry no amount. The non-posting variants are deliberately not re-listed:
+// re-listing them would let the hand-rolled and protojson outputs drift apart
+// at some variant no test covers.
+func (x *LedgerLogPayload) marshalStringAmounts() ([]byte, error) {
+	switch p := x.GetPayload().(type) {
+	case *LedgerLogPayload_CreatedTransaction:
+		return json.Marshal(&struct {
+			CreatedTransaction any `json:"createdTransaction,omitempty"`
+		}{CreatedTransaction: childValue(p.CreatedTransaction, true,
+			func(ct *CreatedTransaction) StringAmountCreatedTransaction {
+				return StringAmountCreatedTransaction{CreatedTransaction: ct}
+			})})
+	case *LedgerLogPayload_RevertedTransaction:
+		return json.Marshal(&struct {
+			RevertedTransaction any `json:"revertedTransaction,omitempty"`
+		}{RevertedTransaction: childValue(p.RevertedTransaction, true,
+			func(rt *RevertedTransaction) StringAmountRevertedTransaction {
+				return StringAmountRevertedTransaction{RevertedTransaction: rt}
+			})})
+	default:
+		return x.MarshalJSON()
 	}
 }
 

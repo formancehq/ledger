@@ -115,18 +115,23 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler for LedgerLog.
-func (l *LedgerLog) MarshalJSON() ([]byte, error) {
+// buildAux builds the JSON representation of LedgerLog. When amountsAsString is
+// true, the payload renders posting amounts as quoted decimals (see
+// string_amounts.go); MarshalJSON delegates with false, and that output is
+// byte-identical to what it always emitted.
+func (l *LedgerLog) buildAux(amountsAsString bool) any {
 	type auxLog struct {
-		Type LogType           `json:"type"`
-		Data *LedgerLogPayload `json:"data"`
-		Date *time.Time        `json:"date,omitempty"`
-		ID   *uint64           `json:"id,omitempty"`
+		Type LogType    `json:"type"`
+		Data any        `json:"data"`
+		Date *time.Time `json:"date,omitempty"`
+		ID   *uint64    `json:"id,omitempty"`
 	}
 
 	aux := auxLog{
 		Type: GetLogTypeFromLog(l),
-		Data: l.GetData(),
+		Data: childValue(l.GetData(), amountsAsString, func(p *LedgerLogPayload) stringAmountLedgerLogPayload {
+			return stringAmountLedgerLogPayload{LedgerLogPayload: p}
+		}),
 	}
 
 	if l.GetDate() != nil {
@@ -138,5 +143,10 @@ func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 		aux.ID = new(l.GetId())
 	}
 
-	return json.Marshal(aux)
+	return aux
+}
+
+// MarshalJSON implements json.Marshaler for LedgerLog.
+func (l *LedgerLog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.buildAux(false))
 }

@@ -455,3 +455,236 @@ func TestRevertedTransaction_NilReceiverIsNull(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "null", string(got))
 }
+
+// newTestLog wraps a ledger-log payload in the full five-level chain a log
+// route actually serves: Log -> LogPayload_Apply -> ApplyLedgerLog ->
+// LedgerLog -> LedgerLogPayload. Every level must forward the mode for the
+// amount at the bottom to come out quoted.
+func newTestLog(t *testing.T, payload *LedgerLogPayload) *Log {
+	t.Helper()
+
+	return &Log{
+		Sequence: 5,
+		Receipt:  "receipt-1",
+		Payload: &LogPayload{
+			Type: &LogPayload_Apply{
+				Apply: &ApplyLedgerLog{
+					LedgerName: "ledger0",
+					Log: &LedgerLog{
+						Id:   9,
+						Data: payload,
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestLog_StringAmountReachesPostingThroughCreatedTransaction(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	log := newTestLog(t, &LedgerLogPayload{
+		Payload: &LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &CreatedTransaction{Transaction: newTestTransaction(t, amount)},
+		},
+	})
+
+	def, err := json.Marshal(log)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `"amount":`+aboveJSNumberLimit,
+		"the default wire must stay the bare number at full depth")
+
+	str, err := json.Marshal(StringAmountLog{Log: log})
+	require.NoError(t, err)
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the mode must survive all five log levels down to the posting")
+}
+
+func TestLog_StringAmountReachesPostingThroughRevertedTransaction(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	log := newTestLog(t, &LedgerLogPayload{
+		Payload: &LedgerLogPayload_RevertedTransaction{
+			RevertedTransaction: &RevertedTransaction{
+				RevertedTransactionId: 3,
+				RevertTransaction:     newTestTransaction(t, amount),
+			},
+		},
+	})
+
+	def, err := json.Marshal(log)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `"amount":`+aboveJSNumberLimit,
+		"the default wire must stay the bare number at full depth")
+
+	str, err := json.Marshal(StringAmountLog{Log: log})
+	require.NoError(t, err)
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the mode must survive all five log levels down to the posting")
+}
+
+func TestLog_StringAmountOnlyChangesAmountShapeAtFullDepth(t *testing.T) {
+	t.Parallel()
+
+	// A small amount: requireOnlyAmountsDiffer decodes numbers through float64
+	// (see its doc comment), which is lossy above 2^53. Exactness above the
+	// limit is covered by the two reach tests above.
+	log := newTestLog(t, &LedgerLogPayload{
+		Payload: &LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &CreatedTransaction{Transaction: newTestTransaction(t, big.NewInt(4200))},
+		},
+	})
+
+	def, err := json.Marshal(log)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountLog{Log: log})
+	require.NoError(t, err)
+
+	requireOnlyAmountsDiffer(t, def, str)
+}
+
+func TestLog_NonPostingPayloadIsByteIdentical(t *testing.T) {
+	t.Parallel()
+
+	// The opt-in path rebuilds only the posting-bearing variants; every other
+	// variant delegates to MarshalJSON. Assert byte equality rather than
+	// structural equality: this is the check that catches a hand-rolled variant
+	// struct drifting away from the delegated output.
+	testCases := map[string]*Log{
+		"ledger-level variant carrying no postings": {
+			Sequence: 2,
+			Payload: &LogPayload{
+				Type: &LogPayload_DeleteLedger{
+					DeleteLedger: &DeletedLedgerLog{Name: "ledger0"},
+				},
+			},
+		},
+		"ledger-log payload variant carrying no postings": newTestLog(t, &LedgerLogPayload{
+			Payload: &LedgerLogPayload_SavedMetadata{
+				SavedMetadata: &SavedMetadata{
+					Target: &Target{Target: &Target_TransactionId{TransactionId: 7}},
+				},
+			},
+		}),
+	}
+
+	for name, log := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			def, err := json.Marshal(log)
+			require.NoError(t, err)
+
+			str, err := json.Marshal(StringAmountLog{Log: log})
+			require.NoError(t, err)
+
+			require.Equal(t, string(def), string(str),
+				"a payload carrying no amount must be byte-identical in both modes")
+		})
+	}
+}
+
+func TestLog_NilPayloadStaysOmittedInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// Log.payload is `omitempty`. Retyping it to `any` would make a nil payload
+	// emit `null` unless the childValue guard holds.
+	log := &Log{Sequence: 1}
+
+	def, err := json.Marshal(log)
+	require.NoError(t, err)
+	require.NotContains(t, string(def), "payload")
+
+	str, err := json.Marshal(StringAmountLog{Log: log})
+	require.NoError(t, err)
+	require.NotContains(t, string(str), "payload")
+}
+
+func TestApplyLedgerLog_NilLogStaysOmittedInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// ApplyLedgerLog.log is `omitempty`, same guard as Log.payload.
+	apply := &ApplyLedgerLog{LedgerName: "ledger0"}
+
+	def, err := json.Marshal(apply)
+	require.NoError(t, err)
+	require.NotContains(t, string(def), `"log"`)
+
+	str, err := json.Marshal(stringAmountApplyLedgerLog{ApplyLedgerLog: apply})
+	require.NoError(t, err)
+	require.NotContains(t, string(str), `"log"`)
+}
+
+func TestLedgerLog_NilDataStaysNullInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// LedgerLog.data has NO omitempty, so a nil payload renders as `null`
+	// today. The retyped `any` field must keep emitting exactly that: the
+	// childValue guard leaves a nil interface, which renders `null` as well.
+	ledgerLog := &LedgerLog{}
+
+	def, err := json.Marshal(ledgerLog)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `"data":null`)
+
+	str, err := json.Marshal(stringAmountLedgerLog{LedgerLog: ledgerLog})
+	require.NoError(t, err)
+	require.Contains(t, string(str), `"data":null`)
+
+	require.Equal(t, string(def), string(str))
+}
+
+func TestLog_NilReceiverIsNull(t *testing.T) {
+	t.Parallel()
+
+	got, err := json.Marshal(StringAmountLog{Log: nil})
+	require.NoError(t, err)
+	require.Equal(t, "null", string(got))
+}
+
+func TestLogs_NilElementStaysNullInBothModes(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	logs := []*Log{
+		newTestLog(t, &LedgerLogPayload{
+			Payload: &LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: &CreatedTransaction{Transaction: newTestTransaction(t, amount)},
+			},
+		}),
+		nil,
+	}
+
+	def, err := json.Marshal(logs)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `,null]`)
+
+	str, err := json.Marshal(StringAmountLogs(logs))
+	require.NoError(t, err)
+	require.Contains(t, string(str), `,null]`,
+		"a nil element must stay null: the header may change amount formatting, never shape")
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`)
+}
+
+func TestLogs_EmptyAndNilSliceMarshalAsArray(t *testing.T) {
+	t.Parallel()
+
+	for name, in := range map[string][]*Log{"nil slice": nil, "empty slice": {}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := json.Marshal(StringAmountLogs(in))
+			require.NoError(t, err)
+			require.Equal(t, "[]", string(got))
+		})
+	}
+}

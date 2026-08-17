@@ -157,3 +157,107 @@ func (w StringAmountRevertedTransaction) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(w.buildAux(true))
 }
+
+// stringAmountLedgerLogPayload renders a LedgerLogPayload whose posting-bearing
+// variants carry quoted decimal amounts. Unexported: it is only ever returned
+// as `any` from LedgerLog.buildAux, never from an exported function, so
+// revive's unexported-return rule does not apply.
+type stringAmountLedgerLogPayload struct {
+	*LedgerLogPayload
+}
+
+// MarshalJSON implements json.Marshaler for stringAmountLedgerLogPayload.
+func (w stringAmountLedgerLogPayload) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *LedgerLogPayload. Match the
+	// default wire explicitly.
+	if w.LedgerLogPayload == nil {
+		return []byte("null"), nil
+	}
+
+	return w.marshalStringAmounts()
+}
+
+// stringAmountLedgerLog renders a LedgerLog with quoted decimal posting amounts
+// in its payload. Unexported for the same reason as
+// stringAmountLedgerLogPayload.
+type stringAmountLedgerLog struct {
+	*LedgerLog
+}
+
+// MarshalJSON implements json.Marshaler for stringAmountLedgerLog.
+func (w stringAmountLedgerLog) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *LedgerLog. Match the
+	// default wire explicitly.
+	if w.LedgerLog == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
+
+// stringAmountApplyLedgerLog renders an ApplyLedgerLog with quoted decimal
+// posting amounts in its nested ledger log. Unexported for the same reason as
+// stringAmountLedgerLogPayload.
+type stringAmountApplyLedgerLog struct {
+	*ApplyLedgerLog
+}
+
+// MarshalJSON implements json.Marshaler for stringAmountApplyLedgerLog.
+func (w stringAmountApplyLedgerLog) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *ApplyLedgerLog. Match the
+	// default wire explicitly.
+	if w.ApplyLedgerLog == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
+
+// stringAmountLogPayload renders a LogPayload whose posting-bearing variant
+// carries quoted decimal amounts. Unexported for the same reason as
+// stringAmountLedgerLogPayload.
+type stringAmountLogPayload struct {
+	*LogPayload
+}
+
+// MarshalJSON implements json.Marshaler for stringAmountLogPayload.
+func (w stringAmountLogPayload) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *LogPayload. Match the
+	// default wire explicitly.
+	if w.LogPayload == nil {
+		return []byte("null"), nil
+	}
+
+	return w.marshalStringAmounts()
+}
+
+// StringAmountLog renders a global Log with quoted decimal posting amounts
+// anywhere down its payload chain. Exported because the HTTP adapter constructs
+// it at the write sites.
+type StringAmountLog struct {
+	*Log
+}
+
+// MarshalJSON implements json.Marshaler for StringAmountLog.
+func (w StringAmountLog) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *Log. Match the default wire
+	// explicitly.
+	if w.Log == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
+
+// StringAmountLogs wraps each log for the opt-in wire. The result is always
+// non-nil so a drained empty cursor still marshals as `[]`.
+func StringAmountLogs(logs []*Log) []StringAmountLog {
+	return wrapAll(logs, func(l *Log) StringAmountLog {
+		return StringAmountLog{Log: l}
+	})
+}
