@@ -256,7 +256,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Prefix: aws.String("no-prior/"),
 		})
 		Expect(listErr).To(Succeed())
-		Expect(listOut.KeyCount).To(BeEquivalentTo(0),
+		Expect(listOut.Contents).To(BeEmpty(),
 			"no object of any kind must be published under the no-prior/ prefix")
 	})
 
