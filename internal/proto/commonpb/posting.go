@@ -8,24 +8,46 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
+// buildAux renders the Posting's JSON shape. amountsAsString selects the
+// EN-1779 opt-in wire, where amount is a quoted decimal instead of a bare JSON
+// number; it is the ONLY field that differs between the two modes.
+//
+// Amount is typed `any` so one struct serves both modes. Because the field is
+// `omitempty` and an interface holding a typed nil is not empty, it must be
+// left as a nil interface when there is no amount — otherwise an absent amount
+// would start emitting `null`.
+func (x *Posting) buildAux(amountsAsString bool) any {
+	var amount any
+
+	if a := x.GetAmount(); a != nil {
+		if amountsAsString {
+			amount = a.Dec()
+		} else {
+			amount = a
+		}
+	}
+
+	return &struct {
+		Source      string `json:"source"`
+		Destination string `json:"destination"`
+		Amount      any    `json:"amount,omitempty"`
+		Asset       string `json:"asset"`
+		Color       string `json:"color"`
+	}{
+		Source:      x.GetSource(),
+		Destination: x.GetDestination(),
+		Amount:      amount,
+		Asset:       x.GetAsset(),
+		Color:       x.GetColor(),
+	}
+}
+
 // MarshalJSON implements json.Marshaler for Posting. Color is always emitted
 // (even when empty) so clients can distinguish the uncolored bucket from an
 // older response shape that predates the dimension — same contract as
 // VolumeEntry and accountVolumeJSON.
 func (x *Posting) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Source      string   `json:"source"`
-		Destination string   `json:"destination"`
-		Amount      *Uint256 `json:"amount,omitempty"`
-		Asset       string   `json:"asset"`
-		Color       string   `json:"color"`
-	}{
-		Source:      x.GetSource(),
-		Destination: x.GetDestination(),
-		Amount:      x.GetAmount(),
-		Asset:       x.GetAsset(),
-		Color:       x.GetColor(),
-	})
+	return json.Marshal(x.buildAux(false))
 }
 
 // NewPosting creates a new uncolored Posting. Use NewColoredPosting to set a
