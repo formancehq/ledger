@@ -333,3 +333,123 @@ func TestTransactions_EmptyAndNilSliceMarshalAsArray(t *testing.T) {
 		})
 	}
 }
+
+func TestCreatedTransaction_StringAmountKeepsAboveJSLimitExact(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	ct := &CreatedTransaction{Transaction: newTestTransaction(t, amount)}
+
+	def, err := json.Marshal(ct)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: ct})
+	require.NoError(t, err)
+
+	require.NotEqual(t, string(def), string(str))
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the opt-in wire must carry the above-2^53 amount digit for digit")
+}
+
+func TestCreatedTransaction_StringAmountOnlyChangesAmountShape(t *testing.T) {
+	t.Parallel()
+
+	ct := &CreatedTransaction{Transaction: newTestTransaction(t, big.NewInt(4200))}
+
+	def, err := json.Marshal(ct)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: ct})
+	require.NoError(t, err)
+
+	requireOnlyAmountsDiffer(t, def, str)
+}
+
+func TestCreatedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// Transaction is `omitempty`. Retyping it to `any` would make a nil
+	// transaction emit `null` unless the nil guard holds, so assert the
+	// absence explicitly in both modes.
+	ct := &CreatedTransaction{ChapterId: 3}
+
+	def, err := json.Marshal(ct)
+	require.NoError(t, err)
+	require.NotContains(t, string(def), "transaction")
+	require.NotContains(t, string(def), "null")
+
+	str, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: ct})
+	require.NoError(t, err)
+	require.NotContains(t, string(str), "transaction")
+	require.NotContains(t, string(str), "null")
+}
+
+func TestCreatedTransaction_NilReceiverIsNull(t *testing.T) {
+	t.Parallel()
+
+	got, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: nil})
+	require.NoError(t, err)
+	require.Equal(t, "null", string(got))
+}
+
+func TestRevertedTransaction_StringAmountKeepsAboveJSLimitExact(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	rt := &RevertedTransaction{RevertTransaction: newTestTransaction(t, amount)}
+
+	def, err := json.Marshal(rt)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: rt})
+	require.NoError(t, err)
+
+	require.NotEqual(t, string(def), string(str))
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the opt-in wire must carry the above-2^53 amount digit for digit")
+}
+
+func TestRevertedTransaction_StringAmountOnlyChangesAmountShape(t *testing.T) {
+	t.Parallel()
+
+	rt := &RevertedTransaction{RevertTransaction: newTestTransaction(t, big.NewInt(4200))}
+
+	def, err := json.Marshal(rt)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: rt})
+	require.NoError(t, err)
+
+	requireOnlyAmountsDiffer(t, def, str)
+}
+
+func TestRevertedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// RevertTransaction is `omitempty`. Retyping it to `any` would make a nil
+	// transaction emit `null` unless the nil guard holds, so assert the
+	// absence explicitly in both modes.
+	rt := &RevertedTransaction{RevertedTransactionId: 4}
+
+	def, err := json.Marshal(rt)
+	require.NoError(t, err)
+	require.NotContains(t, string(def), "revertTransaction")
+	require.NotContains(t, string(def), "null")
+
+	str, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: rt})
+	require.NoError(t, err)
+	require.NotContains(t, string(str), "revertTransaction")
+	require.NotContains(t, string(str), "null")
+}
+
+func TestRevertedTransaction_NilReceiverIsNull(t *testing.T) {
+	t.Parallel()
+
+	got, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: nil})
+	require.NoError(t, err)
+	require.Equal(t, "null", string(got))
+}

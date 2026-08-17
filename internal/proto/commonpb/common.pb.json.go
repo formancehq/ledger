@@ -275,32 +275,68 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 
 // Note: Log.MarshalJSON is already implemented in log.go
 
-// MarshalJSON implements json.Marshaler for CreatedTransaction. Post-commit
+// buildAux builds the JSON representation of CreatedTransaction. Post-commit
 // volumes ride on the embedded Transaction, so they surface via the
-// "transaction" field rather than as a sibling here.
-func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Transaction     *Transaction              `json:"transaction,omitempty"`
+// "transaction" field rather than as a sibling here. When amountsAsString is
+// true, the embedded transaction renders its posting amounts as quoted
+// decimals (see string_amounts.go); MarshalJSON delegates with false, and
+// that output is byte-identical to what it always emitted.
+func (x *CreatedTransaction) buildAux(amountsAsString bool) any {
+	var transaction any
+
+	if tx := x.GetTransaction(); tx != nil {
+		if amountsAsString {
+			transaction = StringAmountTransaction{Transaction: tx}
+		} else {
+			transaction = tx
+		}
+	}
+
+	return &struct {
+		Transaction     any                       `json:"transaction,omitempty"`
 		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
 		ChapterID       uint64                    `json:"chapterId,omitempty"`
 	}{
-		Transaction:     x.GetTransaction(),
+		Transaction:     transaction,
 		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
 		ChapterID:       x.GetChapterId(),
-	})
+	}
 }
 
-// MarshalJSON implements json.Marshaler for RevertedTransaction. Post-commit
+// MarshalJSON implements json.Marshaler for CreatedTransaction.
+func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.buildAux(false))
+}
+
+// buildAux builds the JSON representation of RevertedTransaction. Post-commit
 // volumes ride on the embedded revert Transaction, so they surface via the
-// "revertTransaction" field rather than as a sibling here.
-func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		RevertedTransactionID uint64       `json:"revertedTransactionId,omitempty"`
-		RevertTransaction     *Transaction `json:"revertTransaction,omitempty"`
+// "revertTransaction" field rather than as a sibling here. When
+// amountsAsString is true, the embedded transaction renders its posting
+// amounts as quoted decimals (see string_amounts.go); MarshalJSON delegates
+// with false, and that output is byte-identical to what it always emitted.
+func (x *RevertedTransaction) buildAux(amountsAsString bool) any {
+	var revertTransaction any
+
+	if tx := x.GetRevertTransaction(); tx != nil {
+		if amountsAsString {
+			revertTransaction = StringAmountTransaction{Transaction: tx}
+		} else {
+			revertTransaction = tx
+		}
+	}
+
+	return &struct {
+		RevertedTransactionID uint64 `json:"revertedTransactionId,omitempty"`
+		RevertTransaction     any    `json:"revertTransaction,omitempty"`
 	}{
 		RevertedTransactionID: x.GetRevertedTransactionId(),
-		RevertTransaction:     x.GetRevertTransaction(),
-	})
+		RevertTransaction:     revertTransaction,
+	}
+}
+
+// MarshalJSON implements json.Marshaler for RevertedTransaction.
+func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.buildAux(false))
 }
 
 // MarshalJSON implements json.Marshaler for SavedMetadata.

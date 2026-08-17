@@ -92,3 +92,39 @@ func StringAmountTransactions(transactions []*Transaction) []StringAmountTransac
 		return StringAmountTransaction{Transaction: tx}
 	})
 }
+
+// StringAmountCreatedTransaction renders a CreatedTransaction with quoted
+// decimal posting amounts on its embedded transaction.
+type StringAmountCreatedTransaction struct {
+	*CreatedTransaction
+}
+
+// MarshalJSON implements json.Marshaler for StringAmountCreatedTransaction.
+func (w StringAmountCreatedTransaction) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *CreatedTransaction. Match
+	// the default wire explicitly.
+	if w.CreatedTransaction == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
+
+// StringAmountRevertedTransaction renders a RevertedTransaction with quoted
+// decimal posting amounts on its embedded revert transaction.
+type StringAmountRevertedTransaction struct {
+	*RevertedTransaction
+}
+
+// MarshalJSON implements json.Marshaler for StringAmountRevertedTransaction.
+func (w StringAmountRevertedTransaction) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *RevertedTransaction. Match
+	// the default wire explicitly.
+	if w.RevertedTransaction == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
