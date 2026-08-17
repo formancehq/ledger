@@ -1,7 +1,6 @@
 package chapters
 
 import (
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -36,7 +35,7 @@ func runDeleteSchedule(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Deleting chapter schedule...")
+	spinner := cmdutil.StartSpinner("Deleting chapter schedule...")
 
 	requests := []*servicepb.Request{
 		{

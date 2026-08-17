@@ -71,7 +71,7 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Registering signing key %s...", keyID))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Registering signing key %s...", keyID))
 
 	requests := []*servicepb.Request{
 		{

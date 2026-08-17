@@ -97,7 +97,7 @@ func runProvision(cmd *cobra.Command, args []string) error {
 }
 
 func runSingle(ctx context.Context, client servicepb.BucketServiceClient, scale float64, name string, fn scenario.ScenarioFunc) error {
-	spinner, _ := pterm.DefaultSpinner.Start("Running scenario: " + name)
+	spinner := cmdutil.StartSpinner("Running scenario: " + name)
 
 	runner := scenario.NewRunner(ctx, client).
 		WithScale(scale).

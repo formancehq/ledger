@@ -77,7 +77,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching account %s...", pterm.Cyan(address)))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching account %s...", pterm.Cyan(address)))
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 

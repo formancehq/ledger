@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -67,7 +66,7 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
 
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {

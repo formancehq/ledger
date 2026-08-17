@@ -58,7 +58,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
 
 	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
 		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,

@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -52,9 +51,9 @@ func runIncrementalBackup(cmd *cobra.Command, _ []string) error {
 
 	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-	var spinner *pterm.SpinnerPrinter
+	var spinner *cmdutil.Spinner
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Running incremental backup...")
+		spinner = cmdutil.StartSpinner("Running incremental backup...")
 	}
 
 	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{

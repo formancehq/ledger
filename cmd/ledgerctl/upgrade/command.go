@@ -43,7 +43,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 		return nil
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start(
+	spinner := cmdutil.StartSpinner(
 		fmt.Sprintf("Checking for updates (channel: %s)...", channel))
 
 	release, err := fetchRelease(channel, currentVersion)
@@ -83,7 +83,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	}
 
 	// Download, verify, and extract.
-	spinner, _ = pterm.DefaultSpinner.Start(
+	spinner = cmdutil.StartSpinner(
 		fmt.Sprintf("Downloading %s...", archiveAsset.Name))
 
 	extractedPath, err := downloadAndVerify(archiveAsset, checksumsAsset, spinner)
@@ -98,7 +98,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	spinner.Success("Download complete, checksum verified")
 
 	// Replace the binary.
-	spinner, _ = pterm.DefaultSpinner.Start("Installing update...")
+	spinner = cmdutil.StartSpinner("Installing update...")
 
 	binaryPath, err := replaceBinary(extractedPath)
 	if err != nil {

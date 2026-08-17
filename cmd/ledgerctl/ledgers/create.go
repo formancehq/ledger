@@ -117,7 +117,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		modeStr = "mirror"
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
 
 	requests := []*servicepb.Request{
 		{
