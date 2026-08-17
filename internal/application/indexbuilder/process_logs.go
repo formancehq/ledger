@@ -354,7 +354,9 @@ func (b *Builder) indexPayload(
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
-		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
+		if err := b.handleDroppedIndexLog(kb, ledgerName, p.DropIndex); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -562,7 +564,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
-		b.handleDroppedIndexLog(ledgerName, p.DropIndex)
+		if err := b.handleDroppedIndexLog(b.kb, ledgerName, p.DropIndex); err != nil {
+			return err
+		}
 	}
 
 	return nil
