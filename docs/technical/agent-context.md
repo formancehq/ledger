@@ -94,6 +94,12 @@ Before adding a flag, environment variable, startup setting, or version-dependen
 
 Decide explicitly whether the value only gates proposal admission or changes the outcome of a committed entry. Node-local configuration may do the former; it must never do the latter. If concurrent admissions can exceed a local operational limit, document whether that soft-limit behavior is intentional rather than silently presenting it as a strict FSM invariant.
 
+### AI code review and re-review
+
+Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or reviewing fixes to previous findings.
+
+Load the subsystem documentation for the behavior changed by the PR, but do not preload unrelated documentation. Findings must follow the review contract: concrete evidence, explicit severity and blocking status, no style-only noise, and a compressed final decision. On re-review, start from the current HEAD and classify previous findings as fixed, still valid, or outdated before reporting new issues.
+
 ### API changes
 
 Read the API subsystem docs and update the compatibility/spec material required by `AGENTS.md`:
