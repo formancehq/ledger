@@ -12,6 +12,9 @@ fi
 # Never inherit a host GOROOT into pinned Go commands.
 unset GOROOT || true
 
+echo "==> agent-check: mechanical repository invariants"
+bash scripts/check-repo-invariants
+
 echo "==> agent-check: repository pre-commit validation"
 just pre-commit
 
