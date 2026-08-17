@@ -104,15 +104,19 @@ type LedgerState struct {
 	// without committing anything.
 	logs List[*logRecord]
 
-	// retypeWindows holds, per canonical metadata-index ID, the declared type
-	// the index's SERVED version is still bound to while a retype's rewrite
-	// converges (EN-1724). The schema flips at commit — fieldTypes above hold
-	// the new type — but each replica serves the old-typed index until its
-	// atomic switch, so a query during the window is legal under EITHER type,
-	// each as a whole window. Opened when a SetMetadataFieldType commits on an
-	// indexed key; closed by the driver once every replica provably switched;
-	// dies with the index on removal.
-	retypeWindows Map[string, commonpb.MetadataType]
+	// retypeWindows holds, per canonical metadata-index ID, the SET of declared
+	// types the index's served version may still be bound to while retype
+	// rewrites converge (EN-1724), encoded as a bitmask over MetadataType. The
+	// schema flips at commit — fieldTypes above hold the new type — but each
+	// replica serves its current version's bound type until that rewrite's
+	// atomic switch, and a CHAIN of retypes advances the replica through every
+	// intermediate binding: each switch briefly serves the superseded target
+	// before the next rewrite lands. A query during the window is therefore
+	// legal under any accumulated type, each as a whole window. A
+	// SetMetadataFieldType on an indexed key adds the type it supersedes;
+	// closed by the driver once every replica provably switched with no
+	// rewrite pending; dies with the index on removal.
+	retypeWindows Map[string, uint32]
 
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
@@ -152,7 +156,7 @@ func NewLedgerState() LedgerState {
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
 		indexes:       NewMap[string, bool](stringComparer{}, indexTerm),
-		retypeWindows: NewMap[string, commonpb.MetadataType](stringComparer{}, retypeWindowTerm),
+		retypeWindows: NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
 		logs:          NewList[*logRecord](logTerm),
 		everAsset:     NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
@@ -289,12 +293,12 @@ func indexTerm(canonical string, active bool) Digest {
 }
 
 // retypeWindowTerm fingerprints one open retype window. Part of the identity:
-// bases differing only in whether a window is open accept different query
-// outcomes, so they must not dedup.
-func retypeWindowTerm(canonical string, oldType commonpb.MetadataType) Digest {
+// bases differing only in whether a window is open — or in which types it has
+// accumulated — accept different query outcomes, so they must not dedup.
+func retypeWindowTerm(canonical string, typeMask uint32) Digest {
 	t := newTerm("RW")
 	t.str(canonical)
-	t.u64(uint64(oldType))
+	t.u64(uint64(typeMask))
 
 	return t.sum()
 }
@@ -1475,15 +1479,19 @@ func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldT
 	// A retype of an indexed key opens a serving window: the index keeps
 	// answering under the type it was built with until the background rewrite
 	// switches, so both types stay legal until the driver observes the switch
-	// on every replica. Only the FIRST retype records the old type — a chained
-	// retype mid-window replaces the rewrite target, never what v_current
-	// still serves. CreateIndex requires a declared field, so the previous
-	// type always exists here. Ledger-target keys have no metadata index.
+	// on every replica. A CHAINED retype mid-window adds the type it
+	// supersedes to the window's set: each rewrite switch advances the
+	// replica's served version through that intermediate binding before the
+	// next rewrite lands, so a query may legally observe any of them until
+	// the driver proves the chain quiescent. CreateIndex requires a declared
+	// field, so the previous type always exists here. Ledger-target keys have
+	// no metadata index.
 	if tt := req.GetTargetType(); tt == commonpb.TargetType_TARGET_TYPE_ACCOUNT || tt == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
 		canonical := indexes.Canonical(indexes.MetadataID(tt, req.GetKey()))
-		if s.indexes.Has(canonical) && !s.retypeWindows.Has(canonical) {
+		if s.indexes.Has(canonical) {
 			if oldType, declared := s.FieldTypeFor(tt, req.GetKey()); declared {
-				s.retypeWindows = s.retypeWindows.Set(canonical, oldType)
+				mask, _ := s.retypeWindows.Get(canonical)
+				s.retypeWindows = s.retypeWindows.Set(canonical, mask|1<<uint(oldType))
 			}
 		}
 	}

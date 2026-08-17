@@ -106,8 +106,12 @@ func workloadIndexes() []workloadIndex {
 func indexStateLabelFull(ls oracle.LedgerState, canon string) string {
 	exists, active := ls.IndexState(canon)
 	label := indexStateLabel(exists, active)
-	if oldType, open := ls.RetypeWindow(canon); open {
-		label += fmt.Sprintf("+window(old=%d)", oldType)
+	if oldTypes, open := ls.RetypeWindow(canon); open {
+		parts := make([]string, len(oldTypes))
+		for i, t := range oldTypes {
+			parts[i] = fmt.Sprintf("%d", t)
+		}
+		label += fmt.Sprintf("+window(old=%s)", strings.Join(parts, ","))
 	}
 
 	return label
@@ -293,7 +297,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		"reverse":    reverse,
 		"modelIdx":   indexStateLabel(exists, active),
 		"modelAddrs": strings.Join(modelWindow, ","),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, map[string]struct{}{assetIndexCanonical: {}}, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, map[string]struct{}{assetIndexCanonical: {}}, func(ls oracle.LedgerState) []string {
 			return assetWindow(ls, base, precision, cursor, pageSize, reverse)
 		}),
 	}
@@ -622,7 +626,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		"reverse":  reverse,
 		"modelIdx": strings.Join(idxStates, " "),
 		"modelIds": joinUint64(modelWindow),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, needed, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, func(ls oracle.LedgerState) []string {
 			ids := transactionWindow(ls, filter, afterID, pageSize, reverse)
 			out := make([]string, len(ids))
 			for i, id := range ids {
@@ -663,41 +667,61 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 }
 
 // describeCandidateVerdicts re-enumerates a failed observation's candidate
-// bases and renders, per base (capped), the needed-index states and the model
-// window head — the context a finding needs to distinguish a server-side
-// divergence (no base explains the response) from an envelope gap (the
-// explaining base was never enumerated). Caller holds c.mu.
-func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, needed map[string]struct{}, window func(oracle.LedgerState) []string) string {
-	const maxBases = 8
+// bases and renders the DISTINCT verdicts (capped): the needed-index states,
+// each open retype window's type views, and the model window head under each
+// view — the context a finding needs to distinguish a server-side divergence
+// (no base explains the response) from an envelope gap (the explaining base
+// was never enumerated). Deduped on the rendered verdict, because enumeration
+// order front-loads near-identical bases and a first-N cap would hide the
+// interesting ones. Caller holds c.mu.
+func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, window func(oracle.LedgerState) []string) string {
+	const maxDistinct = 8
 
-	var parts []string
+	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+	}
 
-	n := 0
-	c.candidateBases(maxTicket, func(cand oracle.GlobalState) bool {
-		n++
-		if n > maxBases {
-			return false
-		}
-
-		ls := cand.Ledger(ledger)
-		idx := make([]string, 0, len(needed))
-		for canon := range needed {
-			exists, active := ls.IndexState(canon)
-			idx = append(idx, canon+"="+indexStateLabel(exists, active))
-		}
-		sort.Strings(idx)
-
-		w := window(ls)
+	head := func(w []string) string {
 		if len(w) > 6 {
 			w = append(w[:6:6], "…")
 		}
 
-		parts = append(parts, fmt.Sprintf("b%d{%s|w=%s}", n, strings.Join(idx, " "), strings.Join(w, ",")))
+		return strings.Join(w, ",")
+	}
+
+	var parts []string
+
+	seen := map[string]bool{}
+	n := 0
+	c.candidateBases(maxTicket, func(cand oracle.GlobalState) bool {
+		n++
+
+		ls := cand.Ledger(ledger)
+		idx := make([]string, 0, len(needed))
+		for canon := range needed {
+			idx = append(idx, canon+"="+indexStateLabelFull(ls, canon))
+		}
+		sort.Strings(idx)
+
+		views := []string{"w=" + head(window(ls))}
+		for _, r := range windowedFieldRefs(ls, target, filter, nil) {
+			for _, ot := range r.types {
+				old := ls.WithDeclaredType(tt, r.key, ot)
+				views = append(views, fmt.Sprintf("w[%s@%d]=%s", r.key, ot, head(window(old))))
+			}
+		}
+
+		verdict := fmt.Sprintf("{%s|%s}", strings.Join(idx, " "), strings.Join(views, " "))
+		if !seen[verdict] && len(seen) < maxDistinct {
+			seen[verdict] = true
+			parts = append(parts, verdict)
+		}
 
 		return false
 	})
 
-	return fmt.Sprintf("%d bases: %s", n, strings.Join(parts, " ; "))
+	return fmt.Sprintf("%d bases, %d distinct: %s", n, len(parts), strings.Join(parts, " ; "))
 }
 
 // metadataCanonical is the canonical IndexID of the per-(target, key) metadata
@@ -729,13 +753,15 @@ func metadataCanonical(target commonpb.QueryTarget, key string) string {
 //     exists, and the window matches (windowMatches).
 //
 // A retype of an indexed key opens a serving window (EN-1724): the schema
-// flips at commit, but each replica keeps serving the index under the OLD
-// declared type until its rewrite's atomic switch. A query during the window
-// is therefore legal under either type — each as a WHOLE window, since one
-// query is served from one snapshot of one replica — and the flip is
-// per-index, so a filter touching several windowed keys may see any
-// combination. The verdict enumerates those assignments over the existing
-// single-view legality and accepts any.
+// flips at commit, but each replica keeps serving the index under its current
+// version's bound type until that rewrite's atomic switch — and a CHAIN of
+// retypes walks the replica through every intermediate binding, so the window
+// accumulates a SET of possible serving types. A query during the window is
+// legal under the current declared type or any accumulated one — each as a
+// WHOLE window, since one query is served from one snapshot of one replica —
+// and the flip is per-index, so a filter touching several windowed keys may
+// see any combination. The verdict enumerates those assignments over the
+// existing single-view legality and accepts any.
 func indexedQueryOutcomeLegal(
 	ls oracle.LedgerState,
 	target commonpb.QueryTarget,
@@ -755,36 +781,50 @@ func indexedQueryOutcomeLegal(
 		return true
 	}
 
-	// One filter referencing this many windowed keys is beyond anything the
-	// generator produces; enumerating further would only burn the checker.
-	if len(refs) > 6 {
-		refs = refs[:6]
-	}
-
 	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
 	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		tt = commonpb.TargetType_TARGET_TYPE_TRANSACTION
 	}
 
-	for mask := 0; mask < 1<<len(refs); mask++ {
-		view := ls
-		for i, r := range refs {
-			if mask&(1<<i) != 0 {
-				view = view.WithDeclaredType(tt, r.key, r.oldType)
+	// Cross-product over the per-key choices: the current declared type
+	// (choice 0) or any type the window accumulated. Capped: a filter
+	// referencing this many windowed keys and chained types is beyond anything
+	// the generator produces; enumerating further would only burn the checker.
+	const maxViews = 256
+
+	views := 0
+
+	var enumerate func(view oracle.LedgerState, i int) bool
+	enumerate = func(view oracle.LedgerState, i int) bool {
+		if i == len(refs) {
+			views++
+
+			return indexedQueryOutcomeLegalUnder(view, target, filter, needed, errKind, windowMatches)
+		}
+
+		if enumerate(view, i+1) {
+			return true
+		}
+
+		for _, t := range refs[i].types {
+			if views >= maxViews {
+				return false
+			}
+
+			if enumerate(view.WithDeclaredType(tt, refs[i].key, t), i+1) {
+				return true
 			}
 		}
 
-		if indexedQueryOutcomeLegalUnder(view, target, filter, needed, errKind, windowMatches) {
-			return true
-		}
+		return false
 	}
 
-	return false
+	return enumerate(ls, 0)
 }
 
 // windowedFieldRefs collects the filter's distinct metadata keys whose index
-// has an open retype window on this base, with the old type each window
-// still serves.
+// has an open retype window on this base, with the accumulated types each
+// window may still serve.
 func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *commonpb.QueryFilter, seen map[string]bool) []windowedRef {
 	if f == nil {
 		return nil
@@ -811,8 +851,8 @@ func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *co
 		key := x.Field.GetField().GetMetadata()
 		if !seen[key] {
 			seen[key] = true
-			if oldType, open := ls.RetypeWindow(metadataCanonical(target, key)); open {
-				out = append(out, windowedRef{key: key, oldType: oldType})
+			if oldTypes, open := ls.RetypeWindow(metadataCanonical(target, key)); open {
+				out = append(out, windowedRef{key: key, types: oldTypes})
 			}
 		}
 	}
@@ -821,8 +861,8 @@ func windowedFieldRefs(ls oracle.LedgerState, target commonpb.QueryTarget, f *co
 }
 
 type windowedRef struct {
-	key     string
-	oldType commonpb.MetadataType
+	key   string
+	types []commonpb.MetadataType
 }
 
 func indexedQueryOutcomeLegalUnder(
@@ -942,7 +982,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		"reverse":    reverse,
 		"modelIdx":   strings.Join(idxStates, " "),
 		"modelAddrs": strings.Join(modelWindow, ","),
-		"bases": c.describeCandidateVerdicts(maxTicket, ledger, needed, func(ls oracle.LedgerState) []string {
+		"bases": c.describeCandidateVerdicts(maxTicket, ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, func(ls oracle.LedgerState) []string {
 			return accountWindow(ls, filter, cursor, pageSize, reverse)
 		}),
 	}

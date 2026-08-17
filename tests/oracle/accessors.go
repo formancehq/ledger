@@ -254,11 +254,25 @@ func (s LedgerState) FieldTypeFor(target commonpb.TargetType, key string) (commo
 	return s.FieldTypesFor(target).Get(key)
 }
 
-// RetypeWindow returns the declared type an index's served version is still
-// bound to while a retype's rewrite converges, false when no window is open
-// for that canonical index ID.
-func (s LedgerState) RetypeWindow(canonical string) (commonpb.MetadataType, bool) {
-	return s.retypeWindows.Get(canonical)
+// RetypeWindow returns the declared types an index's served version may still
+// be bound to while retype rewrites converge — the window's accumulated set,
+// in enum order — false when no window is open for that canonical index ID.
+// The CURRENT declared type is not part of the set; callers always evaluate it
+// as the default view.
+func (s LedgerState) RetypeWindow(canonical string) ([]commonpb.MetadataType, bool) {
+	mask, ok := s.retypeWindows.Get(canonical)
+	if !ok {
+		return nil, false
+	}
+
+	var types []commonpb.MetadataType
+	for t := 0; t < 32; t++ {
+		if mask&(1<<uint(t)) != 0 {
+			types = append(types, commonpb.MetadataType(t))
+		}
+	}
+
+	return types, true
 }
 
 // WithDeclaredType returns a view of the state whose declared type for one

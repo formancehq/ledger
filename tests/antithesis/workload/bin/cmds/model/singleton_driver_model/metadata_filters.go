@@ -109,17 +109,22 @@ func matchFieldCondition(declared oracle.Map[string, commonpb.MetadataType], loo
 	case *commonpb.FieldCondition_IntCond:
 		// Datetime shares the order-preserving int64 index encoding, so an int
 		// range scans datetime rows too (validateAndCoerceCondition admits it).
-		var n int64
+		// On an unsigned-declared field the compiler coerces the int bounds
+		// into a uint condition (coerceIntToUint), so a UintValue matches by
+		// the same numeric bounds; negative bounds never reach here — they are
+		// a compilation rejection (fieldKindMismatch).
 		switch t := coerced.GetType().(type) {
 		case *commonpb.MetadataValue_IntValue:
-			n = t.IntValue
+			return matchInt64Bounds(c.IntCond, t.IntValue)
 		case *commonpb.MetadataValue_DatetimeValue:
-			n = t.DatetimeValue
+			return matchInt64Bounds(c.IntCond, t.DatetimeValue)
+		case *commonpb.MetadataValue_UintValue:
+			uc, ok := intCondAsUint(c.IntCond)
+
+			return ok && matchTxIDBounds(uc, t.UintValue)
 		default:
 			return false
 		}
-
-		return matchInt64Bounds(c.IntCond, n)
 	case *commonpb.FieldCondition_UintCond:
 		uv, isUint := coerced.GetType().(*commonpb.MetadataValue_UintValue)
 
@@ -127,6 +132,36 @@ func matchFieldCondition(declared oracle.Map[string, commonpb.MetadataType], loo
 	default:
 		return false
 	}
+}
+
+// intCondAsUint mirrors the compiler's coerceIntToUint: the int bounds carried
+// into the unsigned domain, ok=false on a negative bound (the compiler rejects
+// those, so a match verdict is never reached).
+func intCondAsUint(cond *commonpb.IntCondition) (*commonpb.UintCondition, bool) {
+	uc := &commonpb.UintCondition{
+		MinExclusive: cond.GetMinExclusive(),
+		MaxExclusive: cond.GetMaxExclusive(),
+	}
+
+	if cond.Min != nil {
+		if cond.GetMin() < 0 {
+			return nil, false
+		}
+
+		v := uint64(cond.GetMin())
+		uc.Min = &v
+	}
+
+	if cond.Max != nil {
+		if cond.GetMax() < 0 {
+			return nil, false
+		}
+
+		v := uint64(cond.GetMax())
+		uc.Max = &v
+	}
+
+	return uc, true
 }
 
 // matchInt64Bounds is the signed twin of matchTxIDBounds: min/max honor their
