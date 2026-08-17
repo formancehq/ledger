@@ -171,4 +171,53 @@ var _ = Context("Ledger accounts filtered on metadata as of a pit", func() {
 			Expect(aggregate(specContext, notPremium, nil)).To(Equal(map[string]*big.Int{"USD/2": big.NewInt(-100)}))
 		})
 	})
+
+	// The pit falls between the transactions' effective date and the moment they
+	// were written, so the accounts are visible while no metadata revision is —
+	// not even the empty one an account starts out with, which is dated when the
+	// account is created. The filter has to read metadata it cannot find as
+	// metadata the account does not carry, rather than as metadata it might.
+	When("no metadata revision exists as of the pit", func() {
+		pit := time.Now().UTC().Add(-time.Hour)
+
+		BeforeEach(func(specContext SpecContext) {
+			fund(specContext)
+			tag(specContext, "bank1", map[string]string{"category": "premium"})
+		})
+
+		It("should select every account on all three endpoints", func(specContext SpecContext) {
+			Expect(listAccounts(specContext, notPremium, &pit)).To(ConsistOf("bank1", "bank2", "world"))
+			Expect(listVolumes(specContext, notPremium, &pit)).To(ConsistOf("bank1", "bank2", "world"))
+			Expect(aggregate(specContext, notPremium, &pit)).To(Equal(map[string]*big.Int{"USD/2": big.NewInt(0)}))
+		})
+
+		It("should select the account a conjunction narrows to on all three endpoints", func(specContext SpecContext) {
+			// The same predicate reached through a conjunction, which is where an
+			// unknown also propagates, narrowed so the aggregate is a non-zero number
+			// rather than a conservation zero.
+			narrowed := map[string]any{
+				"$and": []any{
+					notPremium,
+					map[string]any{"$match": map[string]any{"address": "bank1"}},
+				},
+			}
+
+			Expect(listAccounts(specContext, narrowed, &pit)).To(ConsistOf("bank1"))
+			Expect(listVolumes(specContext, narrowed, &pit)).To(ConsistOf("bank1"))
+			Expect(aggregate(specContext, narrowed, &pit)).To(Equal(map[string]*big.Int{"USD/2": big.NewInt(100)}))
+		})
+
+		It("should report an absent key as absent rather than unknown", func(specContext SpecContext) {
+			// An existence check is a null check, so it is false for an account with
+			// no metadata either way. It pins the contrast: only a containment test
+			// can turn into an unknown.
+			existsFilter := map[string]any{
+				"$not": map[string]any{"$exists": map[string]any{"metadata": "category"}},
+			}
+
+			Expect(listAccounts(specContext, existsFilter, &pit)).To(ConsistOf("bank1", "bank2", "world"))
+			Expect(listVolumes(specContext, existsFilter, &pit)).To(ConsistOf("bank1", "bank2", "world"))
+			Expect(aggregate(specContext, existsFilter, &pit)).To(Equal(map[string]*big.Int{"USD/2": big.NewInt(0)}))
+		})
+	})
 })
