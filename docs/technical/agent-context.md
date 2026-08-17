@@ -84,6 +84,16 @@ Read the FSM subsystem documentation before coding. Explicitly check:
 - cache generation/eviction rules;
 - hot-path storage capabilities.
 
+### Configuration affecting writes or Raft apply
+
+Before adding a flag, environment variable, startup setting, or version-dependent default that can influence a write, read:
+
+- `docs/technical/architecture/subsystems/admission/`;
+- `docs/technical/architecture/subsystems/fsm/deterministic-fsm.md`, especially the node-local configuration boundary;
+- `docs/ops/deployment.md` when deployment or upgrade behavior changes.
+
+Decide explicitly whether the value only gates proposal admission or changes the outcome of a committed entry. Node-local configuration may do the former; it must never do the latter. If concurrent admissions can exceed a local operational limit, document whether that soft-limit behavior is intentional rather than silently presenting it as a strict FSM invariant.
+
 ### API changes
 
 Read the API subsystem docs and update the compatibility/spec material required by `AGENTS.md`:
