@@ -273,6 +273,7 @@ func TestProcessArchiveChapter_NotFound(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
 	mockStore.EXPECT().GetChapterByID(uint64(99)).Return(nil, false)
 
 	payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 99}, &Context{Scope: mockStore})
@@ -297,6 +298,7 @@ func TestProcessArchiveChapter_NotClosed(t *testing.T) {
 		Status: commonpb.ChapterStatus_CHAPTER_OPEN,
 	}
 
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
 	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(openChapter.AsReader(), true)
 
 	payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
@@ -344,8 +346,9 @@ func TestProcessArchiveChapter_RejectsOutOfOrder(t *testing.T) {
 				CloseSequence: 300,
 			}
 
-			mockStore.EXPECT().GetChapterByID(tc.target).Return(target.AsReader(), true)
 			mockStore.EXPECT().GetArchivedThroughChapterID().Return(tc.archivedThrough)
+			// Ids inside the prefix are rejected before the lookup runs at all.
+			mockStore.EXPECT().GetChapterByID(tc.target).Return(target.AsReader(), true).AnyTimes()
 
 			payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: tc.target}, &Context{Scope: mockStore})
 			require.Error(t, err)
@@ -417,13 +420,14 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 		SealingHash:   []byte("seal-hash"),
 	}
 
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
 	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivingChapter.AsReader(), true)
 	mockStore.EXPECT().UpdateChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, chapter.GetStatus())
 	})
 	// The confirm extends the archived prefix, which is what the ordering gate
 	// reads to admit the next chapter.
-	mockStore.EXPECT().SetArchivedThroughChapterID(uint64(1))
+	mockStore.EXPECT().AdvanceArchivedThroughChapterID()
 
 	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.NoError(t, err)
@@ -443,6 +447,7 @@ func TestProcessConfirmArchiveChapter_NotFound(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(98))
 	mockStore.EXPECT().GetChapterByID(uint64(99)).Return(nil, false)
 
 	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 99}, &Context{Scope: mockStore})
@@ -462,12 +467,15 @@ func TestProcessConfirmArchiveChapter_NotArchiving(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	archivedChapter := &commonpb.Chapter{
+	// The prefix successor, but never archived — a confirm for an already-ARCHIVED
+	// chapter is caught earlier by the prefix gate instead.
+	closedChapter := &commonpb.Chapter{
 		Id:     1,
-		Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+		Status: commonpb.ChapterStatus_CHAPTER_CLOSED,
 	}
 
-	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivedChapter.AsReader(), true)
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
+	mockStore.EXPECT().GetChapterByID(uint64(1)).Return(closedChapter.AsReader(), true)
 
 	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
 	require.Error(t, err)
@@ -476,4 +484,117 @@ func TestProcessConfirmArchiveChapter_NotArchiving(t *testing.T) {
 	var notArchivingErr *domain.ErrChapterNotArchiving
 	require.ErrorAs(t, err, &notArchivingErr)
 	require.Equal(t, uint64(1), notArchivingErr.ChapterID)
+}
+
+// TestProcessChapter_ArchivedChapterRejectedIdenticallyAcrossRepresentations is
+// the restart/no-restart lock. An archived chapter has two in-memory shapes: it
+// is absent from the tracker on a node that has been running since the purge,
+// and present with status ARCHIVED on one that recovered from the persisted rows.
+// Both must produce the SAME rejection, because the failure is audited and the
+// audit entries are hash-chained — two reasons for one Raft order would diverge
+// the FSM across replicas.
+func TestProcessChapter_ArchivedChapterRejectedIdenticallyAcrossRepresentations(t *testing.T) {
+	t.Parallel()
+
+	const (
+		archivedThrough = uint64(3)
+		target          = uint64(2) // inside the archived prefix
+	)
+
+	// Whether the tracker still holds the chapter is exactly what must NOT matter.
+	representations := map[string]func(*MockScope){
+		"purged from the tracker (running node)": func(m *MockScope) {
+			m.EXPECT().GetChapterByID(target).Return(nil, false).AnyTimes()
+		},
+		"reloaded as ARCHIVED (after restart)": func(m *MockScope) {
+			reloaded := &commonpb.Chapter{Id: target, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED}
+			m.EXPECT().GetChapterByID(target).Return(reloaded.AsReader(), true).AnyTimes()
+		},
+	}
+
+	for _, order := range []struct {
+		name string
+		run  func(Scope) (*commonpb.LogPayload, domain.Describable)
+	}{
+		{
+			name: "ArchiveChapter",
+			run: func(s Scope) (*commonpb.LogPayload, domain.Describable) {
+				return processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: target}, &Context{Scope: s})
+			},
+		},
+		{
+			name: "ConfirmArchiveChapter",
+			run: func(s Scope) (*commonpb.LogPayload, domain.Describable) {
+				return processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: target}, &Context{Scope: s})
+			},
+		},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			t.Parallel()
+
+			reasons := map[string]string{}
+
+			for name, stub := range representations {
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+
+				mockStore := NewMockScope(ctrl)
+				mockStore.EXPECT().GetArchivedThroughChapterID().Return(archivedThrough)
+				stub(mockStore)
+
+				payload, err := order.run(mockStore)
+				require.Error(t, err)
+				require.Nil(t, payload, "%s: a rejected order must emit no log", name)
+
+				var outOfOrderErr *domain.ErrChapterArchiveOutOfOrder
+				require.ErrorAs(t, err, &outOfOrderErr,
+					"%s: an archived chapter must be rejected by the prefix gate, not by the residency lookup", name)
+				require.Equal(t, archivedThrough+1, outOfOrderErr.BlockingChapterID)
+
+				reasons[name] = err.Reason()
+			}
+
+			require.Len(t, reasons, 2)
+
+			var distinct []string
+			for _, reason := range reasons {
+				distinct = append(distinct, reason)
+			}
+
+			require.Equal(t, distinct[0], distinct[1],
+				"the two representations produced different audited reasons (%v) — the same order would hash differently on a restarted and a non-restarted replica", reasons)
+		})
+	}
+}
+
+// TestProcessConfirmArchiveChapter_RefusesToJumpAGap covers the reconciliation
+// path: DispatchArchiveRequests republishes every ARCHIVING chapter, and the
+// recovery derivation deliberately stops at a gap, so a store holding
+// {1 ARCHIVED, 2 un-archived, 3 ARCHIVING} would otherwise have the confirm for
+// 3 carry the prefix past 2 — re-authorising archival while chapter 2's logs sit
+// un-archived below the resulting archive boundary.
+func TestProcessConfirmArchiveChapter_RefusesToJumpAGap(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	// Chapter 3 is genuinely ARCHIVING, but chapter 2 never got archived, so the
+	// prefix stopped at 1.
+	archiving := &commonpb.Chapter{Id: 3, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVING}
+	mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(1))
+	mockStore.EXPECT().GetChapterByID(uint64(3)).Return(archiving.AsReader(), true).AnyTimes()
+
+	// No UpdateChapter and no AdvanceArchivedThroughChapterID are stubbed: the
+	// order must be refused before any mutation, and the prefix must not move.
+	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 3}, &Context{Scope: mockStore})
+	require.Error(t, err)
+	require.Nil(t, payload)
+
+	var outOfOrderErr *domain.ErrChapterArchiveOutOfOrder
+	require.ErrorAs(t, err, &outOfOrderErr)
+	require.Equal(t, uint64(3), outOfOrderErr.ChapterID)
+	require.Equal(t, uint64(2), outOfOrderErr.BlockingChapterID, "the gap must be named")
 }

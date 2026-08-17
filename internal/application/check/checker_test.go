@@ -710,7 +710,7 @@ func (s *scopeImpl) GetChapterByID(_ uint64) (commonpb.ChapterReader, bool) {
 // archived prefix stays at its genesis value.
 func (s *scopeImpl) GetArchivedThroughChapterID() uint64 { return 0 }
 
-func (s *scopeImpl) SetArchivedThroughChapterID(_ uint64) {}
+func (s *scopeImpl) AdvanceArchivedThroughChapterID() {}
 
 func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 

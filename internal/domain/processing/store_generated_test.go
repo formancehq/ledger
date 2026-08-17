@@ -210,6 +210,42 @@ func (c *MockScopeAddSigningKeyCall) DoAndReturn(f func(string, []byte, string))
 	return c
 }
 
+// AdvanceArchivedThroughChapterID mocks base method.
+func (m *MockScope) AdvanceArchivedThroughChapterID() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "AdvanceArchivedThroughChapterID")
+}
+
+// AdvanceArchivedThroughChapterID indicates an expected call of AdvanceArchivedThroughChapterID.
+func (mr *MockScopeMockRecorder) AdvanceArchivedThroughChapterID() *MockScopeAdvanceArchivedThroughChapterIDCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceArchivedThroughChapterID", reflect.TypeOf((*MockScope)(nil).AdvanceArchivedThroughChapterID))
+	return &MockScopeAdvanceArchivedThroughChapterIDCall{Call: call}
+}
+
+// MockScopeAdvanceArchivedThroughChapterIDCall wrap *gomock.Call
+type MockScopeAdvanceArchivedThroughChapterIDCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeAdvanceArchivedThroughChapterIDCall) Return() *MockScopeAdvanceArchivedThroughChapterIDCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeAdvanceArchivedThroughChapterIDCall) Do(f func()) *MockScopeAdvanceArchivedThroughChapterIDCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeAdvanceArchivedThroughChapterIDCall) DoAndReturn(f func()) *MockScopeAdvanceArchivedThroughChapterIDCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Boundaries mocks base method.
 func (m *MockScope) Boundaries() Accessor[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader] {
 	m.ctrl.T.Helper()
@@ -1456,42 +1492,6 @@ func (c *MockScopeSaveQueryCheckpointCall) Do(f func(*raftcmdpb.QueryCheckpointS
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeSaveQueryCheckpointCall) DoAndReturn(f func(*raftcmdpb.QueryCheckpointState)) *MockScopeSaveQueryCheckpointCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SetArchivedThroughChapterID mocks base method.
-func (m *MockScope) SetArchivedThroughChapterID(chapterID uint64) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetArchivedThroughChapterID", chapterID)
-}
-
-// SetArchivedThroughChapterID indicates an expected call of SetArchivedThroughChapterID.
-func (mr *MockScopeMockRecorder) SetArchivedThroughChapterID(chapterID any) *MockScopeSetArchivedThroughChapterIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetArchivedThroughChapterID", reflect.TypeOf((*MockScope)(nil).SetArchivedThroughChapterID), chapterID)
-	return &MockScopeSetArchivedThroughChapterIDCall{Call: call}
-}
-
-// MockScopeSetArchivedThroughChapterIDCall wrap *gomock.Call
-type MockScopeSetArchivedThroughChapterIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetArchivedThroughChapterIDCall) Return() *MockScopeSetArchivedThroughChapterIDCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetArchivedThroughChapterIDCall) Do(f func(uint64)) *MockScopeSetArchivedThroughChapterIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetArchivedThroughChapterIDCall) DoAndReturn(f func(uint64)) *MockScopeSetArchivedThroughChapterIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

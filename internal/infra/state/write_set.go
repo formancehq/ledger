@@ -1637,13 +1637,13 @@ func (b *WriteSet) GetArchivedThroughChapterID() uint64 {
 	return b.chapters.ArchivedThroughID()
 }
 
-// SetArchivedThroughChapterID advances the archived prefix on the buffer, so a
-// later order in the SAME proposal (a batched ApplyRequest can carry
-// ConfirmArchiveChapter for N and ArchiveChapter for N+1) observes it. Merge
-// propagates the value to the FSM tracker.
-func (b *WriteSet) SetArchivedThroughChapterID(chapterID uint64) {
+// AdvanceArchivedThroughChapterID extends the archived prefix by one on the
+// buffer, so a later order in the SAME proposal (a batched ApplyRequest can
+// carry ConfirmArchiveChapter for N and ArchiveChapter for N+1) observes it.
+// Merge propagates the value to the FSM tracker.
+func (b *WriteSet) AdvanceArchivedThroughChapterID() {
 	b.ensureChapters()
-	b.chapters.SetArchivedThroughID(chapterID)
+	b.chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID() + 1)
 }
 
 // GetChapterByID looks up a chapter by ID from in-memory state only.
