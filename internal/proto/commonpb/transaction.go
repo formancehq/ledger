@@ -148,10 +148,13 @@ func (tx *Transaction) InvolvedAccounts() []string {
 	return slices.Compact(ret)
 }
 
-// MarshalJSON implements json.Marshaler for Transaction.
-func (tx *Transaction) MarshalJSON() ([]byte, error) {
+// buildAux builds the JSON representation of Transaction. When amountsAsString
+// is true, postings render their amount as a quoted decimal string (see
+// string_amounts.go); MarshalJSON delegates with false, and that output is
+// byte-identical to what it always emitted.
+func (tx *Transaction) buildAux(amountsAsString bool) any {
 	type Aux struct {
-		Postings                []*Posting         `json:"postings"`
+		Postings                any                `json:"postings"`
 		Metadata                map[string]any     `json:"metadata"`
 		Timestamp               *time.Time         `json:"timestamp,omitempty"`
 		Reference               string             `json:"reference,omitempty"`
@@ -180,8 +183,15 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		metadataMap = map[string]any{}
 	}
 
+	// Typed `any` above, so hand it a concrete non-nil slice in both modes: a
+	// nil slice behind an interface with no omitempty would marshal as null.
+	var postingsValue any = postings
+	if amountsAsString {
+		postingsValue = StringAmountPostings(postings)
+	}
+
 	aux := Aux{
-		Postings:                postings,
+		Postings:                postingsValue,
 		Metadata:                metadataMap,
 		Reference:               tx.GetReference(),
 		ID:                      tx.GetId(),
@@ -211,5 +221,10 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 		aux.RevertedAt = &t
 	}
 
-	return json.Marshal(aux)
+	return aux
+}
+
+// MarshalJSON implements json.Marshaler for Transaction.
+func (tx *Transaction) MarshalJSON() ([]byte, error) {
+	return json.Marshal(tx.buildAux(false))
 }

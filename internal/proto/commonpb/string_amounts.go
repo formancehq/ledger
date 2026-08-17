@@ -56,3 +56,32 @@ func StringAmountPostings(postings []*Posting) []StringAmountPosting {
 
 	return out
 }
+
+// StringAmountTransaction renders a Transaction with quoted decimal posting
+// amounts. Exported because the HTTP adapter constructs it at the write sites.
+type StringAmountTransaction struct {
+	*Transaction
+}
+
+// MarshalJSON implements json.Marshaler for StringAmountTransaction.
+func (w StringAmountTransaction) MarshalJSON() ([]byte, error) {
+	// A value wrapper over a nil pointer is not nil, so the encoder will not
+	// substitute `null` for us as it does for a nil *Transaction. Match the
+	// default wire explicitly.
+	if w.Transaction == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
+}
+
+// StringAmountTransactions wraps each transaction for the opt-in wire. The
+// result is always non-nil so a drained empty cursor still marshals as `[]`.
+func StringAmountTransactions(transactions []*Transaction) []StringAmountTransaction {
+	out := make([]StringAmountTransaction, 0, len(transactions))
+	for _, tx := range transactions {
+		out = append(out, StringAmountTransaction{Transaction: tx})
+	}
+
+	return out
+}
