@@ -194,6 +194,21 @@ func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventsSinks", reflect.TypeOf((*MockController)(nil).GetEventsSinks), ctx)
 }
 
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockControllerMockRecorder) GetHistoricalBalancesStatus(ctx, ledgerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockController)(nil).GetHistoricalBalancesStatus), ctx, ledgerName)
+}
+
 // GetIndex mocks base method.
 func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
 	m.ctrl.T.Helper()

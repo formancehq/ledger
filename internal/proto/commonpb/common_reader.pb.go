@@ -5600,6 +5600,73 @@ func NewLedgerLogPayloadListReader(s []*LedgerLogPayload) LedgerLogPayloadListRe
 	return ledgerLogPayloadListReadonly(s)
 }
 
+// ConfiguredHistoricalBalancesLogReader provides read-only access to ConfiguredHistoricalBalancesLog.
+// Call Mutate() to obtain a mutable clone.
+type ConfiguredHistoricalBalancesLogReader interface {
+	GetEnabled() bool
+	Mutate() *ConfiguredHistoricalBalancesLog
+}
+
+type configuredHistoricalBalancesLogReadonly ConfiguredHistoricalBalancesLog
+
+func (r *configuredHistoricalBalancesLogReadonly) GetEnabled() bool {
+	return (*ConfiguredHistoricalBalancesLog)(r).GetEnabled()
+}
+
+func (r *configuredHistoricalBalancesLogReadonly) Mutate() *ConfiguredHistoricalBalancesLog {
+	return (*ConfiguredHistoricalBalancesLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConfiguredHistoricalBalancesLog.
+func (m *ConfiguredHistoricalBalancesLog) AsReader() ConfiguredHistoricalBalancesLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*configuredHistoricalBalancesLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConfiguredHistoricalBalancesLog.
+func (m *ConfiguredHistoricalBalancesLog) Mutate() *ConfiguredHistoricalBalancesLog {
+	return m.CloneVT()
+}
+
+// ConfiguredHistoricalBalancesLogListReader provides read-only iteration over []*ConfiguredHistoricalBalancesLog.
+type ConfiguredHistoricalBalancesLogListReader interface {
+	Len() int
+	Get(i int) ConfiguredHistoricalBalancesLogReader
+	Range(yield func(int, ConfiguredHistoricalBalancesLogReader) bool)
+}
+
+type configuredHistoricalBalancesLogListReadonly []*ConfiguredHistoricalBalancesLog
+
+func (l configuredHistoricalBalancesLogListReadonly) Len() int { return len(l) }
+
+func (l configuredHistoricalBalancesLogListReadonly) Get(i int) ConfiguredHistoricalBalancesLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l configuredHistoricalBalancesLogListReadonly) Range(yield func(int, ConfiguredHistoricalBalancesLogReader) bool) {
+	for i, v := range l {
+		var r ConfiguredHistoricalBalancesLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConfiguredHistoricalBalancesLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConfiguredHistoricalBalancesLogListReader(s []*ConfiguredHistoricalBalancesLog) ConfiguredHistoricalBalancesLogListReader {
+	return configuredHistoricalBalancesLogListReadonly(s)
+}
+
 // OrderSkippedLogReader provides read-only access to OrderSkippedLog.
 // Call Mutate() to obtain a mutable clone.
 type OrderSkippedLogReader interface {

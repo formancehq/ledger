@@ -405,22 +405,21 @@ PIT does not historize metadata, schemas, account types, or asset-existence
 indexes. Metadata-dependent filters use one current read-store snapshot.
 Direct address and address-prefix selection can use historical account keys.
 
-A successful PIT response includes `X-Point-In-Time-View`, a
-standard-base64-encoded protobuf `PointInTimeView`. It binds the aggregate to
-the normalized timestamp, time axis, ledger incarnation, audit/log watermarks,
-manifest version, history floor, and opaque view token. Clients must reject a
-PIT success that lacks this header.
+A successful historical response includes `X-Historical-Balance-View`, a
+standard-base64-encoded protobuf `HistoricalBalanceView`. It binds the
+aggregate to the normalized timestamp, temporality, ledger name, audit/log
+watermarks, manifest version, and opaque view token. Clients
+must reject a historical success that lacks this header.
 
 Historical reads fail closed. `HISTORY_BUILDING` and `HISTORY_BEHIND` are
-retryable 503 errors with `Retry-After: 1`; `HISTORY_EXPIRED` and
-`UNSUPPORTED_TEMPORAL_FILTER` are
-400 errors; `HISTORY_SOURCE_MISSING` and `HISTORY_CORRUPT` are 500 errors that
+retryable 503 errors with `Retry-After: 1`; `UNSUPPORTED_TEMPORAL_FILTER` is a
+400 error; `HISTORY_SOURCE_MISSING` and `HISTORY_CORRUPT` are 500 errors that
 require repair or rebuild. The server never substitutes live state, a query
 checkpoint, a nearby timestamp, or partial history.
 
 This preserves the v2 `pit`/`useInsertionDate` monetary semantics on the v3
 aggregate route; it is not a general `/v2` compatibility layer. See
-[Point-in-Time Balance Queries](../read-path/point-in-time-balances.md) for the
+[Historical Balance Queries](../read-path/historical-balances.md) for the
 full consistency and performance contract.
 
 ### Audit

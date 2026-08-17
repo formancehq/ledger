@@ -435,6 +435,45 @@ func (c *MockControllerGetEventsSinksCall) DoAndReturn(f func(context.Context) (
 	return c
 }
 
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockControllerMockRecorder) GetHistoricalBalancesStatus(ctx, ledgerName any) *MockControllerGetHistoricalBalancesStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockController)(nil).GetHistoricalBalancesStatus), ctx, ledgerName)
+	return &MockControllerGetHistoricalBalancesStatusCall{Call: call}
+}
+
+// MockControllerGetHistoricalBalancesStatusCall wrap *gomock.Call
+type MockControllerGetHistoricalBalancesStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockControllerGetHistoricalBalancesStatusCall) Return(arg0 *servicepb.GetHistoricalBalancesStatusResponse, arg1 error) *MockControllerGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockControllerGetHistoricalBalancesStatusCall) Do(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockControllerGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockControllerGetHistoricalBalancesStatusCall) DoAndReturn(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockControllerGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetIndex mocks base method.
 func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
 	m.ctrl.T.Helper()

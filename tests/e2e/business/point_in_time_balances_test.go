@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,16 +20,18 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const pointInTimeViewTrailerKey = "x-point-in-time-view-bin"
+const pointInTimeViewTrailerKey = "x-historical-balance-view-bin"
 
 var _ = Describe("Point-in-time balances", Serial, func() {
 	It("serves v2-compatible historical monetary views through the real gRPC server", func() {
-		ctx, client, _ := testutil.SetupSingleNode(9710, 8710, testserver.WithBalanceHistoryEnabled())
+		ctx, client, _ := testutil.SetupSingleNode(9710, 8710)
 
 		By("separating effective time from insertion time and honoring read-after-write")
 		const axesLedger = "pit-e2e-axes"
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(axesLedger, nil)))
 		Expect(err).To(Succeed())
+		Expect(testutil.ConfigureHistoricalBalances(ctx, client, axesLedger, true)).To(Succeed())
+		testutil.WaitForHistoricalBalancesReady(ctx, client, axesLedger)
 
 		firstEffective := time.Date(2020, time.January, 10, 12, 0, 0, 0, time.UTC)
 		firstRequest := actions.WithTimestamp(actions.CreateForceTransactionAction(axesLedger, []*commonpb.Posting{
@@ -60,23 +61,23 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				secondEffective.Add(time.Hour),
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		cancelReadAfterWrite()
 		Expect(err).To(Succeed())
 		expectPointInTimeVolume(afterBoth, "USD", "", 150, 0)
-		expectPointInTimeView(firstView, uint64(secondEffective.Add(time.Hour).UnixMicro()), servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE, secondLogSequence)
+		expectHistoricalBalanceView(firstView, uint64(secondEffective.Add(time.Hour).UnixMicro()), servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE, secondLogSequence)
 
 		beforeAll, _ := pointInTimeAggregateEventually(ctx, client, &servicepb.AggregateVolumesRequest{
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				firstEffective.Add(-time.Hour),
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(beforeAll.GetVolumes()).To(BeEmpty())
@@ -85,9 +86,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				firstEffective.Add(time.Hour),
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		expectPointInTimeVolume(betweenTransactions, "USD", "", 100, 0)
@@ -96,9 +97,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   &commonpb.Timestamp{Data: firstTransaction.GetInsertedAt().GetData() - 1},
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          &commonpb.Timestamp{Data: firstTransaction.GetInsertedAt().GetData() - 1},
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		Expect(beforeFirstInsertion.GetVolumes()).To(BeEmpty())
@@ -107,9 +108,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   firstTransaction.GetInsertedAt(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          firstTransaction.GetInsertedAt(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		expectPointInTimeVolume(atFirstInsertion, "USD", "", 100, 0)
@@ -118,9 +119,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   secondTransaction.GetInsertedAt(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          secondTransaction.GetInsertedAt(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		expectPointInTimeVolume(atSecondInsertion, "USD", "", 150, 0)
@@ -131,9 +132,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         axesLedger,
 			Filter:         actions.AddressExactFilter("accounts:alice"),
 			MinLogSequence: secondLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				secondEffective.Add(time.Hour),
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(err).To(Succeed())
@@ -143,9 +144,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 		_, err = client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 			Ledger:       axesLedger,
 			CheckpointId: 1,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				secondEffective,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
@@ -154,6 +155,8 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 		const reversalLedger = "pit-e2e-reversals"
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(reversalLedger, nil)))
 		Expect(err).To(Succeed())
+		Expect(testutil.ConfigureHistoricalBalances(ctx, client, reversalLedger, true)).To(Succeed())
+		testutil.WaitForHistoricalBalancesReady(ctx, client, reversalLedger)
 
 		normalEffective := time.Date(2021, time.February, 10, 8, 0, 0, 0, time.UTC)
 		normalResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.WithTimestamp(
@@ -178,9 +181,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:normal"),
 			MinLogSequence: normalRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   &commonpb.Timestamp{Data: normalRevert.GetTimestamp().GetData() - 1},
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          &commonpb.Timestamp{Data: normalRevert.GetTimestamp().GetData() - 1},
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			},
 		})
 		expectPointInTimeVolume(beforeNormalRevert, "USD", "", 100, 0)
@@ -189,9 +192,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:normal"),
 			MinLogSequence: normalRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   normalRevert.GetTimestamp(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          normalRevert.GetTimestamp(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			},
 		})
 		expectPointInTimeVolume(atNormalRevert, "USD", "", 100, 100)
@@ -200,9 +203,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:normal"),
 			MinLogSequence: normalRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   normalRevert.GetInsertedAt(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          normalRevert.GetInsertedAt(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		expectPointInTimeVolume(atNormalInsertion, "USD", "", 100, 100)
@@ -230,9 +233,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:dated"),
 			MinLogSequence: datedRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   &commonpb.Timestamp{Data: datedTransaction.GetTimestamp().GetData() - 1},
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          &commonpb.Timestamp{Data: datedTransaction.GetTimestamp().GetData() - 1},
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			},
 		})
 		Expect(beforeDatedEffective.GetVolumes()).To(BeEmpty())
@@ -241,9 +244,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:dated"),
 			MinLogSequence: datedRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   datedTransaction.GetTimestamp(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          datedTransaction.GetTimestamp(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			},
 		})
 		expectPointInTimeVolume(atDatedEffective, "EUR", "", 200, 200)
@@ -252,9 +255,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:dated"),
 			MinLogSequence: datedRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   datedTransaction.GetInsertedAt(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          datedTransaction.GetInsertedAt(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		expectPointInTimeVolume(beforeDatedRevertInsertion, "EUR", "", 200, 0)
@@ -263,9 +266,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         reversalLedger,
 			Filter:         actions.AddressExactFilter("accounts:dated"),
 			MinLogSequence: datedRevertLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   datedRevert.GetInsertedAt(),
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          datedRevert.GetInsertedAt(),
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		})
 		expectPointInTimeVolume(atDatedRevertInsertion, "EUR", "", 200, 200)
@@ -274,6 +277,8 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 		const aggregateLedger = "pit-e2e-aggregate-options"
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(aggregateLedger, nil)))
 		Expect(err).To(Succeed())
+		Expect(testutil.ConfigureHistoricalBalances(ctx, client, aggregateLedger, true)).To(Succeed())
+		testutil.WaitForHistoricalBalancesReady(ctx, client, aggregateLedger)
 		aggregateAt := time.Date(2023, time.April, 20, 10, 0, 0, 0, time.UTC)
 		aggregateResponse, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 			actions.WithTimestamp(actions.CreateForceTransactionAction(aggregateLedger, []*commonpb.Posting{
@@ -294,9 +299,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			MinLogSequence:  aggregateLogSequence,
 			UseMaxPrecision: true,
 			GroupByPrefixes: []string{"users:"},
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				aggregateAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(grouped.GetVolumes()).To(BeEmpty())
@@ -311,9 +316,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			UseMaxPrecision: true,
 			CollapseColors:  true,
 			GroupByPrefixes: []string{"users:"},
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				aggregateAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(collapsed.GetGroups()).To(HaveLen(1))
@@ -333,6 +338,8 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			actions.CreateAccountMetadataIndexAction(metadataLedger, "segment"),
 		))
 		Expect(err).To(Succeed())
+		Expect(testutil.ConfigureHistoricalBalances(ctx, client, metadataLedger, true)).To(Succeed())
+		testutil.WaitForHistoricalBalancesReady(ctx, client, metadataLedger)
 		Expect(actions.WaitForMetadataIndexReady(ctx, client, metadataLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "segment")).To(Succeed())
 
 		metadataAt := time.Date(2024, time.May, 5, 11, 0, 0, 0, time.UTC)
@@ -358,9 +365,9 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         metadataLedger,
 			Filter:         actions.StringMetadataFilter("segment", "selected"),
 			MinLogSequence: initialMetadataLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				metadataAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		expectPointInTimeVolume(initialFiltered, "GBP", "", 100, 0)
@@ -376,21 +383,16 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         metadataLedger,
 			Filter:         actions.StringMetadataFilter("segment", "selected"),
 			MinLogSequence: changedMetadataLogSequence,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				metadataAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		expectPointInTimeVolume(changedFiltered, "GBP", "", 200, 0)
 	})
 
-	It("gates PIT reads by exact ledger name while keeping enabled ledgers available", func() {
-		ctx, client, _ := testutil.SetupSingleNode(
-			9711,
-			8711,
-			testserver.WithBalanceHistoryEnabled(),
-			testserver.WithBalanceHistoryLedgers("pit-canary"),
-		)
+	It("gates historical-balance reads by client-configured ledger name", func() {
+		ctx, client, _ := testutil.SetupSingleNode(9711, 8711)
 
 		const (
 			allowedLedger = "pit-canary"
@@ -400,6 +402,8 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 			Expect(err).To(Succeed())
 		}
+		Expect(testutil.ConfigureHistoricalBalances(ctx, client, allowedLedger, true)).To(Succeed())
+		testutil.WaitForHistoricalBalancesReady(ctx, client, allowedLedger)
 
 		effectiveAt := time.Date(2025, time.January, 2, 3, 4, 5, 0, time.UTC)
 		allowedWrite, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.WithTimestamp(
@@ -414,18 +418,18 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 			Ledger:         allowedLedger,
 			Filter:         actions.AddressExactFilter("accounts:canary"),
 			MinLogSequence: pointInTimeLastLogSequence(allowedWrite),
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				effectiveAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		expectPointInTimeVolume(allowed, "USD", "", 42, 0)
 
 		_, err = client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 			Ledger: deniedLedger,
-			PointInTime: pointInTimeSelector(
+			HistoricalBalance: pointInTimeSelector(
 				effectiveAt,
-				servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+				servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			),
 		})
 		Expect(err).To(HaveOccurred())
@@ -435,10 +439,10 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 	})
 })
 
-func pointInTimeSelector(at time.Time, axis servicepb.PointInTimeAxis) *servicepb.PointInTimeSelector {
-	return &servicepb.PointInTimeSelector{
-		At:   &commonpb.Timestamp{Data: uint64(at.UnixMicro())},
-		Axis: axis,
+func pointInTimeSelector(at time.Time, axis servicepb.HistoricalBalanceTemporality) *servicepb.HistoricalBalanceSelector {
+	return &servicepb.HistoricalBalanceSelector{
+		At:          &commonpb.Timestamp{Data: uint64(at.UnixMicro())},
+		Temporality: axis,
 	}
 }
 
@@ -446,10 +450,10 @@ func pointInTimeAggregateEventually(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	request *servicepb.AggregateVolumesRequest,
-) (*commonpb.AggregateResult, *servicepb.PointInTimeView) {
+) (*commonpb.AggregateResult, *servicepb.HistoricalBalanceView) {
 	var (
 		result *commonpb.AggregateResult
-		view   *servicepb.PointInTimeView
+		view   *servicepb.HistoricalBalanceView
 	)
 	Eventually(func(g Gomega) {
 		var err error
@@ -466,7 +470,7 @@ func pointInTimeAggregate(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	request *servicepb.AggregateVolumesRequest,
-) (*commonpb.AggregateResult, *servicepb.PointInTimeView, error) {
+) (*commonpb.AggregateResult, *servicepb.HistoricalBalanceView, error) {
 	var trailer metadata.MD
 	result, err := client.AggregateVolumes(ctx, request, grpc.Trailer(&trailer))
 	if err != nil {
@@ -481,13 +485,13 @@ func pointInTimeAggregate(
 	return result, view, nil
 }
 
-func pointInTimeViewFromTrailer(trailer metadata.MD) (*servicepb.PointInTimeView, error) {
+func pointInTimeViewFromTrailer(trailer metadata.MD) (*servicepb.HistoricalBalanceView, error) {
 	values := trailer.Get(pointInTimeViewTrailerKey)
 	if len(values) != 1 {
 		return nil, fmt.Errorf("expected one %s trailer, got %d", pointInTimeViewTrailerKey, len(values))
 	}
 
-	view := &servicepb.PointInTimeView{}
+	view := &servicepb.HistoricalBalanceView{}
 	if err := view.UnmarshalVT([]byte(values[0])); err != nil {
 		return nil, fmt.Errorf("decoding point-in-time view trailer: %w", err)
 	}
@@ -528,20 +532,19 @@ func pointInTimeLastLogSequence(response *servicepb.ApplyResponse) uint64 {
 	return sequence
 }
 
-func expectPointInTimeView(
-	view *servicepb.PointInTimeView,
+func expectHistoricalBalanceView(
+	view *servicepb.HistoricalBalanceView,
 	requestedAt uint64,
-	axis servicepb.PointInTimeAxis,
+	axis servicepb.HistoricalBalanceTemporality,
 	minimumLogSequence uint64,
 ) {
 	Expect(view).NotTo(BeNil())
 	Expect(view.GetRequestedAt().GetData()).To(Equal(requestedAt))
-	Expect(view.GetAxis()).To(Equal(axis))
-	Expect(view.GetLedgerId()).NotTo(BeZero())
+	Expect(view.GetTemporality()).To(Equal(axis))
+	Expect(view.GetLedger()).NotTo(BeEmpty())
 	Expect(view.GetAuditWatermark()).NotTo(BeZero())
 	Expect(view.GetLogWatermark()).To(BeNumerically(">=", minimumLogSequence))
 	Expect(view.GetManifestVersion()).NotTo(BeZero())
-	Expect(view.GetHistoryAvailableFrom()).NotTo(BeNil())
 	Expect(view.GetViewToken()).NotTo(BeEmpty())
 }
 

@@ -66,23 +66,8 @@ func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 	return &S3Storage{client: client, uploader: manager.NewUploader(client), bucket: bucket}
 }
 
-// DestinationIdentity binds persisted references to the physical S3 service,
-// region, and bucket without including credentials or other secrets.
-func (s *S3Storage) DestinationIdentity() (string, error) {
-	if s == nil || s.client == nil || s.bucket == "" {
-		return "", errors.New("S3 client and bucket are required for destination identity")
-	}
-	options := s.client.Options()
-	endpoint := ""
-	if options.BaseEndpoint != nil {
-		endpoint = *options.BaseEndpoint
-	}
-
-	return hashDestinationIdentity("s3", endpoint, options.Region, s.bucket), nil
-}
-
 func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
-	return archiveObjectKey(bucketID, chapterID)
+	return fmt.Sprintf("%s/chapters/%d/archive.sst", bucketID, chapterID)
 }
 
 func (s *S3Storage) Archive(ctx context.Context, bucketID string, chapterID uint64, data io.Reader, sha256 []byte) error {
@@ -205,73 +190,8 @@ func (s *S3Storage) Fetch(ctx context.Context, bucketID string, chapterID uint64
 	return output.Body, nil
 }
 
-// List implements ObjectCatalog using the last listed object key as an opaque,
-// restart-safe lexical cursor. Listing does not require checksum metadata, so
-// interrupted or legacy objects remain visible to lifecycle cleanup.
-func (s *S3Storage) List(
-	ctx context.Context,
-	bucketPrefix string,
-	cursor string,
-	limit int,
-) (ArchiveObjectPage, error) {
-	if limit <= 0 {
-		return ArchiveObjectPage{}, fmt.Errorf("cold storage list limit must be positive: %d", limit)
-	}
-	prefix, err := normalizeBucketPrefix(bucketPrefix)
-	if err != nil {
-		return ArchiveObjectPage{}, err
-	}
-	maxKeys := min(limit, 1000)
-	input := &s3.ListObjectsV2Input{
-		Bucket:  aws.String(s.bucket),
-		Prefix:  aws.String(prefix + "/"),
-		MaxKeys: aws.Int32(int32(maxKeys)),
-	}
-	if cursor != "" {
-		input.StartAfter = aws.String(cursor)
-	}
-	output, err := s.client.ListObjectsV2(ctx, input)
-	if err != nil {
-		return ArchiveObjectPage{}, fmt.Errorf("s3 ListObjectsV2 %s: %w", prefix, err)
-	}
-
-	page := ArchiveObjectPage{Objects: make([]ArchiveObject, 0, len(output.Contents))}
-	for _, listed := range output.Contents {
-		object, ok := parseArchiveObjectKey(aws.ToString(listed.Key))
-		if !ok || !bucketWithinPrefix(object.BucketID, prefix) {
-			continue
-		}
-		object.Size = aws.ToInt64(listed.Size)
-		object.LastModified = aws.ToTime(listed.LastModified)
-		page.Objects = append(page.Objects, object)
-	}
-	if output.IsTruncated != nil && *output.IsTruncated && len(output.Contents) > 0 {
-		page.NextCursor = aws.ToString(output.Contents[len(output.Contents)-1].Key)
-	}
-
-	return page, nil
-}
-
-// Delete idempotently removes one exact chapter archive object.
-func (s *S3Storage) Delete(ctx context.Context, bucketID string, chapterID uint64) error {
-	normalized, err := normalizeBucketPrefix(bucketID)
-	if err != nil || normalized != bucketID {
-		return fmt.Errorf("invalid cold storage bucket id %q", bucketID)
-	}
-	key := s.archiveKey(bucketID, chapterID)
-	if _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	}); err != nil {
-		return fmt.Errorf("s3 DeleteObject %s: %w", key, err)
-	}
-
-	return nil
-}
-
 // Ensure S3Storage implements ColdStorage.
 var _ ColdStorage = (*S3Storage)(nil)
-var _ ObjectCatalog = (*S3Storage)(nil)
 
 // NewS3ColdStorage creates a ColdStorage backed by S3.
 // This is the public entry point used by bootstrap; it hides S3-specific types.

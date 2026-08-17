@@ -895,25 +895,16 @@ paths:
         Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
         color collapse, and max-precision merging.
 
-        Without `pit`, this endpoint reads the current volume projection. With `pit`, it returns an
-        exact monetary point-in-time view from the asynchronous balance-history projection. Effective
-        time is the default axis; set `useInsertionDate=true` to select insertion time instead. The
-        projection is an operational opt-in (`--balance-history-enabled`); when it is not enabled,
-        PIT requests fail closed with `HISTORY_SOURCE_MISSING` while live reads remain available.
-        Operators can restrict rollout to exact, case-sensitive ledger names with
-        `--balance-history-ledgers`. A name outside that allowlist fails with
-        `HISTORY_SOURCE_MISSING` before opening history. An empty allowlist means all ledgers. The
-        allowlist controls reads only; the cluster-wide builder continues to project every numeric
-        ledger incarnation, so expanding it does not truncate history or trigger a per-ledger backfill.
+        Without `at`, this endpoint reads the current volume projection. With `at`, it returns exact
+        monetary history from the asynchronous balance-history projection. Effective temporality is
+        the default; set `temporality=insertion` to select insertion time. Clients enable or disable
+        the projection per ledger through the native ConfigureHistoricalBalances apply request.
 
-        Point-in-time history covers monetary effects only. Metadata, metadata schemas, account types,
+        Historical balances cover monetary effects only. Metadata, metadata schemas, account types,
         and asset-existence indexes are not historized: conditions that depend on them are evaluated
         against one current read-store snapshot. Direct address and address-prefix selections use the
         historical account keys. The service never substitutes live state, a query checkpoint, the
-        nearest timestamp, or an incomplete set of history segments for an exact PIT result.
-
-        `pit` preserves the narrow v2 query-parameter contract on this v3 endpoint; it does not expose
-        a `/v2` compatibility API.
+        nearest timestamp, or an incomplete set of history segments for an exact result.
         Requires `ledger:AccountRead` scope.
       operationId: aggregateVolumes
       tags:
@@ -944,14 +935,13 @@ paths:
           schema:
             type: boolean
             default: false
-        - name: pit
+        - name: at
           in: query
           required: false
           description: |
-            Monetary point-in-time cutoff in RFC3339 format. Fractional seconds are accepted and the
+            Historical balance cutoff in RFC3339 format. Fractional seconds are accepted and the
             value is normalized to Unix microseconds before evaluation; timestamps before
-            1970-01-01T00:00:00Z are rejected. The effective-time axis is used unless
-            `useInsertionDate=true`.
+            1970-01-01T00:00:00Z are rejected. Effective temporality is the default.
 
             The result is evaluated against one immutable history manifest. If exact, complete history
             is not available, the request fails with a typed `HISTORY_*` error instead of falling back
@@ -960,37 +950,29 @@ paths:
             type: string
             format: date-time
           example: '2026-01-15T12:30:45.123456Z'
-        - name: useInsertionDate
+        - name: temporality
           in: query
           required: false
           description: |
-            v2-compatible axis selector. When true, `pit` is compared with each monetary effect's
-            insertion timestamp. When false or omitted, `pit` is compared with its effective timestamp.
-            Supplying this parameter without `pit` is invalid.
+            Selects which transaction timestamp is compared with `at`: `effective` uses the business
+            timestamp and `insertion` uses the FSM-assigned insertion timestamp. Supplying this
+            parameter without `at` is invalid.
           schema:
-            type: boolean
-            default: false
-        - name: use_insertion_date
-          in: query
-          required: false
-          deprecated: true
-          description: |
-            Legacy alias for `useInsertionDate`. Supplying this parameter without `pit` is invalid.
-            If both spellings are present they must carry the same boolean value.
-          schema:
-            type: boolean
+            type: string
+            enum: [effective, insertion]
+            default: effective
       responses:
         '200':
           description: |
-            Aggregated volumes retrieved successfully. For a PIT request, the
-            `X-Point-In-Time-View` header identifies the exact immutable history view used.
+            Aggregated volumes retrieved successfully. For a historical request, the
+            `X-Historical-Balance-View` header identifies the exact immutable view used.
           headers:
-            X-Point-In-Time-View:
+            X-Historical-Balance-View:
               description: |
-                Present only for a successful PIT request. Standard-base64 encoding of the protobuf
-                binary `PointInTimeView`, containing the requested timestamp and axis, numeric ledger
-                incarnation, audit and log watermarks, history-manifest version, availability floor,
-                and an opaque view token. Protobuf timestamps are unsigned Unix microseconds.
+                Present only for a successful historical request. Standard-base64 encoding of the
+				protobuf binary `HistoricalBalanceView`, containing the requested timestamp,
+				temporality, ledger name, audit and log watermarks, history-manifest version,
+				and an opaque view token. Protobuf timestamps are unsigned Unix microseconds.
               schema:
                 type: string
                 format: byte
@@ -1000,8 +982,8 @@ paths:
                 $ref: '#/components/schemas/AggregateVolumesResponse'
         '400':
           description: |
-            Invalid PIT timestamp or parameter combination, `HISTORY_EXPIRED`,
-            `UNSUPPORTED_TEMPORAL_FILTER`, or another invalid aggregate request.
+			Invalid historical timestamp or parameter combination,
+			`UNSUPPORTED_TEMPORAL_FILTER`, or another invalid aggregate request.
           content:
             application/json:
               schema:
@@ -1014,7 +996,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           description: |
-            Service temporarily unavailable. PIT-specific reasons are `HISTORY_BUILDING` (no readable
+            Service temporarily unavailable. History-specific reasons are `HISTORY_BUILDING` (no readable
             initial manifest) and `HISTORY_BEHIND` (the manifest has not reached the required source
             watermark). Clients may retry these reasons; the response includes `Retry-After: 1`.
           headers:
@@ -1031,7 +1013,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: |
-            Internal server error. PIT-specific reasons are `HISTORY_SOURCE_MISSING` when a required
+            Internal server error. History-specific reasons are `HISTORY_SOURCE_MISSING` when a required
             hot or cold source range is absent, and `HISTORY_CORRUPT` when integrity verification fails.
             Both fail closed and require repair or rebuild rather than client-side approximation.
           content:

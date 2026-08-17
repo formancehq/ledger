@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,7 +23,7 @@ import (
 
 // DefaultConfig returns a conservative configuration for the history peer
 // store. The cache and compaction concurrency are intentionally isolated from
-// the primary FSM store so PIT backfill cannot consume its Pebble budget.
+// the primary FSM store so history backfill cannot consume its Pebble budget.
 func DefaultConfig() pebblecfg.Config {
 	return pebblecfg.Config{
 		MemTableSize:                32 << 20,
@@ -44,7 +45,6 @@ type Store struct {
 	publisher
 	compactor
 	verifier
-	tierManager
 	viewManager
 	garbageCollector
 	metricsRegistrar
@@ -52,7 +52,7 @@ type Store struct {
 
 // storeCore is the single shared state behind every Store role. Role types
 // embed this pointer so all mutations keep using the same locks, atomics, DB,
-// generation, and tiering state.
+// generation, and failure state.
 type storeCore struct {
 	db     *pebble.DB
 	dir    string
@@ -69,7 +69,6 @@ type storeCore struct {
 	preparedRuns   map[uint64]uint64
 	generation     atomic.Uint64
 	failure        atomic.Pointer[storeFailure]
-	tiering        atomic.Pointer[tieringState]
 }
 
 type failureKind byte
@@ -128,8 +127,7 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 	}}
 	store.publisher = publisher{storeCore: &store.storeCore}
 	store.garbageCollector = garbageCollector{storeCore: &store.storeCore}
-	store.tierManager = tierManager{storeCore: &store.storeCore}
-	store.viewManager = viewManager{tierManager: &store.tierManager}
+	store.viewManager = viewManager{storeCore: &store.storeCore}
 	store.compactor = compactor{
 		compactionStreamer: &compactionStreamer{viewManager: &store.viewManager},
 		garbageCollector:   &store.garbageCollector,
@@ -300,9 +298,9 @@ func (s *storeCore) readFailure() error {
 	return &ErrQuarantined{Detail: failure.detail}
 }
 
-// MarkSourceMissing persists a verified source-coverage failure. It stops PIT
-// reads without destroying otherwise valid local runs, allowing an operator or
-// verifier to restore the missing source before clearing the marker.
+// MarkSourceMissing persists a verified source-coverage failure. It stops
+// historical reads without destroying otherwise valid local segments, allowing
+// an operator to restore the missing source before clearing the marker.
 func (s *storeCore) MarkSourceMissing(detail string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -315,9 +313,9 @@ func (s *storeCore) MarkSourceMissing(detail string) error {
 	return s.setFailureLocked(failureSourceMissing, detail)
 }
 
-// ClearFailure clears SOURCE_MISSING after the source has been repaired,
-// semantically certified, and published through the caller's pinned source
-// head. A corruption quarantine is reset-only and cannot be cleared here.
+// ClearFailure clears SOURCE_MISSING after the source has been repaired and
+// published through the caller's pinned source head. A corruption quarantine
+// is reset-only and cannot be cleared here.
 func (s *Store) ClearFailure(requiredAuditSequence, requiredLogSequence uint64) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -375,12 +373,28 @@ func (s *storeCore) setFailureLocked(kind failureKind, detail string) error {
 	return nil
 }
 
-// ResetForRebuild drops every derived run, manifest, and cursor while keeping
+// ResetForRebuild drops every derived segment, manifest, and cursor while keeping
 // the store persistently fail-closed in REBUILDING state. Manifest, Publish,
 // Compact, and Verify remain available to the builder; OpenView does not.
 func (s *Store) ResetForRebuild() error {
+	return s.ResetForConfiguration(nil)
+}
+
+// ResetForConfiguration atomically drops the local projection, persists the
+// client-selected ledger set, and keeps reads fail-closed until a complete
+// audit replay has reached the pinned source head.
+func (s *Store) ResetForConfiguration(ledgers []string) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
+
+	ledgers = append([]string(nil), ledgers...)
+	slices.Sort(ledgers)
+	if hasDuplicateStrings(ledgers) {
+		return errors.New("historical-balance ledger configuration contains duplicates")
+	}
+	if slices.Contains(ledgers, "") {
+		return errors.New("historical-balance ledger configuration contains an empty name")
+	}
 
 	detail := "balance history rebuild is in progress"
 	if failure := s.failure.Load(); failure != nil && failure.detail != "" {
@@ -394,8 +408,20 @@ func (s *Store) ResetForRebuild() error {
 	if err := batch.DeleteRange([]byte{prefixLatestManifest}, []byte{prefixRunCatalog + 1}, nil); err != nil {
 		return fmt.Errorf("staging balance history rebuild reset: %w", err)
 	}
-	if err := s.stageArchiveMutationEpochAdvance(batch); err != nil {
-		return fmt.Errorf("staging balance history rebuild archive-proof invalidation: %w", err)
+	manifest := initialManifest()
+	manifest.Version = 1
+	manifest.Ledgers = ledgers
+	encodedManifest, err := encodeManifest(manifest)
+	if err != nil {
+		return err
+	}
+	if err := batch.Set(manifestKey(manifest.Version), encodedManifest, nil); err != nil {
+		return fmt.Errorf("staging configured balance history manifest: %w", err)
+	}
+	var version [8]byte
+	binary.BigEndian.PutUint64(version[:], manifest.Version)
+	if err := batch.Set(latestManifestKey(), version[:], nil); err != nil {
+		return fmt.Errorf("staging configured balance history manifest pointer: %w", err)
 	}
 	if err := batch.Set(quarantineKey(), encoded, nil); err != nil {
 		return fmt.Errorf("staging balance history rebuilding state: %w", err)
@@ -410,7 +436,7 @@ func (s *Store) ResetForRebuild() error {
 	return nil
 }
 
-// ResetForSourceRepair drops every derived run, manifest, and cursor while
+// ResetForSourceRepair drops every derived segment, manifest, and cursor while
 // preserving the persistent SOURCE_MISSING marker. This keeps reads
 // fail-closed throughout a full-prefix repair; ClearFailure is the only step
 // which reopens them once the builder has reached and durably synced its
@@ -430,9 +456,6 @@ func (s *Store) ResetForSourceRepair() error {
 	if err := batch.DeleteRange([]byte{prefixLatestManifest}, []byte{prefixRunCatalog + 1}, nil); err != nil {
 		return fmt.Errorf("staging balance history source-repair reset: %w", err)
 	}
-	if err := s.stageArchiveMutationEpochAdvance(batch); err != nil {
-		return fmt.Errorf("staging balance history source-repair archive-proof invalidation: %w", err)
-	}
 	if err := batch.Set(quarantineKey(), encoded, nil); err != nil {
 		return fmt.Errorf("preserving balance history source-missing state: %w", err)
 	}
@@ -446,8 +469,8 @@ func (s *Store) ResetForSourceRepair() error {
 	return nil
 }
 
-// CompleteRebuild verifies a complete rebuilt source prefix through the
-// caller's semantically certified pinned head before reopening reads.
+// CompleteRebuild verifies the rebuilt projection structure and its source
+// coverage before reopening reads.
 func (s *Store) CompleteRebuild(requiredAuditSequence, requiredLogSequence uint64) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -482,7 +505,7 @@ func requireManifestHead(manifest Manifest, requiredAuditSequence, requiredLogSe
 	}
 	if manifest.AuditWatermark < requiredAuditSequence || manifest.LogWatermark < requiredLogSequence {
 		return fmt.Errorf(
-			"balance history manifest audit/log (%d,%d) is behind certified head (%d,%d)",
+			"balance history manifest audit/log (%d,%d) is behind required head (%d,%d)",
 			manifest.AuditWatermark,
 			manifest.LogWatermark,
 			requiredAuditSequence,
@@ -552,8 +575,8 @@ func (s *Store) WaitForLogWatermark(ctx context.Context, required uint64) error 
 	}
 }
 
-// Reset atomically removes every run, manifest, and cursor. The next builder
-// pass must start from the available history floor and republish from source.
+// Reset atomically removes every segment, manifest, and cursor. The next builder
+// pass must replay the authoritative audit prefix from genesis.
 func (s *Store) Reset() error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -563,9 +586,6 @@ func (s *Store) Reset() error {
 
 	if err := batch.DeleteRange([]byte{prefixStoreState}, []byte{prefixRunCatalog + 1}, nil); err != nil {
 		return fmt.Errorf("staging balance history reset: %w", err)
-	}
-	if err := s.stageArchiveMutationEpochAdvance(batch); err != nil {
-		return fmt.Errorf("staging balance history archive-proof invalidation: %w", err)
 	}
 	if err := batch.Commit(pebble.Sync); err != nil {
 		return fmt.Errorf("committing balance history reset: %w", err)

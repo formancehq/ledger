@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 )
 
-const pointInTimeViewHeader = "X-Point-In-Time-View"
+const historicalBalanceViewHeader = "X-Historical-Balance-View"
 
 // aggregateVolumesResponseJSON is the camelCase JSON DTO for AggregateResult.
 type aggregateVolumesResponseJSON struct {
@@ -90,7 +89,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 
 	useMaxPrecision := queryParamBool(r, "useMaxPrecision")
 	collapseColors := queryParamBool(r, "collapseColors")
-	pointInTime, err := parseHTTPPointInTime(r)
+	historicalBalance, err := parseHTTPHistoricalBalance(r)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
@@ -118,7 +117,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 		CollapseColors:  collapseColors,
 		GroupByPrefixes: groupByPrefixes,
 	}, ctrl.AggregateVolumesReadOptions{
-		PointInTime: pointInTime,
+		HistoricalBalance: historicalBalance,
 	})
 	if err != nil {
 		var (
@@ -127,7 +126,7 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 		)
 		if errors.As(err, &building) || errors.As(err, &behind) {
 			// Both states are transient replica-local projection lag. Keep the
-			// retry hint scoped to PIT aggregation instead of applying it to all
+			// retry hint scoped to historical aggregation instead of applying it to all
 			// domain.KindUnavailable errors globally.
 			w.Header().Set("Retry-After", "1")
 		}
@@ -139,24 +138,24 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	if wantsHTTPProfile(r) {
 		writeProfileHeader(w, profile)
 	}
-	if pointInTime != nil {
+	if historicalBalance != nil {
 		if result == nil || result.View == nil {
-			writeInternalServerError(w, r, errors.New("point-in-time aggregation returned no immutable view token"))
+			writeInternalServerError(w, r, errors.New("historical-balance aggregation returned no immutable view token"))
 
 			return
 		}
-		if result.View.RequestedAt != pointInTime.At || result.View.Axis != pointInTime.Axis {
+		if result.View.RequestedAt != historicalBalance.At || result.View.Temporality != historicalBalance.Temporality {
 			writeInternalServerError(w, r, fmt.Errorf(
-				"point-in-time aggregation view does not match requested selector: requested at=%d axis=%d, got at=%d axis=%d",
-				pointInTime.At,
-				pointInTime.Axis,
+				"historical-balance aggregation view does not match requested selector: requested at=%d temporality=%d, got at=%d temporality=%d",
+				historicalBalance.At,
+				historicalBalance.Temporality,
 				result.View.RequestedAt,
-				result.View.Axis,
+				result.View.Temporality,
 			))
 
 			return
 		}
-		if err := writePointInTimeViewHeader(w, result.View); err != nil {
+		if err := writeHistoricalBalanceViewHeader(w, result.View); err != nil {
 			writeInternalServerError(w, r, err)
 
 			return
@@ -166,99 +165,77 @@ func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) 
 	writeOK(w, toAggregateVolumesJSON(result.Aggregate))
 }
 
-func parseHTTPPointInTime(r *http.Request) (*ctrl.PointInTimeSelector, error) {
+func parseHTTPHistoricalBalance(r *http.Request) (*ctrl.HistoricalBalanceSelector, error) {
 	values := r.URL.Query()
-	pitValues := values["pit"]
-	if len(pitValues) > 1 {
-		return nil, errors.New("pit must be supplied once")
+	atValues := values["at"]
+	if len(atValues) > 1 {
+		return nil, errors.New("at must be supplied once")
 	}
-	var pit string
-	if len(pitValues) == 1 {
-		pit = pitValues[0]
+	var at string
+	if len(atValues) == 1 {
+		at = atValues[0]
 	}
-
-	camelValue, camelPresent, err := strictOptionalBool(values["useInsertionDate"])
-	if err != nil {
-		return nil, fmt.Errorf("invalid useInsertionDate: %w", err)
+	temporalityValues := values["temporality"]
+	if len(temporalityValues) > 1 {
+		return nil, errors.New("temporality must be supplied once")
 	}
-	snakeValue, snakePresent, err := strictOptionalBool(values["use_insertion_date"])
-	if err != nil {
-		return nil, fmt.Errorf("invalid use_insertion_date: %w", err)
-	}
-	if camelPresent && snakePresent && camelValue != snakeValue {
-		return nil, errors.New("useInsertionDate and use_insertion_date disagree")
-	}
-	useInsertionDate := camelValue
-	if snakePresent {
-		useInsertionDate = snakeValue
-	}
-	if pit == "" {
-		if camelPresent || snakePresent {
-			return nil, errors.New("useInsertionDate requires pit")
+	if at == "" {
+		if len(temporalityValues) != 0 {
+			return nil, errors.New("temporality requires at")
 		}
 
 		return nil, nil
 	}
 
-	parsed, err := time.Parse(time.RFC3339Nano, pit)
+	parsed, err := time.Parse(time.RFC3339Nano, at)
 	if err != nil {
-		return nil, fmt.Errorf("pit must be an RFC3339 timestamp: %w", err)
+		return nil, fmt.Errorf("at must be an RFC3339 timestamp: %w", err)
 	}
 	if parsed.UnixMicro() < 0 {
 		return nil, commonpb.ErrTimestampBeforeEpoch
 	}
 
-	axis := balancehistorystore.AxisEffective
-	if useInsertionDate {
-		axis = balancehistorystore.AxisInsertion
+	temporality := balancehistorystore.TemporalityEffective
+	if len(temporalityValues) == 1 {
+		switch temporalityValues[0] {
+		case "effective":
+		case "insertion":
+			temporality = balancehistorystore.TemporalityInsertion
+		default:
+			return nil, errors.New("temporality must be effective or insertion")
+		}
 	}
 
-	return &ctrl.PointInTimeSelector{At: uint64(parsed.UnixMicro()), Axis: axis}, nil
+	return &ctrl.HistoricalBalanceSelector{At: uint64(parsed.UnixMicro()), Temporality: temporality}, nil
 }
 
-func strictOptionalBool(values []string) (bool, bool, error) {
-	if len(values) == 0 {
-		return false, false, nil
-	}
-	if len(values) != 1 {
-		return false, true, errors.New("parameter must be supplied once")
-	}
-	value, err := strconv.ParseBool(values[0])
-	if err != nil || (values[0] != "true" && values[0] != "false") {
-		return false, true, errors.New("expected true or false")
-	}
-
-	return value, true, nil
-}
-
-func writePointInTimeViewHeader(w http.ResponseWriter, token *ctrl.VolumeViewToken) error {
+func writeHistoricalBalanceViewHeader(w http.ResponseWriter, token *ctrl.HistoricalBalanceViewToken) error {
 	if token.Token == "" {
-		return errors.New("point-in-time immutable view token is empty")
+		return errors.New("historical-balance immutable view token is empty")
 	}
-	var axis servicepb.PointInTimeAxis
-	switch token.Axis {
-	case balancehistorystore.AxisEffective:
-		axis = servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE
-	case balancehistorystore.AxisInsertion:
-		axis = servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION
+	var temporality servicepb.HistoricalBalanceTemporality
+	switch token.Temporality {
+	case balancehistorystore.TemporalityEffective:
+		temporality = servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE
+	case balancehistorystore.TemporalityInsertion:
+		temporality = servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION
 	default:
-		return fmt.Errorf("unknown point-in-time axis value %d", token.Axis)
+		return fmt.Errorf("unknown historical-balance temporality value %d", token.Temporality)
 	}
-	view := &servicepb.PointInTimeView{
-		RequestedAt:          &commonpb.Timestamp{Data: token.RequestedAt},
-		Axis:                 axis,
-		LedgerId:             token.LedgerID,
-		AuditWatermark:       token.AuditWatermark,
-		LogWatermark:         token.LogWatermark,
-		ManifestVersion:      token.ManifestVersion,
-		HistoryAvailableFrom: &commonpb.Timestamp{Data: token.HistoryAvailableFrom},
-		ViewToken:            token.Token,
+	view := &servicepb.HistoricalBalanceView{
+		RequestedAt:     &commonpb.Timestamp{Data: token.RequestedAt},
+		Temporality:     temporality,
+		Ledger:          token.Ledger,
+		AuditWatermark:  token.AuditWatermark,
+		LogWatermark:    token.LogWatermark,
+		ManifestVersion: token.ManifestVersion,
+		ViewToken:       token.Token,
 	}
 	encoded, err := view.MarshalVT()
 	if err != nil {
-		return fmt.Errorf("marshaling HTTP point-in-time view: %w", err)
+		return fmt.Errorf("marshaling HTTP historical-balance view: %w", err)
 	}
-	w.Header().Set(pointInTimeViewHeader, base64.StdEncoding.EncodeToString(encoded))
+	w.Header().Set(historicalBalanceViewHeader, base64.StdEncoding.EncodeToString(encoded))
 
 	return nil
 }

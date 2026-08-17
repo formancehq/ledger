@@ -25,13 +25,13 @@ func BenchmarkHistoryReadByAge(b *testing.B) {
 				for account := range accountCount {
 					effects = append(effects,
 						balancehistory.Effect{
-							LedgerID: 1, AuditSequence: 1, LogSequence: 1,
+							LedgerName: "default", AuditSequence: 1, LogSequence: 1,
 							EffectiveAt: timestamp, InsertedAt: timestamp,
 							Account: fmt.Sprintf("accounts:%06d", account), AssetBase: "USD", AssetPrecision: 2,
 							Input: balancehistory.AmountFromUint64(1),
 						},
 						balancehistory.Effect{
-							LedgerID: 1, AuditSequence: 1, LogSequence: 1,
+							LedgerName: "default", AuditSequence: 1, LogSequence: 1,
 							EffectiveAt: timestamp, InsertedAt: timestamp,
 							Account: "world", AssetBase: "USD", AssetPrecision: 2,
 							Output: balancehistory.AmountFromUint64(1),
@@ -61,7 +61,7 @@ func BenchmarkHistoryReadByAge(b *testing.B) {
 			b.Run("unfiltered", func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					if _, err := view.AggregateAll(1, AxisEffective, at); err != nil {
+					if _, err := view.ReadVolumes("default", TemporalityEffective, at, nil); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -70,7 +70,7 @@ func BenchmarkHistoryReadByAge(b *testing.B) {
 			b.Run("filtered_100", func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
-					if _, err := view.ReadVolumes(1, AxisEffective, at, accounts); err != nil {
+					if _, err := view.ReadVolumes("default", TemporalityEffective, at, accounts); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -79,28 +79,28 @@ func BenchmarkHistoryReadByAge(b *testing.B) {
 	}
 }
 
-func BenchmarkHistoryReadByRunCount(b *testing.B) {
-	for _, runCount := range []int{1, 4, 16} {
-		b.Run(fmt.Sprintf("runs=%d", runCount), func(b *testing.B) {
+func BenchmarkHistoryReadBySegmentCount(b *testing.B) {
+	for _, segmentCount := range []int{1, 4, 16} {
+		b.Run(fmt.Sprintf("segments=%d", segmentCount), func(b *testing.B) {
 			store, err := New(b.TempDir(), logging.NopZap(), DefaultConfig())
 			if err != nil {
 				b.Fatal(err)
 			}
 			defer func() { _ = store.Close() }()
 
-			for run := 1; run <= runCount; run++ {
+			for segment := 1; segment <= segmentCount; segment++ {
 				effects := make([]balancehistory.Effect, 0, 2_000)
 				for account := range 1_000 {
 					effects = append(effects,
 						balancehistory.Effect{
-							LedgerID: 1, AuditSequence: uint64(run), LogSequence: uint64(run),
-							EffectiveAt: uint64(run), InsertedAt: uint64(run),
+							LedgerName: "default", AuditSequence: uint64(segment), LogSequence: uint64(segment),
+							EffectiveAt: uint64(segment), InsertedAt: uint64(segment),
 							Account: fmt.Sprintf("accounts:%06d", account), AssetBase: "USD",
 							Input: balancehistory.AmountFromUint64(1),
 						},
 						balancehistory.Effect{
-							LedgerID: 1, AuditSequence: uint64(run), LogSequence: uint64(run),
-							EffectiveAt: uint64(run), InsertedAt: uint64(run),
+							LedgerName: "default", AuditSequence: uint64(segment), LogSequence: uint64(segment),
+							EffectiveAt: uint64(segment), InsertedAt: uint64(segment),
 							Account: "world", AssetBase: "USD",
 							Output: balancehistory.AmountFromUint64(1),
 						},
@@ -108,13 +108,13 @@ func BenchmarkHistoryReadByRunCount(b *testing.B) {
 				}
 				if _, err := store.Publish(Publication{
 					Effects:  effects,
-					Coverage: Coverage{AuditSequence: uint64(run), LogSequence: uint64(run), SourceComplete: true},
+					Coverage: Coverage{AuditSequence: uint64(segment), LogSequence: uint64(segment), SourceComplete: true},
 				}); err != nil {
 					b.Fatal(err)
 				}
 			}
 
-			view, err := store.OpenView(uint64(runCount))
+			view, err := store.OpenView(uint64(segmentCount))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func BenchmarkHistoryReadByRunCount(b *testing.B) {
 
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := view.AggregateAll(1, AxisEffective, uint64(runCount)); err != nil {
+				if _, err := view.ReadVolumes("default", TemporalityEffective, uint64(segmentCount), nil); err != nil {
 					b.Fatal(err)
 				}
 			}

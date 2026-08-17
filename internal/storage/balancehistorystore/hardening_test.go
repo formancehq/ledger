@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -40,7 +39,7 @@ func TestStoreReadinessFailureRepairAndQuarantineAreFailClosed(t *testing.T) {
 	require.ErrorAs(t, err, &building)
 
 	_, err = store.Publish(Publication{
-		Effects:  []balancehistory.Effect{inputEffect(1, 1, 10, 10, 7, "a", 1)},
+		Effects:  []balancehistory.Effect{inputEffect(1, 1, 10, 10, "default", "a", 1)},
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1},
 	})
 	require.NoError(t, err)
@@ -55,7 +54,7 @@ func TestStoreReadinessFailureRepairAndQuarantineAreFailClosed(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, store.MarkSourceMissing("archive chapter 1 is unavailable"))
-	_, err = view.ReadVolumes(7, AxisEffective, 10, nil)
+	_, err = view.ReadVolumes("default", TemporalityEffective, 10, nil)
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
 	_, err = store.OpenView(1)
@@ -71,7 +70,7 @@ func TestStoreReadinessFailureRepairAndQuarantineAreFailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, repaired.Close())
 
-	require.NoError(t, store.Quarantine("source replay digest differs"))
+	require.NoError(t, store.Quarantine("source replay structure differs"))
 	_, err = store.OpenView(1)
 	var quarantined *ErrQuarantined
 	require.ErrorAs(t, err, &quarantined)
@@ -115,18 +114,18 @@ func TestQuarantinedStoreRebuildNeverServesPartialHistory(t *testing.T) {
 	dir := t.TempDir()
 	store := openTestStoreAt(t, dir)
 	publishBalanced(t, store, 1, 1, 1, 1, 1)
-	require.NoError(t, store.Quarantine("logical digest mismatch"))
+	require.NoError(t, store.Quarantine("malformed segment record"))
 	require.NoError(t, store.ResetForRebuild())
 
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
-	require.Zero(t, manifest.Version)
+	require.Equal(t, uint64(1), manifest.Version)
 	_, err = store.OpenView(0)
 	var quarantined *ErrQuarantined
 	require.ErrorAs(t, err, &quarantined)
 
 	_, err = store.Publish(Publication{
-		Effects:  []balancehistory.Effect{inputEffect(1, 1, 1, 1, 7, "a", 4)},
+		Effects:  []balancehistory.Effect{inputEffect(1, 1, 1, 1, "default", "a", 4)},
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1},
 	})
 	require.NoError(t, err)
@@ -149,13 +148,13 @@ func TestQuarantinedStoreRebuildNeverServesPartialHistory(t *testing.T) {
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
 	})
 	require.NoError(t, err)
-	require.ErrorContains(t, store.CompleteRebuild(2, 1), "behind certified head")
+	require.ErrorContains(t, store.CompleteRebuild(2, 1), "behind required head")
 	_, err = store.OpenView(1)
 	require.ErrorAs(t, err, &quarantined)
 	require.NoError(t, store.CompleteRebuild(1, 1))
 	view, err := store.OpenView(1)
 	require.NoError(t, err)
-	volumes, err := view.ReadVolumes(7, AxisEffective, 1, []string{"a"})
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, 1, []string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, "4", volumes[0].Input.String())
 	require.NoError(t, view.Close())
@@ -179,7 +178,7 @@ func TestSourceRepairResetPreservesFailureUntilExplicitCompletion(t *testing.T) 
 	require.ErrorAs(t, err, &missing)
 
 	_, err = store.Publish(Publication{
-		Effects:  []balancehistory.Effect{inputEffect(1, 1, 1, 1, 7, "a", 4)},
+		Effects:  []balancehistory.Effect{inputEffect(1, 1, 1, 1, "default", "a", 4)},
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
 	})
 	require.NoError(t, err)
@@ -193,13 +192,13 @@ func TestSourceRepairResetPreservesFailureUntilExplicitCompletion(t *testing.T) 
 	_, err = store.OpenView(1)
 	require.ErrorAs(t, err, &missing)
 
-	require.ErrorContains(t, store.ClearFailure(2, 1), "behind certified head")
+	require.ErrorContains(t, store.ClearFailure(2, 1), "behind required head")
 	_, err = store.OpenView(1)
 	require.ErrorAs(t, err, &missing)
 	require.NoError(t, store.ClearFailure(1, 1))
 	view, err := store.OpenView(1)
 	require.NoError(t, err)
-	volumes, err := view.ReadVolumes(7, AxisEffective, 1, []string{"a"})
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, 1, []string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, "4", volumes[0].Input.String())
 	require.NoError(t, view.Close())
@@ -224,7 +223,7 @@ func TestTornManifestPointerIsQuarantinedOnOpen(t *testing.T) {
 	require.NoError(t, store.ResetForRebuild())
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
-	require.Zero(t, manifest.Version)
+	require.Equal(t, uint64(1), manifest.Version)
 	require.NoError(t, store.Close())
 }
 
@@ -303,12 +302,12 @@ func TestAbortedPublicationAndOrphanRunDoNotAdvanceManifest(t *testing.T) {
 	// An orphan run models the stricter data-before-manifest protocol crashing
 	// after durable run bytes but before pointer publication. It must be ignored
 	// and safely reclaimable after restart.
-	orphanEffects := []balancehistory.Effect{inputEffect(2, 2, 20, 20, 7, "orphan", 9)}
-	records, entries, identities, checksum, err := buildRunRecords(99, orphanEffects)
+	orphanEffects := []balancehistory.Effect{inputEffect(2, 2, 20, 20, "default", "orphan", 9)}
+	records, entries, identities, err := buildRunRecords(99, orphanEffects)
 	require.NoError(t, err)
-	orphanRef := RunRef{
+	orphanRef := SegmentRef{
 		ID: 99, Level: 0, FirstAuditSequence: 2, LastAuditSequence: 2,
-		MaxLogSequence: 2, EntryCount: entries, IdentityCount: identities, Checksum: checksum,
+		MaxLogSequence: 2, EntryCount: entries, IdentityCount: identities,
 	}
 	encodedRef, err := json.Marshal(orphanRef)
 	require.NoError(t, err)
@@ -325,12 +324,11 @@ func TestAbortedPublicationAndOrphanRunDoNotAdvanceManifest(t *testing.T) {
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
 	require.Equal(t, first.Version, manifest.Version)
-	require.Equal(t, first.LogicalDigest, manifest.LogicalDigest)
-	require.Len(t, manifest.Runs, 1)
+	require.Len(t, manifest.Segments, 1)
 
 	view, err := store.OpenView(1)
 	require.NoError(t, err)
-	volumes, err := view.ReadVolumes(7, AxisEffective, 100, nil)
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, 100, nil)
 	require.NoError(t, err)
 	require.Len(t, volumes, 2)
 	require.NoError(t, view.Close())
@@ -359,8 +357,7 @@ func TestDurablePrefixCanReplayAnAsynchronousPublicationSuffix(t *testing.T) {
 	// deterministically exercises the lost-suffix branch.
 	durablePrefix := filepath.Join(dir, "durable-prefix")
 	require.NoError(t, store.db.Checkpoint(durablePrefix))
-	second := publishBalanced(t, store, 2, 2, 20, 20, 3)
-	require.NotEqual(t, first.LogicalDigest, second.LogicalDigest)
+	publishBalanced(t, store, 2, 2, 20, 20, 3)
 	require.NoError(t, store.Close())
 
 	dbPath := filepath.Join(dir, "balancehistorydb")
@@ -372,13 +369,11 @@ func TestDurablePrefixCanReplayAnAsynchronousPublicationSuffix(t *testing.T) {
 	recovered, err := store.Manifest()
 	require.NoError(t, err)
 	require.Equal(t, first.AuditWatermark, recovered.AuditWatermark)
-	require.Equal(t, first.LogicalDigest, recovered.LogicalDigest)
 
-	replayed := publishBalanced(t, store, 2, 2, 20, 20, 3)
-	require.Equal(t, second.LogicalDigest, replayed.LogicalDigest)
+	publishBalanced(t, store, 2, 2, 20, 20, 3)
 	view, err := store.OpenView(2)
 	require.NoError(t, err)
-	volumes, err := view.ReadVolumes(7, AxisEffective, 20, []string{"assets:cash"})
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, 20, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Equal(t, "5", volumes[0].Input.String())
 	require.NoError(t, view.Close())
@@ -396,7 +391,7 @@ func TestCompactionGarbageCollectionHonorsViewLeases(t *testing.T) {
 
 	pinned, err := store.OpenView(2)
 	require.NoError(t, err)
-	oldRuns := pinned.Manifest().Runs
+	oldRuns := pinned.Manifest().Segments
 	require.Len(t, oldRuns, 2)
 
 	compacted, err := store.Compact(2)
@@ -407,7 +402,7 @@ func TestCompactionGarbageCollectionHonorsViewLeases(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, closer.Close())
 	}
-	volumes, err := pinned.ReadVolumes(7, AxisEffective, 2, []string{"assets:cash"})
+	volumes, err := pinned.ReadVolumes("default", TemporalityEffective, 2, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Equal(t, "3", volumes[0].Input.String())
 
@@ -437,102 +432,10 @@ func TestResetInvalidatesPinnedViews(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, store.Reset())
 
-	_, err = view.AggregateAll(7, AxisEffective, 1)
+	_, err = view.ReadVolumes("default", TemporalityEffective, 1, nil)
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
 	require.NoError(t, view.Close())
-}
-
-func TestValidValueTamperingQuarantinesPersistently(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	store := openTestStoreAt(t, dir)
-	manifest := publishBalanced(t, store, 1, 1, 10, 10, 1)
-	run := manifest.Runs[0]
-	identity := recordIdentity{
-		Axis: AxisEffective, Scope: scopeVolume, LedgerID: 7,
-		Account: "assets:cash", AssetBase: "USD", AssetPrecision: 2,
-	}
-	key, err := dataKey(run.ID, identity, 10)
-	require.NoError(t, err)
-	encoded, closer, err := store.db.Get(key)
-	require.NoError(t, err)
-	value, err := decodeCumulative(append([]byte(nil), encoded...))
-	require.NoError(t, err)
-	require.NoError(t, closer.Close())
-	value.input.Add(value.input, big.NewInt(1))
-	require.NoError(t, store.db.Set(key, encodeCumulative(value), pebble.Sync))
-
-	var corrupt *ErrCorrupt
-	require.ErrorAs(t, store.Verify(), &corrupt)
-	_, err = store.OpenView(1)
-	var quarantined *ErrQuarantined
-	require.ErrorAs(t, err, &quarantined)
-	require.NoError(t, store.Close())
-
-	store = openTestStoreAt(t, dir)
-	_, err = store.OpenView(1)
-	require.ErrorAs(t, err, &quarantined)
-	require.NoError(t, store.Close())
-}
-
-func TestContentChecksumAndLogicalDigestAreReplicaStable(t *testing.T) {
-	t.Parallel()
-
-	first := []balancehistory.Effect{
-		inputEffect(1, 1, 20, 100, 7, "a", 2),
-		outputEffect(1, 1, 20, 100, 7, "world", 2),
-	}
-	third := []balancehistory.Effect{
-		inputEffect(3, 3, 10, 300, 7, "a", 3),
-		outputEffect(3, 3, 10, 300, 7, "world", 3),
-	}
-	_, _, _, checksum1, err := buildRunRecords(1, append(append([]balancehistory.Effect(nil), first...), third...))
-	require.NoError(t, err)
-	_, _, _, checksum999, err := buildRunRecords(999, append(append([]balancehistory.Effect(nil), third...), first...))
-	require.NoError(t, err)
-	require.Equal(t, checksum1, checksum999)
-
-	replicaA := newTestStore(t)
-	replicaB := newTestStore(t)
-	_, err = replicaA.Publish(Publication{
-		Effects: first, Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
-	})
-	require.NoError(t, err)
-	_, err = replicaA.Publish(Publication{
-		Coverage: Coverage{AuditSequence: 2, LogSequence: 2, SourceComplete: true},
-	})
-	require.NoError(t, err)
-	manifestA, err := replicaA.Publish(Publication{
-		Effects: third, Coverage: Coverage{AuditSequence: 3, LogSequence: 3, SourceComplete: true},
-	})
-	require.NoError(t, err)
-
-	combined := append(append([]balancehistory.Effect(nil), third...), first...)
-	manifestB, err := replicaB.Publish(Publication{
-		Effects: combined, Coverage: Coverage{AuditSequence: 3, LogSequence: 3, SourceComplete: true},
-	})
-	require.NoError(t, err)
-	require.Equal(t, manifestA.LogicalDigest, manifestB.LogicalDigest)
-
-	beforeCompaction := manifestA.LogicalDigest
-	compacted, err := replicaA.Compact(2)
-	require.NoError(t, err)
-	require.True(t, compacted)
-	afterCompaction, err := replicaA.Manifest()
-	require.NoError(t, err)
-	require.Equal(t, beforeCompaction, afterCompaction.LogicalDigest)
-	require.NotEqual(t, afterCompaction.Runs, manifestB.Runs)
-
-	for _, store := range []*Store{replicaA, replicaB} {
-		view, err := store.OpenView(3)
-		require.NoError(t, err)
-		volumes, err := view.ReadVolumes(7, AxisEffective, 20, []string{"a"})
-		require.NoError(t, err)
-		require.Equal(t, "5", volumes[0].Input.String())
-		require.NoError(t, view.Close())
-	}
 }
 
 func TestReadVolumesByPrefixUsesHistoricalAccountKeyRange(t *testing.T) {
@@ -542,7 +445,7 @@ func TestReadVolumesByPrefixUsesHistoricalAccountKeyRange(t *testing.T) {
 	accounts := []string{"assets:a", "assets:ab", "assets:b", "liabilities:a", "assets:\x00binary"}
 	effects := make([]balancehistory.Effect, 0, len(accounts))
 	for _, account := range accounts {
-		effects = append(effects, inputEffect(1, 1, 1, 1, 7, account, 1))
+		effects = append(effects, inputEffect(1, 1, 1, 1, "default", account, 1))
 	}
 	_, err := store.Publish(Publication{
 		Effects: effects, Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
@@ -552,10 +455,10 @@ func TestReadVolumesByPrefixUsesHistoricalAccountKeyRange(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
 
-	volumes, err := view.ReadVolumesByPrefix(7, AxisEffective, 1, "assets:a")
+	volumes, err := view.ReadVolumesByPrefix("default", TemporalityEffective, 1, "assets:a")
 	require.NoError(t, err)
 	require.Equal(t, []string{"assets:a", "assets:ab"}, volumeAccounts(volumes))
-	volumes, err = view.ReadVolumesByPrefix(7, AxisEffective, 1, "assets:")
+	volumes, err = view.ReadVolumesByPrefix("default", TemporalityEffective, 1, "assets:")
 	require.NoError(t, err)
 	require.Equal(t, []string{"assets:\x00binary", "assets:a", "assets:ab", "assets:b"}, volumeAccounts(volumes))
 	require.NoError(t, store.Verify())
@@ -568,14 +471,6 @@ func volumeAccounts(volumes []Volume) []string {
 	}
 
 	return accounts
-}
-
-func TestLogicalDigestRejectsBackwardRange(t *testing.T) {
-	t.Parallel()
-
-	_, err := AdvanceLogicalDigest([32]byte{}, 2, 1, nil)
-	var gap *ErrSourceGap
-	require.True(t, errors.As(err, &gap))
 }
 
 func TestConcurrentViewsCompactionAndGarbageCollection(t *testing.T) {
@@ -600,7 +495,7 @@ func TestConcurrentViewsCompactionAndGarbageCollection(t *testing.T) {
 
 					return
 				}
-				volumes, err := view.ReadVolumes(7, AxisEffective, 8, []string{"assets:cash"})
+				volumes, err := view.ReadVolumes("default", TemporalityEffective, 8, []string{"assets:cash"})
 				if err == nil && (len(volumes) != 1 || volumes[0].Input.String() != "8") {
 					err = errors.New("concurrent view returned an incomplete total")
 				}

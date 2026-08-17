@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,7 +26,7 @@ import (
 
 const (
 	// DefaultBatchSize bounds the number of complete proposals held in memory
-	// and published in one immutable level-zero history run.
+	// and published in one immutable level-zero history segment.
 	DefaultBatchSize = 200
 	// TickInterval guarantees progress for proposals which do not emit a log
 	// and coalesces immutable history publications away from the FSM hot path.
@@ -47,18 +48,14 @@ const (
 type Builder struct {
 	source        Source
 	store         *balancehistorystore.Store
-	certifier     HistoryCertifier
 	notifications *signal.Notifications
 	clusterID     string
 	logger        logging.Logger
 	meter         metric.Meter
 
-	batchSize int
-	// compactionThreshold is retained for constructor/config compatibility.
-	// Background maintenance owns compaction; Builder never performs it inline.
-	compactionThreshold int
-	backfillYield       time.Duration
-	durabilityInterval  time.Duration
+	batchSize          int
+	backfillYield      time.Duration
+	durabilityInterval time.Duration
 
 	lastProcessedAuditSequence atomic.Uint64
 	sourceHeadAuditSequence    atomic.Uint64
@@ -78,6 +75,9 @@ type Builder struct {
 	durabilityNow      func() time.Time
 	processingMetrics  builderProcessingMetrics
 	idempotencyProbe   idempotencyReductionProbe
+	projectionLedgers  []string
+	configurationBuild bool
+	nextProcessAt      time.Time
 
 	tw   *tailworker.TailWorker
 	regs []metric.Registration
@@ -94,21 +94,9 @@ type builderProcessingMetrics struct {
 	publishLag    metric.Int64Histogram
 }
 
-// HistoryCertifier independently proves that the manifest serving a repaired
-// prefix is semantically identical to an authoritative replay before the
-// builder is allowed to clear a fail-closed store marker.
-type HistoryCertifier interface {
-	Certify(ctx context.Context, requiredAuditSequence, requiredLogSequence uint64) error
-}
-
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -destination=history_certifier_generated_test.go -package=balancehistory . HistoryCertifier
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -destination=history_archive_generated_test.go -package=balancehistory github.com/formancehq/ledger/v3/internal/storage/balancehistoryarchive Archive
-//go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -destination=history_identified_archive_generated_test.go -package=balancehistory github.com/formancehq/ledger/v3/internal/storage/balancehistoryarchive IdentifiedArchive
-
 // NewBuilder wires one asynchronous balance-history projection builder.
-// compactionThreshold is retained for configuration compatibility while
-// background maintenance owns logical run compaction; values <= 1 still select
-// the store default. backfillYield controls cooperative pauses between boot
+// Background maintenance owns logical segment compaction. backfillYield
+// controls cooperative pauses between boot
 // batches; values <= 0 select DefaultBackfillYield. durabilityInterval bounds
 // asynchronous WAL durability; values <= 0 select DefaultDurabilityInterval.
 // Notifications is optional because the ticker is the correctness
@@ -116,21 +104,16 @@ type HistoryCertifier interface {
 func NewBuilder(
 	source Source,
 	store *balancehistorystore.Store,
-	certifier HistoryCertifier,
 	notifications *signal.Notifications,
 	clusterID string,
 	logger logging.Logger,
 	meter metric.Meter,
 	batchSize int,
-	compactionThreshold int,
 	backfillYield time.Duration,
 	durabilityInterval time.Duration,
 ) *Builder {
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
-	}
-	if compactionThreshold <= 1 {
-		compactionThreshold = balancehistorystore.DefaultRunCompactionThreshold
 	}
 	if backfillYield <= 0 {
 		backfillYield = DefaultBackfillYield
@@ -141,19 +124,17 @@ func NewBuilder(
 
 	now := time.Now
 	builder := &Builder{
-		source:              source,
-		store:               store,
-		certifier:           certifier,
-		notifications:       notifications,
-		clusterID:           clusterID,
-		logger:              logger.WithFields(map[string]any{"cmp": "balance-history-builder"}),
-		meter:               meter,
-		batchSize:           batchSize,
-		compactionThreshold: compactionThreshold,
-		backfillYield:       backfillYield,
-		durabilityInterval:  durabilityInterval,
-		lastDurabilitySync:  now(),
-		durabilityNow:       now,
+		source:             source,
+		store:              store,
+		notifications:      notifications,
+		clusterID:          clusterID,
+		logger:             logger.WithFields(map[string]any{"cmp": "balance-history-builder"}),
+		meter:              meter,
+		batchSize:          batchSize,
+		backfillYield:      backfillYield,
+		durabilityInterval: durabilityInterval,
+		lastDurabilitySync: now(),
+		durabilityNow:      now,
 	}
 	if store != nil {
 		builder.durabilitySync = store.SyncWAL
@@ -428,7 +409,7 @@ func (b *Builder) LastDurabilityError() error {
 
 // Ready reports whether this process has reconciled the persisted projection
 // with a successfully read authoritative source head, reached that head, made
-// the repair prefix durable, and completed any required semantic certification.
+// the repair prefix durable, and completed the required structural checks.
 // It is deliberately in-memory: every process restart must prove the source
 // relationship again before the provider may expose persisted history.
 func (b *Builder) Ready() bool {
@@ -465,9 +446,8 @@ func (b *Builder) syncDurability(force bool) error {
 
 // boot restores the locally validated manifest and reducer state, repairs a
 // primary rollback by resetting the projection, then drains bounded snapshots
-// until it reaches one observed source head. It performs no physical run or
-// cold-archive I/O: HistoryVerifier and background maintenance own those
-// checks. Repair still requires an explicit full Certify before reads reopen.
+// until it reaches one observed source head. Projection reads remain closed
+// until the rebuilt prefix is complete and durable.
 func (b *Builder) boot(ctx context.Context) error {
 	b.ready.Store(false)
 	if b.source == nil {
@@ -489,6 +469,7 @@ func (b *Builder) boot(ctx context.Context) error {
 			return b.swallowBootError(fmt.Errorf("reading balance history manifest after recovery reset: %w", err))
 		}
 	}
+	b.projectionLedgers = append(b.projectionLedgers[:0], manifest.Ledgers...)
 	if _, err := reducerFromManifest(manifest); err != nil {
 		return b.swallowBootError(err)
 	}
@@ -555,6 +536,12 @@ func (b *Builder) waitForBackfillYield(ctx context.Context) error {
 }
 
 func (b *Builder) tick(ctx context.Context) error {
+	now := b.durabilityNow()
+	if now.Before(b.nextProcessAt) {
+		return nil
+	}
+	b.nextProcessAt = now.Add(TickInterval)
+
 	caughtUp, buildErr := b.processOnce(ctx)
 	repairing := b.rebuilding.Load() || b.sourceMissing.Load()
 	readyAfterBuild := b.ready.Load()
@@ -664,7 +651,7 @@ func (b *Builder) beginCorruptionRebuild(cause error) error {
 	if quarantineErr := b.store.Quarantine(cause.Error()); quarantineErr != nil {
 		return errors.Join(cause, fmt.Errorf("quarantining balance history: %w", quarantineErr))
 	}
-	if resetErr := b.store.ResetForRebuild(); resetErr != nil {
+	if resetErr := b.store.ResetForConfiguration(b.projectionLedgers); resetErr != nil {
 		return errors.Join(cause, fmt.Errorf("resetting quarantined balance history for rebuild: %w", resetErr))
 	}
 	b.processingMetrics.recordRebuild()
@@ -678,8 +665,7 @@ func (b *Builder) beginCorruptionRebuild(cause error) error {
 }
 
 // restoreRebuildState restores fail-closed markers after process restart. A
-// quarantine or interrupted rebuild is restarted from genesis; certification
-// is deferred until a source head has been pinned and fully reached.
+// quarantine or interrupted rebuild is restarted from genesis.
 func (b *Builder) restoreRebuildState(manifest balancehistorystore.Manifest) error {
 	view, err := b.store.OpenView(manifest.LogWatermark)
 	if err == nil {
@@ -703,7 +689,7 @@ func (b *Builder) restoreRebuildState(manifest balancehistorystore.Manifest) err
 	return b.beginCorruptionRebuild(err)
 }
 
-func (b *Builder) completeCaughtUpHistory(ctx context.Context) error {
+func (b *Builder) completeCaughtUpHistory(_ context.Context) error {
 	manifest, err := b.store.Manifest()
 	if err != nil {
 		return fmt.Errorf("reading caught-up balance history manifest: %w", err)
@@ -725,17 +711,12 @@ func (b *Builder) completeCaughtUpHistory(ctx context.Context) error {
 	if !b.rebuilding.Load() && !b.sourceMissing.Load() {
 		return nil
 	}
-	if b.certifier == nil {
-		return errors.New("balance history repair requires semantic certification")
-	}
-	if err := b.certifier.Certify(ctx, headAudit, headLog); err != nil {
-		return fmt.Errorf("certifying caught-up balance history through audit/log (%d,%d): %w", headAudit, headLog, err)
-	}
 	if b.rebuilding.Load() {
 		if err := b.store.CompleteRebuild(headAudit, headLog); err != nil {
-			return fmt.Errorf("certifying complete balance history rebuild: %w", err)
+			return fmt.Errorf("completing balance history rebuild: %w", err)
 		}
 		b.rebuilding.Store(false)
+		b.configurationBuild = false
 
 		return nil
 	}
@@ -813,7 +794,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	b.sourceHeadLogSequence.Store(head.LogSequence)
 
 	if b.rebuildFromGenesis.Swap(false) &&
-		(manifest.Version > 0 || manifest.AuditWatermark > 0 || len(manifest.Runs) > 0) {
+		(manifest.Version > 0 || manifest.AuditWatermark > 0 || len(manifest.Segments) > 0) {
 		b.ready.Store(false)
 		// Reset only after a successful source probe. This preserves the
 		// persistent SOURCE_MISSING marker while the source is still entirely
@@ -821,7 +802,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 		reset := b.store.Reset
 		switch {
 		case b.rebuilding.Load():
-			reset = b.store.ResetForRebuild
+			reset = func() error { return b.store.ResetForConfiguration(b.projectionLedgers) }
 		case b.sourceMissing.Load():
 			reset = b.store.ResetForSourceRepair
 		}
@@ -835,6 +816,7 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("reading reset balance history manifest: %w", err)
 		}
+		b.projectionLedgers = append(b.projectionLedgers[:0], manifest.Ledgers...)
 		b.lastProcessedAuditSequence.Store(0)
 		b.lastDurableAuditSequence.Store(0)
 		b.idempotencyProbe.Reset()
@@ -909,6 +891,15 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	caughtUp := next.AuditSequence >= batch.Head.AuditSequence
+	configurationChanged := !slices.Equal(reducerState.Enabled, manifest.Ledgers)
+	if configurationChanged && (!b.configurationBuild || caughtUp) {
+		if err := b.beginConfigurationRebuild(reducerState.Enabled); err != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
 
 	sourceComplete := manifest.SourceComplete
 	if !sourceComplete && manifest.AuditWatermark == 0 && batch.Proposals[0].Entry.GetSequence() == 1 {
@@ -922,8 +913,6 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 			LogSequence:    next.LogSequence,
 			AuditHash:      append([]byte(nil), next.AuditHash...),
 			SourceComplete: sourceComplete,
-			EffectiveFloor: manifest.EffectiveFloor,
-			InsertionFloor: manifest.InsertionFloor,
 		},
 		ReducerState: reducerState,
 	})
@@ -937,7 +926,27 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	publishedEffects = len(effects)
 	b.observePublishLag(ctx, batch.Proposals[len(batch.Proposals)-1].Entry)
 
-	return next.AuditSequence >= batch.Head.AuditSequence, nil
+	return caughtUp, nil
+}
+
+func (b *Builder) beginConfigurationRebuild(ledgers []string) error {
+	ledgers = append([]string(nil), ledgers...)
+	slices.Sort(ledgers)
+	b.ready.Store(false)
+	if err := b.store.ResetForConfiguration(ledgers); err != nil {
+		return fmt.Errorf("resetting balance history for client configuration: %w", err)
+	}
+	b.processingMetrics.recordRebuild()
+	b.projectionLedgers = ledgers
+	b.configurationBuild = true
+	b.rebuilding.Store(true)
+	b.sourceMissing.Store(false)
+	b.rebuildFromGenesis.Store(false)
+	b.lastProcessedAuditSequence.Store(0)
+	b.lastDurableAuditSequence.Store(0)
+	b.idempotencyProbe.Reset()
+
+	return nil
 }
 
 func (b *Builder) observePublishLag(ctx context.Context, entry *auditpb.AuditEntry) {
@@ -1033,6 +1042,7 @@ func reducerFromManifest(manifest balancehistorystore.Manifest) (*domainhistory.
 			manifest.LogWatermark,
 		)}
 	}
+	reducer.SetProjectedLedgers(manifest.Ledgers)
 
 	return reducer, nil
 }

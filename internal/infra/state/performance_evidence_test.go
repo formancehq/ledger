@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-type pitFSMPerfLatency struct {
+type historicalBalanceFSMPerfLatency struct {
 	Name                string  `json:"name"`
 	Unit                string  `json:"unit"`
 	Samples             int     `json:"samples"`
@@ -30,68 +30,68 @@ type pitFSMPerfLatency struct {
 	SamplesNS           []int64 `json:"samplesNs"`
 }
 
-type pitFSMPerfComparison struct {
-	FourTargets          pitFSMPerfLatency `json:"fourTargets"`
-	FiveTargets          pitFSMPerfLatency `json:"fiveTargetsRejectedOption"`
-	P50RegressionPercent float64           `json:"p50RegressionPercent"`
-	P99RegressionPercent float64           `json:"p99RegressionPercent"`
+type historicalBalanceFSMPerfComparison struct {
+	FourTargets          historicalBalanceFSMPerfLatency `json:"fourTargets"`
+	FiveTargets          historicalBalanceFSMPerfLatency `json:"fiveTargetsRejectedOption"`
+	P50RegressionPercent float64                         `json:"p50RegressionPercent"`
+	P99RegressionPercent float64                         `json:"p99RegressionPercent"`
 }
 
-type pitFSMPerfReport struct {
-	SchemaVersion         int                  `json:"schemaVersion"`
-	GeneratedAt           string               `json:"generatedAt"`
-	Profile               string               `json:"profile"`
-	GitCommit             string               `json:"gitCommit"`
-	GitTree               string               `json:"gitTree"`
-	WorkingTree           string               `json:"workingTree"`
-	Machine               string               `json:"machine"`
-	GoVersion             string               `json:"goVersion"`
-	DeliveredTargets      int                  `json:"deliveredFanOutTargets"`
-	FanOutOnly            pitFSMPerfComparison `json:"fanOutOnly"`
-	FSMApplyAndDurability pitFSMPerfComparison `json:"fsmApplyAndDurability"`
-	Scope                 string               `json:"scope"`
-	Limitation            string               `json:"limitation"`
+type historicalBalanceFSMPerfReport struct {
+	SchemaVersion         int                                `json:"schemaVersion"`
+	GeneratedAt           string                             `json:"generatedAt"`
+	Profile               string                             `json:"profile"`
+	GitCommit             string                             `json:"gitCommit"`
+	GitTree               string                             `json:"gitTree"`
+	WorkingTree           string                             `json:"workingTree"`
+	Machine               string                             `json:"machine"`
+	GoVersion             string                             `json:"goVersion"`
+	DeliveredTargets      int                                `json:"deliveredFanOutTargets"`
+	FanOutOnly            historicalBalanceFSMPerfComparison `json:"fanOutOnly"`
+	FSMApplyAndDurability historicalBalanceFSMPerfComparison `json:"fsmApplyAndDurability"`
+	Scope                 string                             `json:"scope"`
+	Limitation            string                             `json:"limitation"`
 }
 
-// TestPITFSMNotificationPerformanceEvidence isolates the rejected fifth
+// TestHistoricalBalanceFSMNotificationPerformanceEvidence isolates the rejected fifth
 // synchronous notification target from the asynchronous history I/O measured
 // by the builder harness. The shipped runtime retains four targets.
-func TestPITFSMNotificationPerformanceEvidence(t *testing.T) {
-	if os.Getenv("PIT_PERF") != "1" {
-		t.Skip("set PIT_PERF=1 to run the PIT FSM notification evidence harness")
+func TestHistoricalBalanceFSMNotificationPerformanceEvidence(t *testing.T) {
+	if os.Getenv("HISTORICAL_BALANCE_PERF") != "1" {
+		t.Skip("set HISTORICAL_BALANCE_PERF=1 to run the historical-balance FSM notification evidence harness")
 	}
 
-	profile, fsmSamples, fanOutSamples := pitFSMPerfProfile(t)
-	fanOutFour := measurePITFanOut(t, 4, fanOutSamples)
-	fanOutFive := measurePITFanOut(t, 5, fanOutSamples)
-	fsmFour := measurePITFSMApply(t, 4, fsmSamples)
-	fsmFive := measurePITFSMApply(t, 5, fsmSamples)
-	report := pitFSMPerfReport{
+	profile, fsmSamples, fanOutSamples := historicalBalanceFSMPerfProfile(t)
+	fanOutFour := measureHistoricalBalanceFanOut(t, 4, fanOutSamples)
+	fanOutFive := measureHistoricalBalanceFanOut(t, 5, fanOutSamples)
+	fsmFour := measureHistoricalBalanceFSMApply(t, 4, fsmSamples)
+	fsmFive := measureHistoricalBalanceFSMApply(t, 5, fsmSamples)
+	report := historicalBalanceFSMPerfReport{
 		SchemaVersion:    1,
 		GeneratedAt:      time.Now().UTC().Format(time.RFC3339Nano),
 		Profile:          profile,
-		GitCommit:        pitFSMPerfValue(os.Getenv("PIT_PERF_GIT_COMMIT")),
-		GitTree:          pitFSMPerfValue(os.Getenv("PIT_PERF_GIT_TREE")),
-		WorkingTree:      pitFSMPerfValue(os.Getenv("PIT_PERF_WORKTREE")),
-		Machine:          pitFSMPerfValue(os.Getenv("PIT_PERF_MACHINE")),
+		GitCommit:        historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_GIT_COMMIT")),
+		GitTree:          historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_GIT_TREE")),
+		WorkingTree:      historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_WORKTREE")),
+		Machine:          historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_MACHINE")),
 		GoVersion:        runtime.Version(),
 		DeliveredTargets: 4,
-		FanOutOnly:       pitFSMPerfComparisonResult(fanOutFour, fanOutFive),
-		FSMApplyAndDurability: pitFSMPerfComparisonResult(
+		FanOutOnly:       historicalBalanceFSMPerfComparisonResult(fanOutFour, fanOutFive),
+		FSMApplyAndDurability: historicalBalanceFSMPerfComparisonResult(
 			fsmFour,
 			fsmFive,
 		),
 		Scope:      "local single-node Machine.ApplyEntries through Pebble NoSync commit, synchronous FanOut notification, then explicit primary SyncWAL; identical transaction shape and fresh volume keys",
-		Limitation: "this is below Raft transport/admission and above neither HTTP nor gRPC; it separates the synchronous four-to-five fan-out option from asynchronous PIT projection I/O",
+		Limitation: "this is below Raft transport/admission and above neither HTTP nor gRPC; it separates the synchronous four-to-five fan-out option from asynchronous historical-balance projection I/O",
 	}
 
-	writePITFSMPerfReport(t, report)
+	writeHistoricalBalanceFSMPerfReport(t, report)
 }
 
-func pitFSMPerfProfile(t *testing.T) (string, int, int) {
+func historicalBalanceFSMPerfProfile(t *testing.T) (string, int, int) {
 	t.Helper()
 
-	switch profile := os.Getenv("PIT_PERF_PROFILE"); profile {
+	switch profile := os.Getenv("HISTORICAL_BALANCE_PERF_PROFILE"); profile {
 	case "", "local":
 		return "local", 300, 100_000
 	case "smoke":
@@ -99,13 +99,13 @@ func pitFSMPerfProfile(t *testing.T) (string, int, int) {
 	case "full":
 		return "full", 1_000, 500_000
 	default:
-		t.Fatalf("unknown PIT_PERF_PROFILE %q; expected smoke, local, or full", profile)
+		t.Fatalf("unknown HISTORICAL_BALANCE_PERF_PROFILE %q; expected smoke, local, or full", profile)
 
 		return "", 0, 0
 	}
 }
 
-func measurePITFanOut(t *testing.T, targetCount, samples int) pitFSMPerfLatency {
+func measureHistoricalBalanceFanOut(t *testing.T, targetCount, samples int) historicalBalanceFSMPerfLatency {
 	t.Helper()
 
 	targets := make([]*signal.Notifications, targetCount)
@@ -129,10 +129,10 @@ func measurePITFanOut(t *testing.T, targetCount, samples int) pitFSMPerfLatency 
 		}
 	}
 
-	return summarizePITFSMLatency(fmt.Sprintf("fanout_%d_targets", targetCount), durations, time.Nanosecond)
+	return summarizeHistoricalBalanceFSMLatency(fmt.Sprintf("fanout_%d_targets", targetCount), durations, time.Nanosecond)
 }
 
-func measurePITFSMApply(t *testing.T, targetCount, samples int) pitFSMPerfLatency {
+func measureHistoricalBalanceFSMApply(t *testing.T, targetCount, samples int) historicalBalanceFSMPerfLatency {
 	t.Helper()
 
 	machine, store, _ := newTestMachine(t)
@@ -141,14 +141,14 @@ func measurePITFSMApply(t *testing.T, targetCount, samples int) pitFSMPerfLatenc
 		targets[index] = signal.NewNotifications()
 	}
 	machine.notifier = signal.NewFanOut(targets...)
-	const ledger = "pit-fsm-performance"
+	const ledger = "historical-balance-fsm-performance"
 	_, err := machine.ApplyEntries(
 		context.Background(),
 		store,
 		makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger))),
 	)
 	if err != nil {
-		t.Fatalf("creating PIT FSM performance ledger with %d targets: %v", targetCount, err)
+		t.Fatalf("creating historical-balance FSM performance ledger with %d targets: %v", targetCount, err)
 	}
 	for _, target := range targets {
 		<-target.LogCommitted.C()
@@ -176,7 +176,7 @@ func measurePITFSMApply(t *testing.T, targetCount, samples int) pitFSMPerfLatenc
 		}
 		elapsed := time.Since(started)
 		if applyErr != nil {
-			t.Fatalf("applying PIT FSM performance sample %d with %d targets: %v", index, targetCount, applyErr)
+			t.Fatalf("applying historical-balance FSM performance sample %d with %d targets: %v", index, targetCount, applyErr)
 		}
 		for _, target := range targets {
 			<-target.LogCommitted.C()
@@ -186,19 +186,19 @@ func measurePITFSMApply(t *testing.T, targetCount, samples int) pitFSMPerfLatenc
 		}
 	}
 
-	return summarizePITFSMLatency(fmt.Sprintf("fsm_apply_syncwal_%d_targets", targetCount), durations, time.Millisecond)
+	return summarizeHistoricalBalanceFSMLatency(fmt.Sprintf("fsm_apply_syncwal_%d_targets", targetCount), durations, time.Millisecond)
 }
 
-func pitFSMPerfComparisonResult(four, five pitFSMPerfLatency) pitFSMPerfComparison {
-	return pitFSMPerfComparison{
+func historicalBalanceFSMPerfComparisonResult(four, five historicalBalanceFSMPerfLatency) historicalBalanceFSMPerfComparison {
+	return historicalBalanceFSMPerfComparison{
 		FourTargets:          four,
 		FiveTargets:          five,
-		P50RegressionPercent: pitFSMPerfRegression(five.P50, four.P50),
-		P99RegressionPercent: pitFSMPerfRegression(five.P99, four.P99),
+		P50RegressionPercent: historicalBalanceFSMPerfRegression(five.P50, four.P50),
+		P99RegressionPercent: historicalBalanceFSMPerfRegression(five.P99, four.P99),
 	}
 }
 
-func pitFSMPerfRegression(after, before float64) float64 {
+func historicalBalanceFSMPerfRegression(after, before float64) float64 {
 	if before == 0 {
 		return 0
 	}
@@ -206,7 +206,7 @@ func pitFSMPerfRegression(after, before float64) float64 {
 	return (after/before - 1) * 100
 }
 
-func summarizePITFSMLatency(name string, samples []int64, unit time.Duration) pitFSMPerfLatency {
+func summarizeHistoricalBalanceFSMLatency(name string, samples []int64, unit time.Duration) historicalBalanceFSMPerfLatency {
 	ordered := slices.Clone(samples)
 	slices.Sort(ordered)
 	total := int64(0)
@@ -215,33 +215,33 @@ func summarizePITFSMLatency(name string, samples []int64, unit time.Duration) pi
 	}
 	convert := func(value int64) float64 { return float64(value) / float64(unit) }
 
-	return pitFSMPerfLatency{
+	return historicalBalanceFSMPerfLatency{
 		Name: name, Unit: unit.String(), Samples: len(samples),
-		Min: convert(ordered[0]), P50: convert(pitFSMPerfPercentile(ordered, 0.50)),
-		P95: convert(pitFSMPerfPercentile(ordered, 0.95)), P99: convert(pitFSMPerfPercentile(ordered, 0.99)),
+		Min: convert(ordered[0]), P50: convert(historicalBalanceFSMPerfPercentile(ordered, 0.50)),
+		P95: convert(historicalBalanceFSMPerfPercentile(ordered, 0.95)), P99: convert(historicalBalanceFSMPerfPercentile(ordered, 0.99)),
 		Max: convert(ordered[len(ordered)-1]), Mean: convert(total / int64(len(samples))),
 		OperationsPerSecond: float64(len(samples)) / (float64(total) / float64(time.Second)),
 		SamplesNS:           slices.Clone(samples),
 	}
 }
 
-func pitFSMPerfPercentile(ordered []int64, quantile float64) int64 {
+func historicalBalanceFSMPerfPercentile(ordered []int64, quantile float64) int64 {
 	index := int(math.Ceil(quantile*float64(len(ordered)))) - 1
 	index = max(0, min(index, len(ordered)-1))
 
 	return ordered[index]
 }
 
-func writePITFSMPerfReport(t *testing.T, report pitFSMPerfReport) {
+func writeHistoricalBalanceFSMPerfReport(t *testing.T, report historicalBalanceFSMPerfReport) {
 	t.Helper()
 
 	encoded, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		t.Fatalf("marshaling PIT FSM performance evidence: %v", err)
+		t.Fatalf("marshaling historical-balance FSM performance evidence: %v", err)
 	}
-	output := os.Getenv("PIT_FSM_PERF_OUTPUT")
+	output := os.Getenv("HISTORICAL_BALANCE_FSM_PERF_OUTPUT")
 	if output == "" {
-		t.Logf("PIT_FSM_PERF_OUTPUT is unset; raw evidence follows:\n%s", encoded)
+		t.Logf("HISTORICAL_BALANCE_FSM_PERF_OUTPUT is unset; raw evidence follows:\n%s", encoded)
 
 		return
 	}
@@ -261,7 +261,7 @@ func writePITFSMPerfReport(t *testing.T, report pitFSMPerfReport) {
 	t.Logf("wrote PIT FSM performance evidence to %s", output)
 }
 
-func pitFSMPerfValue(value string) string {
+func historicalBalanceFSMPerfValue(value string) string {
 	if value == "" {
 		return "unknown"
 	}

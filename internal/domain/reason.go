@@ -103,8 +103,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
 		commonpb.ErrorReason_ERROR_REASON_COLD_STORAGE_DISABLED,
-		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
-		commonpb.ErrorReason_ERROR_REASON_HISTORY_EXPIRED:
+		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO:
 		return KindPrecondition
 	case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
 		commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,

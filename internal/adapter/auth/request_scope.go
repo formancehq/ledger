@@ -51,6 +51,8 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 		// group (handler.go:176). Saving a numscript is a per-ledger library
 		// write, not an ops action.
 		return ScopeLedgersWrite, true
+	case *servicepb.Request_ConfigureHistoricalBalances:
+		return ScopeLedgersWrite, true
 	case *servicepb.Request_RegisterSigningKey:
 		return ScopeOpsWrite, true
 	case *servicepb.Request_RevokeSigningKey:

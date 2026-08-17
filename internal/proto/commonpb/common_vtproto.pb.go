@@ -1991,6 +1991,32 @@ func (m *LedgerLogPayload_OrderSkipped) CloneVT() isLedgerLogPayload_Payload {
 	return r
 }
 
+func (m *LedgerLogPayload_ConfiguredHistoricalBalances) CloneVT() isLedgerLogPayload_Payload {
+	if m == nil {
+		return (*LedgerLogPayload_ConfiguredHistoricalBalances)(nil)
+	}
+	r := new(LedgerLogPayload_ConfiguredHistoricalBalances)
+	r.ConfiguredHistoricalBalances = m.ConfiguredHistoricalBalances.CloneVT()
+	return r
+}
+
+func (m *ConfiguredHistoricalBalancesLog) CloneVT() *ConfiguredHistoricalBalancesLog {
+	if m == nil {
+		return (*ConfiguredHistoricalBalancesLog)(nil)
+	}
+	r := new(ConfiguredHistoricalBalancesLog)
+	r.Enabled = m.Enabled
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ConfiguredHistoricalBalancesLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *OrderSkippedLog) CloneVT() *OrderSkippedLog {
 	if m == nil {
 		return (*OrderSkippedLog)(nil)
@@ -7927,6 +7953,50 @@ func (this *LedgerLogPayload_OrderSkipped) EqualVT(thatIface isLedgerLogPayload_
 	return true
 }
 
+func (this *LedgerLogPayload_ConfiguredHistoricalBalances) EqualVT(thatIface isLedgerLogPayload_Payload) bool {
+	that, ok := thatIface.(*LedgerLogPayload_ConfiguredHistoricalBalances)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ConfiguredHistoricalBalances, that.ConfiguredHistoricalBalances; p != q {
+		if p == nil {
+			p = &ConfiguredHistoricalBalancesLog{}
+		}
+		if q == nil {
+			q = &ConfiguredHistoricalBalancesLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ConfiguredHistoricalBalancesLog) EqualVT(that *ConfiguredHistoricalBalancesLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Enabled != that.Enabled {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ConfiguredHistoricalBalancesLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfiguredHistoricalBalancesLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *OrderSkippedLog) EqualVT(that *OrderSkippedLog) bool {
 	if this == that {
 		return true
@@ -17086,6 +17156,68 @@ func (m *LedgerLogPayload_OrderSkipped) MarshalToSizedBufferVT(dAtA []byte) (int
 	}
 	return len(dAtA) - i, nil
 }
+func (m *LedgerLogPayload_ConfiguredHistoricalBalances) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerLogPayload_ConfiguredHistoricalBalances) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.ConfiguredHistoricalBalances != nil {
+		size, err := m.ConfiguredHistoricalBalances.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ConfiguredHistoricalBalancesLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConfiguredHistoricalBalancesLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConfiguredHistoricalBalancesLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Enabled {
+		i--
+		if m.Enabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *OrderSkippedLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -25338,6 +25470,31 @@ func (m *LedgerLogPayload_OrderSkipped) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LedgerLogPayload_ConfiguredHistoricalBalances) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ConfiguredHistoricalBalances != nil {
+		l = m.ConfiguredHistoricalBalances.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *ConfiguredHistoricalBalancesLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Enabled {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *OrderSkippedLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -39837,6 +39994,118 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_OrderSkipped{OrderSkipped: v}
 			}
 			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfiguredHistoricalBalances", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerLogPayload_ConfiguredHistoricalBalances); ok {
+				if err := oneof.ConfiguredHistoricalBalances.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ConfiguredHistoricalBalancesLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerLogPayload_ConfiguredHistoricalBalances{ConfiguredHistoricalBalances: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ConfiguredHistoricalBalancesLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConfiguredHistoricalBalancesLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConfiguredHistoricalBalancesLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Enabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Enabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -3,12 +3,10 @@ package balancehistorystore
 import (
 	"bytes"
 	"cmp"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"math/big"
 	"slices"
 	"sort"
@@ -36,60 +34,52 @@ type runRecord struct {
 	value []byte
 }
 
-func effectIdentity(effect balancehistory.Effect, axis Axis, scope recordScope) recordIdentity {
-	identity := recordIdentity{
-		Axis:           axis,
-		Scope:          scope,
-		LedgerID:       effect.LedgerID,
+func effectIdentity(effect balancehistory.Effect, temporality Temporality) recordIdentity {
+	return recordIdentity{
+		Temporality:    temporality,
+		LedgerName:     effect.LedgerName,
+		Account:        effect.Account,
 		AssetBase:      effect.AssetBase,
 		AssetPrecision: effect.AssetPrecision,
 		Color:          effect.Color,
 	}
-	if scope == scopeVolume {
-		identity.Account = effect.Account
-	}
-
-	return identity
 }
 
-func effectTimestamp(effect balancehistory.Effect, axis Axis) uint64 {
-	if axis == AxisInsertion {
+func effectTimestamp(effect balancehistory.Effect, temporality Temporality) uint64 {
+	if temporality == TemporalityInsertion {
 		return effect.InsertedAt
 	}
 
 	return effect.EffectiveAt
 }
 
-func buildRunRecords(runID uint64, effects []balancehistory.Effect) ([]runRecord, uint64, uint64, [32]byte, error) {
-	groups := make(map[recordIdentity][]timedDelta, len(effects)*4)
+func buildRunRecords(runID uint64, effects []balancehistory.Effect) ([]runRecord, uint64, uint64, error) {
+	groups := make(map[recordIdentity][]timedDelta, len(effects)*2)
 
 	for _, effect := range effects {
 		input := effect.Input.BigInt()
 		output := effect.Output.BigInt()
-		for _, axis := range []Axis{AxisEffective, AxisInsertion} {
-			for _, scope := range []recordScope{scopeVolume, scopeAsset} {
-				identity := effectIdentity(effect, axis, scope)
-				groups[identity] = append(groups[identity], timedDelta{
-					timestamp:     effectTimestamp(effect, axis),
-					auditSequence: effect.AuditSequence,
-					orderIndex:    effect.OrderIndex,
-					logSequence:   effect.LogSequence,
-					input:         new(big.Int).Set(input),
-					output:        new(big.Int).Set(output),
-				})
-			}
+		for _, temporality := range []Temporality{TemporalityEffective, TemporalityInsertion} {
+			identity := effectIdentity(effect, temporality)
+			groups[identity] = append(groups[identity], timedDelta{
+				timestamp:     effectTimestamp(effect, temporality),
+				auditSequence: effect.AuditSequence,
+				orderIndex:    effect.OrderIndex,
+				logSequence:   effect.LogSequence,
+				input:         new(big.Int).Set(input),
+				output:        new(big.Int).Set(output),
+			})
 		}
 	}
 
 	return buildRunRecordsFromGroups(runID, groups)
 }
 
-func buildRunRecordsFromGroups(runID uint64, groups map[recordIdentity][]timedDelta) ([]runRecord, uint64, uint64, [32]byte, error) {
+func buildRunRecordsFromGroups(runID uint64, groups map[recordIdentity][]timedDelta) ([]runRecord, uint64, uint64, error) {
 	compareIdentities := func(left, right recordIdentity) int {
 		return firstNonZero(
-			cmp.Compare(left.Axis, right.Axis),
-			cmp.Compare(left.Scope, right.Scope),
-			cmp.Compare(left.LedgerID, right.LedgerID),
+			cmp.Compare(left.Temporality, right.Temporality),
+			cmp.Compare(left.LedgerName, right.LedgerName),
 			cmp.Compare(left.Account, right.Account),
 			cmp.Compare(left.AssetBase, right.AssetBase),
 			cmp.Compare(left.AssetPrecision, right.AssetPrecision),
@@ -124,7 +114,7 @@ func buildRunRecordsFromGroups(runID uint64, groups map[recordIdentity][]timedDe
 		})
 	}
 	if encodingFailure != nil {
-		return nil, 0, 0, [32]byte{}, fmt.Errorf("encoding balance history catalog key: %w", encodingFailure)
+		return nil, 0, 0, fmt.Errorf("encoding balance history catalog key: %w", encodingFailure)
 	}
 	slices.SortFunc(encodedIdentities, func(left, right encodedIdentity) int {
 		return bytes.Compare(left.catalogKey, right.catalogKey)
@@ -167,44 +157,8 @@ func buildRunRecordsFromGroups(runID uint64, groups map[recordIdentity][]timedDe
 	}
 
 	sort.Slice(records, func(i, j int) bool { return bytes.Compare(records[i].key, records[j].key) < 0 })
-	checksum := checksumRecords(records)
 
-	return records, dataCount, uint64(len(encodedIdentities)), checksum, nil
-}
-
-func checksumRecords(records []runRecord) [32]byte {
-	hash := sha256.New()
-	for _, record := range records {
-		writeCanonicalRecordHash(hash, record.key, record.value)
-	}
-
-	var checksum [32]byte
-	copy(checksum[:], hash.Sum(nil))
-
-	return checksum
-}
-
-// writeCanonicalRecordHash excludes the physical run ID while preserving the
-// record kind and complete logical key/value bytes. Consequently Checksum is a
-// stable content identity even when replicas choose different run IDs.
-func writeCanonicalRecordHash(digest hash.Hash, key, value []byte) {
-	canonicalKeyLength := len(key)
-	if len(key) >= 9 && (key[0] == prefixRunData || key[0] == prefixRunCatalog) {
-		canonicalKeyLength -= 8
-	}
-
-	var length [8]byte
-	binary.BigEndian.PutUint64(length[:], uint64(canonicalKeyLength))
-	_, _ = digest.Write(length[:])
-	if len(key) >= 9 && (key[0] == prefixRunData || key[0] == prefixRunCatalog) {
-		_, _ = digest.Write(key[:1])
-		_, _ = digest.Write(key[9:])
-	} else {
-		_, _ = digest.Write(key)
-	}
-	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
-	_, _ = digest.Write(length[:])
-	_, _ = digest.Write(value)
+	return records, dataCount, uint64(len(encodedIdentities)), nil
 }
 
 func compareUint64(a, b uint64) int {
@@ -247,9 +201,6 @@ func validatePublication(current Manifest, publication Publication) error {
 	if coverage.LogSequence < current.LogWatermark {
 		return &ErrSourceGap{Detail: fmt.Sprintf("log watermark moved backward from %d to %d", current.LogWatermark, coverage.LogSequence)}
 	}
-	if coverage.EffectiveFloor != 0 || coverage.InsertionFloor != 0 {
-		return &ErrSourceGap{Detail: "non-zero history floors require a chain-bound or signed base import authority"}
-	}
 	if current.SourceComplete && !coverage.SourceComplete {
 		return &ErrSourceGap{Detail: "source completeness cannot be revoked without resetting the store"}
 	}
@@ -279,9 +230,9 @@ func validatePublication(current Manifest, publication Publication) error {
 }
 
 // Publish atomically makes effects and their consecutive source coverage
-// visible. Run bytes, run metadata, manifest, and the latest pointer share one
+// visible. Segment bytes, segment metadata, manifest, and the latest pointer share one
 // Pebble WAL batch; a crash cannot expose a manifest without its referenced
-// run. The peer projection is rebuildable, so durability is asynchronous:
+// segment. The peer projection is rebuildable, so durability is asynchronous:
 // SyncWAL bounds the suffix that a process or power failure may replay.
 func (s *publisher) Publish(publication Publication) (Manifest, error) {
 	s.mutationMu.Lock()
@@ -311,28 +262,22 @@ func (s *publisher) Publish(publication Publication) (Manifest, error) {
 	next.SourceComplete = publication.Coverage.SourceComplete
 	next.AuditHash = append([]byte(nil), publication.Coverage.AuditHash...)
 	next.ReducerState = publication.ReducerState
-	next.LogicalDigest, err = AdvanceLogicalDigest(current.LogicalDigest, current.AuditWatermark, publication.Coverage.AuditSequence, publication.Effects)
-	if err != nil {
-		return Manifest{}, err
-	}
-
 	var (
 		records []runRecord
-		newRun  *RunRef
+		newRun  *SegmentRef
 	)
 	if len(publication.Effects) > 0 {
-		runID := next.NextRunID
+		runID := next.NextSegmentID
 		if runID == 0 {
 			runID = 1
 		}
 		if runID == ^uint64(0) {
-			return Manifest{}, errors.New("balance history run id space exhausted")
+			return Manifest{}, errors.New("balance history segment id space exhausted")
 		}
-		next.NextRunID = runID + 1
+		next.NextSegmentID = runID + 1
 
 		var entryCount, identityCount uint64
-		var checksum [32]byte
-		records, entryCount, identityCount, checksum, err = buildRunRecords(runID, publication.Effects)
+		records, entryCount, identityCount, err = buildRunRecords(runID, publication.Effects)
 		if err != nil {
 			return Manifest{}, err
 		}
@@ -343,7 +288,7 @@ func (s *publisher) Publish(publication Publication) (Manifest, error) {
 				firstAudit = effect.AuditSequence
 			}
 		}
-		run := RunRef{
+		run := SegmentRef{
 			ID:                 runID,
 			Level:              0,
 			FirstAuditSequence: firstAudit,
@@ -351,9 +296,8 @@ func (s *publisher) Publish(publication Publication) (Manifest, error) {
 			MaxLogSequence:     publication.Coverage.LogSequence,
 			EntryCount:         entryCount,
 			IdentityCount:      identityCount,
-			Checksum:           checksum,
 		}
-		next.Runs = append(next.Runs, run)
+		next.Segments = append(next.Segments, run)
 		newRun = &run
 	}
 
@@ -367,14 +311,14 @@ func (s *publisher) Publish(publication Publication) (Manifest, error) {
 }
 
 // commitPublicationLocked is the only manifest-publication primitive. Callers
-// must hold mutationMu and fully validate the logical transition first. Run
-// bytes, optional run metadata, immutable manifest, and latest pointer share
+// must hold mutationMu and fully validate the logical transition first. Segment
+// bytes, optional segment metadata, immutable manifest, and latest pointer share
 // one Pebble batch, so no source cursor can become visible without its complete
 // referenced data.
 func (s *publisher) commitPublicationLocked(
 	next Manifest,
 	records []runRecord,
-	newRun *RunRef,
+	newRun *SegmentRef,
 	operation string,
 ) (Manifest, error) {
 	encodedManifest, err := encodeManifest(next)
@@ -390,16 +334,16 @@ func (s *publisher) commitPublicationLocked(
 	defer func() { _ = batch.Close() }()
 	for _, record := range records {
 		if err := batch.Set(record.key, record.value, nil); err != nil {
-			return Manifest{}, fmt.Errorf("staging balance history %s run record: %w", operation, err)
+			return Manifest{}, fmt.Errorf("staging balance history %s segment record: %w", operation, err)
 		}
 	}
 	if newRun != nil {
 		encodedRun, err := json.Marshal(newRun)
 		if err != nil {
-			return Manifest{}, fmt.Errorf("marshaling balance history %s run metadata: %w", operation, err)
+			return Manifest{}, fmt.Errorf("marshaling balance history %s segment metadata: %w", operation, err)
 		}
 		if err := batch.Set(runMetaKey(newRun.ID), encodedRun, nil); err != nil {
-			return Manifest{}, fmt.Errorf("staging balance history %s run metadata: %w", operation, err)
+			return Manifest{}, fmt.Errorf("staging balance history %s segment metadata: %w", operation, err)
 		}
 	}
 	if err := batch.Set(manifestKey(next.Version), encodedManifest, nil); err != nil {
@@ -415,77 +359,4 @@ func (s *publisher) commitPublicationLocked(
 	}
 
 	return next, nil
-}
-
-// AdvanceLogicalDigest folds one consecutive audit range into the canonical
-// projection digest. It is independent of publication batching, physical run
-// IDs, and compaction layout, and is shared by ingestion and source replay.
-func AdvanceLogicalDigest(current [32]byte, after, through uint64, effects []balancehistory.Effect) ([32]byte, error) {
-	if through < after {
-		return [32]byte{}, &ErrSourceGap{Detail: fmt.Sprintf("logical digest range moved backward from %d to %d", after, through)}
-	}
-	if through == after {
-		return current, nil
-	}
-
-	byAudit := make(map[uint64][][]byte)
-	for _, effect := range effects {
-		encoded, err := encodeEffectCanonical(effect)
-		if err != nil {
-			return [32]byte{}, err
-		}
-		byAudit[effect.AuditSequence] = append(byAudit[effect.AuditSequence], encoded)
-	}
-
-	var fixed [8]byte
-	for sequence := after + 1; ; sequence++ {
-		encodedEffects := byAudit[sequence]
-		sort.Slice(encodedEffects, func(i, j int) bool { return bytes.Compare(encodedEffects[i], encodedEffects[j]) < 0 })
-
-		hash := sha256.New()
-		_, _ = hash.Write(current[:])
-		binary.BigEndian.PutUint64(fixed[:], sequence)
-		_, _ = hash.Write(fixed[:])
-		binary.BigEndian.PutUint64(fixed[:], uint64(len(encodedEffects)))
-		_, _ = hash.Write(fixed[:])
-		for _, encoded := range encodedEffects {
-			binary.BigEndian.PutUint64(fixed[:], uint64(len(encoded)))
-			_, _ = hash.Write(fixed[:])
-			_, _ = hash.Write(encoded)
-		}
-		copy(current[:], hash.Sum(nil))
-		if sequence == through {
-			break
-		}
-	}
-
-	return current, nil
-}
-
-func encodeEffectCanonical(effect balancehistory.Effect) ([]byte, error) {
-	encoded := make([]byte, 0, 128+len(effect.Account)+len(effect.AssetBase)+len(effect.Color))
-	encoded = binary.BigEndian.AppendUint32(encoded, effect.LedgerID)
-	encoded = binary.BigEndian.AppendUint64(encoded, effect.AuditSequence)
-	encoded = binary.BigEndian.AppendUint32(encoded, effect.OrderIndex)
-	encoded = binary.BigEndian.AppendUint64(encoded, effect.LogSequence)
-	encoded = binary.BigEndian.AppendUint64(encoded, effect.EffectiveAt)
-	encoded = binary.BigEndian.AppendUint64(encoded, effect.InsertedAt)
-	var err error
-	encoded, err = appendString(encoded, effect.Account)
-	if err != nil {
-		return nil, fmt.Errorf("encoding canonical effect account: %w", err)
-	}
-	encoded, err = appendString(encoded, effect.AssetBase)
-	if err != nil {
-		return nil, fmt.Errorf("encoding canonical effect asset: %w", err)
-	}
-	encoded = append(encoded, effect.AssetPrecision)
-	encoded, err = appendString(encoded, effect.Color)
-	if err != nil {
-		return nil, fmt.Errorf("encoding canonical effect color: %w", err)
-	}
-	encoded = append(encoded, effect.Input[:]...)
-	encoded = append(encoded, effect.Output[:]...)
-
-	return encoded, nil
 }

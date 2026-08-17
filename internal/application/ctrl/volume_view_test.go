@@ -22,10 +22,11 @@ func TestLocalVolumeViewProviderPinsManifestAndToken(t *testing.T) {
 	store, err := balancehistorystore.New(t.TempDir(), logging.NopZap(), balancehistorystore.DefaultConfig())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, store.Close()) }()
+	require.NoError(t, store.ResetForConfiguration([]string{"ledger"}))
 
 	_, err = store.Publish(balancehistorystore.Publication{
 		Effects: []historydomain.Effect{{
-			LedgerID: 7, AuditSequence: 1, LogSequence: 1,
+			LedgerName: "ledger", AuditSequence: 1, LogSequence: 1,
 			EffectiveAt: 10, InsertedAt: 20, Account: "a", AssetBase: "USD",
 			Input: historydomain.AmountFromUint64(5),
 		}},
@@ -34,17 +35,17 @@ func TestLocalVolumeViewProviderPinsManifestAndToken(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	require.NoError(t, store.CompleteRebuild(1, 1))
 
 	provider := NewLocalVolumeViewProvider(store)
-	view, err := provider.Open(context.Background(), "ledger", 7, PointInTimeSelector{At: 10, Axis: balancehistorystore.AxisEffective}, 1)
+	view, err := provider.Open(context.Background(), "ledger", HistoricalBalanceSelector{At: 10, Temporality: balancehistorystore.TemporalityEffective}, 1)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
 
 	token := view.Token()
-	require.Equal(t, uint32(7), token.LedgerID)
+	require.Equal(t, "ledger", token.Ledger)
 	require.Equal(t, uint64(1), token.AuditWatermark)
 	require.Equal(t, uint64(1), token.LogWatermark)
-	require.Zero(t, token.HistoryAvailableFrom)
 	require.NotEmpty(t, token.Token)
 
 	result, err := view.Aggregate(context.Background(), nil, query.AggregateOptions{})
@@ -55,7 +56,7 @@ func TestLocalVolumeViewProviderPinsManifestAndToken(t *testing.T) {
 	// Publishing a later correction does not mutate the already-open view.
 	_, err = store.Publish(balancehistorystore.Publication{
 		Effects: []historydomain.Effect{{
-			LedgerID: 7, AuditSequence: 2, LogSequence: 2,
+			LedgerName: "ledger", AuditSequence: 2, LogSequence: 2,
 			EffectiveAt: 5, InsertedAt: 30, Account: "a", AssetBase: "USD",
 			Input: historydomain.AmountFromUint64(2),
 		}},
@@ -76,10 +77,11 @@ func TestHistoricalVolumeViewAggregateHonorsCanceledContext(t *testing.T) {
 	store, err := balancehistorystore.New(t.TempDir(), logging.NopZap(), balancehistorystore.DefaultConfig())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, store.Close()) }()
+	require.NoError(t, store.ResetForConfiguration([]string{"ledger"}))
 
 	_, err = store.Publish(balancehistorystore.Publication{
 		Effects: []historydomain.Effect{{
-			LedgerID: 7, AuditSequence: 1, LogSequence: 1,
+			LedgerName: "ledger", AuditSequence: 1, LogSequence: 1,
 			EffectiveAt: 10, InsertedAt: 20, Account: "a", AssetBase: "USD",
 			Input: historydomain.AmountFromUint64(5),
 		}},
@@ -88,12 +90,12 @@ func TestHistoricalVolumeViewAggregateHonorsCanceledContext(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	require.NoError(t, store.CompleteRebuild(1, 1))
 
 	view, err := NewLocalVolumeViewProvider(store).Open(
 		context.Background(),
 		"ledger",
-		7,
-		PointInTimeSelector{At: 10, Axis: balancehistorystore.AxisEffective},
+		HistoricalBalanceSelector{At: 10, Temporality: balancehistorystore.TemporalityEffective},
 		1,
 	)
 	require.NoError(t, err)
@@ -110,8 +112,8 @@ func TestLocalVolumeViewProviderFailsClosedWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 
 	_, err := (*LocalVolumeViewProvider)(nil).Open(
-		context.Background(), "ledger", 1,
-		PointInTimeSelector{Axis: balancehistorystore.AxisEffective},
+		context.Background(), "ledger",
+		HistoricalBalanceSelector{Temporality: balancehistorystore.TemporalityEffective},
 		0,
 	)
 	var missing *balancehistorystore.ErrSourceMissing
@@ -270,7 +272,7 @@ func TestPrepareTemporalAccountSelectionEnforcesFilterDepthLimit(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrFilterTooDeep)
 }
 
-func TestLocalVolumeViewProviderValidatesAxisAndClosedViews(t *testing.T) {
+func TestLocalVolumeViewProviderValidatesTemporalityAndClosedViews(t *testing.T) {
 	t.Parallel()
 
 	store, err := balancehistorystore.New(t.TempDir(), logging.NopZap(), balancehistorystore.DefaultConfig())
@@ -281,11 +283,10 @@ func TestLocalVolumeViewProviderValidatesAxisAndClosedViews(t *testing.T) {
 	_, err = provider.Open(
 		context.Background(),
 		"ledger",
-		7,
-		PointInTimeSelector{Axis: balancehistorystore.Axis(99)},
+		HistoricalBalanceSelector{Temporality: balancehistorystore.Temporality(99)},
 		0,
 	)
-	require.ErrorContains(t, err, "invalid point-in-time axis")
+	require.ErrorContains(t, err, "invalid historical-balance temporality")
 
 	view := (*HistoricalVolumeView)(nil)
 	_, err = view.Aggregate(context.Background(), nil, query.AggregateOptions{})

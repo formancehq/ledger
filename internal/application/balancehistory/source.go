@@ -1,5 +1,5 @@
 // Package balancehistory builds the rebuildable monetary history used by
-// point-in-time balance queries.
+// historical balance queries.
 package balancehistory
 
 import (
@@ -50,8 +50,8 @@ type Batch struct {
 }
 
 // Source supplies complete proposals independently of their physical hot or
-// cold location. A future composite adapter can stitch archived and hot ranges
-// while preserving this contract.
+// cold location. The current composite adapter stitches archived audit chapters
+// with the hot suffix without archiving the projection itself.
 //
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source=source.go -destination=source_generated_test.go -package=balancehistory
 type Source interface {
@@ -66,7 +66,7 @@ type Source interface {
 
 // ErrSourceMissing means the adapter cannot prove a consecutive source prefix.
 // This includes an absent audit entry, item, or referenced log. A hot+cold
-// adapter may recover by resolving the missing range from an archive.
+// adapter may recover by resolving the missing audit range from a chapter archive.
 type ErrSourceMissing struct {
 	Detail string
 }

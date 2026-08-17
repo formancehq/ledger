@@ -8,11 +8,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 )
 
-func antithesisLinearizablePITBarrierContext(ctx context.Context) (context.Context, context.CancelFunc) {
+func antithesisHistoricalBalanceBarrierContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return ctx, func() {}
 }
 
-func reachAntithesisLinearizablePITBarrierFailure(
+func reachAntithesisHistoricalBalanceBarrierFailure(
 	_ context.Context,
 	_ *node.Node,
 	_ error,

@@ -1396,10 +1396,10 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
-	if req.GetCheckpointId() != 0 && req.GetPointInTime() != nil {
-		return nil, status.Error(codes.InvalidArgument, "checkpoint_id and point_in_time are mutually exclusive")
+	if req.GetCheckpointId() != 0 && req.GetHistoricalBalance() != nil {
+		return nil, status.Error(codes.InvalidArgument, "checkpoint_id and historical_balance are mutually exclusive")
 	}
-	selector, err := selectorFromProto(req.GetPointInTime())
+	selector, err := selectorFromProto(req.GetHistoricalBalance())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -1424,8 +1424,8 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		GroupByPrefixes: req.GetGroupByPrefixes(),
 		CollapseColors:  req.GetCollapseColors(),
 	}, ctrl.AggregateVolumesReadOptions{
-		PointInTime:    selector,
-		MinLogSequence: req.GetMinLogSequence(),
+		HistoricalBalance: selector,
+		MinLogSequence:    req.GetMinLogSequence(),
 	})
 	impl.emitProfile(ctx, profile)
 	if err != nil {
@@ -1433,21 +1433,37 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	}
 	if selector != nil {
 		if result == nil || result.View == nil {
-			return nil, status.Error(codes.Internal, "point-in-time aggregation returned no immutable view token")
+			return nil, status.Error(codes.Internal, "historical-balance aggregation returned no immutable view token")
 		}
-		if err := validatePointInTimeView(selector, result.View); err != nil {
+		if err := validateHistoricalBalanceView(selector, result.View); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		trailer, trailerErr := pointInTimeViewMetadata(result.View)
+		trailer, trailerErr := historicalBalanceViewMetadata(result.View)
 		if trailerErr != nil {
 			return nil, trailerErr
 		}
 		if trailerErr := ggrpc.SetTrailer(ctx, trailer); trailerErr != nil {
-			return nil, fmt.Errorf("setting point-in-time view trailer: %w", trailerErr)
+			return nil, fmt.Errorf("setting historical-balance view trailer: %w", trailerErr)
 		}
 	}
 
 	return result.Aggregate, nil
+}
+
+func (impl *BucketServiceServerImpl) GetHistoricalBalancesStatus(ctx context.Context, req *servicepb.GetHistoricalBalancesStatusRequest) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
+		return nil, err
+	}
+	if req.GetLedger() == "" {
+		return nil, domain.ErrLedgerNameRequired
+	}
+	c, cleanup, err := impl.readController(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetHistoricalBalancesStatus(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {

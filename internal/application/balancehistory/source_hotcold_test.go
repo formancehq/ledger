@@ -37,7 +37,7 @@ func TestHotColdSourceHotOnly(t *testing.T) {
 	first.entry.Hash = []byte("audit-1")
 	seedHotSource(t, store, first)
 
-	source := NewHotColdSource(store, nil, nil, "")
+	source := NewHotColdSource(store, nil, "")
 	batch, err := source.Read(context.Background(), Position{}, 10)
 	require.NoError(t, err)
 	require.Equal(t, Position{AuditSequence: 1, LogSequence: 1, AuditHash: []byte("audit-1")}, batch.Head)
@@ -66,8 +66,8 @@ func TestHotColdSourceColdOnly(t *testing.T) {
 	}
 	seedSourceChapters(t, hot, chapter)
 
-	storage, reader := writeTestArchive(t, chapter, []hotSourceFixture{first, second}, nil)
-	source := NewHotColdSource(hot, reader, storage, "bucket")
+	_, reader := writeTestArchive(t, chapter, []hotSourceFixture{first, second}, nil)
+	source := NewHotColdSource(hot, reader, "bucket")
 	batch, err := source.Read(ctx, Position{}, 10)
 	require.NoError(t, err)
 	require.Equal(t, Position{AuditSequence: 2, LogSequence: 2, AuditHash: []byte("audit-2")}, batch.Head)
@@ -110,8 +110,8 @@ func TestHotColdSourceCrossesColdHotBoundaryAtomically(t *testing.T) {
 	}
 	seedSourceChapters(t, hot, archived, open)
 
-	storage, reader := writeTestArchive(t, archived, []hotSourceFixture{coldAudit}, []*commonpb.Log{closeLog})
-	source := NewHotColdSource(hot, reader, storage, "bucket")
+	_, reader := writeTestArchive(t, archived, []hotSourceFixture{coldAudit}, []*commonpb.Log{closeLog})
+	source := NewHotColdSource(hot, reader, "bucket")
 	batch, err := source.Read(context.Background(), Position{}, 10)
 	require.NoError(t, err)
 	require.Len(t, batch.Proposals, 3)
@@ -147,10 +147,10 @@ func TestHotColdSourceFailsClosedForMissingArchive(t *testing.T) {
 	)
 	t.Cleanup(func() { require.NoError(t, reader.Close()) })
 
-	_, err := NewHotColdSource(hot, reader, storage, "bucket").Read(context.Background(), Position{}, 1)
+	_, err := NewHotColdSource(hot, reader, "bucket").Read(context.Background(), Position{}, 1)
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
-	require.ErrorContains(t, err, "checksum")
+	require.ErrorContains(t, err, "opening archived chapter")
 }
 
 func TestHotColdSourceRejectsCorruptArchive(t *testing.T) {
@@ -171,7 +171,7 @@ func TestHotColdSourceRejectsCorruptArchive(t *testing.T) {
 	seedSourceChapters(t, hot, chapter)
 
 	basePath := t.TempDir()
-	storage, reader := writeTestArchiveAt(t, basePath, chapter, []hotSourceFixture{fixture}, nil)
+	_, reader := writeTestArchiveAt(t, basePath, chapter, []hotSourceFixture{fixture}, nil)
 	archivePath := filepath.Join(basePath, "bucket", "chapters", "1", "archive.sst")
 	file, err := os.OpenFile(archivePath, os.O_APPEND|os.O_WRONLY, 0)
 	require.NoError(t, err)
@@ -179,10 +179,10 @@ func TestHotColdSourceRejectsCorruptArchive(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
 
-	_, err = NewHotColdSource(hot, reader, storage, "bucket").Read(context.Background(), Position{}, 1)
-	var invalid *ErrSourceInvalid
-	require.ErrorAs(t, err, &invalid)
-	require.ErrorContains(t, err, "checksum mismatch")
+	_, err = NewHotColdSource(hot, reader, "bucket").Read(context.Background(), Position{}, 1)
+	var missing *ErrSourceMissing
+	require.ErrorAs(t, err, &missing)
+	require.ErrorContains(t, err, "opening archived chapter")
 }
 
 func TestHotColdSourceRejectsMissingArchivedPrefix(t *testing.T) {
@@ -198,7 +198,7 @@ func TestHotColdSourceRejectsMissingArchivedPrefix(t *testing.T) {
 		CloseAuditSequence: 5,
 	})
 
-	_, err := NewHotColdSource(hot, nil, nil, "").Head(context.Background())
+	_, err := NewHotColdSource(hot, nil, "").Head(context.Background())
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
 	require.ErrorContains(t, err, "instead of 1/1")
@@ -344,7 +344,7 @@ func TestCombinedSourceHead(t *testing.T) {
 func TestHotColdSourceRejectsInvalidRequests(t *testing.T) {
 	t.Parallel()
 
-	source := NewHotColdSource(nil, nil, nil, "")
+	source := NewHotColdSource(nil, nil, "")
 	_, err := source.Read(context.Background(), Position{}, 0)
 	require.ErrorContains(t, err, "batch limit must be positive")
 	_, err = source.Head(context.Background())
@@ -358,7 +358,7 @@ func TestHotColdSourceRejectsInvalidRequests(t *testing.T) {
 	wantErr := errors.New("open snapshot")
 	reader := NewMockSnapshotReader(gomock.NewController(t))
 	reader.EXPECT().NewReadHandle().Return(nil, wantErr)
-	_, err = NewHotColdSource(reader, nil, nil, "").Head(context.Background())
+	_, err = NewHotColdSource(reader, nil, "").Head(context.Background())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -664,7 +664,7 @@ func TestHotColdSourceSnapshotSurvivesConcurrentPurge(t *testing.T) {
 		require.NoError(t, batch.Commit())
 	})
 
-	batch, err := NewHotColdSource(reader, nil, nil, "").Read(context.Background(), Position{}, 1)
+	batch, err := NewHotColdSource(reader, nil, "").Read(context.Background(), Position{}, 1)
 	require.NoError(t, err)
 	require.Len(t, batch.Proposals, 1)
 	require.Equal(t, uint64(1), batch.Proposals[0].Logs[0].GetSequence())
@@ -720,7 +720,7 @@ func TestHotColdSourceLeaseSurvivesConcurrentColdEviction(t *testing.T) {
 		logging.FromContext(logging.TestingContext()),
 	)
 	t.Cleanup(func() { require.NoError(t, coldReader.Close()) })
-	source := NewHotColdSource(hot, coldReader, storage, "bucket")
+	source := NewHotColdSource(hot, coldReader, "bucket")
 
 	stressCtx, cancelStress := context.WithCancel(context.Background())
 	var evictionAttempts atomic.Uint64

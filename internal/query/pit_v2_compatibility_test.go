@@ -111,22 +111,19 @@ func TestPITV2CompatibilityEffectiveAndInsertionAxes(t *testing.T) {
 	tests := []struct {
 		name     string
 		ledgerID uint32
-		axis     balancehistorystore.Axis
+		axis     balancehistorystore.Temporality
 		at       uint64
 	}{
-		{name: "effective before all moves", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 99},
-		{name: "effective includes backdated transaction before insertion", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 100},
-		{name: "insertion excludes backdated transaction before commit", ledgerID: 7, axis: balancehistorystore.AxisInsertion, at: 499},
-		{name: "insertion includes backdated transaction at commit boundary", ledgerID: 7, axis: balancehistorystore.AxisInsertion, at: 500},
-		{name: "effective excludes both sides of at-effective-date reversal before timestamp", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 299},
-		{name: "effective includes both sides of at-effective-date reversal atomically", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 300},
-		{name: "effective exposes normal transaction before later reversal", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 699},
-		{name: "effective includes normal reversal at boundary", ledgerID: 7, axis: balancehistorystore.AxisEffective, at: 700},
-		{name: "insertion exposes at-effective-date original before reversal commit", ledgerID: 7, axis: balancehistorystore.AxisInsertion, at: 799},
-		{name: "insertion includes at-effective-date reversal at commit boundary", ledgerID: 7, axis: balancehistorystore.AxisInsertion, at: 800},
-		{name: "old incarnation remains internally isolated", ledgerID: 7, axis: balancehistorystore.AxisInsertion, at: 1000},
-		{name: "new incarnation is empty before its first move", ledgerID: 99, axis: balancehistorystore.AxisInsertion, at: 899},
-		{name: "new incarnation starts from its own first move", ledgerID: 99, axis: balancehistorystore.AxisInsertion, at: 900},
+		{name: "effective before all moves", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 99},
+		{name: "effective includes backdated transaction before insertion", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 100},
+		{name: "insertion excludes backdated transaction before commit", ledgerID: 7, axis: balancehistorystore.TemporalityInsertion, at: 499},
+		{name: "insertion includes backdated transaction at commit boundary", ledgerID: 7, axis: balancehistorystore.TemporalityInsertion, at: 500},
+		{name: "effective excludes both sides of at-effective-date reversal before timestamp", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 299},
+		{name: "effective includes both sides of at-effective-date reversal atomically", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 300},
+		{name: "effective exposes normal transaction before later reversal", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 699},
+		{name: "effective includes normal reversal at boundary", ledgerID: 7, axis: balancehistorystore.TemporalityEffective, at: 700},
+		{name: "insertion exposes at-effective-date original before reversal commit", ledgerID: 7, axis: balancehistorystore.TemporalityInsertion, at: 799},
+		{name: "insertion includes at-effective-date reversal at commit boundary", ledgerID: 7, axis: balancehistorystore.TemporalityInsertion, at: 800},
 	}
 
 	for _, test := range tests {
@@ -134,14 +131,14 @@ func TestPITV2CompatibilityEffectiveAndInsertionAxes(t *testing.T) {
 			t.Parallel()
 
 			wantVolumes := pitV2FoldMoves(reference, test.ledgerID, test.axis, test.at)
-			gotVolumes, err := view.ReadVolumes(test.ledgerID, test.axis, test.at, nil)
+			gotVolumes, err := view.ReadVolumes("default", test.axis, test.at, nil)
 			require.NoError(t, err)
 			require.Equal(t, pitV2ComparableVolumes(wantVolumes), pitV2ComparableStoredVolumes(gotVolumes))
 
 			wantAssets := pitV2AggregateAssets(wantVolumes)
 			gotAggregate, err := query.AggregateHistoricalVolumes(
 				view,
-				test.ledgerID,
+				"default",
 				test.axis,
 				test.at,
 				nil,
@@ -159,16 +156,16 @@ func TestPITV2CompatibilityReversalBalanceBoundaries(t *testing.T) {
 	view := pitV2HistoryView(t, pitV2ReduceFixture(t))
 
 	// atEffectiveDate reuses the original effective timestamp. The effective
-	// axis therefore never exposes users:carol between the original and its
-	// reversal, while the insertion axis does until the reversal is committed.
-	pitV2RequireBalance(t, view, balancehistorystore.AxisEffective, 299, "users:carol", "USD/3", "", "0")
-	pitV2RequireBalance(t, view, balancehistorystore.AxisEffective, 300, "users:carol", "USD/3", "", "0")
-	pitV2RequireBalance(t, view, balancehistorystore.AxisInsertion, 799, "users:carol", "USD/3", "", "1000")
-	pitV2RequireBalance(t, view, balancehistorystore.AxisInsertion, 800, "users:carol", "USD/3", "", "0")
+	// temporality therefore never exposes users:carol between the original and its
+	// reversal, while insertion temporality does until the reversal is committed.
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityEffective, 299, "users:carol", "USD/3", "", "0")
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityEffective, 300, "users:carol", "USD/3", "", "0")
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityInsertion, 799, "users:carol", "USD/3", "", "1000")
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityInsertion, 800, "users:carol", "USD/3", "", "0")
 
 	// A normal reversal takes effect at the reversal timestamp.
-	pitV2RequireBalance(t, view, balancehistorystore.AxisEffective, 699, "users:alice", "USD/2", "", "70")
-	pitV2RequireBalance(t, view, balancehistorystore.AxisEffective, 700, "users:alice", "USD/2", "", "100")
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityEffective, 699, "users:alice", "USD/2", "", "70")
+	pitV2RequireBalance(t, view, balancehistorystore.TemporalityEffective, 700, "users:alice", "USD/2", "", "100")
 }
 
 func TestPITV2CompatibilityRetainsEphemeralAndTransientMoves(t *testing.T) {
@@ -178,9 +175,9 @@ func TestPITV2CompatibilityRetainsEphemeralAndTransientMoves(t *testing.T) {
 
 	// These accounts are zero after their transaction boundary and can be
 	// absent from the live volume projection. Their accepted moves remain
-	// additive history, matching the PIT design contract.
-	pitV2RequireVolume(t, view, balancehistorystore.AxisEffective, 400, "temp:ephemeral", "GBP", "", "25", "25")
-	pitV2RequireVolume(t, view, balancehistorystore.AxisEffective, 450, "temp:transient", "JPY", "", "40", "40")
+	// additive history, matching the historical-balance design contract.
+	pitV2RequireVolume(t, view, balancehistorystore.TemporalityEffective, 400, "temp:ephemeral", "GBP", "", "25", "25")
+	pitV2RequireVolume(t, view, balancehistorystore.TemporalityEffective, 450, "temp:transient", "JPY", "", "40", "40")
 }
 
 func TestPITV2CompatibilityColorAndPrecisionExtensions(t *testing.T) {
@@ -190,8 +187,8 @@ func TestPITV2CompatibilityColorAndPrecisionExtensions(t *testing.T) {
 
 	defaultResult, err := query.AggregateHistoricalVolumes(
 		view,
-		7,
-		balancehistorystore.AxisInsertion,
+		"default",
+		balancehistorystore.TemporalityInsertion,
 		850,
 		nil,
 		query.AggregateOptions{},
@@ -213,8 +210,8 @@ func TestPITV2CompatibilityColorAndPrecisionExtensions(t *testing.T) {
 
 	merged, err := query.AggregateHistoricalVolumes(
 		view,
-		7,
-		balancehistorystore.AxisInsertion,
+		"default",
+		balancehistorystore.TemporalityInsertion,
 		850,
 		nil,
 		query.AggregateOptions{UseMaxPrecision: true, CollapseColors: true},
@@ -233,8 +230,8 @@ func TestPITV2CompatibilityUsesTheSelectedCurrentAccountSet(t *testing.T) {
 	view := pitV2HistoryView(t, pitV2ReduceFixture(t))
 	result, err := query.AggregateHistoricalVolumes(
 		view,
-		7,
-		balancehistorystore.AxisInsertion,
+		"default",
+		balancehistorystore.TemporalityInsertion,
 		850,
 		[]string{"users:alice"},
 		query.AggregateOptions{},
@@ -293,9 +290,6 @@ func pitV2FixtureLogs() []pitV2FixtureLog {
 		)),
 		pitV2ApplyLog(11, 20, pitV2CreatedTransaction(460, 590, pitV2Posting("world", "colored:red", "USD/2", "RED", 11))),
 		pitV2ApplyLog(12, 21, pitV2CreatedTransaction(470, 600, pitV2Posting("world", "colored:blue", "USD/3", "BLUE", 100))),
-		pitV2LifecycleLog(13, 22, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "default"}}}),
-		pitV2LifecycleLog(14, 23, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "default", Id: 99}}}),
-		pitV2ApplyLog(15, 24, pitV2CreatedTransaction(500, 900, pitV2Posting("world", "users:new", "USD/2", "", 7))),
 	}
 }
 
@@ -356,7 +350,7 @@ func pitV2MoveFromEffect(t *testing.T, effect historydomain.Effect) pitV2Referen
 	t.Helper()
 
 	move := pitV2ReferenceMove{
-		LedgerID:      effect.LedgerID,
+		LedgerID:      7,
 		AuditSequence: effect.AuditSequence,
 		LogSequence:   effect.LogSequence,
 		Account:       effect.Account,
@@ -418,13 +412,13 @@ func pitV2HistoryView(t *testing.T, effects []historydomain.Effect) *balancehist
 func pitV2FoldMoves(
 	moves []pitV2ReferenceMove,
 	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	axis balancehistorystore.Temporality,
 	at uint64,
 ) map[pitV2VolumeKey]pitV2Volume {
 	ret := make(map[pitV2VolumeKey]pitV2Volume)
 	for _, move := range moves {
 		moveAt := move.EffectiveAt
-		if axis == balancehistorystore.AxisInsertion {
+		if axis == balancehistorystore.TemporalityInsertion {
 			moveAt = move.InsertedAt
 		}
 		if move.LedgerID != ledgerID || moveAt > at {
@@ -513,7 +507,7 @@ func pitV2ComparableAggregate(result *commonpb.AggregateResult) map[pitV2AssetKe
 func pitV2RequireBalance(
 	t *testing.T,
 	view *balancehistorystore.View,
-	axis balancehistorystore.Axis,
+	axis balancehistorystore.Temporality,
 	at uint64,
 	account, asset, color, want string,
 ) {
@@ -526,7 +520,7 @@ func pitV2RequireBalance(
 func pitV2RequireVolume(
 	t *testing.T,
 	view *balancehistorystore.View,
-	axis balancehistorystore.Axis,
+	axis balancehistorystore.Temporality,
 	at uint64,
 	account, asset, color, input, output string,
 ) {
@@ -540,13 +534,13 @@ func pitV2RequireVolume(
 func pitV2FindVolume(
 	t *testing.T,
 	view *balancehistorystore.View,
-	axis balancehistorystore.Axis,
+	axis balancehistorystore.Temporality,
 	at uint64,
 	account, asset, color string,
 ) balancehistorystore.Volume {
 	t.Helper()
 
-	volumes, err := view.ReadVolumes(7, axis, at, []string{account})
+	volumes, err := view.ReadVolumes("default", axis, at, []string{account})
 	require.NoError(t, err)
 	sort.Slice(volumes, func(i, j int) bool {
 		return domain.FormatAsset(volumes[i].AssetBase, volumes[i].AssetPrecision) <

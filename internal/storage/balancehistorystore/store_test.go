@@ -26,9 +26,9 @@ func newTestStore(t *testing.T) *Store {
 	return store
 }
 
-func inputEffect(audit, log, effective, inserted uint64, ledgerID uint32, account string, amount uint64) balancehistory.Effect {
+func inputEffect(audit, log, effective, inserted uint64, ledgerName, account string, amount uint64) balancehistory.Effect {
 	return balancehistory.Effect{
-		LedgerID:       ledgerID,
+		LedgerName:     ledgerName,
 		AuditSequence:  audit,
 		LogSequence:    log,
 		EffectiveAt:    effective,
@@ -40,8 +40,8 @@ func inputEffect(audit, log, effective, inserted uint64, ledgerID uint32, accoun
 	}
 }
 
-func outputEffect(audit, log, effective, inserted uint64, ledgerID uint32, account string, amount uint64) balancehistory.Effect {
-	effect := inputEffect(audit, log, effective, inserted, ledgerID, account, amount)
+func outputEffect(audit, log, effective, inserted uint64, ledgerName, account string, amount uint64) balancehistory.Effect {
+	effect := inputEffect(audit, log, effective, inserted, ledgerName, account, amount)
 	effect.Input = balancehistory.Amount{}
 	effect.Output = balancehistory.AmountFromUint64(amount)
 
@@ -53,8 +53,8 @@ func publishBalanced(t *testing.T, store *Store, audit, log, effective, inserted
 
 	manifest, err := store.Publish(Publication{
 		Effects: []balancehistory.Effect{
-			inputEffect(audit, log, effective, inserted, 7, "assets:cash", amount),
-			outputEffect(audit, log, effective, inserted, 7, "world", amount),
+			inputEffect(audit, log, effective, inserted, "default", "assets:cash", amount),
+			outputEffect(audit, log, effective, inserted, "default", "world", amount),
 		},
 		Coverage: Coverage{AuditSequence: audit, LogSequence: log, AuditHash: []byte{byte(audit)}, SourceComplete: true},
 	})
@@ -81,43 +81,41 @@ func TestStoreEffectiveAndInsertionViews(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, newView.Close()) })
 
-	oldVolumes, err := oldView.ReadVolumes(7, AxisEffective, 10, []string{"assets:cash"})
+	oldVolumes, err := oldView.ReadVolumes("default", TemporalityEffective, 10, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Len(t, oldVolumes, 1)
 	require.Equal(t, "5", oldVolumes[0].Input.String())
 
-	newVolumes, err := newView.ReadVolumes(7, AxisEffective, 10, []string{"assets:cash"})
+	newVolumes, err := newView.ReadVolumes("default", TemporalityEffective, 10, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Len(t, newVolumes, 1)
 	require.Equal(t, "8", newVolumes[0].Input.String())
 
-	insertionBeforeCorrection, err := newView.ReadVolumes(7, AxisInsertion, 150, []string{"assets:cash"})
+	insertionBeforeCorrection, err := newView.ReadVolumes("default", TemporalityInsertion, 150, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Len(t, insertionBeforeCorrection, 1)
 	require.Equal(t, "5", insertionBeforeCorrection[0].Input.String())
 
-	insertionAfterCorrection, err := newView.ReadVolumes(7, AxisInsertion, 250, []string{"assets:cash"})
+	insertionAfterCorrection, err := newView.ReadVolumes("default", TemporalityInsertion, 250, []string{"assets:cash"})
 	require.NoError(t, err)
 	require.Len(t, insertionAfterCorrection, 1)
 	require.Equal(t, "8", insertionAfterCorrection[0].Input.String())
 
-	assets, err := newView.AggregateAll(7, AxisEffective, 10)
+	assets, err := newView.ReadVolumes("default", TemporalityEffective, 10, nil)
 	require.NoError(t, err)
-	require.Len(t, assets, 1)
-	require.Equal(t, "8", assets[0].Input.String())
-	require.Equal(t, "8", assets[0].Output.String())
+	require.Len(t, assets, 2)
 
 	require.NoError(t, store.Verify())
 }
 
-func TestStoreLedgerIncarnationsAreIsolated(t *testing.T) {
+func TestStoreLedgerNamesAreIsolated(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
 	_, err := store.Publish(Publication{
 		Effects: []balancehistory.Effect{
-			inputEffect(1, 1, 10, 10, 7, "same:name", 4),
-			inputEffect(1, 1, 10, 10, 8, "same:name", 9),
+			inputEffect(1, 1, 10, 10, "first", "same:name", 4),
+			inputEffect(1, 1, 10, 10, "second", "same:name", 9),
 		},
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
 	})
@@ -127,12 +125,12 @@ func TestStoreLedgerIncarnationsAreIsolated(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
 
-	first, err := view.ReadVolumes(7, AxisEffective, 10, nil)
+	first, err := view.ReadVolumes("first", TemporalityEffective, 10, nil)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Equal(t, "4", first[0].Input.String())
 
-	second, err := view.ReadVolumes(8, AxisEffective, 10, nil)
+	second, err := view.ReadVolumes("second", TemporalityEffective, 10, nil)
 	require.NoError(t, err)
 	require.Len(t, second, 1)
 	require.Equal(t, "9", second[0].Input.String())
@@ -149,7 +147,7 @@ func TestStoreKeepsArbitraryPrecisionSummaries(t *testing.T) {
 	for audit := uint64(1); audit <= 2; audit++ {
 		_, err := store.Publish(Publication{
 			Effects: []balancehistory.Effect{{
-				LedgerID: 1, AuditSequence: audit, LogSequence: audit,
+				LedgerName: "default", AuditSequence: audit, LogSequence: audit,
 				EffectiveAt: audit, InsertedAt: audit, Account: "a", AssetBase: "USD", Input: amount,
 			}},
 			Coverage: Coverage{AuditSequence: audit, LogSequence: audit, SourceComplete: true},
@@ -161,7 +159,7 @@ func TestStoreKeepsArbitraryPrecisionSummaries(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
 
-	volumes, err := view.ReadVolumes(1, AxisEffective, math.MaxUint64, nil)
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, math.MaxUint64, nil)
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
 	require.Equal(t, 257, volumes[0].Input.BitLen())
@@ -177,8 +175,8 @@ func TestStoreFailsClosedOnLagAndCorruption(t *testing.T) {
 	var behind *ErrBehind
 	require.ErrorAs(t, err, &behind)
 
-	run := manifest.Runs[0]
-	identity := recordIdentity{Axis: AxisEffective, Scope: scopeVolume, LedgerID: 7, Account: "assets:cash", AssetBase: "USD", AssetPrecision: 2}
+	run := manifest.Segments[0]
+	identity := recordIdentity{Temporality: TemporalityEffective, LedgerName: "default", Account: "assets:cash", AssetBase: "USD", AssetPrecision: 2}
 	key, err := dataKey(run.ID, identity, 10)
 	require.NoError(t, err)
 	require.NoError(t, store.db.Set(key, []byte{0xff}, pebble.NoSync))
@@ -203,7 +201,7 @@ func TestStoreWaitAndReset(t *testing.T) {
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
 	require.Zero(t, manifest.Version)
-	require.Empty(t, manifest.Runs)
+	require.Empty(t, manifest.Segments)
 
 	_, err = store.OpenView(1)
 	var building *ErrBuilding
@@ -217,7 +215,7 @@ func TestStoreRejectsSourceGap(t *testing.T) {
 	publishBalanced(t, store, 2, 2, 10, 10, 1)
 
 	_, err := store.Publish(Publication{
-		Effects:  []balancehistory.Effect{inputEffect(2, 2, 10, 10, 7, "a", 1)},
+		Effects:  []balancehistory.Effect{inputEffect(2, 2, 10, 10, "default", "a", 1)},
 		Coverage: Coverage{AuditSequence: 2, LogSequence: 2, SourceComplete: true},
 	})
 	var gap *ErrSourceGap
@@ -229,7 +227,7 @@ func TestStoreRequiresCompleteSourceAndDefaultsToExactZeroFloor(t *testing.T) {
 
 	store := newTestStore(t)
 	_, err := store.Publish(Publication{
-		Effects:  []balancehistory.Effect{inputEffect(1, 1, 10, 20, 7, "a", 1)},
+		Effects:  []balancehistory.Effect{inputEffect(1, 1, 10, 20, "default", "a", 1)},
 		Coverage: Coverage{AuditSequence: 1, LogSequence: 1},
 	})
 	require.NoError(t, err)
@@ -249,15 +247,15 @@ func TestStoreRequiresCompleteSourceAndDefaultsToExactZeroFloor(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
 
-	volumes, err := view.ReadVolumes(7, AxisEffective, 9, nil)
+	volumes, err := view.ReadVolumes("default", TemporalityEffective, 9, nil)
 	require.NoError(t, err)
 	require.Empty(t, volumes)
 
-	assets, err := view.AggregateAll(7, AxisInsertion, 19)
+	assets, err := view.ReadVolumes("default", TemporalityInsertion, 19, nil)
 	require.NoError(t, err)
 	require.Empty(t, assets)
 
-	volumes, err = view.ReadVolumes(7, AxisEffective, 10, nil)
+	volumes, err = view.ReadVolumes("default", TemporalityEffective, 10, nil)
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
 }
@@ -274,7 +272,7 @@ func TestCompactionPreservesResultsAndPinnedViews(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, pinned.Close()) }()
 	pinnedManifest := pinned.Manifest()
-	require.Len(t, pinnedManifest.Runs, 4)
+	require.Len(t, pinnedManifest.Segments, 4)
 
 	compacted, err := store.Compact(4)
 	require.NoError(t, err)
@@ -284,56 +282,17 @@ func TestCompactionPreservesResultsAndPinnedViews(t *testing.T) {
 	latest, err := store.OpenView(4)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, latest.Close()) }()
-	require.Len(t, latest.Manifest().Runs, 1)
-	require.Equal(t, uint32(1), latest.Manifest().Runs[0].Level)
+	require.Len(t, latest.Manifest().Segments, 1)
+	require.Equal(t, uint32(1), latest.Manifest().Segments[0].Level)
 
 	for _, view := range []*View{pinned, latest} {
-		volumes, err := view.ReadVolumes(7, AxisEffective, 4, []string{"assets:cash"})
+		volumes, err := view.ReadVolumes("default", TemporalityEffective, 4, []string{"assets:cash"})
 		require.NoError(t, err)
 		require.Len(t, volumes, 1)
 		require.Equal(t, "10", volumes[0].Input.String())
 
-		assets, err := view.AggregateAll(7, AxisInsertion, 4)
+		assets, err := view.ReadVolumes("default", TemporalityInsertion, 4, nil)
 		require.NoError(t, err)
-		require.Len(t, assets, 1)
-		require.Equal(t, "10", assets[0].Input.String())
-		require.Equal(t, "10", assets[0].Output.String())
+		require.Len(t, assets, 2)
 	}
-}
-
-func TestLogicalDigestIgnoresRunPartitioning(t *testing.T) {
-	t.Parallel()
-
-	separate := newTestStore(t)
-	combined := newTestStore(t)
-
-	first := []balancehistory.Effect{
-		inputEffect(1, 1, 20, 100, 7, "a", 2),
-		outputEffect(1, 1, 20, 100, 7, "world", 2),
-	}
-	second := []balancehistory.Effect{
-		inputEffect(2, 2, 10, 200, 7, "a", 3),
-		outputEffect(2, 2, 10, 200, 7, "world", 3),
-	}
-
-	_, err := separate.Publish(Publication{
-		Effects:  first,
-		Coverage: Coverage{AuditSequence: 1, LogSequence: 1, SourceComplete: true},
-	})
-	require.NoError(t, err)
-	separateManifest, err := separate.Publish(Publication{
-		Effects:  second,
-		Coverage: Coverage{AuditSequence: 2, LogSequence: 2, SourceComplete: true},
-	})
-	require.NoError(t, err)
-
-	combinedManifest, err := combined.Publish(Publication{
-		Effects:  append(append([]balancehistory.Effect(nil), second...), first...),
-		Coverage: Coverage{AuditSequence: 2, LogSequence: 2, SourceComplete: true},
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, separateManifest.LogicalDigest, combinedManifest.LogicalDigest)
-	require.Len(t, separateManifest.Runs, 2)
-	require.Len(t, combinedManifest.Runs, 1)
 }

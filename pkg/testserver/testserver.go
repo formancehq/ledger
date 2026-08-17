@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
@@ -347,29 +346,6 @@ func WithBackupMaxSegmentBytes(maxBytes int64) testservice.InstrumentationFunc {
 func WithSentinelMode() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--sentinel-mode")
-
-		return nil
-	}
-}
-
-// WithBalanceHistoryEnabled opts a test server into the asynchronous PIT
-// balance-history projection. It is deliberately absent from
-// DefaultTestInstruments so unrelated suites exercise the production default.
-func WithBalanceHistoryEnabled() testservice.InstrumentationFunc {
-	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--balance-history-enabled")
-
-		return nil
-	}
-}
-
-// WithBalanceHistoryLedgers restricts PIT reads to exact ledger names while
-// leaving the cluster-wide history builder unchanged.
-func WithBalanceHistoryLedgers(ledgers ...string) testservice.InstrumentationFunc {
-	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
-		if len(ledgers) > 0 {
-			cfg.AppendArgs("--balance-history-ledgers", strings.Join(ledgers, ","))
-		}
 
 		return nil
 	}

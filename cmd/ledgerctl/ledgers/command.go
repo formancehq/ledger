@@ -25,6 +25,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewGetSchemaCommand())
 	cmd.AddCommand(NewStatsCommand())
 	cmd.AddCommand(NewConfigurationCommand())
+	cmd.AddCommand(NewHistoricalBalancesCommand())
 
 	return cmd
 }

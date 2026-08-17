@@ -17,39 +17,39 @@ func TestAntithesisLinearizablePITProbeRequiresOmittedConsistency(t *testing.T) 
 	const probeID = "quorum-loss-1"
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
-		antithesisLinearizablePITProbeMetadataKey,
+		antithesisHistoricalBalanceProbeMetadataKey,
 		probeID,
 	))
-	require.Equal(t, probeID, antithesisLinearizablePITProbeID(ctx))
+	require.Equal(t, probeID, antithesisHistoricalBalanceProbeID(ctx))
 
 	explicitCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
-		antithesisLinearizablePITProbeMetadataKey,
+		antithesisHistoricalBalanceProbeMetadataKey,
 		probeID,
 		consistencyMetadataKey,
 		"linearizable",
 	))
-	require.Empty(t, antithesisLinearizablePITProbeID(explicitCtx))
+	require.Empty(t, antithesisHistoricalBalanceProbeID(explicitCtx))
 
 	duplicateCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
-		antithesisLinearizablePITProbeMetadataKey,
+		antithesisHistoricalBalanceProbeMetadataKey,
 		probeID,
-		antithesisLinearizablePITProbeMetadataKey,
+		antithesisHistoricalBalanceProbeMetadataKey,
 		"other",
 	))
-	require.Empty(t, antithesisLinearizablePITProbeID(duplicateCtx))
+	require.Empty(t, antithesisHistoricalBalanceProbeID(duplicateCtx))
 }
 
 func TestAntithesisLinearizablePITProbeUsesBoundedInternalBarrier(t *testing.T) {
 	t.Parallel()
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
-		antithesisLinearizablePITProbeMetadataKey,
+		antithesisHistoricalBalanceProbeMetadataKey,
 		"quorum-loss-2",
 	))
-	routingCtx, cancel := antithesisLinearizablePITBarrierContext(ctx)
+	routingCtx, cancel := antithesisHistoricalBalanceBarrierContext(ctx)
 	defer cancel()
 
 	deadline, ok := routingCtx.Deadline()
 	require.True(t, ok)
-	require.WithinDuration(t, time.Now().Add(antithesisLinearizablePITBarrierTimeout), deadline, 100*time.Millisecond)
+	require.WithinDuration(t, time.Now().Add(antithesisHistoricalBalanceBarrierTimeout), deadline, 100*time.Millisecond)
 }

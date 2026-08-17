@@ -11,7 +11,34 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-const pointInTimeViewTrailerKey = "x-point-in-time-view-bin"
+const pointInTimeViewTrailerKey = "x-historical-balance-view-bin"
+
+// ConfigureHistoricalBalances enables the rebuildable projection through the
+// public client contract. Antithesis fixtures call this explicitly so their
+// projection scope is part of the audited workload, not process configuration.
+func ConfigureHistoricalBalances(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	ledger string,
+) error {
+	response, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_ConfigureHistoricalBalances{
+			ConfigureHistoricalBalances: &servicepb.ConfigureHistoricalBalancesRequest{
+				Ledger:  ledger,
+				Enabled: true,
+			},
+		},
+	}))
+	if err != nil {
+		return err
+	}
+	if len(response.GetLogs()) != 1 ||
+		response.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetConfiguredHistoricalBalances() == nil {
+		return fmt.Errorf("unexpected historical-balance configuration response for ledger %q", ledger)
+	}
+
+	return nil
+}
 
 // CanonicalVolume is the order-independent representation used to compare
 // AggregateVolumes results across independent PIT storage scopes.
@@ -29,19 +56,17 @@ func AggregatePointInTime(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	request *servicepb.AggregateVolumesRequest,
-	expectedLedgerID uint32,
-) (*commonpb.AggregateResult, *servicepb.PointInTimeView, error) {
-	return aggregatePointInTime(ctx, client, request, expectedLedgerID)
+) (*commonpb.AggregateResult, *servicepb.HistoricalBalanceView, error) {
+	return aggregatePointInTime(ctx, client, request)
 }
 
 func aggregatePointInTime(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	request *servicepb.AggregateVolumesRequest,
-	expectedLedgerID uint32,
 	callOptions ...grpc.CallOption,
-) (*commonpb.AggregateResult, *servicepb.PointInTimeView, error) {
-	if request.GetPointInTime() == nil || request.GetPointInTime().GetAt() == nil {
+) (*commonpb.AggregateResult, *servicepb.HistoricalBalanceView, error) {
+	if request.GetHistoricalBalance() == nil || request.GetHistoricalBalance().GetAt() == nil {
 		return nil, nil, fmt.Errorf("point-in-time selector is required")
 	}
 
@@ -52,44 +77,43 @@ func aggregatePointInTime(
 		return nil, nil, err
 	}
 
-	view, err := decodePointInTimeViewTrailer(trailer)
+	view, err := decodeHistoricalBalanceViewTrailer(trailer)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := validatePointInTimeView(request, expectedLedgerID, view); err != nil {
+	if err := validateHistoricalBalanceView(request, view); err != nil {
 		return nil, nil, err
 	}
 
 	return result, view, nil
 }
 
-func validatePointInTimeView(
+func validateHistoricalBalanceView(
 	request *servicepb.AggregateVolumesRequest,
-	expectedLedgerID uint32,
-	view *servicepb.PointInTimeView,
+	view *servicepb.HistoricalBalanceView,
 ) error {
-	if expectedLedgerID == 0 {
-		return fmt.Errorf("expected ledger ID must be non-zero")
+	if request.GetLedger() == "" {
+		return fmt.Errorf("expected ledger name must be non-empty")
 	}
-	if view.GetLedgerId() != expectedLedgerID {
+	if view.GetLedger() != request.GetLedger() {
 		return fmt.Errorf(
-			"point-in-time view ledger ID %d differs from expected incarnation %d",
-			view.GetLedgerId(),
-			expectedLedgerID,
+			"historical-balance view ledger %q differs from requested ledger %q",
+			view.GetLedger(),
+			request.GetLedger(),
 		)
 	}
-	if view.GetRequestedAt().GetData() != request.GetPointInTime().GetAt().GetData() {
+	if view.GetRequestedAt().GetData() != request.GetHistoricalBalance().GetAt().GetData() {
 		return fmt.Errorf(
 			"point-in-time view requested timestamp %d differs from selector %d",
 			view.GetRequestedAt().GetData(),
-			request.GetPointInTime().GetAt().GetData(),
+			request.GetHistoricalBalance().GetAt().GetData(),
 		)
 	}
-	if view.GetAxis() != request.GetPointInTime().GetAxis() {
+	if view.GetTemporality() != request.GetHistoricalBalance().GetTemporality() {
 		return fmt.Errorf(
 			"point-in-time view axis %s differs from selector %s",
-			view.GetAxis(),
-			request.GetPointInTime().GetAxis(),
+			view.GetTemporality(),
+			request.GetHistoricalBalance().GetTemporality(),
 		)
 	}
 
@@ -103,7 +127,6 @@ func IsClassifiedPointInTimeFailure(err error) bool {
 	switch ErrorReason(err) {
 	case "HISTORY_BUILDING",
 		"HISTORY_BEHIND",
-		"HISTORY_EXPIRED",
 		"HISTORY_SOURCE_MISSING",
 		"HISTORY_CORRUPT":
 		return true
@@ -112,7 +135,7 @@ func IsClassifiedPointInTimeFailure(err error) bool {
 	}
 }
 
-func decodePointInTimeViewTrailer(trailer metadata.MD) (*servicepb.PointInTimeView, error) {
+func decodeHistoricalBalanceViewTrailer(trailer metadata.MD) (*servicepb.HistoricalBalanceView, error) {
 	values := trailer.Get(pointInTimeViewTrailerKey)
 	if len(values) != 1 {
 		return nil, fmt.Errorf(
@@ -122,11 +145,11 @@ func decodePointInTimeViewTrailer(trailer metadata.MD) (*servicepb.PointInTimeVi
 		)
 	}
 
-	view := &servicepb.PointInTimeView{}
+	view := &servicepb.HistoricalBalanceView{}
 	if err := view.UnmarshalVT([]byte(values[0])); err != nil {
 		return nil, fmt.Errorf("decoding point-in-time view trailer: %w", err)
 	}
-	if view.GetRequestedAt() == nil || view.GetHistoryAvailableFrom() == nil || view.GetViewToken() == "" {
+	if view.GetRequestedAt() == nil || view.GetViewToken() == "" {
 		return nil, fmt.Errorf("point-in-time view trailer is incomplete")
 	}
 

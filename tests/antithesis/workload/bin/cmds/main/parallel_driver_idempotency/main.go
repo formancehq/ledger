@@ -29,9 +29,9 @@ const propertyAccount = "pitidem:destination"
 const pitOracleMaximumAttempts = 8
 
 type pitAxisObservation struct {
-	axis   servicepb.PointInTimeAxis
+	axis   servicepb.HistoricalBalanceTemporality
 	result *commonpb.AggregateResult
-	view   *servicepb.PointInTimeView
+	view   *servicepb.HistoricalBalanceView
 }
 
 func main() {
@@ -60,6 +60,9 @@ func main() {
 	seedTwo := internal.Rand().Uint64()
 	ledger := internal.PrefixPITIdempotency.WithSuffix(fmt.Sprintf("%016x%016x", seedOne, seedTwo))
 	if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+		return
+	}
+	if err := internal.ConfigureHistoricalBalances(ctx, client, ledger); err != nil {
 		return
 	}
 	ledgerInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
@@ -206,9 +209,9 @@ func main() {
 		return
 	}
 
-	axes := []servicepb.PointInTimeAxis{
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+	axes := []servicepb.HistoricalBalanceTemporality{
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 	}
 	observations := make([]pitAxisObservation, 0, len(axes))
 	for attempt := 1; attempt <= pitOracleMaximumAttempts; attempt++ {
@@ -219,11 +222,11 @@ func main() {
 				Ledger:         ledger,
 				Filter:         actions.AddressExactFilter(propertyAccount),
 				MinLogSequence: logSequence,
-				PointInTime: &servicepb.PointInTimeSelector{
-					At:   &commonpb.Timestamp{Data: math.MaxUint64},
-					Axis: axis,
+				HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+					At:          &commonpb.Timestamp{Data: math.MaxUint64},
+					Temporality: axis,
 				},
-			}, ledgerInfo.GetId())
+			})
 			if pitErr == nil {
 				observations = append(observations, pitAxisObservation{
 					axis:   axis,

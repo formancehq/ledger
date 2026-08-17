@@ -13,23 +13,22 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestDecodePointInTimeViewTrailer(t *testing.T) {
+func TestDecodeHistoricalBalanceViewTrailer(t *testing.T) {
 	t.Parallel()
 
-	view := &servicepb.PointInTimeView{
-		RequestedAt:          &commonpb.Timestamp{Data: 42},
-		Axis:                 servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-		LedgerId:             7,
-		AuditWatermark:       11,
-		LogWatermark:         9,
-		ManifestVersion:      3,
-		HistoryAvailableFrom: &commonpb.Timestamp{Data: 1},
-		ViewToken:            "view-token",
+	view := &servicepb.HistoricalBalanceView{
+		RequestedAt:     &commonpb.Timestamp{Data: 42},
+		Temporality:     servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+		Ledger:          "default",
+		AuditWatermark:  11,
+		LogWatermark:    9,
+		ManifestVersion: 3,
+		ViewToken:       "view-token",
 	}
 	encoded, err := view.MarshalVT()
 	require.NoError(t, err)
 
-	decoded, err := decodePointInTimeViewTrailer(metadata.Pairs(
+	decoded, err := decodeHistoricalBalanceViewTrailer(metadata.Pairs(
 		pointInTimeViewTrailerKey,
 		string(encoded),
 	))
@@ -37,21 +36,24 @@ func TestDecodePointInTimeViewTrailer(t *testing.T) {
 	require.Equal(t, view, decoded)
 }
 
-func TestValidatePointInTimeViewAuthenticatesLedgerIncarnation(t *testing.T) {
+func TestValidateHistoricalBalanceViewAuthenticatesLedgerName(t *testing.T) {
 	t.Parallel()
 
-	request := &servicepb.AggregateVolumesRequest{PointInTime: &servicepb.PointInTimeSelector{
-		At:   &commonpb.Timestamp{Data: 42},
-		Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-	}}
-	view := &servicepb.PointInTimeView{
+	request := &servicepb.AggregateVolumesRequest{
+		Ledger: "expected",
+		HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+			At:          &commonpb.Timestamp{Data: 42},
+			Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+		},
+	}
+	view := &servicepb.HistoricalBalanceView{
 		RequestedAt: &commonpb.Timestamp{Data: 42},
-		Axis:        servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-		LedgerId:    8,
+		Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+		Ledger:      "unexpected",
 	}
 
-	err := validatePointInTimeView(request, 7, view)
-	require.EqualError(t, err, "point-in-time view ledger ID 8 differs from expected incarnation 7")
+	err := validateHistoricalBalanceView(request, view)
+	require.EqualError(t, err, `historical-balance view ledger "unexpected" differs from requested ledger "expected"`)
 }
 
 func TestIsClassifiedPointInTimeFailure(t *testing.T) {
@@ -60,7 +62,6 @@ func TestIsClassifiedPointInTimeFailure(t *testing.T) {
 	for _, reason := range []string{
 		"HISTORY_BUILDING",
 		"HISTORY_BEHIND",
-		"HISTORY_EXPIRED",
 		"HISTORY_SOURCE_MISSING",
 		"HISTORY_CORRUPT",
 	} {
@@ -78,13 +79,13 @@ func TestIsClassifiedPointInTimeFailure(t *testing.T) {
 	require.False(t, IsClassifiedPointInTimeFailure(errors.New("plain failure")))
 }
 
-func TestDecodePointInTimeViewTrailerRejectsIncompleteView(t *testing.T) {
+func TestDecodeHistoricalBalanceViewTrailerRejectsIncompleteView(t *testing.T) {
 	t.Parallel()
 
-	encoded, err := (&servicepb.PointInTimeView{}).MarshalVT()
+	encoded, err := (&servicepb.HistoricalBalanceView{}).MarshalVT()
 	require.NoError(t, err)
 
-	_, err = decodePointInTimeViewTrailer(metadata.Pairs(
+	_, err = decodeHistoricalBalanceViewTrailer(metadata.Pairs(
 		pointInTimeViewTrailerKey,
 		string(encoded),
 	))

@@ -409,14 +409,15 @@ func (v *signingVerifier) foldArchived(
 	})
 
 	for _, ch := range archived {
-		coldPebble, err := coldReader.GetReader(ctx, ch.GetId())
+		coldPebble, release, err := coldReader.AcquireReader(ctx, ch.GetId())
 		if err != nil {
 			logger.Infof("reading archived chapter %d for signing verification failed: %v", ch.GetId(), err)
 
 			return nil
 		}
 
-		if err := v.foldChapter(ctx, coldPebble); err != nil {
+		foldErr := v.foldChapter(ctx, coldPebble)
+		if err := errors.Join(foldErr, release()); err != nil {
 			logger.Infof("folding signing orders from archived chapter %d failed: %v", ch.GetId(), err)
 
 			return nil

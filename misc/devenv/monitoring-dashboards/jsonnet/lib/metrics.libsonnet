@@ -54,17 +54,9 @@
   // ctrl — internal/application/ctrl/controller_default.go
   ctrl:: {
     apply_duration: 'ctrl.apply.duration',
-    point_in_time_aggregate_requests: 'ctrl.point_in_time.aggregate.requests',
-    point_in_time_aggregate_errors: 'ctrl.point_in_time.aggregate.errors',
-    point_in_time_aggregate_duration: 'ctrl.point_in_time.aggregate.duration',
-  },
-
-  // balancehistory.archive — internal/storage/balancehistoryarchive/metrics.go
-  balancehistory_archive:: {
-    cache_hits: 'balancehistory.archive.cache.hits',
-    cache_misses: 'balancehistory.archive.cache.misses',
-    fetch_duration: 'balancehistory.archive.fetch.duration',
-    cache_bytes: 'balancehistory.archive.cache.bytes',
+    historical_balance_aggregate_requests: 'ctrl.historical_balance.aggregate.requests',
+    historical_balance_aggregate_errors: 'ctrl.historical_balance.aggregate.errors',
+    historical_balance_aggregate_duration: 'ctrl.historical_balance.aggregate.duration',
   },
 
   // balancehistory.builder — internal/application/balancehistory/builder.go
@@ -85,43 +77,15 @@
     durability_sync_error: 'balancehistory.builder.durability_sync_error',
   },
 
-  // balancehistory.remote_gc — internal/storage/balancehistorystore/remote_gc_metrics.go
-  balancehistory_remote_gc:: {
-    inventory_objects: 'balancehistory.remote_gc.inventory.objects',
-    inventory_bytes: 'balancehistory.remote_gc.inventory.bytes',
-    queue_objects: 'balancehistory.remote_gc.queue.objects',
-    queue_bytes: 'balancehistory.remote_gc.queue.bytes',
-    queue_oldest_age: 'balancehistory.remote_gc.queue.oldest_age',
-    blocked_active_view_cycles: 'balancehistory.remote_gc.blocked.active_view.cycles',
-    deleted_objects: 'balancehistory.remote_gc.deleted.objects',
-    deleted_bytes: 'balancehistory.remote_gc.deleted.bytes',
-    list_failures: 'balancehistory.remote_gc.list.failures',
-    delete_failures: 'balancehistory.remote_gc.delete.failures',
-    last_completed_inventory_timestamp: 'balancehistory.remote_gc.last_completed_inventory.timestamp',
-    list_duration: 'balancehistory.remote_gc.list.duration',
-    delete_duration: 'balancehistory.remote_gc.delete.duration',
-  },
-
   // balancehistory.store — internal/storage/balancehistorystore/metrics.go
   balancehistory_store:: {
     level_bytes: 'balancehistory.store.level.bytes',
-    runs: 'balancehistory.store.runs',
+    segments: 'balancehistory.store.segments',
     summary_entries: 'balancehistory.store.summary_entries',
     memtable_bytes: 'balancehistory.store.memtable.bytes',
     compaction_debt_bytes: 'balancehistory.store.compaction_debt.bytes',
     cache_hits: 'balancehistory.store.cache.hits',
     cache_misses: 'balancehistory.store.cache.misses',
-  },
-
-  // balancehistory.verifier — internal/application/balancehistory/verifier.go
-  balancehistory_verifier:: {
-    runs: 'balancehistory.verifier.runs',
-    failures: 'balancehistory.verifier.failures',
-    duration: 'balancehistory.verifier.duration',
-    last_success: 'balancehistory.verifier.last_success',
-    archive_parts: 'balancehistory.verifier.archive.parts',
-    archive_bytes: 'balancehistory.verifier.archive.bytes',
-    physical_duration: 'balancehistory.verifier.physical.duration',
   },
 
   // grpc (custom) — internal/adapter/grpc/server_bucket.go

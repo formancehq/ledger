@@ -293,7 +293,7 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	if err := c.BalanceHistoryConfig.Validate(c.ColdStorageConfig); err != nil {
+	if err := c.BalanceHistoryConfig.Validate(); err != nil {
 		return err
 	}
 

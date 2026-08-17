@@ -658,6 +658,50 @@ func (c *MockBucketServiceClientGetEventsSinksCall) DoAndReturn(f func(context.C
 	return c
 }
 
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockBucketServiceClient) GetHistoricalBalancesStatus(ctx context.Context, in *servicepb.GetHistoricalBalancesStatusRequest, opts ...grpc.CallOption) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, in}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", varargs...)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockBucketServiceClientMockRecorder) GetHistoricalBalancesStatus(ctx, in any, opts ...any) *MockBucketServiceClientGetHistoricalBalancesStatusCall {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, in}, opts...)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockBucketServiceClient)(nil).GetHistoricalBalancesStatus), varargs...)
+	return &MockBucketServiceClientGetHistoricalBalancesStatusCall{Call: call}
+}
+
+// MockBucketServiceClientGetHistoricalBalancesStatusCall wrap *gomock.Call
+type MockBucketServiceClientGetHistoricalBalancesStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBucketServiceClientGetHistoricalBalancesStatusCall) Return(arg0 *servicepb.GetHistoricalBalancesStatusResponse, arg1 error) *MockBucketServiceClientGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBucketServiceClientGetHistoricalBalancesStatusCall) Do(f func(context.Context, *servicepb.GetHistoricalBalancesStatusRequest, ...grpc.CallOption) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBucketServiceClientGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBucketServiceClientGetHistoricalBalancesStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetHistoricalBalancesStatusRequest, ...grpc.CallOption) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBucketServiceClientGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetIndex mocks base method.
 func (m *MockBucketServiceClient) GetIndex(ctx context.Context, in *servicepb.GetIndexRequest, opts ...grpc.CallOption) (*commonpb.Index, error) {
 	m.ctrl.T.Helper()

@@ -768,24 +768,23 @@ func TestAggregateVolumes_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestAggregateVolumes_PointInTimeForwardsSelectorAndReturnsView(t *testing.T) {
+func TestAggregateVolumes_HistoricalBalanceForwardsSelectorAndReturnsView(t *testing.T) {
 	t.Parallel()
 
 	expectedAggregate := &commonpb.AggregateResult{}
 	filter := &commonpb.QueryFilter{}
-	selector := &appctrl.PointInTimeSelector{
-		At:   1_704_164_645_123_456,
-		Axis: balancehistorystore.AxisInsertion,
+	selector := &appctrl.HistoricalBalanceSelector{
+		At:          1_704_164_645_123_456,
+		Temporality: balancehistorystore.TemporalityInsertion,
 	}
-	expectedView := &appctrl.VolumeViewToken{
-		RequestedAt:          selector.At,
-		Axis:                 selector.Axis,
-		LedgerID:             17,
-		AuditWatermark:       99,
-		LogWatermark:         88,
-		ManifestVersion:      7,
-		HistoryAvailableFrom: 1_600_000_000_000_000,
-		Token:                "immutable-view-token",
+	expectedView := &appctrl.HistoricalBalanceViewToken{
+		RequestedAt:     selector.At,
+		Temporality:     selector.Temporality,
+		Ledger:          "main",
+		AuditWatermark:  99,
+		LogWatermark:    88,
+		ManifestVersion: 7,
+		Token:           "immutable-view-token",
 	}
 
 	mockCtrl := gomock.NewController(t)
@@ -798,14 +797,14 @@ func TestAggregateVolumes_PointInTimeForwardsSelectorAndReturnsView(t *testing.T
 			require.True(t, req.GetUseMaxPrecision())
 			require.True(t, req.GetCollapseColors())
 			require.Equal(t, []string{"users:", "merchants:"}, req.GetGroupByPrefixes())
-			require.NotNil(t, req.GetPointInTime())
-			require.Equal(t, selector.At, req.GetPointInTime().GetAt().GetData())
-			require.Equal(t, servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION, req.GetPointInTime().GetAxis())
+			require.NotNil(t, req.GetHistoricalBalance())
+			require.Equal(t, selector.At, req.GetHistoricalBalance().GetAt().GetData())
+			require.Equal(t, servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION, req.GetHistoricalBalance().GetTemporality())
 
 			require.Len(t, callOptions, 1)
 			trailerOption, ok := callOptions[0].(grpc.TrailerCallOption)
 			require.True(t, ok)
-			trailer, err := pointInTimeViewMetadata(expectedView)
+			trailer, err := historicalBalanceViewMetadata(expectedView)
 			require.NoError(t, err)
 			*trailerOption.TrailerAddr = trailer
 
@@ -823,8 +822,8 @@ func TestAggregateVolumes_PointInTimeForwardsSelectorAndReturnsView(t *testing.T
 			GroupByPrefixes: []string{"users:", "merchants:"},
 		},
 		appctrl.AggregateVolumesReadOptions{
-			PointInTime:    selector,
-			MinLogSequence: 42,
+			HistoricalBalance: selector,
+			MinLogSequence:    42,
 		},
 	)
 
@@ -833,7 +832,7 @@ func TestAggregateVolumes_PointInTimeForwardsSelectorAndReturnsView(t *testing.T
 	require.Equal(t, expectedView, result.View)
 }
 
-func TestAggregateVolumes_PointInTimeFailsClosedWithoutViewTrailer(t *testing.T) {
+func TestAggregateVolumes_HistoricalBalanceFailsClosedWithoutViewTrailer(t *testing.T) {
 	t.Parallel()
 
 	mockCtrl := gomock.NewController(t)
@@ -847,9 +846,9 @@ func TestAggregateVolumes_PointInTimeFailsClosedWithoutViewTrailer(t *testing.T)
 		"ledger1",
 		nil,
 		query.AggregateOptions{},
-		appctrl.AggregateVolumesReadOptions{PointInTime: &appctrl.PointInTimeSelector{
-			At:   1,
-			Axis: balancehistorystore.AxisEffective,
+		appctrl.AggregateVolumesReadOptions{HistoricalBalance: &appctrl.HistoricalBalanceSelector{
+			At:          1,
+			Temporality: balancehistorystore.TemporalityEffective,
 		}},
 	)
 
@@ -857,30 +856,30 @@ func TestAggregateVolumes_PointInTimeFailsClosedWithoutViewTrailer(t *testing.T)
 	require.ErrorContains(t, err, "missing its immutable view trailer")
 }
 
-func TestAggregateVolumes_PointInTimeFailsClosedOnMismatchedView(t *testing.T) {
+func TestAggregateVolumes_HistoricalBalanceFailsClosedOnMismatchedView(t *testing.T) {
 	t.Parallel()
 
-	selector := &appctrl.PointInTimeSelector{
-		At:   10,
-		Axis: balancehistorystore.AxisEffective,
+	selector := &appctrl.HistoricalBalanceSelector{
+		At:          10,
+		Temporality: balancehistorystore.TemporalityEffective,
 	}
 	for _, tc := range []struct {
 		name string
-		view *appctrl.VolumeViewToken
+		view *appctrl.HistoricalBalanceViewToken
 	}{
 		{
 			name: "requested timestamp",
-			view: &appctrl.VolumeViewToken{
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: 11,
-				Axis:        balancehistorystore.AxisEffective,
+				Temporality: balancehistorystore.TemporalityEffective,
 				Token:       "wrong-timestamp-view",
 			},
 		},
 		{
 			name: "axis",
-			view: &appctrl.VolumeViewToken{
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: 10,
-				Axis:        balancehistorystore.AxisInsertion,
+				Temporality: balancehistorystore.TemporalityInsertion,
 				Token:       "wrong-axis-view",
 			},
 		},
@@ -895,7 +894,7 @@ func TestAggregateVolumes_PointInTimeFailsClosedOnMismatchedView(t *testing.T) {
 					require.Len(t, callOptions, 1)
 					trailerOption, ok := callOptions[0].(grpc.TrailerCallOption)
 					require.True(t, ok)
-					trailer, err := pointInTimeViewMetadata(tc.view)
+					trailer, err := historicalBalanceViewMetadata(tc.view)
 					require.NoError(t, err)
 					*trailerOption.TrailerAddr = trailer
 
@@ -908,7 +907,7 @@ func TestAggregateVolumes_PointInTimeFailsClosedOnMismatchedView(t *testing.T) {
 				"ledger1",
 				nil,
 				query.AggregateOptions{},
-				appctrl.AggregateVolumesReadOptions{PointInTime: selector},
+				appctrl.AggregateVolumesReadOptions{HistoricalBalance: selector},
 			)
 
 			require.Nil(t, result)
@@ -917,7 +916,7 @@ func TestAggregateVolumes_PointInTimeFailsClosedOnMismatchedView(t *testing.T) {
 	}
 }
 
-func TestAggregateVolumes_PointInTimeRejectsUnknownClientAxis(t *testing.T) {
+func TestAggregateVolumes_HistoricalBalanceRejectsUnknownClientTemporality(t *testing.T) {
 	t.Parallel()
 
 	mockCtrl := gomock.NewController(t)
@@ -927,14 +926,14 @@ func TestAggregateVolumes_PointInTimeRejectsUnknownClientAxis(t *testing.T) {
 		"ledger1",
 		nil,
 		query.AggregateOptions{},
-		appctrl.AggregateVolumesReadOptions{PointInTime: &appctrl.PointInTimeSelector{
-			At:   1,
-			Axis: balancehistorystore.Axis(99),
+		appctrl.AggregateVolumesReadOptions{HistoricalBalance: &appctrl.HistoricalBalanceSelector{
+			At:          1,
+			Temporality: balancehistorystore.Temporality(99),
 		}},
 	)
 
 	require.Nil(t, result)
-	require.ErrorContains(t, err, "unknown point-in-time axis value 99")
+	require.ErrorContains(t, err, "unknown historical-balance temporality value 99")
 }
 
 func TestListPreparedQueries_Success(t *testing.T) {

@@ -11,7 +11,6 @@ import (
 const (
 	errReasonHistoryBuilding           = "HISTORY_BUILDING"
 	errReasonHistoryBehind             = "HISTORY_BEHIND"
-	errReasonHistoryExpired            = "HISTORY_EXPIRED"
 	errReasonHistorySourceMissing      = "HISTORY_SOURCE_MISSING"
 	errReasonHistoryCorrupt            = "HISTORY_CORRUPT"
 	errReasonUnsupportedTemporalFilter = "UNSUPPORTED_TEMPORAL_FILTER"
@@ -51,27 +50,8 @@ func (e *ErrBehind) Metadata() map[string]string {
 	return logSequenceMetadata(e.Current, e.Required, "requiredLogSequence")
 }
 
-// ErrExpired means the requested source prefix predates retained history.
-type ErrExpired struct {
-	Requested uint64
-	Floor     uint64
-}
-
-func (e *ErrExpired) Error() string {
-	return fmt.Sprintf("balance history expired: requested %d, history floor %d", e.Requested, e.Floor)
-}
-
-func (*ErrExpired) Reason() string { return errReasonHistoryExpired }
-
-func (e *ErrExpired) Metadata() map[string]string {
-	return map[string]string{
-		"requestedAtUnixMicro":  strconv.FormatUint(e.Requested, 10),
-		"historyFloorUnixMicro": strconv.FormatUint(e.Floor, 10),
-	}
-}
-
 // ErrSourceMissing means no verified genesis-to-watermark source or additive
-// base run exists. A current live snapshot is not a valid substitute because
+// base segment exists. A current live snapshot is not a valid substitute because
 // it has forgotten purged ephemeral generations.
 type ErrSourceMissing struct {
 	Detail string
@@ -88,7 +68,7 @@ func (e *ErrSourceMissing) Error() string {
 func (*ErrSourceMissing) Reason() string              { return errReasonHistorySourceMissing }
 func (*ErrSourceMissing) Metadata() map[string]string { return nil }
 
-// ErrCorrupt means a manifest or run failed its integrity check.
+// ErrCorrupt means a manifest or segment failed its structural integrity check.
 type ErrCorrupt struct {
 	Detail string
 }
@@ -131,10 +111,10 @@ type ErrUnsupportedTemporalFilter struct {
 
 func (e *ErrUnsupportedTemporalFilter) Error() string {
 	if e.Category == "" {
-		return "filter is not supported for point-in-time balance queries"
+		return "filter is not supported for historical balance queries"
 	}
 
-	return "filter is not supported for point-in-time balance queries: " + e.Category
+	return "filter is not supported for historical balance queries: " + e.Category
 }
 
 func (*ErrUnsupportedTemporalFilter) Reason() string { return errReasonUnsupportedTemporalFilter }
@@ -157,7 +137,6 @@ func logSequenceMetadata(current, other uint64, otherKey string) map[string]stri
 var (
 	_ domain.Describable = (*ErrBuilding)(nil)
 	_ domain.Describable = (*ErrBehind)(nil)
-	_ domain.Describable = (*ErrExpired)(nil)
 	_ domain.Describable = (*ErrSourceMissing)(nil)
 	_ domain.Describable = (*ErrCorrupt)(nil)
 	_ domain.Describable = (*ErrQuarantined)(nil)
@@ -192,23 +171,6 @@ func (*ErrUnsupportedReducer) Metadata() map[string]string { return nil }
 // range or an effect outside the declared range.
 type ErrSourceGap struct {
 	Detail string
-}
-
-// ErrSegmentRecordTooLarge means one immutable run record cannot fit in the
-// configured cold fetch unit. Tiering leaves the complete local run untouched.
-type ErrSegmentRecordTooLarge struct {
-	RunID        uint64
-	EncodedBytes uint64
-	MaxBytes     uint64
-}
-
-func (e *ErrSegmentRecordTooLarge) Error() string {
-	return fmt.Sprintf(
-		"balance history run %d record requires %d encoded bytes, max segment size is %d",
-		e.RunID,
-		e.EncodedBytes,
-		e.MaxBytes,
-	)
 }
 
 func (e *ErrSourceGap) Error() string {

@@ -41,7 +41,7 @@ func newHistoryView(t *testing.T, effects []historydomain.Effect) *balancehistor
 
 func historyInput(account, base, color string, precision uint8, value uint64) historydomain.Effect {
 	return historydomain.Effect{
-		LedgerID: 1, AuditSequence: 1, LogSequence: 1,
+		LedgerName: "default", AuditSequence: 1, LogSequence: 1,
 		EffectiveAt: 10, InsertedAt: 20,
 		Account: account, AssetBase: base, AssetPrecision: precision, Color: color,
 		Input: historydomain.AmountFromUint64(value),
@@ -58,7 +58,7 @@ func TestAggregateHistoricalVolumesReusesLiveSemantics(t *testing.T) {
 	})
 
 	filtered, err := query.AggregateHistoricalVolumes(
-		view, 1, balancehistorystore.AxisEffective, 10, []string{"users:a"}, query.AggregateOptions{},
+		view, "default", balancehistorystore.TemporalityEffective, 10, []string{"users:a"}, query.AggregateOptions{},
 	)
 	require.NoError(t, err)
 	require.Len(t, filtered.GetVolumes(), 1)
@@ -67,7 +67,7 @@ func TestAggregateHistoricalVolumesReusesLiveSemantics(t *testing.T) {
 	require.Equal(t, "100", filtered.GetVolumes()[0].GetInput().ToBigInt().String())
 
 	grouped, err := query.AggregateHistoricalVolumes(
-		view, 1, balancehistorystore.AxisEffective, 10, nil,
+		view, "default", balancehistorystore.TemporalityEffective, 10, nil,
 		query.AggregateOptions{GroupByPrefixes: []string{"users:"}, UseMaxPrecision: true, CollapseColors: true},
 	)
 	require.NoError(t, err)
@@ -88,19 +88,19 @@ func TestAggregateHistoricalVolumesSurfacesUint256Overflow(t *testing.T) {
 
 	view := newHistoryView(t, []historydomain.Effect{
 		{
-			LedgerID: 1, AuditSequence: 1, LogSequence: 1, EffectiveAt: 10, InsertedAt: 10,
+			LedgerName: "default", AuditSequence: 1, LogSequence: 1, EffectiveAt: 10, InsertedAt: 10,
 			Account: "a", AssetBase: "USD", Input: amount,
 		},
 		{
-			LedgerID: 1, AuditSequence: 1, LogSequence: 1, EffectiveAt: 10, InsertedAt: 10,
+			LedgerName: "default", AuditSequence: 1, LogSequence: 1, EffectiveAt: 10, InsertedAt: 10,
 			Account: "b", AssetBase: "USD", Input: historydomain.AmountFromUint64(1),
 		},
 	})
 
-	_, err := query.AggregateHistoricalVolumes(view, 1, balancehistorystore.AxisEffective, 10, nil, query.AggregateOptions{})
+	_, err := query.AggregateHistoricalVolumes(view, "default", balancehistorystore.TemporalityEffective, 10, nil, query.AggregateOptions{})
 	var overflow *query.ErrAggregateOverflow
 	require.True(t, errors.As(err, &overflow))
-	require.Equal(t, "history-value", overflow.Stage)
+	require.Equal(t, "accumulate", overflow.Stage)
 	require.Equal(t, "input", overflow.Side)
 }
 
@@ -114,7 +114,7 @@ func TestAggregateHistoricalVolumesByPrefixFiltersHistoricalAccountsAndPreserves
 	})
 
 	result, err := query.AggregateHistoricalVolumesByPrefix(
-		context.Background(), view, 1, balancehistorystore.AxisEffective, 10, "users:",
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10, "users:",
 		query.AggregateOptions{
 			GroupByPrefixes: []string{"users:"},
 			UseMaxPrecision: true,
@@ -141,7 +141,7 @@ func TestAggregateHistoricalVolumesMatchingSupportsMixedSelection(t *testing.T) 
 	})
 
 	result, err := query.AggregateHistoricalVolumesSelected(
-		context.Background(), view, 1, balancehistorystore.AxisEffective, 10,
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10,
 		[]string{"current:metadata-match", "archived:gone"}, []string{"archived:"},
 		func(account string) bool {
 			return account == "archived:gone" || account == "current:metadata-match"
@@ -161,7 +161,7 @@ func TestAggregateHistoricalVolumesMatchingHonorsCancellation(t *testing.T) {
 	cancel()
 
 	_, err := query.AggregateHistoricalVolumesMatching(
-		ctx, view, 1, balancehistorystore.AxisEffective, 10, nil,
+		ctx, view, "default", balancehistorystore.TemporalityEffective, 10, nil,
 		func(string) bool { return true }, query.AggregateOptions{},
 	)
 	require.ErrorIs(t, err, context.Canceled)

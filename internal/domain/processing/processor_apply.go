@@ -81,6 +81,8 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		logPayload, err = processRemoveAccountType(ledger, applyData.RemoveAccountType, ctx)
 	case *raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		logPayload, err = processUpdateDefaultEnforcementMode(ledger, applyData.UpdateDefaultEnforcementMode, ctx)
+	case *raftcmdpb.LedgerApplyOrder_ConfigureHistoricalBalances:
+		logPayload, err = processConfigureHistoricalBalances(applyData.ConfigureHistoricalBalances)
 	default:
 		return nil, &domain.ErrInvalidApplyType{TypeName: fmt.Sprintf("%T", apply.GetData())}
 	}
@@ -120,7 +122,8 @@ func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
 		*raftcmdpb.LedgerApplyOrder_DropIndex,
 		*raftcmdpb.LedgerApplyOrder_AddAccountType,
 		*raftcmdpb.LedgerApplyOrder_RemoveAccountType,
-		*raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
+		*raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode,
+		*raftcmdpb.LedgerApplyOrder_ConfigureHistoricalBalances:
 		return true
 	default:
 		return false

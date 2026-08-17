@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestPointInTimeErrorsAreDescribable(t *testing.T) {
+func TestHistoricalBalanceErrorsAreDescribable(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -34,13 +34,6 @@ func TestPointInTimeErrorsAreDescribable(t *testing.T) {
 			metadata: map[string]string{"currentLogSequence": "41", "requiredLogSequence": "43"},
 		},
 		{
-			name:     "expired",
-			err:      &ErrExpired{Requested: 100, Floor: 200},
-			reason:   commonpb.ErrorReason_ERROR_REASON_HISTORY_EXPIRED,
-			kind:     domain.KindPrecondition,
-			metadata: map[string]string{"requestedAtUnixMicro": "100", "historyFloorUnixMicro": "200"},
-		},
-		{
 			name:   "source missing",
 			err:    &ErrSourceMissing{Detail: "missing audit entry 42"},
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_SOURCE_MISSING,
@@ -48,13 +41,13 @@ func TestPointInTimeErrorsAreDescribable(t *testing.T) {
 		},
 		{
 			name:   "corrupt",
-			err:    &ErrCorrupt{Detail: "checksum mismatch"},
+			err:    &ErrCorrupt{Detail: "malformed segment"},
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_CORRUPT,
 			kind:   domain.KindInternal,
 		},
 		{
 			name:   "quarantined",
-			err:    &ErrQuarantined{Detail: "verified digest mismatch"},
+			err:    &ErrQuarantined{Detail: "invalid manifest"},
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_CORRUPT,
 			kind:   domain.KindInternal,
 		},
@@ -91,7 +84,7 @@ func TestPointInTimeErrorsAreDescribable(t *testing.T) {
 	}
 }
 
-func TestInternalPointInTimeErrorsDoNotExposeDiagnosticMetadata(t *testing.T) {
+func TestInternalHistoricalBalanceErrorsDoNotExposeDiagnosticMetadata(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, (&ErrSourceMissing{Detail: "path=/secret"}).Metadata())
@@ -106,5 +99,5 @@ func TestUnsupportedTemporalFilterWithoutCategoryHasNoMetadata(t *testing.T) {
 
 	err := &ErrUnsupportedTemporalFilter{}
 	require.Nil(t, err.Metadata())
-	require.Equal(t, "filter is not supported for point-in-time balance queries", err.Error())
+	require.Equal(t, "filter is not supported for historical balance queries", err.Error())
 }

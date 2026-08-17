@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,12 +17,10 @@ import (
 
 	domainhistory "github.com/formancehq/ledger/v3/internal/domain/balancehistory"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/storage/balancehistoryarchive"
 	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 )
 
@@ -79,19 +76,14 @@ func newBuilderForTestWithIntervals(
 ) *Builder {
 	t.Helper()
 
-	certifier := NewMockHistoryCertifier(gomock.NewController(t))
-	certifier.EXPECT().Certify(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-
 	return NewBuilder(
 		source,
 		store,
-		certifier,
 		notifications,
 		builderTestClusterID,
 		logging.NopZap(),
 		noop.NewMeterProvider().Meter("balance-history-builder-test"),
 		1,
-		2,
 		backfillYield,
 		durabilityInterval,
 	)
@@ -190,6 +182,21 @@ func builderTransactionLog(sequence uint64, ledger string, amount uint64) *commo
 						Timestamp:  &commonpb.Timestamp{Data: 100},
 						InsertedAt: &commonpb.Timestamp{Data: 200},
 					}},
+				}},
+			},
+		}}},
+	}
+}
+
+func builderHistoricalBalancesConfigLog(sequence uint64, ledger string, enabled bool) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: sequence,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+			LedgerName: ledger,
+			Log: &commonpb.LedgerLog{
+				Id: sequence,
+				Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_ConfiguredHistoricalBalances{
+					ConfiguredHistoricalBalances: &commonpb.ConfiguredHistoricalBalancesLog{Enabled: enabled},
 				}},
 			},
 		}}},
@@ -476,11 +483,12 @@ func TestBuilderBuildsGenesisAndMonetaryEffects(t *testing.T) {
 
 	primary := newHotSourceTestStore(t)
 	created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
-	transaction := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "tx", builderTransactionLog(2, "default", 42))
-	seedHotSource(t, primary, created, transaction)
+	configured := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "configure", builderHistoricalBalancesConfigLog(2, "default", true))
+	transaction := builderSuccessfulFixture(t, 3, configured.entry.GetHash(), "tx", builderTransactionLog(3, "default", 42))
+	seedHotSource(t, primary, created, configured, transaction)
 
 	history := newBuilderTestHistoryStore(t)
-	_, err := history.OpenView(2)
+	_, err := history.OpenView(3)
 	var building *balancehistorystore.ErrBuilding
 	require.ErrorAs(t, err, &building)
 
@@ -489,18 +497,18 @@ func TestBuilderBuildsGenesisAndMonetaryEffects(t *testing.T) {
 
 	manifest, err := history.Manifest()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), manifest.AuditWatermark)
-	require.Equal(t, uint64(2), manifest.LogWatermark)
+	require.Equal(t, uint64(3), manifest.AuditWatermark)
+	require.Equal(t, uint64(3), manifest.LogWatermark)
 	require.Equal(t, transaction.entry.GetHash(), manifest.AuditHash)
 	require.True(t, manifest.SourceComplete)
 	require.True(t, manifest.ReducerState.HasLast)
-	require.Equal(t, uint64(2), builder.LastProcessedAuditSequence())
-	require.Equal(t, uint64(2), builder.SourceHeadAuditSequence())
+	require.Equal(t, uint64(3), builder.LastProcessedAuditSequence())
+	require.Equal(t, uint64(3), builder.SourceHeadAuditSequence())
 
-	view, err := history.OpenView(2)
+	view, err := history.OpenView(3)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
-	volumes, err := view.ReadVolumes(7, balancehistorystore.AxisEffective, 100, []string{"cash"})
+	volumes, err := view.ReadVolumes("default", balancehistorystore.TemporalityEffective, 100, []string{"cash"})
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
 	require.Equal(t, big.NewInt(42), volumes[0].Input)
@@ -524,7 +532,7 @@ func TestBuilderReconcilesEmptyAndPartialStores(t *testing.T) {
 		require.True(t, manifest.SourceComplete)
 		require.Zero(t, manifest.AuditWatermark)
 		require.Zero(t, manifest.LogWatermark)
-		require.Empty(t, manifest.Runs)
+		require.Empty(t, manifest.Segments)
 
 		view, err := history.OpenView(0)
 		require.NoError(t, err)
@@ -553,7 +561,7 @@ func TestBuilderReconcilesEmptyAndPartialStores(t *testing.T) {
 		require.True(t, manifest.SourceComplete)
 		require.Zero(t, manifest.AuditWatermark)
 		require.Zero(t, manifest.LogWatermark)
-		require.Empty(t, manifest.Runs)
+		require.Empty(t, manifest.Segments)
 
 		view, err := history.OpenView(0)
 		require.NoError(t, err)
@@ -577,7 +585,7 @@ func TestBuilderAdvancesAcrossNoLogProposal(t *testing.T) {
 	require.Equal(t, uint64(2), manifest.AuditWatermark)
 	require.Equal(t, uint64(1), manifest.LogWatermark)
 	require.Equal(t, noLog.entry.GetHash(), manifest.AuditHash)
-	require.Empty(t, manifest.Runs)
+	require.Empty(t, manifest.Segments)
 }
 
 func TestBuilderDoesNotReduceHistoricalLogReferencesTwice(t *testing.T) {
@@ -585,33 +593,34 @@ func TestBuilderDoesNotReduceHistoricalLogReferencesTwice(t *testing.T) {
 
 	primary := newHotSourceTestStore(t)
 	created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
-	firstTransaction := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "first", builderTransactionLog(2, "default", 5))
-	secondLog := builderTransactionLog(3, "default", 7)
+	configured := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "configure", builderHistoricalBalancesConfigLog(2, "default", true))
+	firstTransaction := builderSuccessfulFixture(t, 3, configured.entry.GetHash(), "first", builderTransactionLog(3, "default", 5))
+	secondLog := builderTransactionLog(4, "default", 7)
 	items := []*auditpb.AuditItem{
-		{OrderIndex: 0, SerializedOrder: []byte("old-reference"), LogSequence: 2},
-		{OrderIndex: 1, SerializedOrder: []byte("fresh-log"), LogSequence: 3},
+		{OrderIndex: 0, SerializedOrder: []byte("old-reference"), LogSequence: 3},
+		{OrderIndex: 1, SerializedOrder: []byte("fresh-log"), LogSequence: 4},
 	}
 	entry := &auditpb.AuditEntry{
-		Sequence:   3,
-		Timestamp:  &commonpb.Timestamp{Data: 3},
-		ProposalId: 3,
+		Sequence:   4,
+		Timestamp:  &commonpb.Timestamp{Data: 4},
+		ProposalId: 4,
 		OrderCount: 2,
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{
-			MinLogSequence: 3,
-			MaxLogSequence: 3,
+			MinLogSequence: 4,
+			MaxLogSequence: 4,
 		}},
 	}
 	entry.Hash = builderAuditHash(t, entry, items, firstTransaction.entry.GetHash())
 	mixed := hotSourceFixture{entry: entry, items: items, logs: []*commonpb.Log{secondLog}}
-	seedHotSource(t, primary, created, firstTransaction, mixed)
+	seedHotSource(t, primary, created, configured, firstTransaction, mixed)
 
 	history := newBuilderTestHistoryStore(t)
 	require.NoError(t, newBuilderForTest(t, NewHotSource(primary), history, nil).boot(context.Background()))
 
-	view, err := history.OpenView(3)
+	view, err := history.OpenView(4)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
-	volumes, err := view.ReadVolumes(7, balancehistorystore.AxisEffective, 100, []string{"cash"})
+	volumes, err := view.ReadVolumes("default", balancehistorystore.TemporalityEffective, 100, []string{"cash"})
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
 	require.Equal(t, "12", volumes[0].Input.String())
@@ -622,24 +631,25 @@ func TestBuilderRestartsFromPersistedReducerState(t *testing.T) {
 
 	primary := newHotSourceTestStore(t)
 	created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
-	seedHotSource(t, primary, created)
+	configured := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "configure", builderHistoricalBalancesConfigLog(2, "default", true))
+	seedHotSource(t, primary, created, configured)
 
 	history := newBuilderTestHistoryStore(t)
 	require.NoError(t, newBuilderForTest(t, NewHotSource(primary), history, nil).boot(context.Background()))
 
-	transaction := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "tx", builderTransactionLog(2, "default", 11))
+	transaction := builderSuccessfulFixture(t, 3, configured.entry.GetHash(), "tx", builderTransactionLog(3, "default", 11))
 	seedHotSource(t, primary, transaction)
 	restarted := newBuilderForTest(t, NewHotSource(primary), history, nil)
 	require.NoError(t, restarted.boot(context.Background()))
 
 	manifest, err := history.Manifest()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), manifest.AuditWatermark)
+	require.Equal(t, uint64(3), manifest.AuditWatermark)
 	require.Equal(t, transaction.entry.GetHash(), manifest.AuditHash)
-	view, err := history.OpenView(2)
+	view, err := history.OpenView(3)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, view.Close()) }()
-	volumes, err := view.ReadVolumes(7, balancehistorystore.AxisInsertion, 200, []string{"cash"})
+	volumes, err := view.ReadVolumes("default", balancehistorystore.TemporalityInsertion, 200, []string{"cash"})
 	require.NoError(t, err)
 	require.Len(t, volumes, 1)
 	require.Equal(t, "11", volumes[0].Input.String())
@@ -707,7 +717,7 @@ func TestBuilderFailedCorruptionRebuildRemainsQuarantined(t *testing.T) {
 	require.ErrorContains(t, err, "audit hash chain mismatch")
 	manifest, err := history.Manifest()
 	require.NoError(t, err)
-	require.Zero(t, manifest.Version)
+	require.Equal(t, uint64(1), manifest.Version)
 	require.False(t, manifest.SourceComplete)
 }
 
@@ -751,7 +761,7 @@ func TestBuilderResetsAndRebuildsAfterPrimaryRollback(t *testing.T) {
 		require.Equal(t, uint64(1), manifest.AuditWatermark)
 		require.Equal(t, uint64(1), manifest.LogWatermark)
 		require.Equal(t, created.entry.GetHash(), manifest.AuditHash)
-		require.Empty(t, manifest.Runs)
+		require.Empty(t, manifest.Segments)
 	})
 
 	t.Run("same sequence divergent hash", func(t *testing.T) {
@@ -968,6 +978,7 @@ func TestBuilderDurabilityCadenceRetriesWithoutWaitingForAnotherInterval(t *test
 
 	transaction := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "tx", builderTransactionLog(2, "default", 9))
 	seedHotSource(t, primary, transaction)
+	now = now.Add(TickInterval)
 	require.NoError(t, builder.tick(context.Background()))
 	require.Equal(t, uint64(2), builder.LastProcessedAuditSequence())
 	require.Equal(t, uint64(1), builder.LastDurableAuditSequence())
@@ -991,6 +1002,7 @@ func TestBuilderDurabilityCadenceRetriesWithoutWaitingForAnotherInterval(t *test
 
 	// The failed barrier does not advance lastDurabilitySync, so the next
 	// worker tick retries immediately without waiting for another interval.
+	now = now.Add(TickInterval)
 	require.NoError(t, builder.tick(context.Background()))
 	require.Equal(t, 2, failureAttempts)
 	require.NoError(t, builder.LastDurabilityError())
@@ -1123,117 +1135,6 @@ func TestBuilderRepairRemainsFailClosedBeforePinnedHead(t *testing.T) {
 	}
 }
 
-func TestBuilderRestartedRepairRequiresSuccessfulCertificationAfterWALSync(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		prepare    func(*testing.T, *balancehistorystore.Store)
-		assertFail func(*testing.T, error)
-	}{
-		{
-			name: "rebuilding",
-			prepare: func(t *testing.T, store *balancehistorystore.Store) {
-				t.Helper()
-				require.NoError(t, store.Quarantine("injected corruption"))
-				require.NoError(t, store.ResetForRebuild())
-			},
-			assertFail: func(t *testing.T, err error) {
-				t.Helper()
-				var quarantined *balancehistorystore.ErrQuarantined
-				require.ErrorAs(t, err, &quarantined)
-			},
-		},
-		{
-			name: "source missing",
-			prepare: func(t *testing.T, store *balancehistorystore.Store) {
-				t.Helper()
-				require.NoError(t, store.MarkSourceMissing("injected source gap"))
-			},
-			assertFail: func(t *testing.T, err error) {
-				t.Helper()
-				var missing *balancehistorystore.ErrSourceMissing
-				require.ErrorAs(t, err, &missing)
-			},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			primary := newHotSourceTestStore(t)
-			created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
-			seedHotSource(t, primary, created)
-
-			dir := t.TempDir()
-			history, err := balancehistorystore.New(dir, logging.NopZap(), balancehistorystore.DefaultConfig())
-			require.NoError(t, err)
-			test.prepare(t, history)
-			require.NoError(t, history.Close())
-			history, err = balancehistorystore.New(dir, logging.NopZap(), balancehistorystore.DefaultConfig())
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, history.Close()) })
-
-			failCertification := true
-			certifyCalls := 0
-			events := make([]string, 0, 2)
-			certifier := NewMockHistoryCertifier(gomock.NewController(t))
-			certifier.EXPECT().Certify(gomock.Any(), uint64(1), uint64(1)).DoAndReturn(func(
-				_ context.Context,
-				requiredAuditSequence uint64,
-				requiredLogSequence uint64,
-			) error {
-				certifyCalls++
-				events = append(events, "certify")
-				require.Equal(t, uint64(1), requiredAuditSequence)
-				require.Equal(t, uint64(1), requiredLogSequence)
-				if failCertification {
-					return errors.New("injected semantic certification failure")
-				}
-
-				return nil
-			}).AnyTimes()
-			builder := NewBuilder(
-				NewHotSource(primary),
-				history,
-				certifier,
-				nil,
-				builderTestClusterID,
-				logging.NopZap(),
-				noop.NewMeterProvider().Meter("balance-history-builder-certification-test"),
-				1,
-				2,
-				time.Nanosecond,
-				time.Hour,
-			)
-			builder.durabilitySync = func() error {
-				events = append(events, "sync")
-
-				return history.SyncWAL()
-			}
-
-			// Boot catches up but deliberately swallows the certification error so
-			// the steady worker can retry. The persisted marker remains authoritative.
-			require.NoError(t, builder.boot(context.Background()))
-			require.Equal(t, []string{"sync", "certify"}, events)
-			require.Equal(t, 1, certifyCalls)
-			require.Equal(t, uint64(1), builder.LastDurableAuditSequence())
-			_, err = history.OpenView(1)
-			test.assertFail(t, err)
-
-			failCertification = false
-			events = events[:0]
-			require.NoError(t, builder.tick(context.Background()))
-			require.Equal(t, []string{"sync", "certify"}, events)
-			require.Equal(t, 2, certifyCalls)
-			view, err := history.OpenView(1)
-			require.NoError(t, err)
-			require.NoError(t, view.Close())
-		})
-	}
-}
-
 func TestBuilderDurabilityMetricsExposeRetryState(t *testing.T) {
 	t.Parallel()
 
@@ -1244,12 +1145,10 @@ func TestBuilderDurabilityMetricsExposeRetryState(t *testing.T) {
 		nil,
 		history,
 		nil,
-		nil,
 		builderTestClusterID,
 		logging.NopZap(),
 		provider.Meter("balance-history-builder-durability-test"),
 		1,
-		2,
 		time.Nanosecond,
 		time.Hour,
 	)
@@ -1323,11 +1222,9 @@ func TestBuilderRecordsBoundedPublishLagWithoutLabels(t *testing.T) {
 		NewHotSource(primary),
 		history,
 		nil,
-		nil,
 		builderTestClusterID,
 		logging.NopZap(),
 		provider.Meter("balance-history-builder-lag-test"),
-		2,
 		2,
 		time.Nanosecond,
 		time.Hour,
@@ -1353,8 +1250,8 @@ func TestBuilderRecordsBoundedPublishLagWithoutLabels(t *testing.T) {
 			}
 		}
 	}
-	require.Equal(t, int64(2), values["balancehistory.builder.effects.processed"])
-	require.Equal(t, int64(1), values["balancehistory.builder.postings.processed"])
+	require.Zero(t, values["balancehistory.builder.effects.processed"])
+	require.Zero(t, values["balancehistory.builder.postings.processed"])
 	require.Equal(t, int64(1), values["balancehistory.builder.publications"])
 	require.Equal(t, uint64(1), histograms["balancehistory.builder.batch.duration"].Count)
 	require.Equal(t, uint64(1), histograms["balancehistory.builder.batch.proposals"].Count)
@@ -1410,81 +1307,4 @@ func TestBuilderRoutesStoreSourceMissingToFailClosedRepair(t *testing.T) {
 	require.ErrorAs(t, err, &missing)
 	var quarantined *balancehistorystore.ErrQuarantined
 	require.False(t, errors.As(err, &quarantined))
-}
-
-func TestBuilderBootAndTailNeverFetchColdArchive(t *testing.T) {
-	t.Parallel()
-
-	primary := newHotSourceTestStore(t)
-	created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
-	transaction := builderSuccessfulFixture(
-		t,
-		2,
-		created.entry.GetHash(),
-		"transaction",
-		builderTransactionLog(2, "default", 42),
-	)
-	secondTransaction := builderSuccessfulFixture(
-		t,
-		3,
-		transaction.entry.GetHash(),
-		"second-transaction",
-		builderTransactionLog(3, "default", 7),
-	)
-	seedHotSource(t, primary, created, transaction, secondTransaction)
-	history := newBuilderTestHistoryStore(t)
-	initial := newBuilderForTest(t, NewHotSource(primary), history, nil)
-	require.NoError(t, initial.boot(context.Background()))
-
-	archiveRoot := t.TempDir()
-	upload, err := balancehistoryarchive.New(
-		coldstorage.NewFilesystemStorage(filepath.Join(archiveRoot, "objects")),
-		balancehistoryarchive.Config{
-			BaseBucketID:  "builder-bounded-boot",
-			OwnerID:       "node-1",
-			CacheDir:      filepath.Join(archiveRoot, "upload-cache"),
-			CacheMaxBytes: 64 << 20,
-		},
-		noop.NewMeterProvider().Meter("balance-history-builder-bounded-boot-upload-test"),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, upload.Close()) })
-	require.NoError(t, history.ConfigureTiering(balancehistorystore.TieringConfig{
-		Archive:         upload,
-		MaxSegmentBytes: 4 << 10,
-		MaxRunsPerPass:  10,
-	}))
-	tiered, err := history.Tier(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, 2, tiered)
-	manifest, err := history.Manifest()
-	require.NoError(t, err)
-	archiveParts := 0
-	for _, run := range manifest.Runs {
-		archiveParts += len(run.ArchiveParts)
-	}
-	require.Greater(t, archiveParts, DefaultVerifierSampleArchiveParts)
-
-	archive := NewMockIdentifiedArchive(gomock.NewController(t))
-	archive.EXPECT().DestinationIdentity().AnyTimes().Return(upload.DestinationIdentity())
-	archive.EXPECT().Fetch(gomock.Any(), gomock.Any()).Times(0)
-	require.NoError(t, history.ConfigureTiering(balancehistorystore.TieringConfig{
-		Archive:         archive,
-		MaxSegmentBytes: 4 << 10,
-		MaxRunsPerPass:  10,
-	}))
-	builder := newBuilderForTest(t, NewHotSource(primary), history, nil)
-
-	require.NoError(t, builder.boot(context.Background()))
-	ahead := builderSuccessfulFixture(
-		t,
-		4,
-		secondTransaction.entry.GetHash(),
-		"ahead",
-		builderTransactionLog(4, "default", 5),
-	)
-	seedHotSource(t, primary, ahead)
-	require.NoError(t, builder.tick(context.Background()))
-	require.Equal(t, uint64(4), builder.LastProcessedAuditSequence())
-	require.True(t, builder.Ready())
 }

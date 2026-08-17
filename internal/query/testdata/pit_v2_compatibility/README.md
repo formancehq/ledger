@@ -1,7 +1,7 @@
 # PIT v2 semantic compatibility fixture
 
 This fixture freezes the monetary semantics of the latest local v2 branch used
-for the v3 PIT implementation review:
+for the v3 historical-balance implementation review:
 
 - ref: `release/v2.4`
 - commit: `8ef2eb1dfaa505113f7b1ec723f77a54073d63ac`
@@ -19,19 +19,20 @@ resolved Numscript and mirror postings, normal reversals, and
 `atEffectiveDate` reversals. The remaining rows make v3-only behavior explicit:
 
 - `v3-retention-extension`: EPHEMERAL and TRANSIENT volumes may not survive in
-  the live projection, but their accepted monetary moves remain in PIT history.
+  the live projection, but their accepted monetary moves remain in balance history.
 - `v3-color-extension`: v2.4 had no posting color dimension; v3 preserves color
   buckets by default and only collapses them when explicitly requested.
-- `v3-incarnation-extension`: v3 keys history by numeric ledger incarnation so
-  deleting and recreating the same ledger name cannot expose the old balances.
+
+The v3 store keys rows by ledger name. Ledger names cannot be recreated after
+deletion, so no numeric incarnation dimension is needed in this projection.
 
 Precision remains part of the asset identity, as it was in v2. v3's
 `useMaxPrecision` option is an additive query feature and is tested separately.
 
 Metadata is intentionally **not** part of this fixture. v2 could join metadata
-revisions at the PIT when its metadata-history feature was enabled. The accepted
+revisions at the requested time when its metadata-history feature was enabled. The accepted
 v3 design applies account and metadata filters from the current read index and
-does not history metadata. Consequently, a PIT monetary result is v2-compatible
-for the selected account set, but a filter whose metadata changed after the PIT
+does not history metadata. Consequently, a historical monetary result is v2-compatible
+for the selected account set, but a filter whose metadata changed after the cutoff
 may select a different current account set. This is the deliberate compatibility
 boundary, not an untested claim of metadata history.

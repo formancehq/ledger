@@ -72,7 +72,7 @@ type PITDualAxisCase struct {
 	Name     string
 	AxisName string
 	Scope    string
-	Selector *servicepb.PointInTimeSelector
+	Selector *servicepb.HistoricalBalanceSelector
 }
 
 // PITDualAxisLedgerName returns the fixed ledger seeded before chaos begins.
@@ -223,6 +223,9 @@ func SeedPITDualAxisFixture(ctx context.Context, client servicepb.BucketServiceC
 			return err
 		}
 	}
+	if err := ConfigureHistoricalBalances(ctx, client, ledger); err != nil {
+		return fmt.Errorf("configuring historical balances for dual-temporality fixture: %w", err)
+	}
 
 	assert.Reachable(
 		"pit: dual-axis fixture committed a backdated effect",
@@ -315,7 +318,10 @@ func LoadPITDualAxisOracle(ctx context.Context, client servicepb.BucketServiceCl
 		if recvErr != nil {
 			return nil, fmt.Errorf("receiving point-in-time dual-axis logs: %w", recvErr)
 		}
-		logs = append(logs, entry)
+		data := entry.GetPayload().GetApply().GetLog().GetData()
+		if data.GetCreatedTransaction() != nil || data.GetRevertedTransaction() != nil {
+			logs = append(logs, entry)
+		}
 	}
 
 	return buildPITDualAxisOracle(ledger, ledgerInfo.GetId(), logs)
@@ -456,12 +462,12 @@ func PITDualAxisCases(oracle *PITDualAxisOracle) []PITDualAxisCase {
 
 	type axisSpec struct {
 		name string
-		axis servicepb.PointInTimeAxis
+		axis servicepb.HistoricalBalanceTemporality
 		at   func(PITDualAxisEffect) uint64
 	}
 	axes := []axisSpec{
-		{name: "effective", axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE, at: func(effect PITDualAxisEffect) uint64 { return effect.EffectiveAt }},
-		{name: "insertion", axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION, at: func(effect PITDualAxisEffect) uint64 { return effect.InsertedAt }},
+		{name: "effective", axis: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE, at: func(effect PITDualAxisEffect) uint64 { return effect.EffectiveAt }},
+		{name: "insertion", axis: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION, at: func(effect PITDualAxisEffect) uint64 { return effect.InsertedAt }},
 	}
 	scopes := append([]string{""}, pitDualAxisAccounts...)
 
@@ -488,9 +494,9 @@ func PITDualAxisCases(oracle *PITDualAxisOracle) []PITDualAxisCase {
 						Name:     fmt.Sprintf("%s/%d/%s", axis.name, point, scopeName),
 						AxisName: axis.name,
 						Scope:    scope,
-						Selector: &servicepb.PointInTimeSelector{
-							At:   &commonpb.Timestamp{Data: point},
-							Axis: axis.axis,
+						Selector: &servicepb.HistoricalBalanceSelector{
+							At:          &commonpb.Timestamp{Data: point},
+							Temporality: axis.axis,
 						},
 					})
 				}
@@ -519,7 +525,7 @@ func timestampNeighborhood(boundary uint64) []uint64 {
 // selects the full ledger; a non-empty account selects exactly that account.
 func FoldPITDualAxis(
 	oracle *PITDualAxisOracle,
-	axis servicepb.PointInTimeAxis,
+	axis servicepb.HistoricalBalanceTemporality,
 	at uint64,
 	logWatermark uint64,
 	account string,
@@ -542,7 +548,7 @@ func FoldPITDualAxis(
 			continue
 		}
 		effectAt := effect.EffectiveAt
-		if axis == servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION {
+		if axis == servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION {
 			effectAt = effect.InsertedAt
 		}
 		if effectAt > at {
@@ -605,11 +611,11 @@ func ComparePITDualAxisCase(
 	minimumLogSequence uint64,
 ) bool {
 	request := &servicepb.AggregateVolumesRequest{
-		Ledger:          oracle.Ledger,
-		MinLogSequence:  minimumLogSequence,
-		PointInTime:     testCase.Selector,
-		UseMaxPrecision: false,
-		CollapseColors:  false,
+		Ledger:            oracle.Ledger,
+		MinLogSequence:    minimumLogSequence,
+		HistoricalBalance: testCase.Selector,
+		UseMaxPrecision:   false,
+		CollapseColors:    false,
 	}
 	if testCase.Scope != "" {
 		request.Filter = actions.AddressExactFilter(testCase.Scope)
@@ -625,7 +631,7 @@ func ComparePITDualAxisCase(
 		"account":              testCase.Scope,
 		"minimum_log_sequence": minimumLogSequence,
 	}
-	result, view, err := AggregatePointInTime(ctx, client, request, oracle.LedgerID)
+	result, view, err := AggregatePointInTime(ctx, client, request)
 	if err != nil {
 		if IsTransient(err) || IsCanceled(err) || IsClassifiedPointInTimeFailure(err) {
 			return false
@@ -662,7 +668,7 @@ func ComparePITDualAxisCase(
 	)
 	expected := FoldPITDualAxis(
 		oracle,
-		testCase.Selector.GetAxis(),
+		testCase.Selector.GetTemporality(),
 		testCase.Selector.GetAt().GetData(),
 		view.GetLogWatermark(),
 		testCase.Scope,

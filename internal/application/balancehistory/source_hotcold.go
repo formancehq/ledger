@@ -31,10 +31,9 @@ import (
 // progress without changing whether this call reads those ranges from hot or
 // cold storage.
 type HotColdSource struct {
-	hot         dal.SnapshotReader
-	coldReader  *coldstorage.ColdReader
-	coldStorage coldstorage.ColdStorage
-	bucketID    string
+	hot        dal.SnapshotReader
+	coldReader *coldstorage.ColdReader
+	bucketID   string
 
 	verifiedMu      sync.Mutex
 	verifiedReaders map[uint64]dal.PebbleReader
@@ -42,19 +41,17 @@ type HotColdSource struct {
 
 var _ Source = (*HotColdSource)(nil)
 
-// NewHotColdSource builds the full rebuild source. coldReader and coldStorage
-// may both be nil while no archived chapter exists; encountering an archive in
+// NewHotColdSource builds the full rebuild source. coldReader may be nil while
+// no archived chapter exists; encountering an archive in
 // that configuration fails closed with ErrSourceMissing.
 func NewHotColdSource(
 	hot dal.SnapshotReader,
 	coldReader *coldstorage.ColdReader,
-	coldStorage coldstorage.ColdStorage,
 	bucketID string,
 ) *HotColdSource {
 	return &HotColdSource{
 		hot:             hot,
 		coldReader:      coldReader,
-		coldStorage:     coldStorage,
 		bucketID:        bucketID,
 		verifiedReaders: make(map[uint64]dal.PebbleReader),
 	}
@@ -754,7 +751,7 @@ func (s *HotColdSource) archiveReader(
 	ctx context.Context,
 	chapter *commonpb.Chapter,
 ) (dal.PebbleReader, func() error, error) {
-	if s.coldReader == nil || s.coldStorage == nil || s.bucketID == "" {
+	if s.coldReader == nil || s.bucketID == "" {
 		return nil, nil, &ErrSourceMissing{Detail: fmt.Sprintf(
 			"archived chapter %d has no configured cold source",
 			chapter.GetId(),
@@ -764,29 +761,15 @@ func (s *HotColdSource) archiveReader(
 	defer s.verifiedMu.Unlock()
 
 	knownReader := s.verifiedReaders[chapter.GetId()]
-	if knownReader == nil {
-		if err := s.verifyArchiveChecksum(ctx, chapter.GetId()); err != nil {
-			return nil, nil, err
-		}
-	}
 	reader, release, err := s.coldReader.AcquireReader(ctx, chapter.GetId())
 	if err != nil {
-		if checksumErr := s.verifyArchiveChecksum(ctx, chapter.GetId()); checksumErr != nil {
-			return nil, nil, checksumErr
-		}
-
-		return nil, nil, &ErrSourceInvalid{Detail: fmt.Sprintf("opening archived chapter %d: %v", chapter.GetId(), err)}
+		return nil, nil, &ErrSourceMissing{Detail: fmt.Sprintf("opening archived chapter %d: %v", chapter.GetId(), err)}
 	}
-	if knownReader != nil && knownReader != reader {
-		// ColdReader evicted and re-fetched this chapter. The pointer change is
-		// the lease boundary available without changing its shared interface;
-		// validate the external object again before trusting the new local DB.
-		if err := s.verifyArchiveChecksum(ctx, chapter.GetId()); err != nil {
-			err = errors.Join(err, release())
-
-			return nil, nil, err
-		}
+	if knownReader == reader {
+		return reader, release, nil
 	}
+	// A new reader represents either the first fetch or a re-fetch after cache
+	// eviction. Validate the archive structure before trusting the local DB.
 	if err := verifyArchiveContents(ctx, reader, chapter); err != nil {
 		err = errors.Join(err, release())
 
@@ -795,35 +778,6 @@ func (s *HotColdSource) archiveReader(
 	s.verifiedReaders[chapter.GetId()] = reader
 
 	return reader, release, nil
-}
-
-func (s *HotColdSource) verifyArchiveChecksum(ctx context.Context, chapterID uint64) error {
-	expected, err := s.coldStorage.ExpectedChecksum(ctx, s.bucketID, chapterID)
-	if err != nil {
-		return &ErrSourceMissing{Detail: fmt.Sprintf(
-			"reading checksum for archived chapter %d: %v",
-			chapterID,
-			err,
-		)}
-	}
-	actual, err := s.coldStorage.Checksum(ctx, s.bucketID, chapterID)
-	if err != nil {
-		return &ErrSourceMissing{Detail: fmt.Sprintf(
-			"computing checksum for archived chapter %d: %v",
-			chapterID,
-			err,
-		)}
-	}
-	if !bytes.Equal(expected, actual) {
-		return &ErrSourceInvalid{Detail: fmt.Sprintf(
-			"archived chapter %d checksum mismatch: expected=%x actual=%x",
-			chapterID,
-			expected,
-			actual,
-		)}
-	}
-
-	return nil
 }
 
 type archiveMetadata struct {

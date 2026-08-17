@@ -22,34 +22,31 @@ func TestBuildRunRecordsFromGroupsRejectsOversizedIdentityComponentsDeterministi
 		{
 			name: "account",
 			identity: recordIdentity{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  1,
-				Account:   oversized,
-				AssetBase: "USD",
+				Temporality: TemporalityEffective,
+				LedgerName:  "default",
+				Account:     oversized,
+				AssetBase:   "USD",
 			},
 			wantErr: "encoding balance history catalog key: history account key component exceeds 65535 bytes",
 		},
 		{
 			name: "asset base",
 			identity: recordIdentity{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  1,
-				Account:   "assets:cash",
-				AssetBase: oversized,
+				Temporality: TemporalityEffective,
+				LedgerName:  "default",
+				Account:     "assets:cash",
+				AssetBase:   oversized,
 			},
 			wantErr: "encoding balance history catalog key: history key component exceeds 65535 bytes",
 		},
 		{
 			name: "color",
 			identity: recordIdentity{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  1,
-				Account:   "assets:cash",
-				AssetBase: "USD",
-				Color:     oversized,
+				Temporality: TemporalityEffective,
+				LedgerName:  "default",
+				Account:     "assets:cash",
+				AssetBase:   "USD",
+				Color:       oversized,
 			},
 			wantErr: "encoding balance history catalog key: history key component exceeds 65535 bytes",
 		},
@@ -71,26 +68,23 @@ func TestBuildRunRecordsFromGroupsRejectsOversizedIdentityComponentsDeterministi
 
 		groups := map[recordIdentity][]timedDelta{
 			{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  1,
-				Account:   oversized,
-				AssetBase: "USD",
+				Temporality: TemporalityEffective,
+				LedgerName:  "a",
+				Account:     oversized,
+				AssetBase:   "USD",
 			}: nil,
 			{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  2,
-				Account:   "assets:cash",
-				AssetBase: oversized,
+				Temporality: TemporalityEffective,
+				LedgerName:  "b",
+				Account:     "assets:cash",
+				AssetBase:   oversized,
 			}: nil,
 			{
-				Axis:      AxisEffective,
-				Scope:     scopeVolume,
-				LedgerID:  3,
-				Account:   "assets:cash",
-				AssetBase: "USD",
-				Color:     oversized,
+				Temporality: TemporalityEffective,
+				LedgerName:  "c",
+				Account:     "assets:cash",
+				AssetBase:   "USD",
+				Color:       oversized,
 			}: nil,
 		}
 
@@ -103,17 +97,16 @@ func TestBuildRunRecordsFromGroupsRejectsOversizedIdentityComponentsDeterministi
 func assertRunRecordBuildError(t *testing.T, groups map[recordIdentity][]timedDelta, wantErr string) {
 	t.Helper()
 
-	records, dataCount, identityCount, checksum, err := buildRunRecordsFromGroups(1, groups)
+	records, dataCount, identityCount, err := buildRunRecordsFromGroups(1, groups)
 	require.EqualError(t, err, wantErr)
 	require.Nil(t, records)
 	require.Zero(t, dataCount)
 	require.Zero(t, identityCount)
-	require.Zero(t, checksum)
 }
 
 func validPublicationEffect() domainhistory.Effect {
 	return domainhistory.Effect{
-		LedgerID:      7,
+		LedgerName:    "default",
 		AuditSequence: 6,
 		LogSequence:   6,
 		EffectiveAt:   10,
@@ -133,7 +126,7 @@ func TestValidateEffectRejectsIncompleteEffects(t *testing.T) {
 		mutate func(*domainhistory.Effect)
 		want   string
 	}{
-		{name: "ledger", mutate: func(effect *domainhistory.Effect) { effect.LedgerID = 0 }, want: "ledger id is required"},
+		{name: "ledger", mutate: func(effect *domainhistory.Effect) { effect.LedgerName = "" }, want: "ledger name is required"},
 		{name: "audit", mutate: func(effect *domainhistory.Effect) { effect.AuditSequence = 0 }, want: "audit sequence is required"},
 		{name: "log", mutate: func(effect *domainhistory.Effect) { effect.LogSequence = 0 }, want: "log sequence is required"},
 		{name: "account", mutate: func(effect *domainhistory.Effect) { effect.Account = "" }, want: "account is required"},
@@ -184,7 +177,6 @@ func TestValidatePublicationRejectsSourceGaps(t *testing.T) {
 	}{
 		{name: "audit moves backward", mutate: func(p *Publication) { p.Coverage.AuditSequence = 4 }, want: "audit watermark moved backward"},
 		{name: "log moves backward", mutate: func(p *Publication) { p.Coverage.LogSequence = 4 }, want: "log watermark moved backward"},
-		{name: "non-zero floor", mutate: func(p *Publication) { p.Coverage.EffectiveFloor = 1 }, want: "non-zero history floors"},
 		{name: "completeness revoked", mutate: func(p *Publication) { p.Coverage.SourceComplete = false }, want: "source completeness cannot be revoked"},
 		{
 			name: "effects without audit advance",
@@ -260,12 +252,12 @@ func TestPublicationHelpers(t *testing.T) {
 	effect := validPublicationEffect()
 	effect.AssetPrecision = 2
 	effect.Color = "BLUE"
-	effectiveVolume := effectIdentity(effect, AxisEffective, scopeVolume)
+	effectiveVolume := effectIdentity(effect, TemporalityEffective)
 	require.Equal(t, "assets:cash", effectiveVolume.Account)
-	require.Equal(t, uint64(10), effectTimestamp(effect, AxisEffective))
-	require.Equal(t, uint64(20), effectTimestamp(effect, AxisInsertion))
-	asset := effectIdentity(effect, AxisInsertion, scopeAsset)
-	require.Empty(t, asset.Account)
+	require.Equal(t, uint64(10), effectTimestamp(effect, TemporalityEffective))
+	require.Equal(t, uint64(20), effectTimestamp(effect, TemporalityInsertion))
+	insertionVolume := effectIdentity(effect, TemporalityInsertion)
+	require.Equal(t, "assets:cash", insertionVolume.Account)
 
 	require.Equal(t, -1, compareUint64(1, 2))
 	require.Equal(t, 1, compareUint64(2, 1))
@@ -275,16 +267,4 @@ func TestPublicationHelpers(t *testing.T) {
 	require.Zero(t, compareUint32(1, 1))
 	require.Equal(t, 3, firstNonZero(0, 3, 4))
 	require.Zero(t, firstNonZero(0, 0))
-
-	current := [32]byte{1}
-	digest, err := AdvanceLogicalDigest(current, 2, 2, nil)
-	require.NoError(t, err)
-	require.Equal(t, current, digest)
-	_, err = AdvanceLogicalDigest(current, 2, 1, nil)
-	require.ErrorContains(t, err, "logical digest range moved backward")
-
-	oversized := effect
-	oversized.Account = strings.Repeat("x", math.MaxUint16+1)
-	_, err = encodeEffectCanonical(oversized)
-	require.ErrorContains(t, err, "encoding canonical effect account")
 }

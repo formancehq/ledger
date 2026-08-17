@@ -22,7 +22,5 @@
   {"compatibility":"v3-color-extension","ledgerId":7,"auditSequence":11,"logSequence":20,"account":"world","asset":"USD/2","color":"RED","amount":"11","isSource":true,"effectiveAt":460,"insertedAt":590},
   {"compatibility":"v3-color-extension","ledgerId":7,"auditSequence":11,"logSequence":20,"account":"colored:red","asset":"USD/2","color":"RED","amount":"11","isSource":false,"effectiveAt":460,"insertedAt":590},
   {"compatibility":"v3-color-extension","ledgerId":7,"auditSequence":12,"logSequence":21,"account":"world","asset":"USD/3","color":"BLUE","amount":"100","isSource":true,"effectiveAt":470,"insertedAt":600},
-  {"compatibility":"v3-color-extension","ledgerId":7,"auditSequence":12,"logSequence":21,"account":"colored:blue","asset":"USD/3","color":"BLUE","amount":"100","isSource":false,"effectiveAt":470,"insertedAt":600},
-  {"compatibility":"v3-incarnation-extension","ledgerId":99,"auditSequence":15,"logSequence":24,"account":"world","asset":"USD/2","color":"","amount":"7","isSource":true,"effectiveAt":500,"insertedAt":900},
-  {"compatibility":"v3-incarnation-extension","ledgerId":99,"auditSequence":15,"logSequence":24,"account":"users:new","asset":"USD/2","color":"","amount":"7","isSource":false,"effectiveAt":500,"insertedAt":900}
+  {"compatibility":"v3-color-extension","ledgerId":7,"auditSequence":12,"logSequence":21,"account":"colored:blue","asset":"USD/3","color":"BLUE","amount":"100","isSource":false,"effectiveAt":470,"insertedAt":600}
 ]

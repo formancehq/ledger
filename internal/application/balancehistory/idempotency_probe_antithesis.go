@@ -45,7 +45,7 @@ func (p *idempotencyReductionProbe) RecordPublished(proposals []VerifiedProposal
 		previousKey, duplicate := p.published[current]
 		assert.AlwaysOrUnreachable(
 			!duplicate,
-			"pit: builder never publishes one keyed committed effect range twice",
+			"historical balance: builder never publishes one keyed committed effect range twice",
 			map[string]any{
 				"first_idempotency_key":   previousKey,
 				"current_idempotency_key": key,

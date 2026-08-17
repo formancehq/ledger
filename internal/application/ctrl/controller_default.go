@@ -128,8 +128,8 @@ type DefaultController struct {
 	// otherwise historical response would produce a non-deterministic view.
 	historical bool
 
-	applyDuration metric.Int64Histogram
-	pitAggregate  pointInTimeAggregateMetrics
+	applyDuration    metric.Int64Histogram
+	historyAggregate historicalBalanceAggregateMetrics
 }
 
 // NewDefaultController creates a new default controller.
@@ -160,23 +160,23 @@ func NewDefaultController(
 	if err != nil {
 		panic(err)
 	}
-	pitAggregate, err := newPointInTimeAggregateMetrics(meter)
+	historyAggregate, err := newHistoricalBalanceAggregateMetrics(meter)
 	if err != nil {
 		panic(err)
 	}
 
 	return &DefaultController{
-		logger:        logger,
-		admission:     admission,
-		store:         store,
-		attrs:         attrs,
-		readStore:     readStore,
-		usageStore:    usageStore,
-		volumeViews:   volumeViews,
-		coldReader:    coldReader,
-		receiptSigner: receiptSigner,
-		applyDuration: applyDuration,
-		pitAggregate:  pitAggregate,
+		logger:           logger,
+		admission:        admission,
+		store:            store,
+		attrs:            attrs,
+		readStore:        readStore,
+		usageStore:       usageStore,
+		volumeViews:      volumeViews,
+		coldReader:       coldReader,
+		receiptSigner:    receiptSigner,
+		applyDuration:    applyDuration,
+		historyAggregate: historyAggregate,
 	}
 }
 
@@ -967,10 +967,10 @@ func (ctrl *DefaultController) AggregateVolumes(
 	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes")
 	defer span.End()
 
-	if read.PointInTime != nil {
-		observation := ctrl.pitAggregate.start(ctx, span, *read.PointInTime, filter, opts)
+	if read.HistoricalBalance != nil {
+		observation := ctrl.historyAggregate.start(ctx, span, *read.HistoricalBalance, filter, opts)
 		defer func() {
-			ctrl.pitAggregate.finish(ctx, span, observation, retErr)
+			ctrl.historyAggregate.finish(ctx, span, observation, retErr)
 		}()
 	}
 
@@ -993,28 +993,28 @@ func (ctrl *DefaultController) AggregateVolumes(
 	}
 
 	var historicalView *HistoricalVolumeView
-	if read.PointInTime != nil {
+	if read.HistoricalBalance != nil {
 		if ctrl.historical {
-			return nil, errors.New("point-in-time selector and query checkpoint are mutually exclusive")
+			return nil, errors.New("historical balance selector and query checkpoint are mutually exclusive")
 		}
 		if ctrl.volumeViews == nil {
 			return nil, &balancehistorystore.ErrSourceMissing{Detail: "balance history projection is not configured"}
 		}
 
-		// A PIT request without an explicit minLogSequence still means
+		// A historical balance request without an explicit minLogSequence still means
 		// "restated history known by this read". Bind it to the primary
 		// snapshot's current monetary-log head so an asynchronously lagging
 		// projection cannot silently return an older known-through view.
 		requiredLogSequence := read.MinLogSequence
 		currentLogSequence, err := query.ReadLastSequence(handle)
 		if err != nil {
-			return nil, fmt.Errorf("reading current log sequence for point-in-time aggregation: %w", err)
+			return nil, fmt.Errorf("reading current log sequence for historical balance aggregation: %w", err)
 		}
 		if currentLogSequence > requiredLogSequence {
 			requiredLogSequence = currentLogSequence
 		}
 
-		historicalView, err = ctrl.volumeViews.Open(ctx, ledgerInfo.GetName(), ledgerInfo.GetId(), *read.PointInTime, requiredLogSequence)
+		historicalView, err = ctrl.volumeViews.Open(ctx, ledgerInfo.GetName(), *read.HistoricalBalance, requiredLogSequence)
 		if err != nil {
 			return nil, err
 		}
@@ -1073,7 +1073,7 @@ func (ctrl *DefaultController) AggregateVolumes(
 				accounts = append(accounts, string(iter.Current()))
 			}
 			if err := iter.Err(); err != nil {
-				return nil, fmt.Errorf("iterating current account filter for point-in-time aggregation: %w", err)
+				return nil, fmt.Errorf("iterating current account filter for historical balance aggregation: %w", err)
 			}
 
 			return accounts, nil
@@ -1127,6 +1127,18 @@ func (ctrl *DefaultController) AggregateVolumes(
 	}
 
 	return aggregateVolumesResult(result, historicalView), nil
+}
+
+func (ctrl *DefaultController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	if ctrl.volumeViews == nil {
+		return &servicepb.GetHistoricalBalancesStatusResponse{
+			Ledger: ledgerName,
+			State:  servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR,
+			Error:  "historical-balance provider is unavailable",
+		}, nil
+	}
+
+	return ctrl.volumeViews.Status(ctx, ledgerName)
 }
 
 func aggregateVolumesResult(result *commonpb.AggregateResult, view *HistoricalVolumeView) *AggregateVolumesResult {

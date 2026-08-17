@@ -72,17 +72,13 @@ spec:
   # Chaos-tuned: 256 KiB spool segments (default 256 MiB) so rotation seals segments and Prune has work to do.
   - name: SPOOL_SEGMENT_MAX_BYTES
     value: "262144"
-  # PIT/cold-profile cadence: small bounded work units make publication,
-  # compaction, tiering, verification and remote GC reachable in short runs.
-  - name: BALANCE_HISTORY_ENABLED
-    value: "true"
-  - name: BALANCE_HISTORY_COLD_TIER
-    value: "true"
+  # Historical-balance cadence: small bounded work units make publication and
+  # compaction reachable in short runs. Ledger scope is client-configured.
   - name: BALANCE_HISTORY_BUILDER_BATCH_SIZE
     value: "32"
   - name: BALANCE_HISTORY_BACKFILL_YIELD
     value: "1ms"
-  - name: BALANCE_HISTORY_COMPACTION_THRESHOLD
+  - name: BALANCE_HISTORY_SEGMENT_COMPACTION_THRESHOLD
     value: "2"
   - name: BALANCE_HISTORY_MAINTENANCE_INTERVAL
     value: "200ms"
@@ -90,28 +86,6 @@ spec:
     value: "1"
   - name: BALANCE_HISTORY_WAL_SYNC_INTERVAL
     value: "5s"
-  - name: BALANCE_HISTORY_VERIFIER_INTERVAL
-    value: "2s"
-  - name: BALANCE_HISTORY_VERIFIER_REPLAY_EVERY
-    value: "4"
-  - name: BALANCE_HISTORY_RETAIN_LOCAL_RUNS
-    value: "1"
-  - name: BALANCE_HISTORY_ARCHIVE_CACHE_MAX_BYTES
-    value: "8Mi"
-  - name: BALANCE_HISTORY_MAX_SEGMENT_BYTES
-    value: "64Ki"
-  - name: BALANCE_HISTORY_MAX_RUNS_PER_TIER_PASS
-    value: "4"
-  - name: BALANCE_HISTORY_TIER_INTERVAL
-    value: "1s"
-  - name: BALANCE_HISTORY_REMOTE_GC_INTERVAL
-    value: "1s"
-  - name: BALANCE_HISTORY_REMOTE_GC_GRACE_PERIOD
-    value: "5s"
-  - name: BALANCE_HISTORY_REMOTE_GC_SCAN_LIMIT
-    value: "100"
-  - name: BALANCE_HISTORY_REMOTE_GC_DELETE_LIMIT
-    value: "10"
   - name: AWS_ACCESS_KEY_ID
     value: minioadmin
   - name: AWS_SECRET_ACCESS_KEY

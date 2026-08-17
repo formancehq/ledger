@@ -31,6 +31,9 @@ func SeedPITConvergenceFixture(ctx context.Context, client servicepb.BucketServi
 	if err := CreateLedger(ctx, client, PITConvergenceLedgerName()); err != nil {
 		return fmt.Errorf("creating PIT convergence fixture ledger: %w", err)
 	}
+	if err := ConfigureHistoricalBalances(ctx, client, PITConvergenceLedgerName()); err != nil {
+		return fmt.Errorf("configuring PIT convergence fixture ledger: %w", err)
+	}
 
 	_, err := applyPITConvergencePosting(
 		ctx,
@@ -77,20 +80,19 @@ func ObservePITConvergenceFixture(
 	client servicepb.BucketServiceClient,
 	expectedLedgerID uint32,
 	minLogSequence uint64,
-) ([]CanonicalVolume, *servicepb.PointInTimeView, error) {
+) ([]CanonicalVolume, *servicepb.HistoricalBalanceView, error) {
 	request := &servicepb.AggregateVolumesRequest{
 		Ledger:         PITConvergenceLedgerName(),
 		MinLogSequence: minLogSequence,
-		PointInTime: &servicepb.PointInTimeSelector{
-			At:   &commonpb.Timestamp{Data: math.MaxUint64},
-			Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+		HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+			At:          &commonpb.Timestamp{Data: math.MaxUint64},
+			Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 		},
 	}
 	result, view, err := AggregatePointInTime(
 		WithStaleConsistency(ctx),
 		client,
 		request,
-		expectedLedgerID,
 	)
 	if err != nil {
 		return nil, nil, err

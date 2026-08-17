@@ -41,7 +41,7 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 			require.Nil(t, filter)
 			require.False(t, opts.UseMaxPrecision)
 			require.Empty(t, opts.GroupByPrefixes)
-			require.Nil(t, read.PointInTime)
+			require.Nil(t, read.HistoricalBalance)
 
 			return aggregateVolumesResult(&commonpb.AggregateResult{
 				Volumes: []*commonpb.AggregatedVolume{
@@ -72,7 +72,7 @@ func TestHandleAggregateVolumes_Success(t *testing.T) {
 	require.Equal(t, "400", resp.Volumes[0].Output)
 	require.Equal(t, "600", resp.Volumes[0].Balance)
 	require.Empty(t, resp.Groups)
-	require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+	require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 }
 
 func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
@@ -108,7 +108,7 @@ func TestHandleAggregateVolumes_WithOptions(t *testing.T) {
 	require.Equal(t, "users:", capturedFilter.GetAddress().GetHardcodedPrefix())
 }
 
-func TestHandleAggregateVolumes_PointInTime(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalance(t *testing.T) {
 	t.Parallel()
 
 	const pit = "2024-01-02T03:04:05.123456Z"
@@ -119,35 +119,29 @@ func TestHandleAggregateVolumes_PointInTime(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		query string
-		axis  balancehistorystore.Axis
+		axis  balancehistorystore.Temporality
 	}{
 		{
 			name: "effective by default",
-			axis: balancehistorystore.AxisEffective,
+			axis: balancehistorystore.TemporalityEffective,
 		},
 		{
-			name:  "camel case insertion alias",
-			query: "&useInsertionDate=true",
-			axis:  balancehistorystore.AxisInsertion,
-		},
-		{
-			name:  "snake case insertion alias",
-			query: "&use_insertion_date=true",
-			axis:  balancehistorystore.AxisInsertion,
+			name:  "insertion temporality",
+			query: "&temporality=insertion",
+			axis:  balancehistorystore.TemporalityInsertion,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			view := &appctrl.VolumeViewToken{
-				RequestedAt:          expectedAt,
-				Axis:                 tc.axis,
-				LedgerID:             17,
-				AuditWatermark:       99,
-				LogWatermark:         88,
-				ManifestVersion:      7,
-				HistoryAvailableFrom: 1_600_000_000_000_000,
-				Token:                "immutable-view-token",
+			view := &appctrl.HistoricalBalanceViewToken{
+				RequestedAt:     expectedAt,
+				Temporality:     tc.axis,
+				Ledger:          "my-ledger",
+				AuditWatermark:  99,
+				LogWatermark:    88,
+				ManifestVersion: 7,
+				Token:           "immutable-view-token",
 			}
 			backend := NewMockBackend(gomock.NewController(t))
 			backend.EXPECT().AggregateVolumes(gomock.Any(), "my-ledger", gomock.Any(), gomock.Any(), gomock.Any()).
@@ -160,7 +154,7 @@ func TestHandleAggregateVolumes_PointInTime(t *testing.T) {
 				) (*appctrl.AggregateVolumesResult, error) {
 					require.NotNil(t, filter)
 					require.Equal(t, "users:", filter.GetAddress().GetHardcodedPrefix())
-					require.Equal(t, &appctrl.PointInTimeSelector{At: expectedAt, Axis: tc.axis}, read.PointInTime)
+					require.Equal(t, &appctrl.HistoricalBalanceSelector{At: expectedAt, Temporality: tc.axis}, read.HistoricalBalance)
 
 					return &appctrl.AggregateVolumesResult{
 						Aggregate: &commonpb.AggregateResult{},
@@ -169,7 +163,7 @@ func TestHandleAggregateVolumes_PointInTime(t *testing.T) {
 				})
 			srv := newTestServer(t, backend)
 
-			target := "/my-ledger/volumes?pit=" + url.QueryEscape(pit) + tc.query +
+			target := "/my-ledger/volumes?at=" + url.QueryEscape(pit) + tc.query +
 				"&filter=" + url.QueryEscape(`address ^= "users:"`)
 			w := httptest.NewRecorder()
 			r := newRequest(t, http.MethodGet, target, nil, map[string]string{"ledgerName": "my-ledger"})
@@ -177,27 +171,26 @@ func TestHandleAggregateVolumes_PointInTime(t *testing.T) {
 			srv.handleAggregateVolumes(w, r)
 
 			require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
-			rawView, err := base64.StdEncoding.DecodeString(w.Header().Get(pointInTimeViewHeader))
+			rawView, err := base64.StdEncoding.DecodeString(w.Header().Get(historicalBalanceViewHeader))
 			require.NoError(t, err)
-			wireView := &servicepb.PointInTimeView{}
+			wireView := &servicepb.HistoricalBalanceView{}
 			require.NoError(t, wireView.UnmarshalVT(rawView))
 			require.Equal(t, expectedAt, wireView.GetRequestedAt().GetData())
-			require.Equal(t, view.LedgerID, wireView.GetLedgerId())
+			require.Equal(t, view.Ledger, wireView.GetLedger())
 			require.Equal(t, view.AuditWatermark, wireView.GetAuditWatermark())
 			require.Equal(t, view.LogWatermark, wireView.GetLogWatermark())
 			require.Equal(t, view.ManifestVersion, wireView.GetManifestVersion())
-			require.Equal(t, view.HistoryAvailableFrom, wireView.GetHistoryAvailableFrom().GetData())
 			require.Equal(t, view.Token, wireView.GetViewToken())
-			if tc.axis == balancehistorystore.AxisInsertion {
-				require.Equal(t, servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION, wireView.GetAxis())
+			if tc.axis == balancehistorystore.TemporalityInsertion {
+				require.Equal(t, servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION, wireView.GetTemporality())
 			} else {
-				require.Equal(t, servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE, wireView.GetAxis())
+				require.Equal(t, servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE, wireView.GetTemporality())
 			}
 		})
 	}
 }
 
-func TestHandleAggregateVolumes_PointInTimeValidation(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceValidation(t *testing.T) {
 	t.Parallel()
 
 	const validPIT = "2024-01-02T03:04:05.123456Z"
@@ -207,35 +200,27 @@ func TestHandleAggregateVolumes_PointInTimeValidation(t *testing.T) {
 	}{
 		{
 			name:  "invalid timestamp",
-			query: "?pit=not-a-timestamp",
+			query: "?at=not-a-timestamp",
 		},
 		{
 			name:  "timestamp before epoch",
-			query: "?pit=" + url.QueryEscape("1969-12-31T23:59:59.999999Z"),
+			query: "?at=" + url.QueryEscape("1969-12-31T23:59:59.999999Z"),
 		},
 		{
-			name:  "insertion alias without pit",
-			query: "?useInsertionDate=true",
+			name:  "temporality without timestamp",
+			query: "?temporality=insertion",
 		},
 		{
-			name:  "invalid camel bool",
-			query: "?pit=" + url.QueryEscape(validPIT) + "&useInsertionDate=1",
+			name:  "invalid temporality",
+			query: "?at=" + url.QueryEscape(validPIT) + "&temporality=eventual",
 		},
 		{
-			name:  "invalid snake bool",
-			query: "?pit=" + url.QueryEscape(validPIT) + "&use_insertion_date=True",
+			name:  "temporality repeated",
+			query: "?at=" + url.QueryEscape(validPIT) + "&temporality=insertion&temporality=insertion",
 		},
 		{
-			name:  "aliases conflict",
-			query: "?pit=" + url.QueryEscape(validPIT) + "&useInsertionDate=true&use_insertion_date=false",
-		},
-		{
-			name:  "alias repeated",
-			query: "?pit=" + url.QueryEscape(validPIT) + "&useInsertionDate=true&useInsertionDate=true",
-		},
-		{
-			name:  "pit repeated",
-			query: "?pit=" + url.QueryEscape(validPIT) + "&pit=" + url.QueryEscape(validPIT),
+			name:  "at repeated",
+			query: "?at=" + url.QueryEscape(validPIT) + "&at=" + url.QueryEscape(validPIT),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -250,12 +235,12 @@ func TestHandleAggregateVolumes_PointInTimeValidation(t *testing.T) {
 			srv.handleAggregateVolumes(w, r)
 
 			require.Equal(t, http.StatusBadRequest, w.Code, "body: %s", w.Body.String())
-			require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+			require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 		})
 	}
 }
 
-func TestHandleAggregateVolumes_PointInTimeRequiresViewToken(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceRequiresViewToken(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
@@ -264,17 +249,17 @@ func TestHandleAggregateVolumes_PointInTimeRequiresViewToken(t *testing.T) {
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?pit=2024-01-02T03:04:05Z", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?at=2024-01-02T03:04:05Z", nil, map[string]string{
 		"ledgerName": "my-ledger",
 	})
 
 	srv.handleAggregateVolumes(w, r)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+	require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 }
 
-func TestHandleAggregateVolumes_PointInTimeRejectsMismatchedView(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceRejectsMismatchedView(t *testing.T) {
 	t.Parallel()
 
 	const pit = "2024-01-02T03:04:05Z"
@@ -284,21 +269,21 @@ func TestHandleAggregateVolumes_PointInTimeRejectsMismatchedView(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		view *appctrl.VolumeViewToken
+		view *appctrl.HistoricalBalanceViewToken
 	}{
 		{
 			name: "requested timestamp",
-			view: &appctrl.VolumeViewToken{
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: expectedAt + 1,
-				Axis:        balancehistorystore.AxisEffective,
+				Temporality: balancehistorystore.TemporalityEffective,
 				Token:       "wrong-timestamp-view",
 			},
 		},
 		{
 			name: "axis",
-			view: &appctrl.VolumeViewToken{
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: expectedAt,
-				Axis:        balancehistorystore.AxisInsertion,
+				Temporality: balancehistorystore.TemporalityInsertion,
 				Token:       "wrong-axis-view",
 			},
 		},
@@ -315,44 +300,44 @@ func TestHandleAggregateVolumes_PointInTimeRejectsMismatchedView(t *testing.T) {
 			srv := newTestServer(t, backend)
 
 			w := httptest.NewRecorder()
-			r := newRequest(t, http.MethodGet, "/my-ledger/volumes?pit="+url.QueryEscape(pit), nil, map[string]string{
+			r := newRequest(t, http.MethodGet, "/my-ledger/volumes?at="+url.QueryEscape(pit), nil, map[string]string{
 				"ledgerName": "my-ledger",
 			})
 
 			srv.handleAggregateVolumes(w, r)
 
 			require.Equal(t, http.StatusInternalServerError, w.Code)
-			require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+			require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 		})
 	}
 }
 
-func TestHandleAggregateVolumes_PointInTimeRejectsUnknownViewAxis(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceRejectsUnknownViewTemporality(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().AggregateVolumes(gomock.Any(), "my-ledger", gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&appctrl.AggregateVolumesResult{
 			Aggregate: &commonpb.AggregateResult{},
-			View: &appctrl.VolumeViewToken{
-				Axis:  balancehistorystore.Axis(99),
-				Token: "must-not-be-serialized",
+			View: &appctrl.HistoricalBalanceViewToken{
+				Temporality: balancehistorystore.Temporality(99),
+				Token:       "must-not-be-serialized",
 			},
 		}, nil)
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?pit=2024-01-02T03:04:05Z", nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?at=2024-01-02T03:04:05Z", nil, map[string]string{
 		"ledgerName": "my-ledger",
 	})
 
 	srv.handleAggregateVolumes(w, r)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+	require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 }
 
-func TestHandleAggregateVolumes_PointInTimeRejectsEmptyViewToken(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceRejectsEmptyViewToken(t *testing.T) {
 	t.Parallel()
 
 	const pit = "2024-01-02T03:04:05Z"
@@ -363,22 +348,22 @@ func TestHandleAggregateVolumes_PointInTimeRejectsEmptyViewToken(t *testing.T) {
 	backend.EXPECT().AggregateVolumes(gomock.Any(), "my-ledger", gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&appctrl.AggregateVolumesResult{
 			Aggregate: &commonpb.AggregateResult{},
-			View: &appctrl.VolumeViewToken{
+			View: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: uint64(parsedPIT.UnixMicro()),
-				Axis:        balancehistorystore.AxisEffective,
+				Temporality: balancehistorystore.TemporalityEffective,
 			},
 		}, nil)
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
-	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?pit="+url.QueryEscape(pit), nil, map[string]string{
+	r := newRequest(t, http.MethodGet, "/my-ledger/volumes?at="+url.QueryEscape(pit), nil, map[string]string{
 		"ledgerName": "my-ledger",
 	})
 
 	srv.handleAggregateVolumes(w, r)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	require.Empty(t, w.Header().Get(pointInTimeViewHeader))
+	require.Empty(t, w.Header().Get(historicalBalanceViewHeader))
 }
 
 func TestHandleAggregateVolumes_WithGroups(t *testing.T) {
@@ -500,7 +485,7 @@ func TestHandleAggregateVolumes_NoLeaderError(t *testing.T) {
 	require.Equal(t, "1", w.Header().Get("Retry-After"))
 }
 
-func TestHandleAggregateVolumes_PointInTimeRetryContract(t *testing.T) {
+func TestHandleAggregateVolumes_HistoricalBalanceRetryContract(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -536,12 +521,6 @@ func TestHandleAggregateVolumes_PointInTimeRetryContract(t *testing.T) {
 			wantStatus:    http.StatusInternalServerError,
 			wantErrorCode: "HISTORY_CORRUPT",
 		},
-		{
-			name:          "expired is not retry hinted",
-			err:           &balancehistorystore.ErrExpired{Requested: 1, Floor: 2},
-			wantStatus:    http.StatusBadRequest,
-			wantErrorCode: "HISTORY_EXPIRED",
-		},
 	}
 
 	for _, test := range tests {
@@ -553,7 +532,7 @@ func TestHandleAggregateVolumes_PointInTimeRetryContract(t *testing.T) {
 			srv := newTestServer(t, backend)
 
 			w := httptest.NewRecorder()
-			r := newRequest(t, http.MethodGet, "/my-ledger/volumes?pit=2026-01-01T00%3A00%3A00Z", nil, map[string]string{
+			r := newRequest(t, http.MethodGet, "/my-ledger/volumes?at=2026-01-01T00%3A00%3A00Z", nil, map[string]string{
 				"ledgerName": "my-ledger",
 			})
 

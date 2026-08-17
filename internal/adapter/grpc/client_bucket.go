@@ -387,18 +387,18 @@ func (g *BucketGrpcClient) AggregateVolumes(
 	opts query.AggregateOptions,
 	read ctrl.AggregateVolumesReadOptions,
 ) (*ctrl.AggregateVolumesResult, error) {
-	pointInTime, err := selectorToProto(read.PointInTime)
+	historicalBalance, err := selectorToProto(read.HistoricalBalance)
 	if err != nil {
 		return nil, err
 	}
 	request := &servicepb.AggregateVolumesRequest{
-		Ledger:          ledgerName,
-		Filter:          filter,
-		MinLogSequence:  read.MinLogSequence,
-		UseMaxPrecision: opts.UseMaxPrecision,
-		CollapseColors:  opts.CollapseColors,
-		GroupByPrefixes: opts.GroupByPrefixes,
-		PointInTime:     pointInTime,
+		Ledger:            ledgerName,
+		Filter:            filter,
+		MinLogSequence:    read.MinLogSequence,
+		UseMaxPrecision:   opts.UseMaxPrecision,
+		CollapseColors:    opts.CollapseColors,
+		GroupByPrefixes:   opts.GroupByPrefixes,
+		HistoricalBalance: historicalBalance,
 	}
 
 	var trailer metadata.MD
@@ -408,17 +408,21 @@ func (g *BucketGrpcClient) AggregateVolumes(
 	}
 
 	response := &ctrl.AggregateVolumesResult{Aggregate: result}
-	if read.PointInTime != nil {
-		response.View, err = pointInTimeViewFromMetadata(trailer)
+	if read.HistoricalBalance != nil {
+		response.View, err = historicalBalanceViewFromMetadata(trailer)
 		if err != nil {
 			return nil, err
 		}
-		if err := validatePointInTimeView(read.PointInTime, response.View); err != nil {
+		if err := validateHistoricalBalanceView(read.HistoricalBalance, response.View); err != nil {
 			return nil, err
 		}
 	}
 
 	return response, nil
+}
+
+func (g *BucketGrpcClient) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	return g.client.GetHistoricalBalancesStatus(ctx, &servicepb.GetHistoricalBalancesStatusRequest{Ledger: ledgerName})
 }
 
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {

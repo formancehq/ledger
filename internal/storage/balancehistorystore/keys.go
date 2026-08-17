@@ -13,45 +13,15 @@ const (
 	prefixRunData        byte = 0x10
 	prefixRunMeta        byte = 0x11
 	prefixRunCatalog     byte = 0x12
-	// Remote-GC metadata and the archive binding deliberately live above the
-	// Reset deletion range. Reset rebuilds local projections but must not forget
-	// remote orphans or silently abandon their physical destination.
-	prefixRemoteGCState     byte = 0x20
-	prefixRemoteGCCandidate byte = 0x21
-	prefixArchiveBinding    byte = 0x22
 )
 
 func quarantineKey() []byte {
 	return []byte{prefixStoreState, 0x01}
 }
 
-func archiveBindingKey() []byte {
-	return []byte{prefixArchiveBinding}
-}
-
-func remoteGCStateKey() []byte {
-	return []byte{prefixRemoteGCState}
-}
-
-func remoteGCCandidateKey(digest [32]byte) []byte {
-	key := make([]byte, 1+len(digest))
-	key[0] = prefixRemoteGCCandidate
-	copy(key[1:], digest[:])
-
-	return key
-}
-
-type recordScope uint8
-
-const (
-	scopeVolume recordScope = 1
-	scopeAsset  recordScope = 2
-)
-
 type recordIdentity struct {
-	Axis           Axis
-	Scope          recordScope
-	LedgerID       uint32
+	Temporality    Temporality
+	LedgerName     string
 	Account        string
 	AssetBase      string
 	AssetPrecision uint8
@@ -119,15 +89,16 @@ func appendAccount(dst []byte, value string, terminate bool) ([]byte, error) {
 }
 
 func appendIdentity(dst []byte, identity recordIdentity) ([]byte, error) {
-	dst = append(dst, byte(identity.Axis), byte(identity.Scope))
-	dst = binary.BigEndian.AppendUint32(dst, identity.LedgerID)
+	dst = append(dst, byte(identity.Temporality))
 
 	var err error
-	if identity.Scope == scopeVolume {
-		dst, err = appendAccount(dst, identity.Account, true)
-		if err != nil {
-			return nil, err
-		}
+	dst, err = appendString(dst, identity.LedgerName)
+	if err != nil {
+		return nil, err
+	}
+	dst, err = appendAccount(dst, identity.Account, true)
+	if err != nil {
+		return nil, err
 	}
 
 	dst, err = appendString(dst, identity.AssetBase)
@@ -160,22 +131,30 @@ func catalogKey(runID uint64, identity recordIdentity) ([]byte, error) {
 	return appendIdentity(runPrefix(prefixRunCatalog, runID), identity)
 }
 
-func catalogPrefix(runID uint64, axis Axis, scope recordScope, ledgerID uint32, account *string) ([]byte, error) {
+func catalogPrefix(runID uint64, temporality Temporality, ledgerName string, account *string) ([]byte, error) {
 	prefix := runPrefix(prefixRunCatalog, runID)
-	prefix = append(prefix, byte(axis), byte(scope))
-	prefix = binary.BigEndian.AppendUint32(prefix, ledgerID)
+	prefix = append(prefix, byte(temporality))
+	var err error
+	prefix, err = appendString(prefix, ledgerName)
+	if err != nil {
+		return nil, err
+	}
 
-	if scope == scopeVolume && account != nil {
+	if account != nil {
 		return appendAccount(prefix, *account, true)
 	}
 
 	return prefix, nil
 }
 
-func catalogAccountPrefix(runID uint64, axis Axis, ledgerID uint32, accountPrefix string) ([]byte, error) {
+func catalogAccountPrefix(runID uint64, temporality Temporality, ledgerName, accountPrefix string) ([]byte, error) {
 	prefix := runPrefix(prefixRunCatalog, runID)
-	prefix = append(prefix, byte(axis), byte(scopeVolume))
-	prefix = binary.BigEndian.AppendUint32(prefix, ledgerID)
+	prefix = append(prefix, byte(temporality))
+	var err error
+	prefix, err = appendString(prefix, ledgerName)
+	if err != nil {
+		return nil, err
+	}
 
 	return appendAccount(prefix, accountPrefix, false)
 }
@@ -239,24 +218,24 @@ func readAccount(src []byte, offset *int) (string, error) {
 }
 
 func decodeCatalogKey(key []byte) (recordIdentity, error) {
-	if len(key) < 15 || key[0] != prefixRunCatalog {
+	if len(key) < 14 || key[0] != prefixRunCatalog {
 		return recordIdentity{}, errors.New("invalid history catalog key")
 	}
 
 	offset := 9
 	identity := recordIdentity{
-		Axis:     Axis(key[offset]),
-		Scope:    recordScope(key[offset+1]),
-		LedgerID: binary.BigEndian.Uint32(key[offset+2 : offset+6]),
+		Temporality: Temporality(key[offset]),
 	}
-	offset += 6
+	offset++
 
 	var err error
-	if identity.Scope == scopeVolume {
-		identity.Account, err = readAccount(key, &offset)
-		if err != nil {
-			return recordIdentity{}, err
-		}
+	identity.LedgerName, err = readString(key, &offset)
+	if err != nil {
+		return recordIdentity{}, err
+	}
+	identity.Account, err = readAccount(key, &offset)
+	if err != nil {
+		return recordIdentity{}, err
 	}
 
 	identity.AssetBase, err = readString(key, &offset)
@@ -272,7 +251,7 @@ func decodeCatalogKey(key []byte) (recordIdentity, error) {
 	if err != nil {
 		return recordIdentity{}, err
 	}
-	if offset != len(key) || !identity.Axis.valid() || (identity.Scope != scopeVolume && identity.Scope != scopeAsset) {
+	if offset != len(key) || !identity.Temporality.valid() || identity.LedgerName == "" || identity.Account == "" {
 		return recordIdentity{}, errors.New("invalid trailing history catalog key bytes")
 	}
 
@@ -280,7 +259,7 @@ func decodeCatalogKey(key []byte) (recordIdentity, error) {
 }
 
 func decodeDataKey(key []byte) (uint64, recordIdentity, uint64, error) {
-	if len(key) < 23 || key[0] != prefixRunData {
+	if len(key) < 22 || key[0] != prefixRunData {
 		return 0, recordIdentity{}, 0, errors.New("invalid history data key")
 	}
 

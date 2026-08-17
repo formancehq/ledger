@@ -26,42 +26,42 @@ func TestFoldPITDualAxisSeparatesAxesAndDoesNotDoubleInvertReversals(t *testing.
 
 	require.Empty(t, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 		299,
 		6,
 		"pitaxis:reversal:at-effective",
 	))
 	require.Equal(t, []CanonicalVolume{{Asset: "EUR/4", Color: "BLUE", Input: "70", Output: "70"}}, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 		300,
 		6,
 		"pitaxis:reversal:at-effective",
 	))
 	require.Equal(t, []CanonicalVolume{{Asset: "EUR/4", Color: "BLUE", Input: "70", Output: "0"}}, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 		799,
 		6,
 		"pitaxis:reversal:at-effective",
 	))
 	require.Equal(t, []CanonicalVolume{{Asset: "EUR/4", Color: "BLUE", Input: "70", Output: "70"}}, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 		800,
 		6,
 		"pitaxis:reversal:at-effective",
 	))
 	require.Equal(t, []CanonicalVolume{{Asset: "GBP", Input: "90", Output: "0"}}, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 		899,
 		6,
 		"pitaxis:reversal:normal",
 	))
 	require.Equal(t, []CanonicalVolume{{Asset: "GBP", Input: "90", Output: "90"}}, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 		900,
 		6,
 		"pitaxis:reversal:normal",
@@ -79,7 +79,7 @@ func TestFoldPITDualAxisNeverExposesPartOfAnAtomicProposal(t *testing.T) {
 
 	require.Empty(t, FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 		200,
 		103,
 		"",
@@ -195,15 +195,15 @@ func TestPITDualAxisCasesCoverBothAxesEveryScopeAndTimestampNeighborhood(t *test
 	// Effective has one distinct boundary; insertion has two. Each contributes
 	// t-1/t/t+1 crossed with the ledger plus every property-owned account.
 	require.Len(t, cases, (1+2)*3*(1+len(pitDualAxisAccounts)))
-	seen := make(map[servicepb.PointInTimeAxis]map[uint64]struct{})
+	seen := make(map[servicepb.HistoricalBalanceTemporality]map[uint64]struct{})
 	for _, testCase := range cases {
-		if seen[testCase.Selector.GetAxis()] == nil {
-			seen[testCase.Selector.GetAxis()] = make(map[uint64]struct{})
+		if seen[testCase.Selector.GetTemporality()] == nil {
+			seen[testCase.Selector.GetTemporality()] = make(map[uint64]struct{})
 		}
-		seen[testCase.Selector.GetAxis()][testCase.Selector.GetAt().GetData()] = struct{}{}
+		seen[testCase.Selector.GetTemporality()][testCase.Selector.GetAt().GetData()] = struct{}{}
 	}
-	require.Equal(t, map[uint64]struct{}{99: {}, 100: {}, 101: {}}, seen[servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE])
-	require.Equal(t, map[uint64]struct{}{199: {}, 200: {}, 201: {}, 299: {}, 300: {}, 301: {}}, seen[servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION])
+	require.Equal(t, map[uint64]struct{}{99: {}, 100: {}, 101: {}}, seen[servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE])
+	require.Equal(t, map[uint64]struct{}{199: {}, 200: {}, 201: {}, 299: {}, 300: {}, 301: {}}, seen[servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION])
 }
 
 func TestFoldPITDualAxisLedgerScopeConservesEveryBucket(t *testing.T) {
@@ -223,7 +223,7 @@ func TestFoldPITDualAxisLedgerScopeConservesEveryBucket(t *testing.T) {
 
 	for _, volume := range FoldPITDualAxis(
 		oracle,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 		1000,
 		pitDualAxisEffectCount,
 		"",

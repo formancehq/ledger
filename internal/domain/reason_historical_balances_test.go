@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestKindForPointInTimeReasons(t *testing.T) {
+func TestKindForHistoricalBalanceReasons(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -20,37 +20,31 @@ func TestKindForPointInTimeReasons(t *testing.T) {
 		{
 			name:   "building",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_BUILDING,
-			number: 70,
+			number: 69,
 			kind:   KindUnavailable,
 		},
 		{
 			name:   "behind",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_BEHIND,
-			number: 71,
+			number: 70,
 			kind:   KindUnavailable,
-		},
-		{
-			name:   "expired",
-			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_EXPIRED,
-			number: 72,
-			kind:   KindPrecondition,
 		},
 		{
 			name:   "source missing",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_SOURCE_MISSING,
-			number: 73,
+			number: 71,
 			kind:   KindInternal,
 		},
 		{
 			name:   "corrupt",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_CORRUPT,
-			number: 74,
+			number: 72,
 			kind:   KindInternal,
 		},
 		{
 			name:   "unsupported temporal filter",
 			reason: commonpb.ErrorReason_ERROR_REASON_UNSUPPORTED_TEMPORAL_FILTER,
-			number: 75,
+			number: 73,
 			kind:   KindValidation,
 		},
 	}

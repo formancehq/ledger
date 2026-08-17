@@ -106,12 +106,12 @@ func TestValidateLinearizablePITResult(t *testing.T) {
 
 	require.NoError(t, validateLinearizablePITResult(
 		result,
-		&servicepb.PointInTimeView{LogWatermark: 7},
+		&servicepb.HistoricalBalanceView{LogWatermark: 7},
 		fixture,
 	))
 	require.ErrorContains(t, validateLinearizablePITResult(
 		result,
-		&servicepb.PointInTimeView{LogWatermark: 6},
+		&servicepb.HistoricalBalanceView{LogWatermark: 6},
 		fixture,
 	), "below acknowledged marker")
 }

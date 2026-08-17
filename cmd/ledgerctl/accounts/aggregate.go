@@ -17,19 +17,18 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// pointInTimeViewTrailerKey mirrors the gRPC wire contract without importing
+// historicalBalanceViewTrailerKey mirrors the gRPC wire contract without importing
 // the server adapter package into the lightweight ledgerctl binary.
-const pointInTimeViewTrailerKey = "x-point-in-time-view-bin"
+const historicalBalanceViewTrailerKey = "x-historical-balance-view-bin"
 
-type pointInTimeViewDisplay struct {
-	RequestedAt          string `json:"requestedAt"`
-	Axis                 string `json:"axis"`
-	LedgerID             uint32 `json:"ledgerId"`
-	AuditWatermark       uint64 `json:"auditWatermark"`
-	LogWatermark         uint64 `json:"logWatermark"`
-	ManifestVersion      uint64 `json:"manifestVersion"`
-	HistoryAvailableFrom string `json:"historyAvailableFrom"`
-	ViewToken            string `json:"viewToken"`
+type historicalBalanceViewDisplay struct {
+	RequestedAt     string `json:"requestedAt"`
+	Temporality     string `json:"temporality"`
+	Ledger          string `json:"ledger"`
+	AuditWatermark  uint64 `json:"auditWatermark"`
+	LogWatermark    uint64 `json:"logWatermark"`
+	ManifestVersion uint64 `json:"manifestVersion"`
+	ViewToken       string `json:"viewToken"`
 }
 
 // NewAggregateVolumesCommand creates the accounts aggregate-volumes command.
@@ -45,8 +44,8 @@ Examples:
   ledgerctl accounts aggregate-volumes --ledger my-ledger
   ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
   ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[type] == user"
-  ledgerctl accounts aggregate-volumes --ledger my-ledger --pit 2026-01-15T12:00:00Z
-  ledgerctl accounts aggregate-volumes --ledger my-ledger --pit 2026-01-15T12:00:00Z --use-insertion-date
+  ledgerctl accounts aggregate-volumes --ledger my-ledger --at 2026-01-15T12:00:00Z
+  ledgerctl accounts aggregate-volumes --ledger my-ledger --at 2026-01-15T12:00:00Z --temporality insertion
   ledgerctl accounts agg --ledger my-ledger --json`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
@@ -60,15 +59,15 @@ Examples:
 	cmdutil.AddAnalyzeFlag(cmd)
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
-	cmd.Flags().String("pit", "", "Aggregate balances at this RFC3339 timestamp")
-	cmd.Flags().Bool("use-insertion-date", false, "Interpret --pit on the insertion-date axis instead of the effective-date axis")
+	cmd.Flags().String("at", "", "Aggregate historical balances at this RFC3339 timestamp")
+	cmd.Flags().String("temporality", "effective", "Timestamp temporality: effective or insertion")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
 }
 
 func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
-	pointInTime, err := pointInTimeSelectorFromFlags(cmd)
+	historicalBalance, err := historicalBalanceSelectorFromFlags(cmd)
 	if err != nil {
 		return err
 	}
@@ -114,22 +113,22 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		filter,
 		minLogSeq,
 		checkpointID,
-		pointInTime,
+		historicalBalance,
 	), grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to aggregate volumes", err)
 	}
-	if pointInTime != nil {
-		view, err := pointInTimeViewFromTrailer(trailer)
+	if historicalBalance != nil {
+		view, err := historicalBalanceViewFromTrailer(trailer)
 		if err != nil {
-			return fmt.Errorf("invalid point-in-time response: %w", err)
+			return fmt.Errorf("invalid historical-balance response: %w", err)
 		}
-		if err := validatePointInTimeView(pointInTime, view); err != nil {
-			return fmt.Errorf("invalid point-in-time response: %w", err)
+		if err := validateHistoricalBalanceView(historicalBalance, view); err != nil {
+			return fmt.Errorf("invalid historical-balance response: %w", err)
 		}
-		if err := emitPointInTimeView(cmd, view); err != nil {
+		if err := emitHistoricalBalanceView(cmd, view); err != nil {
 			return err
 		}
 	}
@@ -195,13 +194,13 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func pointInTimeSelectorFromFlags(cmd *cobra.Command) (*servicepb.PointInTimeSelector, error) {
-	pit, err := cmd.Flags().GetString("pit")
+func historicalBalanceSelectorFromFlags(cmd *cobra.Command) (*servicepb.HistoricalBalanceSelector, error) {
+	atValue, err := cmd.Flags().GetString("at")
 	if err != nil {
 		return nil, err
 	}
 
-	useInsertionDate, err := cmd.Flags().GetBool("use-insertion-date")
+	temporalityValue, err := cmd.Flags().GetString("temporality")
 	if err != nil {
 		return nil, err
 	}
@@ -211,33 +210,38 @@ func pointInTimeSelectorFromFlags(cmd *cobra.Command) (*servicepb.PointInTimeSel
 		return nil, err
 	}
 
-	if pit == "" {
-		if useInsertionDate {
-			return nil, errors.New("--use-insertion-date requires --pit")
+	if atValue == "" {
+		if cmd.Flags().Changed("temporality") {
+			return nil, errors.New("--temporality requires --at")
 		}
 
 		return nil, nil
 	}
 	if checkpointID != 0 {
-		return nil, errors.New("--pit and --checkpoint-id are mutually exclusive")
+		return nil, errors.New("--at and --checkpoint-id are mutually exclusive")
 	}
 
-	at, err := time.Parse(time.RFC3339Nano, pit)
+	at, err := time.Parse(time.RFC3339Nano, atValue)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --pit value %q: expected RFC3339 timestamp: %w", pit, err)
+		return nil, fmt.Errorf("invalid --at value %q: expected RFC3339 timestamp: %w", atValue, err)
 	}
 	if at.Before(time.Unix(0, 0)) {
-		return nil, fmt.Errorf("invalid --pit value %q: timestamps before 1970-01-01T00:00:00Z are not supported", pit)
+		return nil, fmt.Errorf("invalid --at value %q: timestamps before 1970-01-01T00:00:00Z are not supported", atValue)
 	}
 
-	axis := servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE
-	if useInsertionDate {
-		axis = servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION
+	var temporality servicepb.HistoricalBalanceTemporality
+	switch temporalityValue {
+	case "effective":
+		temporality = servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE
+	case "insertion":
+		temporality = servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION
+	default:
+		return nil, fmt.Errorf("invalid --temporality value %q: expected effective or insertion", temporalityValue)
 	}
 
-	return &servicepb.PointInTimeSelector{
-		At:   &commonpb.Timestamp{Data: uint64(at.UnixMicro())},
-		Axis: axis,
+	return &servicepb.HistoricalBalanceSelector{
+		At:          &commonpb.Timestamp{Data: uint64(at.UnixMicro())},
+		Temporality: temporality,
 	}, nil
 }
 
@@ -246,43 +250,43 @@ func buildAggregateVolumesRequest(
 	filter *commonpb.QueryFilter,
 	minLogSequence uint64,
 	checkpointID uint64,
-	pointInTime *servicepb.PointInTimeSelector,
+	historicalBalance *servicepb.HistoricalBalanceSelector,
 ) *servicepb.AggregateVolumesRequest {
 	return &servicepb.AggregateVolumesRequest{
-		Ledger:         ledgerName,
-		Filter:         filter,
-		MinLogSequence: minLogSequence,
-		CheckpointId:   checkpointID,
-		PointInTime:    pointInTime,
+		Ledger:            ledgerName,
+		Filter:            filter,
+		MinLogSequence:    minLogSequence,
+		CheckpointId:      checkpointID,
+		HistoricalBalance: historicalBalance,
 	}
 }
 
-func pointInTimeViewFromTrailer(trailer metadata.MD) (*servicepb.PointInTimeView, error) {
-	values := trailer.Get(pointInTimeViewTrailerKey)
+func historicalBalanceViewFromTrailer(trailer metadata.MD) (*servicepb.HistoricalBalanceView, error) {
+	values := trailer.Get(historicalBalanceViewTrailerKey)
 	if len(values) != 1 {
-		return nil, fmt.Errorf("expected exactly one %s trailer value, got %d", pointInTimeViewTrailerKey, len(values))
+		return nil, fmt.Errorf("expected exactly one %s trailer value, got %d", historicalBalanceViewTrailerKey, len(values))
 	}
 
-	view := &servicepb.PointInTimeView{}
+	view := &servicepb.HistoricalBalanceView{}
 	if err := view.UnmarshalVT([]byte(values[0])); err != nil {
-		return nil, fmt.Errorf("decoding %s trailer: %w", pointInTimeViewTrailerKey, err)
+		return nil, fmt.Errorf("decoding %s trailer: %w", historicalBalanceViewTrailerKey, err)
 	}
-	if view.GetRequestedAt() == nil || view.GetHistoryAvailableFrom() == nil || view.GetViewToken() == "" {
-		return nil, fmt.Errorf("%s trailer is incomplete", pointInTimeViewTrailerKey)
+	if view.GetRequestedAt() == nil || view.GetViewToken() == "" {
+		return nil, fmt.Errorf("%s trailer is incomplete", historicalBalanceViewTrailerKey)
 	}
-	switch view.GetAxis() {
-	case servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-		servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION:
+	switch view.GetTemporality() {
+	case servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+		servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION:
 	default:
-		return nil, fmt.Errorf("%s trailer has unknown axis %d", pointInTimeViewTrailerKey, view.GetAxis())
+		return nil, fmt.Errorf("%s trailer has unknown temporality %d", historicalBalanceViewTrailerKey, view.GetTemporality())
 	}
 
 	return view, nil
 }
 
-func validatePointInTimeView(selector *servicepb.PointInTimeSelector, view *servicepb.PointInTimeView) error {
+func validateHistoricalBalanceView(selector *servicepb.HistoricalBalanceSelector, view *servicepb.HistoricalBalanceView) error {
 	if selector == nil || selector.GetAt() == nil {
-		return errors.New("requested point-in-time selector is incomplete")
+		return errors.New("requested historical-balance selector is incomplete")
 	}
 	if view.GetRequestedAt().GetData() != selector.GetAt().GetData() {
 		return fmt.Errorf(
@@ -291,42 +295,41 @@ func validatePointInTimeView(selector *servicepb.PointInTimeSelector, view *serv
 			selector.GetAt().GetData(),
 		)
 	}
-	if view.GetAxis() != selector.GetAxis() {
+	if view.GetTemporality() != selector.GetTemporality() {
 		return fmt.Errorf(
-			"response axis %s does not match requested axis %s",
-			view.GetAxis(),
-			selector.GetAxis(),
+			"response temporality %s does not match requested temporality %s",
+			view.GetTemporality(),
+			selector.GetTemporality(),
 		)
 	}
 
 	return nil
 }
 
-func emitPointInTimeView(cmd *cobra.Command, view *servicepb.PointInTimeView) error {
-	display := pointInTimeViewDisplay{
-		RequestedAt:          view.GetRequestedAt().AsTime().UTC().Format(time.RFC3339Nano),
-		Axis:                 pointInTimeAxisName(view.GetAxis()),
-		LedgerID:             view.GetLedgerId(),
-		AuditWatermark:       view.GetAuditWatermark(),
-		LogWatermark:         view.GetLogWatermark(),
-		ManifestVersion:      view.GetManifestVersion(),
-		HistoryAvailableFrom: view.GetHistoryAvailableFrom().AsTime().UTC().Format(time.RFC3339Nano),
-		ViewToken:            view.GetViewToken(),
+func emitHistoricalBalanceView(cmd *cobra.Command, view *servicepb.HistoricalBalanceView) error {
+	display := historicalBalanceViewDisplay{
+		RequestedAt:     view.GetRequestedAt().AsTime().UTC().Format(time.RFC3339Nano),
+		Temporality:     historicalBalanceTemporalityName(view.GetTemporality()),
+		Ledger:          view.GetLedger(),
+		AuditWatermark:  view.GetAuditWatermark(),
+		LogWatermark:    view.GetLogWatermark(),
+		ManifestVersion: view.GetManifestVersion(),
+		ViewToken:       view.GetViewToken(),
 	}
 
 	encoded, err := json.Marshal(display)
 	if err != nil {
-		return fmt.Errorf("encoding point-in-time view: %w", err)
+		return fmt.Errorf("encoding historical-balance view: %w", err)
 	}
-	if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "point_in_time_view=%s\n", encoded); err != nil {
-		return fmt.Errorf("displaying point-in-time view: %w", err)
+	if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "historical_balance_view=%s\n", encoded); err != nil {
+		return fmt.Errorf("displaying historical-balance view: %w", err)
 	}
 
 	return nil
 }
 
-func pointInTimeAxisName(axis servicepb.PointInTimeAxis) string {
-	if axis == servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION {
+func historicalBalanceTemporalityName(temporality servicepb.HistoricalBalanceTemporality) string {
+	if temporality == servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION {
 		return "insertion"
 	}
 

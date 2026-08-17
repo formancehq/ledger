@@ -50,23 +50,23 @@ func (s *aggregateVolumesTransportStream) SetTrailer(md metadata.MD) error {
 	return nil
 }
 
-func TestAggregateVolumesPointInTimeServer(t *testing.T) {
+func TestAggregateVolumesHistoricalBalanceServer(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name      string
-		protoAxis servicepb.PointInTimeAxis
-		storeAxis balancehistorystore.Axis
+		name             string
+		protoTemporality servicepb.HistoricalBalanceTemporality
+		storeTemporality balancehistorystore.Temporality
 	}{
 		{
-			name:      "effective axis",
-			protoAxis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
-			storeAxis: balancehistorystore.AxisEffective,
+			name:             "effective temporality",
+			protoTemporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
+			storeTemporality: balancehistorystore.TemporalityEffective,
 		},
 		{
-			name:      "insertion axis",
-			protoAxis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
-			storeAxis: balancehistorystore.AxisInsertion,
+			name:             "insertion temporality",
+			protoTemporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
+			storeTemporality: balancehistorystore.TemporalityInsertion,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,15 +74,14 @@ func TestAggregateVolumesPointInTimeServer(t *testing.T) {
 
 			impl, controller := newListHandlerHarness(t)
 			filter := &commonpb.QueryFilter{}
-			view := &appctrl.VolumeViewToken{
-				RequestedAt:          1_704_164_645_123_456,
-				Axis:                 tc.storeAxis,
-				LedgerID:             17,
-				AuditWatermark:       99,
-				LogWatermark:         88,
-				ManifestVersion:      7,
-				HistoryAvailableFrom: 1_600_000_000_000_000,
-				Token:                "immutable-view-token",
+			view := &appctrl.HistoricalBalanceViewToken{
+				RequestedAt:     1_704_164_645_123_456,
+				Temporality:     tc.storeTemporality,
+				Ledger:          "main",
+				AuditWatermark:  99,
+				LogWatermark:    88,
+				ManifestVersion: 7,
+				Token:           "immutable-view-token",
 			}
 			aggregate := &commonpb.AggregateResult{
 				Volumes: []*commonpb.AggregatedVolume{{
@@ -105,10 +104,10 @@ func TestAggregateVolumesPointInTimeServer(t *testing.T) {
 						CollapseColors:  true,
 					}, opts)
 					require.Equal(t, uint64(42), read.MinLogSequence)
-					require.Equal(t, &appctrl.PointInTimeSelector{
-						At:   view.RequestedAt,
-						Axis: tc.storeAxis,
-					}, read.PointInTime)
+					require.Equal(t, &appctrl.HistoricalBalanceSelector{
+						At:          view.RequestedAt,
+						Temporality: tc.storeTemporality,
+					}, read.HistoricalBalance)
 
 					return &appctrl.AggregateVolumesResult{Aggregate: aggregate, View: view}, nil
 				})
@@ -122,22 +121,22 @@ func TestAggregateVolumesPointInTimeServer(t *testing.T) {
 				UseMaxPrecision: true,
 				GroupByPrefixes: []string{"users:"},
 				CollapseColors:  true,
-				PointInTime: &servicepb.PointInTimeSelector{
-					At:   &commonpb.Timestamp{Data: view.RequestedAt},
-					Axis: tc.protoAxis,
+				HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+					At:          &commonpb.Timestamp{Data: view.RequestedAt},
+					Temporality: tc.protoTemporality,
 				},
 			})
 
 			require.NoError(t, err)
 			require.Same(t, aggregate, result)
-			decodedView, err := pointInTimeViewFromMetadata(transport.trailer)
+			decodedView, err := historicalBalanceViewFromMetadata(transport.trailer)
 			require.NoError(t, err)
 			require.Equal(t, view, decodedView)
 		})
 	}
 }
 
-func TestAggregateVolumesPointInTimeServerRejectsInvalidSelectors(t *testing.T) {
+func TestAggregateVolumesHistoricalBalanceServerRejectsInvalidSelectors(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -147,26 +146,26 @@ func TestAggregateVolumesPointInTimeServerRejectsInvalidSelectors(t *testing.T) 
 		{
 			name: "timestamp absent",
 			req: &servicepb.AggregateVolumesRequest{
-				Ledger:      "main",
-				PointInTime: &servicepb.PointInTimeSelector{},
+				Ledger:            "main",
+				HistoricalBalance: &servicepb.HistoricalBalanceSelector{},
 			},
 		},
 		{
-			name: "unknown axis",
+			name: "unknown temporality",
 			req: &servicepb.AggregateVolumesRequest{
 				Ledger: "main",
-				PointInTime: &servicepb.PointInTimeSelector{
-					At:   &commonpb.Timestamp{Data: 1},
-					Axis: servicepb.PointInTimeAxis(99),
+				HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+					At:          &commonpb.Timestamp{Data: 1},
+					Temporality: servicepb.HistoricalBalanceTemporality(99),
 				},
 			},
 		},
 		{
-			name: "checkpoint and point in time",
+			name: "checkpoint and historical balance",
 			req: &servicepb.AggregateVolumesRequest{
 				Ledger:       "main",
 				CheckpointId: 3,
-				PointInTime: &servicepb.PointInTimeSelector{
+				HistoricalBalance: &servicepb.HistoricalBalanceSelector{
 					At: &commonpb.Timestamp{Data: 1},
 				},
 			},
@@ -184,7 +183,7 @@ func TestAggregateVolumesPointInTimeServerRejectsInvalidSelectors(t *testing.T) 
 	}
 }
 
-func TestAggregateVolumesPointInTimeServerRequiresViewToken(t *testing.T) {
+func TestAggregateVolumesHistoricalBalanceServerRequiresViewToken(t *testing.T) {
 	t.Parallel()
 
 	impl, controller := newListHandlerHarness(t)
@@ -193,7 +192,7 @@ func TestAggregateVolumesPointInTimeServerRequiresViewToken(t *testing.T) {
 
 	_, err := impl.AggregateVolumes(context.Background(), &servicepb.AggregateVolumesRequest{
 		Ledger: "main",
-		PointInTime: &servicepb.PointInTimeSelector{
+		HistoricalBalance: &servicepb.HistoricalBalanceSelector{
 			At: &commonpb.Timestamp{Data: 1},
 		},
 	})
@@ -202,31 +201,31 @@ func TestAggregateVolumesPointInTimeServerRequiresViewToken(t *testing.T) {
 	require.Equal(t, codes.Internal, status.Code(err))
 }
 
-func TestAggregateVolumesPointInTimeServerRejectsMismatchedView(t *testing.T) {
+func TestAggregateVolumesHistoricalBalanceServerRejectsMismatchedView(t *testing.T) {
 	t.Parallel()
 
-	selector := &servicepb.PointInTimeSelector{
-		At:   &commonpb.Timestamp{Data: 10},
-		Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+	selector := &servicepb.HistoricalBalanceSelector{
+		At:          &commonpb.Timestamp{Data: 10},
+		Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 	}
 	for _, tc := range []struct {
 		name string
-		view *appctrl.VolumeViewToken
+		view *appctrl.HistoricalBalanceViewToken
 	}{
 		{
 			name: "requested timestamp",
-			view: &appctrl.VolumeViewToken{
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: 11,
-				Axis:        balancehistorystore.AxisEffective,
+				Temporality: balancehistorystore.TemporalityEffective,
 				Token:       "wrong-timestamp-view",
 			},
 		},
 		{
-			name: "axis",
-			view: &appctrl.VolumeViewToken{
+			name: "temporality",
+			view: &appctrl.HistoricalBalanceViewToken{
 				RequestedAt: 10,
-				Axis:        balancehistorystore.AxisInsertion,
-				Token:       "wrong-axis-view",
+				Temporality: balancehistorystore.TemporalityInsertion,
+				Token:       "wrong-temporality-view",
 			},
 		},
 	} {
@@ -243,8 +242,8 @@ func TestAggregateVolumesPointInTimeServerRejectsMismatchedView(t *testing.T) {
 			ctx := grpc.NewContextWithServerTransportStream(context.Background(), transport)
 
 			result, err := impl.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-				Ledger:      "main",
-				PointInTime: selector,
+				Ledger:            "main",
+				HistoricalBalance: selector,
 			})
 
 			require.Nil(t, result)
@@ -255,23 +254,23 @@ func TestAggregateVolumesPointInTimeServerRejectsMismatchedView(t *testing.T) {
 	}
 }
 
-func TestPointInTimeViewMetadataRejectsUnknownAxis(t *testing.T) {
+func TestHistoricalBalanceViewMetadataRejectsUnknownTemporality(t *testing.T) {
 	t.Parallel()
 
-	trailer, err := pointInTimeViewMetadata(&appctrl.VolumeViewToken{
-		Axis:  balancehistorystore.Axis(99),
-		Token: "must-not-be-serialized",
+	trailer, err := historicalBalanceViewMetadata(&appctrl.HistoricalBalanceViewToken{
+		Temporality: balancehistorystore.Temporality(99),
+		Token:       "must-not-be-serialized",
 	})
 
 	require.Nil(t, trailer)
-	require.ErrorContains(t, err, "unknown point-in-time axis value 99")
+	require.ErrorContains(t, err, "unknown historical-balance temporality value 99")
 }
 
-func TestPointInTimeViewMetadataRejectsEmptyToken(t *testing.T) {
+func TestHistoricalBalanceViewMetadataRejectsEmptyToken(t *testing.T) {
 	t.Parallel()
 
-	trailer, err := pointInTimeViewMetadata(&appctrl.VolumeViewToken{
-		Axis: balancehistorystore.AxisEffective,
+	trailer, err := historicalBalanceViewMetadata(&appctrl.HistoricalBalanceViewToken{
+		Temporality: balancehistorystore.TemporalityEffective,
 	})
 
 	require.Nil(t, trailer)

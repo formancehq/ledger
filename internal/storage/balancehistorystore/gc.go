@@ -15,7 +15,7 @@ type garbageCollector struct {
 // CollectGarbage removes immutable manifests and runs that are referenced by
 // neither the latest manifest nor an active View lease. Publication visibility
 // never depends on this cleanup: a crash before or during GC can only leave
-// unreachable bytes, never expose a partial run.
+// unreachable bytes, never expose a partial segment.
 func (s *garbageCollector) CollectGarbage() (bool, error) {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -35,11 +35,9 @@ func (s *garbageCollector) collectGarbageLocked() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	keepRuns := make(map[uint64]struct{}, len(manifest.Runs))
-	for _, run := range manifest.Runs {
-		if !run.LocalRemoved {
-			keepRuns[run.ID] = struct{}{}
-		}
+	keepRuns := make(map[uint64]struct{}, len(manifest.Segments))
+	for _, segment := range manifest.Segments {
+		keepRuns[segment.ID] = struct{}{}
 	}
 	keepManifests := map[uint64]struct{}{manifest.Version: {}}
 
@@ -62,13 +60,13 @@ func (s *garbageCollector) collectGarbageLocked() (bool, error) {
 			UpperBound: []byte{kind + 1},
 		})
 		if err != nil {
-			return false, fmt.Errorf("opening balance history GC run iterator: %w", err)
+			return false, fmt.Errorf("opening balance history GC segment iterator: %w", err)
 		}
 		for valid := iter.First(); valid; valid = iter.Next() {
 			if len(iter.Key()) < 9 {
 				_ = iter.Close()
 
-				return s.quarantineGCError(fmt.Sprintf("truncated run key under prefix 0x%x", kind))
+				return s.quarantineGCError(fmt.Sprintf("truncated segment key under prefix 0x%x", kind))
 			}
 			physicalRuns[binary.BigEndian.Uint64(iter.Key()[1:9])] = struct{}{}
 		}
@@ -117,11 +115,11 @@ func (s *garbageCollector) collectGarbageLocked() (bool, error) {
 		for _, kind := range []byte{prefixRunData, prefixRunCatalog} {
 			prefix := runPrefix(kind, runID)
 			if err := batch.DeleteRange(prefix, prefixEnd(prefix), nil); err != nil {
-				return false, fmt.Errorf("staging orphan run %d deletion: %w", runID, err)
+				return false, fmt.Errorf("staging orphan segment %d deletion: %w", runID, err)
 			}
 		}
 		if err := batch.Delete(runMetaKey(runID), nil); err != nil {
-			return false, fmt.Errorf("staging orphan run %d metadata deletion: %w", runID, err)
+			return false, fmt.Errorf("staging orphan segment %d metadata deletion: %w", runID, err)
 		}
 		changed = true
 	}

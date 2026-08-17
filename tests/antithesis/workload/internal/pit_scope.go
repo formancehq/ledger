@@ -26,7 +26,7 @@ const (
 type PITScopeCase struct {
 	Name            string
 	AxisName        string
-	Selector        *servicepb.PointInTimeSelector
+	Selector        *servicepb.HistoricalBalanceSelector
 	UseMaxPrecision bool
 	CollapseColors  bool
 }
@@ -57,11 +57,11 @@ func PITScopeCases() []PITScopeCase {
 	type selector struct {
 		name string
 		at   uint64
-		axis servicepb.PointInTimeAxis
+		axis servicepb.HistoricalBalanceTemporality
 	}
 	selectors := []selector{
-		{name: "effective", at: effectiveAt, axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE},
-		{name: "insertion", at: math.MaxUint64, axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION},
+		{name: "effective", at: effectiveAt, axis: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE},
+		{name: "insertion", at: math.MaxUint64, axis: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION},
 	}
 	type mode struct {
 		name           string
@@ -81,9 +81,9 @@ func PITScopeCases() []PITScopeCase {
 			cases = append(cases, PITScopeCase{
 				Name:     selector.name + "/" + mode.name,
 				AxisName: selector.name,
-				Selector: &servicepb.PointInTimeSelector{
-					At:   &commonpb.Timestamp{Data: selector.at},
-					Axis: selector.axis,
+				Selector: &servicepb.HistoricalBalanceSelector{
+					At:          &commonpb.Timestamp{Data: selector.at},
+					Temporality: selector.axis,
 				},
 				UseMaxPrecision: mode.maxPrecision,
 				CollapseColors:  mode.collapseColors,
@@ -101,6 +101,9 @@ func SeedPITScopeFixture(ctx context.Context, client servicepb.BucketServiceClie
 	ledger := PITScopeLedgerName()
 	if err := CreateLedger(ctx, client, ledger); err != nil {
 		return err
+	}
+	if err := ConfigureHistoricalBalances(ctx, client, ledger); err != nil {
+		return fmt.Errorf("configuring historical balances for scope fixture: %w", err)
 	}
 
 	fixtureAt := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
@@ -180,17 +183,17 @@ func ComparePITScopeCase(
 	}
 	expectedLedgerID := ledgerInfo.GetId()
 	base := servicepb.AggregateVolumesRequest{
-		Ledger:          ledger,
-		UseMaxPrecision: testCase.UseMaxPrecision,
-		CollapseColors:  testCase.CollapseColors,
-		PointInTime:     testCase.Selector,
+		Ledger:            ledger,
+		UseMaxPrecision:   testCase.UseMaxPrecision,
+		CollapseColors:    testCase.CollapseColors,
+		HistoricalBalance: testCase.Selector,
 	}
 	for range pitScopePairAttempts {
 		unfilteredRequest := base
 		foldRequest := base
 		foldRequest.Filter = actions.NotFilter(actions.AddressExactFilter(PITScopeReservedAddress))
 
-		unfiltered, unfilteredView, err := AggregatePointInTime(ctx, client, &unfilteredRequest, expectedLedgerID)
+		unfiltered, unfilteredView, err := AggregatePointInTime(ctx, client, &unfilteredRequest)
 		if err != nil {
 			if IsTransient(err) || IsCanceled(err) || IsClassifiedPointInTimeFailure(err) {
 				continue
@@ -203,7 +206,7 @@ func ComparePITScopeCase(
 			return false
 		}
 
-		folded, foldedView, err := AggregatePointInTime(ctx, client, &foldRequest, expectedLedgerID)
+		folded, foldedView, err := AggregatePointInTime(ctx, client, &foldRequest)
 		if err != nil {
 			if IsTransient(err) || IsCanceled(err) || IsClassifiedPointInTimeFailure(err) {
 				continue

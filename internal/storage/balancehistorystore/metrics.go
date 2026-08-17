@@ -25,13 +25,13 @@ func (s *metricsRegistrar) RegisterMetrics(meter metric.Meter) (metric.Registrat
 		return nil, fmt.Errorf("creating balance history level bytes gauge: %w", err)
 	}
 
-	runs, err := meter.Int64ObservableGauge(
-		"balancehistory.store.runs",
-		metric.WithDescription("Immutable logical balance-history runs by level"),
-		metric.WithUnit("{run}"),
+	segments, err := meter.Int64ObservableGauge(
+		"balancehistory.store.segments",
+		metric.WithDescription("Immutable logical balance-history segments by level"),
+		metric.WithUnit("{segment}"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating balance history runs gauge: %w", err)
+		return nil, fmt.Errorf("creating balance history segments gauge: %w", err)
 	}
 
 	entries, err := meter.Int64ObservableGauge(
@@ -93,18 +93,18 @@ func (s *metricsRegistrar) RegisterMetrics(meter metric.Meter) (metric.Registrat
 		if manifestErr != nil {
 			return manifestErr
 		}
-		byLevelRuns := make(map[uint32]int64)
+		byLevelSegments := make(map[uint32]int64)
 		byLevelEntries := make(map[uint32]int64)
-		for _, run := range manifest.Runs {
-			byLevelRuns[run.Level]++
-			byLevelEntries[run.Level] += int64(run.EntryCount)
+		for _, segment := range manifest.Segments {
+			byLevelSegments[segment.Level]++
+			byLevelEntries[segment.Level] += int64(segment.EntryCount)
 		}
-		for level, count := range byLevelRuns {
+		for level, count := range byLevelSegments {
 			attrs := metric.WithAttributes(attribute.Int("level", int(level)))
-			observer.ObserveInt64(runs, count, attrs)
+			observer.ObserveInt64(segments, count, attrs)
 			observer.ObserveInt64(entries, byLevelEntries[level], attrs)
 		}
 
 		return nil
-	}, levelBytes, runs, entries, memtableBytes, compactionDebt, cacheHits, cacheMisses)
+	}, levelBytes, segments, entries, memtableBytes, compactionDebt, cacheHits, cacheMisses)
 }

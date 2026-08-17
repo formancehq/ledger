@@ -9,7 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-func TestPointInTimeProtoContract(t *testing.T) {
+// TestHistoricalBalanceProtoContract protects the additive wire contract.
+func TestHistoricalBalanceProtoContract(t *testing.T) {
 	t.Parallel()
 
 	assertField := func(
@@ -37,37 +38,35 @@ func TestPointInTimeProtoContract(t *testing.T) {
 	require.True(t, groupByPrefixes.IsList())
 	assertField(request, "checkpoint_id", 6, protoreflect.Fixed64Kind)
 	assertField(request, "collapse_colors", 7, protoreflect.BoolKind)
-	pointInTime := assertField(request, "point_in_time", 8, protoreflect.MessageKind)
-	require.Equal(t, protoreflect.FullName("ledger.PointInTimeSelector"), pointInTime.Message().FullName())
-	require.Equal(t, "pointInTime", pointInTime.JSONName())
+	historicalBalance := assertField(request, "historical_balance", 8, protoreflect.MessageKind)
+	require.Equal(t, protoreflect.FullName("ledger.HistoricalBalanceSelector"), historicalBalance.Message().FullName())
+	require.Equal(t, "historicalBalance", historicalBalance.JSONName())
 
-	selector := (&servicepb.PointInTimeSelector{}).ProtoReflect().Descriptor()
+	selector := (&servicepb.HistoricalBalanceSelector{}).ProtoReflect().Descriptor()
 	at := assertField(selector, "at", 1, protoreflect.MessageKind)
 	require.Equal(t, protoreflect.FullName("common.Timestamp"), at.Message().FullName())
-	axis := assertField(selector, "axis", 2, protoreflect.EnumKind)
-	require.Equal(t, protoreflect.FullName("ledger.PointInTimeAxis"), axis.Enum().FullName())
+	temporality := assertField(selector, "temporality", 2, protoreflect.EnumKind)
+	require.Equal(t, protoreflect.FullName("ledger.HistoricalBalanceTemporality"), temporality.Enum().FullName())
 
-	view := (&servicepb.PointInTimeView{}).ProtoReflect().Descriptor()
+	view := (&servicepb.HistoricalBalanceView{}).ProtoReflect().Descriptor()
 	requestedAt := assertField(view, "requested_at", 1, protoreflect.MessageKind)
 	require.Equal(t, protoreflect.FullName("common.Timestamp"), requestedAt.Message().FullName())
-	assertField(view, "axis", 2, protoreflect.EnumKind)
-	assertField(view, "ledger_id", 3, protoreflect.Uint32Kind)
+	assertField(view, "temporality", 2, protoreflect.EnumKind)
+	assertField(view, "ledger", 3, protoreflect.StringKind)
 	assertField(view, "audit_watermark", 4, protoreflect.Fixed64Kind)
 	assertField(view, "log_watermark", 5, protoreflect.Fixed64Kind)
 	assertField(view, "manifest_version", 6, protoreflect.Fixed64Kind)
-	historyAvailableFrom := assertField(view, "history_available_from", 7, protoreflect.MessageKind)
-	require.Equal(t, protoreflect.FullName("common.Timestamp"), historyAvailableFrom.Message().FullName())
-	assertField(view, "view_token", 8, protoreflect.StringKind)
+	assertField(view, "view_token", 7, protoreflect.StringKind)
 
-	axisDescriptor := servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE.Descriptor()
+	temporalityDescriptor := servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE.Descriptor()
 	require.Equal(
 		t,
 		protoreflect.EnumNumber(0),
-		axisDescriptor.Values().ByName("POINT_IN_TIME_AXIS_EFFECTIVE").Number(),
+		temporalityDescriptor.Values().ByName("HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE").Number(),
 	)
 	require.Equal(
 		t,
 		protoreflect.EnumNumber(1),
-		axisDescriptor.Values().ByName("POINT_IN_TIME_AXIS_INSERTION").Number(),
+		temporalityDescriptor.Values().ByName("HISTORICAL_BALANCE_TEMPORALITY_INSERTION").Number(),
 	)
 }

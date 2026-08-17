@@ -70,6 +70,7 @@ type Controller interface {
 
 	// Aggregation operations
 	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions, read AggregateVolumesReadOptions) (*AggregateVolumesResult, error)
+	GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error)
 
 	// Prepared query operations (read-only)
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)

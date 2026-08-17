@@ -40,7 +40,6 @@ func (s *compactionStreamer) openCompactionView(ctx context.Context) (*View, err
 		return nil, err
 	}
 	s.acquireManifestLease(manifest)
-	tiering := s.tiering.Load()
 	view := &View{
 		ctx:                ctx,
 		store:              s.viewManager,
@@ -48,31 +47,14 @@ func (s *compactionStreamer) openCompactionView(ctx context.Context) (*View, err
 		manifest:           cloneManifest(manifest),
 		generation:         s.generation.Load(),
 		allowSourceMissing: false,
-		coldRuns:           make(map[uint64]*coldRunView),
 	}
 	s.mutationMu.Unlock()
-
-	for _, run := range manifest.Runs {
-		if !run.LocalRemoved {
-			continue
-		}
-		if tiering == nil {
-			_ = view.Close()
-
-			return nil, &ErrSourceMissing{Detail: fmt.Sprintf("cold run %d cannot be compacted without an archive", run.ID)}
-		}
-		cold := &coldRunView{archive: tiering.archive, parts: make([]coldPartView, len(run.ArchiveParts))}
-		for index, part := range run.ArchiveParts {
-			cold.parts[index].meta = cloneArchiveParts([]ArchivePart{part})[0]
-		}
-		view.coldRuns[run.ID] = cold
-	}
 
 	return view, nil
 }
 
 func (s *compactionStreamer) reserveCompactionRun(
-	expected []RunRef,
+	expected []SegmentRef,
 	generation uint64,
 ) (uint64, bool, error) {
 	s.mutationMu.Lock()
@@ -88,21 +70,21 @@ func (s *compactionStreamer) reserveCompactionRun(
 	if err != nil {
 		return 0, false, err
 	}
-	if !compactionInputsPresent(current.Runs, expected) {
+	if !compactionInputsPresent(current.Segments, expected) {
 		return 0, false, nil
 	}
 
-	runID := current.NextRunID
+	runID := current.NextSegmentID
 	if runID == 0 {
 		runID = 1
 	}
 	if runID == ^uint64(0) {
-		return 0, false, errors.New("balance history run id space exhausted")
+		return 0, false, errors.New("balance history segment id space exhausted")
 	}
 
 	next := cloneManifest(current)
 	next.Version++
-	next.NextRunID = runID + 1
+	next.NextSegmentID = runID + 1
 	encodedManifest, err := encodeManifest(next)
 	if err != nil {
 		return 0, false, err
@@ -110,7 +92,7 @@ func (s *compactionStreamer) reserveCompactionRun(
 	batch := s.db.NewBatch()
 	defer func() { _ = batch.Close() }()
 	if err := batch.Set(manifestKey(next.Version), encodedManifest, nil); err != nil {
-		return 0, false, fmt.Errorf("staging compaction run reservation: %w", err)
+		return 0, false, fmt.Errorf("staging compaction segment reservation: %w", err)
 	}
 	var version [8]byte
 	binary.BigEndian.PutUint64(version[:], next.Version)
@@ -118,13 +100,13 @@ func (s *compactionStreamer) reserveCompactionRun(
 		return 0, false, fmt.Errorf("staging compaction reservation pointer: %w", err)
 	}
 	if err := batch.Commit(pebble.NoSync); err != nil {
-		return 0, false, fmt.Errorf("committing compaction run reservation: %w", err)
+		return 0, false, fmt.Errorf("committing compaction segment reservation: %w", err)
 	}
 	s.leaseMu.Lock()
 	if s.preparedRuns[runID] != 0 {
 		s.leaseMu.Unlock()
 
-		return 0, false, fmt.Errorf("invariant: compaction run %d was reserved twice", runID)
+		return 0, false, fmt.Errorf("invariant: compaction segment %d was reserved twice", runID)
 	}
 	s.preparedRuns[runID] = 1
 	s.leaseMu.Unlock()
@@ -136,9 +118,9 @@ func (s *compactionStreamer) reserveCompactionRun(
 func (s *compactionStreamer) streamCompactedRun(
 	ctx context.Context,
 	view *View,
-	runs []RunRef,
+	runs []SegmentRef,
 	runID uint64,
-) (RunRef, error) {
+) (SegmentRef, error) {
 	cursors := make([]*semanticRunCursor, 0, len(runs))
 	defer func() {
 		for _, cursor := range cursors {
@@ -150,12 +132,12 @@ func (s *compactionStreamer) streamCompactedRun(
 	for _, run := range runs {
 		cursor, err := view.newSemanticRunCursor(ctx, run.ID)
 		if err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 		cursors = append(cursors, cursor)
 		valid, err := cursor.Advance(ctx)
 		if err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 		if valid {
 			heap.Push(&queue, cursor)
@@ -166,7 +148,7 @@ func (s *compactionStreamer) streamCompactedRun(
 	defer func() { _ = writer.Close() }()
 	for queue.Len() > 0 {
 		if err := ctx.Err(); err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 
 		cursor := heap.Pop(&queue).(*semanticRunCursor)
@@ -174,14 +156,14 @@ func (s *compactionStreamer) streamCompactedRun(
 		input := new(big.Int).Set(cursor.input)
 		output := new(big.Int).Set(cursor.output)
 		if err := advanceSemanticCursor(ctx, &queue, cursor); err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 		for queue.Len() > 0 && bytes.Equal(queue[0].key, key) {
 			duplicate := heap.Pop(&queue).(*semanticRunCursor)
 			input.Add(input, duplicate.input)
 			output.Add(output, duplicate.output)
 			if err := advanceSemanticCursor(ctx, &queue, duplicate); err != nil {
-				return RunRef{}, err
+				return SegmentRef{}, err
 			}
 		}
 		if input.Sign() == 0 && output.Sign() == 0 {
@@ -189,42 +171,24 @@ func (s *compactionStreamer) streamCompactedRun(
 		}
 		identity, timestamp, err := decodeSemanticDataKey(key)
 		if err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 		if err := writer.Add(identity, timestamp, input, output); err != nil {
-			return RunRef{}, err
+			return SegmentRef{}, err
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return RunRef{}, err
+		return SegmentRef{}, err
 	}
 
-	snapshot := s.db.NewSnapshot()
-	checksum, entries, identities, verifyErr := verifyRunRecordsContext(ctx, snapshot, runID)
-	closeErr := snapshot.Close()
-	if err := errors.Join(verifyErr, closeErr); err != nil {
-		return RunRef{}, err
-	}
-	if entries != writer.entryCount || identities != writer.identityCount {
-		return RunRef{}, &ErrCorrupt{Detail: fmt.Sprintf(
-			"streamed compacted run %d count mismatch (entries=%d/%d identities=%d/%d)",
-			runID,
-			entries,
-			writer.entryCount,
-			identities,
-			writer.identityCount,
-		)}
-	}
-
-	merged := RunRef{
+	merged := SegmentRef{
 		ID:                 runID,
 		Level:              runs[0].Level + 1,
 		FirstAuditSequence: runs[0].FirstAuditSequence,
 		LastAuditSequence:  runs[0].LastAuditSequence,
 		MaxLogSequence:     runs[0].MaxLogSequence,
-		EntryCount:         entries,
-		IdentityCount:      identities,
-		Checksum:           checksum,
+		EntryCount:         writer.entryCount,
+		IdentityCount:      writer.identityCount,
 	}
 	for _, run := range runs[1:] {
 		merged.FirstAuditSequence = min(merged.FirstAuditSequence, run.FirstAuditSequence)
@@ -326,8 +290,8 @@ func (w *compactionRunWriter) Close() error {
 }
 
 func (s *compactionStreamer) publishPreparedCompaction(
-	expected []RunRef,
-	merged RunRef,
+	expected []SegmentRef,
+	merged SegmentRef,
 	generation uint64,
 ) (bool, error) {
 	s.mutationMu.Lock()
@@ -343,7 +307,7 @@ func (s *compactionStreamer) publishPreparedCompaction(
 	if err != nil {
 		return false, err
 	}
-	if !compactionInputsPresent(current.Runs, expected) {
+	if !compactionInputsPresent(current.Segments, expected) {
 		return false, nil
 	}
 
@@ -353,19 +317,19 @@ func (s *compactionStreamer) publishPreparedCompaction(
 	}
 	next := cloneManifest(current)
 	next.Version++
-	next.Runs = make([]RunRef, 0, len(current.Runs)-len(expected)+1)
-	for _, run := range current.Runs {
+	next.Segments = make([]SegmentRef, 0, len(current.Segments)-len(expected)+1)
+	for _, run := range current.Segments {
 		if _, selected := selectedIDs[run.ID]; !selected {
-			next.Runs = append(next.Runs, run)
+			next.Segments = append(next.Segments, run)
 		}
 	}
-	next.Runs = append(next.Runs, merged)
-	sort.Slice(next.Runs, func(i, j int) bool {
-		if next.Runs[i].Level != next.Runs[j].Level {
-			return next.Runs[i].Level < next.Runs[j].Level
+	next.Segments = append(next.Segments, merged)
+	sort.Slice(next.Segments, func(i, j int) bool {
+		if next.Segments[i].Level != next.Segments[j].Level {
+			return next.Segments[i].Level < next.Segments[j].Level
 		}
 
-		return next.Runs[i].ID < next.Runs[j].ID
+		return next.Segments[i].ID < next.Segments[j].ID
 	})
 	encodedManifest, err := encodeManifest(next)
 	if err != nil {
@@ -410,7 +374,7 @@ func (s *compactionStreamer) discardPreparedRun(runID uint64) error {
 	if err != nil {
 		return err
 	}
-	for _, run := range current.Runs {
+	for _, run := range current.Segments {
 		if run.ID == runID {
 			return s.releasePreparedRun(runID)
 		}

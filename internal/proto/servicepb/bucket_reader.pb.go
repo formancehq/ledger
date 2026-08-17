@@ -1453,6 +1453,78 @@ func NewDeleteLedgerMetadataRequestListReader(s []*DeleteLedgerMetadataRequest) 
 	return deleteLedgerMetadataRequestListReadonly(s)
 }
 
+// ConfigureHistoricalBalancesRequestReader provides read-only access to ConfigureHistoricalBalancesRequest.
+// Call Mutate() to obtain a mutable clone.
+type ConfigureHistoricalBalancesRequestReader interface {
+	GetLedger() string
+	GetEnabled() bool
+	Mutate() *ConfigureHistoricalBalancesRequest
+}
+
+type configureHistoricalBalancesRequestReadonly ConfigureHistoricalBalancesRequest
+
+func (r *configureHistoricalBalancesRequestReadonly) GetLedger() string {
+	return (*ConfigureHistoricalBalancesRequest)(r).GetLedger()
+}
+
+func (r *configureHistoricalBalancesRequestReadonly) GetEnabled() bool {
+	return (*ConfigureHistoricalBalancesRequest)(r).GetEnabled()
+}
+
+func (r *configureHistoricalBalancesRequestReadonly) Mutate() *ConfigureHistoricalBalancesRequest {
+	return (*ConfigureHistoricalBalancesRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConfigureHistoricalBalancesRequest.
+func (m *ConfigureHistoricalBalancesRequest) AsReader() ConfigureHistoricalBalancesRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*configureHistoricalBalancesRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConfigureHistoricalBalancesRequest.
+func (m *ConfigureHistoricalBalancesRequest) Mutate() *ConfigureHistoricalBalancesRequest {
+	return m.CloneVT()
+}
+
+// ConfigureHistoricalBalancesRequestListReader provides read-only iteration over []*ConfigureHistoricalBalancesRequest.
+type ConfigureHistoricalBalancesRequestListReader interface {
+	Len() int
+	Get(i int) ConfigureHistoricalBalancesRequestReader
+	Range(yield func(int, ConfigureHistoricalBalancesRequestReader) bool)
+}
+
+type configureHistoricalBalancesRequestListReadonly []*ConfigureHistoricalBalancesRequest
+
+func (l configureHistoricalBalancesRequestListReadonly) Len() int { return len(l) }
+
+func (l configureHistoricalBalancesRequestListReadonly) Get(i int) ConfigureHistoricalBalancesRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l configureHistoricalBalancesRequestListReadonly) Range(yield func(int, ConfigureHistoricalBalancesRequestReader) bool) {
+	for i, v := range l {
+		var r ConfigureHistoricalBalancesRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConfigureHistoricalBalancesRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConfigureHistoricalBalancesRequestListReader(s []*ConfigureHistoricalBalancesRequest) ConfigureHistoricalBalancesRequestListReader {
+	return configureHistoricalBalancesRequestListReadonly(s)
+}
+
 // AddEventsSinkRequestReader provides read-only access to AddEventsSinkRequest.
 // Call Mutate() to obtain a mutable clone.
 type AddEventsSinkRequestReader interface {
@@ -9488,57 +9560,57 @@ func NewGetLedgerStatsRequestListReader(s []*GetLedgerStatsRequest) GetLedgerSta
 	return getLedgerStatsRequestListReadonly(s)
 }
 
-// PointInTimeSelectorReader provides read-only access to PointInTimeSelector.
+// HistoricalBalanceSelectorReader provides read-only access to HistoricalBalanceSelector.
 // Call Mutate() to obtain a mutable clone.
-type PointInTimeSelectorReader interface {
+type HistoricalBalanceSelectorReader interface {
 	GetAt() commonpb.TimestampReader
-	GetAxis() PointInTimeAxis
-	Mutate() *PointInTimeSelector
+	GetTemporality() HistoricalBalanceTemporality
+	Mutate() *HistoricalBalanceSelector
 }
 
-type pointInTimeSelectorReadonly PointInTimeSelector
+type historicalBalanceSelectorReadonly HistoricalBalanceSelector
 
-func (r *pointInTimeSelectorReadonly) GetAt() commonpb.TimestampReader {
-	v := (*PointInTimeSelector)(r).GetAt()
+func (r *historicalBalanceSelectorReadonly) GetAt() commonpb.TimestampReader {
+	v := (*HistoricalBalanceSelector)(r).GetAt()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
 }
 
-func (r *pointInTimeSelectorReadonly) GetAxis() PointInTimeAxis {
-	return (*PointInTimeSelector)(r).GetAxis()
+func (r *historicalBalanceSelectorReadonly) GetTemporality() HistoricalBalanceTemporality {
+	return (*HistoricalBalanceSelector)(r).GetTemporality()
 }
 
-func (r *pointInTimeSelectorReadonly) Mutate() *PointInTimeSelector {
-	return (*PointInTimeSelector)(r).CloneVT()
+func (r *historicalBalanceSelectorReadonly) Mutate() *HistoricalBalanceSelector {
+	return (*HistoricalBalanceSelector)(r).CloneVT()
 }
 
-// AsReader returns a read-only view of this PointInTimeSelector.
-func (m *PointInTimeSelector) AsReader() PointInTimeSelectorReader {
+// AsReader returns a read-only view of this HistoricalBalanceSelector.
+func (m *HistoricalBalanceSelector) AsReader() HistoricalBalanceSelectorReader {
 	if m == nil {
 		return nil
 	}
-	return (*pointInTimeSelectorReadonly)(m)
+	return (*historicalBalanceSelectorReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this PointInTimeSelector.
-func (m *PointInTimeSelector) Mutate() *PointInTimeSelector {
+// Mutate returns a mutable deep clone of this HistoricalBalanceSelector.
+func (m *HistoricalBalanceSelector) Mutate() *HistoricalBalanceSelector {
 	return m.CloneVT()
 }
 
-// PointInTimeSelectorListReader provides read-only iteration over []*PointInTimeSelector.
-type PointInTimeSelectorListReader interface {
+// HistoricalBalanceSelectorListReader provides read-only iteration over []*HistoricalBalanceSelector.
+type HistoricalBalanceSelectorListReader interface {
 	Len() int
-	Get(i int) PointInTimeSelectorReader
-	Range(yield func(int, PointInTimeSelectorReader) bool)
+	Get(i int) HistoricalBalanceSelectorReader
+	Range(yield func(int, HistoricalBalanceSelectorReader) bool)
 }
 
-type pointInTimeSelectorListReadonly []*PointInTimeSelector
+type historicalBalanceSelectorListReadonly []*HistoricalBalanceSelector
 
-func (l pointInTimeSelectorListReadonly) Len() int { return len(l) }
+func (l historicalBalanceSelectorListReadonly) Len() int { return len(l) }
 
-func (l pointInTimeSelectorListReadonly) Get(i int) PointInTimeSelectorReader {
+func (l historicalBalanceSelectorListReadonly) Get(i int) HistoricalBalanceSelectorReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -9546,9 +9618,9 @@ func (l pointInTimeSelectorListReadonly) Get(i int) PointInTimeSelectorReader {
 	return v.AsReader()
 }
 
-func (l pointInTimeSelectorListReadonly) Range(yield func(int, PointInTimeSelectorReader) bool) {
+func (l historicalBalanceSelectorListReadonly) Range(yield func(int, HistoricalBalanceSelectorReader) bool) {
 	for i, v := range l {
-		var r PointInTimeSelectorReader
+		var r HistoricalBalanceSelectorReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -9558,97 +9630,88 @@ func (l pointInTimeSelectorListReadonly) Range(yield func(int, PointInTimeSelect
 	}
 }
 
-// NewPointInTimeSelectorListReader wraps s for read-only iteration. The returned
+// NewHistoricalBalanceSelectorListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPointInTimeSelectorListReader(s []*PointInTimeSelector) PointInTimeSelectorListReader {
-	return pointInTimeSelectorListReadonly(s)
+func NewHistoricalBalanceSelectorListReader(s []*HistoricalBalanceSelector) HistoricalBalanceSelectorListReader {
+	return historicalBalanceSelectorListReadonly(s)
 }
 
-// PointInTimeViewReader provides read-only access to PointInTimeView.
+// HistoricalBalanceViewReader provides read-only access to HistoricalBalanceView.
 // Call Mutate() to obtain a mutable clone.
-type PointInTimeViewReader interface {
+type HistoricalBalanceViewReader interface {
 	GetRequestedAt() commonpb.TimestampReader
-	GetAxis() PointInTimeAxis
-	GetLedgerId() uint32
+	GetTemporality() HistoricalBalanceTemporality
+	GetLedger() string
 	GetAuditWatermark() uint64
 	GetLogWatermark() uint64
 	GetManifestVersion() uint64
-	GetHistoryAvailableFrom() commonpb.TimestampReader
 	GetViewToken() string
-	Mutate() *PointInTimeView
+	Mutate() *HistoricalBalanceView
 }
 
-type pointInTimeViewReadonly PointInTimeView
+type historicalBalanceViewReadonly HistoricalBalanceView
 
-func (r *pointInTimeViewReadonly) GetRequestedAt() commonpb.TimestampReader {
-	v := (*PointInTimeView)(r).GetRequestedAt()
+func (r *historicalBalanceViewReadonly) GetRequestedAt() commonpb.TimestampReader {
+	v := (*HistoricalBalanceView)(r).GetRequestedAt()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
 }
 
-func (r *pointInTimeViewReadonly) GetAxis() PointInTimeAxis {
-	return (*PointInTimeView)(r).GetAxis()
+func (r *historicalBalanceViewReadonly) GetTemporality() HistoricalBalanceTemporality {
+	return (*HistoricalBalanceView)(r).GetTemporality()
 }
 
-func (r *pointInTimeViewReadonly) GetLedgerId() uint32 {
-	return (*PointInTimeView)(r).GetLedgerId()
+func (r *historicalBalanceViewReadonly) GetLedger() string {
+	return (*HistoricalBalanceView)(r).GetLedger()
 }
 
-func (r *pointInTimeViewReadonly) GetAuditWatermark() uint64 {
-	return (*PointInTimeView)(r).GetAuditWatermark()
+func (r *historicalBalanceViewReadonly) GetAuditWatermark() uint64 {
+	return (*HistoricalBalanceView)(r).GetAuditWatermark()
 }
 
-func (r *pointInTimeViewReadonly) GetLogWatermark() uint64 {
-	return (*PointInTimeView)(r).GetLogWatermark()
+func (r *historicalBalanceViewReadonly) GetLogWatermark() uint64 {
+	return (*HistoricalBalanceView)(r).GetLogWatermark()
 }
 
-func (r *pointInTimeViewReadonly) GetManifestVersion() uint64 {
-	return (*PointInTimeView)(r).GetManifestVersion()
+func (r *historicalBalanceViewReadonly) GetManifestVersion() uint64 {
+	return (*HistoricalBalanceView)(r).GetManifestVersion()
 }
 
-func (r *pointInTimeViewReadonly) GetHistoryAvailableFrom() commonpb.TimestampReader {
-	v := (*PointInTimeView)(r).GetHistoryAvailableFrom()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *historicalBalanceViewReadonly) GetViewToken() string {
+	return (*HistoricalBalanceView)(r).GetViewToken()
 }
 
-func (r *pointInTimeViewReadonly) GetViewToken() string {
-	return (*PointInTimeView)(r).GetViewToken()
+func (r *historicalBalanceViewReadonly) Mutate() *HistoricalBalanceView {
+	return (*HistoricalBalanceView)(r).CloneVT()
 }
 
-func (r *pointInTimeViewReadonly) Mutate() *PointInTimeView {
-	return (*PointInTimeView)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this PointInTimeView.
-func (m *PointInTimeView) AsReader() PointInTimeViewReader {
+// AsReader returns a read-only view of this HistoricalBalanceView.
+func (m *HistoricalBalanceView) AsReader() HistoricalBalanceViewReader {
 	if m == nil {
 		return nil
 	}
-	return (*pointInTimeViewReadonly)(m)
+	return (*historicalBalanceViewReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this PointInTimeView.
-func (m *PointInTimeView) Mutate() *PointInTimeView {
+// Mutate returns a mutable deep clone of this HistoricalBalanceView.
+func (m *HistoricalBalanceView) Mutate() *HistoricalBalanceView {
 	return m.CloneVT()
 }
 
-// PointInTimeViewListReader provides read-only iteration over []*PointInTimeView.
-type PointInTimeViewListReader interface {
+// HistoricalBalanceViewListReader provides read-only iteration over []*HistoricalBalanceView.
+type HistoricalBalanceViewListReader interface {
 	Len() int
-	Get(i int) PointInTimeViewReader
-	Range(yield func(int, PointInTimeViewReader) bool)
+	Get(i int) HistoricalBalanceViewReader
+	Range(yield func(int, HistoricalBalanceViewReader) bool)
 }
 
-type pointInTimeViewListReadonly []*PointInTimeView
+type historicalBalanceViewListReadonly []*HistoricalBalanceView
 
-func (l pointInTimeViewListReadonly) Len() int { return len(l) }
+func (l historicalBalanceViewListReadonly) Len() int { return len(l) }
 
-func (l pointInTimeViewListReadonly) Get(i int) PointInTimeViewReader {
+func (l historicalBalanceViewListReadonly) Get(i int) HistoricalBalanceViewReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -9656,9 +9719,9 @@ func (l pointInTimeViewListReadonly) Get(i int) PointInTimeViewReader {
 	return v.AsReader()
 }
 
-func (l pointInTimeViewListReadonly) Range(yield func(int, PointInTimeViewReader) bool) {
+func (l historicalBalanceViewListReadonly) Range(yield func(int, HistoricalBalanceViewReader) bool) {
 	for i, v := range l {
-		var r PointInTimeViewReader
+		var r HistoricalBalanceViewReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -9668,10 +9731,10 @@ func (l pointInTimeViewListReadonly) Range(yield func(int, PointInTimeViewReader
 	}
 }
 
-// NewPointInTimeViewListReader wraps s for read-only iteration. The returned
+// NewHistoricalBalanceViewListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPointInTimeViewListReader(s []*PointInTimeView) PointInTimeViewListReader {
-	return pointInTimeViewListReadonly(s)
+func NewHistoricalBalanceViewListReader(s []*HistoricalBalanceView) HistoricalBalanceViewListReader {
+	return historicalBalanceViewListReadonly(s)
 }
 
 // AggregateVolumesRequestReader provides read-only access to AggregateVolumesRequest.
@@ -9684,7 +9747,7 @@ type AggregateVolumesRequestReader interface {
 	GetGroupByPrefixes() []string
 	GetCheckpointId() uint64
 	GetCollapseColors() bool
-	GetPointInTime() PointInTimeSelectorReader
+	GetHistoricalBalance() HistoricalBalanceSelectorReader
 	Mutate() *AggregateVolumesRequest
 }
 
@@ -9722,8 +9785,8 @@ func (r *aggregateVolumesRequestReadonly) GetCollapseColors() bool {
 	return (*AggregateVolumesRequest)(r).GetCollapseColors()
 }
 
-func (r *aggregateVolumesRequestReadonly) GetPointInTime() PointInTimeSelectorReader {
-	v := (*AggregateVolumesRequest)(r).GetPointInTime()
+func (r *aggregateVolumesRequestReadonly) GetHistoricalBalance() HistoricalBalanceSelectorReader {
+	v := (*AggregateVolumesRequest)(r).GetHistoricalBalance()
 	if v == nil {
 		return nil
 	}
@@ -9782,6 +9845,160 @@ func (l aggregateVolumesRequestListReadonly) Range(yield func(int, AggregateVolu
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewAggregateVolumesRequestListReader(s []*AggregateVolumesRequest) AggregateVolumesRequestListReader {
 	return aggregateVolumesRequestListReadonly(s)
+}
+
+// GetHistoricalBalancesStatusRequestReader provides read-only access to GetHistoricalBalancesStatusRequest.
+// Call Mutate() to obtain a mutable clone.
+type GetHistoricalBalancesStatusRequestReader interface {
+	GetLedger() string
+	Mutate() *GetHistoricalBalancesStatusRequest
+}
+
+type getHistoricalBalancesStatusRequestReadonly GetHistoricalBalancesStatusRequest
+
+func (r *getHistoricalBalancesStatusRequestReadonly) GetLedger() string {
+	return (*GetHistoricalBalancesStatusRequest)(r).GetLedger()
+}
+
+func (r *getHistoricalBalancesStatusRequestReadonly) Mutate() *GetHistoricalBalancesStatusRequest {
+	return (*GetHistoricalBalancesStatusRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetHistoricalBalancesStatusRequest.
+func (m *GetHistoricalBalancesStatusRequest) AsReader() GetHistoricalBalancesStatusRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*getHistoricalBalancesStatusRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetHistoricalBalancesStatusRequest.
+func (m *GetHistoricalBalancesStatusRequest) Mutate() *GetHistoricalBalancesStatusRequest {
+	return m.CloneVT()
+}
+
+// GetHistoricalBalancesStatusRequestListReader provides read-only iteration over []*GetHistoricalBalancesStatusRequest.
+type GetHistoricalBalancesStatusRequestListReader interface {
+	Len() int
+	Get(i int) GetHistoricalBalancesStatusRequestReader
+	Range(yield func(int, GetHistoricalBalancesStatusRequestReader) bool)
+}
+
+type getHistoricalBalancesStatusRequestListReadonly []*GetHistoricalBalancesStatusRequest
+
+func (l getHistoricalBalancesStatusRequestListReadonly) Len() int { return len(l) }
+
+func (l getHistoricalBalancesStatusRequestListReadonly) Get(i int) GetHistoricalBalancesStatusRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getHistoricalBalancesStatusRequestListReadonly) Range(yield func(int, GetHistoricalBalancesStatusRequestReader) bool) {
+	for i, v := range l {
+		var r GetHistoricalBalancesStatusRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetHistoricalBalancesStatusRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetHistoricalBalancesStatusRequestListReader(s []*GetHistoricalBalancesStatusRequest) GetHistoricalBalancesStatusRequestListReader {
+	return getHistoricalBalancesStatusRequestListReadonly(s)
+}
+
+// GetHistoricalBalancesStatusResponseReader provides read-only access to GetHistoricalBalancesStatusResponse.
+// Call Mutate() to obtain a mutable clone.
+type GetHistoricalBalancesStatusResponseReader interface {
+	GetLedger() string
+	GetState() GetHistoricalBalancesStatusResponse_State
+	GetAuditWatermark() uint64
+	GetLogWatermark() uint64
+	GetError() string
+	Mutate() *GetHistoricalBalancesStatusResponse
+}
+
+type getHistoricalBalancesStatusResponseReadonly GetHistoricalBalancesStatusResponse
+
+func (r *getHistoricalBalancesStatusResponseReadonly) GetLedger() string {
+	return (*GetHistoricalBalancesStatusResponse)(r).GetLedger()
+}
+
+func (r *getHistoricalBalancesStatusResponseReadonly) GetState() GetHistoricalBalancesStatusResponse_State {
+	return (*GetHistoricalBalancesStatusResponse)(r).GetState()
+}
+
+func (r *getHistoricalBalancesStatusResponseReadonly) GetAuditWatermark() uint64 {
+	return (*GetHistoricalBalancesStatusResponse)(r).GetAuditWatermark()
+}
+
+func (r *getHistoricalBalancesStatusResponseReadonly) GetLogWatermark() uint64 {
+	return (*GetHistoricalBalancesStatusResponse)(r).GetLogWatermark()
+}
+
+func (r *getHistoricalBalancesStatusResponseReadonly) GetError() string {
+	return (*GetHistoricalBalancesStatusResponse)(r).GetError()
+}
+
+func (r *getHistoricalBalancesStatusResponseReadonly) Mutate() *GetHistoricalBalancesStatusResponse {
+	return (*GetHistoricalBalancesStatusResponse)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this GetHistoricalBalancesStatusResponse.
+func (m *GetHistoricalBalancesStatusResponse) AsReader() GetHistoricalBalancesStatusResponseReader {
+	if m == nil {
+		return nil
+	}
+	return (*getHistoricalBalancesStatusResponseReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this GetHistoricalBalancesStatusResponse.
+func (m *GetHistoricalBalancesStatusResponse) Mutate() *GetHistoricalBalancesStatusResponse {
+	return m.CloneVT()
+}
+
+// GetHistoricalBalancesStatusResponseListReader provides read-only iteration over []*GetHistoricalBalancesStatusResponse.
+type GetHistoricalBalancesStatusResponseListReader interface {
+	Len() int
+	Get(i int) GetHistoricalBalancesStatusResponseReader
+	Range(yield func(int, GetHistoricalBalancesStatusResponseReader) bool)
+}
+
+type getHistoricalBalancesStatusResponseListReadonly []*GetHistoricalBalancesStatusResponse
+
+func (l getHistoricalBalancesStatusResponseListReadonly) Len() int { return len(l) }
+
+func (l getHistoricalBalancesStatusResponseListReadonly) Get(i int) GetHistoricalBalancesStatusResponseReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l getHistoricalBalancesStatusResponseListReadonly) Range(yield func(int, GetHistoricalBalancesStatusResponseReader) bool) {
+	for i, v := range l {
+		var r GetHistoricalBalancesStatusResponseReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewGetHistoricalBalancesStatusResponseListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewGetHistoricalBalancesStatusResponseListReader(s []*GetHistoricalBalancesStatusResponse) GetHistoricalBalancesStatusResponseListReader {
+	return getHistoricalBalancesStatusResponseListReadonly(s)
 }
 
 // QueryProfileReader provides read-only access to QueryProfile.

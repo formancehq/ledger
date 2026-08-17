@@ -23,12 +23,12 @@ func TestReducerDirectTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []balancehistory.Effect{
 		{
-			LedgerID: 7, AuditSequence: 2, OrderIndex: 3, LogSequence: 11,
+			LedgerName: "default", AuditSequence: 2, OrderIndex: 3, LogSequence: 11,
 			EffectiveAt: 100, InsertedAt: 200, Account: "users:001",
 			AssetBase: "USD", AssetPrecision: 2, Color: "BLUE", Output: amount(42),
 		},
 		{
-			LedgerID: 7, AuditSequence: 2, OrderIndex: 3, LogSequence: 11,
+			LedgerName: "default", AuditSequence: 2, OrderIndex: 3, LogSequence: 11,
 			EffectiveAt: 100, InsertedAt: 200, Account: "merchant",
 			AssetBase: "USD", AssetPrecision: 2, Color: "BLUE", Input: amount(42),
 		},
@@ -82,7 +82,7 @@ func TestReducerConsumesNumscriptAndMirrorResolvedLogsIdentically(t *testing.T) 
 			effects, err := reducer.Reduce(position(2, 0, 11), transactionLog(11, "default", test.payload))
 			require.NoError(t, err)
 			require.Len(t, effects, 2)
-			require.Equal(t, uint32(7), effects[0].LedgerID)
+			require.Equal(t, "default", effects[0].LedgerName)
 			require.Equal(t, "EUR", effects[0].AssetBase)
 			require.Equal(t, uint8(4), effects[0].AssetPrecision)
 			require.Equal(t, "OPS", effects[0].Color)
@@ -92,20 +92,17 @@ func TestReducerConsumesNumscriptAndMirrorResolvedLogsIdentically(t *testing.T) 
 	}
 }
 
-func TestReducerSeparatesDeleteAndRecreateIncarnations(t *testing.T) {
+func TestReducerRejectsImpossibleDeleteAndRecreateLifecycle(t *testing.T) {
 	t.Parallel()
 
 	reducer := balancehistory.NewReducer()
 	require.NoError(t, reduceLifecycle(reducer, 1, 0, 10, createLedgerLog(10, "default", 7)))
-	first, err := reducer.Reduce(position(2, 0, 11), transactionLog(11, "default", createdTransaction(posting("world", "cash", "USD", "", 1), 10, 20)))
+	_, err := reducer.Reduce(position(2, 0, 11), transactionLog(11, "default", createdTransaction(posting("world", "cash", "USD", "", 1), 10, 20)))
 	require.NoError(t, err)
 	require.NoError(t, reduceLifecycle(reducer, 3, 0, 12, deleteLedgerLog(12, "default")))
-	require.NoError(t, reduceLifecycle(reducer, 4, 0, 13, createLedgerLog(13, "default", 99)))
-	second, err := reducer.Reduce(position(5, 0, 14), transactionLog(14, "default", createdTransaction(posting("world", "cash", "USD", "", 2), 30, 40)))
-	require.NoError(t, err)
-
-	require.Equal(t, uint32(7), first[0].LedgerID)
-	require.Equal(t, uint32(99), second[0].LedgerID)
+	err = reduceLifecycle(reducer, 4, 0, 13, createLedgerLog(13, "default", 99))
+	require.ErrorIs(t, err, balancehistory.ErrInvalidLifecycle)
+	require.ErrorContains(t, err, "was already used")
 }
 
 func TestReducerNonMonetaryLogProducesNoEffectAndAdvancesOrder(t *testing.T) {
@@ -124,6 +121,33 @@ func TestReducerNonMonetaryLogProducesNoEffectAndAdvancesOrder(t *testing.T) {
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{}},
 	}))
 	require.ErrorIs(t, err, balancehistory.ErrOutOfOrder)
+}
+
+func TestReducerTracksHistoricalBalanceConfigurationAndProjectionSet(t *testing.T) {
+	t.Parallel()
+
+	reducer := balancehistory.NewReducer()
+	require.NoError(t, reduceLifecycle(reducer, 1, 0, 1, createLedgerLog(1, "default", 7)))
+	_, err := reducer.Reduce(position(2, 0, 2), transactionLog(2, "default", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_ConfiguredHistoricalBalances{
+			ConfiguredHistoricalBalances: &commonpb.ConfiguredHistoricalBalancesLog{Enabled: true},
+		},
+	}))
+	require.NoError(t, err)
+	require.Equal(t, []string{"default"}, reducer.State().Enabled)
+
+	reducer.SetProjectedLedgers(nil)
+	effects, err := reducer.Reduce(position(3, 0, 3), transactionLog(3, "default", createdTransaction(posting("world", "cash", "USD", "", 1), 10, 20)))
+	require.NoError(t, err)
+	require.Empty(t, effects, "a rebuild with an empty final configuration must not emit account rows")
+
+	_, err = reducer.Reduce(position(4, 0, 4), transactionLog(4, "default", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_ConfiguredHistoricalBalances{
+			ConfiguredHistoricalBalances: &commonpb.ConfiguredHistoricalBalancesLog{Enabled: false},
+		},
+	}))
+	require.NoError(t, err)
+	require.Empty(t, reducer.State().Enabled)
 }
 
 func TestReducerFailsClosedWithoutActiveIncarnation(t *testing.T) {

@@ -659,7 +659,7 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		FileRetryCount: getInt("snapshot-file-retry-count", 3),
 	}
 
-	// Asynchronous point-in-time balance history.
+	// Asynchronous historical-balance projection.
 	cfg.BalanceHistoryConfig = balanceHistoryConfigFromFlags(cmd)
 
 	// Configuration safety

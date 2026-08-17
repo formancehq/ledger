@@ -104,6 +104,8 @@ service BucketService {
   rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
   // AggregateVolumes returns per-asset aggregated volumes for filtered accounts
   rpc AggregateVolumes(AggregateVolumesRequest) returns (common.AggregateResult);
+  // GetHistoricalBalancesStatus returns this replica's projection state for a ledger.
+  rpc GetHistoricalBalancesStatus(GetHistoricalBalancesStatusRequest) returns (GetHistoricalBalancesStatusResponse);
   // GetNumscript returns a numscript by name and optional version
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
   // ListNumscripts streams all numscripts (latest version of each)
@@ -263,6 +265,7 @@ message Request {
     DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 31;
     SaveLedgerMetadataRequest save_ledger_metadata = 32;
     DeleteLedgerMetadataRequest delete_ledger_metadata = 33;
+    ConfigureHistoricalBalancesRequest configure_historical_balances = 34;
   }
   // Signing happens at the batch level, never per request: a signed
   // ApplyRequest carries an opaque SignedApplyBatch whose payload is the
@@ -292,6 +295,14 @@ message SaveLedgerMetadataRequest {
 message DeleteLedgerMetadataRequest {
   string ledger = 1;
   string key = 2;
+}
+
+// ConfigureHistoricalBalancesRequest enables or disables the rebuildable
+// historical-balance projection for one ledger. The command is audit-bound;
+// each replica derives its local projection from the same requested state.
+message ConfigureHistoricalBalancesRequest {
+  string ledger = 1;
+  bool enabled = 2;
 }
 
 // AddEventsSinkRequest adds or updates a named sink configuration.
@@ -1234,28 +1245,26 @@ message GetLedgerStatsRequest {
   fixed64 checkpoint_id = 2;
 }
 
-enum PointInTimeAxis {
-  POINT_IN_TIME_AXIS_EFFECTIVE = 0;
-  POINT_IN_TIME_AXIS_INSERTION = 1;
+enum HistoricalBalanceTemporality {
+  HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE = 0;
+  HISTORICAL_BALANCE_TEMPORALITY_INSERTION = 1;
 }
 
-message PointInTimeSelector {
+message HistoricalBalanceSelector {
   common.Timestamp at = 1;
-  PointInTimeAxis axis = 2;
+  HistoricalBalanceTemporality temporality = 2;
 }
 
-// PointInTimeView identifies the immutable historical projection used to
-// answer a point-in-time read. history_available_from is the availability
-// floor for the selected axis.
-message PointInTimeView {
+// HistoricalBalanceView identifies the immutable historical projection used to
+// answer a historical balance read.
+message HistoricalBalanceView {
   common.Timestamp requested_at = 1;
-  PointInTimeAxis axis = 2;
-  uint32 ledger_id = 3;
+  HistoricalBalanceTemporality temporality = 2;
+  string ledger = 3;
   fixed64 audit_watermark = 4;
   fixed64 log_watermark = 5;
   fixed64 manifest_version = 6;
-  common.Timestamp history_available_from = 7;
-  string view_token = 8;
+  string view_token = 7;
 }
 
 message AggregateVolumesRequest {
@@ -1274,7 +1283,25 @@ message AggregateVolumesRequest {
   // ("" color). Result entries are produced with color = "". By default each
   // (asset, color) bucket yields its own AggregatedVolume entry.
   bool collapse_colors = 7;
-  PointInTimeSelector point_in_time = 8;
+  HistoricalBalanceSelector historical_balance = 8;
+}
+
+message GetHistoricalBalancesStatusRequest {
+  string ledger = 1;
+}
+
+message GetHistoricalBalancesStatusResponse {
+  enum State {
+    STATE_DISABLED = 0;
+    STATE_BUILDING = 1;
+    STATE_READY = 2;
+    STATE_ERROR = 3;
+  }
+  string ledger = 1;
+  State state = 2;
+  fixed64 audit_watermark = 3;
+  fixed64 log_watermark = 4;
+  string error = 5;
 }
 
 // ============================================================================

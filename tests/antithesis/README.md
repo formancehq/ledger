@@ -30,18 +30,25 @@ two templates:
 Adding a driver is just adding a directory under `bin/cmds/main/` with a
 `main.go`. No manifest to update; no Dockerfile to touch.
 
-## Point-in-time balance history
+## Historical balances
 
-Both Kubernetes and local Compose profiles enable the replica-local PIT
-projection, its MinIO-backed cold tier, accelerated compaction/tiering/verifier
-cadence and remote GC. Kubernetes MinIO uses a PVC so pod termination does not
-erase authoritative chapter archives or tiered PIT runs.
+The replica-local historical-balance worker runs on every node. Kubernetes and
+local Compose only tune its bounded build and compaction cadence; each fixture
+enables its ledger through the audited client API. The projection has no cold
+tier, verifier, checksum, or remote GC. MinIO remains part of these profiles for
+the platform's authoritative archived audit chapters, which a projection rebuild
+may read after hot-history purges.
 
-The first implemented PIT property is
+Driver paths, Antithesis assertion names, and recorded campaign IDs retain their
+original `pit` spelling so historical reports remain addressable. They exercise
+the narrower historical-balance feature: monetary account volumes only, under
+effective or insertion temporality.
+
+The first implemented historical-balance property is
 `unfiltered-fast-path-equals-account-fold`:
 
 - `first_default_ledger` seeds the isolated `pitscope-oracle` fixture;
-- `parallel_driver_pit_scope_equivalence` samples one axis/transform case while
+- `parallel_driver_pit_scope_equivalence` samples one temporality/transform case while
   faults are active;
 - `eventually_pit_scope_equivalence` requires every effective/insertion and
   precision/color combination after faults and writers stop.
@@ -59,9 +66,9 @@ The P0 `idempotency-keyed-apply-changes-pit-once` property extends
   until the client deadline, producing an authenticated ambiguous outcome;
 - two multi-node retries must return the original transaction and exactly one
   detailed audit/log outcome;
-- classified fail-closed history samples are retried as a bounded two-axis pair
+- classified fail-closed history samples are retried as a bounded two-temporality pair
   and recorded separately for coverage;
-- effective and insertion PIT views covering that log must each contain exactly
+- effective and insertion historical views covering that log must each contain exactly
   one property-owned monetary input.
 
 The P0 `linearizable-pit-partition-fails-closed` property has a
@@ -297,7 +304,7 @@ just k8s-push-images
 property drivers under `main/` are tested exclusively by the Antithesis
 hypervisor.
 
-## Launching targeted PIT Compose campaigns
+## Launching targeted historical-balance Compose campaigns
 
 Use a filtered workload image so the composer can schedule only the setup and
 property drivers relevant to one campaign. Build, validate and launch must use
@@ -306,9 +313,9 @@ campaigns:
 
 | Campaign | Included commands | Test name | Description |
 |---|---|---|---|
-| Scope equivalence | `main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence` | `ledger-pit-scope-equivalence` | `PIT fast path equals exhaustive account fold on both time axes` |
-| Idempotent retry | `main/first_default_ledger,main/parallel_driver_idempotency` | `ledger-pit-idempotency` | `PIT keyed retry changes monetary history exactly once` |
-| Dual-axis reversal exactness | `main/first_default_ledger,main/parallel_driver_pit_dual_axis,main/eventually_pit_dual_axis` | `ledger-pit-dual-axis` | `PIT effective and insertion axes exactly fold atomic postings and reversals` |
+| Scope equivalence | `main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence` | `ledger-pit-scope-equivalence` | `Historical fast path equals exhaustive account fold under both temporalities` |
+| Idempotent retry | `main/first_default_ledger,main/parallel_driver_idempotency` | `ledger-pit-idempotency` | `A keyed retry changes monetary history exactly once` |
+| Dual-temporality reversal exactness | `main/first_default_ledger,main/parallel_driver_pit_dual_axis,main/eventually_pit_dual_axis` | `ledger-pit-dual-axis` | `Effective and insertion temporalities exactly fold atomic postings and reversals` |
 
 Set `include`, `test_name`, and `description` from exactly one row, then run:
 
@@ -318,7 +325,7 @@ export ANTITHESIS_REPOSITORY='<tenant registry repository>'
 
 include='main/first_default_ledger,main/parallel_driver_pit_scope_equivalence,main/eventually_pit_scope_equivalence'
 test_name='ledger-pit-scope-equivalence'
-description='PIT fast path equals exhaustive account fold on both time axes'
+description='Historical fast path equals exhaustive account fold under both temporalities'
 
 just push-images "$include"
 
@@ -346,14 +353,14 @@ The repository launch recipes also default to two hours: `just run` sends
 `duration_hours=2` to `antithesis.duration=120`. Passing an explicit duration
 still overrides either default.
 
-### Recorded 120-minute PIT campaigns
+### Recorded 120-minute historical-balance campaigns
 
 The first cloud campaigns completed on 2026-07-31:
 
 | Campaign | Run ID | Triage |
 |---|---|---|
-| Pre-fix scope-equivalence baseline | `dd4951b02c3adea9de3a066efdbb816c-58-10` | 69/89 passing; invalid convergence assets abort setup, so this is not PIT correctness evidence |
-| Corrected dual-axis reversal exactness | `93d98919f9f174b5ab20109b8cf00314-58-10` | 82/100 passing; every targeted PIT property passes with zero safety counterexamples |
+| Pre-fix scope-equivalence baseline | `dd4951b02c3adea9de3a066efdbb816c-58-10` | 69/89 passing; invalid convergence assets abort setup, so this is not historical-balance correctness evidence |
+| Corrected dual-temporality reversal exactness | `93d98919f9f174b5ab20109b8cf00314-58-10` | 82/100 passing; every targeted historical-balance property passes with zero safety counterexamples |
 
 The corrected campaign used config tag
 `pit-dual-axis-20260731-d8b65cf`, workload commit `a3c179468` plus fixture
@@ -370,11 +377,11 @@ quiescent eventual driver. Its main signals were:
 
 The report's 18 other failures are one image-age metaproperty, fourteen
 unreached repository-wide coverage assertions, and three unrelated generic
-`Sometimes` probes. None is a PIT safety counterexample. Open a report with
+`Sometimes` probes. None is a historical-balance safety counterexample. Open a report with
 `snouty runs show <run_id> --web`; do not copy its signed URL into durable
 documentation.
 
-## Launching the targeted PIT no-quorum campaign
+## Launching the targeted historical-balance no-quorum campaign
 
 This property drives the Kubernetes API and therefore must use the K8s
 Antithesis profile, not the legacy Compose webhook. It reuses an existing
@@ -398,7 +405,7 @@ launching `basic_k8s_test`. Keep the returned run ID for triage; the campaign is
 successful only when both the fail-closed coverage signal and the three-voter
 post-repair convergence signal are reached without an `Always` violation.
 
-## Launching the targeted PIT replica-convergence campaign
+## Launching the targeted historical-balance replica-convergence campaign
 
 Use the K8s profile so process faults and the scaling driver exercise voter and
 learner recovery before the terminal `eventually_` command:

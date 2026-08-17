@@ -2,7 +2,6 @@ package ctrl
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -12,42 +11,42 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 )
 
-// PointInTimeSelector is application-layer read selection. It deliberately
+// HistoricalBalanceSelector is application-layer read selection. It deliberately
 // stays outside query.AggregateOptions, whose fields describe only monetary
 // aggregation and are also used by prepared queries and FSM sentinels.
-type PointInTimeSelector struct {
-	At   uint64
-	Axis balancehistorystore.Axis
+type HistoricalBalanceSelector struct {
+	At          uint64
+	Temporality balancehistorystore.Temporality
 }
 
 // AggregateVolumesReadOptions controls consistency/view selection separately
 // from AggregateOptions.
 type AggregateVolumesReadOptions struct {
-	PointInTime    *PointInTimeSelector
-	MinLogSequence uint64
+	HistoricalBalance *HistoricalBalanceSelector
+	MinLogSequence    uint64
 }
 
-// VolumeViewToken identifies the immutable history manifest used by a result.
-type VolumeViewToken struct {
-	RequestedAt          uint64
-	Axis                 balancehistorystore.Axis
-	LedgerID             uint32
-	AuditWatermark       uint64
-	LogWatermark         uint64
-	ManifestVersion      uint64
-	HistoryAvailableFrom uint64
-	Token                string
+// HistoricalBalanceViewToken identifies the immutable history manifest used by a result.
+type HistoricalBalanceViewToken struct {
+	RequestedAt     uint64
+	Temporality     balancehistorystore.Temporality
+	Ledger          string
+	AuditWatermark  uint64
+	LogWatermark    uint64
+	ManifestVersion uint64
+	Token           string
 }
 
 // AggregateVolumesResult preserves the existing monetary response while
-// carrying PIT provenance out-of-band at the transport layer.
+// carrying historical-balance provenance out-of-band at the transport layer.
 type AggregateVolumesResult struct {
 	Aggregate *commonpb.AggregateResult
-	View      *VolumeViewToken
+	View      *HistoricalBalanceViewToken
 }
 
 // VolumeViewProvider hides manifest pinning, lag waiting, temporal store
@@ -56,10 +55,10 @@ type VolumeViewProvider interface {
 	Open(
 		ctx context.Context,
 		ledgerName string,
-		ledgerID uint32,
-		selector PointInTimeSelector,
+		selector HistoricalBalanceSelector,
 		minLogSequence uint64,
 	) (*HistoricalVolumeView, error)
+	Status(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error)
 }
 
 // LocalVolumeViewProvider opens views from this replica's peer store.
@@ -71,18 +70,52 @@ func NewLocalVolumeViewProvider(store *balancehistorystore.Store) *LocalVolumeVi
 	return &LocalVolumeViewProvider{store: store}
 }
 
+func (p *LocalVolumeViewProvider) Status(_ context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	response := &servicepb.GetHistoricalBalancesStatusResponse{Ledger: ledgerName}
+	if p == nil || p.store == nil {
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = "historical-balance peer store is unavailable"
+
+		return response, nil
+	}
+
+	manifest, err := p.store.Manifest()
+	if err != nil {
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = err.Error()
+
+		return response, nil
+	}
+	response.AuditWatermark = manifest.AuditWatermark
+	response.LogWatermark = manifest.LogWatermark
+	if !sort.StringsAreSorted(manifest.Ledgers) {
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = "configured ledger names are not sorted"
+
+		return response, nil
+	}
+	index := sort.SearchStrings(manifest.Ledgers, ledgerName)
+	if index == len(manifest.Ledgers) || manifest.Ledgers[index] != ledgerName {
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_DISABLED
+
+		return response, nil
+	}
+	response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_READY
+
+	return response, nil
+}
+
 func (p *LocalVolumeViewProvider) Open(
 	ctx context.Context,
-	_ string,
-	ledgerID uint32,
-	selector PointInTimeSelector,
+	ledgerName string,
+	selector HistoricalBalanceSelector,
 	minLogSequence uint64,
 ) (*HistoricalVolumeView, error) {
 	if p == nil || p.store == nil {
 		return nil, &balancehistorystore.ErrSourceMissing{Detail: "balance history projection is not configured"}
 	}
-	if selector.Axis != balancehistorystore.AxisEffective && selector.Axis != balancehistorystore.AxisInsertion {
-		return nil, fmt.Errorf("invalid point-in-time axis %d", selector.Axis)
+	if selector.Temporality != balancehistorystore.TemporalityEffective && selector.Temporality != balancehistorystore.TemporalityInsertion {
+		return nil, fmt.Errorf("invalid historical-balance temporality %d", selector.Temporality)
 	}
 	if minLogSequence > 0 {
 		if err := p.store.WaitForLogWatermark(ctx, minLogSequence); err != nil {
@@ -95,34 +128,40 @@ func (p *LocalVolumeViewProvider) Open(
 		return nil, err
 	}
 	manifest := view.Manifest()
-	floor := manifest.EffectiveFloor
-	if selector.Axis == balancehistorystore.AxisInsertion {
-		floor = manifest.InsertionFloor
+	if !sort.StringsAreSorted(manifest.Ledgers) {
+		_ = view.Close()
+
+		return nil, &balancehistorystore.ErrCorrupt{Detail: "configured ledger names are not sorted"}
+	}
+	index := sort.SearchStrings(manifest.Ledgers, ledgerName)
+	if index == len(manifest.Ledgers) || manifest.Ledgers[index] != ledgerName {
+		_ = view.Close()
+
+		return nil, &balancehistorystore.ErrSourceMissing{Detail: fmt.Sprintf("historical balances are disabled for ledger %q", ledgerName)}
 	}
 
 	return &HistoricalVolumeView{
-		view:     view,
-		ledgerID: ledgerID,
-		selector: selector,
-		token: VolumeViewToken{
-			RequestedAt:          selector.At,
-			Axis:                 selector.Axis,
-			LedgerID:             ledgerID,
-			AuditWatermark:       manifest.AuditWatermark,
-			LogWatermark:         manifest.LogWatermark,
-			ManifestVersion:      manifest.Version,
-			HistoryAvailableFrom: floor,
-			Token:                encodeVolumeViewToken(ledgerID, selector, manifest),
+		view:       view,
+		ledgerName: ledgerName,
+		selector:   selector,
+		token: HistoricalBalanceViewToken{
+			RequestedAt:     selector.At,
+			Temporality:     selector.Temporality,
+			Ledger:          ledgerName,
+			AuditWatermark:  manifest.AuditWatermark,
+			LogWatermark:    manifest.LogWatermark,
+			ManifestVersion: manifest.Version,
+			Token:           encodeVolumeViewToken(ledgerName, selector, manifest),
 		},
 	}, nil
 }
 
 // HistoricalVolumeView is immutable for its lifetime.
 type HistoricalVolumeView struct {
-	view     *balancehistorystore.View
-	ledgerID uint32
-	selector PointInTimeSelector
-	token    VolumeViewToken
+	view       *balancehistorystore.View
+	ledgerName string
+	selector   HistoricalBalanceSelector
+	token      HistoricalBalanceViewToken
 }
 
 func (v *HistoricalVolumeView) Aggregate(ctx context.Context, accounts []string, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
@@ -140,10 +179,10 @@ func (v *HistoricalVolumeView) aggregate(
 		return nil, errors.New("historical volume view is closed")
 	}
 
-	return query.AggregateHistoricalVolumesSelected(ctx, v.view, v.ledgerID, v.selector.Axis, v.selector.At, accounts, accountPrefixes, match, opts)
+	return query.AggregateHistoricalVolumesSelected(ctx, v.view, v.ledgerName, v.selector.Temporality, v.selector.At, accounts, accountPrefixes, match, opts)
 }
 
-func (v *HistoricalVolumeView) Token() VolumeViewToken {
+func (v *HistoricalVolumeView) Token() HistoricalBalanceViewToken {
 	return v.token
 }
 
@@ -158,22 +197,20 @@ func (v *HistoricalVolumeView) Close() error {
 	return err
 }
 
-func encodeVolumeViewToken(ledgerID uint32, selector PointInTimeSelector, manifest balancehistorystore.Manifest) string {
-	buffer := make([]byte, 0, 4+1+8*6+len(manifest.AuditHash)+len(manifest.LogicalDigest)+len(manifest.Digest))
-	buffer = binary.BigEndian.AppendUint32(buffer, ledgerID)
-	buffer = append(buffer, byte(selector.Axis))
+func encodeVolumeViewToken(ledgerName string, selector HistoricalBalanceSelector, manifest balancehistorystore.Manifest) string {
+	buffer := make([]byte, 0, len(ledgerName)+1+8*4+len(manifest.AuditHash))
+	buffer = binary.BigEndian.AppendUint32(buffer, uint32(len(ledgerName)))
+	buffer = append(buffer, ledgerName...)
+	buffer = append(buffer, byte(selector.Temporality))
 	buffer = binary.BigEndian.AppendUint64(buffer, selector.At)
 	buffer = binary.BigEndian.AppendUint64(buffer, manifest.Version)
 	buffer = binary.BigEndian.AppendUint64(buffer, manifest.AuditWatermark)
 	buffer = binary.BigEndian.AppendUint64(buffer, manifest.LogWatermark)
-	buffer = binary.BigEndian.AppendUint64(buffer, manifest.EffectiveFloor)
-	buffer = binary.BigEndian.AppendUint64(buffer, manifest.InsertionFloor)
 	buffer = append(buffer, manifest.AuditHash...)
-	buffer = append(buffer, manifest.LogicalDigest[:]...)
-	buffer = append(buffer, manifest.Digest[:]...)
-	digest := sha256.Sum256(buffer)
 
-	return base64.RawURLEncoding.EncodeToString(digest[:])
+	// The token is an opaque, reversible identity encoding, not a checksum.
+	// Integrity remains the responsibility of the audit hash chain and Pebble.
+	return base64.RawURLEncoding.EncodeToString(buffer)
 }
 
 type temporalFilterKind uint8

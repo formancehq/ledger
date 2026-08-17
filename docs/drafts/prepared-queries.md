@@ -1154,12 +1154,12 @@ Response:
 | **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
 | **ExistsCondition on untyped keys** | Allowed | `ExistsCondition` checks for key presence, not the value type — it works regardless of whether the key has a declared schema. Some clients store large amounts of untyped metadata; `ExistsCondition` lets them query key presence without requiring a schema declaration first. |
 | **Volume-based filters** | Out of scope — not viable as index-backed filters | A condition like `balance(USD/2) > 1000` cannot be backed by an inverted index in bbolt because volumes change on every transaction — the index would need to be rewritten for every posting. This is the same write amplification problem that ruled out replicating volumes in bbolt (Section 9.2). The only viable approach is post-filtering: run the metadata filter first, then load volumes from Pebble for each candidate and apply the balance condition. This breaks the streaming/lazy cursor model — the executor must materialize candidates, perform N Pebble reads, and re-filter. For a metadata filter matching 10K accounts, that's 10K `ComputeValue` calls before the balance condition even applies. If needed in the future, it should be implemented as a separate post-filter step with a hard limit on candidate set size, not as a `FieldRef` in the filter tree. |
-| **Point-in-time queries** | Superseded by the accepted [balance-only PIT design](../technical/architecture/subsystems/read-path/point-in-time-balances.md) | Metadata remains current-state-only. Monetary history moves to a dedicated asynchronous projection instead of versioning the prepared-query read store or primary attributes. See Section 14 for the rejected general-MVCC alternatives. |
+| **Historical queries** | Superseded by the accepted [balance-only historical design](../technical/architecture/subsystems/read-path/historical-balances.md) | Metadata remains current-state-only. Monetary history moves to a dedicated asynchronous projection instead of versioning the prepared-query read store or primary attributes. See Section 14 for the rejected general-MVCC alternatives. |
 
-## 14. Point-in-Time Queries
+## 14. Historical Queries
 
 > **Superseded:** arbitrary monetary PIT is now accepted through the dedicated
-> [point-in-time balance projection](../technical/architecture/subsystems/read-path/point-in-time-balances.md).
+> [historical-balance projection](../technical/architecture/subsystems/read-path/historical-balances.md).
 > This section remains as the rationale for rejecting historical metadata,
 > general primary-store MVCC, and query-time replay as the interactive path.
 
@@ -1268,7 +1268,7 @@ At a configurable interval (e.g., daily, weekly), the index builder captures a f
 **Historical recommendation:** chapter-boundary snapshots remain appropriate
 for complete applied-state snapshots. They are no longer the selected approach
 for monetary balances; that decision is specified in
-[point-in-time-balances.md](../technical/architecture/subsystems/read-path/point-in-time-balances.md).
+[historical-balances.md](../technical/architecture/subsystems/read-path/historical-balances.md).
 
 ## 15. Open Questions
 

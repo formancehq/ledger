@@ -1022,8 +1022,27 @@ func (m *LedgerApplyOrder) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x5a
 		}
+	case *LedgerApplyOrder_ConfigureHistoricalBalances:
+		if v.ConfigureHistoricalBalances != nil {
+			size, _ := v.ConfigureHistoricalBalances.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x6a
+		}
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *ConfigureHistoricalBalancesOrder) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *CreateIndexOrder) MarshalDeterministicVT(dAtA []byte) []byte {

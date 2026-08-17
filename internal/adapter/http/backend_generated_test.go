@@ -475,6 +475,45 @@ func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*
 	return c
 }
 
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockBackend) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockBackendMockRecorder) GetHistoricalBalancesStatus(ctx, ledgerName any) *MockBackendGetHistoricalBalancesStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockBackend)(nil).GetHistoricalBalancesStatus), ctx, ledgerName)
+	return &MockBackendGetHistoricalBalancesStatusCall{Call: call}
+}
+
+// MockBackendGetHistoricalBalancesStatusCall wrap *gomock.Call
+type MockBackendGetHistoricalBalancesStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetHistoricalBalancesStatusCall) Return(arg0 *servicepb.GetHistoricalBalancesStatusResponse, arg1 error) *MockBackendGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetHistoricalBalancesStatusCall) Do(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBackendGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetHistoricalBalancesStatusCall) DoAndReturn(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBackendGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetIndex mocks base method.
 func (m *MockBackend) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
 	m.ctrl.T.Helper()

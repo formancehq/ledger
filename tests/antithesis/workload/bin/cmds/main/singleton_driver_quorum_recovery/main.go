@@ -187,8 +187,8 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		"pit_ledger":       fixture.Ledger,
 		"pit_ledger_id":    fixture.LedgerID,
 		"pit_min_log":      fixture.MinLogSequence,
-		"pit_axis":         fixture.Request.GetPointInTime().GetAxis().String(),
-		"pit_requested_at": fixture.Request.GetPointInTime().GetAt().GetData(),
+		"pit_axis":         fixture.Request.GetHistoricalBalance().GetTemporality().String(),
+		"pit_requested_at": fixture.Request.GetHistoricalBalance().GetAt().GetData(),
 	}
 	log.Printf("quorum-recovery: killing %v (leader=%s)", victims, leaderPod)
 

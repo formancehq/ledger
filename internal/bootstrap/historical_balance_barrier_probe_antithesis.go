@@ -18,36 +18,36 @@ import (
 )
 
 const (
-	antithesisLinearizablePITProbeMetadataKey          = "x-formance-antithesis-linearizable-pit-probe"
-	antithesisLinearizablePITBarrierReachedMetadataKey = "x-formance-antithesis-linearizable-pit-barrier-reached"
+	antithesisHistoricalBalanceProbeMetadataKey          = "x-formance-antithesis-historical-balance-probe"
+	antithesisHistoricalBalanceBarrierReachedMetadataKey = "x-formance-antithesis-historical-balance-barrier-reached"
 	consistencyMetadataKey                             = "x-consistency"
-	antithesisLinearizablePITBarrierTimeout            = time.Second
-	antithesisLinearizablePITStateTimeout              = 500 * time.Millisecond
-	antithesisLinearizablePITExpectedVoters            = 3
+	antithesisHistoricalBalanceBarrierTimeout            = time.Second
+	antithesisHistoricalBalanceStateTimeout              = 500 * time.Millisecond
+	antithesisHistoricalBalanceExpectedVoters            = 3
 )
 
-func antithesisLinearizablePITBarrierContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	if antithesisLinearizablePITProbeID(ctx) == "" {
+func antithesisHistoricalBalanceBarrierContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if antithesisHistoricalBalanceProbeID(ctx) == "" {
 		return ctx, func() {}
 	}
 
-	return context.WithTimeout(ctx, antithesisLinearizablePITBarrierTimeout)
+	return context.WithTimeout(ctx, antithesisHistoricalBalanceBarrierTimeout)
 }
 
-// reachAntithesisLinearizablePITBarrierFailure is compiled only into the
+// reachAntithesisHistoricalBalanceBarrierFailure is compiled only into the
 // instrumented SUT. The workload omits x-consistency deliberately: reaching
 // this point proves that the default route stopped at ReadIndexAndWait instead
 // of falling through to the node-local primary and history stores.
-func reachAntithesisLinearizablePITBarrierFailure(
+func reachAntithesisHistoricalBalanceBarrierFailure(
 	ctx context.Context,
 	sutNode *node.Node,
 	err error,
 ) {
-	probeID := antithesisLinearizablePITProbeID(ctx)
+	probeID := antithesisHistoricalBalanceProbeID(ctx)
 	if probeID == "" {
 		return
 	}
-	stateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), antithesisLinearizablePITStateTimeout)
+	stateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), antithesisHistoricalBalanceStateTimeout)
 	state, stateErr := sutNode.GetClusterState(stateCtx)
 	cancel()
 	if stateErr != nil || state.GetLeader() != uint32(sutNode.GetNodeID()) {
@@ -60,37 +60,37 @@ func reachAntithesisLinearizablePITBarrierFailure(
 			voterIDs = append(voterIDs, peer.GetId())
 		}
 	}
-	if len(voterIDs) != antithesisLinearizablePITExpectedVoters {
+	if len(voterIDs) != antithesisHistoricalBalanceExpectedVoters {
 		return
 	}
 	sort.Slice(voterIDs, func(left, right int) bool { return voterIDs[left] < voterIDs[right] })
 	if headerErr := ggrpc.SendHeader(ctx, metadata.Pairs(
-		antithesisLinearizablePITBarrierReachedMetadataKey,
+		antithesisHistoricalBalanceBarrierReachedMetadataKey,
 		probeID,
 	)); headerErr != nil {
 		return
 	}
 
 	assert.Reachable(
-		"pit: aggregate stopped at default linearizable read barrier",
+		"historical balance: aggregate stopped at default linearizable read barrier",
 		map[string]any{
 			"probe_id":    probeID,
 			"node_id":     sutNode.GetNodeID(),
 			"leader_id":   state.GetLeader(),
 			"voter_ids":   voterIDs,
 			"consistency": "linearizable_default",
-			"error_kind":  antithesisLinearizablePITBarrierErrorKind(err),
+			"error_kind":  antithesisHistoricalBalanceBarrierErrorKind(err),
 			"error":       fmt.Sprintf("%v", err),
 		},
 	)
 }
 
-func antithesisLinearizablePITProbeID(ctx context.Context) string {
+func antithesisHistoricalBalanceProbeID(ctx context.Context) string {
 	if len(metadata.ValueFromIncomingContext(ctx, consistencyMetadataKey)) != 0 {
 		return ""
 	}
 
-	values := metadata.ValueFromIncomingContext(ctx, antithesisLinearizablePITProbeMetadataKey)
+	values := metadata.ValueFromIncomingContext(ctx, antithesisHistoricalBalanceProbeMetadataKey)
 	if len(values) != 1 || values[0] == "" {
 		return ""
 	}
@@ -98,7 +98,7 @@ func antithesisLinearizablePITProbeID(ctx context.Context) string {
 	return values[0]
 }
 
-func antithesisLinearizablePITBarrierErrorKind(err error) string {
+func antithesisHistoricalBalanceBarrierErrorKind(err error) string {
 	switch {
 	case errors.Is(err, commonpb.ErrNoLeader):
 		return "no_leader"

@@ -44,6 +44,9 @@ func PrepareLinearizablePITFixture(
 	if err := CreateLedger(ctx, client, ledger); err != nil {
 		return nil, fmt.Errorf("creating linearizable PIT fixture ledger: %w", err)
 	}
+	if err := ConfigureHistoricalBalances(ctx, client, ledger); err != nil {
+		return nil, fmt.Errorf("configuring linearizable PIT fixture ledger: %w", err)
+	}
 
 	ledgerInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
 	if err != nil {
@@ -94,9 +97,9 @@ func PrepareLinearizablePITFixture(
 		Request: &servicepb.AggregateVolumesRequest{
 			Ledger:         ledger,
 			MinLogSequence: minLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   &commonpb.Timestamp{Data: math.MaxUint64},
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_INSERTION,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          &commonpb.Timestamp{Data: math.MaxUint64},
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION,
 			},
 		},
 		Expected: []CanonicalVolume{{
@@ -115,7 +118,7 @@ func CheckLinearizablePIT(
 	client servicepb.BucketServiceClient,
 	fixture *LinearizablePITFixture,
 	probeID string,
-) (*servicepb.PointInTimeView, bool, error) {
+) (*servicepb.HistoricalBalanceView, bool, error) {
 	if fixture == nil || fixture.Request == nil {
 		return nil, false, fmt.Errorf("linearizable PIT fixture is required")
 	}
@@ -127,7 +130,6 @@ func CheckLinearizablePIT(
 		ctx,
 		client,
 		fixture.Request,
-		fixture.LedgerID,
 		grpc.Header(&header),
 	)
 	barrierReached := linearizablePITBarrierReached(header, probeID)
@@ -165,7 +167,7 @@ func withLinearizablePITProbe(ctx context.Context, probeID string) context.Conte
 
 func validateLinearizablePITResult(
 	result *commonpb.AggregateResult,
-	view *servicepb.PointInTimeView,
+	view *servicepb.HistoricalBalanceView,
 	fixture *LinearizablePITFixture,
 ) error {
 	if view.GetLogWatermark() < fixture.MinLogSequence {

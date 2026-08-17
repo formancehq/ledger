@@ -17,22 +17,22 @@ import (
 
 // AggregateHistoricalVolumes applies the existing AggregateVolumes result
 // semantics to a pinned history view. accounts has three states:
-//   - nil: unfiltered (the fast global summary is used unless grouping needs rows)
+//   - nil: unfiltered (all historical account rows for the ledger are folded)
 //   - empty non-nil: a current filter matched no accounts
 //   - non-empty: exact current account selection
 func AggregateHistoricalVolumes(
 	view *balancehistorystore.View,
-	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	ledgerName string,
+	temporality balancehistorystore.Temporality,
 	at uint64,
 	accounts []string,
 	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
-	return aggregateHistoricalVolumes(context.Background(), view, ledgerID, axis, at, accounts, nil, opts)
+	return aggregateHistoricalVolumes(context.Background(), view, ledgerName, temporality, at, accounts, nil, opts)
 }
 
 // AggregateHistoricalVolumesMatching applies an account predicate to the
-// identities stored in a pinned history view. It is used by PIT address
+// identities stored in a pinned history view. It is used by historical address
 // filters, whose universe includes accounts that no longer exist in the
 // current read store. When accounts is non-nil, the store first restricts the
 // scan to those exact current accounts; match is then applied as an additional
@@ -43,8 +43,8 @@ func AggregateHistoricalVolumes(
 func AggregateHistoricalVolumesMatching(
 	ctx context.Context,
 	view *balancehistorystore.View,
-	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	ledgerName string,
+	temporality balancehistorystore.Temporality,
 	at uint64,
 	accounts []string,
 	match func(account string) bool,
@@ -54,7 +54,7 @@ func AggregateHistoricalVolumesMatching(
 		ctx = context.Background()
 	}
 
-	return AggregateHistoricalVolumesSelected(ctx, view, ledgerID, axis, at, accounts, nil, match, opts)
+	return AggregateHistoricalVolumesSelected(ctx, view, ledgerName, temporality, at, accounts, nil, match, opts)
 }
 
 // AggregateHistoricalVolumesSelected reads the union of exact account and
@@ -64,8 +64,8 @@ func AggregateHistoricalVolumesMatching(
 func AggregateHistoricalVolumesSelected(
 	ctx context.Context,
 	view *balancehistorystore.View,
-	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	ledgerName string,
+	temporality balancehistorystore.Temporality,
 	at uint64,
 	accounts []string,
 	accountPrefixes []string,
@@ -73,7 +73,7 @@ func AggregateHistoricalVolumesSelected(
 	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
 	if len(accountPrefixes) == 0 {
-		return aggregateHistoricalVolumes(ctx, view, ledgerID, axis, at, accounts, match, opts)
+		return aggregateHistoricalVolumes(ctx, view, ledgerName, temporality, at, accounts, match, opts)
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -104,7 +104,7 @@ func AggregateHistoricalVolumesSelected(
 	}
 
 	if accounts != nil {
-		rows, err := view.ReadVolumes(ledgerID, axis, at, accounts)
+		rows, err := view.ReadVolumes(ledgerName, temporality, at, accounts)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func AggregateHistoricalVolumesSelected(
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		rows, err := view.ReadVolumesByPrefix(ledgerID, axis, at, prefix)
+		rows, err := view.ReadVolumesByPrefix(ledgerName, temporality, at, prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -146,13 +146,13 @@ func AggregateHistoricalVolumesSelected(
 func AggregateHistoricalVolumesByPrefix(
 	ctx context.Context,
 	view *balancehistorystore.View,
-	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	ledgerName string,
+	temporality balancehistorystore.Temporality,
 	at uint64,
 	accountPrefix string,
 	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
-	return AggregateHistoricalVolumesSelected(ctx, view, ledgerID, axis, at, nil, []string{accountPrefix}, nil, opts)
+	return AggregateHistoricalVolumesSelected(ctx, view, ledgerName, temporality, at, nil, []string{accountPrefix}, nil, opts)
 }
 
 type historicalVolumeIdentity struct {
@@ -179,8 +179,8 @@ func deduplicateStrings(values []string) []string {
 func aggregateHistoricalVolumes(
 	ctx context.Context,
 	view *balancehistorystore.View,
-	ledgerID uint32,
-	axis balancehistorystore.Axis,
+	ledgerName string,
+	temporality balancehistorystore.Temporality,
 	at uint64,
 	accounts []string,
 	match func(account string) bool,
@@ -193,30 +193,7 @@ func aggregateHistoricalVolumes(
 		return nil, err
 	}
 
-	if accounts == nil && match == nil && len(opts.GroupByPrefixes) == 0 {
-		assets, err := view.AggregateAll(ledgerID, axis, at)
-		if err != nil {
-			return nil, err
-		}
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		accumulator := newVolumeAggregator(opts.UseMaxPrecision, opts.CollapseColors)
-		for _, volume := range assets {
-			pair, err := historicalPair(volume.Input, volume.Output)
-			if err != nil {
-				return nil, err
-			}
-			if err := accumulator.accumulateAsset(volume.AssetBase, volume.AssetPrecision, volume.Color, pair); err != nil {
-				return nil, err
-			}
-		}
-
-		return accumulator.result()
-	}
-
-	volumes, err := view.ReadVolumes(ledgerID, axis, at, accounts)
+	volumes, err := view.ReadVolumes(ledgerName, temporality, at, accounts)
 	if err != nil {
 		return nil, err
 	}

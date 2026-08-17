@@ -1,5 +1,5 @@
 // Package balancehistory reduces authoritative, ordered ledger logs into the
-// normalized monetary effects consumed by point-in-time balance projections.
+// normalized monetary effects consumed by historical balance projections.
 // It performs no I/O and never inspects the accepted order: transaction logs
 // already contain the postings resolved by the FSM for direct, Numscript,
 // mirror, and reversal paths.
@@ -79,7 +79,7 @@ func (a Amount) IsZero() bool {
 // a source output effect and a destination input effect. Reversal logs already
 // contain compensating postings and are deliberately not inverted again.
 type Effect struct {
-	LedgerID       uint32
+	LedgerName     string
 	AuditSequence  uint64
 	OrderIndex     uint32
 	LogSequence    uint64
@@ -100,11 +100,13 @@ type lifecycleTransition struct {
 	id     uint32
 }
 
-// Reducer tracks only the audit-derived ledger incarnation needed to attach a
-// numeric ledger ID to each effect. The zero value is ready for use.
+// Reducer tracks audit-derived ledger lifecycle and historical-balance client
+// configuration. The zero value is ready for use.
 type Reducer struct {
 	activeByName map[string]uint32
 	seenIDs      map[uint32]string
+	enabled      map[string]bool
+	projected    map[string]struct{}
 	last         Position
 	hasLast      bool
 }
@@ -115,6 +117,16 @@ func NewReducer() *Reducer {
 	return &Reducer{
 		activeByName: make(map[string]uint32),
 		seenIDs:      make(map[uint32]string),
+		enabled:      make(map[string]bool),
+	}
+}
+
+// SetProjectedLedgers fixes the ledger set whose monetary effects this replay
+// emits. Configuration logs continue to update State independently.
+func (r *Reducer) SetProjectedLedgers(ledgers []string) {
+	r.projected = make(map[string]struct{}, len(ledgers))
+	for _, ledger := range ledgers {
+		r.projected[ledger] = struct{}{}
 	}
 }
 
@@ -137,8 +149,14 @@ func (r *Reducer) State() State {
 			state.Seen = append(state.Seen, IncarnationState{Name: name, ID: id})
 		}
 	}
+	for ledger, enabled := range r.enabled {
+		if enabled {
+			state.Enabled = append(state.Enabled, ledger)
+		}
+	}
 	sort.Slice(state.Active, func(i, j int) bool { return state.Active[i].ID < state.Active[j].ID })
 	sort.Slice(state.Seen, func(i, j int) bool { return state.Seen[i].ID < state.Seen[j].ID })
+	sort.Strings(state.Enabled)
 
 	return state
 }
@@ -166,6 +184,7 @@ func (r *Reducer) Reduce(position Position, log *commonpb.Log) ([]Effect, error)
 		r.seenIDs[transition.id] = transition.name
 	case transition.delete:
 		delete(r.activeByName, transition.name)
+		delete(r.enabled, transition.name)
 	}
 	r.last = position
 	r.hasLast = true
@@ -179,6 +198,9 @@ func (r *Reducer) ensureState() {
 	}
 	if r.seenIDs == nil {
 		r.seenIDs = make(map[uint32]string)
+	}
+	if r.enabled == nil {
+		r.enabled = make(map[string]bool)
 	}
 }
 
@@ -249,6 +271,18 @@ func (r *Reducer) reduceCreateLedger(created *commonpb.CreatedLedgerLog) ([]Effe
 			id,
 		)
 	}
+	for _, seenName := range r.seenIDs {
+		if seenName == created.GetName() {
+			// The primary FSM retains a soft-deleted LedgerInfo and rejects
+			// recreation with ErrLedgerDeleted. Observing the same name twice in
+			// the audit therefore means the authoritative lifecycle is invalid.
+			return nil, lifecycleTransition{}, fmt.Errorf(
+				"%w: ledger name %q was already used",
+				ErrInvalidLifecycle,
+				created.GetName(),
+			)
+		}
+	}
 	if name, ok := r.seenIDs[created.GetId()]; ok {
 		return nil, lifecycleTransition{}, fmt.Errorf(
 			"%w: incarnation %d was already assigned to ledger %q",
@@ -284,32 +318,49 @@ func (r *Reducer) reduceApply(position Position, apply *commonpb.ApplyLedgerLog)
 		return nil, fmt.Errorf("%w: apply log has no ledger payload", ErrMalformedLog)
 	}
 
-	ledgerID, ok := r.activeByName[apply.GetLedgerName()]
+	_, ok := r.activeByName[apply.GetLedgerName()]
 	if !ok {
 		return nil, fmt.Errorf("%w: ledger %q", ErrMissingIncarnation, apply.GetLedgerName())
 	}
 
 	switch typed := apply.GetLog().GetData().GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_ConfiguredHistoricalBalances:
+		if typed.ConfiguredHistoricalBalances == nil {
+			return nil, fmt.Errorf("%w: nil historical-balances configuration payload", ErrMalformedLog)
+		}
+		r.enabled[apply.GetLedgerName()] = typed.ConfiguredHistoricalBalances.GetEnabled()
+
+		return nil, nil
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if typed.CreatedTransaction == nil {
 			return nil, fmt.Errorf("%w: nil created-transaction payload", ErrMalformedLog)
 		}
+		if r.projected != nil {
+			if _, projected := r.projected[apply.GetLedgerName()]; !projected {
+				return nil, nil
+			}
+		}
 
-		return reduceTransaction(position, ledgerID, typed.CreatedTransaction.GetTransaction())
+		return reduceTransaction(position, apply.GetLedgerName(), typed.CreatedTransaction.GetTransaction())
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		if typed.RevertedTransaction == nil {
 			return nil, fmt.Errorf("%w: nil reverted-transaction payload", ErrMalformedLog)
 		}
+		if r.projected != nil {
+			if _, projected := r.projected[apply.GetLedgerName()]; !projected {
+				return nil, nil
+			}
+		}
 
 		// The FSM log contains already-reversed postings. Reusing the same
 		// reduction path is what prevents a second, incorrect inversion.
-		return reduceTransaction(position, ledgerID, typed.RevertedTransaction.GetRevertTransaction())
+		return reduceTransaction(position, apply.GetLedgerName(), typed.RevertedTransaction.GetRevertTransaction())
 	default:
 		return nil, nil
 	}
 }
 
-func reduceTransaction(position Position, ledgerID uint32, transaction *commonpb.Transaction) ([]Effect, error) {
+func reduceTransaction(position Position, ledgerName string, transaction *commonpb.Transaction) ([]Effect, error) {
 	if transaction == nil || transaction.GetTimestamp() == nil || transaction.GetInsertedAt() == nil {
 		return nil, fmt.Errorf("%w: transaction is missing its effective or insertion timestamp", ErrMalformedLog)
 	}
@@ -319,7 +370,7 @@ func reduceTransaction(position Position, ledgerID uint32, transaction *commonpb
 
 	effects := make([]Effect, 0, len(transaction.GetPostings())*2)
 	for index, posting := range transaction.GetPostings() {
-		postingEffects, err := reducePosting(position, ledgerID, transaction, posting)
+		postingEffects, err := reducePosting(position, ledgerName, transaction, posting)
 		if err != nil {
 			return nil, fmt.Errorf("posting %d: %w", index, err)
 		}
@@ -331,7 +382,7 @@ func reduceTransaction(position Position, ledgerID uint32, transaction *commonpb
 
 func reducePosting(
 	position Position,
-	ledgerID uint32,
+	ledgerName string,
 	transaction *commonpb.Transaction,
 	posting *commonpb.Posting,
 ) ([]Effect, error) {
@@ -357,7 +408,7 @@ func reducePosting(
 	}
 	assetBase, assetPrecision := domain.ParseAssetPrecision(posting.GetAsset())
 	common := Effect{
-		LedgerID:       ledgerID,
+		LedgerName:     ledgerName,
 		AuditSequence:  position.AuditSequence,
 		OrderIndex:     position.OrderIndex,
 		LogSequence:    position.LogSequence,

@@ -280,15 +280,15 @@ func (b *RoutedController) AggregateVolumes(
 ) (*ctrl.AggregateVolumesResult, error) {
 	routingCtx := ctx
 	cancelRouting := func() {}
-	if read.PointInTime != nil {
-		routingCtx, cancelRouting = antithesisLinearizablePITBarrierContext(ctx)
+	if read.HistoricalBalance != nil {
+		routingCtx, cancelRouting = antithesisHistoricalBalanceBarrierContext(ctx)
 	}
 	defer cancelRouting()
 
 	c, _, err := b.readCtrl(routingCtx)
 	if err != nil {
-		if read.PointInTime != nil {
-			reachAntithesisLinearizablePITBarrierFailure(
+		if read.HistoricalBalance != nil {
+			reachAntithesisHistoricalBalanceBarrierFailure(
 				ctx,
 				b.Node,
 				err,
@@ -317,6 +317,15 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	}
 
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
+}
+
+func (b *RoutedController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetHistoricalBalancesStatus(ctx, ledgerName)
 }
 
 func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {

@@ -6,7 +6,7 @@ They capture **applied state at a pre-created cutoff**. They do not implement
 arbitrary effective-time history: a later-inserted backdated transaction cannot
 appear in an older checkpoint. For the accepted effective/insertion-time
 monetary-history design, see
-[point-in-time-balances.md](point-in-time-balances.md).
+[historical-balances.md](historical-balances.md).
 
 ## Lifecycle
 

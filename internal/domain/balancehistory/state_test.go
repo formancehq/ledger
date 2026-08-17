@@ -66,20 +66,17 @@ func TestReducerStateValidation(t *testing.T) {
 			want: "duplicate seen incarnation id 1",
 		},
 		{
+			name: "duplicate seen name",
+			state: State{Seen: []IncarnationState{
+				{Name: "ledger", ID: 1},
+				{Name: "ledger", ID: 2},
+			}},
+			want: "duplicate seen ledger name",
+		},
+		{
 			name:  "invalid active incarnation",
 			state: State{Active: []IncarnationState{{Name: "ledger", ID: 0}}},
 			want:  "invalid active incarnation snapshot",
-		},
-		{
-			name: "duplicate active name",
-			state: State{
-				Seen: []IncarnationState{{Name: "ledger", ID: 1}, {Name: "ledger", ID: 2}},
-				Active: []IncarnationState{
-					{Name: "ledger", ID: 1},
-					{Name: "ledger", ID: 2},
-				},
-			},
-			want: "duplicate active ledger",
 		},
 		{
 			name: "active absent from seen",
@@ -88,6 +85,14 @@ func TestReducerStateValidation(t *testing.T) {
 				Active: []IncarnationState{{Name: "ledger", ID: 1}},
 			},
 			want: "is absent from seen set",
+		},
+		{
+			name: "enabled ledger is not active",
+			state: State{
+				Seen:    []IncarnationState{{Name: "ledger", ID: 1}},
+				Enabled: []string{"ledger"},
+			},
+			want: "enabled ledger \"ledger\" is not active",
 		},
 		{
 			name:  "invalid last position",

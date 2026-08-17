@@ -285,10 +285,10 @@ message GetLedgerStatsResponse {
 rpc GetLedgerStats(GetLedgerStatsRequest) returns (GetLedgerStatsResponse);
 ```
 
-### 5.4 Primary-Attribute Point-in-Time Reads — Why They Don't Work
+### 5.4 Primary-Attribute Historical Reads — Why They Don't Work
 
 > **Superseded:** the accepted balance-only design now lives in
-> [point-in-time-balances.md](../technical/architecture/subsystems/read-path/point-in-time-balances.md).
+> [historical-balances.md](../technical/architecture/subsystems/read-path/historical-balances.md).
 > The primary attribute store remains current-state-only, but arbitrary PIT
 > balances are provided by a dedicated asynchronous monetary projection rather
 > than by retaining attribute versions.

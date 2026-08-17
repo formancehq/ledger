@@ -10,7 +10,7 @@ func reachAntithesisBalanceHistoryReconciled(
 	logWatermark uint64,
 ) {
 	assert.Reachable(
-		"pit: balance history reconciled to exact source head",
+		"historical balance: projection reconciled to exact source head",
 		map[string]any{
 			"manifest_version": manifestVersion,
 			"audit_watermark":  auditWatermark,

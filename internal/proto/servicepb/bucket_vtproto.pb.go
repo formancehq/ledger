@@ -620,6 +620,15 @@ func (m *Request_DeleteLedgerMetadata) CloneVT() isRequest_Type {
 	return r
 }
 
+func (m *Request_ConfigureHistoricalBalances) CloneVT() isRequest_Type {
+	if m == nil {
+		return (*Request_ConfigureHistoricalBalances)(nil)
+	}
+	r := new(Request_ConfigureHistoricalBalances)
+	r.ConfigureHistoricalBalances = m.ConfigureHistoricalBalances.CloneVT()
+	return r
+}
+
 func (m *CreateQueryCheckpointRequest) CloneVT() *CreateQueryCheckpointRequest {
 	if m == nil {
 		return (*CreateQueryCheckpointRequest)(nil)
@@ -709,6 +718,24 @@ func (m *DeleteLedgerMetadataRequest) CloneVT() *DeleteLedgerMetadataRequest {
 }
 
 func (m *DeleteLedgerMetadataRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *ConfigureHistoricalBalancesRequest) CloneVT() *ConfigureHistoricalBalancesRequest {
+	if m == nil {
+		return (*ConfigureHistoricalBalancesRequest)(nil)
+	}
+	r := new(ConfigureHistoricalBalancesRequest)
+	r.Ledger = m.Ledger
+	r.Enabled = m.Enabled
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ConfigureHistoricalBalancesRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2923,13 +2950,13 @@ func (m *GetLedgerStatsRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *PointInTimeSelector) CloneVT() *PointInTimeSelector {
+func (m *HistoricalBalanceSelector) CloneVT() *HistoricalBalanceSelector {
 	if m == nil {
-		return (*PointInTimeSelector)(nil)
+		return (*HistoricalBalanceSelector)(nil)
 	}
-	r := new(PointInTimeSelector)
+	r := new(HistoricalBalanceSelector)
 	r.At = m.At.CloneVT()
-	r.Axis = m.Axis
+	r.Temporality = m.Temporality
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2937,22 +2964,21 @@ func (m *PointInTimeSelector) CloneVT() *PointInTimeSelector {
 	return r
 }
 
-func (m *PointInTimeSelector) CloneMessageVT() proto.Message {
+func (m *HistoricalBalanceSelector) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *PointInTimeView) CloneVT() *PointInTimeView {
+func (m *HistoricalBalanceView) CloneVT() *HistoricalBalanceView {
 	if m == nil {
-		return (*PointInTimeView)(nil)
+		return (*HistoricalBalanceView)(nil)
 	}
-	r := new(PointInTimeView)
+	r := new(HistoricalBalanceView)
 	r.RequestedAt = m.RequestedAt.CloneVT()
-	r.Axis = m.Axis
-	r.LedgerId = m.LedgerId
+	r.Temporality = m.Temporality
+	r.Ledger = m.Ledger
 	r.AuditWatermark = m.AuditWatermark
 	r.LogWatermark = m.LogWatermark
 	r.ManifestVersion = m.ManifestVersion
-	r.HistoryAvailableFrom = m.HistoryAvailableFrom.CloneVT()
 	r.ViewToken = m.ViewToken
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -2961,7 +2987,7 @@ func (m *PointInTimeView) CloneVT() *PointInTimeView {
 	return r
 }
 
-func (m *PointInTimeView) CloneMessageVT() proto.Message {
+func (m *HistoricalBalanceView) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2976,7 +3002,7 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	r.UseMaxPrecision = m.UseMaxPrecision
 	r.CheckpointId = m.CheckpointId
 	r.CollapseColors = m.CollapseColors
-	r.PointInTime = m.PointInTime.CloneVT()
+	r.HistoricalBalance = m.HistoricalBalance.CloneVT()
 	if rhs := m.GroupByPrefixes; rhs != nil {
 		tmpContainer := make([]string, len(rhs))
 		copy(tmpContainer, rhs)
@@ -2990,6 +3016,44 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 }
 
 func (m *AggregateVolumesRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *GetHistoricalBalancesStatusRequest) CloneVT() *GetHistoricalBalancesStatusRequest {
+	if m == nil {
+		return (*GetHistoricalBalancesStatusRequest)(nil)
+	}
+	r := new(GetHistoricalBalancesStatusRequest)
+	r.Ledger = m.Ledger
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetHistoricalBalancesStatusRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *GetHistoricalBalancesStatusResponse) CloneVT() *GetHistoricalBalancesStatusResponse {
+	if m == nil {
+		return (*GetHistoricalBalancesStatusResponse)(nil)
+	}
+	r := new(GetHistoricalBalancesStatusResponse)
+	r.Ledger = m.Ledger
+	r.State = m.State
+	r.AuditWatermark = m.AuditWatermark
+	r.LogWatermark = m.LogWatermark
+	r.Error = m.Error
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetHistoricalBalancesStatusResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4506,6 +4570,31 @@ func (this *Request_DeleteLedgerMetadata) EqualVT(thatIface isRequest_Type) bool
 	return true
 }
 
+func (this *Request_ConfigureHistoricalBalances) EqualVT(thatIface isRequest_Type) bool {
+	that, ok := thatIface.(*Request_ConfigureHistoricalBalances)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.ConfigureHistoricalBalances, that.ConfigureHistoricalBalances; p != q {
+		if p == nil {
+			p = &ConfigureHistoricalBalancesRequest{}
+		}
+		if q == nil {
+			q = &ConfigureHistoricalBalancesRequest{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *CreateQueryCheckpointRequest) EqualVT(that *CreateQueryCheckpointRequest) bool {
 	if this == that {
 		return true
@@ -4616,6 +4705,28 @@ func (this *DeleteLedgerMetadataRequest) EqualVT(that *DeleteLedgerMetadataReque
 
 func (this *DeleteLedgerMetadataRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*DeleteLedgerMetadataRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *ConfigureHistoricalBalancesRequest) EqualVT(that *ConfigureHistoricalBalancesRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	if this.Enabled != that.Enabled {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ConfigureHistoricalBalancesRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ConfigureHistoricalBalancesRequest)
 	if !ok {
 		return false
 	}
@@ -7811,7 +7922,7 @@ func (this *GetLedgerStatsRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *PointInTimeSelector) EqualVT(that *PointInTimeSelector) bool {
+func (this *HistoricalBalanceSelector) EqualVT(that *HistoricalBalanceSelector) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7820,20 +7931,20 @@ func (this *PointInTimeSelector) EqualVT(that *PointInTimeSelector) bool {
 	if !this.At.EqualVT(that.At) {
 		return false
 	}
-	if this.Axis != that.Axis {
+	if this.Temporality != that.Temporality {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *PointInTimeSelector) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PointInTimeSelector)
+func (this *HistoricalBalanceSelector) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*HistoricalBalanceSelector)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *PointInTimeView) EqualVT(that *PointInTimeView) bool {
+func (this *HistoricalBalanceView) EqualVT(that *HistoricalBalanceView) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -7842,10 +7953,10 @@ func (this *PointInTimeView) EqualVT(that *PointInTimeView) bool {
 	if !this.RequestedAt.EqualVT(that.RequestedAt) {
 		return false
 	}
-	if this.Axis != that.Axis {
+	if this.Temporality != that.Temporality {
 		return false
 	}
-	if this.LedgerId != that.LedgerId {
+	if this.Ledger != that.Ledger {
 		return false
 	}
 	if this.AuditWatermark != that.AuditWatermark {
@@ -7857,17 +7968,14 @@ func (this *PointInTimeView) EqualVT(that *PointInTimeView) bool {
 	if this.ManifestVersion != that.ManifestVersion {
 		return false
 	}
-	if !this.HistoryAvailableFrom.EqualVT(that.HistoryAvailableFrom) {
-		return false
-	}
 	if this.ViewToken != that.ViewToken {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *PointInTimeView) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PointInTimeView)
+func (this *HistoricalBalanceView) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*HistoricalBalanceView)
 	if !ok {
 		return false
 	}
@@ -7906,7 +8014,7 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 	if this.CollapseColors != that.CollapseColors {
 		return false
 	}
-	if !this.PointInTime.EqualVT(that.PointInTime) {
+	if !this.HistoricalBalance.EqualVT(that.HistoricalBalance) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7914,6 +8022,56 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 
 func (this *AggregateVolumesRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*AggregateVolumesRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *GetHistoricalBalancesStatusRequest) EqualVT(that *GetHistoricalBalancesStatusRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetHistoricalBalancesStatusRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetHistoricalBalancesStatusRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *GetHistoricalBalancesStatusResponse) EqualVT(that *GetHistoricalBalancesStatusResponse) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	if this.State != that.State {
+		return false
+	}
+	if this.AuditWatermark != that.AuditWatermark {
+		return false
+	}
+	if this.LogWatermark != that.LogWatermark {
+		return false
+	}
+	if this.Error != that.Error {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetHistoricalBalancesStatusResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetHistoricalBalancesStatusResponse)
 	if !ok {
 		return false
 	}
@@ -9752,6 +9910,27 @@ func (m *Request_DeleteLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (int,
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Request_ConfigureHistoricalBalances) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Request_ConfigureHistoricalBalances) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.ConfigureHistoricalBalances != nil {
+		size, err := m.ConfigureHistoricalBalances.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0x92
+	}
+	return len(dAtA) - i, nil
+}
 func (m *CreateQueryCheckpointRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -9962,6 +10141,56 @@ func (m *DeleteLedgerMetadataRequest) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
 		i--
 		dAtA[i] = 0x12
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ConfigureHistoricalBalancesRequest) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConfigureHistoricalBalancesRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ConfigureHistoricalBalancesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Enabled {
+		i--
+		if m.Enabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -15677,7 +15906,7 @@ func (m *GetLedgerStatsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *PointInTimeSelector) MarshalVT() (dAtA []byte, err error) {
+func (m *HistoricalBalanceSelector) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15690,12 +15919,12 @@ func (m *PointInTimeSelector) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PointInTimeSelector) MarshalToVT(dAtA []byte) (int, error) {
+func (m *HistoricalBalanceSelector) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PointInTimeSelector) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *HistoricalBalanceSelector) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15707,8 +15936,8 @@ func (m *PointInTimeSelector) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.Axis != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Axis))
+	if m.Temporality != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Temporality))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -15725,7 +15954,7 @@ func (m *PointInTimeSelector) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *PointInTimeView) MarshalVT() (dAtA []byte, err error) {
+func (m *HistoricalBalanceView) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -15738,12 +15967,12 @@ func (m *PointInTimeView) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PointInTimeView) MarshalToVT(dAtA []byte) (int, error) {
+func (m *HistoricalBalanceView) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PointInTimeView) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *HistoricalBalanceView) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -15759,16 +15988,6 @@ func (m *PointInTimeView) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.ViewToken)
 		copy(dAtA[i:], m.ViewToken)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ViewToken)))
-		i--
-		dAtA[i] = 0x42
-	}
-	if m.HistoryAvailableFrom != nil {
-		size, err := m.HistoryAvailableFrom.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x3a
 	}
@@ -15790,13 +16009,15 @@ func (m *PointInTimeView) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x21
 	}
-	if m.LedgerId != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LedgerId))
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x1a
 	}
-	if m.Axis != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Axis))
+	if m.Temporality != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Temporality))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -15843,8 +16064,8 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.PointInTime != nil {
-		size, err := m.PointInTime.MarshalToSizedBufferVT(dAtA[:i])
+	if m.HistoricalBalance != nil {
+		size, err := m.HistoricalBalance.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -15903,6 +16124,110 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetHistoricalBalancesStatusRequest) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetHistoricalBalancesStatusRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetHistoricalBalancesStatusRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetHistoricalBalancesStatusResponse) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetHistoricalBalancesStatusResponse) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetHistoricalBalancesStatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.LogWatermark != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.LogWatermark))
+		i--
+		dAtA[i] = 0x21
+	}
+	if m.AuditWatermark != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AuditWatermark))
+		i--
+		dAtA[i] = 0x19
+	}
+	if m.State != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.State))
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -17264,6 +17589,18 @@ func (m *Request_DeleteLedgerMetadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *Request_ConfigureHistoricalBalances) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.ConfigureHistoricalBalances != nil {
+		l = m.ConfigureHistoricalBalances.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *CreateQueryCheckpointRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17341,6 +17678,23 @@ func (m *DeleteLedgerMetadataRequest) SizeVT() (n int) {
 	l = len(m.Key)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ConfigureHistoricalBalancesRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Enabled {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -19593,7 +19947,7 @@ func (m *GetLedgerStatsRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *PointInTimeSelector) SizeVT() (n int) {
+func (m *HistoricalBalanceSelector) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19603,14 +19957,14 @@ func (m *PointInTimeSelector) SizeVT() (n int) {
 		l = m.At.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Axis != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Axis))
+	if m.Temporality != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Temporality))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *PointInTimeView) SizeVT() (n int) {
+func (m *HistoricalBalanceView) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -19620,11 +19974,12 @@ func (m *PointInTimeView) SizeVT() (n int) {
 		l = m.RequestedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Axis != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Axis))
+	if m.Temporality != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Temporality))
 	}
-	if m.LedgerId != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerId))
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.AuditWatermark != 0 {
 		n += 9
@@ -19634,10 +19989,6 @@ func (m *PointInTimeView) SizeVT() (n int) {
 	}
 	if m.ManifestVersion != 0 {
 		n += 9
-	}
-	if m.HistoryAvailableFrom != nil {
-		l = m.HistoryAvailableFrom.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.ViewToken)
 	if l > 0 {
@@ -19679,8 +20030,49 @@ func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	if m.CollapseColors {
 		n += 2
 	}
-	if m.PointInTime != nil {
-		l = m.PointInTime.SizeVT()
+	if m.HistoricalBalance != nil {
+		l = m.HistoricalBalance.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *GetHistoricalBalancesStatusRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *GetHistoricalBalancesStatusResponse) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.State != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.State))
+	}
+	if m.AuditWatermark != 0 {
+		n += 9
+	}
+	if m.LogWatermark != 0 {
+		n += 9
+	}
+	l = len(m.Error)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -23002,6 +23394,47 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteLedgerMetadata{DeleteLedgerMetadata: v}
 			}
 			iNdEx = postIndex
+		case 34:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConfigureHistoricalBalances", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*Request_ConfigureHistoricalBalances); ok {
+				if err := oneof.ConfigureHistoricalBalances.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ConfigureHistoricalBalancesRequest{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &Request_ConfigureHistoricalBalances{ConfigureHistoricalBalances: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -23524,6 +23957,109 @@ func (m *DeleteLedgerMetadataRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ConfigureHistoricalBalancesRequest) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConfigureHistoricalBalancesRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConfigureHistoricalBalancesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Enabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Enabled = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -36688,7 +37224,7 @@ func (m *GetLedgerStatsRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
+func (m *HistoricalBalanceSelector) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36711,10 +37247,10 @@ func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PointInTimeSelector: wiretype end group for non-group")
+			return fmt.Errorf("proto: HistoricalBalanceSelector: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PointInTimeSelector: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: HistoricalBalanceSelector: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -36755,9 +37291,9 @@ func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Axis", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Temporality", wireType)
 			}
-			m.Axis = 0
+			m.Temporality = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -36767,7 +37303,7 @@ func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Axis |= PointInTimeAxis(b&0x7F) << shift
+				m.Temporality |= HistoricalBalanceTemporality(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -36794,7 +37330,7 @@ func (m *PointInTimeSelector) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
+func (m *HistoricalBalanceView) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -36817,10 +37353,10 @@ func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PointInTimeView: wiretype end group for non-group")
+			return fmt.Errorf("proto: HistoricalBalanceView: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PointInTimeView: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: HistoricalBalanceView: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -36861,9 +37397,9 @@ func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Axis", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Temporality", wireType)
 			}
-			m.Axis = 0
+			m.Temporality = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -36873,16 +37409,16 @@ func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Axis |= PointInTimeAxis(b&0x7F) << shift
+				m.Temporality |= HistoricalBalanceTemporality(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LedgerId", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
 			}
-			m.LedgerId = 0
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -36892,11 +37428,24 @@ func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.LedgerId |= uint32(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		case 4:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AuditWatermark", wireType)
@@ -36928,42 +37477,6 @@ func (m *PointInTimeView) UnmarshalVT(dAtA []byte) error {
 			m.ManifestVersion = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HistoryAvailableFrom", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.HistoryAvailableFrom == nil {
-				m.HistoryAvailableFrom = &commonpb.Timestamp{}
-			}
-			if err := m.HistoryAvailableFrom.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ViewToken", wireType)
 			}
@@ -37208,7 +37721,7 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			m.CollapseColors = bool(v != 0)
 		case 8:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PointInTime", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field HistoricalBalance", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -37235,12 +37748,249 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.PointInTime == nil {
-				m.PointInTime = &PointInTimeSelector{}
+			if m.HistoricalBalance == nil {
+				m.HistoricalBalance = &HistoricalBalanceSelector{}
 			}
-			if err := m.PointInTime.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.HistoricalBalance.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetHistoricalBalancesStatusRequest) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetHistoricalBalancesStatusRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetHistoricalBalancesStatusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetHistoricalBalancesStatusResponse) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetHistoricalBalancesStatusResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetHistoricalBalancesStatusResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+			}
+			m.State = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.State |= GetHistoricalBalancesStatusResponse_State(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AuditWatermark", wireType)
+			}
+			m.AuditWatermark = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AuditWatermark = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogWatermark", wireType)
+			}
+			m.LogWatermark = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LogWatermark = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

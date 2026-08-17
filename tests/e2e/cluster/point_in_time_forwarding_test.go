@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-const forwardedPointInTimeViewTrailerKey = "x-point-in-time-view-bin"
+const forwardedHistoricalBalanceViewTrailerKey = "x-historical-balance-view-bin"
 
 var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 	const (
@@ -39,7 +39,6 @@ var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 			17100,
 			17200,
 			17300,
-			testutil.WithBalanceHistory(),
 		)
 	})
 
@@ -60,6 +59,10 @@ var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 		// routed back to the leader.
 		_, err := followerClient.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
+		Expect(testutil.ConfigureHistoricalBalances(ctx, followerClient, ledgerName, true)).To(Succeed())
+		for _, server := range servers {
+			testutil.WaitForHistoricalBalancesReady(ctx, server.Client, ledgerName)
+		}
 
 		effectiveAt := time.Date(2020, time.June, 15, 12, 0, 0, 0, time.UTC)
 		applyResponse, err := followerClient.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.WithTimestamp(
@@ -76,9 +79,9 @@ var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 			Ledger:         ledgerName,
 			Filter:         actions.AddressExactFilter("accounts:forwarded"),
 			MinLogSequence: minimumLogSequence,
-			PointInTime: &servicepb.PointInTimeSelector{
-				At:   &commonpb.Timestamp{Data: uint64(effectiveAt.UnixMicro())},
-				Axis: servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE,
+			HistoricalBalance: &servicepb.HistoricalBalanceSelector{
+				At:          &commonpb.Timestamp{Data: uint64(effectiveAt.UnixMicro())},
+				Temporality: servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE,
 			},
 		}
 
@@ -92,7 +95,7 @@ var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 		expectForwardedPointInTimeVolume(forwardedResult, 321, 0)
 
 		Expect(forwardedView.GetRequestedAt().GetData()).To(Equal(uint64(effectiveAt.UnixMicro())))
-		Expect(forwardedView.GetAxis()).To(Equal(servicepb.PointInTimeAxis_POINT_IN_TIME_AXIS_EFFECTIVE))
+		Expect(forwardedView.GetTemporality()).To(Equal(servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_EFFECTIVE))
 		Expect(forwardedView.GetLogWatermark()).To(BeNumerically(">=", minimumLogSequence))
 		Expect(forwardedView.GetViewToken()).NotTo(BeEmpty())
 		Expect(forwardedView.GetViewToken()).To(Equal(directView.GetViewToken()),
@@ -112,10 +115,10 @@ func forwardedPointInTimeAggregateEventually(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	request *servicepb.AggregateVolumesRequest,
-) (*commonpb.AggregateResult, *servicepb.PointInTimeView) {
+) (*commonpb.AggregateResult, *servicepb.HistoricalBalanceView) {
 	var (
 		result *commonpb.AggregateResult
-		view   *servicepb.PointInTimeView
+		view   *servicepb.HistoricalBalanceView
 	)
 	Eventually(func(g Gomega) {
 		var trailer metadata.MD
@@ -124,9 +127,9 @@ func forwardedPointInTimeAggregateEventually(
 		g.Expect(err).To(Succeed())
 		g.Expect(result).NotTo(BeNil())
 
-		values := trailer.Get(forwardedPointInTimeViewTrailerKey)
+		values := trailer.Get(forwardedHistoricalBalanceViewTrailerKey)
 		g.Expect(values).To(HaveLen(1))
-		view = &servicepb.PointInTimeView{}
+		view = &servicepb.HistoricalBalanceView{}
 		g.Expect(view.UnmarshalVT([]byte(values[0]))).To(Succeed())
 		g.Expect(view.GetViewToken()).NotTo(BeEmpty())
 	}).Within(30*time.Second).ProbeEvery(100*time.Millisecond).Should(Succeed(),
