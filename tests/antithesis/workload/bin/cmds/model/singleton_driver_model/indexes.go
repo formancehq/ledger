@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -308,11 +309,109 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		}
 		details["rows"] = len(serverAccts)
 		details["serverAddrs"] = strings.Join(serverAddrs, ",")
+		details["contentDiag"] = c.assetContentDiags(maxTicket, ledger, base, precision, cursor, pageSize, reverse, serverAccts)
 	} else {
 		details["error"] = err.Error()
 	}
 
 	assert.Unreachable("singleton_driver_model: asset-index account query outside model", details)
+}
+
+
+// describeAccountContentDiff renders the first content divergence between a
+// base's view of addr and the server's enriched row — the diagnostic for a
+// finding whose page ADDRESSES match a candidate base while a row's content
+// does not. Empty when the row matches.
+func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) string {
+	modelMeta := ls.AccountMetadata(addr)
+	serverMeta := serverAcct.GetMetadata()
+
+	for k, v := range modelMeta {
+		sv, ok := serverMeta[k]
+		if !ok {
+			return fmt.Sprintf("%s meta[%s] model=%s server=<absent>", addr, k, oracle.MetaValueString(v))
+		}
+
+		if oracle.MetaValueString(sv) != oracle.MetaValueString(v) {
+			return fmt.Sprintf("%s meta[%s] model=%s server=%s", addr, k, oracle.MetaValueString(v), oracle.MetaValueString(sv))
+		}
+	}
+
+	for k, sv := range serverMeta {
+		if _, ok := modelMeta[k]; !ok {
+			return fmt.Sprintf("%s meta[%s] model=<absent> server=%s", addr, k, oracle.MetaValueString(sv))
+		}
+	}
+
+	model := map[string]oracle.VolumePair{}
+	for k, vp := range ls.Volumes().All() {
+		if k.Address == addr {
+			model[k.Asset] = vp
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, av := range serverAcct.GetVolumes() {
+		if av.GetColor() != "" {
+			continue
+		}
+
+		seen[av.GetAsset()] = true
+
+		vp, ok := model[av.GetAsset()]
+		if !ok {
+			return fmt.Sprintf("%s volumes[%s] model=<absent> server=in:%s,out:%s", addr, av.GetAsset(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+		}
+
+		if vp.Input.Dec() != av.GetVolumes().GetInput() || vp.Output.Dec() != av.GetVolumes().GetOutput() {
+			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=in:%s,out:%s", addr, av.GetAsset(), vp.Input.Dec(), vp.Output.Dec(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+		}
+	}
+
+	for asset, vp := range model {
+		if !seen[asset] {
+			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=<absent>", addr, asset, vp.Input.Dec(), vp.Output.Dec())
+		}
+	}
+
+	return ""
+}
+
+// assetContentDiags collects, across the candidate bases whose asset window
+// equals the server page address-for-address, the distinct first content
+// divergences (capped) — pinpointing WHICH row and field failed a page whose
+// membership was explainable. Empty when no base reproduces the addresses.
+func (c *Checker) assetContentDiags(maxTicket uint64, ledger, assetBase string, precision uint32, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) string {
+	var diags []string
+
+	c.candidateBases(maxTicket, func(cand oracle.GlobalState) bool {
+		ls := cand.Ledger(ledger)
+
+		w := assetWindow(ls, assetBase, precision, cursor, pageSize, reverse)
+		if len(w) != len(serverAccts) {
+			return false
+		}
+
+		for i := range w {
+			if w[i] != serverAccts[i].GetAddress() {
+				return false
+			}
+		}
+
+		for i, a := range serverAccts {
+			if d := describeAccountContentDiff(ls, w[i], a); d != "" {
+				if len(diags) < 3 && !slices.Contains(diags, d) {
+					diags = append(diags, d)
+				}
+
+				break
+			}
+		}
+
+		return false
+	})
+
+	return strings.Join(diags, " ; ")
 }
 
 // --- index-op generation -------------------------------------------------
