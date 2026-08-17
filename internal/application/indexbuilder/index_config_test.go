@@ -1194,6 +1194,46 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	require.Equal(t, uint32(0), pending, "no pending backfill after a duplicate create")
 }
 
+// TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending pins the
+// creation-in-flight half of the idempotency guard: while a creation backfill
+// is running (current=0, pending!=0), a duplicate CreatedIndexLog must keep
+// the pending version the running task is filling. Allocating a fresh number
+// orphans the half-built keyspace, and the task's caught-up cursor then
+// promotes the never-filled replacement — a permanently empty index.
+func TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// A prior incarnation raised the high-water mark, so a fresh allocation
+	// is observable as pending != 1.
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{HighWater: 4})
+
+	first := b.readStore.NewBatch()
+	b.initBatch(first)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(5), pending, "creation targets the incarnation above the high-water mark")
+
+	second := b.readStore.NewBatch()
+	b.initBatch(second)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "duplicate create must not schedule another backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(5), pending, "the running backfill's target version must survive a duplicate create")
+}
+
 // TestDropLedgerVersionState_EvictsOnlyThatLedger pins the eviction the live
 // DeleteLedger apply path performs (via dropLedgerVersionState): every in-memory
 // version state for the deleted ledger is dropped, and other ledgers are left

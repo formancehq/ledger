@@ -426,7 +426,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// backfill would flip an already-live index back to ErrIndexBuilding. This
 	// mirrors the loadIndexRegistry boot guard and covers both the EN-1564
 	// initial fast path and the normal post-backfill live state.
-	if current, _ := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
+	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
+		return
+	} else if pending != 0 {
+		// A build for this incarnation is already in flight: the running
+		// backfill fills that pending version and will promote it. Allocating
+		// a fresh number here would orphan the half-built keyspace while the
+		// task's caught-up cursor promotes the never-filled replacement — a
+		// permanently empty index. The duplicate create is a no-op.
 		return
 	}
 
