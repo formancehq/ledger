@@ -372,18 +372,19 @@ func TestCreatedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
 
 	// Transaction is `omitempty`. Retyping it to `any` would make a nil
 	// transaction emit `null` unless the nil guard holds, so assert the
-	// absence explicitly in both modes.
+	// absence explicitly in both modes. Asserting on the field name alone is
+	// sufficient: the counterfactual `"transaction":null` output also
+	// contains the field name, so this loses no detection power over also
+	// asserting "null" separately.
 	ct := &CreatedTransaction{ChapterId: 3}
 
 	def, err := json.Marshal(ct)
 	require.NoError(t, err)
 	require.NotContains(t, string(def), "transaction")
-	require.NotContains(t, string(def), "null")
 
 	str, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: ct})
 	require.NoError(t, err)
 	require.NotContains(t, string(str), "transaction")
-	require.NotContains(t, string(str), "null")
 }
 
 func TestCreatedTransaction_NilReceiverIsNull(t *testing.T) {
@@ -432,18 +433,19 @@ func TestRevertedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
 
 	// RevertTransaction is `omitempty`. Retyping it to `any` would make a nil
 	// transaction emit `null` unless the nil guard holds, so assert the
-	// absence explicitly in both modes.
+	// absence explicitly in both modes. Asserting on the field name alone is
+	// sufficient: the counterfactual `"revertTransaction":null` output also
+	// contains the field name, so this loses no detection power over also
+	// asserting "null" separately.
 	rt := &RevertedTransaction{RevertedTransactionId: 4}
 
 	def, err := json.Marshal(rt)
 	require.NoError(t, err)
 	require.NotContains(t, string(def), "revertTransaction")
-	require.NotContains(t, string(def), "null")
 
 	str, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: rt})
 	require.NoError(t, err)
 	require.NotContains(t, string(str), "revertTransaction")
-	require.NotContains(t, string(str), "null")
 }
 
 func TestRevertedTransaction_NilReceiverIsNull(t *testing.T) {

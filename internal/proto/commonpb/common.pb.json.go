@@ -282,15 +282,9 @@ func (x *Account) MarshalJSON() ([]byte, error) {
 // decimals (see string_amounts.go); MarshalJSON delegates with false, and
 // that output is byte-identical to what it always emitted.
 func (x *CreatedTransaction) buildAux(amountsAsString bool) any {
-	var transaction any
-
-	if tx := x.GetTransaction(); tx != nil {
-		if amountsAsString {
-			transaction = StringAmountTransaction{Transaction: tx}
-		} else {
-			transaction = tx
-		}
-	}
+	transaction := childValue(x.GetTransaction(), amountsAsString, func(tx *Transaction) StringAmountTransaction {
+		return StringAmountTransaction{Transaction: tx}
+	})
 
 	return &struct {
 		Transaction     any                       `json:"transaction,omitempty"`
@@ -315,15 +309,9 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 // amounts as quoted decimals (see string_amounts.go); MarshalJSON delegates
 // with false, and that output is byte-identical to what it always emitted.
 func (x *RevertedTransaction) buildAux(amountsAsString bool) any {
-	var revertTransaction any
-
-	if tx := x.GetRevertTransaction(); tx != nil {
-		if amountsAsString {
-			revertTransaction = StringAmountTransaction{Transaction: tx}
-		} else {
-			revertTransaction = tx
-		}
-	}
+	revertTransaction := childValue(x.GetRevertTransaction(), amountsAsString, func(tx *Transaction) StringAmountTransaction {
+		return StringAmountTransaction{Transaction: tx}
+	})
 
 	return &struct {
 		RevertedTransactionID uint64 `json:"revertedTransactionId,omitempty"`

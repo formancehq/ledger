@@ -19,7 +19,18 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 // empty, so the field must be left as a nil interface unless there is
 // something to emit. Guard pointers with `!= nil` and slices/maps with
 // `len(x) > 0` — `!= nil` is not sufficient for a slice, because `omitempty`
-// drops empty non-nil slices too.
+// drops empty non-nil slices too. childValue below makes that guard a
+// property of one generic function for the common case of a single retyped
+// child pointer, the same way wrapAll does for slices.
+//
+// Two marshaller shapes exist in this chain. A marshaller that always
+// produces one aux struct uses buildAux(amountsAsString bool) any, as above:
+// MarshalJSON delegates with false. A marshaller that dispatches a oneof and
+// returns a different struct per variant — bytes, not an aux value — instead
+// uses marshalStringAmounts() ([]byte, error): every non-posting-bearing
+// variant delegates to the type's own MarshalJSON so both modes stay
+// byte-identical there, and only the variant(s) that actually carry an
+// amount build the opt-in wire themselves.
 //
 // Uint256.MarshalJSON is deliberately untouched: ledgerctl and misc/operator
 // consume it, so the CLI wire must not move.
@@ -35,6 +46,24 @@ func wrapAll[T, W any](items []T, wrap func(T) W) []W {
 	}
 
 	return out
+}
+
+// childValue returns a nil interface when child is nil, so a retyped `any`
+// field carrying `omitempty` stays omitted instead of emitting null. Callers
+// must use this at every retyped child field rather than deciding per field
+// whether the guard is needed: it is safe where omitempty is absent (a nil
+// interface and a nil pointer both render null there) and load-bearing where
+// omitempty is present.
+func childValue[T, W any](child *T, amountsAsString bool, wrap func(*T) W) any {
+	if child == nil {
+		return nil
+	}
+
+	if amountsAsString {
+		return wrap(child)
+	}
+
+	return child
 }
 
 // StringAmountPosting renders a Posting with a quoted decimal amount. Exported
