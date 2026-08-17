@@ -114,15 +114,12 @@ func TestPosting_NilElementStaysNullInBothModes(t *testing.T) {
 		string(str))
 }
 
-// newTestTransaction returns a transaction whose single posting carries an
-// amount above the JavaScript integer limit, so any accidental float round-trip
-// anywhere in the chain fails the test rather than passing with a plausible
-// number.
-func newTestTransaction(t *testing.T) *Transaction {
+// newTestTransaction returns a transaction whose single posting carries the
+// given amount. Callers needing to exercise the JavaScript integer limit pass
+// a value parsed from aboveJSNumberLimit; callers exercising
+// requireOnlyAmountsDiffer must stay below it (see that helper's doc comment).
+func newTestTransaction(t *testing.T, amount *big.Int) *Transaction {
 	t.Helper()
-
-	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
-	require.True(t, ok)
 
 	return &Transaction{
 		Id:        7,
@@ -153,30 +150,37 @@ func requireOnlyAmountsDiffer(t *testing.T, defaultBody, stringBody []byte) {
 	require.NoError(t, json.Unmarshal(defaultBody, &a))
 	require.NoError(t, json.Unmarshal(stringBody, &b))
 
-	require.Equal(t, normalizeAmounts(a), normalizeAmounts(b))
+	require.Equal(t, normalizeAmounts(t, a), normalizeAmounts(t, b))
 }
 
-// normalizeAmounts walks a decoded JSON tree and rewrites every "amount" value
-// to its decimal string, so a number and its quoted form compare equal.
-func normalizeAmounts(v any) any {
-	switch t := v.(type) {
+// normalizeAmounts walks a decoded JSON tree and, inside every "postings"
+// array it finds, rewrites each posting's "amount" value to its decimal
+// string, so a number and its quoted form compare equal. The rewrite is
+// scoped to postings[].amount rather than every "amount" key at any depth:
+// the repository has other unrelated "amount" JSON keys (events, adapter/v2
+// types, receipts), and a document embedding one of those must not have it
+// silently normalised away by this test helper.
+func normalizeAmounts(t *testing.T, v any) any {
+	t.Helper()
+
+	switch node := v.(type) {
 	case map[string]any:
-		out := make(map[string]any, len(t))
-		for k, val := range t {
-			if k == "amount" {
-				out[k] = amountToString(val)
+		out := make(map[string]any, len(node))
+		for k, val := range node {
+			if k == "postings" {
+				out[k] = normalizePostingsAmounts(t, val)
 
 				continue
 			}
 
-			out[k] = normalizeAmounts(val)
+			out[k] = normalizeAmounts(t, val)
 		}
 
 		return out
 	case []any:
-		out := make([]any, 0, len(t))
-		for _, val := range t {
-			out = append(out, normalizeAmounts(val))
+		out := make([]any, 0, len(node))
+		for _, val := range node {
+			out = append(out, normalizeAmounts(t, val))
 		}
 
 		return out
@@ -185,21 +189,71 @@ func normalizeAmounts(v any) any {
 	}
 }
 
-func amountToString(v any) string {
-	switch t := v.(type) {
+// normalizePostingsAmounts rewrites the "amount" field of every posting in a
+// decoded postings array to its decimal string. A posting element may be nil
+// (decoded as a non-map value), which is passed through unchanged.
+func normalizePostingsAmounts(t *testing.T, v any) any {
+	t.Helper()
+
+	postings, ok := v.([]any)
+	if !ok {
+		return v
+	}
+
+	out := make([]any, 0, len(postings))
+
+	for _, posting := range postings {
+		p, ok := posting.(map[string]any)
+		if !ok {
+			out = append(out, posting)
+
+			continue
+		}
+
+		normalized := make(map[string]any, len(p))
+		for k, val := range p {
+			if k == "amount" {
+				normalized[k] = amountToString(t, val)
+
+				continue
+			}
+
+			normalized[k] = val
+		}
+
+		out = append(out, normalized)
+	}
+
+	return out
+}
+
+// amountToString renders a decoded "amount" value as a decimal string. It
+// fails the test rather than masking a regression: a silent "" default for an
+// unexpected type would let a future bug that turns amount into null or an
+// object pass requireOnlyAmountsDiffer, because both sides would normalise to
+// the same empty string.
+func amountToString(t *testing.T, v any) string {
+	t.Helper()
+
+	switch n := v.(type) {
 	case string:
-		return t
+		return n
 	case float64:
-		return new(big.Float).SetFloat64(t).Text('f', 0)
+		return new(big.Float).SetFloat64(n).Text('f', 0)
 	default:
+		t.Fatalf("amount decoded as unexpected type %T (%#v); expected string or number", v, v)
+
 		return ""
 	}
 }
 
-func TestTransaction_StringAmountDiffersOnlyAtAmount(t *testing.T) {
+func TestTransaction_StringAmountKeepsAboveJSLimitExact(t *testing.T) {
 	t.Parallel()
 
-	tx := newTestTransaction(t)
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	tx := newTestTransaction(t, amount)
 
 	def, err := json.Marshal(tx)
 	require.NoError(t, err)
@@ -219,15 +273,8 @@ func TestTransaction_StringAmountOnlyChangesAmountShape(t *testing.T) {
 	// comment), which is lossy above 2^53. Use a small amount here so the
 	// structural comparison itself is not defeated by float rounding; the
 	// above-2^53 exactness is covered separately by
-	// TestTransaction_StringAmountDiffersOnlyAtAmount.
-	amount := big.NewInt(4200)
-	tx := &Transaction{
-		Id:        7,
-		Reference: "ref-1",
-		Postings: []*Posting{
-			NewPosting("world", "alice", "USD/2", amount),
-		},
-	}
+	// TestTransaction_StringAmountKeepsAboveJSLimitExact.
+	tx := newTestTransaction(t, big.NewInt(4200))
 
 	def, err := json.Marshal(tx)
 	require.NoError(t, err)
@@ -257,7 +304,10 @@ func TestTransaction_NilPostingsStillEmitsEmptyArray(t *testing.T) {
 func TestTransaction_NilElementStaysNullInBothModes(t *testing.T) {
 	t.Parallel()
 
-	txs := []*Transaction{newTestTransaction(t), nil}
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	txs := []*Transaction{newTestTransaction(t, amount), nil}
 
 	def, err := json.Marshal(txs)
 	require.NoError(t, err)

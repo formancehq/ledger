@@ -24,6 +24,19 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 // Uint256.MarshalJSON is deliberately untouched: ledgerctl and misc/operator
 // consume it, so the CLI wire must not move.
 
+// wrapAll wraps every element for the opt-in wire. The result is always
+// non-nil, so a nil or empty input still marshals as `[]` rather than `null`:
+// making that a property of one generic function means no per-level wrapper
+// can silently reintroduce `null` via a bare `var out []W`.
+func wrapAll[T, W any](items []T, wrap func(T) W) []W {
+	out := make([]W, 0, len(items))
+	for _, item := range items {
+		out = append(out, wrap(item))
+	}
+
+	return out
+}
+
 // StringAmountPosting renders a Posting with a quoted decimal amount. Exported
 // because StringAmountPostings returns a slice of it, and revive's
 // unexported-return rule forbids an exported function returning an unexported
@@ -49,12 +62,9 @@ func (w StringAmountPosting) MarshalJSON() ([]byte, error) {
 // postings field has no omitempty and the OpenAPI schema types it as a
 // non-nullable required array.
 func StringAmountPostings(postings []*Posting) []StringAmountPosting {
-	out := make([]StringAmountPosting, 0, len(postings))
-	for _, p := range postings {
-		out = append(out, StringAmountPosting{Posting: p})
-	}
-
-	return out
+	return wrapAll(postings, func(p *Posting) StringAmountPosting {
+		return StringAmountPosting{Posting: p}
+	})
 }
 
 // StringAmountTransaction renders a Transaction with quoted decimal posting
@@ -78,10 +88,7 @@ func (w StringAmountTransaction) MarshalJSON() ([]byte, error) {
 // StringAmountTransactions wraps each transaction for the opt-in wire. The
 // result is always non-nil so a drained empty cursor still marshals as `[]`.
 func StringAmountTransactions(transactions []*Transaction) []StringAmountTransaction {
-	out := make([]StringAmountTransaction, 0, len(transactions))
-	for _, tx := range transactions {
-		out = append(out, StringAmountTransaction{Transaction: tx})
-	}
-
-	return out
+	return wrapAll(transactions, func(tx *Transaction) StringAmountTransaction {
+		return StringAmountTransaction{Transaction: tx}
+	})
 }
