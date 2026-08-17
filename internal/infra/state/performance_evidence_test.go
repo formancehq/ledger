@@ -31,8 +31,8 @@ type historicalBalanceFSMPerfLatency struct {
 }
 
 type historicalBalanceFSMPerfComparison struct {
-	FourTargets          historicalBalanceFSMPerfLatency `json:"fourTargets"`
-	FiveTargets          historicalBalanceFSMPerfLatency `json:"fiveTargetsRejectedOption"`
+	FourTargets          historicalBalanceFSMPerfLatency `json:"fourTargetsBaseline"`
+	FiveTargets          historicalBalanceFSMPerfLatency `json:"fiveTargetsDelivered"`
 	P50RegressionPercent float64                         `json:"p50RegressionPercent"`
 	P99RegressionPercent float64                         `json:"p99RegressionPercent"`
 }
@@ -53,9 +53,9 @@ type historicalBalanceFSMPerfReport struct {
 	Limitation            string                             `json:"limitation"`
 }
 
-// TestHistoricalBalanceFSMNotificationPerformanceEvidence isolates the rejected fifth
-// synchronous notification target from the asynchronous history I/O measured
-// by the builder harness. The shipped runtime retains four targets.
+// TestHistoricalBalanceFSMNotificationPerformanceEvidence isolates the delivered
+// fifth synchronous notification target from the asynchronous history I/O
+// measured by the builder harness.
 func TestHistoricalBalanceFSMNotificationPerformanceEvidence(t *testing.T) {
 	if os.Getenv("HISTORICAL_BALANCE_PERF") != "1" {
 		t.Skip("set HISTORICAL_BALANCE_PERF=1 to run the historical-balance FSM notification evidence harness")
@@ -75,14 +75,14 @@ func TestHistoricalBalanceFSMNotificationPerformanceEvidence(t *testing.T) {
 		WorkingTree:      historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_WORKTREE")),
 		Machine:          historicalBalanceFSMPerfValue(os.Getenv("HISTORICAL_BALANCE_PERF_MACHINE")),
 		GoVersion:        runtime.Version(),
-		DeliveredTargets: 4,
+		DeliveredTargets: 5,
 		FanOutOnly:       historicalBalanceFSMPerfComparisonResult(fanOutFour, fanOutFive),
 		FSMApplyAndDurability: historicalBalanceFSMPerfComparisonResult(
 			fsmFour,
 			fsmFive,
 		),
 		Scope:      "local single-node Machine.ApplyEntries through Pebble NoSync commit, synchronous FanOut notification, then explicit primary SyncWAL; identical transaction shape and fresh volume keys",
-		Limitation: "this is below Raft transport/admission and above neither HTTP nor gRPC; it separates the synchronous four-to-five fan-out option from asynchronous historical-balance projection I/O",
+		Limitation: "this is below Raft transport/admission and above neither HTTP nor gRPC; it measures the delivered synchronous four-to-five fan-out change separately from asynchronous historical-balance projection I/O",
 	}
 
 	writeHistoricalBalanceFSMPerfReport(t, report)
@@ -248,17 +248,17 @@ func writeHistoricalBalanceFSMPerfReport(t *testing.T, report historicalBalanceF
 	if !filepath.IsAbs(output) {
 		cwd, cwdErr := os.Getwd()
 		if cwdErr != nil {
-			t.Fatalf("resolving PIT FSM performance output: %v", cwdErr)
+			t.Fatalf("resolving historical-balance FSM performance output: %v", cwdErr)
 		}
 		output = filepath.Join(cwd, output)
 	}
 	if err := os.MkdirAll(filepath.Dir(output), 0o750); err != nil {
-		t.Fatalf("creating PIT FSM performance output directory: %v", err)
+		t.Fatalf("creating historical-balance FSM performance output directory: %v", err)
 	}
 	if err := os.WriteFile(output, append(encoded, '\n'), 0o600); err != nil {
-		t.Fatalf("writing PIT FSM performance evidence: %v", err)
+		t.Fatalf("writing historical-balance FSM performance evidence: %v", err)
 	}
-	t.Logf("wrote PIT FSM performance evidence to %s", output)
+	t.Logf("wrote historical-balance FSM performance evidence to %s", output)
 }
 
 func historicalBalanceFSMPerfValue(value string) string {

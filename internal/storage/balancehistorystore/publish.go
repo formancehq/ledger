@@ -349,6 +349,17 @@ func (s *publisher) commitPublicationLocked(
 	if err := batch.Set(manifestKey(next.Version), encodedManifest, nil); err != nil {
 		return Manifest{}, fmt.Errorf("staging balance history %s manifest: %w", operation, err)
 	}
+	if next.Version > 1 && !s.manifestIsLeased(next.Version-1) {
+		// Publications are serialized by mutationMu, so the preceding version
+		// cannot become newly leased after this check: a concurrent OpenView
+		// observes either its already-recorded lease or the new latest pointer.
+		// This keeps cursor-only traffic from accumulating one full immutable
+		// manifest per audit batch while periodic GC handles older released
+		// leases and crash orphans.
+		if err := batch.Delete(manifestKey(next.Version-1), nil); err != nil {
+			return Manifest{}, fmt.Errorf("staging obsolete balance history %s manifest deletion: %w", operation, err)
+		}
+	}
 	var version [8]byte
 	binary.BigEndian.PutUint64(version[:], next.Version)
 	if err := batch.Set(latestManifestKey(), version[:], nil); err != nil {
@@ -359,4 +370,11 @@ func (s *publisher) commitPublicationLocked(
 	}
 
 	return next, nil
+}
+
+func (s *publisher) manifestIsLeased(version uint64) bool {
+	s.leaseMu.Lock()
+	defer s.leaseMu.Unlock()
+
+	return s.manifestLeases[version] > 0
 }

@@ -1,9 +1,7 @@
 package bootstrap
 
 import (
-	"errors"
 	"fmt"
-	"math/bits"
 	"time"
 
 	appbalancehistory "github.com/formancehq/ledger/v3/internal/application/balancehistory"
@@ -77,14 +75,6 @@ func (c BalanceHistoryConfig) Validate() error {
 	}
 	if effective.MaxCompactionsPerPass < 1 || effective.MaxCompactionsPerPass > MaxBalanceHistoryCompactionsPerPass {
 		return fmt.Errorf("--balance-history-max-compactions-per-pass must be in [1,%d] (got %d)", MaxBalanceHistoryCompactionsPerPass, effective.MaxCompactionsPerPass)
-	}
-	high, low := bits.Mul64(uint64(effective.MaxCompactionsPerPass), uint64(effective.SegmentCompactionThreshold-1))
-	required := uint64(effective.MaintenanceInterval / appbalancehistory.TickInterval)
-	if effective.MaintenanceInterval%appbalancehistory.TickInterval != 0 {
-		required++
-	}
-	if high == 0 && low < required {
-		return errors.New("balance history maintenance cannot retire segments as fast as the bounded publication rate")
 	}
 	if effective.BackfillYield < 0 {
 		return fmt.Errorf("--balance-history-backfill-yield must be >= 0 (got %s)", effective.BackfillYield)

@@ -17,21 +17,35 @@ type garbageCollector struct {
 // never depends on this cleanup: a crash before or during GC can only leave
 // unreachable bytes, never expose a partial segment.
 func (s *garbageCollector) CollectGarbage() (bool, error) {
+	generation := s.generation.Load()
+	snapshot := s.db.NewSnapshot()
+	physicalRuns, physicalManifests, scanErr := scanGarbageCandidates(snapshot)
+	closeErr := snapshot.Close()
+	if scanErr == nil && closeErr != nil {
+		scanErr = fmt.Errorf("closing balance history GC snapshot: %w", closeErr)
+	}
+
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
-
+	if generation != s.generation.Load() {
+		// A reset may reuse manifest and segment identifiers. Discard candidates
+		// observed before that generation change rather than risk deleting the
+		// newly rebuilt rows which now carry the same identifiers.
+		return false, nil
+	}
 	if err := s.ensureNotQuarantined(); err != nil {
 		return false, err
 	}
+	if scanErr != nil {
+		var corrupt *ErrCorrupt
+		if errors.As(scanErr, &corrupt) {
+			return s.quarantineGCError(corrupt.Detail)
+		}
 
-	return s.collectGarbageLocked()
-}
+		return false, scanErr
+	}
 
-func (s *garbageCollector) collectGarbageLocked() (bool, error) {
-	snapshot := s.db.NewSnapshot()
-	defer func() { _ = snapshot.Close() }()
-
-	manifest, err := readManifest(snapshot)
+	manifest, err := readManifest(s.db)
 	if err != nil {
 		return false, err
 	}
@@ -52,58 +66,6 @@ func (s *garbageCollector) collectGarbageLocked() (bool, error) {
 		keepRuns[runID] = struct{}{}
 	}
 	s.leaseMu.Unlock()
-
-	physicalRuns := make(map[uint64]struct{})
-	for _, kind := range []byte{prefixRunData, prefixRunMeta, prefixRunCatalog} {
-		iter, err := snapshot.NewIter(&pebble.IterOptions{
-			LowerBound: []byte{kind},
-			UpperBound: []byte{kind + 1},
-		})
-		if err != nil {
-			return false, fmt.Errorf("opening balance history GC segment iterator: %w", err)
-		}
-		for valid := iter.First(); valid; valid = iter.Next() {
-			if len(iter.Key()) < 9 {
-				_ = iter.Close()
-
-				return s.quarantineGCError(fmt.Sprintf("truncated segment key under prefix 0x%x", kind))
-			}
-			physicalRuns[binary.BigEndian.Uint64(iter.Key()[1:9])] = struct{}{}
-		}
-		iterErr := iter.Error()
-		closeErr := iter.Close()
-		if iterErr != nil {
-			return false, fmt.Errorf("iterating balance history GC runs: %w", iterErr)
-		}
-		if closeErr != nil {
-			return false, fmt.Errorf("closing balance history GC run iterator: %w", closeErr)
-		}
-	}
-
-	physicalManifests := make(map[uint64]struct{})
-	iter, err := snapshot.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{prefixManifest},
-		UpperBound: []byte{prefixManifest + 1},
-	})
-	if err != nil {
-		return false, fmt.Errorf("opening balance history GC manifest iterator: %w", err)
-	}
-	for valid := iter.First(); valid; valid = iter.Next() {
-		if len(iter.Key()) != 9 {
-			_ = iter.Close()
-
-			return s.quarantineGCError("invalid immutable manifest key")
-		}
-		physicalManifests[binary.BigEndian.Uint64(iter.Key()[1:])] = struct{}{}
-	}
-	iterErr := iter.Error()
-	closeErr := iter.Close()
-	if iterErr != nil {
-		return false, fmt.Errorf("iterating balance history GC manifests: %w", iterErr)
-	}
-	if closeErr != nil {
-		return false, fmt.Errorf("closing balance history GC manifest iterator: %w", closeErr)
-	}
 
 	batch := s.db.NewBatch()
 	defer func() { _ = batch.Close() }()
@@ -142,6 +104,65 @@ func (s *garbageCollector) collectGarbageLocked() (bool, error) {
 	}
 
 	return true, nil
+}
+
+// scanGarbageCandidates performs the expensive physical key walk without
+// holding mutationMu. CollectGarbage revalidates the current manifest, leases,
+// prepared runs, and store generation under the lock before deleting anything.
+func scanGarbageCandidates(snapshot *pebble.Snapshot) (map[uint64]struct{}, map[uint64]struct{}, error) {
+	physicalRuns := make(map[uint64]struct{})
+	for _, kind := range []byte{prefixRunData, prefixRunMeta, prefixRunCatalog} {
+		iter, err := snapshot.NewIter(&pebble.IterOptions{
+			LowerBound: []byte{kind},
+			UpperBound: []byte{kind + 1},
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("opening balance history GC segment iterator: %w", err)
+		}
+		for valid := iter.First(); valid; valid = iter.Next() {
+			if len(iter.Key()) < 9 {
+				_ = iter.Close()
+
+				return nil, nil, &ErrCorrupt{Detail: fmt.Sprintf("truncated segment key under prefix 0x%x", kind)}
+			}
+			physicalRuns[binary.BigEndian.Uint64(iter.Key()[1:9])] = struct{}{}
+		}
+		iterErr := iter.Error()
+		closeErr := iter.Close()
+		if iterErr != nil {
+			return nil, nil, fmt.Errorf("iterating balance history GC runs: %w", iterErr)
+		}
+		if closeErr != nil {
+			return nil, nil, fmt.Errorf("closing balance history GC run iterator: %w", closeErr)
+		}
+	}
+
+	physicalManifests := make(map[uint64]struct{})
+	iter, err := snapshot.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{prefixManifest},
+		UpperBound: []byte{prefixManifest + 1},
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening balance history GC manifest iterator: %w", err)
+	}
+	for valid := iter.First(); valid; valid = iter.Next() {
+		if len(iter.Key()) != 9 {
+			_ = iter.Close()
+
+			return nil, nil, &ErrCorrupt{Detail: "invalid immutable manifest key"}
+		}
+		physicalManifests[binary.BigEndian.Uint64(iter.Key()[1:])] = struct{}{}
+	}
+	iterErr := iter.Error()
+	closeErr := iter.Close()
+	if iterErr != nil {
+		return nil, nil, fmt.Errorf("iterating balance history GC manifests: %w", iterErr)
+	}
+	if closeErr != nil {
+		return nil, nil, fmt.Errorf("closing balance history GC manifest iterator: %w", closeErr)
+	}
+
+	return physicalRuns, physicalManifests, nil
 }
 
 func (s *garbageCollector) quarantineGCError(detail string) (bool, error) {

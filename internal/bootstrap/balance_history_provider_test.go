@@ -72,6 +72,18 @@ func TestBalanceHistoryStatusDistinguishesDisabledBuildingAndReady(t *testing.T)
 	status, err = local.Status(context.Background(), "enabled")
 	require.NoError(t, err)
 	require.Equal(t, servicepb.GetHistoricalBalancesStatusResponse_STATE_READY, status.GetState())
+
+	require.NoError(t, store.MarkSourceMissing("archived source unavailable"))
+	status, err = provider.Status(context.Background(), "enabled")
+	require.NoError(t, err)
+	require.Equal(t, servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR, status.GetState())
+	require.Contains(t, status.GetError(), "archived source unavailable")
+
+	require.NoError(t, store.ResetForSourceRepair())
+	status, err = provider.Status(context.Background(), "enabled")
+	require.NoError(t, err)
+	require.Equal(t, servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR, status.GetState())
+	require.Contains(t, status.GetError(), "archived source unavailable")
 }
 
 func newBalanceHistoryProviderTestStore(t *testing.T) *balancehistorystore.Store {

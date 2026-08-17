@@ -430,12 +430,24 @@ func TestReDeriveArchivedIdempotency_LeaseSurvivesConcurrentEviction(t *testing.
 	go func() {
 		<-start
 		for range churnIterations {
-			if _, err := reader.GetReader(context.Background(), 2); err != nil {
+			_, release, err := reader.AcquireReader(context.Background(), 2)
+			if err != nil {
 				churnDone <- err
 
 				return
 			}
-			if _, err := reader.GetReader(context.Background(), 3); err != nil {
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+			_, release, err = reader.AcquireReader(context.Background(), 3)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
 				churnDone <- err
 
 				return

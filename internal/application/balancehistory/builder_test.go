@@ -84,6 +84,7 @@ func newBuilderForTestWithIntervals(
 		logging.NopZap(),
 		noop.NewMeterProvider().Meter("balance-history-builder-test"),
 		1,
+		balancehistorystore.DefaultSegmentCompactionThreshold,
 		backfillYield,
 		durabilityInterval,
 	)
@@ -1009,6 +1010,58 @@ func TestBuilderDurabilityCadenceRetriesWithoutWaitingForAnotherInterval(t *test
 	require.Equal(t, uint64(2), builder.LastDurableAuditSequence())
 }
 
+func TestBuilderTickProcessesCommitWithoutPollingDelay(t *testing.T) {
+	t.Parallel()
+
+	primary := newHotSourceTestStore(t)
+	created := builderSuccessfulFixture(t, 1, nil, "create", builderCreateLedgerLog(1, "default", 7))
+	seedHotSource(t, primary, created)
+	history := newBuilderTestHistoryStore(t)
+	builder := newBuilderForTest(t, NewHotSource(primary), history, nil)
+	now := time.Unix(2_000_000_000, 0)
+	builder.durabilityNow = func() time.Time { return now }
+
+	require.NoError(t, builder.boot(context.Background()))
+	require.NoError(t, builder.tick(context.Background()), "idle fallback tick")
+
+	transaction := builderSuccessfulFixture(t, 2, created.entry.GetHash(), "tx", builderTransactionLog(2, "default", 9))
+	seedHotSource(t, primary, transaction)
+	require.NoError(t, builder.tick(context.Background()), "post-commit wake at the same clock instant")
+	require.Equal(t, uint64(2), builder.LastProcessedAuditSequence())
+}
+
+func TestBuilderTickDrainsEveryVisibleBatch(t *testing.T) {
+	t.Parallel()
+
+	primary := newHotSourceTestStore(t)
+	first := builderSuccessfulFixture(t, 1, nil, "first", builderCreateLedgerLog(1, "default", 7))
+	second := builderSuccessfulFixture(t, 2, first.entry.GetHash(), "second", builderTransactionLog(2, "default", 9))
+	third := builderSuccessfulFixture(t, 3, second.entry.GetHash(), "third", builderTransactionLog(3, "default", 11))
+	seedHotSource(t, primary, first, second, third)
+	history := newBuilderTestHistoryStore(t)
+	builder := newBuilderForTest(t, NewHotSource(primary), history, nil)
+
+	require.NoError(t, builder.tick(context.Background()))
+	require.Equal(t, uint64(3), builder.LastProcessedAuditSequence())
+	require.True(t, builder.Ready())
+}
+
+func TestBuilderSteadyStateUsesReadSnapshotHeadWithoutSeparateProbe(t *testing.T) {
+	t.Parallel()
+
+	store := newBuilderTestHistoryStore(t)
+	mockController := gomock.NewController(t)
+	source := NewMockSource(mockController)
+	source.EXPECT().
+		Read(gomock.Any(), Position{}, 1).
+		Return(Batch{Next: Position{}, Head: Position{}}, nil)
+	builder := newBuilderForTest(t, source, store, nil)
+
+	caughtUp, err := builder.processOnce(context.Background())
+	require.NoError(t, err)
+	require.True(t, caughtUp)
+}
+
 func TestBuilderBootSyncsPeriodicallyAndAtCaughtUpHead(t *testing.T) {
 	t.Parallel()
 
@@ -1149,6 +1202,7 @@ func TestBuilderDurabilityMetricsExposeRetryState(t *testing.T) {
 		logging.NopZap(),
 		provider.Meter("balance-history-builder-durability-test"),
 		1,
+		balancehistorystore.DefaultSegmentCompactionThreshold,
 		time.Nanosecond,
 		time.Hour,
 	)
@@ -1226,6 +1280,7 @@ func TestBuilderRecordsBoundedPublishLagWithoutLabels(t *testing.T) {
 		logging.NopZap(),
 		provider.Meter("balance-history-builder-lag-test"),
 		2,
+		balancehistorystore.DefaultSegmentCompactionThreshold,
 		time.Nanosecond,
 		time.Hour,
 	)

@@ -18,7 +18,7 @@ import (
 )
 
 // TestDefaultController_LedgerNotFound asserts that the read paths gated on
-// ledger existence (GetNumscript, ListNumscripts, ListPreparedQueries) map the
+// ledger existence (including historical-balance status) map the
 // internal domain.ErrNotFound sentinel returned by query.GetLedgerByName to a
 // typed *domain.ErrLedgerNotFound (Reason LEDGER_NOT_FOUND -> HTTP 404), for
 // both a missing and a soft-deleted target ledger.
@@ -52,6 +52,11 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 		},
 		"ListPreparedQueries": func(ctrl *DefaultController) error {
 			_, err := ctrl.ListPreparedQueries(context.Background(), ledger)
+
+			return err
+		},
+		"GetHistoricalBalancesStatus": func(ctrl *DefaultController) error {
+			_, err := ctrl.GetHistoricalBalancesStatus(context.Background(), ledger)
 
 			return err
 		},

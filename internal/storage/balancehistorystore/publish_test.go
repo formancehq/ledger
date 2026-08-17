@@ -5,10 +5,57 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	domainhistory "github.com/formancehq/ledger/v3/internal/domain/balancehistory"
 )
+
+func TestCursorOnlyPublicationsKeepManifestRetentionBounded(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	_, err := store.Publish(Publication{
+		Coverage: Coverage{AuditSequence: 1, AuditHash: []byte("1"), SourceComplete: true},
+	})
+	require.NoError(t, err)
+	pinned, err := store.OpenView(0)
+	require.NoError(t, err)
+
+	for sequence := uint64(2); sequence <= 100; sequence++ {
+		_, err := store.Publish(Publication{
+			Coverage: Coverage{
+				AuditSequence:  sequence,
+				AuditHash:      []byte{byte(sequence)},
+				SourceComplete: true,
+			},
+		})
+		require.NoError(t, err)
+	}
+	require.Equal(t, 2, countPhysicalManifests(t, store), "current plus pinned manifest")
+	require.NoError(t, pinned.Close())
+	_, err = store.CollectGarbage()
+	require.NoError(t, err)
+	require.Equal(t, 1, countPhysicalManifests(t, store))
+}
+
+func countPhysicalManifests(t *testing.T, store *Store) int {
+	t.Helper()
+
+	iter, err := store.db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{prefixManifest},
+		UpperBound: []byte{prefixManifest + 1},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, iter.Close()) }()
+	count := 0
+	for valid := iter.First(); valid; valid = iter.Next() {
+		count++
+	}
+	require.NoError(t, iter.Error())
+
+	return count
+}
 
 func TestBuildRunRecordsFromGroupsRejectsOversizedIdentityComponentsDeterministically(t *testing.T) {
 	t.Parallel()

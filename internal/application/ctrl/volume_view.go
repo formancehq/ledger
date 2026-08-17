@@ -100,6 +100,37 @@ func (p *LocalVolumeViewProvider) Status(_ context.Context, ledgerName string) (
 
 		return response, nil
 	}
+	if err := p.store.ReadinessError(); err != nil {
+		var building *balancehistorystore.ErrBuilding
+		if errors.As(err, &building) {
+			response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_BUILDING
+
+			return response, nil
+		}
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = err.Error()
+
+		return response, nil
+	}
+	view, err := p.store.OpenView(manifest.LogWatermark)
+	if err != nil {
+		var building *balancehistorystore.ErrBuilding
+		if errors.As(err, &building) {
+			response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_BUILDING
+
+			return response, nil
+		}
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = err.Error()
+
+		return response, nil
+	}
+	if err := view.Close(); err != nil {
+		response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR
+		response.Error = err.Error()
+
+		return response, nil
+	}
 	response.State = servicepb.GetHistoricalBalancesStatusResponse_STATE_READY
 
 	return response, nil

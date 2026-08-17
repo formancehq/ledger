@@ -230,7 +230,7 @@ func TestHotSourceRejectsMissingItemOrLog(t *testing.T) {
 		_, err := NewHotSource(store).Read(context.Background(), Position{}, 10)
 		var missing *ErrSourceMissing
 		require.ErrorAs(t, err, &missing)
-		require.ErrorContains(t, err, "references missing log 1")
+		require.ErrorContains(t, err, "referenced logs are missing: [1]")
 	})
 }
 
@@ -313,7 +313,7 @@ func TestHotSourceValidatesFreshLogCoverage(t *testing.T) {
 		_, err := NewHotSource(store).Read(context.Background(), Position{}, 10)
 		var missing *ErrSourceMissing
 		require.ErrorAs(t, err, &missing)
-		require.ErrorContains(t, err, "cannot fit")
+		require.ErrorContains(t, err, "missing fresh log 2")
 	})
 
 	t.Run("fresh sequence is referenced twice", func(t *testing.T) {
@@ -482,7 +482,7 @@ func TestHotSourceRejectsDiscontinuousFreshLogRange(t *testing.T) {
 	require.ErrorContains(t, err, "starts fresh log range at 3 after watermark 1")
 }
 
-func TestReadVerifiedProposalRejectsMalformedHeadersAndItems(t *testing.T) {
+func TestHotSourceRejectsMalformedProposalHeadersAndItems(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -560,7 +560,7 @@ func TestReadVerifiedProposalRejectsMalformedHeadersAndItems(t *testing.T) {
 				require.NoError(t, batch.SetProto(hotLogKey(1), &commonpb.Log{Sequence: 2}))
 				require.NoError(t, batch.Commit())
 			},
-			want: "payload sequence is 2",
+			want: "referenced log key 1 contains payload sequence 2",
 		},
 	}
 
@@ -573,12 +573,25 @@ func TestReadVerifiedProposalRejectsMalformedHeadersAndItems(t *testing.T) {
 			if test.mutate != nil {
 				test.mutate(t, store)
 			}
-			handle, err := store.NewReadHandle()
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, handle.Close()) })
-
-			_, _, err = readVerifiedProposal(context.Background(), handle, test.fixture.entry)
+			_, err := NewHotSource(store).Read(context.Background(), Position{}, 1)
 			require.ErrorContains(t, err, test.want)
 		})
 	}
+}
+
+func TestHotSourceRejectsLogsSwappedBetweenPhysicalKeys(t *testing.T) {
+	t.Parallel()
+
+	store := newHotSourceTestStore(t)
+	fixture := successfulHotFixture(1, 1, 2)
+	seedHotSource(t, store, fixture)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(hotLogKey(1), &commonpb.Log{Sequence: 2}))
+	require.NoError(t, batch.SetProto(hotLogKey(2), &commonpb.Log{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+
+	_, err := NewHotSource(store).Read(context.Background(), Position{}, 1)
+	var invalid *ErrSourceInvalid
+	require.ErrorAs(t, err, &invalid)
+	require.ErrorContains(t, err, "referenced log key 1 contains payload sequence 2")
 }

@@ -79,31 +79,10 @@ func NewColdReader(
 	return r
 }
 
-// GetReader returns a PebbleReader for the given archived chapter, downloading
-// and caching the SST on a miss. The returned DB is not pinned: concurrent LRU,
-// TTL, or Close activity may close it. Keep this method for compatibility with
-// callers whose cache lifecycle is externally serialized; new concurrent code
-// must use AcquireReader.
-func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	cached, err := r.getOrLoadLocked(ctx, chapterID)
-	if err != nil {
-		return nil, err
-	}
-
-	return cached.db, nil
-}
-
 // AcquireReader returns a cached chapter reader protected from LRU, TTL, and
 // shutdown eviction until release is called. release is idempotent, reports
 // impossible lease-state violations, and must be called as soon as the caller
 // finishes every point lookup and iterator that uses the returned reader.
-//
-// GetReader remains available for short legacy reads, but code that keeps a
-// reader across iterator steps or concurrent cache activity must use this
-// lease-aware API.
 func (r *ColdReader) AcquireReader(
 	ctx context.Context,
 	chapterID uint64,

@@ -41,7 +41,12 @@ func (s *compactor) CompactContext(ctx context.Context, threshold int) (bool, er
 	}
 	selected := selectCompactionRuns(view.manifest.Segments, threshold)
 	if len(selected) == 0 {
-		return false, view.Close()
+		if err := view.Close(); err != nil {
+			return false, err
+		}
+		_, err := s.garbageCollector.CollectGarbage()
+
+		return false, err
 	}
 
 	for _, segment := range selected {
@@ -69,9 +74,6 @@ func (s *compactor) CompactContext(ctx context.Context, threshold int) (bool, er
 	published, err := s.publishPreparedCompaction(selected, merged, view.generation)
 	if err != nil || !published {
 		return false, errors.Join(err, s.discardPreparedRun(runID))
-	}
-	if _, err := s.garbageCollector.CollectGarbage(); err != nil {
-		return true, fmt.Errorf("collecting superseded balance history segments: %w", err)
 	}
 
 	return true, nil

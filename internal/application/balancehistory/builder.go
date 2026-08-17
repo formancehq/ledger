@@ -28,10 +28,10 @@ const (
 	// DefaultBatchSize bounds the number of complete proposals held in memory
 	// and published in one immutable level-zero history segment.
 	DefaultBatchSize = 200
-	// TickInterval guarantees progress for proposals which do not emit a log
-	// and coalesces immutable history publications away from the FSM hot path.
-	// Five publications per second leave bounded-maintenance capacity headroom
-	// while keeping the measured tail-lag target below 500 ms.
+	// TickInterval retries transient source/store failures and guarantees
+	// progress if a post-commit notification is ever missed. LogCommitted
+	// notifications drive the normal low-latency path; the ticker is only a
+	// correctness backstop.
 	TickInterval = 200 * time.Millisecond
 	// DefaultBackfillYield bounds shared-disk pressure during boot catch-up.
 	// It applies only between bounded boot batches; steady-state ticker
@@ -53,9 +53,10 @@ type Builder struct {
 	logger        logging.Logger
 	meter         metric.Meter
 
-	batchSize          int
-	backfillYield      time.Duration
-	durabilityInterval time.Duration
+	batchSize           int
+	compactionThreshold int
+	backfillYield       time.Duration
+	durabilityInterval  time.Duration
 
 	lastProcessedAuditSequence atomic.Uint64
 	sourceHeadAuditSequence    atomic.Uint64
@@ -77,7 +78,6 @@ type Builder struct {
 	idempotencyProbe   idempotencyReductionProbe
 	projectionLedgers  []string
 	configurationBuild bool
-	nextProcessAt      time.Time
 
 	tw   *tailworker.TailWorker
 	regs []metric.Registration
@@ -109,11 +109,15 @@ func NewBuilder(
 	logger logging.Logger,
 	meter metric.Meter,
 	batchSize int,
+	compactionThreshold int,
 	backfillYield time.Duration,
 	durabilityInterval time.Duration,
 ) *Builder {
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
+	}
+	if compactionThreshold <= 1 {
+		compactionThreshold = balancehistorystore.DefaultSegmentCompactionThreshold
 	}
 	if backfillYield <= 0 {
 		backfillYield = DefaultBackfillYield
@@ -124,17 +128,18 @@ func NewBuilder(
 
 	now := time.Now
 	builder := &Builder{
-		source:             source,
-		store:              store,
-		notifications:      notifications,
-		clusterID:          clusterID,
-		logger:             logger.WithFields(map[string]any{"cmp": "balance-history-builder"}),
-		meter:              meter,
-		batchSize:          batchSize,
-		backfillYield:      backfillYield,
-		durabilityInterval: durabilityInterval,
-		lastDurabilitySync: now(),
-		durabilityNow:      now,
+		source:              source,
+		store:               store,
+		notifications:       notifications,
+		clusterID:           clusterID,
+		logger:              logger.WithFields(map[string]any{"cmp": "balance-history-builder"}),
+		meter:               meter,
+		batchSize:           batchSize,
+		compactionThreshold: compactionThreshold,
+		backfillYield:       backfillYield,
+		durabilityInterval:  durabilityInterval,
+		lastDurabilitySync:  now(),
+		durabilityNow:       now,
 	}
 	if store != nil {
 		builder.durabilitySync = store.SyncWAL
@@ -505,6 +510,9 @@ func (b *Builder) boot(ctx context.Context) error {
 			if err := b.syncDurability(true); err != nil {
 				return b.swallowBootError(err)
 			}
+			if err := b.compactBeforeReady(ctx); err != nil {
+				return b.swallowBootError(err)
+			}
 			if err := b.completeCaughtUpHistory(ctx); err != nil {
 				return b.swallowBootError(err)
 			}
@@ -536,53 +544,73 @@ func (b *Builder) waitForBackfillYield(ctx context.Context) error {
 }
 
 func (b *Builder) tick(ctx context.Context) error {
-	now := b.durabilityNow()
-	if now.Before(b.nextProcessAt) {
+	for {
+		caughtUp, buildErr := b.processOnce(ctx)
+		repairing := b.rebuilding.Load() || b.sourceMissing.Load()
+		readyAfterBuild := b.ready.Load()
+		forceSync := caughtUp && (!readyAfterBuild || repairing)
+		syncErr := b.syncDurability(forceSync)
+		if buildErr != nil {
+			b.ready.Store(false)
+
+			return errors.Join(b.handleBuildError(buildErr), syncErr)
+		}
+		if syncErr != nil {
+			b.ready.Store(false)
+
+			return syncErr
+		}
+		if !caughtUp {
+			// One wake drains every already-visible bounded source batch. This
+			// removes the old batchSize/TickInterval throughput ceiling while
+			// keeping each publication and allocation bounded by one batch.
+			b.ready.Store(false)
+
+			continue
+		}
+		if readyAfterBuild && !repairing {
+			return nil
+		}
+		if err := b.compactBeforeReady(ctx); err != nil {
+			b.ready.Store(false)
+
+			return err
+		}
+		if err := b.completeCaughtUpHistory(ctx); err != nil {
+			b.ready.Store(false)
+
+			return err
+		}
+		if err := b.markReadyAfterReconciliation(); err != nil {
+			b.ready.Store(false)
+
+			return err
+		}
+
 		return nil
 	}
-	b.nextProcessAt = now.Add(TickInterval)
+}
 
-	caughtUp, buildErr := b.processOnce(ctx)
-	repairing := b.rebuilding.Load() || b.sourceMissing.Load()
-	readyAfterBuild := b.ready.Load()
-	forceSync := caughtUp && (!readyAfterBuild || repairing)
-	syncErr := b.syncDurability(forceSync)
-	if buildErr != nil {
-		b.ready.Store(false)
-
-		return errors.Join(b.handleBuildError(buildErr), syncErr)
+// compactBeforeReady prevents a boot or repair backfill from exposing a
+// manifest with an arbitrarily large segment fan-out. Compaction is entirely
+// local and rebuildable; readiness opens only after no level has enough runs
+// for another configured merge.
+func (b *Builder) compactBeforeReady(ctx context.Context) error {
+	for {
+		compacted, err := b.store.CompactContext(ctx, b.compactionThreshold)
+		if err != nil {
+			return fmt.Errorf("compacting balance history before readiness: %w", err)
+		}
+		if !compacted {
+			return nil
+		}
 	}
-	if syncErr != nil {
-		b.ready.Store(false)
-
-		return syncErr
-	}
-	if !caughtUp {
-		b.ready.Store(false)
-
-		return nil
-	}
-	if readyAfterBuild && !repairing {
-		return nil
-	}
-	if err := b.completeCaughtUpHistory(ctx); err != nil {
-		b.ready.Store(false)
-
-		return err
-	}
-	if err := b.markReadyAfterReconciliation(); err != nil {
-		b.ready.Store(false)
-
-		return err
-	}
-
-	return nil
 }
 
 // swallowBootError records a fail-closed readiness state but deliberately
 // returns nil for non-cancellation errors. tailworker aborts permanently when
 // Boot returns an error, so all source and local-I/O failures must fall through
-// to the steady 100 ms retry loop.
+// to the steady 200 ms fallback retry loop.
 func (b *Builder) swallowBootError(err error) error {
 	b.ready.Store(false)
 	if errors.Is(err, context.Canceled) {
@@ -786,15 +814,23 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("reading balance history manifest: %w", err)
 	}
 
-	head, err := b.source.Head(ctx)
-	if err != nil {
-		return false, fmt.Errorf("reading balance history source head: %w", err)
-	}
-	b.sourceHeadAuditSequence.Store(head.AuditSequence)
-	b.sourceHeadLogSequence.Store(head.LogSequence)
-
-	if b.rebuildFromGenesis.Swap(false) &&
-		(manifest.Version > 0 || manifest.AuditWatermark > 0 || len(manifest.Segments) > 0) {
+	repairFromGenesis := b.rebuildFromGenesis.Load()
+	if repairFromGenesis && (manifest.Version > 0 || manifest.AuditWatermark > 0 || len(manifest.Segments) > 0) {
+		// A destructive reset requires a successful source probe first. This is
+		// the exceptional repair path; steady-state processing obtains the head
+		// from Source.Read's single pinned snapshot below.
+		head, err := b.source.Head(ctx)
+		if err != nil {
+			return false, fmt.Errorf("reading balance history source head before repair: %w", err)
+		}
+		if head.AuditSequence > 0 && len(head.AuditHash) == 0 {
+			return false, &ErrSourceInvalid{Detail: fmt.Sprintf(
+				"source audit head %d has no hash",
+				head.AuditSequence,
+			)}
+		}
+		b.sourceHeadAuditSequence.Store(head.AuditSequence)
+		b.sourceHeadLogSequence.Store(head.LogSequence)
 		b.ready.Store(false)
 		// Reset only after a successful source probe. This preserves the
 		// persistent SOURCE_MISSING marker while the source is still entirely
@@ -807,26 +843,15 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 			reset = b.store.ResetForSourceRepair
 		}
 		if err := reset(); err != nil {
-			b.rebuildFromGenesis.Store(true)
-
 			return false, fmt.Errorf("resetting balance history before source repair rebuild: %w", err)
 		}
+		b.rebuildFromGenesis.Store(false)
 		b.processingMetrics.recordRebuild()
 		manifest, err = b.store.Manifest()
 		if err != nil {
 			return false, fmt.Errorf("reading reset balance history manifest: %w", err)
 		}
 		b.projectionLedgers = append(b.projectionLedgers[:0], manifest.Ledgers...)
-		b.lastProcessedAuditSequence.Store(0)
-		b.lastDurableAuditSequence.Store(0)
-		b.idempotencyProbe.Reset()
-	}
-
-	manifest, reset, err := b.resetIfRolledBack(manifest, head)
-	if err != nil {
-		return false, err
-	}
-	if reset {
 		b.lastProcessedAuditSequence.Store(0)
 		b.lastDurableAuditSequence.Store(0)
 		b.idempotencyProbe.Reset()
@@ -842,20 +867,41 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 			manifest.AuditWatermark,
 		)}
 	}
-	if head.AuditSequence > 0 && len(head.AuditHash) == 0 {
-		return false, &ErrSourceInvalid{Detail: fmt.Sprintf(
-			"source audit head %d has no hash",
-			head.AuditSequence,
-		)}
-	}
 
 	after := positionFromManifest(manifest)
 	batch, err := b.source.Read(ctx, after, b.batchSize)
 	if err != nil {
+		if recovered, recoveryErr := b.recoverSourceRollback(ctx, manifest, err); recoveryErr != nil {
+			return false, recoveryErr
+		} else if recovered {
+			return false, nil
+		}
+
 		return false, fmt.Errorf("reading balance history source after audit %d: %w", after.AuditSequence, err)
+	}
+	if repairFromGenesis {
+		// For an already-empty repair store, the successful Read itself is the
+		// non-destructive source probe. Do not reset the batch just read on the
+		// following iteration.
+		b.rebuildFromGenesis.Store(false)
 	}
 	b.sourceHeadAuditSequence.Store(batch.Head.AuditSequence)
 	b.sourceHeadLogSequence.Store(batch.Head.LogSequence)
+	if batch.Head.AuditSequence > 0 && len(batch.Head.AuditHash) == 0 {
+		return false, &ErrSourceInvalid{Detail: fmt.Sprintf(
+			"source audit head %d has no hash",
+			batch.Head.AuditSequence,
+		)}
+	}
+	manifest, reset, err := b.resetIfRolledBack(manifest, batch.Head)
+	if err != nil {
+		return false, err
+	}
+	if reset {
+		b.resetInMemoryCursor()
+
+		return false, nil
+	}
 
 	if len(batch.Proposals) == 0 {
 		if !batch.Next.equal(after) {
@@ -927,6 +973,42 @@ func (b *Builder) processOnce(ctx context.Context) (bool, error) {
 	b.observePublishLag(ctx, batch.Proposals[len(batch.Proposals)-1].Entry)
 
 	return caughtUp, nil
+}
+
+func (b *Builder) recoverSourceRollback(
+	ctx context.Context,
+	manifest balancehistorystore.Manifest,
+	readErr error,
+) (bool, error) {
+	var (
+		missing *ErrSourceMissing
+		invalid *ErrSourceInvalid
+	)
+	if !errors.As(readErr, &missing) && !errors.As(readErr, &invalid) {
+		return false, nil
+	}
+	head, err := b.source.Head(ctx)
+	if err != nil {
+		return false, nil
+	}
+	b.sourceHeadAuditSequence.Store(head.AuditSequence)
+	b.sourceHeadLogSequence.Store(head.LogSequence)
+	_, reset, err := b.resetIfRolledBack(manifest, head)
+	if err != nil {
+		return false, errors.Join(readErr, err)
+	}
+	if !reset {
+		return false, nil
+	}
+	b.resetInMemoryCursor()
+
+	return true, nil
+}
+
+func (b *Builder) resetInMemoryCursor() {
+	b.lastProcessedAuditSequence.Store(0)
+	b.lastDurableAuditSequence.Store(0)
+	b.idempotencyProbe.Reset()
 }
 
 func (b *Builder) beginConfigurationRebuild(ledgers []string) error {

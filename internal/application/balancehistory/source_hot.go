@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -144,7 +142,7 @@ func (s *HotSource) Read(
 			)}
 		}
 
-		proposal, maxLogSequence, verifyErr := readVerifiedProposal(ctx, handle, entry)
+		proposal, maxLogSequence, verifyErr := readProposalHeader(ctx, handle, entry)
 		if verifyErr != nil {
 			return Batch{}, verifyErr
 		}
@@ -176,6 +174,9 @@ func (s *HotSource) Read(
 			head.AuditSequence,
 		)}
 	}
+	if err := resolveProposalLogsFromReader(ctx, handle, proposals); err != nil {
+		return Batch{}, fmt.Errorf("resolving hot source logs: %w", err)
+	}
 
 	return Batch{Proposals: proposals, Next: next, Head: head}, nil
 }
@@ -198,171 +199,4 @@ func readHotHead(reader dal.PebbleReader) (Position, error) {
 	}
 
 	return position, nil
-}
-
-func readVerifiedProposal(
-	ctx context.Context,
-	reader dal.PebbleReader,
-	entry *auditpb.AuditEntry,
-) (VerifiedProposal, uint64, error) {
-	auditSequence := entry.GetSequence()
-	if len(entry.GetItems()) != 0 {
-		return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-			"audit sequence %d embeds %d items in its header",
-			auditSequence,
-			len(entry.GetItems()),
-		)}
-	}
-	if entry.GetSuccess() == nil && entry.GetFailure() == nil {
-		return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-			"audit sequence %d has no outcome",
-			auditSequence,
-		)}
-	}
-
-	items, err := query.ReadAuditItems(ctx, reader, auditSequence)
-	if err != nil {
-		return VerifiedProposal{}, 0, fmt.Errorf("reading audit items for sequence %d: %w", auditSequence, err)
-	}
-	if uint32(len(items)) != entry.GetOrderCount() {
-		return VerifiedProposal{}, 0, &ErrSourceMissing{Detail: fmt.Sprintf(
-			"audit sequence %d declares %d items but %d are available",
-			auditSequence,
-			entry.GetOrderCount(),
-			len(items),
-		)}
-	}
-
-	logs := make([]*commonpb.Log, len(items))
-	var minLogSequence, maxLogSequence uint64
-	if success := entry.GetSuccess(); success != nil {
-		minLogSequence = success.GetMinLogSequence()
-		maxLogSequence = success.GetMaxLogSequence()
-		if (minLogSequence == 0) != (maxLogSequence == 0) {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"audit sequence %d has partial fresh log range [%d,%d]",
-				auditSequence,
-				minLogSequence,
-				maxLogSequence,
-			)}
-		}
-		if minLogSequence > maxLogSequence {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"audit sequence %d has descending fresh log range [%d,%d]",
-				auditSequence,
-				minLogSequence,
-				maxLogSequence,
-			)}
-		}
-		if minLogSequence > 0 && maxLogSequence-minLogSequence+1 > uint64(len(items)) {
-			return VerifiedProposal{}, 0, &ErrSourceMissing{Detail: fmt.Sprintf(
-				"audit sequence %d fresh log range [%d,%d] cannot fit in %d items",
-				auditSequence,
-				minLogSequence,
-				maxLogSequence,
-				len(items),
-			)}
-		}
-	}
-	freshLogs := make(map[uint64]struct{})
-
-	for index, item := range items {
-		if item == nil {
-			return VerifiedProposal{}, 0, &ErrSourceMissing{Detail: fmt.Sprintf(
-				"audit sequence %d is missing item %d",
-				auditSequence,
-				index,
-			)}
-		}
-		if item.GetOrderIndex() != uint32(index) {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"audit sequence %d item at position %d declares order index %d",
-				auditSequence,
-				index,
-				item.GetOrderIndex(),
-			)}
-		}
-
-		logSequence := item.GetLogSequence()
-		if logSequence == 0 {
-			continue
-		}
-		if entry.GetFailure() != nil {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"failed audit sequence %d item %d references log %d",
-				auditSequence,
-				index,
-				logSequence,
-			)}
-		}
-		if logSequence > maxLogSequence {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"audit sequence %d item %d references log %d beyond fresh range maximum %d",
-				auditSequence,
-				index,
-				logSequence,
-				maxLogSequence,
-			)}
-		}
-		if minLogSequence > 0 && logSequence >= minLogSequence {
-			if _, exists := freshLogs[logSequence]; exists {
-				return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-					"audit sequence %d references fresh log %d more than once",
-					auditSequence,
-					logSequence,
-				)}
-			}
-			freshLogs[logSequence] = struct{}{}
-		}
-
-		log, err := query.ReadLogBySequence(ctx, reader, logSequence)
-		if err != nil {
-			return VerifiedProposal{}, 0, fmt.Errorf(
-				"reading log %d referenced by audit sequence %d item %d: %w",
-				logSequence,
-				auditSequence,
-				index,
-				err,
-			)
-		}
-		if log == nil {
-			return VerifiedProposal{}, 0, &ErrSourceMissing{Detail: fmt.Sprintf(
-				"audit sequence %d item %d references missing log %d",
-				auditSequence,
-				index,
-				logSequence,
-			)}
-		}
-		if log.GetSequence() != logSequence {
-			return VerifiedProposal{}, 0, &ErrSourceInvalid{Detail: fmt.Sprintf(
-				"audit sequence %d item %d references log %d whose payload sequence is %d",
-				auditSequence,
-				index,
-				logSequence,
-				log.GetSequence(),
-			)}
-		}
-
-		logs[index] = log
-	}
-
-	if minLogSequence > 0 {
-		expectedFreshLogs := maxLogSequence - minLogSequence + 1
-		if uint64(len(freshLogs)) != expectedFreshLogs {
-			for offset := range expectedFreshLogs {
-				sequence := minLogSequence + offset
-				if _, exists := freshLogs[sequence]; !exists {
-					return VerifiedProposal{}, 0, &ErrSourceMissing{Detail: fmt.Sprintf(
-						"audit sequence %d is missing fresh log %d from range [%d,%d]",
-						auditSequence,
-						sequence,
-						minLogSequence,
-						maxLogSequence,
-					)}
-				}
-			}
-		}
-	}
-
-	return VerifiedProposal{Entry: entry, Items: items, Logs: logs}, maxLogSequence, nil
 }

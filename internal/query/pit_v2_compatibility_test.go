@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"encoding/json"
 	"math/big"
 	"os"
@@ -136,11 +137,14 @@ func TestPITV2CompatibilityEffectiveAndInsertionAxes(t *testing.T) {
 			require.Equal(t, pitV2ComparableVolumes(wantVolumes), pitV2ComparableStoredVolumes(gotVolumes))
 
 			wantAssets := pitV2AggregateAssets(wantVolumes)
-			gotAggregate, err := query.AggregateHistoricalVolumes(
+			gotAggregate, err := query.AggregateHistoricalVolumesSelected(
+				context.Background(),
 				view,
 				"default",
 				test.axis,
 				test.at,
+				nil,
+				nil,
 				nil,
 				query.AggregateOptions{},
 			)
@@ -185,11 +189,14 @@ func TestPITV2CompatibilityColorAndPrecisionExtensions(t *testing.T) {
 
 	view := pitV2HistoryView(t, pitV2ReduceFixture(t))
 
-	defaultResult, err := query.AggregateHistoricalVolumes(
+	defaultResult, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(),
 		view,
 		"default",
 		balancehistorystore.TemporalityInsertion,
 		850,
+		nil,
+		nil,
 		nil,
 		query.AggregateOptions{},
 	)
@@ -208,11 +215,14 @@ func TestPITV2CompatibilityColorAndPrecisionExtensions(t *testing.T) {
 		{asset: "USD/3", color: "BLUE"}: {"100", "100"},
 	}, usdBuckets)
 
-	merged, err := query.AggregateHistoricalVolumes(
+	merged, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(),
 		view,
 		"default",
 		balancehistorystore.TemporalityInsertion,
 		850,
+		nil,
+		nil,
 		nil,
 		query.AggregateOptions{UseMaxPrecision: true, CollapseColors: true},
 	)
@@ -228,12 +238,15 @@ func TestPITV2CompatibilityUsesTheSelectedCurrentAccountSet(t *testing.T) {
 	t.Parallel()
 
 	view := pitV2HistoryView(t, pitV2ReduceFixture(t))
-	result, err := query.AggregateHistoricalVolumes(
+	result, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(),
 		view,
 		"default",
 		balancehistorystore.TemporalityInsertion,
 		850,
 		[]string{"users:alice"},
+		nil,
+		nil,
 		query.AggregateOptions{},
 	)
 	require.NoError(t, err)

@@ -7,8 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
-
-	appbalancehistory "github.com/formancehq/ledger/v3/internal/application/balancehistory"
 )
 
 func TestBalanceHistoryConfigZeroValueUsesProductionDefaults(t *testing.T) {
@@ -50,11 +48,6 @@ func TestBalanceHistoryConfigValidation(t *testing.T) {
 		{name: "negative maintenance interval", mutate: func(c *BalanceHistoryConfig) { c.MaintenanceInterval = -time.Second }, wantErr: "--balance-history-maintenance-interval"},
 		{name: "negative max compactions", mutate: func(c *BalanceHistoryConfig) { c.MaxCompactionsPerPass = -1 }, wantErr: "--balance-history-max-compactions-per-pass"},
 		{name: "excessive max compactions", mutate: func(c *BalanceHistoryConfig) { c.MaxCompactionsPerPass = MaxBalanceHistoryCompactionsPerPass + 1 }, wantErr: "--balance-history-max-compactions-per-pass"},
-		{name: "unstable maintenance rate", mutate: func(c *BalanceHistoryConfig) {
-			c.SegmentCompactionThreshold = 2
-			c.MaxCompactionsPerPass = 1
-			c.MaintenanceInterval = time.Second
-		}, wantErr: "cannot retire segments"},
 		{name: "negative backfill yield", mutate: func(c *BalanceHistoryConfig) { c.BackfillYield = -time.Millisecond }, wantErr: "--balance-history-backfill-yield"},
 		{name: "negative durability interval", mutate: func(c *BalanceHistoryConfig) { c.DurabilityInterval = -time.Second }, wantErr: "--balance-history-wal-sync-interval"},
 	}
@@ -69,13 +62,13 @@ func TestBalanceHistoryConfigValidation(t *testing.T) {
 	}
 }
 
-func TestBalanceHistoryConfigAcceptsMaintenanceRateAtExactBuilderCeiling(t *testing.T) {
+func TestBalanceHistoryConfigAcceptsEventDrivenMaintenance(t *testing.T) {
 	t.Parallel()
 
 	config := DefaultBalanceHistoryConfig()
 	config.SegmentCompactionThreshold = 2
 	config.MaxCompactionsPerPass = 1
-	config.MaintenanceInterval = appbalancehistory.TickInterval
+	config.MaintenanceInterval = time.Hour
 	require.NoError(t, config.Validate())
 }
 

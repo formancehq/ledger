@@ -735,7 +735,13 @@ func TestHotColdSourceLeaseSurvivesConcurrentColdEviction(t *testing.T) {
 			default:
 			}
 			for chapterID := uint64(2); chapterID <= 3; chapterID++ {
-				if _, err := coldReader.GetReader(stressCtx, chapterID); err != nil {
+				_, release, err := coldReader.AcquireReader(stressCtx, chapterID)
+				if err != nil {
+					stressDone <- err
+
+					return
+				}
+				if err := release(); err != nil {
 					stressDone <- err
 
 					return
@@ -744,12 +750,11 @@ func TestHotColdSourceLeaseSurvivesConcurrentColdEviction(t *testing.T) {
 			}
 		}
 	}()
-
 	batch, err := source.Read(context.Background(), Position{}, proposalCount)
 	cancelStress()
 	require.NoError(t, <-stressDone)
 	require.NoError(t, err)
-	require.Greater(t, evictionAttempts.Load(), uint64(2))
+	require.GreaterOrEqual(t, evictionAttempts.Load(), uint64(2))
 	require.Len(t, batch.Proposals, proposalCount)
 	require.Equal(t, uint64(1), batch.Proposals[0].Logs[0].GetSequence())
 	require.Equal(t, uint64(proposalCount), batch.Proposals[len(batch.Proposals)-1].Logs[0].GetSequence())

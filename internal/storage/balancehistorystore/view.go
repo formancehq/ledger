@@ -23,14 +23,13 @@ type viewManager struct {
 // View pins one immutable manifest and the Pebble sequence containing all of
 // its logical history segments. Later compaction cannot change the result.
 type View struct {
-	ctx                context.Context
-	store              *viewManager
-	snapshot           *pebble.Snapshot
-	manifest           Manifest
-	generation         uint64
-	allowSourceMissing bool
-	close              sync.Once
-	closeErr           error
+	ctx        context.Context
+	store      *viewManager
+	snapshot   *pebble.Snapshot
+	manifest   Manifest
+	generation uint64
+	close      sync.Once
+	closeErr   error
 }
 
 const viewContextCheckStride = 256
@@ -64,20 +63,14 @@ func (s *viewManager) OpenView(minLogSequence uint64) (*View, error) {
 }
 
 func (s *viewManager) OpenViewContext(ctx context.Context, minLogSequence uint64) (*View, error) {
-	return s.openView(ctx, minLogSequence, false)
+	return s.openView(ctx, minLogSequence)
 }
 
-// OpenVerificationView is retained for repair paths that need to inspect a
-// complete rebuild before atomically reopening reads.
-func (s *viewManager) OpenVerificationView(ctx context.Context, minLogSequence uint64) (*View, error) {
-	return s.openView(ctx, minLogSequence, true)
-}
-
-func (s *viewManager) openView(ctx context.Context, minLogSequence uint64, allowSourceMissing bool) (*View, error) {
+func (s *viewManager) openView(ctx context.Context, minLogSequence uint64) (*View, error) {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 
-	if err := s.viewFailure(allowSourceMissing); err != nil {
+	if err := s.viewFailure(); err != nil {
 		return nil, err
 	}
 	snapshot := s.db.NewSnapshot()
@@ -99,12 +92,11 @@ func (s *viewManager) openView(ctx context.Context, minLogSequence uint64, allow
 	}
 	s.acquireManifestLease(manifest)
 	view := &View{
-		ctx:                ctx,
-		store:              s,
-		snapshot:           snapshot,
-		manifest:           cloneManifest(manifest),
-		generation:         s.generation.Load(),
-		allowSourceMissing: allowSourceMissing,
+		ctx:        ctx,
+		store:      s,
+		snapshot:   snapshot,
+		manifest:   cloneManifest(manifest),
+		generation: s.generation.Load(),
 	}
 	if err := view.ensureReadable(); err != nil {
 		_ = view.Close()
@@ -115,12 +107,9 @@ func (s *viewManager) openView(ctx context.Context, minLogSequence uint64, allow
 	return view, nil
 }
 
-func (s *viewManager) viewFailure(allowSourceMissing bool) error {
+func (s *viewManager) viewFailure() error {
 	failure := s.failure.Load()
 	if failure == nil {
-		return nil
-	}
-	if allowSourceMissing && (failure.kind == failureSourceMissing || failure.kind == failureRebuilding) {
 		return nil
 	}
 	if failure.kind == failureSourceMissing {
@@ -206,7 +195,7 @@ func (v *View) ensureReadable() error {
 	if err := v.ctx.Err(); err != nil {
 		return err
 	}
-	if err := v.store.viewFailure(v.allowSourceMissing); err != nil {
+	if err := v.store.viewFailure(); err != nil {
 		return err
 	}
 	if v.generation != v.store.generation.Load() {
@@ -225,16 +214,18 @@ func (v *View) corrupt(detail string) error {
 	return err
 }
 
-func (v *View) catalogIdentities(segmentID uint64, temporality Temporality, ledgerName string, account *string) ([]recordIdentity, error) {
+func (v *View) catalogIdentities(
+	iter *pebble.Iterator,
+	segmentID uint64,
+	temporality Temporality,
+	ledgerName string,
+	account *string,
+) ([]recordIdentity, error) {
 	prefix, err := catalogPrefix(segmentID, temporality, ledgerName, account)
 	if err != nil {
 		return nil, err
 	}
-	iter, err := v.snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: prefixEnd(prefix)})
-	if err != nil {
-		return nil, fmt.Errorf("opening balance history catalog iterator: %w", err)
-	}
-	defer func() { _ = iter.Close() }()
+	iter.SetBounds(prefix, prefixEnd(prefix))
 
 	identities := make([]recordIdentity, 0)
 	for valid := iter.First(); valid; valid = iter.Next() {
@@ -254,16 +245,17 @@ func (v *View) catalogIdentities(segmentID uint64, temporality Temporality, ledg
 	return identities, nil
 }
 
-func (v *View) catalogIdentitiesByAccountPrefix(segmentID uint64, temporality Temporality, ledgerName, accountPrefix string) ([]recordIdentity, error) {
+func (v *View) catalogIdentitiesByAccountPrefix(
+	iter *pebble.Iterator,
+	segmentID uint64,
+	temporality Temporality,
+	ledgerName, accountPrefix string,
+) ([]recordIdentity, error) {
 	prefix, err := catalogAccountPrefix(segmentID, temporality, ledgerName, accountPrefix)
 	if err != nil {
 		return nil, err
 	}
-	iter, err := v.snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: prefixEnd(prefix)})
-	if err != nil {
-		return nil, fmt.Errorf("opening balance history prefix catalog iterator: %w", err)
-	}
-	defer func() { _ = iter.Close() }()
+	iter.SetBounds(prefix, prefixEnd(prefix))
 
 	identities := make([]recordIdentity, 0)
 	for valid := iter.First(); valid; valid = iter.Next() {
@@ -285,18 +277,18 @@ func (v *View) catalogIdentitiesByAccountPrefix(segmentID uint64, temporality Te
 	return identities, nil
 }
 
-func (v *View) readSegmentValue(segmentID uint64, identity recordIdentity, timestamp uint64) (cumulativeValue, bool, error) {
+func (v *View) readSegmentValue(
+	iter *pebble.Iterator,
+	segmentID uint64,
+	identity recordIdentity,
+	timestamp uint64,
+) (cumulativeValue, bool, error) {
 	prefix, err := dataIdentityPrefix(segmentID, identity)
 	if err != nil {
 		return cumulativeValue{}, false, err
 	}
 	seek := binary.BigEndian.AppendUint64(append([]byte(nil), prefix...), timestamp)
 	seek = append(seek, 0)
-	iter, err := v.snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: prefixEnd(prefix)})
-	if err != nil {
-		return cumulativeValue{}, false, fmt.Errorf("opening balance history value iterator: %w", err)
-	}
-	defer func() { _ = iter.Close() }()
 
 	if !iter.SeekLT(seek) || !bytes.HasPrefix(iter.Key(), prefix) {
 		return cumulativeValue{}, false, nil
@@ -312,57 +304,21 @@ func (v *View) readSegmentValue(segmentID uint64, identity recordIdentity, times
 // ReadVolumes returns per-account historical volumes. A nil accounts slice
 // enumerates every account identity for the ledger.
 func (v *View) ReadVolumes(ledgerName string, temporality Temporality, timestamp uint64, accounts []string) ([]Volume, error) {
-	if err := v.ensureReadable(); err != nil {
-		return nil, err
-	}
-	if !temporality.valid() {
-		return nil, fmt.Errorf("invalid balance history temporality %d", temporality)
-	}
-
-	requested := accounts
-	if accounts != nil {
-		seen := make(map[string]struct{}, len(accounts))
-		requested = make([]string, 0, len(accounts))
-		for _, account := range accounts {
-			if _, exists := seen[account]; exists {
-				continue
-			}
-			seen[account] = struct{}{}
-			requested = append(requested, account)
-		}
-	}
-
-	totals := make(map[recordIdentity]cumulativeValue)
-	for segmentIndex, segment := range v.manifest.Segments {
-		if err := v.checkContext(segmentIndex); err != nil {
-			return nil, err
-		}
-		if requested == nil {
-			identities, err := v.catalogIdentities(segment.ID, temporality, ledgerName, nil)
-			if err != nil {
-				return nil, err
-			}
-			if err := v.addSegmentVolumes(segment.ID, timestamp, identities, totals); err != nil {
-				return nil, err
-			}
-
-			continue
-		}
-		for _, account := range requested {
-			identities, err := v.catalogIdentities(segment.ID, temporality, ledgerName, &account)
-			if err != nil {
-				return nil, err
-			}
-			if err := v.addSegmentVolumes(segment.ID, timestamp, identities, totals); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return volumesFromTotals(totals), nil
+	return v.ReadVolumesSelected(ledgerName, temporality, timestamp, accounts, nil)
 }
 
-func (v *View) ReadVolumesByPrefix(ledgerName string, temporality Temporality, timestamp uint64, accountPrefix string) ([]Volume, error) {
+// ReadVolumesSelected reads the union of exact accounts and account prefixes.
+// A nil accounts slice with no prefixes means every historical account; when
+// prefixes are present, nil accounts contributes no exact-account candidates.
+// Each segment opens one reusable catalog iterator and one reusable data
+// iterator regardless of candidate cardinality.
+func (v *View) ReadVolumesSelected(
+	ledgerName string,
+	temporality Temporality,
+	timestamp uint64,
+	accounts []string,
+	accountPrefixes []string,
+) ([]Volume, error) {
 	if err := v.ensureReadable(); err != nil {
 		return nil, err
 	}
@@ -370,12 +326,23 @@ func (v *View) ReadVolumesByPrefix(ledgerName string, temporality Temporality, t
 		return nil, fmt.Errorf("invalid balance history temporality %d", temporality)
 	}
 
+	requested := deduplicateSelection(accounts)
+	prefixes := deduplicateSelection(accountPrefixes)
+	fullScan := accounts == nil && len(prefixes) == 0
+
 	totals := make(map[recordIdentity]cumulativeValue)
 	for segmentIndex, segment := range v.manifest.Segments {
 		if err := v.checkContext(segmentIndex); err != nil {
 			return nil, err
 		}
-		identities, err := v.catalogIdentitiesByAccountPrefix(segment.ID, temporality, ledgerName, accountPrefix)
+		identities, err := v.readSegmentCatalogSelection(
+			segment.ID,
+			temporality,
+			ledgerName,
+			requested,
+			prefixes,
+			fullScan,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -385,6 +352,80 @@ func (v *View) ReadVolumesByPrefix(ledgerName string, temporality Temporality, t
 	}
 
 	return volumesFromTotals(totals), nil
+}
+
+func (v *View) ReadVolumesByPrefix(ledgerName string, temporality Temporality, timestamp uint64, accountPrefix string) ([]Volume, error) {
+	return v.ReadVolumesSelected(ledgerName, temporality, timestamp, nil, []string{accountPrefix})
+}
+
+func (v *View) readSegmentCatalogSelection(
+	segmentID uint64,
+	temporality Temporality,
+	ledgerName string,
+	accounts, accountPrefixes []string,
+	fullScan bool,
+) (identities []recordIdentity, err error) {
+	prefix := runPrefix(prefixRunCatalog, segmentID)
+	iter, err := v.snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: prefixEnd(prefix)})
+	if err != nil {
+		return nil, fmt.Errorf("opening balance history segment %d catalog iterator: %w", segmentID, err)
+	}
+	defer func() { err = errors.Join(err, iter.Close()) }()
+
+	if fullScan {
+		return v.catalogIdentities(iter, segmentID, temporality, ledgerName, nil)
+	}
+
+	seen := make(map[recordIdentity]struct{})
+	for _, account := range accounts {
+		rows, err := v.catalogIdentities(iter, segmentID, temporality, ledgerName, &account)
+		if err != nil {
+			return nil, err
+		}
+		identities = appendUniqueIdentities(identities, rows, seen)
+	}
+	for _, accountPrefix := range accountPrefixes {
+		rows, err := v.catalogIdentitiesByAccountPrefix(iter, segmentID, temporality, ledgerName, accountPrefix)
+		if err != nil {
+			return nil, err
+		}
+		identities = appendUniqueIdentities(identities, rows, seen)
+	}
+
+	return identities, nil
+}
+
+func deduplicateSelection(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+
+	return unique
+}
+
+func appendUniqueIdentities(
+	destination []recordIdentity,
+	rows []recordIdentity,
+	seen map[recordIdentity]struct{},
+) []recordIdentity {
+	for _, identity := range rows {
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		seen[identity] = struct{}{}
+		destination = append(destination, identity)
+	}
+
+	return destination
 }
 
 func volumesFromTotals(totals map[recordIdentity]cumulativeValue) []Volume {
@@ -417,12 +458,26 @@ func volumesFromTotals(totals map[recordIdentity]cumulativeValue) []Volume {
 	return result
 }
 
-func (v *View) addSegmentVolumes(segmentID, timestamp uint64, identities []recordIdentity, totals map[recordIdentity]cumulativeValue) error {
+func (v *View) addSegmentVolumes(
+	segmentID, timestamp uint64,
+	identities []recordIdentity,
+	totals map[recordIdentity]cumulativeValue,
+) (err error) {
+	if len(identities) == 0 {
+		return nil
+	}
+	prefix := runPrefix(prefixRunData, segmentID)
+	iter, err := v.snapshot.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: prefixEnd(prefix)})
+	if err != nil {
+		return fmt.Errorf("opening balance history segment %d value iterator: %w", segmentID, err)
+	}
+	defer func() { err = errors.Join(err, iter.Close()) }()
+
 	for identityIndex, identity := range identities {
 		if err := v.checkContext(identityIndex); err != nil {
 			return err
 		}
-		value, found, err := v.readSegmentValue(segmentID, identity, timestamp)
+		value, found, err := v.readSegmentValue(iter, segmentID, identity, timestamp)
 		if err != nil {
 			return err
 		}

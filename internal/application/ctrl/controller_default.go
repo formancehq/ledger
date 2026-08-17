@@ -1130,6 +1130,18 @@ func (ctrl *DefaultController) AggregateVolumes(
 }
 
 func (ctrl *DefaultController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle for historical-balance status: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+		}
+
+		return nil, fmt.Errorf("checking ledger %q for historical-balance status: %w", ledgerName, err)
+	}
 	if ctrl.volumeViews == nil {
 		return &servicepb.GetHistoricalBalancesStatusResponse{
 			Ledger: ledgerName,

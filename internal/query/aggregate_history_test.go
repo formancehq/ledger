@@ -57,8 +57,9 @@ func TestAggregateHistoricalVolumesReusesLiveSemantics(t *testing.T) {
 		historyInput("users:c", "USD", "RED", 3, 1000),
 	})
 
-	filtered, err := query.AggregateHistoricalVolumes(
-		view, "default", balancehistorystore.TemporalityEffective, 10, []string{"users:a"}, query.AggregateOptions{},
+	filtered, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10,
+		[]string{"users:a"}, nil, nil, query.AggregateOptions{},
 	)
 	require.NoError(t, err)
 	require.Len(t, filtered.GetVolumes(), 1)
@@ -66,8 +67,8 @@ func TestAggregateHistoricalVolumesReusesLiveSemantics(t *testing.T) {
 	require.Equal(t, "RED", filtered.GetVolumes()[0].GetColor())
 	require.Equal(t, "100", filtered.GetVolumes()[0].GetInput().ToBigInt().String())
 
-	grouped, err := query.AggregateHistoricalVolumes(
-		view, "default", balancehistorystore.TemporalityEffective, 10, nil,
+	grouped, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10, nil, nil, nil,
 		query.AggregateOptions{GroupByPrefixes: []string{"users:"}, UseMaxPrecision: true, CollapseColors: true},
 	)
 	require.NoError(t, err)
@@ -97,7 +98,10 @@ func TestAggregateHistoricalVolumesSurfacesUint256Overflow(t *testing.T) {
 		},
 	})
 
-	_, err := query.AggregateHistoricalVolumes(view, "default", balancehistorystore.TemporalityEffective, 10, nil, query.AggregateOptions{})
+	_, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10,
+		nil, nil, nil, query.AggregateOptions{},
+	)
 	var overflow *query.ErrAggregateOverflow
 	require.True(t, errors.As(err, &overflow))
 	require.Equal(t, "accumulate", overflow.Stage)
@@ -113,8 +117,9 @@ func TestAggregateHistoricalVolumesByPrefixFiltersHistoricalAccountsAndPreserves
 		historyInput("merchants:current", "USD", "RED", 2, 900),
 	})
 
-	result, err := query.AggregateHistoricalVolumesByPrefix(
-		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10, "users:",
+	result, err := query.AggregateHistoricalVolumesSelected(
+		context.Background(), view, "default", balancehistorystore.TemporalityEffective, 10,
+		nil, []string{"users:"}, nil,
 		query.AggregateOptions{
 			GroupByPrefixes: []string{"users:"},
 			UseMaxPrecision: true,
@@ -160,9 +165,9 @@ func TestAggregateHistoricalVolumesMatchingHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := query.AggregateHistoricalVolumesMatching(
-		ctx, view, "default", balancehistorystore.TemporalityEffective, 10, nil,
-		func(string) bool { return true }, query.AggregateOptions{},
+	_, err := query.AggregateHistoricalVolumesSelected(
+		ctx, view, "default", balancehistorystore.TemporalityEffective, 10,
+		nil, nil, func(string) bool { return true }, query.AggregateOptions{},
 	)
 	require.ErrorIs(t, err, context.Canceled)
 }

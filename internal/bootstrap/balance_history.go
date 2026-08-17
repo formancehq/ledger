@@ -51,6 +51,7 @@ func balanceHistoryModule() fx.Option {
 				logger,
 				meterProvider.Meter("balancehistory.builder"),
 				historyConfig.BuilderBatchSize,
+				historyConfig.SegmentCompactionThreshold,
 				historyConfig.BackfillYield,
 				historyConfig.DurabilityInterval,
 			)
@@ -129,9 +130,14 @@ func newBalanceHistoryRuntime(params balanceHistoryRuntimeParams) (*balanceHisto
 	}
 
 	return &balanceHistoryRuntime{
-		store:             params.Store,
-		builder:           params.Builder,
-		maintenance:       newBalanceHistoryMaintenanceWorker(params.Logger, historyConfig, params.Store.CompactContext),
+		store:   params.Store,
+		builder: params.Builder,
+		maintenance: newBalanceHistoryMaintenanceWorker(
+			params.Logger,
+			historyConfig,
+			params.Store.CompactContext,
+			params.Store.Changes,
+		),
 		storeRegistration: registration,
 	}, nil
 }

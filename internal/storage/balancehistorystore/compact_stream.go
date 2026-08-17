@@ -41,12 +41,11 @@ func (s *compactionStreamer) openCompactionView(ctx context.Context) (*View, err
 	}
 	s.acquireManifestLease(manifest)
 	view := &View{
-		ctx:                ctx,
-		store:              s.viewManager,
-		snapshot:           snapshot,
-		manifest:           cloneManifest(manifest),
-		generation:         s.generation.Load(),
-		allowSourceMissing: false,
+		ctx:        ctx,
+		store:      s.viewManager,
+		snapshot:   snapshot,
+		manifest:   cloneManifest(manifest),
+		generation: s.generation.Load(),
 	}
 	s.mutationMu.Unlock()
 

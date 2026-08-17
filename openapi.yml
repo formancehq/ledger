@@ -970,9 +970,9 @@ paths:
             X-Historical-Balance-View:
               description: |
                 Present only for a successful historical request. Standard-base64 encoding of the
-				protobuf binary `HistoricalBalanceView`, containing the requested timestamp,
-				temporality, ledger name, audit and log watermarks, history-manifest version,
-				and an opaque view token. Protobuf timestamps are unsigned Unix microseconds.
+                protobuf binary `HistoricalBalanceView`, containing the requested timestamp,
+                temporality, ledger name, audit and log watermarks, history-manifest version,
+                and an opaque view token. Protobuf timestamps are unsigned Unix microseconds.
               schema:
                 type: string
                 format: byte
@@ -982,8 +982,8 @@ paths:
                 $ref: '#/components/schemas/AggregateVolumesResponse'
         '400':
           description: |
-			Invalid historical timestamp or parameter combination,
-			`UNSUPPORTED_TEMPORAL_FILTER`, or another invalid aggregate request.
+            Invalid historical timestamp or parameter combination,
+            `UNSUPPORTED_TEMPORAL_FILTER`, or another invalid aggregate request.
           content:
             application/json:
               schema:

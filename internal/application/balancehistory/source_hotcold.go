@@ -3,6 +3,7 @@ package balancehistory
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -609,27 +610,9 @@ func (s *HotColdSource) resolveProposalLogs(
 	snapshot *hotColdSnapshot,
 	proposals []VerifiedProposal,
 ) error {
-	slots := make(map[uint64][]logSlot)
-	for proposalIndex := range proposals {
-		for itemIndex, item := range proposals[proposalIndex].Items {
-			if sequence := item.GetLogSequence(); sequence > 0 {
-				slots[sequence] = append(slots[sequence], logSlot{proposal: proposalIndex, item: itemIndex})
-			}
-		}
-	}
-	if len(slots) == 0 {
+	sequences, slots, remaining := planRequestedLogs(proposals)
+	if len(sequences) == 0 {
 		return nil
-	}
-
-	sequences := make([]uint64, 0, len(slots))
-	for sequence := range slots {
-		sequences = append(sequences, sequence)
-	}
-	slices.Sort(sequences)
-
-	remaining := make(map[uint64]struct{}, len(sequences))
-	for _, sequence := range sequences {
-		remaining[sequence] = struct{}{}
 	}
 	for _, chapter := range snapshot.archived {
 		start := lowerBoundIndex(sequences, chapter.GetStartSequence())
@@ -671,17 +654,61 @@ func (s *HotColdSource) resolveProposalLogs(
 			return fmt.Errorf("scanning logs from hot tail: %w", err)
 		}
 	}
-	if len(remaining) > 0 {
-		missing := make([]uint64, 0, len(remaining))
-		for sequence := range remaining {
-			missing = append(missing, sequence)
-		}
-		slices.Sort(missing)
 
-		return &ErrSourceMissing{Detail: fmt.Sprintf("referenced logs are missing: %v", missing)}
+	return requireAllRequestedLogs(remaining)
+}
+
+func resolveProposalLogsFromReader(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	proposals []VerifiedProposal,
+) error {
+	sequences, slots, remaining := planRequestedLogs(proposals)
+	if len(sequences) == 0 {
+		return nil
+	}
+	if err := scanRequestedLogs(ctx, reader, sequences, proposals, slots, remaining); err != nil {
+		return err
 	}
 
-	return nil
+	return requireAllRequestedLogs(remaining)
+}
+
+func planRequestedLogs(proposals []VerifiedProposal) (
+	[]uint64,
+	map[uint64][]logSlot,
+	map[uint64]struct{},
+) {
+	slots := make(map[uint64][]logSlot)
+	for proposalIndex := range proposals {
+		for itemIndex, item := range proposals[proposalIndex].Items {
+			if sequence := item.GetLogSequence(); sequence > 0 {
+				slots[sequence] = append(slots[sequence], logSlot{proposal: proposalIndex, item: itemIndex})
+			}
+		}
+	}
+	sequences := make([]uint64, 0, len(slots))
+	remaining := make(map[uint64]struct{}, len(slots))
+	for sequence := range slots {
+		sequences = append(sequences, sequence)
+		remaining[sequence] = struct{}{}
+	}
+	slices.Sort(sequences)
+
+	return sequences, slots, remaining
+}
+
+func requireAllRequestedLogs(remaining map[uint64]struct{}) error {
+	if len(remaining) == 0 {
+		return nil
+	}
+	missing := make([]uint64, 0, len(remaining))
+	for sequence := range remaining {
+		missing = append(missing, sequence)
+	}
+	slices.Sort(missing)
+
+	return &ErrSourceMissing{Detail: fmt.Sprintf("referenced logs are missing: %v", missing)}
 }
 
 func lowerBoundIndex(sequences []uint64, value uint64) int {
@@ -703,13 +730,35 @@ func scanRequestedLogs(
 	if len(requested) == 0 {
 		return nil
 	}
+	for start := 0; start < len(requested); {
+		end := start + 1
+		for end < len(requested) && requested[end-1] != ^uint64(0) && requested[end] == requested[end-1]+1 {
+			end++
+		}
+		if err := scanRequestedLogRange(ctx, reader, requested[start:end], proposals, slots, remaining); err != nil {
+			return err
+		}
+		start = end
+	}
+
+	return nil
+}
+
+func scanRequestedLogRange(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	requested []uint64,
+	proposals []VerifiedProposal,
+	slots map[uint64][]logSlot,
+	remaining map[uint64]struct{},
+) (err error) {
 	start := requested[0]
 	end := requested[len(requested)-1]
 	after := uint64(0)
 	if start > 0 {
 		after = start - 1
 	}
-	logs, err := query.ReadLogsSince(ctx, reader, after)
+	logs, err := query.ReadLogsSinceRaw(ctx, reader, after)
 	if err != nil {
 		return fmt.Errorf("opening log scan at %d: %w", start, err)
 	}
@@ -719,29 +768,40 @@ func scanRequestedLogs(
 		}
 	}()
 
-	for {
+	logPrefix := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).Build()
+	for valid := logs.First(); valid; valid = logs.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		log, nextErr := logs.Next()
-		if nextErr != nil {
-			if errors.Is(nextErr, io.EOF) {
-				break
-			}
-
-			return fmt.Errorf("reading log scan: %w", nextErr)
+		key := logs.Key()
+		if len(key) != len(logPrefix)+8 || !bytes.HasPrefix(key, logPrefix) {
+			return &ErrSourceInvalid{Detail: fmt.Sprintf("hot/cold log scan returned malformed key %x", key)}
 		}
-		sequence := log.GetSequence()
+		sequence := binary.BigEndian.Uint64(key[len(logPrefix):])
 		if sequence > end {
 			break
 		}
 		if _, needed := remaining[sequence]; !needed {
 			continue
 		}
+		var log commonpb.Log
+		if err := log.UnmarshalVT(logs.Value()); err != nil {
+			return &ErrSourceInvalid{Detail: fmt.Sprintf("decoding referenced log %d: %v", sequence, err)}
+		}
+		if log.GetSequence() != sequence {
+			return &ErrSourceInvalid{Detail: fmt.Sprintf(
+				"referenced log key %d contains payload sequence %d",
+				sequence,
+				log.GetSequence(),
+			)}
+		}
 		for _, slot := range slots[sequence] {
 			proposals[slot.proposal].Logs[slot.item] = log.CloneVT()
 		}
 		delete(remaining, sequence)
+	}
+	if err := logs.Error(); err != nil {
+		return fmt.Errorf("reading log scan: %w", err)
 	}
 
 	return nil

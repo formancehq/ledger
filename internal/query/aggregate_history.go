@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"sort"
 
 	"github.com/holiman/uint256"
 
@@ -14,48 +13,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 )
-
-// AggregateHistoricalVolumes applies the existing AggregateVolumes result
-// semantics to a pinned history view. accounts has three states:
-//   - nil: unfiltered (all historical account rows for the ledger are folded)
-//   - empty non-nil: a current filter matched no accounts
-//   - non-empty: exact current account selection
-func AggregateHistoricalVolumes(
-	view *balancehistorystore.View,
-	ledgerName string,
-	temporality balancehistorystore.Temporality,
-	at uint64,
-	accounts []string,
-	opts AggregateOptions,
-) (*commonpb.AggregateResult, error) {
-	return aggregateHistoricalVolumes(context.Background(), view, ledgerName, temporality, at, accounts, nil, opts)
-}
-
-// AggregateHistoricalVolumesMatching applies an account predicate to the
-// identities stored in a pinned history view. It is used by historical address
-// filters, whose universe includes accounts that no longer exist in the
-// current read store. When accounts is non-nil, the store first restricts the
-// scan to those exact current accounts; match is then applied as an additional
-// condition.
-//
-// Cancellation is checked before and after the store lookup and while folding
-// rows. The pinned view remains responsible for closing its Pebble snapshot.
-func AggregateHistoricalVolumesMatching(
-	ctx context.Context,
-	view *balancehistorystore.View,
-	ledgerName string,
-	temporality balancehistorystore.Temporality,
-	at uint64,
-	accounts []string,
-	match func(account string) bool,
-	opts AggregateOptions,
-) (*commonpb.AggregateResult, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	return AggregateHistoricalVolumesSelected(ctx, view, ledgerName, temporality, at, accounts, nil, match, opts)
-}
 
 // AggregateHistoricalVolumesSelected reads the union of exact account and
 // account-prefix candidates before applying match. It lets a mixed temporal
@@ -85,95 +42,18 @@ func AggregateHistoricalVolumesSelected(
 		return nil, err
 	}
 
-	volumes := make([]balancehistorystore.Volume, 0)
-	seen := make(map[historicalVolumeIdentity]struct{})
-	appendUnique := func(rows []balancehistorystore.Volume) {
-		for _, row := range rows {
-			identity := historicalVolumeIdentity{
-				account:   row.Account,
-				assetBase: row.AssetBase,
-				precision: row.AssetPrecision,
-				color:     row.Color,
-			}
-			if _, ok := seen[identity]; ok {
-				continue
-			}
-			seen[identity] = struct{}{}
-			volumes = append(volumes, row)
-		}
+	volumes, err := view.ReadVolumesSelected(
+		ledgerName,
+		temporality,
+		at,
+		accounts,
+		accountPrefixes,
+	)
+	if err != nil {
+		return nil, err
 	}
-
-	if accounts != nil {
-		rows, err := view.ReadVolumes(ledgerName, temporality, at, accounts)
-		if err != nil {
-			return nil, err
-		}
-		appendUnique(rows)
-	}
-	for _, prefix := range deduplicateStrings(accountPrefixes) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		rows, err := view.ReadVolumesByPrefix(ledgerName, temporality, at, prefix)
-		if err != nil {
-			return nil, err
-		}
-		appendUnique(rows)
-	}
-
-	sort.Slice(volumes, func(i, j int) bool {
-		left, right := volumes[i], volumes[j]
-		if left.Account != right.Account {
-			return left.Account < right.Account
-		}
-		if left.AssetBase != right.AssetBase {
-			return left.AssetBase < right.AssetBase
-		}
-		if left.AssetPrecision != right.AssetPrecision {
-			return left.AssetPrecision < right.AssetPrecision
-		}
-
-		return left.Color < right.Color
-	})
 
 	return aggregateHistoricalVolumeRows(ctx, volumes, match, opts)
-}
-
-// AggregateHistoricalVolumesByPrefix uses the history store's prefix-seekable
-// volume catalog. Unlike evaluating a prefix predicate after ReadVolumes(nil),
-// its I/O is proportional to the matching historical account range rather
-// than to every historical identity in the ledger.
-func AggregateHistoricalVolumesByPrefix(
-	ctx context.Context,
-	view *balancehistorystore.View,
-	ledgerName string,
-	temporality balancehistorystore.Temporality,
-	at uint64,
-	accountPrefix string,
-	opts AggregateOptions,
-) (*commonpb.AggregateResult, error) {
-	return AggregateHistoricalVolumesSelected(ctx, view, ledgerName, temporality, at, nil, []string{accountPrefix}, nil, opts)
-}
-
-type historicalVolumeIdentity struct {
-	account   string
-	assetBase string
-	precision uint8
-	color     string
-}
-
-func deduplicateStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	unique := make([]string, 0, len(values))
-	for _, value := range values {
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		unique = append(unique, value)
-	}
-
-	return unique
 }
 
 func aggregateHistoricalVolumes(

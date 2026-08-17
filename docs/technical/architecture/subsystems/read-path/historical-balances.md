@@ -30,7 +30,7 @@ flowchart LR
     G --> Q
 ```
 
-The notification path matches the index builder: a committed batch wakes the worker immediately. Notifications are coalesced and rate-limited, while the ticker guarantees progress for commits that emit no ledger log and for missed wake-ups.
+The notification path matches the index builder: every committed batch wakes the worker immediately, including batches that emit no ledger log. Notifications are coalesced, and one wake drains every complete bounded batch already visible. Within a source batch, referenced hot logs are resolved by ordered scans of contiguous ranges rather than one Pebble point lookup per log. The ticker retries transient failures and guarantees progress if a wake-up is missed; it does not rate-limit notified processing.
 
 ## Configuration lifecycle
 
@@ -74,7 +74,7 @@ color:length-prefixed UTF-8
 
 Data keys prepend `0x10 | segmentID:u64` and append `timestamp:u64`. Catalog keys use the same identity under `0x12 | segmentID:u64` without a timestamp. The catalog permits exact-account and prefix scans without duplicating ledger-level values.
 
-Values are cumulative unsigned input/output totals for that identity within one segment. A query seeks to the last timestamp less than or equal to `at` in each intersecting segment, then adds the cumulative pairs. Color collapse, precision merging, grouping, and unfiltered ledger totals happen after account rows are read.
+Values are cumulative unsigned input/output totals for that identity within one segment. A query reuses one bounded catalog iterator and one data iterator per segment, seeks to the last timestamp less than or equal to `at` for each selected identity, then adds the cumulative pairs. Exact-account and prefix selections are unioned before those seeks, avoiding repeated scans for overlapping predicates. Color collapse, precision merging, grouping, and unfiltered ledger totals happen after account rows are read.
 
 ### Segment and manifest
 
@@ -90,7 +90,7 @@ The manifest atomically publishes the ordered segment set, audit/log watermarks,
 
 ## Integrity model
 
-The audit log is the sole semantic authority. The builder validates consecutive audit entries, audit items, referenced logs, the audit hash chain, ledger lifecycle, and exact source watermarks before publishing. The local store checks manifest/segment structure and decodability; Pebble owns physical block checksums.
+The audit log is the sole semantic authority. The builder validates consecutive audit entries, audit items, referenced logs, the audit hash chain, ledger lifecycle, and exact source watermarks before publishing. The local store checks manifest/segment structure and decodability; a completed rebuild scans every catalog and data record before reads reopen. Pebble owns physical block checksums.
 
 There is deliberately no projection checksum, replay digest, certifier, or cold archive. On a source gap or malformed projection the store is quarantined and rebuilt from audit. This peer store is outside the primary-store checker by construction, like the read index; availability is fail-closed until a complete rebuild reaches the observed source head.
 

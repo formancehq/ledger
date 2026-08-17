@@ -561,12 +561,24 @@ func TestReadLogBySequenceWithCold_LeaseSurvivesConcurrentEviction(t *testing.T)
 	go func() {
 		<-start
 		for range iterations {
-			if _, err := coldReader.GetReader(ctx, 2); err != nil {
+			_, release, err := coldReader.AcquireReader(ctx, 2)
+			if err != nil {
 				churnDone <- err
 
 				return
 			}
-			if _, err := coldReader.GetReader(ctx, 1); err != nil {
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+			_, release, err = coldReader.AcquireReader(ctx, 1)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
 				churnDone <- err
 
 				return

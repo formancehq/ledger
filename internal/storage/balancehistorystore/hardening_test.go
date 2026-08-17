@@ -166,13 +166,16 @@ func TestSourceRepairResetPreservesFailureUntilExplicitCompletion(t *testing.T) 
 
 	dir := t.TempDir()
 	store := openTestStoreAt(t, dir)
+	require.NoError(t, store.ResetForConfiguration([]string{"default"}))
 	publishBalanced(t, store, 1, 1, 1, 1, 1)
+	require.NoError(t, store.CompleteRebuild(1, 1))
 	require.NoError(t, store.MarkSourceMissing("archive range is missing"))
 	require.NoError(t, store.ResetForSourceRepair())
 
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
-	require.Zero(t, manifest.Version)
+	require.Equal(t, uint64(1), manifest.Version)
+	require.Equal(t, []string{"default"}, manifest.Ledgers)
 	_, err = store.OpenView(0)
 	var missing *ErrSourceMissing
 	require.ErrorAs(t, err, &missing)
@@ -408,7 +411,9 @@ func TestCompactionGarbageCollectionHonorsViewLeases(t *testing.T) {
 
 	collected, err := store.CollectGarbage()
 	require.NoError(t, err)
-	require.False(t, collected)
+	// The unleased reservation manifest is collectible, while the pinned
+	// pre-compaction manifest and its runs must remain intact.
+	require.True(t, collected)
 	require.NoError(t, pinned.Close())
 	collected, err = store.CollectGarbage()
 	require.NoError(t, err)
@@ -421,6 +426,29 @@ func TestCompactionGarbageCollectionHonorsViewLeases(t *testing.T) {
 		require.ErrorIs(t, err, pebble.ErrNotFound)
 	}
 	require.NoError(t, store.Verify())
+}
+
+func TestCompleteRebuildScansEveryStoredRecordBeforeReopening(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	require.NoError(t, store.ResetForConfiguration([]string{"default"}))
+	publishBalanced(t, store, 1, 1, 1, 1, 1)
+
+	prefix := []byte{prefixRunData}
+	iter, err := store.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: []byte{prefixRunData + 1}})
+	require.NoError(t, err)
+	require.True(t, iter.First())
+	key := append([]byte(nil), iter.Key()...)
+	require.NoError(t, iter.Close())
+	require.NoError(t, store.db.Set(key, []byte{1}, pebble.Sync))
+
+	err = store.CompleteRebuild(1, 1)
+	var corrupt *ErrCorrupt
+	require.ErrorAs(t, err, &corrupt)
+	_, err = store.OpenView(1)
+	var quarantined *ErrQuarantined
+	require.ErrorAs(t, err, &quarantined)
 }
 
 func TestResetInvalidatesPinnedViews(t *testing.T) {

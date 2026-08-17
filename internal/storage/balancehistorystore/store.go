@@ -167,10 +167,6 @@ func (s *Store) Path() string {
 	return s.dir
 }
 
-func (s *Store) DB() *pebble.DB {
-	return s.db
-}
-
 // SyncWAL makes every preceding asynchronous publication, compaction, and GC
 // mutation durable. Pebble documents LogData(nil, Sync) as the WAL barrier to
 // use before checkpoints; mutationMu makes the barrier's prefix unambiguous to
@@ -241,8 +237,13 @@ func (s *storeCore) Manifest() (Manifest, error) {
 	if err := s.ensureNotQuarantined(); err != nil {
 		return Manifest{}, err
 	}
+	snapshot := s.db.NewSnapshot()
+	manifest, err := readManifest(snapshot)
+	if closeErr := snapshot.Close(); closeErr != nil {
+		err = errors.Join(err, fmt.Errorf("closing balance history manifest snapshot: %w", closeErr))
+	}
 
-	return readManifest(s.db)
+	return manifest, err
 }
 
 func (s *storeCore) loadFailure() error {
@@ -296,6 +297,25 @@ func (s *storeCore) readFailure() error {
 	}
 
 	return &ErrQuarantined{Detail: failure.detail}
+}
+
+// ReadinessError exposes the persisted fail-closed state without opening a
+// view. Rebuild markers are BUILDING for status reporting, while ordinary
+// OpenView calls remain closed as quarantined until CompleteRebuild verifies
+// and clears the marker.
+func (s *Store) ReadinessError() error {
+	failure := s.failure.Load()
+	if failure == nil {
+		return nil
+	}
+	switch failure.kind {
+	case failureSourceMissing:
+		return &ErrSourceMissing{Detail: failure.detail}
+	case failureRebuilding:
+		return &ErrBuilding{}
+	default:
+		return &ErrQuarantined{Detail: failure.detail}
+	}
 }
 
 // MarkSourceMissing persists a verified source-coverage failure. It stops
@@ -408,20 +428,8 @@ func (s *Store) ResetForConfiguration(ledgers []string) error {
 	if err := batch.DeleteRange([]byte{prefixLatestManifest}, []byte{prefixRunCatalog + 1}, nil); err != nil {
 		return fmt.Errorf("staging balance history rebuild reset: %w", err)
 	}
-	manifest := initialManifest()
-	manifest.Version = 1
-	manifest.Ledgers = ledgers
-	encodedManifest, err := encodeManifest(manifest)
-	if err != nil {
+	if err := stageInitialManifest(batch, ledgers); err != nil {
 		return err
-	}
-	if err := batch.Set(manifestKey(manifest.Version), encodedManifest, nil); err != nil {
-		return fmt.Errorf("staging configured balance history manifest: %w", err)
-	}
-	var version [8]byte
-	binary.BigEndian.PutUint64(version[:], manifest.Version)
-	if err := batch.Set(latestManifestKey(), version[:], nil); err != nil {
-		return fmt.Errorf("staging configured balance history manifest pointer: %w", err)
 	}
 	if err := batch.Set(quarantineKey(), encoded, nil); err != nil {
 		return fmt.Errorf("staging balance history rebuilding state: %w", err)
@@ -449,12 +457,19 @@ func (s *Store) ResetForSourceRepair() error {
 	if failure == nil || failure.kind != failureSourceMissing {
 		return errors.New("balance history store is not repairing a missing source")
 	}
+	manifest, err := readManifest(s.db)
+	if err != nil {
+		return fmt.Errorf("reading configured ledgers before balance history source repair: %w", err)
+	}
 	encoded := append([]byte{byte(failureSourceMissing)}, failure.detail...)
 
 	batch := s.db.NewBatch()
 	defer func() { _ = batch.Close() }()
 	if err := batch.DeleteRange([]byte{prefixLatestManifest}, []byte{prefixRunCatalog + 1}, nil); err != nil {
 		return fmt.Errorf("staging balance history source-repair reset: %w", err)
+	}
+	if err := stageInitialManifest(batch, manifest.Ledgers); err != nil {
+		return err
 	}
 	if err := batch.Set(quarantineKey(), encoded, nil); err != nil {
 		return fmt.Errorf("preserving balance history source-missing state: %w", err)
@@ -465,6 +480,26 @@ func (s *Store) ResetForSourceRepair() error {
 	s.failure.Store(&storeFailure{kind: failureSourceMissing, detail: failure.detail})
 	s.generation.Add(1)
 	s.signalChanged()
+
+	return nil
+}
+
+func stageInitialManifest(batch *pebble.Batch, ledgers []string) error {
+	manifest := initialManifest()
+	manifest.Version = 1
+	manifest.Ledgers = append([]string(nil), ledgers...)
+	encodedManifest, err := encodeManifest(manifest)
+	if err != nil {
+		return err
+	}
+	if err := batch.Set(manifestKey(manifest.Version), encodedManifest, nil); err != nil {
+		return fmt.Errorf("staging initial balance history manifest: %w", err)
+	}
+	var version [8]byte
+	binary.BigEndian.PutUint64(version[:], manifest.Version)
+	if err := batch.Set(latestManifestKey(), version[:], nil); err != nil {
+		return fmt.Errorf("staging initial balance history manifest pointer: %w", err)
+	}
 
 	return nil
 }
@@ -486,7 +521,7 @@ func (s *Store) CompleteRebuild(requiredAuditSequence, requiredLogSequence uint6
 	if err := requireManifestHead(manifest, requiredAuditSequence, requiredLogSequence); err != nil {
 		return err
 	}
-	if err := s.verifyLatest(); err != nil {
+	if err := s.verifyLatestContext(context.Background(), true); err != nil {
 		return s.failRebuildLocked(err)
 	}
 	if err := s.db.Delete(quarantineKey(), pebble.Sync); err != nil {
@@ -545,6 +580,15 @@ func (s *storeCore) signalChanged() {
 	close(s.changed)
 	s.changed = make(chan struct{})
 	s.waitMu.Unlock()
+}
+
+// Changes returns a subscription which closes on the next manifest or store
+// state mutation. Callers must subscribe again after every notification.
+func (s *Store) Changes() <-chan struct{} {
+	s.waitMu.Lock()
+	defer s.waitMu.Unlock()
+
+	return s.changed
 }
 
 // WaitForLogWatermark blocks until a manifest covers required or ctx is done.

@@ -27,7 +27,7 @@ func TestBalanceHistoryMaintenanceBoundsCompactions(t *testing.T) {
 		calls.Add(1)
 
 		return true, nil
-	})
+	}, nil)
 	worker.runCompactions(context.Background())
 	require.Equal(t, int64(4), calls.Load())
 }
@@ -51,7 +51,7 @@ func TestBalanceHistoryMaintenanceCompactsLocalSegments(t *testing.T) {
 	config := DefaultBalanceHistoryConfig()
 	config.SegmentCompactionThreshold = 2
 	config.MaxCompactionsPerPass = 4
-	worker := newBalanceHistoryMaintenanceWorker(logging.Testing(), config, store.CompactContext)
+	worker := newBalanceHistoryMaintenanceWorker(logging.Testing(), config, store.CompactContext, store.Changes)
 	worker.runCompactions(context.Background())
 	manifest, err := store.Manifest()
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestBalanceHistoryMaintenanceRecoversAfterCompactionError(t *testing.T) {
 		}
 
 		return false, nil
-	})
+	}, nil)
 	worker.Start()
 	t.Cleanup(worker.Stop)
 	require.Eventually(t, func() bool {
@@ -89,6 +89,26 @@ func TestBalanceHistoryMaintenanceRecoversAfterCompactionError(t *testing.T) {
 			return false
 		}
 	}, time.Second, time.Millisecond)
+}
+
+func TestBalanceHistoryMaintenanceContinuesAfterExhaustedPass(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultBalanceHistoryConfig()
+	config.MaintenanceInterval = time.Hour
+	config.MaxCompactionsPerPass = 1
+	var calls atomic.Int64
+	worker := newBalanceHistoryMaintenanceWorker(
+		logging.Testing(),
+		config,
+		func(context.Context, int) (bool, error) {
+			return calls.Add(1) <= 3, nil
+		},
+		nil,
+	)
+	worker.Start()
+	t.Cleanup(worker.Stop)
+	require.Eventually(t, func() bool { return calls.Load() == 4 }, time.Second, time.Millisecond)
 }
 
 func TestBalanceHistoryMaintenanceStopCancelsBlockedCompaction(t *testing.T) {
@@ -104,7 +124,7 @@ func TestBalanceHistoryMaintenanceStopCancelsBlockedCompaction(t *testing.T) {
 		close(cancelled)
 
 		return false, ctx.Err()
-	})
+	}, nil)
 	worker.Start()
 	require.Eventually(t, func() bool {
 		select {

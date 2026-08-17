@@ -23,8 +23,8 @@ func addBalanceHistoryFlags(cmd *cobra.Command) {
 	cmd.Flags().String(balanceHistoryDirFlag, defaults.Dir, "Directory for the historical-balance peer store (default: <data-dir>/balance-history)")
 	cmd.Flags().Int(balanceHistoryBuilderBatchSizeFlag, defaults.BuilderBatchSize, "Maximum complete audit proposals per historical-balance publication")
 	cmd.Flags().Int(balanceHistoryCompactionThresholdFlag, defaults.SegmentCompactionThreshold, "Logical segments at one level before historical-balance compaction")
-	cmd.Flags().Duration(balanceHistoryMaintenanceIntervalFlag, defaults.MaintenanceInterval, "Interval between bounded historical-balance maintenance passes")
-	cmd.Flags().Int(balanceHistoryMaxCompactionsFlag, defaults.MaxCompactionsPerPass, "Maximum historical-balance compactions per maintenance pass")
+	cmd.Flags().Duration(balanceHistoryMaintenanceIntervalFlag, defaults.MaintenanceInterval, "Fallback interval for historical-balance maintenance when no store notification arrives")
+	cmd.Flags().Int(balanceHistoryMaxCompactionsFlag, defaults.MaxCompactionsPerPass, "Historical-balance compactions per scheduling slice while work remains")
 	cmd.Flags().Duration(balanceHistoryBackfillYieldFlag, defaults.BackfillYield, "Cooperative pause between historical-balance backfill batches")
 	cmd.Flags().Duration(balanceHistoryWALSyncIntervalFlag, defaults.DurabilityInterval, "Maximum asynchronous historical-balance WAL durability interval")
 }

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 type balanceHistoryCompactFunc func(context.Context, int) (bool, error)
+type balanceHistoryChangesFunc func() <-chan struct{}
 
 // balanceHistoryMaintenanceWorker performs bounded local logical-segment
 // compaction. Projection archiving is intentionally out of scope: the audit is
@@ -20,19 +22,26 @@ type balanceHistoryMaintenanceWorker struct {
 	compactionThreshold   int
 	maxCompactionsPerPass int
 	compact               balanceHistoryCompactFunc
+	changes               balanceHistoryChangesFunc
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-func newBalanceHistoryMaintenanceWorker(logger logging.Logger, config BalanceHistoryConfig, compact balanceHistoryCompactFunc) *balanceHistoryMaintenanceWorker {
+func newBalanceHistoryMaintenanceWorker(
+	logger logging.Logger,
+	config BalanceHistoryConfig,
+	compact balanceHistoryCompactFunc,
+	changes balanceHistoryChangesFunc,
+) *balanceHistoryMaintenanceWorker {
 	return &balanceHistoryMaintenanceWorker{
 		logger:                logger,
 		maintenanceInterval:   config.MaintenanceInterval,
 		compactionThreshold:   config.SegmentCompactionThreshold,
 		maxCompactionsPerPass: config.MaxCompactionsPerPass,
 		compact:               compact,
+		changes:               changes,
 	}
 }
 
@@ -76,20 +85,36 @@ func (w *balanceHistoryMaintenanceWorker) Stop() {
 
 func (w *balanceHistoryMaintenanceWorker) run(ctx context.Context, done chan<- struct{}) {
 	defer close(done)
-	w.runCompactions(ctx)
 	ticker := time.NewTicker(w.maintenanceInterval)
 	defer ticker.Stop()
 	for {
+		// Subscribe before inspecting the store. A publication which races with
+		// the no-work result then closes this channel, so it cannot be missed in
+		// the gap between the compaction pass and the select below.
+		var changed <-chan struct{}
+		if w.changes != nil {
+			changed = w.changes()
+		}
+		if w.runCompactions(ctx) {
+			// The bounded pass ended while every attempted merge still found
+			// work. Continue immediately: compaction's own change signal may have
+			// fired before this loop could subscribe to the replacement channel.
+			runtime.Gosched()
+
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.runCompactions(ctx)
+		case <-changed:
 		}
 	}
 }
 
-func (w *balanceHistoryMaintenanceWorker) runCompactions(ctx context.Context) {
+// runCompactions reports whether the pass exhausted its configured budget
+// while still making progress and should therefore be continued immediately.
+func (w *balanceHistoryMaintenanceWorker) runCompactions(ctx context.Context) bool {
 	for range w.maxCompactionsPerPass {
 		compacted, err := w.compact(ctx, w.compactionThreshold)
 		if err != nil {
@@ -97,10 +122,12 @@ func (w *balanceHistoryMaintenanceWorker) runCompactions(ctx context.Context) {
 				w.logger.Errorf("Historical-balance compaction pass failed: %v", err)
 			}
 
-			return
+			return false
 		}
 		if !compacted {
-			return
+			return false
 		}
 	}
+
+	return true
 }

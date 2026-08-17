@@ -2366,7 +2366,7 @@ full-chain scan.
 > **Consistency note.** The audit secondary index is maintained by an
 > asynchronous per-node worker, so any *filtered* audit read (including an
 > `ledger` or `outcome` filter) is eventually consistent — a
-> just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
+> post-commit notification normally wakes the projection immediately; 200 ms is the missed-notification fallback. `--min-log-sequence`
 > gates the read-side log index, not the audit index. An *unfiltered* read
 > (plain `audit list`, optionally with `--reverse` / `seq` bounds) reads
 > the audit zone directly and is strongly consistent.
@@ -4072,8 +4072,8 @@ server flags control only replica-local resource usage.
 | `--balance-history-dir` | string | `""` | Directory for the peer store (default: `<data-dir>/balance-history`). Put it on a dedicated volume to isolate backfill/compaction I/O. |
 | `--balance-history-builder-batch-size` | int | `200` | Maximum complete audit proposals published in one immutable segment. |
 | `--balance-history-segment-compaction-threshold` | int | `4` | Logical segments at one level before asynchronous compaction. Must be at least 2. |
-| `--balance-history-maintenance-interval` | duration | `1s` | Interval between bounded local compaction passes. Maintenance runs independently from the builder. |
-| `--balance-history-max-compactions-per-pass` | int | `2` | Maximum compactions per maintenance pass. Must be between 1 and 1000. |
+| `--balance-history-maintenance-interval` | duration | `1s` | Fallback interval for local compaction when no store-change notification arrives. Publications normally wake maintenance immediately. |
+| `--balance-history-max-compactions-per-pass` | int | `2` | Compactions per scheduling slice. Exhausted slices continue immediately while eligible work remains. Must be between 1 and 1000. |
 | `--balance-history-backfill-yield` | duration | `5ms` | Cooperative pause between bounded boot-time backfill batches. Steady-state tailing does not sleep. |
 | `--balance-history-wal-sync-interval` | duration | `5s` | Maximum durability window for asynchronously published history. A crash may replay this suffix from audit; committed ledger data is unaffected. |
 
