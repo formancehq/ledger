@@ -145,3 +145,44 @@ func TestUint256_NilIntoUint256(t *testing.T) {
 	(*Uint256)(nil).IntoUint256(&dst)
 	require.True(t, dst.IsZero(), "nil should clear dst to zero")
 }
+
+func TestUint256_UnmarshalJSON_AcceptsQuotedDecimal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "unquoted", input: `12345`, want: "12345"},
+		{name: "quoted", input: `"12345"`, want: "12345"},
+		{name: "quoted value a JS client would round", input: `"9007199254740993"`, want: "9007199254740993"},
+		{name: "quoted 256-bit max", input: `"115792089237316195423570985008687907853269984665640564039457584007913129639935"`, want: "115792089237316195423570985008687907853269984665640564039457584007913129639935"},
+		{name: "quoted zero", input: `"0"`, want: "0"},
+		{name: "quoted leading plus", input: `"+123"`, want: "123"},
+		{name: "quoted leading zeros", input: `"0123"`, want: "123"},
+		{name: "null still rejected", input: `null`, wantErr: true},
+		{name: "empty string still rejected", input: `""`, wantErr: true},
+		{name: "lone quote rejected", input: `"`, wantErr: true},
+		{name: "quoted non-numeric still rejected", input: `"abc"`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var u Uint256
+
+			err := u.UnmarshalJSON([]byte(tt.input))
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, u.Dec())
+		})
+	}
+}

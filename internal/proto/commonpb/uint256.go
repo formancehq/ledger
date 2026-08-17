@@ -93,11 +93,32 @@ func (u *Uint256) MarshalJSON() ([]byte, error) {
 	return []byte(u.Dec()), nil
 }
 
-// UnmarshalJSON decodes a decimal string (no quotes) into the Uint256.
+// UnmarshalJSON decodes a decimal into the Uint256. Both the bare JSON number
+// form (the default wire) and the quoted-string form are accepted, so a client
+// that received string amounts via Formance-Bigint-As-String can post them back
+// unchanged (EN-1779). A bare `null` or `""` passed to this method is an error;
+// a `null` field value is nil'd out by the surrounding JSON decoder before this
+// method ever runs, so that case never reaches here.
+//
+// Quotes are stripped by hand rather than JSON-unescaped. The only inputs this
+// treats differently from a json.Unmarshal-into-string decode (the
+// Timestamp.UnmarshalJSON idiom in this package) are escape-encoded digits:
+// `"\u00342"` is valid JSON for "42" but is rejected here. That narrowness is
+// deliberate — no real client escapes ASCII digits, and the raw bytes never
+// reach the parser as anything but a literal decimal.
+//
+// Note that hex is kept out by parsing with SetFromDecimal, not by the
+// hand-slice: uint256's own UnmarshalText/UnmarshalJSON accept an 0x prefix,
+// SetFromDecimal does not. Do not swap in UnmarshalText.
 func (u *Uint256) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+
 	var v uint256.Int
 
-	err := v.SetFromDecimal(string(data))
+	err := v.SetFromDecimal(s)
 	if err != nil {
 		return err
 	}

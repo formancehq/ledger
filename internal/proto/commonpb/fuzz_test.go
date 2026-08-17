@@ -6,8 +6,9 @@ import (
 )
 
 // FuzzUint256UnmarshalJSON fuzzes the Uint256 JSON decoder with arbitrary byte slices.
-// It targets the decimal string parser (no quotes) looking for panics, hangs,
-// or unexpected behavior on malformed input.
+// It targets the decimal string parser, covering both the bare JSON number form
+// and the quoted-string form (EN-1779), looking for panics, hangs, or unexpected
+// behavior on malformed input.
 func FuzzUint256UnmarshalJSON(f *testing.F) {
 	// Seed corpus: valid values, edge cases, and known tricky inputs.
 	f.Add([]byte("0"))
@@ -27,6 +28,13 @@ func FuzzUint256UnmarshalJSON(f *testing.F) {
 	f.Add([]byte("42 "))
 	f.Add([]byte("\x00"))
 	f.Add([]byte("1.5"))
+	// Quoted-string form (EN-1779) and its edge cases.
+	f.Add([]byte(`"42"`))
+	f.Add([]byte(`"`))
+	f.Add([]byte(`""`))
+	f.Add([]byte(`"\"42\""`))
+	f.Add([]byte(`"0x1"`))
+	f.Add([]byte(`"+1"`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		var u Uint256
