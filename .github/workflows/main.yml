@@ -5,8 +5,12 @@ on:
     branches:
       - main
       - release/*
+      - releases/*
   pull_request:
-    types: [ assigned, opened, synchronize, reopened, labeled ]
+    types: [ assigned, opened, synchronize, reopened, labeled, edited ]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,35 +19,26 @@ concurrency:
 jobs:
   PR:
     if: github.event_name == 'pull_request'
-    name: Check PR Title
-    runs-on: ubuntu-latest
+    uses: formancehq/ci/.github/workflows/go-pr.yml@main
     permissions:
+      pull-requests: read
       statuses: write
-    steps:
-      - uses: amannn/action-semantic-pull-request@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   Dirty:
-    runs-on: "namespace-profile-linux-amd64-4vcpu"
-    env:
-      GOPATH: /tmp/go
-      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
+    runs-on: namespace-profile-linux-amd64-4vcpu
     steps:
       - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
-      - name: Setup Env
-        uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: >
-          nix develop --impure --command just pre-commit
+
+      - uses: formancehq/ci/actions/setup-nix@main
+
+      - run: nix develop --impure --command just pre-commit
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+
       - name: Get changed files
-        id: changed-files
         shell: bash
         run: |
           hasChanged=$(git status --porcelain)
@@ -55,57 +50,40 @@ jobs:
           fi
 
   Tests:
-    runs-on: "namespace-profile-linux-amd64-8vcpu"
-    env:
-      GOPATH: /tmp/go
+    runs-on: namespace-profile-linux-amd64-8vcpu
     steps:
       - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
-      - name: Setup Env
-        uses: ./.github/actions/default
-        with:
-          token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: >
-          nix develop --impure --command just tests
+
+      - uses: formancehq/ci/actions/setup-nix@main
+
+      - run: nix develop --impure --command just tests
         env:
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
-      - name: Upload coverage reports to Codecov with GitHub Action
-        uses: codecov/codecov-action@v7.0.0
+
+      - uses: codecov/codecov-action@v7.0.0
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   GoReleaser:
-    runs-on: "namespace-profile-linux-amd64-4vcpu"
+    runs-on: namespace-profile-linux-amd64-4vcpu
     permissions:
       id-token: write
       attestations: write
-    if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
+    if: contains(github.event.pull_request.labels.*.name, 'build-images') || contains(github.event.pull_request.labels.*.name, 'deploy-staging') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
     steps:
-      - uses: earthly/actions-setup@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "latest"
       - uses: namespacelabs/nscloud-checkout-action@v9
         with:
           fetch-depth: 0
           dissociate: true
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      - name: Setup Env
-        uses: ./.github/actions/default
+
+      - uses: formancehq/ci/actions/setup-release@main
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - name: Set up Docker Buildx
-        uses: namespacelabs/nscloud-setup-buildx-action@v0
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: "NumaryBot"
-          password: ${{ secrets.NUMARY_GITHUB_TOKEN }}
-      - run: >
-          nix develop --impure --command just release-ci
+
+      - run: nix develop --impure --command just release-ci
         env:
           GITHUB_TOKEN: ${{ secrets.NUMARY_GITHUB_TOKEN }}
           SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
@@ -121,26 +99,25 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-      # TODO(@sylr): Move this to the Release workflow when proven working.
-      # Generate attestations for the goreleaser output archives
       - uses: actions/attest-build-provenance@v4
         with:
           subject-checksums: ./dist/ledger_checksums.txt
-      # Generate attestations for the goreleaser output binaries
+
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: ./dist/*/**
-      # Extract image metadata from the artifacts.json file
+
       - run: |
           jq -r '[ .[]|select(.type=="Docker Manifest") | .extra.Digest         ] | to_entries | .[] | ( "digest"+ (.key | tostring) + "=" + .value )' < dist/artifacts.json >> "$GITHUB_OUTPUT"
           jq -r '[ .[]|select(.type=="Docker Manifest") | .name | split(":")[0] ] | to_entries | .[] | ( "name"+ (.key | tostring) + "=" + .value )'   < dist/artifacts.json >> "$GITHUB_OUTPUT"
         id: image_metadata
-      # Generate attestations for docker images
+
       - uses: actions/attest-build-provenance@v4
         with:
           subject-digest: ${{ steps.image_metadata.outputs.digest0 }}
           subject-name: ${{ steps.image_metadata.outputs.name0 }}
           push-to-registry: true
+
       - uses: actions/attest-build-provenance@v4
         with:
           subject-digest: ${{ steps.image_metadata.outputs.digest1 }}
@@ -148,43 +125,27 @@ jobs:
           push-to-registry: true
 
   Deploy:
-    runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
+    runs-on: namespace-profile-linux-amd64-2vcpu
+    if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'deploy-staging')
     environment: staging
+    timeout-minutes: 5
     permissions:
+      contents: read
       id-token: write
     needs:
       - GoReleaser
       - Tests
     steps:
-      - name: Tailscale
-        uses: tailscale/github-action@v4
+      - uses: formancehq/ci/actions/deploy-staging@main
         with:
-          oauth-client-id: ${{ secrets.TS_OIDC_OAUTH_CLIENT_ID }}
-          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
-          tags: ${{ vars.TS_TAGS }}
-          version: ${{ vars.TS_VERSION }}
-          args: ${{ vars.TS_ARGS }}
-          retry: ${{ vars.TS_RETRY }}
-          timeout: ${{ vars.TS_TIMEOUT }}
-          ping: ${{ vars.TS_PING }}
-      - uses: earthly/actions-setup@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "latest"
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
-      - name: "Deploy in staging"
-        env:
-          TAG: ${{ github.sha }}
-          COMPONENT: ledger
-          ARGOCD_REGION_AUTH_TOKEN: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
-        run: >
-          earthly
-          --no-output
-          --secret AUTH_TOKEN=$ARGOCD_REGION_AUTH_TOKEN
-          +deploy-staging
-          --TAG=$TAG
-          --COMPONENT=$COMPONENT
+          component: ledger
+          tag: ${{ github.sha }}
+          auth-token: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
+          ts-oauth-client-id: ${{ secrets.TS_OIDC_OAUTH_CLIENT_ID }}
+          ts-audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          ts-tags: ${{ vars.TS_TAGS }}
+          ts-version: ${{ vars.TS_VERSION }}
+          ts-args: ${{ vars.TS_ARGS }}
+          ts-retry: ${{ vars.TS_RETRY }}
+          ts-timeout: ${{ vars.TS_TIMEOUT }}
+          ts-ping: ${{ vars.TS_PING }}
