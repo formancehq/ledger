@@ -90,6 +90,8 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 		return nil, postgres.ResolveError(err)
 	}
 
+	ret.ResolveIndexedMetadataKeys(ctx)
+
 	return ret, nil
 }
 
@@ -112,7 +114,9 @@ func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Stor
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
 	store.SetAloneInBucket(count == 1)
 
-	return store, ret, err
+	store.ResolveIndexedMetadataKeys(ctx)
+
+	return store, ret, nil
 }
 
 func (d *Driver) Initialize(ctx context.Context) error {

@@ -146,10 +146,45 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 		}
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
+		key := match[0][1]
 
-		return "metadata @> ?", []any{map[string]any{
-			match[0][1]: value,
-		}}, nil
+		// The rewrite below is an equality-only form, so it is restricted to $match with
+		// a string filter value.  Metadata filters also accept $in and $like, whose
+		// semantics the `->>` equality cannot express; binding their value into `= ?`
+		// would silently discard the operator and return the wrong rows.  A non-string
+		// filter value is excluded for the type reason described below.  Both cases fall
+		// through to the `@>` containment path, which handles them correctly.
+		stringValue, valueIsString := value.(string)
+		if operator == queries.OperatorMatch && valueIsString && slices.Contains(h.store.IndexedMetadataKeys(), key) {
+			// Key is validated to match [a-zA-Z0-9_]+ so it is safe to embed as a literal.
+			// The literal form is required: Postgres matches functional indexes by exact expression
+			// equality, so `metadata ->> 'key'` matches the index but `metadata ->> ?` does not.
+			//
+			// We always prepend ledger = ? even when newScopedSelect already adds it, because the
+			// partial index is defined as WHERE ledger = '...'. Without the predicate in the query,
+			// Postgres cannot use the partial index (alone-in-bucket optimisation omits it).
+			//
+			// We include metadata \? 'key' (key-existence check) before the ->> equality so the
+			// composite expression evaluates to false (not NULL) when the key is absent.
+			// Without it, metadata ->> 'key' = ? is NULL for absent-key rows, which means
+			// NOT(...) remains NULL instead of TRUE, silently changing result sets for negated
+			// metadata filters compared to the NOT (metadata @> ...) path.
+			//
+			// jsonb_typeof(...) = 'string' keeps the two paths equivalent for non-string
+			// stored values.  @> compares the JSON value by type, so {"key":"123"} does not
+			// match a stored number 123 — but ->> renders that number as the text '123',
+			// which would match.  Ledger metadata is map[string]string, so this only arises
+			// for values written outside the API (the operator guide documents a direct
+			// UPDATE path), which is exactly where the divergence would go unnoticed.
+			//
+			// All three guards are rechecks applied after the functional index lookup; they
+			// do not stop the planner using the index for the equality.
+			return fmt.Sprintf(
+				"ledger = ? AND metadata \\? '%s' AND jsonb_typeof(metadata -> '%s') = 'string' AND metadata ->> '%s' = ?",
+				key, key, key,
+			), []any{h.store.GetLedger().Name, stringValue}, nil
+		}
+		return "metadata @> ?", []any{map[string]any{key: value}}, nil
 
 	case property == "metadata":
 		return "metadata -> ? is not null", []any{value}, nil

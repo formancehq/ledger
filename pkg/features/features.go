@@ -2,11 +2,27 @@ package features
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
+
+// indexedMetadataKeyRe matches valid key names for INDEXED_METADATA_KEYS.
+// Keys are embedded as SQL literals, so only alphanumeric + underscore are allowed.
+var indexedMetadataKeyRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+// IsValidIndexedMetadataKey reports whether a key is safe to embed as a SQL literal
+// in the indexed-metadata predicate.
+//
+// ValidateFeatureWithValue enforces this when the feature is set through the API, but
+// the feature value can also reach the database by other routes — the operator guide
+// documents a direct UPDATE on _system.ledgers — so consumers must re-check keys they
+// read back rather than trusting the stored value.
+func IsValidIndexedMetadataKey(key string) bool {
+	return indexedMetadataKeyRe.MatchString(key)
+}
 
 const (
 	// FeatureMovesHistory is used to define if the ledger has to save funds movements history.
@@ -23,6 +39,12 @@ const (
 	FeatureAccountMetadataHistory = "ACCOUNT_METADATA_HISTORY"
 	// FeatureTransactionMetadataHistory is used to defined it the transaction metadata must be historized.
 	FeatureTransactionMetadataHistory = "TRANSACTION_METADATA_HISTORY"
+	// FeatureIndexedMetadataKeys is a comma-separated list of metadata keys for which the query builder
+	// emits a functional-index-compatible predicate (metadata ->> 'key' = 'value') instead of the default
+	// JSONB containment form (metadata @> '{"key":"value"}'). A matching partial functional index must
+	// exist on the ledger's transactions table for the rewrite to actually speed up the query.
+	// Value: comma-separated key names, e.g. "source_wallet_id,destination_wallet_id". Empty = disabled.
+	FeatureIndexedMetadataKeys = "INDEXED_METADATA_KEYS"
 )
 
 var (
@@ -40,6 +62,11 @@ var (
 		FeatureAccountMetadataHistory:                 "DISABLED",
 		FeatureTransactionMetadataHistory:             "DISABLED",
 	}
+	// FeatureConfigurations lists the accepted values of every closed-set feature.
+	// Benchmarks enumerate it to build all possible ledger configurations and take the
+	// first value of each entry as the default, so every entry must hold at least one
+	// value.  Features whose value is free-form belong in OpenEndedFeatures instead.
+	//
 	// notes: keep the default value as first option for benchmarks
 	FeatureConfigurations = map[string][]string{
 		FeatureMovesHistory:                           {"ON", "OFF"},
@@ -48,9 +75,33 @@ var (
 		FeatureAccountMetadataHistory:                 {"SYNC", "DISABLED"},
 		FeatureTransactionMetadataHistory:             {"SYNC", "DISABLED"},
 	}
+	// OpenEndedFeatures holds features accepting a free-form value that cannot be
+	// enumerated. They are validated by feature-specific rules in ValidateFeatureWithValue
+	// and deliberately kept out of FeatureConfigurations so benchmark enumeration keeps
+	// working.
+	OpenEndedFeatures = map[string]func(value string) error{
+		FeatureIndexedMetadataKeys: validateIndexedMetadataKeys,
+	}
 )
 
+func validateIndexedMetadataKeys(value string) error {
+	if value == "" {
+		return nil
+	}
+	for _, key := range strings.Split(value, ",") {
+		if !indexedMetadataKeyRe.MatchString(key) {
+			return fmt.Errorf("INDEXED_METADATA_KEYS: key %q is invalid (only [a-zA-Z0-9_] allowed)", key)
+		}
+	}
+
+	return nil
+}
+
 func ValidateFeatureWithValue(feature, value string) error {
+	if validate, ok := OpenEndedFeatures[feature]; ok {
+		return validate(value)
+	}
+
 	possibleConfigurations, ok := FeatureConfigurations[feature]
 	if !ok {
 		return fmt.Errorf("feature %q not exists", feature)

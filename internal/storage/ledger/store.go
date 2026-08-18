@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/storage/bun/paginate"
 	"github.com/formancehq/go-libs/v5/pkg/storage/migrations"
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
@@ -59,6 +60,9 @@ type Store struct {
 	beginTXHistogram                   metric.Int64Histogram
 	commitTXHistogram                  metric.Int64Histogram
 	rollbackTXHistogram                metric.Int64Histogram
+
+	indexedMetadataKeys []string
+	indexedKeysResolved bool
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
@@ -146,6 +150,117 @@ func (store *Store) Rollback(ctx context.Context) error {
 
 func (store *Store) GetLedger() ledger.Ledger {
 	return store.ledger
+}
+
+func (store *Store) IndexedMetadataKeys() []string {
+	if store.indexedKeysResolved {
+		return store.indexedMetadataKeys
+	}
+	return store.ledger.GetIndexedMetadataKeys()
+}
+
+// normalizeRenderedSQL wraps a SQL expression yielding pg_get_expr output so that
+// incidental syntax — explicit ::text casts, parentheses and whitespace — is stripped
+// before comparison.
+//
+// Postgres renders the same index definition differently depending on version and
+// column type: `WHERE ledger = 'x'` on a varchar column comes back as
+// ((ledger)::text = 'x'::text), while `(metadata->>'k')` may or may not carry an
+// explicit ::text cast on the key.  Normalising makes the comparison independent of
+// those variations while keeping it exact, so derived expressions and predicates with
+// extra conditions are still rejected.
+//
+// Ledger names and metadata keys are validated as [0-9a-zA-Z_-]+ / [a-zA-Z0-9_]+, so a
+// normalised form never loses meaningful characters.
+func normalizeRenderedSQL(expr string) string {
+	return fmt.Sprintf(
+		`replace(replace(replace(replace(%s, '::text', ''), '(', ''), ')', ''), ' ', '')`,
+		expr,
+	)
+}
+
+func (store *Store) ResolveIndexedMetadataKeys(ctx context.Context) {
+	store.indexedKeysResolved = true
+	requested := store.ledger.GetIndexedMetadataKeys()
+	if len(requested) == 0 {
+		return
+	}
+	schema := store.ledger.Bucket
+	logger := logging.FromContext(ctx).WithFields(map[string]any{
+		"ledger": store.ledger.Name,
+	})
+	// One query for all keys, not one per key: this runs on every store open, so the
+	// cost is paid per request by every ledger that opts into the feature.
+	wanted := make([]string, 0, len(requested))
+	keyByExpr := make(map[string]string, len(requested))
+	for _, key := range requested {
+		expr := fmt.Sprintf("metadata->>'%s'", key)
+		wanted = append(wanted, expr)
+		keyByExpr[expr] = key
+	}
+
+	indexedExpr := normalizeRenderedSQL("pg_get_expr(i.indexprs, i.indrelid)")
+
+	var found []string
+	err := store.db.NewSelect().
+		TableExpr("pg_index i").
+		Join("JOIN pg_class c ON c.oid = i.indrelid").
+		Join("JOIN pg_namespace n ON n.oid = c.relnamespace").
+		ColumnExpr("DISTINCT "+indexedExpr+" AS expr").
+		Where("n.nspname = ?", schema).
+		Where("c.relname = ?", "transactions").
+		Where("i.indexprs IS NOT NULL").
+		// Only accept valid indexes; CONCURRENTLY-failed builds leave an entry
+		// with indisvalid=false that the planner will not use.
+		Where("i.indisvalid = true").
+		// The metadata expression must be the *leading* index key.  indkey is an
+		// int2vector of column attnums where 0 marks an expression, so indkey[0] = 0
+		// means the first key is an expression rather than a regular column.
+		// Combined with the single-expression match below, this proves our metadata
+		// expression is the first usable key.  Without it an index such as
+		// (id DESC, (metadata->>'key')) would be confirmed even though the planner
+		// can only reach the metadata expression after a full scan of the id column —
+		// exactly the sparse scan this feature exists to avoid.
+		Where("i.indkey[0] = 0").
+		// Compare the rendered functional expression to the exact form the query
+		// builder emits.  pg_get_expr renders a list of expressions comma-separated,
+		// so an exact match also guarantees the index carries a single expression.
+		// An exact match (rather than a substring test) rejects derived expressions
+		// such as lower(metadata->>'key') or (metadata->>'key') || '', which the
+		// planner cannot use for our predicate.
+		Where(indexedExpr+" IN (?)", bun.In(wanted)).
+		// Only confirm indexes this ledger's queries can actually use: either a
+		// non-partial index (indpred IS NULL, covers all rows) or a partial index
+		// whose predicate is exactly `ledger = <this ledger>`.  An exact match is
+		// required — a substring test would confirm an index for an unrelated column
+		// holding the same value, or one whose predicate carries extra conditions
+		// the query does not imply, both of which force a sequential scan.
+		Where("(i.indpred IS NULL OR "+normalizeRenderedSQL("pg_get_expr(i.indpred, i.indrelid)")+" = ?)",
+			fmt.Sprintf("ledger='%s'", store.ledger.Name)).
+		Scan(ctx, &found)
+	if err != nil {
+		logger.Errorf("INDEXED_METADATA_KEYS: pg_index query failed, all keys fall back to @>: %s", err)
+		store.indexedMetadataKeys = nil
+		return
+	}
+
+	confirmedSet := make(map[string]struct{}, len(found))
+	for _, expr := range found {
+		if key, ok := keyByExpr[expr]; ok {
+			confirmedSet[key] = struct{}{}
+		}
+	}
+
+	// Preserve the configured order so the resolved list is deterministic.
+	confirmed := make([]string, 0, len(confirmedSet))
+	for _, key := range requested {
+		if _, ok := confirmedSet[key]; ok {
+			confirmed = append(confirmed, key)
+			continue
+		}
+		logger.Infof("INDEXED_METADATA_KEYS: no functional index found for key %q — rewrite disabled, falling back to @>", key)
+	}
+	store.indexedMetadataKeys = confirmed
 }
 
 func (store *Store) GetDB() bun.IDB {
