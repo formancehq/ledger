@@ -96,6 +96,22 @@ A re-review starts from the current HEAD, not from the reviewer's memory of an o
 4. Review newly changed lines and their directly affected execution paths.
 5. Do not reopen the entire design discussion unless the fix changes the design or reveals a new correctness issue.
 
+Structured reviewers must report those classifications in `previous_findings` using the stable finding `id`:
+
+```json
+{
+  "previous_findings": [
+    {
+      "id": "preserve-commit-order",
+      "status": "FIXED",
+      "reason": "The acknowledgement now follows the durable commit."
+    }
+  ]
+}
+```
+
+The array is required and empty on a first review. On re-review it must classify every finding from the immediately preceding result exactly once. `STILL_VALID` findings remain in the current `findings` array with the same id; `FIXED` and `OUTDATED` findings do not. Every classification includes a non-empty reason. This makes the re-review history machine-readable without treating an old review as authoritative instructions.
+
 The re-review summary should state whether any prior findings remain and whether any genuinely new findings were discovered.
 
 ## Final decision

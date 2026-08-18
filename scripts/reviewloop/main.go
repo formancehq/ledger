@@ -25,32 +25,62 @@ const (
 	exitAutoFixRequired  = 3
 	defaultMaxPasses     = 3
 	defaultValidationCmd = "bash scripts/agent-check"
+	changeTargetKind     = "BASE_COMPARISON"
 )
 
 type finding struct {
-	ID          string `json:"id"`
-	Severity    string `json:"severity"`
-	Blocking    *bool  `json:"blocking"`
-	AutoFixable *bool  `json:"auto_fixable"`
-	Title       string `json:"title"`
-	Location    string `json:"location,omitempty"`
-	Evidence    string `json:"evidence"`
-	Impact      string `json:"impact"`
-	Resolution  string `json:"resolution"`
+	ID          string  `json:"id"`
+	Severity    string  `json:"severity"`
+	Blocking    *bool   `json:"blocking"`
+	AutoFixable *bool   `json:"auto_fixable"`
+	Title       string  `json:"title"`
+	Location    *string `json:"location"`
+	Evidence    string  `json:"evidence"`
+	Impact      string  `json:"impact"`
+	Resolution  string  `json:"resolution"`
+}
+
+type previousFinding struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
 }
 
 type reviewResult struct {
-	Decision             string    `json:"decision"`
-	Head                 string    `json:"head"`
-	WorktreeFingerprint  string    `json:"worktree_fingerprint"`
-	Findings             []finding `json:"findings"`
-	ResidualRisk         string    `json:"residual_risk"`
-	HumanDecisionContext string    `json:"human_decision_context,omitempty"`
+	Decision             string            `json:"decision"`
+	Head                 string            `json:"head"`
+	WorktreeFingerprint  string            `json:"worktree_fingerprint"`
+	PreviousFindings     []previousFinding `json:"previous_findings"`
+	Findings             []finding         `json:"findings"`
+	ResidualRisk         string            `json:"residual_risk"`
+	HumanDecisionContext *string           `json:"human_decision_context"`
 }
 
 type workspaceState struct {
 	Head        string
 	Fingerprint string
+}
+
+type reviewBase struct {
+	Ref string
+	SHA string
+}
+
+type worktreeChangeKinds struct {
+	Staged    bool `json:"staged"`
+	Unstaged  bool `json:"unstaged"`
+	Untracked bool `json:"untracked"`
+}
+
+type reviewChangeTarget struct {
+	Kind            string              `json:"kind"`
+	BaseRef         string              `json:"base_ref"`
+	BaseSHA         string              `json:"base_sha"`
+	MergeBaseSHA    string              `json:"merge_base_sha"`
+	Head            string              `json:"head"`
+	WorktreeScope   worktreeChangeKinds `json:"worktree_scope"`
+	WorktreePresent worktreeChangeKinds `json:"worktree_present"`
+	UntrackedPaths  []string            `json:"untracked_paths"`
 }
 
 type loopAction string
@@ -62,23 +92,31 @@ const (
 )
 
 func main() {
-	var reviewCmd, fixCmd, validationCmd, stateDir string
+	var reviewCmd, fixCmd, validationCmd, stateDir, baseRef string
 	var maxPasses int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
 	flag.StringVar(&fixCmd, "fix-cmd", "", "command that fixes findings from $AI_REVIEW_FINDINGS")
 	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "command run after every auto-fix pass")
 	flag.StringVar(&stateDir, "state-dir", "build/ai-review-loop", "directory for review-loop state")
+	flag.StringVar(&baseRef, "base", "", "explicit git ref for committed changes under review")
 	flag.IntVar(&maxPasses, "max-passes", defaultMaxPasses, "maximum review passes")
 	flag.Parse()
 
 	if strings.TrimSpace(reviewCmd) == "" {
 		fatal(errors.New("--review-cmd is required"))
 	}
+	if strings.TrimSpace(baseRef) == "" {
+		fatal(errors.New("--base is required"))
+	}
 	if maxPasses < 1 {
 		fatal(errors.New("--max-passes must be at least 1"))
 	}
 	repositoryRoot, err := gitRepositoryRoot()
+	if err != nil {
+		fatal(err)
+	}
+	base, err := resolveReviewBase(repositoryRoot, baseRef)
 	if err != nil {
 		fatal(err)
 	}
@@ -89,9 +127,19 @@ func main() {
 	fmt.Printf("==> review-loop: state directory %s\n", runStateDir)
 
 	var previousResult string
+	var previousReview *reviewResult
 	for pass := 1; pass <= maxPasses; pass++ {
 		resultPath := filepath.Join(runStateDir, fmt.Sprintf("review-%d.json", pass))
 		reviewedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+		if err != nil {
+			fatal(err)
+		}
+		changeTarget, err := captureReviewChangeTarget(repositoryRoot, base, reviewedState, runStateDir)
+		if err != nil {
+			fatal(err)
+		}
+		changeTargetPath := filepath.Join(runStateDir, fmt.Sprintf("target-%d.json", pass))
+		changeTargetContent, err := writeReviewChangeTarget(changeTargetPath, changeTarget)
 		if err != nil {
 			fatal(err)
 		}
@@ -101,6 +149,7 @@ func main() {
 			"AI_REVIEW_RESULT":               resultPath,
 			"AI_REVIEW_HEAD":                 reviewedState.Head,
 			"AI_REVIEW_WORKTREE_FINGERPRINT": reviewedState.Fingerprint,
+			"AI_REVIEW_CHANGE_TARGET":        changeTargetPath,
 		}
 		if previousResult != "" {
 			env["AI_REVIEW_PREVIOUS_RESULT"] = previousResult
@@ -109,6 +158,9 @@ func main() {
 		fmt.Printf("==> review-loop: review pass %d/%d\n", pass, maxPasses)
 		if err := runCommand(reviewCmd, env); err != nil {
 			fatal(fmt.Errorf("review command failed: %w", err))
+		}
+		if err := verifyFileUnchanged(changeTargetPath, changeTargetContent); err != nil {
+			fatal(fmt.Errorf("review command changed its target description: %w", err))
 		}
 		currentState, err := captureWorkspaceState(repositoryRoot, runStateDir)
 		if err != nil {
@@ -126,6 +178,9 @@ func main() {
 
 		result, err := loadReviewResult(resultPath)
 		if err != nil {
+			fatal(err)
+		}
+		if err := validatePreviousFindings(result, previousReview); err != nil {
 			fatal(err)
 		}
 		if err := validateReviewTarget(result, reviewedState); err != nil {
@@ -174,12 +229,13 @@ func main() {
 				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
 			}
 			previousResult = resultPath
+			previous := result
+			previousReview = &previous
 		}
 	}
 }
 
 func decide(result reviewResult) (loopAction, []finding, error) {
-	decision := strings.ToUpper(strings.TrimSpace(result.Decision))
 	var blockers []finding
 	for index, item := range result.Findings {
 		if item.Blocking == nil || item.AutoFixable == nil {
@@ -190,7 +246,7 @@ func decide(result reviewResult) (loopAction, []finding, error) {
 		}
 	}
 
-	switch decision {
+	switch result.Decision {
 	case "APPROVE":
 		if len(blockers) != 0 {
 			return "", nil, errors.New("review result is inconsistent: APPROVE contains blocking findings")
@@ -239,22 +295,98 @@ func loadReviewResult(path string) (reviewResult, error) {
 	if result.Findings == nil {
 		return reviewResult{}, errors.New("review result must include the findings array")
 	}
-	if !oneOf(strings.ToUpper(result.ResidualRisk), "LOW", "MEDIUM", "HIGH") {
+	if result.PreviousFindings == nil {
+		return reviewResult{}, errors.New("review result must include the previous_findings array")
+	}
+	if result.HumanDecisionContext == nil {
+		return reviewResult{}, errors.New("review result must include human_decision_context")
+	}
+	if !oneOf(result.Decision, "APPROVE", "REQUEST_CHANGES", "HUMAN_DECISION_REQUIRED") {
+		return reviewResult{}, fmt.Errorf("invalid decision %q", result.Decision)
+	}
+	if !oneOf(result.ResidualRisk, "LOW", "MEDIUM", "HIGH") {
 		return reviewResult{}, fmt.Errorf("invalid residual_risk %q", result.ResidualRisk)
 	}
+	findingIDs := make(map[string]struct{}, len(result.Findings))
 	for index, item := range result.Findings {
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.Evidence) == "" || strings.TrimSpace(item.Impact) == "" || strings.TrimSpace(item.Resolution) == "" {
 			return reviewResult{}, fmt.Errorf("finding %d is missing required fields", index+1)
 		}
+		if item.Location == nil {
+			return reviewResult{}, fmt.Errorf("finding %d is missing location", index+1)
+		}
 		if item.Blocking == nil || item.AutoFixable == nil {
 			return reviewResult{}, fmt.Errorf("finding %d is missing explicit blocking flags", index+1)
 		}
-		if !oneOf(strings.ToUpper(item.Severity), "P0", "P1", "P2", "P3") {
+		if !oneOf(item.Severity, "P0", "P1", "P2", "P3") {
 			return reviewResult{}, fmt.Errorf("finding %d has invalid severity %q", index+1, item.Severity)
 		}
+		if _, exists := findingIDs[item.ID]; exists {
+			return reviewResult{}, fmt.Errorf("duplicate finding id %q", item.ID)
+		}
+		findingIDs[item.ID] = struct{}{}
+	}
+	previousIDs := make(map[string]struct{}, len(result.PreviousFindings))
+	for index, item := range result.PreviousFindings {
+		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Reason) == "" {
+			return reviewResult{}, fmt.Errorf("previous finding %d is missing required fields", index+1)
+		}
+		if !oneOf(item.Status, "FIXED", "STILL_VALID", "OUTDATED") {
+			return reviewResult{}, fmt.Errorf("previous finding %d has invalid status %q", index+1, item.Status)
+		}
+		if _, exists := previousIDs[item.ID]; exists {
+			return reviewResult{}, fmt.Errorf("duplicate previous finding id %q", item.ID)
+		}
+		previousIDs[item.ID] = struct{}{}
+	}
+	if result.Decision == "HUMAN_DECISION_REQUIRED" && strings.TrimSpace(*result.HumanDecisionContext) == "" {
+		return reviewResult{}, errors.New("HUMAN_DECISION_REQUIRED must include human_decision_context")
+	}
+	if result.Decision != "HUMAN_DECISION_REQUIRED" && *result.HumanDecisionContext != "" {
+		return reviewResult{}, errors.New("human_decision_context must be empty unless the decision is HUMAN_DECISION_REQUIRED")
 	}
 
 	return result, nil
+}
+
+func validatePreviousFindings(result reviewResult, previous *reviewResult) error {
+	if previous == nil {
+		if len(result.PreviousFindings) != 0 {
+			return errors.New("first review must use an empty previous_findings array")
+		}
+
+		return nil
+	}
+
+	previousIDs := make(map[string]struct{}, len(previous.Findings))
+	for _, item := range previous.Findings {
+		previousIDs[item.ID] = struct{}{}
+	}
+	if len(result.PreviousFindings) != len(previousIDs) {
+		return fmt.Errorf("re-review classified %d previous findings, expected %d", len(result.PreviousFindings), len(previousIDs))
+	}
+	currentIDs := make(map[string]struct{}, len(result.Findings))
+	for _, item := range result.Findings {
+		currentIDs[item.ID] = struct{}{}
+	}
+	for _, item := range result.PreviousFindings {
+		if _, exists := previousIDs[item.ID]; !exists {
+			return fmt.Errorf("previous finding classification references unknown id %q", item.ID)
+		}
+		_, stillReported := currentIDs[item.ID]
+		switch item.Status {
+		case "STILL_VALID":
+			if !stillReported {
+				return fmt.Errorf("previous finding %q is STILL_VALID but is absent from current findings", item.ID)
+			}
+		case "FIXED", "OUTDATED":
+			if stillReported {
+				return fmt.Errorf("previous finding %q is %s but is still present in current findings", item.ID, item.Status)
+			}
+		}
+	}
+
+	return nil
 }
 
 func oneOf(value string, allowed ...string) bool {
@@ -290,6 +422,82 @@ func gitRepositoryRoot() (string, error) {
 	return strings.TrimSpace(string(root)), nil
 }
 
+func resolveReviewBase(repositoryRoot, ref string) (reviewBase, error) {
+	trimmedRef := strings.TrimSpace(ref)
+	if trimmedRef == "" {
+		return reviewBase{}, errors.New("review base ref must not be empty")
+	}
+	output, err := gitOutput(repositoryRoot, "rev-parse", "--verify", "--end-of-options", trimmedRef+"^{commit}")
+	if err != nil {
+		return reviewBase{}, fmt.Errorf("resolving review base %q: %w", trimmedRef, err)
+	}
+
+	return reviewBase{Ref: trimmedRef, SHA: strings.TrimSpace(string(output))}, nil
+}
+
+func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state workspaceState, excludedPaths ...string) (reviewChangeTarget, error) {
+	mergeBaseOutput, err := gitOutput(repositoryRoot, "merge-base", base.SHA, state.Head)
+	if err != nil {
+		return reviewChangeTarget{}, fmt.Errorf("finding merge base between %s and %s: %w", base.SHA, state.Head, err)
+	}
+	stagedOutput, err := gitOutput(repositoryRoot, "diff", "--cached", "--name-only", "-z", "--")
+	if err != nil {
+		return reviewChangeTarget{}, fmt.Errorf("detecting staged review changes: %w", err)
+	}
+	unstagedOutput, err := gitOutput(repositoryRoot, "diff", "--name-only", "-z", "--")
+	if err != nil {
+		return reviewChangeTarget{}, fmt.Errorf("detecting unstaged review changes: %w", err)
+	}
+	untrackedPaths, err := listIncludedUntrackedPaths(repositoryRoot, excludedPaths...)
+	if err != nil {
+		return reviewChangeTarget{}, fmt.Errorf("detecting untracked review changes: %w", err)
+	}
+
+	return reviewChangeTarget{
+		Kind:         changeTargetKind,
+		BaseRef:      base.Ref,
+		BaseSHA:      base.SHA,
+		MergeBaseSHA: strings.TrimSpace(string(mergeBaseOutput)),
+		Head:         state.Head,
+		WorktreeScope: worktreeChangeKinds{
+			Staged:    true,
+			Unstaged:  true,
+			Untracked: true,
+		},
+		WorktreePresent: worktreeChangeKinds{
+			Staged:    len(stagedOutput) != 0,
+			Unstaged:  len(unstagedOutput) != 0,
+			Untracked: len(untrackedPaths) != 0,
+		},
+		UntrackedPaths: untrackedPaths,
+	}, nil
+}
+
+func writeReviewChangeTarget(path string, target reviewChangeTarget) ([]byte, error) {
+	content, err := json.MarshalIndent(target, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encoding review change target: %w", err)
+	}
+	content = append(content, '\n')
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		return nil, fmt.Errorf("writing review change target: %w", err)
+	}
+
+	return content, nil
+}
+
+func verifyFileUnchanged(path string, expected []byte) error {
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	if !bytes.Equal(actual, expected) {
+		return fmt.Errorf("%s content changed", path)
+	}
+
+	return nil
+}
+
 func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (workspaceState, error) {
 	headBytes, err := gitOutput(repositoryRoot, "rev-parse", "HEAD")
 	if err != nil {
@@ -297,43 +505,26 @@ func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (work
 	}
 	head := strings.TrimSpace(string(headBytes))
 
-	trackedDiff, err := gitOutput(repositoryRoot, "diff", "--binary", "--full-index", "HEAD", "--")
+	stagedDiff, err := gitOutput(repositoryRoot, "diff", "--cached", "--binary", "--full-index", "HEAD", "--")
 	if err != nil {
-		return workspaceState{}, fmt.Errorf("reading tracked workspace diff: %w", err)
+		return workspaceState{}, fmt.Errorf("reading staged workspace diff: %w", err)
 	}
-	untrackedOutput, err := gitOutput(repositoryRoot, "ls-files", "--others", "--exclude-standard", "-z")
+	unstagedDiff, err := gitOutput(repositoryRoot, "diff", "--binary", "--full-index", "--")
 	if err != nil {
-		return workspaceState{}, fmt.Errorf("listing untracked workspace files: %w", err)
+		return workspaceState{}, fmt.Errorf("reading unstaged workspace diff: %w", err)
+	}
+	untrackedPaths, err := listIncludedUntrackedPaths(repositoryRoot, excludedPaths...)
+	if err != nil {
+		return workspaceState{}, err
 	}
 
 	hasher := sha256.New()
 	writeHashField(hasher, []byte(head))
-	writeHashField(hasher, trackedDiff)
+	writeHashField(hasher, stagedDiff)
+	writeHashField(hasher, unstagedDiff)
 
-	var untrackedPaths []string
-	for rawPath := range bytes.SplitSeq(untrackedOutput, []byte{0}) {
-		if len(rawPath) != 0 {
-			untrackedPaths = append(untrackedPaths, string(rawPath))
-		}
-	}
-	slices.Sort(untrackedPaths)
 	for _, path := range untrackedPaths {
 		absolutePath := filepath.Join(repositoryRoot, filepath.FromSlash(path))
-		excluded := false
-		for _, excludedPath := range excludedPaths {
-			within, err := pathWithin(absolutePath, excludedPath)
-			if err != nil {
-				return workspaceState{}, fmt.Errorf("checking excluded state path %s: %w", path, err)
-			}
-			if within {
-				excluded = true
-
-				break
-			}
-		}
-		if excluded {
-			continue
-		}
 		info, err := os.Lstat(absolutePath)
 		if err != nil {
 			return workspaceState{}, fmt.Errorf("reading untracked file metadata %s: %w", path, err)
@@ -364,6 +555,40 @@ func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (work
 		Head:        head,
 		Fingerprint: hex.EncodeToString(hasher.Sum(nil)),
 	}, nil
+}
+
+func listIncludedUntrackedPaths(repositoryRoot string, excludedPaths ...string) ([]string, error) {
+	untrackedOutput, err := gitOutput(repositoryRoot, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("listing untracked workspace files: %w", err)
+	}
+
+	untrackedPaths := make([]string, 0)
+	for rawPath := range bytes.SplitSeq(untrackedOutput, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		path := string(rawPath)
+		absolutePath := filepath.Join(repositoryRoot, filepath.FromSlash(path))
+		excluded := false
+		for _, excludedPath := range excludedPaths {
+			within, err := pathWithin(absolutePath, excludedPath)
+			if err != nil {
+				return nil, fmt.Errorf("checking excluded state path %s: %w", path, err)
+			}
+			if within {
+				excluded = true
+
+				break
+			}
+		}
+		if !excluded {
+			untrackedPaths = append(untrackedPaths, path)
+		}
+	}
+	slices.Sort(untrackedPaths)
+
+	return untrackedPaths, nil
 }
 
 func pathWithin(path, root string) (bool, error) {
@@ -445,8 +670,8 @@ func printOutcome(action loopAction, pass int, result reviewResult, blockers []f
 	fmt.Printf("Head reviewed: %s\n", result.Head)
 	fmt.Printf("Blocking findings: %d\n", len(blockers))
 	fmt.Printf("Residual risk: %s\n", result.ResidualRisk)
-	if result.HumanDecisionContext != "" {
-		fmt.Printf("Human decision context: %s\n", result.HumanDecisionContext)
+	if result.HumanDecisionContext != nil && *result.HumanDecisionContext != "" {
+		fmt.Printf("Human decision context: %s\n", *result.HumanDecisionContext)
 	}
 }
 
