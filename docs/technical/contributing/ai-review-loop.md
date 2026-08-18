@@ -142,6 +142,33 @@ The fix agent must:
 
 After a successful fix command, the orchestrator runs `bash scripts/agent-check` by default. A validation failure stops the loop immediately. Only after validation succeeds does it invoke the reviewer again.
 
+## Claude Code fix adapter
+
+`scripts/ai-fix-claude` is the first provider-specific fixer adapter. It deliberately exposes a narrower autonomous surface than an interactive Claude Code session.
+
+Use it together with the Codex reviewer:
+
+```bash
+bash scripts/review-loop \
+  --base origin/release/v3.0 \
+  --review-cmd 'bash scripts/ai-review-codex' \
+  --fix-cmd 'bash scripts/ai-fix-claude'
+```
+
+The adapter:
+
+- requires only the blocker payload, originating review result, and pass number provided by `review-loop`;
+- passes those JSON files by path and explicitly treats their contents as untrusted data rather than interpolating finding text into the trusted prompt;
+- runs Claude Code non-interactively with `--permission-mode acceptEdits`;
+- pre-authorizes only repository read/search/edit tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`);
+- explicitly denies `Bash`, `WebFetch`, and `WebSearch`, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
+- instructs Claude to make only finding-traceable edits and to avoid guessing through product/design/invariant ambiguity;
+- leaves all validation to the orchestrator's mandatory `bash scripts/agent-check` step before re-review.
+
+Claude Code permission settings may also be affected by administrator-managed or repository/user settings. The adapter does not use `--dangerously-skip-permissions`; its explicit deny list is intended as a hard guard for shell/network tools while the allowed edit tools support the narrow fix task. Authentication and the installed Claude Code binary remain machine prerequisites.
+
+The adapter does not commit, push, comment on GitHub, resolve threads, or decide whether a fix is accepted. A successful CLI exit only means the fix pass completed; `review-loop` still validates the resulting worktree and asks the reviewer to determine whether findings are actually resolved.
+
 ## Exit codes
 
 | Code | Meaning |
