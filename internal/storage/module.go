@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/service/health"
 
 	"github.com/formancehq/ledger/internal/storage/driver"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"github.com/formancehq/ledger/internal/tracing"
 )
@@ -20,6 +21,14 @@ const HealthCheckName = `storage-driver-up-to-date`
 
 type ModuleConfig struct {
 	AutoUpgrade bool
+
+	// TransactionListConfig configures the transactions-list SELECT strategy.
+	// Nil means "not configured by this caller" and keeps the store defaults
+	// (see ledgerstore.DefaultTransactionListConfig); only a non-nil value
+	// overrides them, so a caller that does not care — the worker, the bucket
+	// upgrade command — cannot silently disable the adaptive fallback.
+	TransactionListConfig *ledgerstore.TransactionListConfig
+
 	// DisableScopedSelectOptimization disables the alone-in-bucket optimization,
 	// forcing the `ledger = ?` predicate to always be emitted on scoped selects.
 	DisableScopedSelectOptimization bool
@@ -32,6 +41,7 @@ func NewFXModule(config ModuleConfig) fx.Option {
 			return store
 		}),
 		driver.NewFXModule(driver.ModuleConfig{
+			TransactionListConfig:           config.TransactionListConfig,
 			DisableScopedSelectOptimization: config.DisableScopedSelectOptimization,
 		}),
 		servicefx.ProvideHealthCheck(func(driver *driver.Driver, tracer trace.TracerProvider) health.NamedCheck {

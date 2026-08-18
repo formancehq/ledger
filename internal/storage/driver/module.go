@@ -17,12 +17,16 @@ import (
 )
 
 type ModuleConfig struct {
+	// TransactionListConfig configures the transactions-list SELECT strategy.
+	// Nil keeps the store defaults (see ledgerstore.DefaultTransactionListConfig).
+	TransactionListConfig *ledgerstore.TransactionListConfig
+
 	// DisableScopedSelectOptimization disables the alone-in-bucket optimization,
 	// forcing the `ledger = ?` predicate to always be emitted on scoped selects.
 	DisableScopedSelectOptimization bool
 }
 
-func NewFXModule(config ModuleConfig) fx.Option {
+func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(fx.Annotate(func(tracerProvider trace.TracerProvider) bucket.Factory {
 			return bucket.NewDefaultFactory(bucket.WithTracer(tracerProvider.Tracer("store")))
@@ -50,7 +54,10 @@ func NewFXModule(config ModuleConfig) fx.Option {
 			if params.MeterProvider != nil {
 				options = append(options, ledgerstore.WithMeter(params.MeterProvider.Meter("store")))
 			}
-			options = append(options, ledgerstore.WithDisableScopedSelectOptimization(config.DisableScopedSelectOptimization))
+			if cfg.TransactionListConfig != nil {
+				options = append(options, ledgerstore.WithTransactionListConfig(*cfg.TransactionListConfig))
+			}
+			options = append(options, ledgerstore.WithDisableScopedSelectOptimization(cfg.DisableScopedSelectOptimization))
 			return ledgerstore.NewFactory(params.DB, options...)
 		}),
 		fx.Provide(func(

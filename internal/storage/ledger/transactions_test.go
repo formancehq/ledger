@@ -947,3 +947,23 @@ func TestTransactionsList(t *testing.T) {
 		})
 	}
 }
+
+func TestCommitWithoutTransaction(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t)
+	err := store.Commit(ctx)
+	require.Error(t, err)
+	require.EqualError(t, err, "cannot commit transaction: not in a transaction")
+}
+
+func TestRollbackWithoutTransaction(t *testing.T) {
+	t.Parallel()
+	ctx := logging.TestingContext()
+
+	store := newLedgerStore(t)
+	err := store.Rollback(ctx)
+	require.Error(t, err)
+	require.EqualError(t, err, "cannot rollback transaction: not in a transaction")
+}
