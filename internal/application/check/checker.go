@@ -2492,7 +2492,12 @@ func (c *Checker) verifyAuditHashChain(
 			// prefix reports every later registration as injected and every
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
+			//
+			// The audited log maximum accumulated below is a prefix maximum for
+			// exactly the same reason, and comparing it would report every log
+			// past this point as unaudited. Mark it incomplete alongside.
 			signing.markLiveTruncated()
+			chainBound.logCoverageIncomplete = true
 
 			return expectedSkippable, nil
 		}
@@ -2533,7 +2538,12 @@ func (c *Checker) verifyAuditHashChain(
 			// prefix reports every later registration as injected and every
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
+			//
+			// The audited log maximum accumulated below is a prefix maximum for
+			// exactly the same reason, and comparing it would report every log
+			// past this point as unaudited. Mark it incomplete alongside.
 			signing.markLiveTruncated()
+			chainBound.logCoverageIncomplete = true
 
 			return expectedSkippable, nil
 		}
@@ -2579,7 +2589,12 @@ func (c *Checker) verifyAuditHashChain(
 			// prefix reports every later registration as injected and every
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
+			//
+			// The audited log maximum accumulated below is a prefix maximum for
+			// exactly the same reason, and comparing it would report every log
+			// past this point as unaudited. Mark it incomplete alongside.
 			signing.markLiveTruncated()
+			chainBound.logCoverageIncomplete = true
 
 			return expectedSkippable, nil
 		}
@@ -2610,6 +2625,45 @@ func (c *Checker) verifyAuditHashChain(
 		// the success [Min,Max] range so each referenced log is folded once.
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
+			// Log sequences are allocated as one contiguous block per proposal
+			// (processing.ProcessOrders) and proposals commit in audit-sequence
+			// order, so consecutive log-bearing entries must abut: this entry's
+			// min is the previous max + 1. A jump means the chain authenticates a
+			// log range with a hole in it, and the maximum accumulated below would
+			// then bound a stream the chain never covered end to end.
+			//
+			// Only ranges strictly above the archive boundary are held to it. The
+			// walk starts after the highest ARCHIVED close-audit-sequence, so an
+			// un-archived chapter below that boundary has its audit entries skipped
+			// while its logs stay retained — the same out-of-order archiving shape
+			// the replay loop clips at `seq <= archiveEndSeq` — and across that
+			// skipped span the audited range legitimately jumps. The
+			// expectedLogMax > 0 guard excuses the first log-bearing entry, which
+			// has nothing to abut.
+			if minLogSeq := success.GetMinLogSequence(); minLogSeq > 0 &&
+				chainBound.expectedLogMax > 0 &&
+				minLogSeq > signing.archiveEndSeq &&
+				minLogSeq != chainBound.expectedLogMax+1 {
+				assert.Unreachable("check: audited log range is discontinuous", map[string]any{
+					"auditSequence":  entry.GetSequence(),
+					"minLogSequence": minLogSeq,
+					"previousLogMax": chainBound.expectedLogMax,
+				})
+
+				callback(errorEvent(
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+					fmt.Sprintf("audit entry %d authenticates logs from %d but the highest previously audited log was %d: the audited log range is discontinuous",
+						entry.GetSequence(), minLogSeq, chainBound.expectedLogMax),
+					minLogSeq, "", "", ""))
+			}
+
+			// Raise the audited ceiling. Taking the maximum rather than assigning
+			// is what keeps a {0, 0} range (a proposal whose orders were all
+			// idempotent) from pulling it back down — see expectedLogMax.
+			if maxLogSeq := success.GetMaxLogSequence(); maxLogSeq > chainBound.expectedLogMax {
+				chainBound.expectedLogMax = maxLogSeq
+			}
+
 			// The decoded orders come back so the signing fold below reuses them
 			// instead of unmarshalling the whole live audit range a second time.
 			// Parallel to `items` by index; nil where the bytes did not decode.
@@ -2806,6 +2860,38 @@ type chainBoundState struct {
 	// stored <): the FSM enforces a contiguous applied prefix, so at rest the two
 	// must be exactly equal. There is no at-or-below exemption (EN-1550).
 	maxMirrorV2LogID map[string]uint64
+	// expectedLogMax is the highest log sequence the audit hash chain
+	// authenticates: the maximum AuditSuccess.max_log_sequence over every
+	// chain-verified entry of the live walk. Every log is allocated by one of
+	// the two producers in processing.ProcessOrders and committed in the same
+	// batch as the audit entry that binds it, so no log can legitimately sit
+	// above this value.
+	//
+	// The bound has to come from the chain rather than from the log stream
+	// itself: log rows are not hash-chain bound, so a row appended past the
+	// last audited proposal is invisible to every other pass — it is simply
+	// replayed as if it were real, and the projections it feeds then agree
+	// with it. This is the only value that contradicts such a row.
+	//
+	// An entry that produced no log leaves it untouched: a failure entry has
+	// no AuditSuccess at all, and a proposal whose orders were all idempotent
+	// carries {0, 0} (see AuditSuccess in audit.proto). Neither drags the
+	// maximum back down, so a failure-only or replay-only tail stays silent.
+	// Consumed by compareLogBounds.
+	expectedLogMax uint64
+	// logCoverageIncomplete records that the chain walk stopped before the end
+	// of the live audit range, which makes expectedLogMax the maximum of a
+	// PREFIX of the history rather than of the whole of it. A prefix maximum
+	// cannot be compared: every log above the break would be reported as
+	// unaudited, a pile of false positives on top of the one break that is
+	// the real finding. compareLogBounds reports
+	// LOG_VERIFICATION_INCOMPLETE and compares nothing instead.
+	//
+	// Set at exactly the sites that call signingVerifier.markLiveTruncated —
+	// the same truncated walk creates the same prefix problem for both
+	// expectations, so the two flags must be raised together or the log
+	// comparison would keep running past a break the signing one refuses.
+	logCoverageIncomplete bool
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
