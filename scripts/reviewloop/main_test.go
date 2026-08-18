@@ -402,11 +402,13 @@ func TestCaptureReviewChangeTargetExcludesRunStateDirectory(t *testing.T) {
 	target, err := captureReviewChangeTarget(repository, base, state, runStateDirectory)
 	require.NoError(t, err)
 	require.False(t, target.WorktreePresent.Untracked)
+	require.Empty(t, target.UntrackedPaths)
 
 	require.NoError(t, os.WriteFile(filepath.Join(repository, "untracked.txt"), []byte("review me\n"), 0o644))
 	target, err = captureReviewChangeTarget(repository, base, state, runStateDirectory)
 	require.NoError(t, err)
 	require.True(t, target.WorktreePresent.Untracked)
+	require.Equal(t, []string{"untracked.txt"}, target.UntrackedPaths)
 }
 
 func writeReviewResult(t *testing.T, content string) string {

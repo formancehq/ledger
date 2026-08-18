@@ -54,11 +54,12 @@ For every pass, the orchestrator sets:
     "staged": false,
     "unstaged": true,
     "untracked": false
-  }
+  },
+  "untracked_paths": []
 }
 ```
 
-The committed review range is exactly `merge_base_sha..head`. `worktree_scope` declares that staged, unstaged, and non-ignored untracked changes are also part of every reviewed state; `worktree_present` records which categories existed when that pass began. The orchestrator rejects a reviewer command that changes either the worktree or the target description.
+The committed review range is exactly `merge_base_sha..head`. `worktree_scope` declares that staged, unstaged, and non-ignored untracked changes are also part of every reviewed state; `worktree_present` records which categories existed when that pass began. `untracked_paths` is the sorted, repository-relative manifest of the untracked files included in the fingerprint. Reviewer adapters must use this manifest instead of independently enumerating untracked files, so loop state stored inside a non-ignored repository directory cannot leak into the review scope. The orchestrator rejects a reviewer command that changes either the worktree or the target description.
 
 The reviewer must follow [ai-review.md](ai-review.md) and write:
 

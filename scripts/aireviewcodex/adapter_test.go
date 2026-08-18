@@ -120,6 +120,30 @@ func TestAdapterRejectsMissingCodexResult(t *testing.T) {
 	require.Contains(t, output, "Codex exited successfully but did not produce")
 }
 
+func TestAdapterUsesTargetManifestForUntrackedFiles(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	output, err := runAdapter(t, fixture, nil)
+	require.NoError(t, err, output)
+
+	prompt := readFile(t, fixture.promptCapture)
+	require.Contains(t, prompt, "`untracked_paths` array of `AI_REVIEW_CHANGE_TARGET`")
+	require.NotContains(t, prompt, "git ls-files --others --exclude-standard")
+}
+
+func TestAdapterRejectsInconsistentUntrackedManifest(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	target := strings.Replace(readFile(t, fixture.targetPath), `"untracked_paths": []`, `"untracked_paths": ["state.json"]`, 1)
+	writeFile(t, fixture.targetPath, target, 0o644)
+
+	output, err := runAdapter(t, fixture, nil)
+	require.Error(t, err)
+	require.Contains(t, output, "invalid change target contract")
+}
+
 func newAdapterFixture(t *testing.T) adapterFixture {
 	t.Helper()
 
@@ -170,7 +194,8 @@ func newAdapterFixture(t *testing.T) adapterFixture {
   "merge_base_sha": "` + testMergeBase + `",
   "head": "` + testHead + `",
   "worktree_scope": {"staged": true, "unstaged": true, "untracked": true},
-  "worktree_present": {"staged": false, "unstaged": false, "untracked": false}
+  "worktree_present": {"staged": false, "unstaged": false, "untracked": false},
+  "untracked_paths": []
 }
 `
 	writeFile(t, fixture.targetPath, target, 0o644)

@@ -80,6 +80,7 @@ type reviewChangeTarget struct {
 	Head            string              `json:"head"`
 	WorktreeScope   worktreeChangeKinds `json:"worktree_scope"`
 	WorktreePresent worktreeChangeKinds `json:"worktree_present"`
+	UntrackedPaths  []string            `json:"untracked_paths"`
 }
 
 type loopAction string
@@ -468,6 +469,7 @@ func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state wor
 			Unstaged:  len(unstagedOutput) != 0,
 			Untracked: len(untrackedPaths) != 0,
 		},
+		UntrackedPaths: untrackedPaths,
 	}, nil
 }
 
@@ -561,7 +563,7 @@ func listIncludedUntrackedPaths(repositoryRoot string, excludedPaths ...string) 
 		return nil, fmt.Errorf("listing untracked workspace files: %w", err)
 	}
 
-	var untrackedPaths []string
+	untrackedPaths := make([]string, 0)
 	for rawPath := range bytes.SplitSeq(untrackedOutput, []byte{0}) {
 		if len(rawPath) == 0 {
 			continue
