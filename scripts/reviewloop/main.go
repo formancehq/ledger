@@ -20,15 +20,15 @@ const (
 )
 
 type finding struct {
-	ID           string `json:"id"`
-	Severity     string `json:"severity"`
-	Blocking     bool   `json:"blocking"`
-	AutoFixable  bool   `json:"auto_fixable"`
-	Title        string `json:"title"`
-	Location     string `json:"location,omitempty"`
-	Evidence     string `json:"evidence"`
-	Impact       string `json:"impact"`
-	Resolution   string `json:"resolution"`
+	ID          string `json:"id"`
+	Severity    string `json:"severity"`
+	Blocking    bool   `json:"blocking"`
+	AutoFixable bool   `json:"auto_fixable"`
+	Title       string `json:"title"`
+	Location    string `json:"location,omitempty"`
+	Evidence    string `json:"evidence"`
+	Impact      string `json:"impact"`
+	Resolution  string `json:"resolution"`
 }
 
 type reviewResult struct {
@@ -42,16 +42,13 @@ type reviewResult struct {
 type loopAction string
 
 const (
-	actionReady     loopAction = "READY_FOR_HUMAN_REVIEW"
-	actionAutoFix   loopAction = "AUTO_FIX_REQUIRED"
-	actionHuman     loopAction = "HUMAN_DECISION_REQUIRED"
+	actionReady   loopAction = "READY_FOR_HUMAN_REVIEW"
+	actionAutoFix loopAction = "AUTO_FIX_REQUIRED"
+	actionHuman   loopAction = "HUMAN_DECISION_REQUIRED"
 )
 
 func main() {
-	var reviewCmd string
-	var fixCmd string
-	var validationCmd string
-	var stateDir string
+	var reviewCmd, fixCmd, validationCmd, stateDir string
 	var maxPasses int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
@@ -183,12 +180,27 @@ func loadReviewResult(path string) (reviewResult, error) {
 	if result.Head == "" {
 		return reviewResult{}, errors.New("review result must include the reviewed head SHA")
 	}
+	if !oneOf(strings.ToUpper(result.ResidualRisk), "LOW", "MEDIUM", "HIGH") {
+		return reviewResult{}, fmt.Errorf("invalid residual_risk %q", result.ResidualRisk)
+	}
 	for index, item := range result.Findings {
-		if item.ID == "" || item.Severity == "" || item.Title == "" || item.Evidence == "" || item.Impact == "" || item.Resolution == "" {
+		if item.ID == "" || item.Title == "" || item.Evidence == "" || item.Impact == "" || item.Resolution == "" {
 			return reviewResult{}, fmt.Errorf("finding %d is missing required fields", index+1)
+		}
+		if !oneOf(strings.ToUpper(item.Severity), "P0", "P1", "P2", "P3") {
+			return reviewResult{}, fmt.Errorf("finding %d has invalid severity %q", index+1, item.Severity)
 		}
 	}
 	return result, nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func writeFindings(path string, findings []finding) error {
