@@ -381,6 +381,34 @@ func TestCaptureReviewChangeTargetIncludesDirtyWorktreeCategories(t *testing.T) 
 	require.ErrorContains(t, verifyFileUnchanged(targetPath, expected), "content changed")
 }
 
+func TestCaptureReviewChangeTargetExcludesRunStateDirectory(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGit(t, repository, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
+	runGit(t, repository, "add", "base.txt")
+	runGit(t, repository, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "base")
+	runGit(t, repository, "branch", "review-base")
+
+	runStateDirectory := filepath.Join(repository, "review-state", "run-test")
+	require.NoError(t, os.MkdirAll(runStateDirectory, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(runStateDirectory, "review-1.json"), []byte("state\n"), 0o644))
+
+	state, err := captureWorkspaceState(repository, runStateDirectory)
+	require.NoError(t, err)
+	base, err := resolveReviewBase(repository, "review-base")
+	require.NoError(t, err)
+	target, err := captureReviewChangeTarget(repository, base, state, runStateDirectory)
+	require.NoError(t, err)
+	require.False(t, target.WorktreePresent.Untracked)
+
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "untracked.txt"), []byte("review me\n"), 0o644))
+	target, err = captureReviewChangeTarget(repository, base, state, runStateDirectory)
+	require.NoError(t, err)
+	require.True(t, target.WorktreePresent.Untracked)
+}
+
 func writeReviewResult(t *testing.T, content string) string {
 	t.Helper()
 

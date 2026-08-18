@@ -133,7 +133,7 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		changeTarget, err := captureReviewChangeTarget(repositoryRoot, base, reviewedState)
+		changeTarget, err := captureReviewChangeTarget(repositoryRoot, base, reviewedState, runStateDir)
 		if err != nil {
 			fatal(err)
 		}
@@ -434,7 +434,7 @@ func resolveReviewBase(repositoryRoot, ref string) (reviewBase, error) {
 	return reviewBase{Ref: trimmedRef, SHA: strings.TrimSpace(string(output))}, nil
 }
 
-func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state workspaceState) (reviewChangeTarget, error) {
+func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state workspaceState, excludedPaths ...string) (reviewChangeTarget, error) {
 	mergeBaseOutput, err := gitOutput(repositoryRoot, "merge-base", base.SHA, state.Head)
 	if err != nil {
 		return reviewChangeTarget{}, fmt.Errorf("finding merge base between %s and %s: %w", base.SHA, state.Head, err)
@@ -447,7 +447,7 @@ func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state wor
 	if err != nil {
 		return reviewChangeTarget{}, fmt.Errorf("detecting unstaged review changes: %w", err)
 	}
-	untrackedOutput, err := gitOutput(repositoryRoot, "ls-files", "--others", "--exclude-standard", "-z")
+	untrackedPaths, err := listIncludedUntrackedPaths(repositoryRoot, excludedPaths...)
 	if err != nil {
 		return reviewChangeTarget{}, fmt.Errorf("detecting untracked review changes: %w", err)
 	}
@@ -466,7 +466,7 @@ func captureReviewChangeTarget(repositoryRoot string, base reviewBase, state wor
 		WorktreePresent: worktreeChangeKinds{
 			Staged:    len(stagedOutput) != 0,
 			Unstaged:  len(unstagedOutput) != 0,
-			Untracked: len(untrackedOutput) != 0,
+			Untracked: len(untrackedPaths) != 0,
 		},
 	}, nil
 }
@@ -511,9 +511,9 @@ func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (work
 	if err != nil {
 		return workspaceState{}, fmt.Errorf("reading unstaged workspace diff: %w", err)
 	}
-	untrackedOutput, err := gitOutput(repositoryRoot, "ls-files", "--others", "--exclude-standard", "-z")
+	untrackedPaths, err := listIncludedUntrackedPaths(repositoryRoot, excludedPaths...)
 	if err != nil {
-		return workspaceState{}, fmt.Errorf("listing untracked workspace files: %w", err)
+		return workspaceState{}, err
 	}
 
 	hasher := sha256.New()
@@ -521,30 +521,8 @@ func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (work
 	writeHashField(hasher, stagedDiff)
 	writeHashField(hasher, unstagedDiff)
 
-	var untrackedPaths []string
-	for rawPath := range bytes.SplitSeq(untrackedOutput, []byte{0}) {
-		if len(rawPath) != 0 {
-			untrackedPaths = append(untrackedPaths, string(rawPath))
-		}
-	}
-	slices.Sort(untrackedPaths)
 	for _, path := range untrackedPaths {
 		absolutePath := filepath.Join(repositoryRoot, filepath.FromSlash(path))
-		excluded := false
-		for _, excludedPath := range excludedPaths {
-			within, err := pathWithin(absolutePath, excludedPath)
-			if err != nil {
-				return workspaceState{}, fmt.Errorf("checking excluded state path %s: %w", path, err)
-			}
-			if within {
-				excluded = true
-
-				break
-			}
-		}
-		if excluded {
-			continue
-		}
 		info, err := os.Lstat(absolutePath)
 		if err != nil {
 			return workspaceState{}, fmt.Errorf("reading untracked file metadata %s: %w", path, err)
@@ -575,6 +553,40 @@ func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (work
 		Head:        head,
 		Fingerprint: hex.EncodeToString(hasher.Sum(nil)),
 	}, nil
+}
+
+func listIncludedUntrackedPaths(repositoryRoot string, excludedPaths ...string) ([]string, error) {
+	untrackedOutput, err := gitOutput(repositoryRoot, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, fmt.Errorf("listing untracked workspace files: %w", err)
+	}
+
+	var untrackedPaths []string
+	for rawPath := range bytes.SplitSeq(untrackedOutput, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		path := string(rawPath)
+		absolutePath := filepath.Join(repositoryRoot, filepath.FromSlash(path))
+		excluded := false
+		for _, excludedPath := range excludedPaths {
+			within, err := pathWithin(absolutePath, excludedPath)
+			if err != nil {
+				return nil, fmt.Errorf("checking excluded state path %s: %w", path, err)
+			}
+			if within {
+				excluded = true
+
+				break
+			}
+		}
+		if !excluded {
+			untrackedPaths = append(untrackedPaths, path)
+		}
+	}
+	slices.Sort(untrackedPaths)
+
+	return untrackedPaths, nil
 }
 
 func pathWithin(path, root string) (bool, error) {
