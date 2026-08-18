@@ -128,7 +128,15 @@ A fresh backup against an empty destination is just a "full" backup with an empt
 1. Read the manifest from the destination.
 2. Download every SST file the manifest references into a fresh Pebble directory.
 3. Apply any incremental exports on top (`ApplyExports`).
-4. Boot the node against the restored directory.
+4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
+5. Boot the node against the restored directory.
+
+`RebuildDelta` is a second fold of committed effects: the checkpoint contains
+projection values only up to its sequence boundary, while later incremental
+segments carry the evidence needed to reconstruct their updates. Any persisted
+state that can change after the checkpoint must therefore follow the
+[incremental restore contract](incremental-restore-contract.md). A restore test
+that has no post-checkpoint export does not exercise this path.
 
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
@@ -163,5 +171,6 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 | Manifest | `internal/infra/backup/manifest.go` |
 | Cold backfill of archival-purged ranges | `internal/infra/backup/cold_backfill.go` |
 | Storage abstraction (filesystem / S3 / Azure) | `internal/infra/backup/storage*.go` |
-| Restore | `internal/infra/backup/restore.go` |
+| Restore orchestration | `internal/infra/backup/restore.go` |
+| Delta projection rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/` |
 | `Backup` / `BackupRun` CRDs | `misc/operator/api/v1alpha1/` |
