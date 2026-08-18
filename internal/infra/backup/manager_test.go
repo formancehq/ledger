@@ -617,11 +617,12 @@ func (s *inMemoryBackupStorage) ListFiles(_ context.Context, prefix string) ([]s
 }
 
 // writeFailureAuditEntry writes a single AuditEntry proto with a Failure
-// outcome under [ZoneCold][SubColdAudit][seq]. No AuditItem is written —
-// this mirrors the FSM's failure path (state.machine.go calls
-// writeAuditEntry(failureEntry, nil, "failure"), and appendAuditItems on an
-// empty slice is a no-op), producing the "audit count > 0, auditItem
-// count == 0" state that EN-1424 targets.
+// outcome under [ZoneCold][SubColdAudit][seq], plus its matching AuditItem
+// under order 0 with LogSequence left at its zero value. This mirrors what
+// the FSM actually produces on the failure path: buildAuditItems sizes the
+// item slice from serializedOrders, never from logs, so a failure writes one
+// item per order — it just never has a log to attach, hence
+// LogSequence = 0.
 func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	t.Helper()
 
@@ -631,10 +632,13 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 			Failure: &auditpb.AuditFailure{Reason: commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS},
 		},
 	}
+	item := &auditpb.AuditItem{OrderIndex: 0}
 
 	batch := store.OpenWriteSession()
-	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
-	require.NoError(t, batch.SetProto(key, entry))
+	entryKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+	itemKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(0).Build()
+	require.NoError(t, batch.SetProto(entryKey, entry))
+	require.NoError(t, batch.SetProto(itemKey, item))
 	require.NoError(t, batch.Commit())
 }
 
@@ -672,21 +676,24 @@ func findExport(manifest *Manifest, segType string) *ExportSegment {
 	return nil
 }
 
-// TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment is the
-// EN-1424 regression: an incremental range whose entries are ALL failure
-// AuditEntries produces zero AuditItems, so exportEntries uploads no
-// auditItem object. The manifest must not reference the missing key, or a
-// subsequent ApplyExports fails on GetFile and the backup is silently
-// un-restorable. Mirrors the guard already applied to the appliedProposal
-// branch.
-func TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment(t *testing.T) {
+// TestRunIncrementalBackup_FailureOnlyRange_ExportsAuditItemSegment is the
+// EN-1424 regression, corrected: an incremental range whose entries are ALL
+// failure AuditEntries still writes one AuditItem per order (LogSequence =
+// 0 on every item, since a failure has no log to attach), so exportEntries
+// DOES upload an auditItem object here. The segment that's legitimately
+// absent for a failure-only range is appliedProposal — only successes write
+// one. Either way, the manifest must reference exactly what's on storage: a
+// referenced-but-missing key fails a later ApplyExports at GetFile, and the
+// export loop achieves that by appending a segment only when exportEntries
+// actually returned one for that range.
+func TestRunIncrementalBackup_FailureOnlyRange_ExportsAuditItemSegment(t *testing.T) {
 	t.Parallel()
 
 	const bucketID = "bucket"
 
 	store := newBackupTestStore(t)
-	// Three failure-only audit entries at seqs 1..3: no matching AuditItem,
-	// no AppliedProposal.
+	// Three failure-only audit entries at seqs 1..3: each with a matching
+	// AuditItem, no AppliedProposal.
 	writeFailureAuditEntry(t, store, 1)
 	writeFailureAuditEntry(t, store, 2)
 	writeFailureAuditEntry(t, store, 3)
@@ -711,19 +718,18 @@ func TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment(t *testing.
 	require.EqualValues(t, 1, auditSeg.StartSeq)
 	require.EqualValues(t, 3, auditSeg.EndSeq)
 
-	// The bug: manifest referenced an auditItem segment even when count==0
-	// (no failure produced any item), leaving a dangling reference to a
-	// non-existent object.
-	require.Nil(t, findExport(manifest, "auditItem"),
-		"auditItem segment must NOT be referenced when the range contains no items (regression: EN-1424)")
+	// A failure-only range still produces one AuditItem per order, so the
+	// auditItem segment must be referenced too.
+	require.NotNil(t, findExport(manifest, "auditItem"),
+		"auditItem segment must be exported for a failure-only range (each failure writes one item per order)")
 
-	// The appliedProposal branch already had this guard; assert it still holds.
+	// AppliedProposal, unlike AuditItem, IS legitimately sparse on failure —
+	// only successes write one, so it must be absent here.
 	require.Nil(t, findExport(manifest, "appliedProposal"),
 		"appliedProposal segment must NOT be referenced when the range contains no successes")
 
 	// Round-trip: ApplyExports against a fresh store must succeed with the
-	// generated manifest. Pre-fix, this failed at GetFile("...auditItem/...")
-	// with ErrFileNotFound.
+	// generated manifest.
 	restoreStore := newBackupTestStore(t)
 	require.NoError(t, ApplyExports(context.Background(), logging.Testing(), storage, restoreStore, manifest.Exports),
 		"ApplyExports must round-trip on a failure-only incremental backup")

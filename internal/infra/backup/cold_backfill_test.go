@@ -239,7 +239,7 @@ func TestRunIncrementalBackup_BackfillsArchivedRangesFromCold(t *testing.T) {
 	require.Equal(t, []uint64{3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, readLogSequences(t, restored, 2),
 		"restored store must hold the archived range — pre-fix it silently lost logs 3..7")
 	require.Equal(t, 7, countKeysInSub(t, restored, dal.SubColdAudit), "audits 2..8")
-	require.Equal(t, 6, countKeysInSub(t, restored, dal.SubColdAuditItem), "items at 2, 4, 5..8")
+	require.Equal(t, 7, countKeysInSub(t, restored, dal.SubColdAuditItem), "items at 2, 3, 4, 5..8 (every audit entry writes one, including the failure at 3)")
 	require.Equal(t, 2, countKeysInSub(t, restored, dal.SubColdAppliedProposal), "proposals at 2, 4")
 }
 
