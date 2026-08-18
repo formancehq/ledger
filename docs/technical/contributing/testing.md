@@ -143,8 +143,17 @@ A spec that builds its own instrument list instead of using
 `DefaultTestInstruments` still passes allocated values through the low-level
 instruments — `testserver.WithHTTPPort(ports.HTTP())`,
 `WithRaftPort(ports.Raft())`, `WithGRPCPort(ports.GRPC())`. Those take a plain
-`int`, so they are the one remaining place a literal would compile. Feed them
-from `AllocateNodePorts`.
+`int`, so a literal would still compile there. So would one passed to
+`testserver.WithJoin(raftAddr)` or `testserver.NewGateway(logger, ports, nodes)`,
+or one written into an RPC field that carries an address — for example
+`AddLearnerRequest.RaftAddress`, which is a plain string. The `NodePorts` guard
+reaches none of these. Feed every one of them from `AllocateNodePorts` or
+`AllocatePort`.
+
+That includes peers which are deliberately never started: a hand-picked address
+for a phantom node is still a number inside the allocator's band, so it can name
+a port the allocator later hands to a live node. `phantomPeer()` in
+`tests/e2e/cluster` allocates those addresses instead.
 
 ### Test Helpers
 
