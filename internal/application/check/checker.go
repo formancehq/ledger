@@ -489,6 +489,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// terminal event after the loop is not sent twice on a log-bearing store.
 	progressEmitted := false
 
+	// storedLogMax is the highest log sequence the store actually holds, read
+	// from the log KEY. compareLogBounds bounds it by the audited maximum after
+	// the loop. Taken from the key and not from Log.sequence in the value: the
+	// key is what AppendLogs derives from the FSM's counter, while the value's
+	// field is not hash-bound and was the EN-1526 bypass (see the key/value
+	// disagreement assertion below).
+	var storedLogMax uint64
+
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -496,6 +504,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
+
+		// Raise the stored ceiling BEFORE the archive-boundary skip below. A row
+		// retained at or under the boundary is still a row the store holds, and
+		// dropping it here would let a store whose only remaining logs sit under
+		// the boundary report a maximum of 0 and escape the bound entirely.
+		if seq > storedLogMax {
+			storedLogMax = seq
+		}
 
 		// At or below the archive boundary the baseline checkpoint and the audit
 		// hash chain are authoritative, not replay. Such logs are normally purged,
@@ -867,6 +883,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
+
+	// Bound the log stream from above with the audit chain. Placed after the
+	// replay loop because storedLogMax is accumulated there, and after the chain
+	// walk (which ran before replay) because expectedLogMax comes from it.
+	compareLogBounds(chainBound, storedLogMax, callback)
 
 	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
 		return err
