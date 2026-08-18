@@ -5,8 +5,12 @@ on:
     branches:
       - main
       - release/*
+      - releases/*
   pull_request:
-    types: [ assigned, opened, synchronize, reopened, labeled ]
+    types: [ assigned, opened, synchronize, reopened, labeled, edited ]
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -74,7 +78,6 @@ jobs:
         with:
           fetch-depth: 0
           dissociate: true
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - uses: formancehq/ci/actions/setup-release@main
         with:
