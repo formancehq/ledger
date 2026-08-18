@@ -172,7 +172,33 @@ func requireOnlyAmountQuotingDiffers(t *testing.T, defaultBody, optInBody string
 		"the pinned body must carry an HTML-sensitive character, raw or escaped, "+
 			"or it cannot detect a change of encoder")
 
+	quoted := `"` + aboveJSNumberLimit + `"`
+	amounts := strings.Count(defaultBody, aboveJSNumberLimit)
+
+	// Without this the whole helper can pass vacuously: on a body carrying no
+	// amount at all there is nothing to unquote, so the final assertion
+	// degenerates into "the two bodies are equal" — which they are precisely
+	// when the header did nothing.
+	require.Positive(t, amounts,
+		"the pinned default body must contain the fixture amount, or this helper "+
+			"asserts nothing about the amount's quoting")
+
+	// EVERY amount must be quoted, not just one. Unquoting is a rewrite, so a
+	// body with a single quoted amount among several bare ones rewrites back to
+	// the default body exactly and would satisfy the equality below on its own —
+	// while a client still truncates every amount the header failed to quote.
+	// Counting closes that hole; ReplaceAll below then keeps a correctly quoted
+	// multi-amount body from failing for the opposite reason.
+	//
+	// Every fixture carries one posting today, which is why neither is currently
+	// load-bearing. Authors paste real output into the pinned literals, so both
+	// must hold before a multi-posting fixture arrives, not after.
+	require.Equal(t, amounts, strings.Count(optInBody, quoted),
+		"the opt-in body must quote EVERY amount the default body renders bare: "+
+			"the default body has %d, the opt-in body quotes a different number",
+		amounts)
+
 	require.Equal(t, defaultBody,
-		strings.Replace(optInBody, `"`+aboveJSNumberLimit+`"`, aboveJSNumberLimit, 1),
+		strings.ReplaceAll(optInBody, quoted, aboveJSNumberLimit),
 		"the opt-in wire must differ from the default wire only in the amount's quoting")
 }

@@ -59,8 +59,13 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 //  4. Declare the wrapper type here, with the nil-inner-pointer guard returning
 //     `[]byte("null")` as its first statement. Export it only if a caller
 //     outside this package constructs it.
-//  5. Register the wrapper in the encoder-contract test so the declared
-//     MarshalJSON cannot be lost to the promoted one.
+//  5. Register the wrapper in stringAmountWrappers, in string_amounts_test.go.
+//     That table pins both properties a wrapper cannot lose silently: its
+//     MarshalJSON must be reachable on the VALUE (a pointer receiver compiles,
+//     but the wrapper then falls back to the embedded pointer's marshaller and
+//     emits the default bare-number amount), and a nil embedded pointer must
+//     render `null`. Skipping this step fails
+//     TestStringAmountWrappers_TableIsComplete.
 
 // wrapAll wraps every element for the opt-in wire. The result is always
 // non-nil, so a nil or empty input still marshals as `[]` rather than `null`:

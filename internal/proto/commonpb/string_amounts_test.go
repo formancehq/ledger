@@ -2,7 +2,13 @@ package commonpb
 
 import (
 	"bytes"
+	stdjson "encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math/big"
+	"reflect"
+	"sort"
 	"strconv"
 	"testing"
 	libtime "time"
@@ -392,14 +398,6 @@ func TestCreatedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
 	require.NotContains(t, string(str), "transaction")
 }
 
-func TestCreatedTransaction_NilReceiverIsNull(t *testing.T) {
-	t.Parallel()
-
-	got, err := json.Marshal(StringAmountCreatedTransaction{CreatedTransaction: nil})
-	require.NoError(t, err)
-	require.Equal(t, "null", string(got))
-}
-
 func TestRevertedTransaction_StringAmountKeepsAboveJSLimitExact(t *testing.T) {
 	t.Parallel()
 
@@ -451,14 +449,6 @@ func TestRevertedTransaction_NilChildStaysOmittedInBothModes(t *testing.T) {
 	str, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: rt})
 	require.NoError(t, err)
 	require.NotContains(t, string(str), "revertTransaction")
-}
-
-func TestRevertedTransaction_NilReceiverIsNull(t *testing.T) {
-	t.Parallel()
-
-	got, err := json.Marshal(StringAmountRevertedTransaction{RevertedTransaction: nil})
-	require.NoError(t, err)
-	require.Equal(t, "null", string(got))
 }
 
 // newTestLog wraps a ledger-log payload in the full five-level chain a log
@@ -644,14 +634,6 @@ func TestLedgerLog_NilDataStaysNullInBothModes(t *testing.T) {
 	require.Contains(t, string(str), `"data":null`)
 
 	require.Equal(t, string(def), string(str))
-}
-
-func TestLog_NilReceiverIsNull(t *testing.T) {
-	t.Parallel()
-
-	got, err := json.Marshal(StringAmountLog{Log: nil})
-	require.NoError(t, err)
-	require.Equal(t, "null", string(got))
 }
 
 func TestLogs_NilElementStaysNullInBothModes(t *testing.T) {
@@ -889,12 +871,192 @@ func TestPreparedQueryCursor_DrainedCursorIsByteIdenticalInBothModes(t *testing.
 	require.Equal(t, string(def), string(str))
 }
 
-func TestPreparedQueryCursor_NilReceiverIsNull(t *testing.T) {
+// --- EN-1779 wrapper contract ------------------------------------------------
+
+// stringAmountWrappers holds one zero value per opt-in wrapper declared in
+// string_amounts.go, each stored in an `any`.
+//
+// Storing the VALUE rather than a pointer to it is the whole point of the two
+// tests below. Every wrapper must declare MarshalJSON on a VALUE receiver,
+// because that is how the encoder meets it: a parent's aux struct types the
+// child field `any` and stores the wrapper value, so dispatch happens on the
+// value's method set.
+//
+// Declaring it on a pointer receiver instead compiles, runs, and emits a
+// perfectly well-formed body — the WRONG one. The declaration shadows the
+// MarshalJSON promoted from the embedded protobuf pointer, so the wrapper VALUE
+// stops satisfying json.Marshaler and the encoder falls back to the embedded
+// pointer's own marshaller: the DEFAULT wire, amount bare. Measured on a
+// pointer-receiver StringAmountPosting, the body comes out as
+// `{"source":"world","destination":"alice","amount":9007199254740993,...}` —
+// camelCase, valid, and truncating in JavaScript. The opt-in path silently
+// degrades into the very bug it exists to fix, with neither a compile error nor
+// a runtime error. (The inverse is harmless: *T's method set includes T's
+// value-receiver methods, so passing a pointer to a correctly declared wrapper
+// marshals fine. Only the value case needs pinning.)
+//
+// The zero value also has a nil embedded pointer, which is exactly the input
+// the second property needs.
+//
+// Registering an eleventh wrapper here is step 5 of the "adding a level"
+// checklist in string_amounts.go, and
+// TestStringAmountWrappers_TableIsComplete fails until you do.
+var stringAmountWrappers = []any{
+	StringAmountPosting{},
+	StringAmountTransaction{},
+	StringAmountCreatedTransaction{},
+	StringAmountRevertedTransaction{},
+	stringAmountLedgerLogPayload{},
+	stringAmountLedgerLog{},
+	stringAmountApplyLedgerLog{},
+	stringAmountLogPayload{},
+	StringAmountLog{},
+	StringAmountPreparedQueryCursor{},
+}
+
+// wrapperTypeName names a wrapper from its dynamic type, so a row cannot carry
+// a subtest label that disagrees with the type it actually holds.
+func wrapperTypeName(wrapper any) string {
+	return reflect.TypeOf(wrapper).Name()
+}
+
+// TestStringAmountWrappers_ValueImplementsJSONMarshaler pins the value-receiver
+// requirement for every level of the chain. See stringAmountWrappers for why a
+// pointer receiver is a silent wire regression rather than a build failure.
+func TestStringAmountWrappers_ValueImplementsJSONMarshaler(t *testing.T) {
 	t.Parallel()
 
-	got, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: nil})
+	for _, wrapper := range stringAmountWrappers {
+		t.Run(wrapperTypeName(wrapper), func(t *testing.T) {
+			t.Parallel()
+
+			_, ok := wrapper.(stdjson.Marshaler)
+			require.Truef(t, ok,
+				"%T does not implement json.Marshaler as a VALUE. Its MarshalJSON is "+
+					"almost certainly declared on a pointer receiver: change it to "+
+					"`func (w %T) MarshalJSON()`. A parent stores this wrapper as a value "+
+					"in an `any` field, so with a pointer receiver the encoder never sees "+
+					"the method and falls back to the embedded pointer's own marshaller — "+
+					"a valid body carrying the DEFAULT bare-number amount, which is the "+
+					"truncation bug the opt-in header exists to fix.",
+				wrapper, wrapper)
+		})
+	}
+}
+
+// TestStringAmountWrappers_NilInnerPointerIsNull pins the nil-inner-pointer
+// guard the file header of string_amounts.go declares mandatory at every level.
+//
+// A wrapper VALUE over a nil embedded pointer is not itself nil, so the encoder
+// does not substitute `null` the way it does for a nil *T: without the guard it
+// calls MarshalJSON on the zero value and emits an object. The opt-in header
+// must change the amount FORMAT only, never the response SHAPE, so a level that
+// loses its guard turns an omitted-or-null field into `{}` on the opt-in wire
+// only.
+func TestStringAmountWrappers_NilInnerPointerIsNull(t *testing.T) {
+	t.Parallel()
+
+	for _, wrapper := range stringAmountWrappers {
+		t.Run(wrapperTypeName(wrapper), func(t *testing.T) {
+			t.Parallel()
+
+			got, err := json.Marshal(wrapper)
+			require.NoError(t, err)
+			require.Equalf(t, "null", string(got),
+				"%T over a nil embedded pointer must marshal to `null`. Restore the "+
+					"`if w.X == nil { return []byte(\"null\"), nil }` guard as the first "+
+					"statement of its MarshalJSON: the opt-in header may change the amount "+
+					"format, never the response shape.",
+				wrapper)
+		})
+	}
+}
+
+// TestStringAmountWrappers_TableIsComplete keeps stringAmountWrappers honest.
+// The list is hand-written, so an eleventh wrapper added without a row would
+// escape both properties above entirely — and a wrapper is exactly the kind of
+// small mechanical type that gets added by copying a sibling and editing two
+// identifiers, which is how a pointer receiver or a missing nil guard gets in.
+//
+// Comparing SETS rather than counting is what makes this useful: adding one
+// wrapper while deleting another leaves the count unchanged.
+//
+// The scan keys off string_amounts.go being the single declaration site for the
+// opt-in wrappers, which the file header states. A wrapper declared elsewhere
+// would be invisible here; keep them in this file.
+func TestStringAmountWrappers_TableIsComplete(t *testing.T) {
+	t.Parallel()
+
+	const declarationFile = "string_amounts.go"
+
+	file, err := parser.ParseFile(token.NewFileSet(), declarationFile, nil, 0)
 	require.NoError(t, err)
-	require.Equal(t, "null", string(got))
+
+	var declared []string
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		spec, ok := n.(*ast.TypeSpec)
+		if !ok {
+			return true
+		}
+
+		if _, isStruct := spec.Type.(*ast.StructType); isStruct {
+			declared = append(declared, spec.Name.Name)
+		}
+
+		return true
+	})
+
+	registered := make([]string, 0, len(stringAmountWrappers))
+	for _, wrapper := range stringAmountWrappers {
+		registered = append(registered, wrapperTypeName(wrapper))
+	}
+
+	sort.Strings(declared)
+	sort.Strings(registered)
+
+	require.ElementsMatch(t, declared, registered,
+		"the wrapper types declared in "+declarationFile+" do not match "+
+			"stringAmountWrappers: list A above is what the AST found, list B is what "+
+			"the table registers. Adding a level to the chain ends with registering "+
+			"its wrapper here (step 5 of the checklist in "+declarationFile+"); "+
+			"removing a level ends with deleting its row.")
+}
+
+// TestStringAmountSliceConstructors_ReturnNonNilSlice pins the always-non-nil
+// contract of the three slice constructors. Sonic dispatches MarshalJSON on the
+// ELEMENT type, so the wrapper's marshaller is what renders each entry, but the
+// slice itself decides between `[]` and `null` — and a nil slice renders `null`.
+//
+// The per-level tests above assert the marshaled bytes; this asserts the
+// property they rest on, at the constructor. A future `var out []W` rewrite of
+// wrapAll would be caught here even for a field whose emptiness handling has
+// since changed.
+func TestStringAmountSliceConstructors_ReturnNonNilSlice(t *testing.T) {
+	t.Parallel()
+
+	// nil is the input that actually occurs in production — GetPostings() and a
+	// drained cursor both return nil, never an empty non-nil slice — but both
+	// must survive the round trip.
+	testCases := map[string]any{
+		"StringAmountPostings from nil slice":       StringAmountPostings(nil),
+		"StringAmountPostings from empty slice":     StringAmountPostings([]*Posting{}),
+		"StringAmountTransactions from nil slice":   StringAmountTransactions(nil),
+		"StringAmountTransactions from empty slice": StringAmountTransactions([]*Transaction{}),
+		"StringAmountLogs from nil slice":           StringAmountLogs(nil),
+		"StringAmountLogs from empty slice":         StringAmountLogs([]*Log{}),
+	}
+
+	for name, got := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotNil(t, got,
+				"the constructor must return a non-nil slice, or the field renders as "+
+					"`null` instead of `[]` and the opt-in header changes the response "+
+					"shape. Build the result with wrapAll, never with a bare `var out []W`.")
+		})
+	}
 }
 
 // --- EN-1779 default-wire golden gate ---------------------------------------

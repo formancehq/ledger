@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -67,11 +68,20 @@ func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
 	}
 }
 
-// TestSonicRoutes_PayloadHasCustomMarshalJSON is the converse: the three routes
-// fixed by EN-1622 rely on their type's marshaller being the contract. If a
-// marshaller is ever deleted, sonic falls back to the protoc-gen `json:` tags,
-// which are snake_case — a silent wire regression. The handler tests assert the
-// resulting shape; this asserts the mechanism they depend on.
+// TestSonicRoutes_PayloadHasCustomMarshalJSON is the converse: every payload
+// served through one of the sonic writers relies on its type's marshaller being
+// the contract. If a marshaller is ever deleted, sonic falls back to the
+// protoc-gen `json:` tags, which are snake_case — a silent wire regression with
+// no compile error. The handler tests assert the resulting shape; this asserts
+// the mechanism they depend on.
+//
+// Transaction, Chapter and Log are the three EN-1622 routes. The other three
+// arrived with EN-1779's opt-in string amounts, which routed them through the
+// checked writers as well: PreparedQueryCursor on the prepared-query execute
+// route (an exposure that predates EN-1779 — the cursor already carried its own
+// marshaller), CreatedTransaction on create-transaction and RevertedTransaction
+// on revert-transaction. Their opt-in wrappers delegate to the same buildAux
+// the marshaller uses, so deleting a marshaller breaks BOTH modes at once.
 func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 	t.Parallel()
 
@@ -79,13 +89,16 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 		&commonpb.Transaction{},
 		&commonpb.Chapter{},
 		&commonpb.Log{},
+		&commonpb.PreparedQueryCursor{},
+		&commonpb.CreatedTransaction{},
+		&commonpb.RevertedTransaction{},
 	} {
 		t.Run(reflect.TypeOf(msg).Elem().Name(), func(t *testing.T) {
 			t.Parallel()
 
 			_, hasCustom := msg.(json.Marshaler)
 			require.Truef(t, hasCustom,
-				"%T is served through writeOKChecked (sonic) and MUST keep its custom "+
+				"%T is served through a checked sonic writer and MUST keep its custom "+
 					"MarshalJSON: without it sonic emits the protoc-gen snake_case tags.",
 				msg)
 		})
@@ -224,6 +237,185 @@ func TestProtojsonRoutes_TableIsComplete(t *testing.T) {
 			"probably did not recognise your call shape — fix the parser, do not delete "+
 			"a row.",
 		sites, expected)
+}
+
+// responseWriterCallSites pins which JSON response writer each file in this
+// package calls. The mapping is a wire contract, not a style choice: this
+// package writes JSON through two different sonic configurations, and the
+// writer a route calls decides which one it gets.
+//
+//	writer               encoder                        a `&` in the body   trailing newline
+//	-------------------- ------------------------------ ------------------- ----------------
+//	writeJSONResponse    json.MarshalWrite, ConfigStd   escaped             appended
+//	writeOK              via writeJSONResponse          escaped             appended
+//	writeCreated         via writeJSONResponse          escaped             appended
+//	writeOKChecked       json.Marshal, ConfigDefault    literal             absent
+//	writeCheckedBody     json.MarshalWrite, ConfigStd   escaped             appended
+//	writeCheckedStatus   via writeCheckedBody           escaped             appended
+//
+// So swapping a route from writeOKChecked to writeCheckedStatus — or the other
+// way — changes every response body that route ever emits: a literal `&`
+// becomes the six-byte escape \u0026, and a newline appears (or disappears)
+// at the end. Nothing in the type
+// system stops that swap, and no handler test catches it unless its pinned body
+// happens to contain an HTML-sensitive character. This table is the guard.
+//
+// The checked writers exist for two independent reasons, which is why a route
+// cannot pick one freely:
+//   - error routing: a payload whose MarshalJSON can genuinely fail must be
+//     buffered before the header is written, so the failure becomes a clean 500
+//     instead of an error object appended to a committed 200 (invariant #7);
+//   - encoder preservation: writeCheckedStatus is the ConfigStd twin of
+//     writeOKChecked, added by EN-1779 so a route that gained the opt-in
+//     string-amount branch could become buffered WITHOUT changing encoder.
+//
+// A row lists the DISTINCT writers a file calls, not one entry per call site:
+// two branches of the same handler calling the same writer is normal (the
+// EN-1779 opt-in branch does exactly that), while a branch calling a different
+// writer than its sibling is the bug this pins.
+var responseWriterCallSites = []struct {
+	file    string
+	writers []string
+}{
+	{"handlers_aggregate_volumes.go", []string{"writeOK"}},
+	{"handlers_analyze_accounts.go", []string{"writeOK"}},
+	{"handlers_analyze_transactions.go", []string{"writeOK"}},
+	// The bulk route builds its own top-level envelope, so the success path
+	// takes writeCheckedBody rather than writeCheckedStatus; the error path
+	// still streams through writeJSONResponse.
+	{"handlers_bulk.go", []string{"writeCheckedBody", "writeJSONResponse"}},
+	{"handlers_create_index.go", []string{"writeCreated"}},
+	{"handlers_create_ledger.go", []string{"writeCreated"}},
+	// Both transaction-creating routes pair writeCreated (default wire) with
+	// writeCheckedStatus (opt-in wire). That pairing is the EN-1779 invariant:
+	// writeCheckedStatus shares writeCreated's ConfigStd encoder, so the two
+	// branches differ only in the amount's quoting.
+	{"handlers_create_transaction.go", []string{"writeCreated", "writeCheckedStatus"}},
+	{"handlers_execute_prepared_query.go", []string{"writeCheckedBody"}},
+	{"handlers_get_account.go", []string{"writeOK"}},
+	{"handlers_get_account_type.go", []string{"writeOK"}},
+	{"handlers_get_audit_entry.go", []string{"writeOKChecked"}},
+	{"handlers_get_chapter_schedule.go", []string{"writeOK"}},
+	{"handlers_get_events_sinks.go", []string{"writeOK"}},
+	{"handlers_get_ledger.go", []string{"writeOK"}},
+	{"handlers_get_ledger_stats.go", []string{"writeOK"}},
+	{"handlers_get_log.go", []string{"writeOKChecked"}},
+	{"handlers_get_metadata_schema.go", []string{"writeOK"}},
+	{"handlers_get_numscript.go", []string{"writeOK"}},
+	{"handlers_get_numscript_usage.go", []string{"writeOK"}},
+	{"handlers_get_transaction.go", []string{"writeCheckedStatus"}},
+	{"handlers_health.go", []string{"writeOK"}},
+	{"handlers_inspect_index.go", []string{"writeOK"}},
+	{"handlers_list_account_types.go", []string{"writeOK"}},
+	{"handlers_list_accounts.go", []string{"writeOK"}},
+	{"handlers_list_all_ledgers.go", []string{"writeOK"}},
+	{"handlers_list_audit_entries.go", []string{"writeOKChecked"}},
+	{"handlers_list_chapters.go", []string{"writeOKChecked"}},
+	{"handlers_list_ledger_logs.go", []string{"writeCheckedStatus"}},
+	{"handlers_list_numscript_versions.go", []string{"writeOK"}},
+	{"handlers_list_numscripts.go", []string{"writeOK"}},
+	{"handlers_list_prepared_queries.go", []string{"writeOK"}},
+	{"handlers_list_transactions.go", []string{"writeOKChecked"}},
+	{"handlers_promote_ledger.go", []string{"writeCreated"}},
+	{"handlers_revert_transaction.go", []string{"writeCreated", "writeCheckedStatus"}},
+	{"handlers_save_numscript.go", []string{"writeCreated"}},
+	// response.go is not a route: these are the internal delegations that give
+	// the table above its meaning — writeOK and writeCreated forward to
+	// writeJSONResponse, writeCheckedStatus forwards to writeCheckedBody, and
+	// writeProtoOK/writeProtoListOK forward to writeOK. They are listed for the
+	// same reason TestProtojsonRoutes_TableIsComplete lists response.go twice:
+	// the AST sees them, so the table must too.
+	{"response.go", []string{"writeCheckedBody", "writeJSONResponse", "writeOK"}},
+}
+
+// responseWriterNames is the set of writers the AST scan below recognises.
+// Every function that writes a JSON body with a status code belongs here; a
+// new one that is not listed would be invisible to the guard.
+var responseWriterNames = map[string]bool{
+	"writeJSONResponse":  true,
+	"writeOK":            true,
+	"writeCreated":       true,
+	"writeOKChecked":     true,
+	"writeCheckedBody":   true,
+	"writeCheckedStatus": true,
+}
+
+// TestResponseWriters_TableIsComplete pins the file-to-writer mapping above by
+// AST-scanning the package, exactly as TestProtojsonRoutes_TableIsComplete pins
+// the protojson call sites. It compares SETS of "file: writer" pairs, and the
+// pair — not just the file — is what makes it useful: a route that keeps its
+// file but changes writer changes encoder, so it must show up as one missing
+// pair and one unexpected pair rather than cancelling out.
+//
+// A count would not do. Moving a route from writeOKChecked to
+// writeCheckedStatus leaves the number of writer call sites unchanged, and so
+// does any compensating add/remove pair across two files.
+func TestResponseWriters_TableIsComplete(t *testing.T) {
+	t.Parallel()
+
+	// parser.ParseDir is deprecated as of Go 1.25 (SA1019); walk the directory
+	// and parse each non-test file individually instead of grouping by package.
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+
+	fset := token.NewFileSet()
+	seen := map[string]bool{}
+
+	for _, entry := range entries {
+		filename := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(filename, ".go") || strings.HasSuffix(filename, "_test.go") {
+			continue
+		}
+
+		file, err := parser.ParseFile(fset, filename, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+
+			if name := calleeName(call.Fun); responseWriterNames[name] {
+				seen[filename+": "+name] = true
+			}
+
+			return true
+		})
+	}
+
+	expected := map[string]bool{}
+
+	for _, row := range responseWriterCallSites {
+		for _, writer := range row.writers {
+			expected[row.file+": "+writer] = true
+		}
+	}
+
+	require.ElementsMatch(t, sortedKeys(seen), sortedKeys(expected),
+		"the JSON writers this package calls do not match responseWriterCallSites: "+
+			"list A above is what the AST found, list B is what the table declares.\n\n"+
+			"If you added a route, add a row naming the writer the route ACTUALLY "+
+			"calls — a row naming a different writer satisfies this check while "+
+			"guarding nothing. If you removed a route, delete its row. If a row's "+
+			"writer changed, that is a WIRE CHANGE: the two encoders differ in HTML "+
+			"escaping and in the trailing newline, so update the row deliberately and "+
+			"re-pin every affected body in the handler test. If you changed neither, "+
+			"calleeName probably did not recognise your call shape, or the writer is "+
+			"missing from responseWriterNames — fix the scan, do not delete a row.")
+}
+
+// sortedKeys returns a set's keys in a stable order, so a failure message reads
+// the same on every run.
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for key := range set {
+		out = append(out, key)
+	}
+
+	sort.Strings(out)
+
+	return out
 }
 
 // calleeName renders a call's function as "name" or "pkg.name".
