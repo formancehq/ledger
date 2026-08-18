@@ -147,8 +147,8 @@ func backfillArchivedRanges(
 			auditCount += count
 
 			// Audit items and applied proposals share the audit sequence
-			// counter but diverge in cardinality: audit items track the audit
-			// entry 1:1 regardless of outcome (one per order, with
+			// counter but diverge in cardinality: every audit entry has audit
+			// items regardless of outcome (order_count of them, carrying
 			// LogSequence = 0 on a failure), while applied proposals are the
 			// ones legitimately sparse — only successes write one. Neither
 			// export enforces a completeness bound here; empty results add no

@@ -6,7 +6,7 @@ The audit hash chain is the **only cryptographically-bound dataset** in the syst
 
 The chain serves two purposes:
 
-1. **Tamper-evidence**: any post-commit mutation of an audit entry (or of an `AuditItem` belonging to it) breaks the chain at that point. The break is detectable by recomputing the hashes forward; an attacker that rewrites entry *N* would have to recompute every entry from *N+1* onwards — and cannot, because the chain key is derived from the immutable `ClusterID`.
+1. **Tamper-evidence**: any post-commit mutation of an audit entry (or of an `AuditItem` belonging to it) breaks the chain at that point. The break is detectable by recomputing the hashes forward; an attacker that rewrites entry *N* would have to recompute every entry from *N+1* onwards — and cannot do so without deriving the chain key, see [Tampering model](#tampering-model--what-the-chain-detects) for what that boundary actually is.
 2. **A canonical derivation source**: because the orders that produced every projection are bound by the chain, every projection becomes verifiable by replaying those orders.
 
 Hash primitive: BLAKE3, **keyed** with a per-cluster key derived from the `ClusterID` (so two distinct clusters cannot forge each other's chains, and the chain cannot be replayed offline without the key).
@@ -173,7 +173,7 @@ A `HashVersion` field on every entry allows future rotation (an alternate algori
 
 ## Companion streams and their gaps
 
-The FSM writes up to four datasets per proposal, all in `ZoneCold`, but they diverge sharply between the possible proposal outcomes. Code that scans the audit range and iterates a companion stream in parallel MUST anchor on `SubColdAudit` and tolerate misses on the sibling — assuming lockstep cardinality is a recurring source of bugs (see EN-1424 for a case study).
+The FSM writes up to four datasets per proposal, all in `ZoneCold`, and they diverge sharply between outcomes — but not all in the same direction. Code that scans the audit range and iterates a companion stream in parallel MUST anchor on `SubColdAudit`, and MUST derive each sibling's cardinality from the table below rather than assuming one rule for all of them: `SubColdAppliedProposal` and `SubColdLog` are legitimately sparse and misses must be tolerated, whereas `SubColdAuditItem` is present for every audit sequence and a miss there is a chain break, not a gap. Assuming a single uniform cardinality — in either direction — is a recurring source of bugs (see EN-1424 for a case study, and EN-1526 for the inverse).
 
 | Sub-zone | Key | Success (N orders) | Failure | Idempotent replay (success or failure) |
 |----------|-----|--------------------|---------|----------------------------------------|
@@ -194,12 +194,12 @@ Two independent monotone counters, bridged per successful non-replayed proposal:
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
 - `SubColdAppliedProposal` iteration shows a gap at every failed audit_seq.
-- `SubColdAuditItem[seq][…]` shows the **same** item count at a failed audit_seq as at a successful one (one per order); only `LogSequence` differs, being 0 throughout.
+- `SubColdAuditItem[seq][…]` has **no gap**: the item count at a failed audit_seq is the same as at a successful one (one per order). Only the values differ — every item carries `LogSequence = 0`.
 - A `Log` reader has no visibility into failures at all.
 
 ### Implication for downstream code
 
-**`audit.count > 0` does NOT imply `appliedProposal.count > 0`.** An incremental range consisting of only failures has one AuditEntry per proposal (audit_seq advances) and N AuditItems per proposal, but **zero** AppliedProposals and zero Logs. Anything that assumes those rise together — an indexer that scans AppliedProposal alongside AuditEntry, a mirror that assumes a log per audit — must guard on the companion stream's count independently, rather than deriving one count from the other. Note the inverse trap: `SubColdAuditItem` **does** rise with `SubColdAudit` on failures, so code that skips items for failure entries will compute the wrong hash pre-image and see a spurious chain break.
+**`audit.count > 0` does NOT imply `appliedProposal.count > 0`.** An incremental range consisting of only failures has one AuditEntry per proposal (audit_seq advances) and N AuditItems per proposal, but **zero** AppliedProposals and zero Logs. Anything that assumes those rise together — an indexer that scans AppliedProposal alongside AuditEntry, a mirror that assumes a log per audit — must guard on the companion stream's count independently, rather than deriving one count from the other. Note the inverse trap: `SubColdAuditItem` **does** rise with `SubColdAudit` on failures, so code that skips items for failure entries will compute the wrong hash pre-image and see a spurious chain break. The rule: read, copy and verify items for **every** audit sequence in range; never filter the item stream by the entry's outcome.
 
 The `internal/infra/backup/manager.go` incremental export is outcome-agnostic by construction: each of the three companion segments (`audit`, `auditItem`, `appliedProposal`) is appended only if `exportEntries` returned segments for its own range, so it stays correct whatever the per-outcome cardinality is. Failure-only ranges produce an `audit` segment and an `auditItem` segment with `count > 0`, and no `appliedProposal` segment at all.
 
@@ -213,7 +213,9 @@ The `internal/infra/backup/manager.go` incremental export is outcome-agnostic by
 | Rewrite `hash[N]` to match a forged payload | `hash[N+1]` was computed against the original `hash[N]`. Recomputing forward from the forged value produces `computed[N+1] ≠ stored[N+1]`. The attacker must rewrite every entry from *N* to the head, but cannot regenerate hashes without the per-cluster BLAKE3 key. |
 | Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`machine.go:1476`); the checker flags `len(entry.Items) > 0` as tampering (`internal/application/check/checker.go:2467-2491`). |
 
-The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
+The chain does *not* defend against an attacker who has the cluster's BLAKE3 key. That key is derived from the `ClusterID`, which is persisted in the same store the chain protects (`ZoneGlobal|SubGlobPersistedConfig`) — so read access to the store is enough to derive it and re-chain forged entries end to end. Treat the chain as a **correctness detector** for accidental divergence, bugs and partial writes, not as a tamper defence against an actor with filesystem access.
+
+Request-level integrity is a separate, operator-level concern — see [Request Signing](../../../../ops/signing.md).
 
 ## Genesis
 

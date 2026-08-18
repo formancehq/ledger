@@ -139,7 +139,7 @@ func countKeysInSub(t *testing.T, store *dal.Store, sub byte) int {
 // audits [1,4]) is ARCHIVED and purged, hot activity continues to log 12 /
 // audit 8, and a cold store holds the chapter's purged entries. Audit seqs 2
 // and 4 are successes carrying an item and an applied proposal; 1 and 3 are
-// failures (no item, no proposal).
+// failures, which also carry one item each (LogSequence = 0) but no proposal.
 func archivedChapterFixture(t *testing.T) (hot, cold *dal.Store, chapter *commonpb.Chapter) {
 	t.Helper()
 

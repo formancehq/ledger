@@ -548,8 +548,8 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(segs)
 
 		// Export the audit items (per-order detail) for the same range.
-		// On success proposals the audit hash covers the per-item payloads,
-		// so a restored backup missing them cannot reconstruct the chain.
+		// The audit hash covers the per-item payloads on BOTH outcomes, so a
+		// restored backup missing them cannot reconstruct the chain.
 		// Failure proposals write an AuditEntry AND one AuditItem per order (see
 		// state.buildAuditItems: the item count comes from serializedOrders, not
 		// from logs; failure items simply carry LogSequence = 0), and the hash is

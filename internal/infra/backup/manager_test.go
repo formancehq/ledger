@@ -618,11 +618,12 @@ func (s *inMemoryBackupStorage) ListFiles(_ context.Context, prefix string) ([]s
 
 // writeFailureAuditEntry writes a single AuditEntry proto with a Failure
 // outcome under [ZoneCold][SubColdAudit][seq], plus its matching AuditItem
-// under order 0 with LogSequence left at its zero value. This mirrors what
-// the FSM actually produces on the failure path: buildAuditItems sizes the
-// item slice from serializedOrders, never from logs, so a failure writes one
-// item per order — it just never has a log to attach, hence
-// LogSequence = 0.
+// under order 0 with LogSequence left at its zero value. This mirrors the
+// cardinality the FSM actually produces on the failure path: buildAuditItems
+// sizes the item slice from serializedOrders, never from logs, so a failure
+// writes one item per order — it just never has a log to attach, hence
+// LogSequence = 0. The export path is payload-agnostic, so the item body
+// (SerializedOrder) is left empty here.
 func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	t.Helper()
 
@@ -645,6 +646,11 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 // writeSuccessAuditEntryWithItem writes a success AuditEntry AND its matching
 // AuditItem under seq / order 0, mirroring what the FSM produces on the
 // success path.
+//
+// Note: this writes the AuditEntry and its AuditItem but NOT the
+// SubColdAppliedProposal row a real success also writes
+// (state.appendAppliedProposal). Callers that assert on appliedProposal must
+// add writeAppliedProposal(t, store, seq) themselves.
 func writeSuccessAuditEntryWithItem(t *testing.T, store *dal.Store, seq uint64) {
 	t.Helper()
 
@@ -735,21 +741,24 @@ func TestRunIncrementalBackup_FailureOnlyRange_ExportsAuditItemSegment(t *testin
 		"ApplyExports must round-trip on a failure-only incremental backup")
 }
 
-// TestRunIncrementalBackup_MixedRange_ExportsAuditItem locks the positive
-// side of the guard: a range that DOES contain audit items must still
-// export the auditItem segment. Prevents an overly-eager future fix from
-// dropping the segment unconditionally.
-func TestRunIncrementalBackup_MixedRange_ExportsAuditItem(t *testing.T) {
+// TestRunIncrementalBackup_MixedRange_ExportsBothCompanions locks the mixed
+// case: a range holding both failures and successes exports one auditItem per
+// audit entry (failures included) AND the appliedProposal segment contributed
+// by the success alone. Guards against a future "skip items for failures"
+// optimisation, and against dropping appliedProposal because most entries in
+// the range lack one.
+func TestRunIncrementalBackup_MixedRange_ExportsBothCompanions(t *testing.T) {
 	t.Parallel()
 
 	const bucketID = "bucket"
 
 	store := newBackupTestStore(t)
-	// Two failures followed by one success — auditItem count > 0 because of
-	// the one success at seq 3.
+	// Two failures followed by one success. All three entries write an item;
+	// only seq 3 writes an AppliedProposal.
 	writeFailureAuditEntry(t, store, 1)
 	writeFailureAuditEntry(t, store, 2)
 	writeSuccessAuditEntryWithItem(t, store, 3)
+	writeAppliedProposal(t, store, 3)
 
 	storage := newInMemoryBackupStorage()
 	require.NoError(t, WriteManifest(context.Background(), storage, ManifestKey(bucketID), &Manifest{
@@ -764,7 +773,9 @@ func TestRunIncrementalBackup_MixedRange_ExportsAuditItem(t *testing.T) {
 
 	require.NotNil(t, findExport(manifest, "audit"), "audit segment must be exported")
 	require.NotNil(t, findExport(manifest, "auditItem"),
-		"auditItem segment must be exported when the range contains at least one item")
+		"auditItem segment must be exported: every audit entry writes one item per order, failures included")
+	require.NotNil(t, findExport(manifest, "appliedProposal"),
+		"appliedProposal segment must be exported once the range contains at least one success")
 
 	restoreStore := newBackupTestStore(t)
 	require.NoError(t, ApplyExports(context.Background(), logging.Testing(), storage, restoreStore, manifest.Exports))
