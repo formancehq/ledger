@@ -2653,14 +2653,34 @@ func (c *Checker) verifyAuditHashChain(
 			// log range with a hole in it, and the maximum accumulated below would
 			// then bound a stream the chain never covered end to end.
 			//
-			// Only ranges strictly above the archive boundary are held to it. The
-			// walk starts after the highest ARCHIVED close-audit-sequence, so an
-			// un-archived chapter below that boundary has its audit entries skipped
-			// while its logs stay retained — the same out-of-order archiving shape
-			// the replay loop clips at `seq <= archiveEndSeq` — and across that
-			// skipped span the audited range legitimately jumps. The
-			// expectedLogMax > 0 guard excuses the first log-bearing entry, which
-			// has nothing to abut.
+			// The skipped-span case is handled by `expectedLogMax > 0`, NOT by the
+			// archiveEndSeq conjunct below. The walk starts after the highest
+			// ARCHIVED close-audit-sequence, so an un-archived chapter below that
+			// boundary has its audit entries skipped while its logs stay retained
+			// (the out-of-order archiving shape the replay loop clips at
+			// `seq <= archiveEndSeq`). Across that skipped span the audited range
+			// legitimately jumps — but it jumps at the FIRST entry the walk visits,
+			// where expectedLogMax is still 0 and there is nothing to abut. Later
+			// entries abut normally, because the walk visits audit entries
+			// contiguously upward and any purged span lies below its start.
+			//
+			// The `minLogSeq > signing.archiveEndSeq` conjunct is therefore inert on
+			// any store whose chapter metadata is self-consistent: archiveEndSeq is
+			// the max archived close_sequence and the walk starts after the max
+			// archived close_audit_sequence, both assigned at the same CloseChapter
+			// apply from monotonic counters, so every visited entry already carries
+			// minLogSeq > archiveEndSeq. Dropping it regresses no test in this
+			// package.
+			//
+			// Its one reachable effect is a SUPPRESSION: an archived close_sequence
+			// that reaches into the live audited range silences this finding. That
+			// is corruption rather than out-of-order archiving, and close_sequence
+			// is the forgeable field — the sealing hash over it is UNKEYED (see
+			// verifySealingHash, and the argument in log_bounds.go). So the conjunct
+			// currently lets a forged close_sequence hide a hole in the audited log
+			// range, which is the EN-1526 defect shape inside the assertion meant to
+			// catch it. Removal is pending an explicit decision; it is a production
+			// behaviour change on a security boundary, so it is not folded in here.
 			if minLogSeq := success.GetMinLogSequence(); minLogSeq > 0 &&
 				chainBound.expectedLogMax > 0 &&
 				minLogSeq > signing.archiveEndSeq &&
