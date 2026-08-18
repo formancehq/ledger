@@ -60,8 +60,11 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
-			// Simulated fold catch-up while the query waits.
-			time.Sleep(20 * time.Millisecond)
+			// Concurrent fold catch-up. The write deliberately races the
+			// aligned call: landing before it exercises the fast path, after
+			// it the wait-and-retake loop — both legal executions of the
+			// invariant. The never-catches-up case is pinned by the
+			// context-bound test below.
 			setReadStoreProgress(t, rs, lastSeq)
 		}()
 
