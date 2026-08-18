@@ -160,10 +160,11 @@ bash scripts/review-loop \
 The adapter:
 
 - requires only the blocker payload, originating review result, and pass number provided by `review-loop`;
+- requires those two state files to resolve inside the current worktree; the default `build/ai-review-loop` state directory satisfies this boundary, while a custom external `--state-dir` is rejected by this adapter;
 - passes those JSON files by path and explicitly treats their contents as untrusted data rather than interpolating finding text into the trusted prompt;
 - runs Claude Code non-interactively in `--safe-mode`, which disables user/project hooks, plugins, skills, MCP servers, custom agents, and other discovered customizations while preserving normal authentication;
-- uses `--strict-mcp-config`, disables slash commands and session persistence, and exposes exactly the built-in `Read`, `Edit`, `Write`, `Glob`, and `Grep` tools through `--tools`;
-- uses `--permission-mode dontAsk` with project-relative `Edit(/**)` approval, so edits within the current worktree succeed while parent, sibling-worktree, and other external edits fail closed without an interactive prompt;
+- uses `--strict-mcp-config`, disables slash commands and session persistence, and exposes exactly the built-in `Read`, `Edit`, `Write`, and `Grep` tools through `--tools`; `Glob` is omitted because Claude Code 2.1.202 does not reliably apply project-relative `Read` rules to external path discovery;
+- uses `--permission-mode dontAsk` with project-relative `Read(/**)` and `Edit(/**)` approval, so repository inspection and edits succeed while parent, sibling-worktree, and other external filesystem access fails closed without an interactive prompt;
 - explicitly denies `Bash`, `WebFetch`, `WebSearch`, and edits to `.git` as defense in depth, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
 - instructs Claude to make only finding-traceable edits and to avoid guessing through product/design/invariant ambiguity;
 - leaves all validation to the orchestrator's mandatory `bash scripts/agent-check` step before re-review.

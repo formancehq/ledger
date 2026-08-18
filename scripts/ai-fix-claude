@@ -14,7 +14,7 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 1
 fi
 
-repo_root=$(git rev-parse --show-toplevel)
+repo_root=$(realpath "$(git rev-parse --show-toplevel)")
 findings=$(realpath "$AI_REVIEW_FINDINGS")
 review_result=$(realpath "$AI_REVIEW_RESULT")
 
@@ -26,6 +26,12 @@ if [[ ! -f "$review_result" ]]; then
     echo "ai-fix-claude: review result does not exist: $review_result" >&2
     exit 1
 fi
+for input in "$findings" "$review_result"; do
+    if [[ "$input" != "$repo_root/"* ]]; then
+        echo "ai-fix-claude: review state input must be inside the current worktree: $input" >&2
+        exit 1
+    fi
+done
 
 prompt_file=$(mktemp "${TMPDIR:-/tmp}/ledger-claude-fix.XXXXXX")
 trap 'rm -f "$prompt_file"' EXIT
@@ -70,8 +76,8 @@ claude -p \
     --no-session-persistence \
     --disable-slash-commands \
     --permission-mode dontAsk \
-    --tools "Read,Edit,Write,Glob,Grep" \
-    --allowedTools "Read,Glob,Grep,Edit(/**)" \
+    --tools "Read,Edit,Write,Grep" \
+    --allowedTools "Read(/**),Edit(/**)" \
     --disallowedTools "Bash,WebFetch,WebSearch,Edit(/.git),Edit(/.git/**)" \
     --max-turns 30 \
     <"$prompt_file"
