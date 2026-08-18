@@ -149,9 +149,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	// Read archived chapters to adjust the starting point for log replay. Read
-	// BEFORE the empty-audit fast path below, which needs them too: the signing
-	// fold consults the archived set to decide whether its coverage is complete.
+	// Read archived chapters to adjust the starting point for log replay. The
+	// signing fold below also consults the archived set, to decide whether its
+	// coverage is complete.
 	chaptersCursor, err := query.ReadChapters(ctx, snap)
 	if err != nil {
 		return fmt.Errorf("reading chapters: %w", err)
@@ -160,54 +160,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	chapters, err := cursor.Collect(chaptersCursor)
 	if err != nil {
 		return fmt.Errorf("collecting chapters: %w", err)
-	}
-
-	if lastSequence == 0 {
-		// An empty audit does not make the peer store trustworthy: the read
-		// index folds FROM the log stream, so any reverse-map row over a
-		// zero-log store is unaudited by definition. Malformed keys and rows
-		// for ledgers the audit never created are exactly the classes this pass
-		// exists to report, and returning clean here would hide them. Every
-		// oracle term is legitimately empty — there is nothing to replay.
-		c.compareReverseMapOrphans(reverseMapOrphanScope{
-			reader: snap,
-			peer:   peerSnap,
-		}, callback)
-
-		// The signing projections are cluster-global, not per-ledger, so they can
-		// hold rows over a store with no logs at all — and every successful signing
-		// order writes a log (processOrder gives each returned payload a global
-		// sequence), so a zero-log store proves the audit registered no key. The
-		// expectation is therefore legitimately empty and every stored row is
-		// unaudited: returning clean here would hide exactly the injected-key class
-		// this pass exists to report.
-		//
-		// foldArchived still runs rather than hardcoding complete coverage. Archived
-		// chapters are unreachable with lastSequence == 0 today — archiving emits its
-		// own logs above the range it purges, so at least one log always survives —
-		// but that is a property of the archive flow's log emission, not an invariant
-		// of this pass. Folding cold storage keeps a fully-archived store honest, one
-		// INCOMPLETE finding instead of a spurious mismatch per legitimate key, if
-		// that ever stops holding.
-		signing := newSigningVerifier()
-		if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
-			return fmt.Errorf("folding archived signing orders: %w", err)
-		}
-
-		if err := signing.compare(snap, callback); err != nil {
-			return fmt.Errorf("comparing signing projections: %w", err)
-		}
-
-		callback(&servicepb.CheckStoreEvent{
-			Type: &servicepb.CheckStoreEvent_Progress{
-				Progress: &servicepb.CheckStoreProgress{
-					LogsChecked: 0,
-					TotalLogs:   0,
-				},
-			},
-		})
-
-		return nil
 	}
 
 	var (
@@ -300,6 +252,24 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// chain layer below sees the pre-archive keys a later revoke may target.
 	// Never seeded from the live projection or the baseline checkpoint — see
 	// signingVerifier.
+	//
+	// This pass used to be duplicated inside a `lastSequence == 0` early return
+	// (EN-1515), because the signing projections are cluster-global rather than
+	// per-ledger and so can hold rows over a store with no logs at all — and every
+	// successful signing order writes a log (processOrder gives each returned
+	// payload a global sequence), so a zero-log store proves the audit registered
+	// no key. The expectation is then legitimately empty and every stored row is
+	// unaudited: returning clean would hide exactly the injected-key class this
+	// pass exists to report. The return is gone, so this single call site covers
+	// both shapes.
+	//
+	// foldArchived runs rather than hardcoding complete coverage. Archived chapters
+	// are unreachable with lastSequence == 0 today — archiving emits its own logs
+	// above the range it purges, so at least one log always survives — but that is
+	// a property of the archive flow's log emission, not an invariant of this pass.
+	// Folding cold storage keeps a fully-archived store honest, one INCOMPLETE
+	// finding instead of a spurious mismatch per legitimate key, if that ever stops
+	// holding.
 	signing := newSigningVerifier()
 	if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
 		return fmt.Errorf("folding archived signing orders: %w", err)
@@ -769,6 +739,19 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
+	// The in-loop emit above only fires for an executed body, so a store with no
+	// logs in the verifiable range would report no progress at all. Emit the
+	// terminal state unconditionally; on a zero-log store this is the
+	// {0, 0} event the deleted `lastSequence == 0` fast path used to send.
+	callback(&servicepb.CheckStoreEvent{
+		Type: &servicepb.CheckStoreEvent_Progress{
+			Progress: &servicepb.CheckStoreProgress{
+				LogsChecked: lastSequence,
+				TotalLogs:   lastSequence,
+			},
+		},
+	})
+
 	if err := logIter.Error(); err != nil {
 		return fmt.Errorf("log iterator error: %w", err)
 	}
@@ -815,9 +798,22 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("reading pending ledger cleanups for index registry verification: %w", err)
 	}
 
+	// Suppression is only legitimate for an AUDITED deletion. With no logs there
+	// is no DeleteLedger in any verified range, so every persisted cleanup row is
+	// unaudited and must not be allowed to hide an orphan, a stale index or a
+	// missing ledger. This is the same reasoning as the EN-1458 comment above the
+	// reverse-map call: on a zero-log store the oracle is legitimately empty.
+	//
+	// Deriving this from an audit-derived deleted-ledger set instead was rejected:
+	// deletedInReplay covers only the live replayed range, so a ledger deleted
+	// inside an archived chapter would have no witness and healthy archived stores
+	// would report false orphans (EN-1621 scope).
 	pendingCleanupLedgers := make(map[string]struct{}, len(pendingCleanups))
-	for name := range pendingCleanups {
-		pendingCleanupLedgers[name] = struct{}{}
+
+	if lastSequence > 0 {
+		for name := range pendingCleanups {
+			pendingCleanupLedgers[name] = struct{}{}
+		}
 	}
 
 	c.compareIndexes(compareIndexesScope{
@@ -827,6 +823,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		pendingCleanupLedgers: pendingCleanupLedgers,
 	}, callback)
 
+	// A zero-log store does not make the peer store trustworthy: the read index
+	// folds FROM the log stream, so any reverse-map row over a zero-log store is
+	// unaudited by definition. Malformed keys and rows for ledgers the audit never
+	// created are exactly the classes this pass exists to report. This pass used
+	// to be duplicated inside a `lastSequence == 0` early return for that reason
+	// (EN-1458); the return is gone, so the single call site below covers both
+	// shapes. Every oracle term is legitimately empty on a zero-log store —
+	// except pendingCleanupLedgers, see the guard where it is built.
 	c.compareReverseMapOrphans(reverseMapOrphanScope{
 		reader:                snap,
 		peer:                  peerSnap,
