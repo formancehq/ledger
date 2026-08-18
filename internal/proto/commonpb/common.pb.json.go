@@ -88,6 +88,10 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 // amount. The non-posting variants are deliberately not re-listed: re-listing
 // them would let the hand-rolled and protojson outputs drift apart at some
 // variant no test covers.
+//
+// The mode is fixed true here, so childValue's `return child` branch is
+// unreachable: it is called for its nil guard, which keeps the omitempty
+// contract in one place rather than restated per variant.
 func (x *LogPayload) marshalStringAmounts() ([]byte, error) {
 	switch p := x.GetType().(type) {
 	case *LogPayload_Apply:
@@ -187,6 +191,10 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 // carry no amount. The non-posting variants are deliberately not re-listed:
 // re-listing them would let the hand-rolled and protojson outputs drift apart
 // at some variant no test covers.
+//
+// The mode is fixed true here, so childValue's `return child` branch is
+// unreachable: it is called for its nil guard, which keeps the omitempty
+// contract in one place rather than restated per variant.
 func (x *LedgerLogPayload) marshalStringAmounts() ([]byte, error) {
 	switch p := x.GetPayload().(type) {
 	case *LedgerLogPayload_CreatedTransaction:
@@ -579,28 +587,41 @@ var queryTargetToJSON = map[QueryTarget]string{
 	QueryTarget_QUERY_TARGET_LOGS:         "LOGS",
 }
 
-// MarshalJSON implements json.Marshaler for PreparedQueryCursor.
-//
-// The cursor carries exactly one populated data field per query target:
-// accountData (ACCOUNTS), transactionData (TRANSACTIONS) or logData (LOGS).
-func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		PageSize        uint32         `json:"pageSize"`
-		HasMore         bool           `json:"hasMore"`
-		Previous        string         `json:"previous,omitempty"`
-		Next            string         `json:"next,omitempty"`
-		AccountData     []*Account     `json:"accountData,omitempty"`
-		TransactionData []*Transaction `json:"transactionData,omitempty"`
-		LogData         []*Log         `json:"logData,omitempty"`
+// buildAux builds the JSON representation of PreparedQueryCursor. When
+// amountsAsString is true, the transaction and log pages render posting amounts
+// as quoted decimals (see string_amounts.go); MarshalJSON delegates with false,
+// and that output is byte-identical to what it always emitted.
+func (x *PreparedQueryCursor) buildAux(amountsAsString bool) any {
+	return &struct {
+		PageSize uint32 `json:"pageSize"`
+		HasMore  bool   `json:"hasMore"`
+		Previous string `json:"previous,omitempty"`
+		Next     string `json:"next,omitempty"`
+		// accountData is the one data field left concretely typed: nothing below
+		// Account carries a Uint256 or a bare JSON number. Volumes and
+		// VolumeEntry already render their big.Int values through String() into
+		// Go string fields, so an accounts page is identical in both modes and
+		// needs no wrapper.
+		AccountData     []*Account `json:"accountData,omitempty"`
+		TransactionData any        `json:"transactionData,omitempty"`
+		LogData         any        `json:"logData,omitempty"`
 	}{
 		PageSize:        x.GetPageSize(),
 		HasMore:         x.GetHasMore(),
 		Previous:        x.GetPrevious(),
 		Next:            x.GetNext(),
 		AccountData:     x.GetAccountData(),
-		TransactionData: x.GetTransactionData(),
-		LogData:         x.GetLogData(),
-	})
+		TransactionData: sliceValue(x.GetTransactionData(), amountsAsString, StringAmountTransactions),
+		LogData:         sliceValue(x.GetLogData(), amountsAsString, StringAmountLogs),
+	}
+}
+
+// MarshalJSON implements json.Marshaler for PreparedQueryCursor.
+//
+// The cursor carries exactly one populated data field per query target:
+// accountData (ACCOUNTS), transactionData (TRANSACTIONS) or logData (LOGS).
+func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.buildAux(false))
 }
 
 // MarshalJSON implements json.Marshaler for LedgerInfo.

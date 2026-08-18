@@ -688,3 +688,206 @@ func TestLogs_EmptyAndNilSliceMarshalAsArray(t *testing.T) {
 		})
 	}
 }
+
+// newTestCursorAccount returns an account page entry. Nothing below Account
+// carries a Uint256 or a bare JSON number, so this exists to prove an
+// ACCOUNTS-target cursor is byte-identical in both modes.
+func newTestCursorAccount(t *testing.T) *Account {
+	t.Helper()
+
+	return &Account{
+		Address: "alice",
+		Volumes: []*AccountVolume{
+			{
+				Asset: "USD/2",
+				Volumes: &VolumesWithBalance{
+					Input:   aboveJSNumberLimit,
+					Output:  "0",
+					Balance: aboveJSNumberLimit,
+				},
+			},
+		},
+	}
+}
+
+// newTestCursorLog wraps a transaction carrying the given amount in the full
+// nine-level chain a LOGS-target cursor serves.
+func newTestCursorLog(t *testing.T, amount *big.Int) *Log {
+	t.Helper()
+
+	return newTestLog(t, &LedgerLogPayload{
+		Payload: &LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &CreatedTransaction{Transaction: newTestTransaction(t, amount)},
+		},
+	})
+}
+
+func TestPreparedQueryCursor_StringAmountReachesTransactionData(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	cursor := &PreparedQueryCursor{
+		PageSize:        15,
+		TransactionData: []*Transaction{newTestTransaction(t, amount)},
+	}
+
+	def, err := json.Marshal(cursor)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `"amount":`+aboveJSNumberLimit,
+		"the default cursor wire must stay an unquoted number")
+
+	str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor})
+	require.NoError(t, err)
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the cursor must forward the mode into its transaction page")
+}
+
+func TestPreparedQueryCursor_StringAmountReachesLogData(t *testing.T) {
+	t.Parallel()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok)
+
+	cursor := &PreparedQueryCursor{
+		PageSize: 15,
+		LogData:  []*Log{newTestCursorLog(t, amount)},
+	}
+
+	def, err := json.Marshal(cursor)
+	require.NoError(t, err)
+	require.Contains(t, string(def), `"amount":`+aboveJSNumberLimit,
+		"the default cursor wire must stay an unquoted number")
+
+	str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor})
+	require.NoError(t, err)
+	require.Contains(t, string(str), `"amount":"`+aboveJSNumberLimit+`"`,
+		"the cursor must forward the mode down the whole log chain")
+}
+
+func TestPreparedQueryCursor_StringAmountOnlyChangesAmountShape(t *testing.T) {
+	t.Parallel()
+
+	// A small amount: requireOnlyAmountsDiffer decodes numbers through float64
+	// and is lossy above 2^53 (see its doc comment). The above-2^53 exactness
+	// is covered by the two require.Contains tests above.
+	cursors := map[string]*PreparedQueryCursor{
+		"transactions target": {
+			PageSize:        15,
+			HasMore:         true,
+			Next:            "cursor-next",
+			TransactionData: []*Transaction{newTestTransaction(t, big.NewInt(4200))},
+		},
+		"logs target": {
+			PageSize: 15,
+			HasMore:  true,
+			Next:     "cursor-next",
+			LogData:  []*Log{newTestCursorLog(t, big.NewInt(4200))},
+		},
+	}
+
+	for name, cursor := range cursors {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			def, err := json.Marshal(cursor)
+			require.NoError(t, err)
+
+			str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor})
+			require.NoError(t, err)
+
+			requireOnlyAmountsDiffer(t, def, str)
+		})
+	}
+}
+
+func TestPreparedQueryCursor_AccountsTargetIsByteIdenticalInBothModes(t *testing.T) {
+	t.Parallel()
+
+	cursor := &PreparedQueryCursor{
+		PageSize:    15,
+		HasMore:     true,
+		Previous:    "cursor-previous",
+		AccountData: []*Account{newTestCursorAccount(t)},
+	}
+
+	def, err := json.Marshal(cursor)
+	require.NoError(t, err)
+
+	str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor})
+	require.NoError(t, err)
+
+	require.Equal(t, string(def), string(str),
+		"an accounts page carries no bare number: the opt-in wire must be byte-identical")
+
+	// The two unpopulated data fields must stay absent, not become `[]`: this is
+	// what the len()==0 guard in sliceValue buys over a `!= nil` check.
+	for _, body := range []string{string(def), string(str)} {
+		require.NotContains(t, body, "transactionData")
+		require.NotContains(t, body, "logData")
+	}
+}
+
+func TestPreparedQueryCursor_EmptyDataSliceStaysOmittedInBothModes(t *testing.T) {
+	t.Parallel()
+
+	cursors := map[string]struct {
+		cursor  *PreparedQueryCursor
+		absent  string
+		present string
+	}{
+		"empty transaction page": {
+			cursor:  &PreparedQueryCursor{PageSize: 15, TransactionData: []*Transaction{}},
+			absent:  "transactionData",
+			present: `{"pageSize":15,"hasMore":false}`,
+		},
+		"empty log page": {
+			cursor:  &PreparedQueryCursor{PageSize: 15, LogData: []*Log{}},
+			absent:  "logData",
+			present: `{"pageSize":15,"hasMore":false}`,
+		},
+	}
+
+	for name, tc := range cursors {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			def, err := json.Marshal(tc.cursor)
+			require.NoError(t, err)
+
+			str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: tc.cursor})
+			require.NoError(t, err)
+
+			require.NotContains(t, string(def), tc.absent)
+			require.NotContains(t, string(str), tc.absent,
+				"an empty non-nil page must stay omitted, never render as []")
+			require.JSONEq(t, tc.present, string(def))
+			require.JSONEq(t, tc.present, string(str))
+		})
+	}
+}
+
+func TestPreparedQueryCursor_DrainedCursorIsByteIdenticalInBothModes(t *testing.T) {
+	t.Parallel()
+
+	// emptyListResponse (internal/query/executor.go) builds exactly this: a page
+	// size and nothing else.
+	cursor := &PreparedQueryCursor{PageSize: 15}
+
+	def, err := json.Marshal(cursor)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"pageSize":15,"hasMore":false}`, string(def))
+
+	str, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor})
+	require.NoError(t, err)
+	require.Equal(t, string(def), string(str))
+}
+
+func TestPreparedQueryCursor_NilReceiverIsNull(t *testing.T) {
+	t.Parallel()
+
+	got, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: nil})
+	require.NoError(t, err)
+	require.Equal(t, "null", string(got))
+}

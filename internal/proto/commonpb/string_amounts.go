@@ -19,9 +19,19 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 // empty, so the field must be left as a nil interface unless there is
 // something to emit. Guard pointers with `!= nil` and slices/maps with
 // `len(x) > 0` — `!= nil` is not sufficient for a slice, because `omitempty`
-// drops empty non-nil slices too. childValue below makes that guard a
-// property of one generic function for the common case of a single retyped
-// child pointer, the same way wrapAll does for slices.
+// drops empty non-nil slices too. childValue and sliceValue below each make
+// that guard a property of one generic function: childValue for a single
+// retyped child pointer, sliceValue for a retyped slice field. wrapAll serves
+// the opposite case, a slice field with no `omitempty` that must always render
+// as `[]`.
+//
+// Every wrapper's MarshalJSON must return `[]byte("null")` when its embedded
+// pointer is nil. A value wrapper over a nil pointer is not itself nil, so the
+// encoder will not substitute `null` as it does for a nil *T; without the guard
+// it would call MarshalJSON on the zero value and emit an object. The header
+// must change the amount format only, never the response *shape*, so the guard
+// is not optional at any level — the per-site comments below say only that,
+// and point back here.
 //
 // Two marshaller shapes exist in this chain. A marshaller that always
 // produces one aux struct uses buildAux(amountsAsString bool) any, as above:
@@ -34,6 +44,20 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 //
 // Uint256.MarshalJSON is deliberately untouched: ledgerctl and misc/operator
 // consume it, so the CLI wire must not move.
+//
+// Adding a level to the chain:
+//  1. Split the type's MarshalJSON into buildAux(amountsAsString bool) any, and
+//     have MarshalJSON delegate with false. If the type dispatches a oneof,
+//     write marshalStringAmounts() ([]byte, error) instead and rebuild only the
+//     amount-bearing variants.
+//  2. Retype the child field in the aux struct to `any`.
+//  3. Fill it through childValue (single child pointer) or sliceValue (slice
+//     field with `omitempty`), never by hand: those hold the emptiness guard.
+//  4. Declare the wrapper type here, with the nil-inner-pointer guard returning
+//     `[]byte("null")` as its first statement. Export it only if a caller
+//     outside this package constructs it.
+//  5. Register the wrapper in the encoder-contract test so the declared
+//     MarshalJSON cannot be lost to the promoted one.
 
 // wrapAll wraps every element for the opt-in wire. The result is always
 // non-nil, so a nil or empty input still marshals as `[]` rather than `null`:
@@ -66,6 +90,25 @@ func childValue[T, W any](child *T, amountsAsString bool, wrap func(*T) W) any {
 	return child
 }
 
+// sliceValue returns a nil interface when items is empty, so a retyped `any`
+// field carrying `omitempty` stays omitted instead of emitting null or `[]`.
+// The guard is `len(items) == 0`, not `items != nil`: `omitempty` drops an
+// empty non-nil slice too, so a nil-checked guard would turn an omitted field
+// into `[]`. Note this is the opposite contract to wrapAll's always-non-nil
+// result: wrapAll serves Transaction.postings, which has no `omitempty` and
+// must render `[]`; sliceValue serves fields that have it and must vanish.
+func sliceValue[T, W any](items []T, amountsAsString bool, wrapAllOf func([]T) []W) any {
+	if len(items) == 0 {
+		return nil
+	}
+
+	if amountsAsString {
+		return wrapAllOf(items)
+	}
+
+	return items
+}
+
 // StringAmountPosting renders a Posting with a quoted decimal amount. Exported
 // because StringAmountPostings returns a slice of it, and revive's
 // unexported-return rule forbids an exported function returning an unexported
@@ -76,9 +119,8 @@ type StringAmountPosting struct {
 
 // MarshalJSON implements json.Marshaler for StringAmountPosting.
 func (w StringAmountPosting) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *Posting. Match the default
-	// wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.Posting == nil {
 		return []byte("null"), nil
 	}
@@ -104,9 +146,8 @@ type StringAmountTransaction struct {
 
 // MarshalJSON implements json.Marshaler for StringAmountTransaction.
 func (w StringAmountTransaction) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *Transaction. Match the
-	// default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.Transaction == nil {
 		return []byte("null"), nil
 	}
@@ -130,9 +171,8 @@ type StringAmountCreatedTransaction struct {
 
 // MarshalJSON implements json.Marshaler for StringAmountCreatedTransaction.
 func (w StringAmountCreatedTransaction) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *CreatedTransaction. Match
-	// the default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.CreatedTransaction == nil {
 		return []byte("null"), nil
 	}
@@ -148,9 +188,8 @@ type StringAmountRevertedTransaction struct {
 
 // MarshalJSON implements json.Marshaler for StringAmountRevertedTransaction.
 func (w StringAmountRevertedTransaction) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *RevertedTransaction. Match
-	// the default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.RevertedTransaction == nil {
 		return []byte("null"), nil
 	}
@@ -159,7 +198,8 @@ func (w StringAmountRevertedTransaction) MarshalJSON() ([]byte, error) {
 }
 
 // stringAmountLedgerLogPayload renders a LedgerLogPayload whose posting-bearing
-// variants carry quoted decimal amounts. Unexported: it is only ever returned
+// variants carry quoted decimal amounts (oneof dispatch). Unexported: it is
+// only ever returned
 // as `any` from LedgerLog.buildAux, never from an exported function, so
 // revive's unexported-return rule does not apply.
 type stringAmountLedgerLogPayload struct {
@@ -168,9 +208,8 @@ type stringAmountLedgerLogPayload struct {
 
 // MarshalJSON implements json.Marshaler for stringAmountLedgerLogPayload.
 func (w stringAmountLedgerLogPayload) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *LedgerLogPayload. Match the
-	// default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.LedgerLogPayload == nil {
 		return []byte("null"), nil
 	}
@@ -187,9 +226,8 @@ type stringAmountLedgerLog struct {
 
 // MarshalJSON implements json.Marshaler for stringAmountLedgerLog.
 func (w stringAmountLedgerLog) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *LedgerLog. Match the
-	// default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.LedgerLog == nil {
 		return []byte("null"), nil
 	}
@@ -206,9 +244,8 @@ type stringAmountApplyLedgerLog struct {
 
 // MarshalJSON implements json.Marshaler for stringAmountApplyLedgerLog.
 func (w stringAmountApplyLedgerLog) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *ApplyLedgerLog. Match the
-	// default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.ApplyLedgerLog == nil {
 		return []byte("null"), nil
 	}
@@ -217,17 +254,16 @@ func (w stringAmountApplyLedgerLog) MarshalJSON() ([]byte, error) {
 }
 
 // stringAmountLogPayload renders a LogPayload whose posting-bearing variant
-// carries quoted decimal amounts. Unexported for the same reason as
-// stringAmountLedgerLogPayload.
+// carries quoted decimal amounts (oneof dispatch). Unexported for the same
+// reason as stringAmountLedgerLogPayload.
 type stringAmountLogPayload struct {
 	*LogPayload
 }
 
 // MarshalJSON implements json.Marshaler for stringAmountLogPayload.
 func (w stringAmountLogPayload) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *LogPayload. Match the
-	// default wire explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.LogPayload == nil {
 		return []byte("null"), nil
 	}
@@ -244,9 +280,8 @@ type StringAmountLog struct {
 
 // MarshalJSON implements json.Marshaler for StringAmountLog.
 func (w StringAmountLog) MarshalJSON() ([]byte, error) {
-	// A value wrapper over a nil pointer is not nil, so the encoder will not
-	// substitute `null` for us as it does for a nil *Log. Match the default wire
-	// explicitly.
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
 	if w.Log == nil {
 		return []byte("null"), nil
 	}
@@ -260,4 +295,22 @@ func StringAmountLogs(logs []*Log) []StringAmountLog {
 	return wrapAll(logs, func(l *Log) StringAmountLog {
 		return StringAmountLog{Log: l}
 	})
+}
+
+// StringAmountPreparedQueryCursor renders a PreparedQueryCursor whose
+// transaction or log page carries quoted decimal posting amounts. Exported
+// because the HTTP adapter constructs it at the prepared-query execute route.
+type StringAmountPreparedQueryCursor struct {
+	*PreparedQueryCursor
+}
+
+// MarshalJSON implements json.Marshaler for StringAmountPreparedQueryCursor.
+func (w StringAmountPreparedQueryCursor) MarshalJSON() ([]byte, error) {
+	// A nil inner pointer must render as `null`, not as an object: see the
+	// nil-receiver rule in the file header.
+	if w.PreparedQueryCursor == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(w.buildAux(true))
 }
