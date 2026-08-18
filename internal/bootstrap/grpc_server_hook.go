@@ -51,8 +51,6 @@ func grpcServerHook(cfg grpcServerHookConfig) fx.Hook {
 
 	return fx.Hook{
 		OnStart: func(_ context.Context) error {
-			cfg.Logger.Infof("Starting %s", cfg.Name)
-
 			if err := cfg.Server.Listen(); err != nil {
 				return fmt.Errorf("%s: %w", cfg.Name, err)
 			}
@@ -74,17 +72,26 @@ func grpcServerHook(cfg grpcServerHookConfig) fx.Hook {
 
 			err := cfg.Server.Stop()
 
+			// OnStart sets wait before returning, and fx only stops hooks whose
+			// OnStart succeeded: it increments numStarted after the call returns
+			// nil and walks backward from that count. A nil wait here means the
+			// contract broke, so say so rather than silently skipping the join
+			// and leaking the serve goroutine.
+			if wait == nil {
+				return fmt.Errorf("%s: OnStop ran without a completed OnStart", cfg.Name)
+			}
+
 			// GoWait closes its done channel after the goroutine returns and
 			// this call blocks on it, which is the happens-before edge that
 			// makes reading serveErr race-free under -race.
-			if wait != nil {
-				wait()
-			}
+			wait()
 
 			if err != nil {
-				return err
+				return fmt.Errorf("%s: %w", cfg.Name, err)
 			}
 
+			// Already names the server: serveSingle and serveDual wrap as
+			// "<name> server failed".
 			return serveErr
 		},
 	}
