@@ -64,6 +64,31 @@ The reviewer must copy `AI_REVIEW_HEAD` and `AI_REVIEW_WORKTREE_FINGERPRINT` int
 
 The orchestrator rejects unknown JSON fields, missing required fields (including both boolean flags), inconsistent reviewer output such as `APPROVE` with blocking findings, and `REQUEST_CHANGES` without any blocking finding.
 
+## Codex review adapter
+
+`scripts/ai-review-codex` is the first provider-specific reviewer adapter. It keeps provider invocation separate from the `review-loop` policy/state machine.
+
+Use it with an authenticated Codex CLI available in `PATH`:
+
+```bash
+bash scripts/review-loop \
+  --review-cmd 'bash scripts/ai-review-codex'
+```
+
+The adapter:
+
+- validates the environment variables supplied by `review-loop`;
+- runs `codex exec` in an ephemeral, read-only sandbox;
+- ignores user Codex configuration so local model/MCP/sandbox preferences cannot silently change the adapter contract;
+- supplies the repository review contract and current review target in the prompt;
+- includes the prior structured review payload on re-review;
+- uses `scripts/codex-review.schema.json` with Codex structured output;
+- writes the final JSON directly to `AI_REVIEW_RESULT`.
+
+The schema intentionally requires every output field. Fields that are semantically optional use an empty string when unused (for example `human_decision_context` on an ordinary approval and `location` when no useful file/symbol location exists). The orchestrator remains responsible for validating the reviewed HEAD/worktree fingerprint and for deciding whether the result is ready, auto-fixable, or requires a human.
+
+The adapter performs no fixes and has no GitHub write behavior.
+
 ## Fix command contract
 
 When every blocking finding is auto-fixable, the orchestrator writes only those blockers to a JSON file and sets:
