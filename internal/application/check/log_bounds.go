@@ -41,6 +41,36 @@ import (
 // highest stored sequence; adding a second finding for it would double-report
 // the same fault under two names.
 //
+// archiveEndSeq is deliberately absent from this comparison, and must stay
+// absent. It is not a weaker guarantee than the chain — it is a DIFFERENT one:
+//
+//   - the audit chain is a keyed MAC. processing.NewHashGenerator derives its
+//     key from the ClusterID (blake3AuditKeyContext + clusterID) and hashes with
+//     blake3.NewKeyed, so an attacker without the cluster identity cannot
+//     produce a valid entry hash at all.
+//   - the chapter sealing hash is UNKEYED. verifySealingHash recomputes it with
+//     plain blake3.New() over (id, close_sequence, last_audit_hash, state_hash).
+//     close_sequence is covered by it, but whoever edits close_sequence just
+//     recomputes the hash and the check passes. That pass catches corruption,
+//     not tampering.
+//
+// So archiveEndSeq is attacker-controlled, which is exactly why it must never
+// gate which stored rows are compared, nor raise the threshold they are compared
+// against. Clamping to max(expectedLogMax, archiveEndSeq) — the obvious "fix" for
+// the false positive below — would let a forged close_sequence lift the bound
+// above an injected log row and exclude it from the only check that can see it.
+// That is not a refinement of EN-1526, it IS the EN-1526 defect shape: a
+// non-hash-bound projection field steering verification, rebuilt in a new place.
+//
+// The accepted consequence, stated plainly so nobody has to rediscover it: a
+// store with archived chapters, a baseline checkpoint, log rows retained at or
+// under the archive boundary, and ZERO live audit entries would report a false
+// LOG_UNAUDITED. That shape is unreachable through the archive flow — archiving
+// emits its own logs above the range it purges, so at least one log and its live
+// audit entry always survive (see the note above the signingVerifier
+// construction in Check) — and a false positive on an unreachable shape is the
+// correct trade against a real forgeable-threshold bypass.
+//
 // Neither side is compared when the chain walk was truncated: see
 // logCoverageIncomplete.
 func compareLogBounds(chainBound *chainBoundState, storedLogMax uint64, callback func(*servicepb.CheckStoreEvent)) {
