@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -162,4 +163,97 @@ func TestCheckDetectsLogKeyValueSequenceDivergence(t *testing.T) {
 	require.NotEmpty(t, divergences,
 		"a log row whose value sequence disagrees with its key is unreachable through "+
 			"AppendLogs and must be reported, not silently steer ReadLastSequence")
+}
+
+// TestCheckVerifiesFrozenIdempotencyOnFailureOnlyStore pins the most
+// client-visible half of the EN-1526 defect. A rejected proposal freezes its
+// outcome under the idempotency key, and every retry inside the TTL window reads
+// that frozen row back as a definitive business error — so a tampered row serves
+// a forged error to the client without ever touching the audit chain.
+//
+// compareIdempotencyOutcomes has exactly one call site, and it sits inside
+// verifyAuditHashChain (see the call in verifyAuditHashChain's tail, and the
+// single caller of verifyAuditHashChain in Check). Because the deleted
+// `lastSequence == 0` gate returned above that call, a failure-only store's
+// frozen rows were verified NOWHERE: the failure path writes the audit entry and
+// returns before any log is appended, so lastSequence stays 0 and the whole
+// idempotency pass was skipped along with the chain walk.
+//
+// The audit entry is left untouched here on purpose. Only the persisted
+// SubIdempKeys value is tampered, so the hash chain stays valid and the single
+// finding proves the idempotency pass ran rather than a chain mismatch standing
+// in for it.
+func TestCheckVerifiesFrozenIdempotencyOnFailureOnlyStore(t *testing.T) {
+	t.Parallel()
+
+	const (
+		clusterID = "test-cluster"
+		idemKey   = "failure-only-retry-key"
+		createdAt = 1700000001
+	)
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	orders := []*raftcmdpb.Order{{}}
+	serialized := orders[0].MarshalDeterministicVT(nil)
+	proposalHash := processing.HashOrders(orders)
+
+	// A rejected proposal that froze its outcome: the audit failure entry and
+	// nothing else. No log is appended, which is what makes lastSequence 0.
+	entry := &auditpb.AuditEntry{
+		Sequence:    1,
+		Timestamp:   &commonpb.Timestamp{Data: createdAt},
+		ProposalId:  7,
+		OrderCount:  1,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Idempotency: &commonpb.Idempotency{Key: idemKey},
+		Outcome: &auditpb.AuditEntry_Failure{
+			Failure: &auditpb.AuditFailure{
+				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Message: "balance too low",
+			},
+		},
+	}
+	items := []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized}}
+
+	persistAuditEntry(t, store, entry, items, clusterID)
+
+	// The frozen row a retry would read back, faithful to the audit entry. Its
+	// created_at equals the only verified entry's timestamp, so it sits exactly
+	// at the idempotency report floor and is in scope for the pass.
+	faithful := &commonpb.IdempotencyKeyValue{
+		CreatedAt: createdAt,
+		Hash:      proposalHash,
+		Failure: &commonpb.IdempotencyFailure{
+			Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+			Message: "balance too low",
+		},
+	}
+
+	writeIdempotencyEntry(t, store, idemKey, faithful)
+
+	require.Empty(t, collectCheckErrors(t, store, attrs),
+		"a failure-only store whose frozen outcome matches its audit entry must be "+
+			"reported clean: verifying the idempotency pass on a zero-log store must "+
+			"not fire spuriously")
+
+	// Tamper only the frozen message: the audit chain stays intact, so nothing
+	// but the idempotency pass can catch this.
+	tampered := faithful.CloneVT()
+	tampered.Failure.Message = "you have plenty of money"
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+
+	var mismatches []*servicepb.CheckStoreError
+
+	for _, e := range collectCheckErrors(t, store, attrs) {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
+			mismatches = append(mismatches, e)
+		}
+	}
+
+	require.Len(t, mismatches, 1,
+		"the frozen outcome a retry reads back is only ever verified from inside "+
+			"verifyAuditHashChain, so gating that walk on the log projection left a "+
+			"failure-only store's forged business error undetected (EN-1526)")
 }
