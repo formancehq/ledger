@@ -1303,8 +1303,13 @@ func compileRevertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 		return nil, err
 	}
 
+	// reverted_at is the one transaction builtin written AFTER the
+	// transaction's creation (the revert's own fold), so the TRANSACTIONS
+	// horizon trim — which proves only that the transaction existed at the
+	// pin — cannot exclude a revert folded past the main handle. The rows
+	// carry the revert fold's sequence; the scan is gated at the read's pin.
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat", 0)
+		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat", ctx.pin)
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.

@@ -193,3 +193,76 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	require.Equal(t, []string{"accounts:early", "accounts:late"}, scan(9),
 		"a pin covering both stamps serves both members")
 }
+
+// TestCompile_RevertedAt_PinExcludesLaterRevert is the reverted_at twin of the
+// has-asset stamp test. The rvat row is written by the REVERT's fold — after
+// the transaction's creation — so the TRANSACTIONS existence trim proves
+// nothing about it at a pin; only the row's stamp can exclude a revert folded
+// past the main handle.
+func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
+	t.Parallel()
+
+	const ledgerName = "ledger1"
+
+	logger := logging.FromContext(logging.TestingContext())
+	store, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = store.Close() })
+
+	kb := dal.NewKeyBuilder()
+	batch := store.NewBatch()
+	for _, seed := range []struct {
+		txID uint64
+		ts   uint64
+		seq  uint64
+	}{
+		{7, 1_000, 5},
+		{8, 2_000, 9},
+	} {
+		key := readstore.TransactionRevertedAtKey(kb, ledgerName, seed.ts, seed.txID)
+		stamp := make([]byte, 8)
+		binary.BigEndian.PutUint64(stamp, seed.seq)
+		require.NoError(t, batch.SetBytes(key, stamp))
+	}
+	require.NoError(t, batch.Commit())
+
+	reader := store.DB()
+
+	rvatID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
+	info := &commonpb.LedgerInfo{Name: ledgerName}
+	registry := staticIndexLookup{
+		indexes.KeyFor(ledgerName, rvatID): {Ledger: ledgerName, Id: rvatID},
+	}
+	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
+
+	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT,
+			Cond:  &commonpb.UintCondition{},
+		},
+	}}
+
+	scan := func(pin uint64) []uint64 {
+		iter, cErr := query.Compile(
+			reader, dal.NewKeyBuilder(), filter,
+			commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledgerName,
+			nil, nil, info, registry, resolverReady, nil, reader, pin)
+		require.NoError(t, cErr)
+
+		defer iter.Close()
+
+		var got []uint64
+		for iter.Next() {
+			got = append(got, binary.BigEndian.Uint64(iter.Current()))
+		}
+		require.NoError(t, iter.Err())
+
+		return got
+	}
+
+	require.Equal(t, []uint64{7}, scan(7),
+		"a revert folded past the pin must be invisible to the pinned read")
+	require.Equal(t, []uint64{7, 8}, scan(9),
+		"a pin covering both stamps serves both reverts")
+}

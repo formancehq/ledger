@@ -288,11 +288,25 @@ func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledger
 	return wb.put(key, nil)
 }
 
-// WriteTransactionRevertedAtIndex inserts an entry in the transaction reverted_at index.
+// WriteTransactionRevertedAtIndex inserts an entry in the transaction
+// reverted_at index. The value is the revert fold's raft sequence: unlike the
+// other transaction builtins, this row appears AFTER the transaction's
+// creation, so main-store existence proves nothing about it at a pin — the
+// stamp is what lets a pinned read exclude a revert that folded past its
+// handle (see compileRevertedAtCondition). A transaction reverts at most
+// once, so the single write needs no dedup.
 func (wb *WriteBatch) WriteTransactionRevertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
+	}
+
 	key := TransactionRevertedAtKey(kb, ledgerName, timestamp, txID)
 
-	return wb.put(key, nil)
+	var stamp [8]byte
+	binary.BigEndian.PutUint64(stamp[:], seq)
+
+	return wb.put(key, stamp[:])
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
