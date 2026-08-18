@@ -1041,9 +1041,8 @@ func TestSigningVerifier_CompareEmissionIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestCheck_SigningProjections_EmptyAuditWiring pins that the comparison actually
-// runs on the lastSequence == 0 path, which returns before the replay and
-// therefore before the compare phase every other projection pass lives in.
+// TestCheck_SigningProjections_EmptyAuditWiring pins that the comparison runs
+// over a store with zero logs.
 //
 // The signing projections are cluster-global, so a store with no logs can still
 // hold rows — and since every successful signing order writes a log, a zero-log

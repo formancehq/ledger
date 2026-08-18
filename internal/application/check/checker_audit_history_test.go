@@ -5,7 +5,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -15,11 +18,12 @@ import (
 // TestCheckVerifiesFailureOnlyHistory pins EN-1526: a store that only ever
 // REJECTED proposals holds a full audit chain and zero logs, because the failure
 // path writes the audit entry (machine.go:1495) and returns at :1508, before
-// Merge at :1568 ever appends a log. Check() reads lastSequence out of the
-// SubColdLog projection and returns early when it is zero (checker.go:165-211),
-// so verifyAuditHashChain — the only audit-hash recomputation in the whole
-// repository, at checker.go:328, below that return — never runs. A tampered hash
-// on such a store is reported healthy.
+// Merge at :1568 ever appends a log.
+//
+// Check() used to read lastSequence out of the SubColdLog projection and return
+// early when it was zero, above verifyAuditHashChain — the only audit-hash
+// recomputation in the repository. A tampered hash on such a store was reported
+// healthy. This test pins that the chain is verified regardless of the log count.
 //
 // The fixture writes ONE failure entry with a valid keyed hash, then rewrites it
 // with a corrupted hash WITHOUT re-hashing, which is what an adversary that does
@@ -54,6 +58,10 @@ func TestCheckVerifiesFailureOnlyHistory(t *testing.T) {
 
 	persistAuditEntry(t, store, entry, items, clusterID)
 
+	require.Empty(t, collectCheckErrors(t, store, attrs),
+		"an untampered failure-only store must be reported clean: deleting the "+
+			"lastSequence == 0 gate must not make any pass fire spuriously")
+
 	// Tamper: flip the stored hash and rewrite without recomputing.
 	entry.Hash = append([]byte(nil), entry.GetHash()...)
 	entry.Hash[0] ^= 0xFF
@@ -72,4 +80,34 @@ func TestCheckVerifiesFailureOnlyHistory(t *testing.T) {
 	require.Len(t, hashMismatches, 1,
 		"a failure-only store has zero logs, so the audit chain must still be verified: "+
 			"gating verification on the SubColdLog projection is the EN-1526 defect")
+	require.Contains(t, hashMismatches[0].GetMessage(), "audit hash chain broken at sequence 1")
+}
+
+// TestCheck_ZeroLogPendingCleanupDoesNotSuppressOrphans pins the
+// pendingCleanupLedgers guard in Check(): a persisted pending-cleanup marker is
+// an unverified projection. On a zero-log store no DeleteLedger can be audited,
+// so a marker cannot legitimately exist and must not suppress the stale-index
+// finding it would otherwise mask. Both production writers of the marker require
+// a log (state.write_set's DeleteLedger apply path, and backup rebuild's
+// log-driven replay), so on a healthy store the empty set and the persisted set
+// are identical.
+func TestCheck_ZeroLogPendingCleanupDoesNotSuppressOrphans(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	key := domain.IndexKey{LedgerName: "doomed", Canonical: indexes.Canonical(id)}
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+
+	batch := store.OpenWriteSession()
+	_, err := attrs.Index.Set(batch, key.Bytes(), &commonpb.Index{Id: id, Ledger: "doomed"})
+	require.NoError(t, err)
+	require.NoError(t, state.SavePendingLedgerCleanup(batch, "doomed", 9))
+	require.NoError(t, batch.Commit())
+
+	errs := collectCheckErrors(t, store, attrs)
+	require.Len(t, errs, 1)
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH, errs[0].GetErrorType())
+	require.Equal(t, "doomed", errs[0].GetLedger())
 }

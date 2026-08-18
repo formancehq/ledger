@@ -484,6 +484,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Start after archived sequences (archived logs are purged from Pebble).
 	expectedSeq := archiveEndSeq + 1
 
+	// progressEmitted tracks whether the in-loop emit below ever ran, so the
+	// terminal event after the loop is not sent twice on a log-bearing store.
+	progressEmitted := false
+
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -736,24 +740,28 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					},
 				},
 			})
+
+			progressEmitted = true
 		}
 	}
 
-	// The in-loop emit above only fires for an executed body, so a store with no
-	// logs in the verifiable range would report no progress at all. Emit the
-	// terminal state unconditionally; on a zero-log store this is the
-	// {0, 0} event the deleted `lastSequence == 0` fast path used to send.
-	callback(&servicepb.CheckStoreEvent{
-		Type: &servicepb.CheckStoreEvent_Progress{
-			Progress: &servicepb.CheckStoreProgress{
-				LogsChecked: lastSequence,
-				TotalLogs:   lastSequence,
-			},
-		},
-	})
-
 	if err := logIter.Error(); err != nil {
 		return fmt.Errorf("log iterator error: %w", err)
+	}
+
+	// The in-loop emit only fires for an executed body, so a store with no logs in
+	// the verifiable range would report no progress at all — this is the {0, 0}
+	// event the deleted `lastSequence == 0` fast path used to send. Placed after the
+	// iterator error check so an aborted iteration does not report 100% first.
+	if !progressEmitted {
+		callback(&servicepb.CheckStoreEvent{
+			Type: &servicepb.CheckStoreEvent_Progress{
+				Progress: &servicepb.CheckStoreProgress{
+					LogsChecked: lastSequence,
+					TotalLogs:   lastSequence,
+				},
+			},
+		})
 	}
 
 	if ephemeralPurgeBuffer != nil {

@@ -843,8 +843,9 @@ func TestCompareReverseMapOrphans_EmptyAudit(t *testing.T) {
 }
 
 // TestCheck_ReverseMapOrphans_EmptyAuditWiring is the Check()-level twin of the
-// above: it pins that the pass actually runs on the lastSequence == 0 path, which
-// returns before the replay and therefore before every other pass.
+// above: it pins that the pass runs over a store with zero logs. The audit-derived
+// oracle is legitimately empty there, so every stored reverse-map row is unaudited
+// by definition and must be reported (EN-1458, EN-1526).
 func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 
