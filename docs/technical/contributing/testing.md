@@ -94,34 +94,65 @@ var _ = Describe("Simple cluster", func() {
 
 ### Cluster Setup
 
-E2E tests create a 3-node cluster:
+E2E tests create a cluster through `tests/e2e/testutil`, which allocates the
+ports, boots the nodes and waits for a leader:
 
 ```go
 BeforeEach(func() {
-    servers = make([]serviceWithClient, 0, 3)
-    for i := range 3 {
-        server := testservice.New(
-            cmdserver.NewRootCommand,
-            testservice.WithInstruments(
-                testserver.WithNodeID(i+1),
-                testserver.WithHTTPPort(9000+i),
-                // ...
-            ),
-        )
-        servers = append(servers, serviceWithClient{
-            service: server,
-            client: client.New(...),
-        })
-    }
+    ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(3)
 })
 ```
+
+`SetupSingleNode` does the same for a one-node cluster. Both accept extra
+instruments for the node under test.
+
+### Ports are allocated, never chosen
+
+Test ports come from `testserver.AllocateNodePorts()`. Do not write a port
+number in a test.
+
+```go
+ports := testserver.AllocateNodePorts()
+
+instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+    NodeID:    1,
+    ClusterID: "test-cluster",
+    Ports:     ports,
+    WalDir:    walDir,
+    DataDir:   dataDir,
+})
+```
+
+`NodePorts` has unexported fields, so `AllocateNodePorts` is its only source
+and `TestNodeConfig` cannot be given a hand-picked port. The allocator
+bind-probes each candidate and gives every process its own sub-band of the
+15000-30000 range, which is below the OS ephemeral floor — so an allocated
+port cannot be stolen by an unrelated outbound connection before the node
+binds it.
+
+Two rules follow from how the allocator works:
+
+- **Never release or re-derive a port.** A node that is stopped and restarted
+  must be given the *same* `NodePorts` value, because its peers still hold its
+  old Raft address.
+- **Never compute one port from another.** The old convention derived the Raft
+  port as `grpcPort - 1000`. That is what made two suites collide on 15200:
+  one spec's gRPC port mapped onto another node's live HTTP port (EN-1784).
+
+A spec that builds its own instrument list instead of using
+`DefaultTestInstruments` still passes allocated values through the low-level
+instruments — `testserver.WithHTTPPort(ports.HTTP())`,
+`WithRaftPort(ports.Raft())`, `WithGRPCPort(ports.GRPC())`. Those take a plain
+`int`, so they are the one remaining place a literal would compile. Feed them
+from `AllocateNodePorts`.
 
 ### Test Helpers
 
 The package `pkg/testserver` provides helpers:
 
+- `AllocateNodePorts()`: Allocate the node's HTTP, gRPC and Raft ports
+- `DefaultTestInstruments()`: Build the standard instrument set for a node
 - `WithNodeID()`: Configure the Node ID
-- `WithHTTPPort()`: Configure the HTTP port
 - `WithRaftElectionTick()`: Configure Raft parameters
 - `WithRaftTickInterval()`: Configure the tick interval
 
