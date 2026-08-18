@@ -93,6 +93,10 @@ type baseServer struct {
 	tlsConfig       *tls.Config
 
 	listener net.Listener
+	// listened records that Listen bound the port. closeListener clears
+	// listener but never this flag, so Serve can tell a shutdown that beat the
+	// serve goroutine apart from a Serve that was never preceded by a Listen.
+	listened bool
 	mu       sync.Mutex
 
 	logger logging.Logger
@@ -160,6 +164,7 @@ func (s *baseServer) Listen() error {
 
 	s.mu.Lock()
 	s.listener = lis
+	s.listened = true
 	s.mu.Unlock()
 
 	s.logger.
@@ -179,11 +184,18 @@ func (s *baseServer) Listen() error {
 // net.ErrClosed, so a normal shutdown returns nil.
 func (s *baseServer) Serve() error {
 	s.mu.Lock()
-	lis := s.listener
+	lis, listened := s.listener, s.listened
 	s.mu.Unlock()
 
-	if lis == nil {
+	if !listened {
 		return fmt.Errorf("%s server: Serve called before a successful Listen", s.name)
+	}
+
+	if lis == nil {
+		// Stop closed the listener before this call was scheduled. Callers run
+		// Serve on its own goroutine, so a startup that fails in a later hook
+		// reaches Stop first. That is a normal shutdown, not a failure.
+		return nil
 	}
 
 	switch {

@@ -222,3 +222,36 @@ func TestListenReturnsErrorWhenPortIsBusy(t *testing.T) {
 	require.Contains(t, err.Error(), strconv.Itoa(port),
 		"the error must name the port that failed to bind")
 }
+
+// TestServeAfterStopIsNotAnError pins the shutdown ordering introduced by the
+// Listen/Serve split. Serve re-reads s.listener and closeListener sets it to
+// nil, so a startup that fails in a LATER fx hook can run Stop before the
+// serve goroutine is ever scheduled. Nothing guarantees a new goroutine runs
+// before the goroutine that spawned it continues, so this needs no unusual
+// timing. It is a normal shutdown and must not be reported as an error.
+func TestServeAfterStopIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	srv, err := NewRaftServer(freeTCPPort(t), noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	require.NoError(t, srv.Listen())
+	require.NoError(t, srv.Stop())
+
+	// Stands in for the serve goroutine being scheduled only after Stop.
+	require.NoError(t, srv.Serve())
+}
+
+// TestServeWithoutListenFailsLoudly keeps the genuine contract violation loud:
+// a Serve with no preceding Listen is a programming error, and an unreachable-
+// by-contract branch must surface it rather than silently returning nil.
+func TestServeWithoutListenFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	srv, err := NewRaftServer(freeTCPPort(t), noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	err = srv.Serve()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "before a successful Listen")
+}
