@@ -65,10 +65,11 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 		receiptToken = *receipt
 	}
 
-	// The wrapper has a value receiver, so the value goes into the interface: a
-	// pointer to it is not addressable behind an `any` field, the declared
-	// MarshalJSON is bypassed, and sonic reflects the protobuf struct into
-	// PascalCase field names with neither a compile nor a runtime error.
+	// What makes the wrapper reachable behind this `any` field is the invariant
+	// that every wrapper declares a VALUE receiver — see
+	// internal/proto/commonpb/string_amounts.go. A pointer-receiver wrapper whose
+	// value is stored here would have its MarshalJSON silently skipped, and sonic
+	// would reflect the protobuf struct into PascalCase names with no error.
 	var transactionValue any = transaction
 	if wantsBigintAsString(r) {
 		transactionValue = commonpb.StringAmountTransaction{Transaction: transaction}

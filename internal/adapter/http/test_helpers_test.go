@@ -132,6 +132,15 @@ func bigAmountTransaction(t *testing.T, id uint64) *commonpb.Transaction {
 func requireOnlyAmountQuotingDiffers(t *testing.T, defaultBody, optInBody string) {
 	t.Helper()
 
+	// Self-enforce the fixture's load-bearing property instead of trusting a
+	// comment: with no HTML-sensitive character in the body, an encoder swap is
+	// invisible and every assertion here passes anyway. Either form counts — the
+	// ConfigStd routes escape the ampersand, the ConfigDefault one does not.
+	require.True(t,
+		strings.Contains(defaultBody, "&") || strings.Contains(defaultBody, `\u0026`),
+		"the pinned body must carry an HTML-sensitive character, raw or escaped, "+
+			"or it cannot detect a change of encoder")
+
 	require.Equal(t, defaultBody,
 		strings.Replace(optInBody, `"`+aboveJSNumberLimit+`"`, aboveJSNumberLimit, 1),
 		"the opt-in wire must differ from the default wire only in the amount's quoting")

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -213,6 +215,189 @@ func TestQueryParamBool(t *testing.T) {
 
 			r := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			require.Equal(t, tc.expected, queryParamBool(r, tc.key))
+		})
+	}
+}
+
+// failingMarshaler is a payload whose MarshalJSON always fails. It is the only
+// way to reach the error path of the buffered writers below, and no other
+// fixture in this package provides one. The error text is a sentinel so the
+// tests can assert it never reaches the client.
+type failingMarshaler struct{}
+
+// MarshalJSON implements json.Marshaler, always failing.
+func (failingMarshaler) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("sentinel-payload-detail")
+}
+
+// checkedWriter describes one of this package's two buffered response writers.
+// Both marshal the body to a buffer BEFORE writing any header; they differ in
+// the sonic configuration they marshal with, and that difference is part of
+// every route's wire contract, so the table keeps their expectations separate
+// rather than sharing one (EN-1779).
+type checkedWriter struct {
+	name string
+	// write invokes the writer under test, closing over its status code.
+	write func(w http.ResponseWriter, r *http.Request, data any)
+	// wantStatus is the status the writer emits on success. The error-path
+	// subtest asserts the response is NOT this, which is what catches a writer
+	// that commits its header before marshaling.
+	wantStatus int
+	// stream is the pre-existing streaming writer this one must stay
+	// byte-identical to, or nil when it has no counterpart on the same encoder
+	// (writeOKChecked runs on ConfigDefault, which no streaming writer uses).
+	stream func(w http.ResponseWriter, data any)
+	// wantHTMLEscaped and wantTrailingNewline pin the sonic configuration:
+	// ConfigStd escapes `<`/`&` and appends a trailing newline, ConfigDefault
+	// does neither. Asserting them is what makes a swapped encoder fail here
+	// instead of silently changing every route's default wire.
+	wantHTMLEscaped     bool
+	wantTrailingNewline bool
+}
+
+// TestWriteCheckedStatus covers both buffered writers — writeCheckedStatus and
+// writeOKChecked, whose error path was equally untested — as one table.
+//
+// It exists because two mutations of writeCheckedStatus previously survived the
+// whole package suite: hoisting w.WriteHeader above the marshal call (which
+// reduces the writer to the very behaviour it was created to prevent, a
+// committed success status carrying a failure payload), and deleting the
+// Content-Type header (after which a real net/http server sniffs the body as
+// text/plain). The error-path and byte-identity subtests below kill both.
+func TestWriteCheckedStatus(t *testing.T) {
+	t.Parallel()
+
+	writers := []checkedWriter{
+		{
+			name: "writeOKChecked",
+			write: func(w http.ResponseWriter, r *http.Request, data any) {
+				writeOKChecked(w, r, data)
+			},
+			wantStatus:          http.StatusOK,
+			stream:              nil,
+			wantHTMLEscaped:     false,
+			wantTrailingNewline: false,
+		},
+		{
+			name: "writeCheckedStatus 200",
+			write: func(w http.ResponseWriter, r *http.Request, data any) {
+				writeCheckedStatus(w, r, http.StatusOK, data)
+			},
+			wantStatus:          http.StatusOK,
+			stream:              writeOK,
+			wantHTMLEscaped:     true,
+			wantTrailingNewline: true,
+		},
+		{
+			name: "writeCheckedStatus 201",
+			write: func(w http.ResponseWriter, r *http.Request, data any) {
+				writeCheckedStatus(w, r, http.StatusCreated, data)
+			},
+			wantStatus:          http.StatusCreated,
+			stream:              writeCreated,
+			wantHTMLEscaped:     true,
+			wantTrailingNewline: true,
+		},
+	}
+
+	type payloadCase struct {
+		name string
+		data any
+		// htmlSensitive marks payloads carrying `<`/`&`, the only characters
+		// that make the two encoders distinguishable in the body.
+		htmlSensitive bool
+	}
+
+	payloads := []payloadCase{
+		{name: "nil data", data: nil},
+		{name: "string with HTML-sensitive characters", data: "a<b&c>d", htmlSensitive: true},
+		{name: "map with HTML-sensitive characters", data: map[string]string{"account": "world<&>"}, htmlSensitive: true},
+		{name: "typed nil pointer", data: (*commonpb.Transaction)(nil)},
+		{name: "populated transaction", data: bigAmountTransaction(t, 7), htmlSensitive: true},
+		{
+			name:          "detail-route envelope",
+			data:          getTransactionData{Transaction: bigAmountTransaction(t, 7), Receipt: "receipt"},
+			htmlSensitive: true,
+		},
+		{
+			name:          "string-amount wrapper",
+			data:          commonpb.StringAmountTransaction{Transaction: bigAmountTransaction(t, 7)},
+			htmlSensitive: true,
+		},
+		{name: "wrapper over a nil inner pointer", data: commonpb.StringAmountTransaction{Transaction: nil}},
+	}
+
+	for _, wr := range writers {
+		t.Run(wr.name, func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("marshal failure yields a sanitized 500", func(t *testing.T) {
+				t.Parallel()
+
+				w := httptest.NewRecorder()
+				r := httptest.NewRequest(http.MethodPost, "/", nil)
+
+				wr.write(w, r, failingMarshaler{})
+
+				// The status must NOT have been committed before the marshal:
+				// a writer that writes its header first turns a marshal failure
+				// into a success status carrying an error body.
+				require.Equal(t, http.StatusInternalServerError, w.Code)
+				require.NotEqual(t, wr.wantStatus, w.Code)
+				require.NotContains(t, w.Body.String(), `"data"`,
+					"a failed marshal must not emit any part of the success envelope")
+
+				resp := decodeResponse[ErrorResponse](t, w)
+				require.Equal(t, "INTERNAL_ERROR", resp.ErrorCode)
+
+				// Routed through handleError, so the message is the sanitized
+				// correlation-ID form (EN-1442). The streaming writers instead
+				// append the raw marshal error to an already-committed body,
+				// which is what this writer exists to avoid.
+				require.Contains(t, resp.ErrorMessage, "correlation ID")
+				require.NotContains(t, w.Body.String(), "sentinel-payload-detail")
+			})
+
+			for _, pc := range payloads {
+				t.Run(pc.name, func(t *testing.T) {
+					t.Parallel()
+
+					w := httptest.NewRecorder()
+					wr.write(w, httptest.NewRequest(http.MethodGet, "/", nil), pc.data)
+
+					require.Equal(t, wr.wantStatus, w.Code)
+					require.Equal(t, "application/json", w.Header().Get("Content-Type"),
+						"a missing Content-Type makes a real server sniff the body as text/plain")
+
+					body := w.Body.String()
+					require.Equal(t, wr.wantTrailingNewline, strings.HasSuffix(body, "\n"),
+						"trailing newline pins the sonic configuration: body %q", body)
+
+					if pc.htmlSensitive {
+						if wr.wantHTMLEscaped {
+							require.Contains(t, body, `\u003c`)
+							require.NotContains(t, body, "<")
+						} else {
+							require.Contains(t, body, "<")
+							require.NotContains(t, body, `\u003c`)
+						}
+					}
+
+					if wr.stream == nil {
+						return
+					}
+
+					// Byte-identity with the streaming writer the routes used
+					// before, headers included: adding the buffered marshal must
+					// not move a single byte for clients that never opt in.
+					ref := httptest.NewRecorder()
+					wr.stream(ref, pc.data)
+
+					require.Equal(t, ref.Body.String(), body)
+					require.Equal(t, ref.Code, w.Code)
+					require.Equal(t, ref.Header(), w.Header())
+				})
+			}
 		})
 	}
 }
