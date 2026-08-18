@@ -531,9 +531,13 @@ guarantee a green pipeline. Reproduce the CI set locally with:
 just test-e2e-full
 ```
 
-Linting already parses these files (`just lint` passes every tag), so a
-compile error is caught without the tag. Only a real run catches a stale
-assertion — which is why the full set belongs in CI.
+`just lint` does not pass the `e2e` tag, so it excludes these packages even
+when feature tags are configured. The full CI run is therefore responsible
+for both compiling these files and exercising their assertions.
+
+The MinIO and Azurite images used by this required gate are version-pinned in
+`tests/e2e/testutil/containers.go`. Update those pins deliberately and validate
+the complete full-tag suite when upgrading either emulator.
 
 #### Docker socket on macOS
 

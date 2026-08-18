@@ -342,9 +342,9 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 // actually failing. Fail here instead, naming the offending constant.
 //
 // The shared node itself legitimately owns these ports, so it is exempt.
-func assertPortsAvailableForNode(httpPort, grpcPort, raftPort int) {
+func nodePortConflict(httpPort, grpcPort, raftPort int) error {
 	if httpPort == TestSingleHTTPPort && grpcPort == TestSingleGRPCPort {
-		return
+		return nil
 	}
 
 	reserved := map[int]string{
@@ -362,10 +362,18 @@ func assertPortsAvailableForNode(httpPort, grpcPort, raftPort int) {
 		{raftPort, fmt.Sprintf("Raft port (derived from gRPC port %d minus 1000)", grpcPort)},
 	} {
 		name, clashes := reserved[p.value]
-		Expect(clashes).To(BeFalse(), fmt.Sprintf(
-			"%s %d is reserved for the shared single-node server (%s); pick another port",
-			p.label, p.value, name))
+		if clashes {
+			return fmt.Errorf(
+				"%s %d is reserved for the shared single-node server (%s); pick another port",
+				p.label, p.value, name)
+		}
 	}
+
+	return nil
+}
+
+func assertPortsAvailableForNode(httpPort, grpcPort, raftPort int) {
+	Expect(nodePortConflict(httpPort, grpcPort, raftPort)).NotTo(HaveOccurred())
 }
 
 // SetupSingleNode creates a single-node cluster for tests that don't need Raft consensus.

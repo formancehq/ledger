@@ -12,13 +12,12 @@ import (
 )
 
 func TestCluster(t *testing.T) {
-	// pterm keeps its styling settings in package-level globals, and any
-	// ledgerctl command the suite invokes reads them from a spinner goroutine
-	// that outlives the call. Setting them from inside a spec therefore races
-	// against a spinner started by an earlier spec. Do it once, before any
-	// spec runs, so no goroutine can be reading them concurrently.
+	// pterm keeps its output settings in package-level globals. Set them once,
+	// before any spec can start a printer. Keep styling enabled: RawOutput makes
+	// SpinnerPrinter.Stop return without stopping its goroutine. Disabling output
+	// suppresses test noise while preserving the normal spinner lifecycle.
 	pterm.DisableColor()
-	pterm.DisableStyling()
+	pterm.DisableOutput()
 
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultEventuallyTimeout(5 * time.Second)

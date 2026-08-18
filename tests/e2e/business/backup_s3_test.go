@@ -85,7 +85,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     backupMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": backupMinioSecretKey,
@@ -256,9 +256,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Prefix: aws.String("no-prior/"),
 		})
 		Expect(listErr).To(Succeed())
-		// KeyCount is a *int32: compare the pointed-to value, otherwise the
-		// matcher compares the pointer itself and can never succeed.
-		Expect(aws.ToInt32(listOut.KeyCount)).To(BeZero(),
+		Expect(listOut.Contents).To(BeEmpty(),
 			"no object of any kind must be published under the no-prior/ prefix")
 	})
 

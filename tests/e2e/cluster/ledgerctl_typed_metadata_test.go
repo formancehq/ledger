@@ -132,10 +132,8 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		// pterm's animated output is disabled once for the whole suite in
-		// TestCluster: its settings are package-level globals, so writing them
-		// here would race with a spinner goroutine left running by an earlier
-		// spec's ledgerctl invocation.
+		// pterm output is disabled once for the whole suite in TestCluster. Its
+		// settings are package-level globals, so specs must not mutate them.
 		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 	})
 
