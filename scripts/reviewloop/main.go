@@ -85,6 +85,11 @@ type reviewChangeTarget struct {
 
 type loopAction string
 
+type fileSnapshot struct {
+	path    string
+	content []byte
+}
+
 const (
 	actionReady   loopAction = "READY_FOR_HUMAN_REVIEW"
 	actionAutoFix loopAction = "AUTO_FIX_REQUIRED"
@@ -214,6 +219,10 @@ func main() {
 			if err := writeFindings(findingsPath, blockers); err != nil {
 				fatal(err)
 			}
+			fixerInputs, err := captureFileSnapshots(findingsPath, resultPath)
+			if err != nil {
+				fatal(fmt.Errorf("capturing immutable fixer inputs: %w", err))
+			}
 
 			fmt.Printf("==> review-loop: auto-fix %d blocking finding(s)\n", len(blockers))
 			if err := runCommand(fixCmd, map[string]string{
@@ -222,6 +231,9 @@ func main() {
 				"AI_REVIEW_RESULT":   resultPath,
 			}); err != nil {
 				fatal(fmt.Errorf("fix command failed: %w", err))
+			}
+			if err := verifyFileSnapshotsUnchanged(fixerInputs); err != nil {
+				fatal(fmt.Errorf("fix command changed immutable review state: %w", err))
 			}
 
 			fmt.Println("==> review-loop: validation after auto-fix")
@@ -493,6 +505,29 @@ func verifyFileUnchanged(path string, expected []byte) error {
 	}
 	if !bytes.Equal(actual, expected) {
 		return fmt.Errorf("%s content changed", path)
+	}
+
+	return nil
+}
+
+func captureFileSnapshots(paths ...string) ([]fileSnapshot, error) {
+	snapshots := make([]fileSnapshot, 0, len(paths))
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		snapshots = append(snapshots, fileSnapshot{path: path, content: content})
+	}
+
+	return snapshots, nil
+}
+
+func verifyFileSnapshotsUnchanged(snapshots []fileSnapshot) error {
+	for _, snapshot := range snapshots {
+		if err := verifyFileUnchanged(snapshot.path, snapshot.content); err != nil {
+			return err
+		}
 	}
 
 	return nil

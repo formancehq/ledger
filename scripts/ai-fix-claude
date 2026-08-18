@@ -61,11 +61,17 @@ EOF
 
 cd "$repo_root"
 
-# Keep the autonomous fix surface intentionally narrow. Claude may inspect and edit
-# repository files, but shell/network operations are denied; review-loop owns validation.
+# Keep the autonomous fix surface intentionally narrow. Safe mode removes personal and
+# repository extensions while the prompt explicitly asks Claude to read AGENTS.md. The
+# fixed built-in tool set has project-scoped edit approval; everything else fails closed.
 claude -p \
-    --permission-mode acceptEdits \
-    --allowedTools "Read,Edit,Write,Glob,Grep" \
-    --disallowedTools "Bash,WebFetch,WebSearch" \
+    --safe-mode \
+    --strict-mcp-config \
+    --no-session-persistence \
+    --disable-slash-commands \
+    --permission-mode dontAsk \
+    --tools "Read,Edit,Write,Glob,Grep" \
+    --allowedTools "Read,Glob,Grep,Edit(/**)" \
+    --disallowedTools "Bash,WebFetch,WebSearch,Edit(/.git),Edit(/.git/**)" \
     --max-turns 30 \
-    - <"$prompt_file"
+    <"$prompt_file"

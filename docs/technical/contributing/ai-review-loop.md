@@ -140,6 +140,8 @@ The fix agent must:
 3. avoid opportunistic refactors;
 4. report/exit non-zero rather than weakening a check or guessing through an ambiguity.
 
+The blocker payload and originating review result are immutable inputs. The orchestrator snapshots both files before invoking the fixer and rejects the pass if either file's contents change or can no longer be read.
+
 After a successful fix command, the orchestrator runs `bash scripts/agent-check` by default. A validation failure stops the loop immediately. Only after validation succeeds does it invoke the reviewer again.
 
 ## Claude Code fix adapter
@@ -159,15 +161,16 @@ The adapter:
 
 - requires only the blocker payload, originating review result, and pass number provided by `review-loop`;
 - passes those JSON files by path and explicitly treats their contents as untrusted data rather than interpolating finding text into the trusted prompt;
-- runs Claude Code non-interactively with `--permission-mode acceptEdits`;
-- pre-authorizes only repository read/search/edit tools (`Read`, `Edit`, `Write`, `Glob`, `Grep`);
-- explicitly denies `Bash`, `WebFetch`, and `WebSearch`, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
+- runs Claude Code non-interactively in `--safe-mode`, which disables user/project hooks, plugins, skills, MCP servers, custom agents, and other discovered customizations while preserving normal authentication;
+- uses `--strict-mcp-config`, disables slash commands and session persistence, and exposes exactly the built-in `Read`, `Edit`, `Write`, `Glob`, and `Grep` tools through `--tools`;
+- uses `--permission-mode dontAsk` with project-relative `Edit(/**)` approval, so edits within the current worktree succeed while parent, sibling-worktree, and other external edits fail closed without an interactive prompt;
+- explicitly denies `Bash`, `WebFetch`, `WebSearch`, and edits to `.git` as defense in depth, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
 - instructs Claude to make only finding-traceable edits and to avoid guessing through product/design/invariant ambiguity;
 - leaves all validation to the orchestrator's mandatory `bash scripts/agent-check` step before re-review.
 
-Claude Code permission settings may also be affected by administrator-managed or repository/user settings. The adapter does not use `--dangerously-skip-permissions`; its explicit deny list is intended as a hard guard for shell/network tools while the allowed edit tools support the narrow fix task. Authentication and the installed Claude Code binary remain machine prerequisites.
+Safe mode deliberately disables automatic instruction discovery, so the trusted prompt explicitly tells Claude to read the repository's `AGENTS.md` and only the relevant subsystem documentation. Administrator-managed policy still applies and may further restrict the invocation, but repository/user settings and extensions are not loaded. The adapter does not use `--dangerously-skip-permissions`. Authentication and the installed Claude Code binary remain machine prerequisites.
 
-The adapter does not commit, push, comment on GitHub, resolve threads, or decide whether a fix is accepted. A successful CLI exit only means the fix pass completed; `review-loop` still validates the resulting worktree and asks the reviewer to determine whether findings are actually resolved.
+The adapter does not commit, push, comment on GitHub, resolve threads, or decide whether a fix is accepted. A successful CLI exit only means the fix pass completed; `review-loop` verifies that the blocker payload and originating review result were not modified, validates the resulting worktree, and asks the reviewer to determine whether findings are actually resolved.
 
 ## Exit codes
 
