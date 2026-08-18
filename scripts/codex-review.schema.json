@@ -47,6 +47,7 @@
           "blocking",
           "auto_fixable",
           "title",
+          "location",
           "evidence",
           "impact",
           "resolution"
@@ -59,6 +60,7 @@
     "head",
     "worktree_fingerprint",
     "findings",
-    "residual_risk"
+    "residual_risk",
+    "human_decision_context"
   ]
 }
