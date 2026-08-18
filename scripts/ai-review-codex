@@ -42,6 +42,8 @@ The orchestrator has bound this review to:
 - worktree_fingerprint: ${AI_REVIEW_WORKTREE_FINGERPRINT}
 
 Your JSON result MUST copy those two values exactly into the `head` and `worktree_fingerprint` fields.
+Set `human_decision_context` to an empty string unless the decision is HUMAN_DECISION_REQUIRED.
+Set a finding's `location` to an empty string only when there is genuinely no useful file/symbol location.
 
 Use the review contract's severity/blocking rules. Report only actionable findings supported by concrete repository evidence. Mark `auto_fixable` true only when the repository already determines the intended fix and it is local, reversible, and requires no product/design/invariant choice.
 
@@ -68,10 +70,11 @@ fi
 
 cd "$repo_root"
 
-# `codex exec` is intentionally read-only here. The adapter performs review only;
-# the review-loop owns policy and a separate fix adapter owns mutations.
+# Review must be reproducible and non-mutating. Ignore user config so local model,
+# MCP, or sandbox preferences cannot silently change the adapter contract.
 codex exec \
     --ephemeral \
+    --ignore-user-config \
     --sandbox read-only \
     --output-schema "$schema" \
     -o "$AI_REVIEW_RESULT" \
