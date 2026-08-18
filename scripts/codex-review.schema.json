@@ -13,6 +13,22 @@
       "enum": ["LOW", "MEDIUM", "HIGH"]
     },
     "human_decision_context": { "type": "string" },
+    "previous_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["FIXED", "STILL_VALID", "OUTDATED"]
+          },
+          "reason": { "type": "string" }
+        },
+        "required": ["id", "status", "reason"]
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
@@ -50,6 +66,7 @@
     "decision",
     "head",
     "worktree_fingerprint",
+    "previous_findings",
     "findings",
     "residual_risk",
     "human_decision_context"
