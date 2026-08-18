@@ -1058,42 +1058,12 @@ func Module() fx.Option {
 				logger logging.Logger,
 				membership *raftmembership.Membership,
 			) {
-				var waitRaft func()
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting Raft gRPC server")
-
-						listening := make(chan struct{})
-
-						waitRaft = otlplogs.GoWait(func() {
-							err := raftServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Raft gRPC server started successfully")
-
-						membership.Start()
-
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping Raft gRPC server")
-
-						err := raftServer.Stop()
-						waitRaft()
-
-						return err
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:      raftServer,
+					Name:        "Raft gRPC server",
+					Logger:      logger,
+					AfterListen: membership.Start,
+				}))
 			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
 			// ConfChange events are no longer dispatched here — Membership
@@ -1231,40 +1201,11 @@ func Module() fx.Option {
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
 			) {
-				var waitService func()
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting Service gRPC server")
-
-						listening := make(chan struct{})
-
-						waitService = otlplogs.GoWait(func() {
-							err := serviceServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Service gRPC server started successfully")
-
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping Service gRPC server")
-
-						err := serviceServer.Stop()
-						waitService()
-
-						return err
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server: serviceServer,
+					Name:   "Service gRPC server",
+					Logger: logger,
+				}))
 			},
 			// Join mode preflight is registered EARLIER (before the Raft
 			// transport/server/node startup hooks) so it runs before any inbound

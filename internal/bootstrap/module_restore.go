@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -85,35 +83,11 @@ func RestoreModule() fx.Option {
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
 			) {
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting restore-mode gRPC server")
-
-						listening := make(chan struct{})
-
-						otlplogs.Go(func() {
-							err := serviceServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Restore-mode gRPC server started successfully")
-
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						logger.Infof("Stopping restore-mode gRPC server")
-
-						return serviceServer.Stop()
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server: serviceServer,
+					Name:   "restore-mode gRPC server",
+					Logger: logger,
+				}))
 			},
 			// Start minimal HTTP server with /health only, bound to the same
 			// host as the gRPC restore server (see comment on RestoreModule).

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -56,17 +58,11 @@ func startTestRaftServer(t *testing.T, certs *testserver.TestCerts, allowTLS, ac
 
 	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
 
-	listening := make(chan struct{})
+	require.NoError(t, srv.Listen())
 
 	go func() {
-		_ = srv.Start(listening)
+		_ = srv.Serve()
 	}()
-
-	select {
-	case <-listening:
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not start listening")
-	}
 
 	t.Cleanup(func() { _ = srv.Stop() })
 
@@ -200,4 +196,29 @@ func requireHealthFails(t *testing.T, conn *grpc.ClientConn) {
 
 	_, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 	require.Error(t, err)
+}
+
+func TestListenReturnsErrorWhenPortIsBusy(t *testing.T) {
+	t.Parallel()
+
+	// Hold the port the server will try to bind.
+	blocker, err := net.Listen("tcp4", "0.0.0.0:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = blocker.Close() })
+
+	port := blocker.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(port, noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	// EN-1784: this used to be reachable only from inside the serving
+	// goroutine, where the error became panic(err) and killed the process.
+	// Listen must hand the error back to the caller instead.
+	require.NotPanics(t, func() {
+		err = srv.Listen()
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, syscall.EADDRINUSE)
+	require.Contains(t, err.Error(), strconv.Itoa(port),
+		"the error must name the port that failed to bind")
 }

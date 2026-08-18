@@ -140,7 +140,14 @@ func (s *baseServer) registerReflection() {
 	}
 }
 
-func (s *baseServer) Start(listening chan struct{}) error {
+// Listen binds the server's port.
+//
+// It returns the bind error synchronously so callers can fail startup with a
+// proper error. This used to happen inside the serving goroutine, where the
+// only way to report it was panic(err) — which killed the process and, in the
+// e2e suites, destroyed the report of the spec that was actually failing
+// (EN-1784).
+func (s *baseServer) Listen() error {
 	host := s.host
 	if host == "" {
 		host = "0.0.0.0"
@@ -148,7 +155,7 @@ func (s *baseServer) Start(listening chan struct{}) error {
 
 	lis, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", host, s.port))
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		return fmt.Errorf("failed to listen on %s:%d: %w", host, s.port, err)
 	}
 
 	s.mu.Lock()
@@ -163,7 +170,21 @@ func (s *baseServer) Start(listening chan struct{}) error {
 		}).
 		Infof("Starting %s server", s.name)
 
-	close(listening)
+	return nil
+}
+
+// Serve serves the listener bound by Listen and blocks until the server stops.
+//
+// serveSingle and serveDual already tolerate ErrServerStopped and
+// net.ErrClosed, so a normal shutdown returns nil.
+func (s *baseServer) Serve() error {
+	s.mu.Lock()
+	lis := s.listener
+	s.mu.Unlock()
+
+	if lis == nil {
+		return fmt.Errorf("%s server: Serve called before a successful Listen", s.name)
+	}
 
 	switch {
 	case s.tlsServer != nil && s.plaintextServer != nil:
