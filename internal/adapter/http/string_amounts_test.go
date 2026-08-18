@@ -8,6 +8,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestHTTPHeaderBigintAsStringSpelling pins the header's wire spelling. Every
+// subtest of TestWantsBigintAsString sets the header through the constant, so it
+// would keep passing if the constant's value changed and silently break every
+// client that sends the documented name.
+func TestHTTPHeaderBigintAsStringSpelling(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "Formance-Bigint-As-String", httpHeaderBigintAsString)
+}
+
 func TestWantsBigintAsString(t *testing.T) {
 	t.Parallel()
 

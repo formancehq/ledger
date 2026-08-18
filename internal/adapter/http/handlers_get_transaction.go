@@ -16,9 +16,13 @@ import (
 // clients see a stable field rather than a sometimes-absent key. The receipt is
 // reused verbatim from the backend — never recomputed here — so checkpoint/live
 // consistency stays owned by the controller read path.
+//
+// Transaction is typed `any` so the same struct serves both amount wire modes
+// (EN-1779). It carries no `omitempty`, so a nil value renders as null in both,
+// matching the previous *commonpb.Transaction.
 type getTransactionData struct {
-	Transaction *commonpb.Transaction `json:"transaction"`
-	Receipt     string                `json:"receipt"`
+	Transaction any    `json:"transaction"`
+	Receipt     string `json:"receipt"`
 }
 
 // handleGetTransaction handles GET /{ledgerName}/transactions/{transactionId} to retrieve a transaction.
@@ -61,8 +65,20 @@ func (s *Server) handleGetTransaction(w http.ResponseWriter, r *http.Request) {
 		receiptToken = *receipt
 	}
 
-	writeOK(w, getTransactionData{
-		Transaction: transaction,
+	// The wrapper has a value receiver, so the value goes into the interface: a
+	// pointer to it is not addressable behind an `any` field, the declared
+	// MarshalJSON is bypassed, and sonic reflects the protobuf struct into
+	// PascalCase field names with neither a compile nor a runtime error.
+	var transactionValue any = transaction
+	if wantsBigintAsString(r) {
+		transactionValue = commonpb.StringAmountTransaction{Transaction: transaction}
+	}
+
+	// writeCheckedStatus, not writeOKChecked: this route has always written
+	// through the ConfigStd encoder, and writeOKChecked would silently drop the
+	// HTML escaping and the trailing newline for every client (EN-1779).
+	writeCheckedStatus(w, r, http.StatusOK, getTransactionData{
+		Transaction: transactionValue,
 		Receipt:     receiptToken,
 	})
 }

@@ -96,6 +96,31 @@ func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 	_, _ = w.Write(body)
 }
 
+// writeCheckedStatus writes a JSON response like writeJSONResponse, but marshals
+// the body to a buffer BEFORE writing any header, so a marshal failure is routed
+// through handleError (a clean 500 with no partial body) instead of being
+// appended to an already-committed status.
+//
+// It exists alongside writeOKChecked because the two use DIFFERENT encoders:
+// writeOKChecked marshals with json.Marshal (sonic ConfigDefault) while this uses
+// json.MarshalWrite (sonic ConfigStd, which HTML-escapes and appends a trailing
+// newline). A route must keep the encoder it already had, so the choice between
+// them is determined by the writer the route used before, never by preference
+// (EN-1779).
+func writeCheckedStatus(w http.ResponseWriter, r *http.Request, statusCode int, data any) {
+	var buf bytes.Buffer
+
+	if err := json.MarshalWrite(&buf, BaseResponse[any]{Data: data}); err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(buf.Bytes())
+}
+
 // writeProtoOK writes a 200 OK response whose `data` is a single protobuf
 // message serialized via protojson, which renders protobuf-JSON camelCase from
 // the descriptor (e.g. lastIndexedSequence) rather than the snake_case Go

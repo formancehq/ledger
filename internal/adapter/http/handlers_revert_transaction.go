@@ -105,5 +105,16 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		panic(emptyLogPayload("revert-transaction", logEntry, details))
 	}
 
+	// EN-1779: the opt-in branch changes the amount format, not the transport, so
+	// it keeps this route's ConfigStd encoder. The wrapper has a value receiver —
+	// store the value, never a pointer to it, or sonic reflects the protobuf
+	// struct instead of calling the declared MarshalJSON.
+	if wantsBigintAsString(r) {
+		writeCheckedStatus(w, r, http.StatusCreated,
+			commonpb.StringAmountRevertedTransaction{RevertedTransaction: rt.RevertedTransaction})
+
+		return
+	}
+
 	writeCreated(w, rt.RevertedTransaction)
 }

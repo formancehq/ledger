@@ -128,5 +128,14 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		writeProfileHeader(w, profile)
 	}
 
+	// EN-1779: the opt-in header changes the amount format only, so both branches
+	// keep writeOKChecked — moving one to a ConfigStd writer would also change the
+	// HTML escaping and add a trailing newline.
+	if wantsBigintAsString(r) {
+		writeOKChecked(w, r, commonpb.StringAmountTransactions(transactions))
+
+		return
+	}
+
 	writeOKChecked(w, r, transactions)
 }

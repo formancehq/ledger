@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -91,4 +93,46 @@ func decodeResponse[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 	}
 
 	return out
+}
+
+// aboveJSNumberLimit is 2^53 + 1, the smallest integer a JavaScript double
+// cannot represent exactly. The EN-1779 route tests pin it so that a body routed
+// through a float would lose its last digit and fail.
+const aboveJSNumberLimit = "9007199254740993"
+
+// bigAmountTransaction is the shared EN-1779 route fixture: one posting whose
+// amount is aboveJSNumberLimit, between accounts containing `<` and `&`.
+//
+// Those two characters are load-bearing, not decoration. This package has two
+// production JSON writers running on different sonic configurations — ConfigStd
+// (HTML-escapes, appends a trailing newline) and ConfigDefault (neither) — and
+// `<`/`&` are the only thing that makes a swap between them visible in the
+// response body. A fixture without them passes even when a route silently
+// changes encoder, which is exactly the regression the opt-in header must not
+// introduce.
+func bigAmountTransaction(t *testing.T, id uint64) *commonpb.Transaction {
+	t.Helper()
+
+	amount, ok := new(big.Int).SetString(aboveJSNumberLimit, 10)
+	require.True(t, ok, "fixture amount must parse")
+
+	return &commonpb.Transaction{
+		Id: id,
+		Postings: []*commonpb.Posting{
+			commonpb.NewPosting("world<&>", "alice&<bob", "USD/2", amount),
+		},
+	}
+}
+
+// requireOnlyAmountQuotingDiffers asserts that two pinned response bodies are
+// identical once the opt-in body's quoted amount is unquoted. Asserting it
+// mechanically is what lets the pinned literals catch an encoder swap (EN-1779):
+// a change in HTML escaping, framing or field order would otherwise land in both
+// literals at once and pass review unnoticed.
+func requireOnlyAmountQuotingDiffers(t *testing.T, defaultBody, optInBody string) {
+	t.Helper()
+
+	require.Equal(t, defaultBody,
+		strings.Replace(optInBody, `"`+aboveJSNumberLimit+`"`, aboveJSNumberLimit, 1),
+		"the opt-in wire must differ from the default wire only in the amount's quoting")
 }

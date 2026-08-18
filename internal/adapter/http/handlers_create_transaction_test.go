@@ -328,3 +328,81 @@ func TestHandleCreateTransaction_UnknownFieldsAreLenient(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 }
+
+// TestHandleCreateTransaction_StringAmountWire pins both amount wires of the
+// create route (EN-1779). Both pinned literals carry this route's ConfigStd
+// framing — `<`/`&` HTML-escaped and a trailing newline — so giving the opt-in
+// branch a ConfigDefault writer would fail here instead of quietly making the
+// header change the escaping as well as the amount.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleCreateTransaction_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defaultBody = `{"data":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}}` + "\n"
+		optInBody   = `{"data":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}}` + "\n"
+	)
+
+	requireOnlyAmountQuotingDiffers(t, defaultBody, optInBody)
+
+	type testCase struct {
+		name        string
+		headerValue string // empty means the header is not sent at all
+		wantBody    string
+		wantAmount  string // the amount rendering that must appear
+		notAmount   string // the other mode's rendering, which must not
+	}
+
+	testCases := []testCase{
+		{
+			name:       "default wire keeps the bare number",
+			wantBody:   defaultBody,
+			wantAmount: `"amount":` + aboveJSNumberLimit,
+			notAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+		},
+		{
+			name:        "opt-in wire quotes the decimal",
+			headerValue: "true",
+			wantBody:    optInBody,
+			wantAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+			notAmount:   `"amount":` + aboveJSNumberLimit,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newTestServer(t, backendReturningLogs(t, []*commonpb.Log{
+				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &commonpb.CreatedTransaction{
+								Transaction: bigAmountTransaction(t, 1),
+							},
+						},
+					}}},
+				}}},
+			}))
+
+			w := httptest.NewRecorder()
+			body := strings.NewReader(`{"script":{"plain":"send [USD 1] (source = @world destination = @a)"}}`)
+			r := newRequest(t, http.MethodPost, "/ledger1/transactions", body, map[string]string{
+				"ledgerName": "ledger1",
+			})
+
+			if tc.headerValue != "" {
+				r.Header.Set("Formance-Bigint-As-String", tc.headerValue)
+			}
+
+			srv.handleCreateTransaction(w, r)
+
+			require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+			require.Equal(t, tc.wantBody, w.Body.String())
+			require.Contains(t, w.Body.String(), tc.wantAmount)
+			require.NotContains(t, w.Body.String(), tc.notAmount)
+		})
+	}
+}

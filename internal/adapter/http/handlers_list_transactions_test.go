@@ -294,3 +294,76 @@ func TestHandleListTransactions_BackendError(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "INTERNAL_ERROR")
 }
+
+// TestHandleListTransactions_StringAmountWire pins both amount wires of the list
+// route (EN-1779). This route writes through writeOKChecked, whose sonic
+// ConfigDefault leaves `<` and `&` unescaped and appends no trailing newline —
+// the opposite of the ConfigStd writers used elsewhere in this package. Both
+// pinned literals therefore carry the raw characters, and any move to the other
+// writer fails here rather than silently changing the default wire.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleListTransactions_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defaultBody = `{"data":[{"postings":[{"source":"world<&>","destination":"alice&<bob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}]}`
+		optInBody   = `{"data":[{"postings":[{"source":"world<&>","destination":"alice&<bob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}]}`
+	)
+
+	requireOnlyAmountQuotingDiffers(t, defaultBody, optInBody)
+
+	type testCase struct {
+		name        string
+		headerValue string // empty means the header is not sent at all
+		wantBody    string
+		wantAmount  string // the amount rendering that must appear
+		notAmount   string // the other mode's rendering, which must not
+	}
+
+	testCases := []testCase{
+		{
+			name:       "default wire keeps the bare number",
+			wantBody:   defaultBody,
+			wantAmount: `"amount":` + aboveJSNumberLimit,
+			notAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+		},
+		{
+			name:        "opt-in wire quotes the decimal",
+			headerValue: "true",
+			wantBody:    optInBody,
+			wantAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+			notAmount:   `"amount":` + aboveJSNumberLimit,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().ListTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*commonpb.Transaction], error) {
+					return cursor.NewSliceCursor([]*commonpb.Transaction{bigAmountTransaction(t, 1)}), nil
+				}).AnyTimes()
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodGet, "/ledger1/transactions", nil, map[string]string{
+				"ledgerName": "ledger1",
+			})
+
+			if tc.headerValue != "" {
+				r.Header.Set("Formance-Bigint-As-String", tc.headerValue)
+			}
+
+			srv.handleListTransactions(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, tc.wantBody, w.Body.String())
+			require.Contains(t, w.Body.String(), tc.wantAmount)
+			require.NotContains(t, w.Body.String(), tc.notAmount)
+		})
+	}
+}
