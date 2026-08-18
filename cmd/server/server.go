@@ -122,7 +122,7 @@ func NewRunCommand() *cobra.Command {
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-value-separation-min-size", 256, "Minimum value size for separation (default: 256)")
 	runCmd.Flags().Int("pebble-value-separation-max-depth", 4, "Max blob reference depth per SSTable (default: 4)")
 	runCmd.Flags().Duration("pebble-value-separation-rewrite-age", time.Hour, "Minimum blob file age before rewrite (default: 1h)")
-	runCmd.Flags().Float64("pebble-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
+	runCmd.Flags().Float64("pebble-value-separation-target-garbage-ratio", 0.20, "Target blob garbage ratio before rewrite (default: 0.20)")
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
@@ -1000,7 +1000,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 	cfg.ValueSeparation.MaxBlobReferenceDepth = getInt("pebble-value-separation-max-depth", cfg.ValueSeparation.MaxBlobReferenceDepth)
 	cfg.ValueSeparation.RewriteMinimumAge = getDuration("pebble-value-separation-rewrite-age", cfg.ValueSeparation.RewriteMinimumAge)
 
-	if ratio, _ := cmd.Flags().GetFloat64("pebble-value-separation-garbage-ratio"); ratio != 0 {
+	if ratio, _ := cmd.Flags().GetFloat64("pebble-value-separation-target-garbage-ratio"); ratio != 0 {
 		cfg.ValueSeparation.TargetGarbageRatio = ratio
 	}
 

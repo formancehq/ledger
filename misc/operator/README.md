@@ -53,6 +53,9 @@ spec:
     pebble:
       memTableSize: 268435456
       cacheSize: 1073741824
+      valueSeparation:
+        enabled: true
+        targetGarbageRatio: "0.20"
   # Cache and bloom parameters are part of the Raft-replicated ClusterConfig.
   # Editing them triggers a rolling restart of the StatefulSet; convergence
   # is deterministic via applyClusterConfig (cache reset + bloom rebuild) and

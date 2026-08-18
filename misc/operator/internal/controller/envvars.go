@@ -221,7 +221,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 			envs = appendIfQuantity(envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", spec.Pebble.ValueSeparation.MinSize)
 			envs = appendIfInt32(envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", spec.Pebble.ValueSeparation.MaxDepth)
 			envs = appendIfStr(envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", spec.Pebble.ValueSeparation.RewriteAge)
-			envs = appendIfStr(envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", spec.Pebble.ValueSeparation.GarbageRatio)
+			envs = appendIfStr(envs, "PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO", spec.Pebble.ValueSeparation.TargetGarbageRatio)
 		}
 	}
 

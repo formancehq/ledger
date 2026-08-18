@@ -518,10 +518,11 @@ type PebbleValueSeparationConfig struct {
 	// +optional
 	RewriteAge string `json:"rewriteAge,omitempty"`
 
-	// GarbageRatio is the blob garbage ratio before rewrite (0.0-1.0).
+	// TargetGarbageRatio is the fraction of unreferenced blob data that triggers
+	// a rewrite (0.0-1.0).
 	// Default: 0.20.
 	// +optional
-	GarbageRatio string `json:"garbageRatio,omitempty"`
+	TargetGarbageRatio string `json:"targetGarbageRatio,omitempty"`
 }
 
 // RaftConfig holds Raft consensus configuration.

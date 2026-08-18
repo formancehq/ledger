@@ -4084,7 +4084,7 @@ Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style qu
 | `--pebble-value-separation-min-size` | ByteSize | `256` | Minimum value size (bytes) for separation into blob files |
 | `--pebble-value-separation-max-depth` | int | `4` | Max blob reference depth per SSTable |
 | `--pebble-value-separation-rewrite-age` | duration | `1h` | Minimum blob file age before rewrite |
-| `--pebble-value-separation-garbage-ratio` | float64 | `0.20` | Blob garbage ratio before rewrite (0.20 = 20%) |
+| `--pebble-value-separation-target-garbage-ratio` | float64 | `0.20` | Fraction of unreferenced blob data that triggers a rewrite (0.20 = 20%) |
 
 Value separation moves large values into external blob files instead of storing them inline in SSTables. This reduces compaction I/O for write-heavy workloads at the cost of slightly higher read amplification.
 
@@ -4094,7 +4094,7 @@ ledger run --pebble-value-separation [other flags...]
 
 # Tune value separation for larger values
 ledger run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
-  --pebble-value-separation-garbage-ratio 0.10
+  --pebble-value-separation-target-garbage-ratio 0.10
 
 # Use zstd compression on all levels
 ledger run --pebble-compression zstd [other flags...]

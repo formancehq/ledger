@@ -60,6 +60,14 @@ func TestLookupNestedPath(t *testing.T) {
 	if f.Type != "bool" {
 		t.Errorf("expected type bool, got %s", f.Type)
 	}
+
+	f, ok = Lookup(SpecFields(), "pebble.valueSeparation.targetGarbageRatio")
+	if !ok {
+		t.Fatal("pebble.valueSeparation.targetGarbageRatio not found")
+	}
+	if f.Type != "string" {
+		t.Errorf("expected type string, got %s", f.Type)
+	}
 }
 
 func TestAgentSpecFields(t *testing.T) {

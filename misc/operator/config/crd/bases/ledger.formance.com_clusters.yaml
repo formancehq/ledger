@@ -2363,11 +2363,6 @@ spec:
                         description: Enabled enables value separation (large values
                           stored in blob files).
                         type: boolean
-                      garbageRatio:
-                        description: |-
-                          GarbageRatio is the blob garbage ratio before rewrite (0.0-1.0).
-                          Default: 0.20.
-                        type: string
                       maxDepth:
                         description: |-
                           MaxDepth is the max blob reference depth per SSTable.
@@ -2387,6 +2382,12 @@ spec:
                         description: |-
                           RewriteAge is the minimum blob file age before rewrite.
                           Default: 1h.
+                        type: string
+                      targetGarbageRatio:
+                        description: |-
+                          TargetGarbageRatio is the fraction of unreferenced blob data that triggers
+                          a rewrite (0.0-1.0).
+                          Default: 0.20.
                         type: string
                     type: object
                   walBytesPerSync:
@@ -3052,11 +3053,6 @@ spec:
                             description: Enabled enables value separation (large values
                               stored in blob files).
                             type: boolean
-                          garbageRatio:
-                            description: |-
-                              GarbageRatio is the blob garbage ratio before rewrite (0.0-1.0).
-                              Default: 0.20.
-                            type: string
                           maxDepth:
                             description: |-
                               MaxDepth is the max blob reference depth per SSTable.
@@ -3076,6 +3072,12 @@ spec:
                             description: |-
                               RewriteAge is the minimum blob file age before rewrite.
                               Default: 1h.
+                            type: string
+                          targetGarbageRatio:
+                            description: |-
+                              TargetGarbageRatio is the fraction of unreferenced blob data that triggers
+                              a rewrite (0.0-1.0).
+                              Default: 0.20.
                             type: string
                         type: object
                       walBytesPerSync:

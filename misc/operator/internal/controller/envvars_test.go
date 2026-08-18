@@ -289,11 +289,11 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 		maxDepth := int32(8)
 		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 			ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
-				Enabled:      &bTrue,
-				MinSize:      &minSize,
-				MaxDepth:     &maxDepth,
-				RewriteAge:   "2h",
-				GarbageRatio: "0.30",
+				Enabled:            &bTrue,
+				MinSize:            &minSize,
+				MaxDepth:           &maxDepth,
+				RewriteAge:         "2h",
+				TargetGarbageRatio: "0.30",
 			},
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
@@ -301,7 +301,7 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", "512")
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", "8")
 		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", "2h")
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", "0.30")
+		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO", "0.30")
 	})
 
 	t.Run("nil value separation omitted", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE")
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH")
 		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO")
+		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO")
 	})
 }
 
@@ -959,11 +959,11 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 		Compression: "zstd,zstd,zstd,zstd,zstd,zstd,zstd",
 		ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
-			Enabled:      &bTrue,
-			MinSize:      &vsMinSize,
-			MaxDepth:     &vsMaxDepth,
-			RewriteAge:   "30m",
-			GarbageRatio: "0.15",
+			Enabled:            &bTrue,
+			MinSize:            &vsMinSize,
+			MaxDepth:           &vsMaxDepth,
+			RewriteAge:         "30m",
+			TargetGarbageRatio: "0.15",
 		},
 	}
 	ls.Spec.Raft = &ledgerv1alpha1.RaftConfig{
@@ -1020,7 +1020,7 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", "1Ki")
 	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", "6")
 	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", "30m")
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", "0.15")
+	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO", "0.15")
 
 	// Raft additions
 	assertEnv(t, envs, "RAFT_PROCESSING_TICK_INTERVAL", "15ms")

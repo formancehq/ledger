@@ -256,13 +256,23 @@ Pebble can be configured using command-line flags:
   --pebble-wal-bytes-per-sync=1Mi \
   --pebble-max-concurrent-compactions=2 \
   --pebble-wal-min-sync-interval=0 \
-  --pebble-disable-wal=false
+  --pebble-disable-wal=false \
+  --pebble-value-separation=true \
+  --pebble-value-separation-target-garbage-ratio=0.20
 ```
+
+When value separation is enabled, the target garbage ratio controls blob space
+reclamation. Pebble schedules blob rewrites when the aggregate fraction of
+unreferenced blob values exceeds this threshold. Lower values reclaim space
+sooner at the cost of additional compaction I/O.
 
 Or via environment variables:
 
 ```bash
-PEBBLE_MEMTABLE_SIZE=268435456 ./ledger serve
+PEBBLE_MEMTABLE_SIZE=268435456 \
+PEBBLE_VALUE_SEPARATION=true \
+PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO=0.20 \
+./ledger serve
 ```
 
 ---

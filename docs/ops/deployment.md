@@ -166,6 +166,24 @@ spec:
       whenDeleted: Retain
 ```
 
+#### Pebble value separation
+
+Value separation moves large values out of SSTables and into blob files. The
+target garbage ratio is the aggregate fraction of unreferenced blob values
+that triggers Pebble rewrites:
+
+```yaml
+spec:
+  pebble:
+    valueSeparation:
+      enabled: true
+      targetGarbageRatio: "0.20"
+```
+
+Lower values reclaim blob space sooner at the cost of additional compaction
+I/O. `targetGarbageRatio` maps to the server environment variable
+`PEBBLE_VALUE_SEPARATION_TARGET_GARBAGE_RATIO`.
+
 #### Service Configuration
 
 ```yaml

@@ -137,6 +137,20 @@ func TestLoadConfig_DefaultsApplyWhenFlagUnset(t *testing.T) {
 	require.InDelta(t, 0.75, cfg.HealthConfig.DataResumeThreshold, 1e-9)
 }
 
+func TestLoadConfig_ValueSeparationTargetGarbageRatio(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.Flags().Set("node-id", "1"))
+	require.NoError(t, cmd.Flags().Set("pebble-value-separation", "true"))
+	require.NoError(t, cmd.Flags().Set("pebble-value-separation-target-garbage-ratio", "0.10"))
+
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, cfg.PebbleConfig.ValueSeparation.Enabled)
+	require.InDelta(t, 0.10, cfg.PebbleConfig.ValueSeparation.TargetGarbageRatio, 1e-9)
+}
+
 // TestLoadConfig_ResumeThresholdDerivedFromBlock pins the upgrade-safety fix:
 // when an operator lowered a block threshold below the old fixed 0.75 resume
 // default and did not set the new resume flag, a static 0.75 default would make
