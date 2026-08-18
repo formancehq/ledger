@@ -3,6 +3,7 @@ package testserver
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -17,6 +18,11 @@ const (
 	// range would spin past 65535 forever, where every net.Listen fails and
 	// every failure is skipped.
 	portAllocatorCeiling = 30000
+
+	// portAllocatorBuckets and portAllocatorStride carve the band into
+	// per-process sub-bands. See processPortBase.
+	portAllocatorBuckets = 64
+	portAllocatorStride  = 200
 )
 
 // portAllocator hands out TCP ports that no other test node in this process
@@ -25,19 +31,17 @@ const (
 // State is held on an explicit struct rather than in package globals so the
 // tests can build their own allocator and stay hermetic.
 type portAllocator struct {
-	mu       sync.Mutex
-	base     int
-	next     int
-	ceiling  int
-	reserved map[int]struct{}
+	mu      sync.Mutex
+	base    int
+	next    int
+	ceiling int
 }
 
 func newPortAllocator(base, ceiling int) *portAllocator {
 	return &portAllocator{
-		base:     base,
-		next:     base,
-		ceiling:  ceiling,
-		reserved: make(map[int]struct{}),
+		base:    base,
+		next:    base,
+		ceiling: ceiling,
 	}
 }
 
@@ -46,9 +50,9 @@ func newPortAllocator(base, ceiling int) *portAllocator {
 //
 // The bind probe means a stale server left by a killed previous run, or an
 // unrelated service on the band, is skipped instead of being handed to a node
-// that would then fail to bind. The reserved set means no two nodes in one
-// process are ever given the same number — the property that makes EN-1784
-// impossible rather than unlikely.
+// that would then fail to bind. Monotonic next under the mutex means a number
+// is never handed out twice within a process; processPortBase keeps different
+// processes apart.
 func (a *portAllocator) allocate() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -57,32 +61,45 @@ func (a *portAllocator) allocate() int {
 		port := a.next
 		a.next++
 
-		if _, taken := a.reserved[port]; taken {
-			continue
-		}
-
 		listener, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", port))
 		if err != nil {
 			continue
 		}
 
-		_ = listener.Close()
-
-		a.reserved[port] = struct{}{}
+		if err := listener.Close(); err != nil {
+			// Still bound, so handing this port out would defeat the probe.
+			continue
+		}
 
 		return port
 	}
 
 	panic(fmt.Sprintf(
-		"testserver: no free TCP port in [%d,%d]: every candidate was busy or already reserved",
+		"testserver: no free TCP port in [%d,%d]: every candidate was busy",
 		a.base, a.ceiling,
 	))
 }
 
-var defaultPortAllocator = newPortAllocator(portAllocatorBase, portAllocatorCeiling)
+// processPortBase returns this process's starting point inside the band.
+//
+// Every process that links this package walks the same deterministic sequence,
+// and allocate releases each probed port before the node binds it — so two
+// processes starting together would be handed the same number. That is not
+// hypothetical: `just test-scenarios` (Justfile:100) runs the scenario packages
+// without `-p 1`, so up to GOMAXPROCS test binaries start within milliseconds
+// of each other. Offsetting by pid gives each process its own sub-band, which
+// restores the cross-process disjointness that hand-picked ports used to
+// provide.
+//
+// A process that needs more than portAllocatorStride ports walks on into the
+// next bucket rather than failing; the probe still keeps it correct.
+func processPortBase() int {
+	return portAllocatorBase + (os.Getpid()%portAllocatorBuckets)*portAllocatorStride
+}
 
-// AllocatePort reserves one TCP port for a fixture that needs a port outside a
-// node's triple — currently only the Raft test gateway.
+var defaultPortAllocator = newPortAllocator(processPortBase(), portAllocatorCeiling)
+
+// AllocatePort reserves one TCP port for a test fixture.
 func AllocatePort() int {
 	return defaultPortAllocator.allocate()
 }
@@ -109,9 +126,9 @@ func (p NodePorts) GRPC() int { return p.grpc }
 // Raft returns the node's inter-node Raft transport port.
 func (p NodePorts) Raft() int { return p.raft }
 
-// Allocated reports whether these ports came from AllocateNodePorts. A
-// zero-value NodePorts is not allocated, and DefaultTestInstruments rejects it
-// rather than letting a node bind port 0.
+// Allocated reports whether these ports came from AllocateNodePorts. The zero
+// value is not allocated, which lets callers reject a hand-built NodePorts
+// instead of letting a node bind port 0.
 func (p NodePorts) Allocated() bool { return p.allocated }
 
 // AllocateNodePorts reserves the three ports a test node needs.
@@ -120,6 +137,12 @@ func (p NodePorts) Allocated() bool { return p.allocated }
 // derived from the gRPC port: the old raftPort = grpcPort - 1000 rule projected
 // a number chosen in the "gRPC" range into the "HTTP" range, which is how gRPC
 // 16200 became Raft 15200 and collided with a live HTTP listener (EN-1784).
+//
+// Ports are never released or reused. A node that is stopped and restarted must
+// be given the SAME NodePorts value rather than a fresh allocation: its peers
+// still hold its old Raft address, and a restart on a new port surfaces as a
+// Raft failure rather than a port mistake. NodePorts is a value type, so
+// carrying the value across the restart is enough.
 func AllocateNodePorts() NodePorts {
 	return NodePorts{
 		http:      AllocatePort(),
