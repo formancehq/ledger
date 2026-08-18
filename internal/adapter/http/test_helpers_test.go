@@ -124,6 +124,37 @@ func bigAmountTransaction(t *testing.T, id uint64) *commonpb.Transaction {
 	}
 }
 
+// bigAmountLog wraps bigAmountTransaction in the full nine-level global-log
+// chain (Log → LogPayload → ApplyLedgerLog → LedgerLog → LedgerLogPayload →
+// CreatedTransaction → Transaction → Posting → amount), the shape the log
+// routes and the LOGS-target prepared-query cursor all serve. Sharing one
+// fixture is what makes the two log routes' pinned bodies comparable: they
+// differ only in their encoder, never in their input.
+func bigAmountLog(t *testing.T, sequence uint64) *commonpb.Log {
+	t.Helper()
+
+	return &commonpb.Log{
+		Sequence: sequence,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_Apply{
+				Apply: &commonpb.ApplyLedgerLog{
+					LedgerName: "ledger1",
+					Log: &commonpb.LedgerLog{
+						Id: sequence,
+						Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+								CreatedTransaction: &commonpb.CreatedTransaction{
+									Transaction: bigAmountTransaction(t, sequence),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 // requireOnlyAmountQuotingDiffers asserts that two pinned response bodies are
 // identical once the opt-in body's quoted amount is unquoted. Asserting it
 // mechanically is what lets the pinned literals catch an encoder swap (EN-1779):

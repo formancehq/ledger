@@ -120,18 +120,53 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	case *servicepb.ExecutePreparedQueryResponse_Aggregate:
 		envelope.AggregateResult = toAggregateVolumesJSON(result.Aggregate)
 	case *servicepb.ExecutePreparedQueryResponse_Cursor:
-		envelope.Cursor = result.Cursor
+		// The assignment stays INSIDE this case: the aggregate branch must leave
+		// the field zero so `omitempty` drops it. Hoisting it out would turn an
+		// omitted key into `"cursor":null` on every aggregate response.
+		envelope.Cursor = preparedQueryCursorValue(result.Cursor, wantsBigintAsString(r))
 	}
 
-	writeJSONResponse(w, http.StatusOK, envelope)
+	// writeCheckedBody, not writeJSONResponse: the envelope is already the
+	// top-level shape, so it must not be wrapped in BaseResponse. It is the same
+	// ConfigStd encoder this route already used, so no response byte moves, and a
+	// marshal failure inside the cursor's hand-written MarshalJSON now becomes a
+	// clean 500 instead of an error object appended to a committed 200.
+	writeCheckedBody(w, r, http.StatusOK, envelope)
 }
 
 // executePreparedQueryResponseJSON is the clean camelCase envelope for the
 // prepared-query result oneof: exactly one of cursor / aggregateResult is set
 // (both omitempty), replacing the leaked PascalCase proto oneof shape.
+//
+// Cursor is typed `any` so the same struct serves both amount wire modes
+// (EN-1779). Because it carries `omitempty`, the emptiness test moves from the
+// encoder to preparedQueryCursorValue.
 type executePreparedQueryResponseJSON struct {
-	Cursor          *commonpb.PreparedQueryCursor `json:"cursor,omitempty"`
+	Cursor          any                           `json:"cursor,omitempty"`
 	AggregateResult *aggregateVolumesResponseJSON `json:"aggregateResult,omitempty"`
+}
+
+// preparedQueryCursorValue fills the retyped `cursor` field of the envelope.
+//
+// It returns a nil interface for a nil cursor because the field carries
+// `omitempty`: once the field is typed `any`, a typed nil pointer stored in it
+// is a non-nil interface and would render `"cursor":null` where the previously
+// concrete *commonpb.PreparedQueryCursor field was dropped. It mirrors
+// commonpb's childValue helper, which owns the same invariant one level down.
+//
+// What makes the wrapper reachable behind an `any` field is the invariant that
+// every wrapper declares a VALUE receiver — see
+// internal/proto/commonpb/string_amounts.go.
+func preparedQueryCursorValue(cursor *commonpb.PreparedQueryCursor, amountsAsString bool) any {
+	if cursor == nil {
+		return nil
+	}
+
+	if amountsAsString {
+		return commonpb.StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor}
+	}
+
+	return cursor
 }
 
 // convertJSONParameters converts raw JSON values into typed ParameterValue messages.

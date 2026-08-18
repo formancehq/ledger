@@ -358,3 +358,195 @@ func TestHandleExecutePreparedQuery_UnsupportedParameterType(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// TestHandleExecutePreparedQuery_StringAmountWire pins both amount wires of the
+// prepared-query execute route (EN-1779), one case per result the oneof can
+// carry.
+//
+// The cursor covers three targets and only two of them carry amounts, so half
+// this table asserts the response does NOT move: an ACCOUNTS page is
+// byte-identical in both modes (nothing below Account renders an amount as a bare
+// JSON number), and the aggregate branch must keep the `cursor` key omitted
+// rather than gaining `"cursor":null` — which is what retyping the field to `any`
+// would cause if the assignment were hoisted out of the cursor case, or if the
+// nil guard in preparedQueryCursorValue were dropped.
+//
+// The LOGS target is the deepest chain on the HTTP surface: cursor → log →
+// payload → apply → ledger log → payload → created transaction → transaction →
+// posting → amount.
+//
+// This route writes through writeCheckedBody (ConfigStd), so `<`/`&` come out
+// escaped and the body ends in a newline, in both modes.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleExecutePreparedQuery_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name     string
+		response *servicepb.ExecutePreparedQueryResponse
+		// amountMoves marks the targets whose rendering the header may change.
+		// The others assert the two bodies are equal instead.
+		amountMoves   bool
+		htmlSensitive bool
+		// forbidden are substrings that must appear in neither mode's body.
+		forbidden   []string
+		defaultBody string
+		optInBody   string
+	}
+
+	testCases := []testCase{
+		{
+			name: "accounts target has no amount to move",
+			response: &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+					Cursor: &commonpb.PreparedQueryCursor{
+						PageSize:    15,
+						AccountData: []*commonpb.Account{{Address: "world<&>"}},
+					},
+				},
+			},
+			htmlSensitive: true,
+			forbidden:     []string{`"transactionData"`, `"logData"`},
+			defaultBody:   `{"cursor":{"pageSize":15,"hasMore":false,"accountData":[{"address":"world\u003c\u0026\u003e","volumes":[]}]}}` + "\n",
+			optInBody:     `{"cursor":{"pageSize":15,"hasMore":false,"accountData":[{"address":"world\u003c\u0026\u003e","volumes":[]}]}}` + "\n",
+		},
+		{
+			name: "transactions target quotes the posting amount",
+			response: &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+					Cursor: &commonpb.PreparedQueryCursor{
+						PageSize:        15,
+						TransactionData: []*commonpb.Transaction{bigAmountTransaction(t, 1)},
+					},
+				},
+			},
+			amountMoves:   true,
+			htmlSensitive: true,
+			forbidden:     []string{`"logData"`, `"accountData"`},
+			defaultBody:   `{"cursor":{"pageSize":15,"hasMore":false,"transactionData":[{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}]}}` + "\n",
+			optInBody:     `{"cursor":{"pageSize":15,"hasMore":false,"transactionData":[{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}]}}` + "\n",
+		},
+		{
+			name: "logs target quotes the amount at the bottom of the log chain",
+			response: &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Cursor{
+					Cursor: &commonpb.PreparedQueryCursor{
+						PageSize: 15,
+						LogData:  []*commonpb.Log{bigAmountLog(t, 1)},
+					},
+				},
+			},
+			amountMoves:   true,
+			htmlSensitive: true,
+			forbidden:     []string{`"transactionData"`, `"accountData"`},
+			defaultBody:   `{"cursor":{"pageSize":15,"hasMore":false,"logData":[{"sequence":1,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}},"id":1}}},"responseSignature":{}}]}}` + "\n",
+			optInBody:     `{"cursor":{"pageSize":15,"hasMore":false,"logData":[{"sequence":1,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}},"id":1}}},"responseSignature":{}}]}}` + "\n",
+		},
+		{
+			name: "aggregate branch never gains a cursor key",
+			response: &servicepb.ExecutePreparedQueryResponse{
+				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+					Aggregate: &commonpb.AggregateResult{
+						Volumes: []*commonpb.AggregatedVolume{
+							{
+								Asset:  "USD",
+								Input:  commonpb.NewUint256FromUint64(100),
+								Output: commonpb.NewUint256FromUint64(30),
+							},
+						},
+					},
+				},
+			},
+			forbidden:   []string{`"cursor"`},
+			defaultBody: `{"aggregateResult":{"volumes":[{"asset":"USD","color":"","input":"100","output":"30","balance":"70"}]}}` + "\n",
+			optInBody:   `{"aggregateResult":{"volumes":[{"asset":"USD","color":"","input":"100","output":"30","balance":"70"}]}}` + "\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tc.amountMoves {
+				requireOnlyAmountQuotingDiffers(t, tc.defaultBody, tc.optInBody)
+			} else {
+				require.Equal(t, tc.defaultBody, tc.optInBody,
+					"a result that carries no amount must be byte-identical in both modes")
+			}
+
+			modes := []struct {
+				name        string
+				headerValue string // empty means the header is not sent at all
+				wantBody    string
+			}{
+				{name: "default wire", wantBody: tc.defaultBody},
+				{name: "opt-in wire", headerValue: "true", wantBody: tc.optInBody},
+			}
+
+			for _, mode := range modes {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					backend := NewMockBackend(gomock.NewController(t))
+					backend.EXPECT().ExecutePreparedQuery(gomock.Any(), gomock.Any()).DoAndReturn(
+						func(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+							return tc.response, nil
+						}).Times(1)
+					srv := newTestServer(t, backend)
+
+					w := httptest.NewRecorder()
+					r := newRequest(t, http.MethodPost, "/ledger1/prepared-queries/my-query/execute",
+						strings.NewReader(`{"pageSize":15}`), map[string]string{
+							"ledgerName": "ledger1",
+							"queryName":  "my-query",
+						})
+
+					if mode.headerValue != "" {
+						r.Header.Set("Formance-Bigint-As-String", mode.headerValue)
+					}
+
+					srv.handleExecutePreparedQuery(w, r)
+
+					require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+					require.Equal(t, mode.wantBody, w.Body.String())
+
+					for _, forbidden := range tc.forbidden {
+						require.NotContains(t, w.Body.String(), forbidden)
+					}
+
+					// The route stays on ConfigStd in both modes:
+					// writeCheckedBody is byte-identical to the
+					// writeJSONResponse it replaced.
+					require.True(t, strings.HasSuffix(w.Body.String(), "\n"),
+						"the prepared-query route writes through ConfigStd, which appends a trailing newline")
+
+					if tc.htmlSensitive {
+						require.NotContains(t, w.Body.String(), "<",
+							"the prepared-query route writes through ConfigStd, which HTML-escapes")
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestPreparedQueryCursorValue covers the guard that keeps the retyped `cursor`
+// field omitted rather than rendering `"cursor":null`. Once the field is typed
+// `any`, a typed nil pointer stored in it is a non-nil interface and `omitempty`
+// stops firing, so the emptiness test lives in this helper instead of the encoder.
+func TestPreparedQueryCursorValue(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, preparedQueryCursorValue(nil, false),
+		"a nil cursor must produce a nil interface so omitempty still drops the key")
+	require.Nil(t, preparedQueryCursorValue(nil, true),
+		"the opt-in mode must not turn an absent cursor into a rendered null")
+
+	cursor := &commonpb.PreparedQueryCursor{PageSize: 15}
+	require.Equal(t, cursor, preparedQueryCursorValue(cursor, false))
+	require.Equal(t,
+		commonpb.StringAmountPreparedQueryCursor{PreparedQueryCursor: cursor},
+		preparedQueryCursorValue(cursor, true))
+}

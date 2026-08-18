@@ -104,5 +104,19 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOK(w, logs)
+	// writeCheckedStatus, not writeOK: commonpb.Log carries a hand-written
+	// MarshalJSON that marshals a metadata map and can genuinely fail, so the
+	// streaming writer would append an error object to an already-committed 200
+	// (the EN-1622 class). It is the same ConfigStd encoder writeOK used, so no
+	// response byte moves for clients that never opt in.
+	//
+	// EN-1779: the opt-in branch changes the amount format, not the transport.
+	// StringAmountLogs is always non-nil, matching drainCursor's always-non-nil
+	// slice, so an empty page renders `[]` in both modes.
+	var logsValue any = logs
+	if wantsBigintAsString(r) {
+		logsValue = commonpb.StringAmountLogs(logs)
+	}
+
+	writeCheckedStatus(w, r, http.StatusOK, logsValue)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,4 +342,110 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	srv.handleListLedgerLogs(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestHandleListLedgerLogs_StringAmountWire pins both amount wires of the
+// ledger-logs list route (EN-1779). The amount sits nine levels down, at the
+// bottom of the global-log chain, so this is the route that proves the mode
+// really travels through the whole encoder recursion.
+//
+// This route writes through the ConfigStd encoder: `<` and `&` come out
+// HTML-escaped and the body ends in a newline. The single-log route
+// (TestHandleGetLog_StringAmountWire) serves the same fixture through
+// ConfigDefault and its pinned bytes are deliberately different — the two log
+// routes are not unified, and that asymmetry is asserted on both sides.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleListLedgerLogs_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defaultBody = `{"data":[{"sequence":1,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}},"id":1}}},"responseSignature":{}}]}` + "\n"
+		optInBody   = `{"data":[{"sequence":1,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false}}},"id":1}}},"responseSignature":{}}]}` + "\n"
+	)
+
+	requireOnlyAmountQuotingDiffers(t, defaultBody, optInBody)
+
+	type testCase struct {
+		name        string
+		headerValue string // empty means the header is not sent at all
+		logs        []*commonpb.Log
+		wantBody    string
+		wantAmount  string // the amount rendering that must appear
+		notAmount   string // the other mode's rendering, which must not
+	}
+
+	testCases := []testCase{
+		{
+			name:       "default wire keeps the bare number",
+			logs:       []*commonpb.Log{bigAmountLog(t, 1)},
+			wantBody:   defaultBody,
+			wantAmount: `"amount":` + aboveJSNumberLimit,
+			notAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+		},
+		{
+			name:        "opt-in wire quotes the decimal",
+			headerValue: "true",
+			logs:        []*commonpb.Log{bigAmountLog(t, 1)},
+			wantBody:    optInBody,
+			wantAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+			notAmount:   `"amount":` + aboveJSNumberLimit,
+		},
+		{
+			// The wrapper slice is always non-nil, matching drainCursor's
+			// always-non-nil slice: an empty page must stay `[]` rather than
+			// becoming `null` in one mode only. The header moves the amount
+			// format, never the response shape.
+			name:     "default wire renders an empty page as an array",
+			logs:     nil,
+			wantBody: `{"data":[]}` + "\n",
+		},
+		{
+			name:        "opt-in wire renders an empty page as the same array",
+			headerValue: "true",
+			logs:        nil,
+			wantBody:    `{"data":[]}` + "\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+					return cursor.NewSliceCursor(tc.logs), nil
+				}).AnyTimes()
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodGet, "/ledger1/logs", nil, map[string]string{
+				"ledgerName": "ledger1",
+			})
+
+			if tc.headerValue != "" {
+				r.Header.Set("Formance-Bigint-As-String", tc.headerValue)
+			}
+
+			srv.handleListLedgerLogs(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, tc.wantBody, w.Body.String())
+
+			if tc.wantAmount != "" {
+				require.Contains(t, w.Body.String(), tc.wantAmount)
+				require.NotContains(t, w.Body.String(), tc.notAmount)
+			}
+
+			// Encoder assertions, in both modes: this route must stay on
+			// ConfigStd. Without them a swap to the single-log route's writer
+			// would only show up as two edited literals.
+			require.True(t, strings.HasSuffix(w.Body.String(), "\n"),
+				"the logs-list route writes through ConfigStd, which appends a trailing newline")
+			require.NotContains(t, w.Body.String(), "<",
+				"the logs-list route writes through ConfigStd, which HTML-escapes")
+		})
+	}
 }

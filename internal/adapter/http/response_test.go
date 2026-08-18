@@ -230,8 +230,8 @@ func (failingMarshaler) MarshalJSON() ([]byte, error) {
 	return nil, errors.New("sentinel-payload-detail")
 }
 
-// checkedWriter describes one of this package's two buffered response writers.
-// Both marshal the body to a buffer BEFORE writing any header; they differ in
+// checkedWriter describes one of this package's buffered response writers. All
+// of them marshal the body to a buffer BEFORE writing any header; they differ in
 // the sonic configuration they marshal with, and that difference is part of
 // every route's wire contract, so the table keeps their expectations separate
 // rather than sharing one (EN-1779).
@@ -255,8 +255,9 @@ type checkedWriter struct {
 	wantTrailingNewline bool
 }
 
-// TestWriteCheckedStatus covers both buffered writers — writeCheckedStatus and
-// writeOKChecked, whose error path was equally untested — as one table.
+// TestWriteCheckedStatus covers every buffered writer — writeCheckedBody,
+// writeCheckedStatus and writeOKChecked, whose error path was equally untested —
+// as one table.
 //
 // It exists because two mutations of writeCheckedStatus previously survived the
 // whole package suite: hoisting w.WriteHeader above the marshal call (which
@@ -264,6 +265,12 @@ type checkedWriter struct {
 // committed success status carrying a failure payload), and deleting the
 // Content-Type header (after which a real net/http server sniffs the body as
 // text/plain). The error-path and byte-identity subtests below kill both.
+//
+// writeCheckedBody is listed separately from writeCheckedStatus even though the
+// latter now delegates to it: the two differ in whether the payload is wrapped in
+// the BaseResponse envelope, and each one's byte-identity reference is the
+// streaming writer the routes on it used before — writeJSONResponse for the
+// no-envelope form, writeOK/writeCreated for the enveloped one.
 func TestWriteCheckedStatus(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +284,30 @@ func TestWriteCheckedStatus(t *testing.T) {
 			stream:              nil,
 			wantHTMLEscaped:     false,
 			wantTrailingNewline: false,
+		},
+		{
+			name: "writeCheckedBody 200",
+			write: func(w http.ResponseWriter, r *http.Request, data any) {
+				writeCheckedBody(w, r, http.StatusOK, data)
+			},
+			wantStatus: http.StatusOK,
+			stream: func(w http.ResponseWriter, data any) {
+				writeJSONResponse(w, http.StatusOK, data)
+			},
+			wantHTMLEscaped:     true,
+			wantTrailingNewline: true,
+		},
+		{
+			name: "writeCheckedBody 409",
+			write: func(w http.ResponseWriter, r *http.Request, data any) {
+				writeCheckedBody(w, r, http.StatusConflict, data)
+			},
+			wantStatus: http.StatusConflict,
+			stream: func(w http.ResponseWriter, data any) {
+				writeJSONResponse(w, http.StatusConflict, data)
+			},
+			wantHTMLEscaped:     true,
+			wantTrailingNewline: true,
 		},
 		{
 			name: "writeCheckedStatus 200",
@@ -400,4 +431,25 @@ func TestWriteCheckedStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWriteCheckedBody_DoesNotWrapInBaseResponse pins the one behavioural
+// difference between this package's two ConfigStd buffered writers. Bulk and
+// prepared-query build their own top-level envelope, so a writeCheckedBody that
+// wrapped its argument the way writeCheckedStatus does would double-wrap them
+// into {"data":{"data":…}} — which is why the extraction kept two entry points
+// instead of routing every caller through the enveloping one (EN-1779).
+func TestWriteCheckedBody_DoesNotWrapInBaseResponse(t *testing.T) {
+	t.Parallel()
+
+	payload := bulkResponse{Data: []bulkAPIResult{{ResponseType: "CREATE_TRANSACTION", LogID: 17}}}
+
+	bare := httptest.NewRecorder()
+	writeCheckedBody(bare, httptest.NewRequest(http.MethodPost, "/", nil), http.StatusOK, payload)
+
+	enveloped := httptest.NewRecorder()
+	writeCheckedStatus(enveloped, httptest.NewRequest(http.MethodPost, "/", nil), http.StatusOK, payload)
+
+	require.Equal(t, `{"data":[{"responseType":"CREATE_TRANSACTION","logID":17}]}`+"\n", bare.Body.String())
+	require.Equal(t, `{"data":{"data":[{"responseType":"CREATE_TRANSACTION","logID":17}]}}`+"\n", enveloped.Body.String())
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -152,4 +153,87 @@ func TestHandleGetLog_NotFound(t *testing.T) {
 	srv.handleGetLog(w, r)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestHandleGetLog_StringAmountWire pins both amount wires of the single-log
+// route (EN-1779).
+//
+// This route writes through writeOKChecked, whose sonic ConfigDefault leaves `<`
+// and `&` unescaped and appends no trailing newline. The logs-list route serves
+// the very same fixture (bigAmountLog) through ConfigStd, so its pinned bytes in
+// TestHandleListLedgerLogs_StringAmountWire are deliberately different. The two
+// log routes are NOT unified: each keeps the encoder it already had, because the
+// opt-in header changes the amount format and nothing else. The encoder
+// assertions below fail if either route drifts onto the other's writer.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleGetLog_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	const (
+		defaultBody = `{"data":{"sequence":7,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world<&>","destination":"alice&<bob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":7,"reverted":false}}},"id":7}}},"responseSignature":{}}}`
+		optInBody   = `{"data":{"sequence":7,"payload":{"apply":{"ledgerName":"ledger1","log":{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[{"source":"world<&>","destination":"alice&<bob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":7,"reverted":false}}},"id":7}}},"responseSignature":{}}}`
+	)
+
+	requireOnlyAmountQuotingDiffers(t, defaultBody, optInBody)
+
+	type testCase struct {
+		name        string
+		headerValue string // empty means the header is not sent at all
+		wantBody    string
+		wantAmount  string // the amount rendering that must appear
+		notAmount   string // the other mode's rendering, which must not
+	}
+
+	testCases := []testCase{
+		{
+			name:       "default wire keeps the bare number",
+			wantBody:   defaultBody,
+			wantAmount: `"amount":` + aboveJSNumberLimit,
+			notAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+		},
+		{
+			name:        "opt-in wire quotes the decimal",
+			headerValue: "true",
+			wantBody:    optInBody,
+			wantAmount:  `"amount":"` + aboveJSNumberLimit + `"`,
+			notAmount:   `"amount":` + aboveJSNumberLimit,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := NewMockBackend(gomock.NewController(t))
+			backend.EXPECT().GetLog(gomock.Any(), uint64(7)).DoAndReturn(
+				func(_ context.Context, _ uint64) (*commonpb.Log, error) {
+					return bigAmountLog(t, 7), nil
+				}).AnyTimes()
+			srv := newTestServer(t, backend)
+
+			w := httptest.NewRecorder()
+			r := newRequest(t, http.MethodGet, "/logs/7", nil, map[string]string{"sequence": "7"})
+
+			if tc.headerValue != "" {
+				r.Header.Set("Formance-Bigint-As-String", tc.headerValue)
+			}
+
+			srv.handleGetLog(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, tc.wantBody, w.Body.String())
+			require.Contains(t, w.Body.String(), tc.wantAmount)
+			require.NotContains(t, w.Body.String(), tc.notAmount)
+
+			// Encoder assertions, in both modes: this route must stay on
+			// ConfigDefault. Without them a swap to the logs-list route's writer
+			// would only show up as two edited literals.
+			require.False(t, strings.HasSuffix(w.Body.String(), "\n"),
+				"the single-log route writes through ConfigDefault, which appends no trailing newline")
+			require.Contains(t, w.Body.String(), "<",
+				"the single-log route writes through ConfigDefault, which does not HTML-escape")
+		})
+	}
 }

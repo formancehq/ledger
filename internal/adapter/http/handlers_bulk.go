@@ -102,7 +102,7 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
-	writeBulkResponse(w, elements, results, opts.continueOnFailure)
+	writeBulkResponse(w, r, elements, results, opts.continueOnFailure)
 }
 
 // bulkOptions contains options for bulk processing.
@@ -231,10 +231,14 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 //
 // Any 5xx/429 status from infra/retryable/rate-limit errors always surfaces,
 // with `Retry-After: 1` on 503 to match handleError.
-func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
+func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
 	worstBusiness := 0 // highest 4xx from a per-element business failure
 	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
+
+	// Resolve the EN-1779 amount wire once for the whole batch rather than per
+	// element: the header applies to the response, not to an entry.
+	amountsAsString := wantsBigintAsString(r)
 
 	for i, result := range results {
 		responseType := servicepb.GetLedgerActionType(elements[i].Action)
@@ -284,7 +288,20 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			if payload := log.GetData(); payload != nil {
 				switch p := payload.GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					data = p.CreatedTransaction.GetTransaction()
+					// EN-1779: the amount wire is applied here, in the only arm
+					// that carries an amount, and never at the write site — the
+					// OrderSkipped arm below must stay byte-identical in both
+					// modes. The value is a bare *commonpb.Transaction, so the
+					// wrapper is StringAmountTransaction; a nil inner pointer
+					// renders `"data":null` in both modes (a typed nil behind an
+					// `any` is a non-nil interface, so `omitempty` does not fire,
+					// and the wrapper's nil guard emits the same null).
+					transaction := p.CreatedTransaction.GetTransaction()
+
+					data = transaction
+					if amountsAsString {
+						data = commonpb.StringAmountTransaction{Transaction: transaction}
+					}
 				case *commonpb.LedgerLogPayload_OrderSkipped:
 					data = OrderSkippedResponse{
 						Skipped: true,
@@ -315,8 +332,13 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 		statusCode = worstBusiness
 	}
 
+	// writeCheckedBody, not writeJSONResponse: bulk builds its own top-level
+	// envelope, so it must not be wrapped in BaseResponse. It is the same
+	// ConfigStd encoder writeJSONResponse used — no response byte moves — and a
+	// marshal failure on a per-element transaction now becomes a clean 500
+	// instead of an error object appended to an already-committed status.
 	response := bulkResponse{Data: apiResults}
-	writeJSONResponse(w, statusCode, response)
+	writeCheckedBody(w, r, statusCode, response)
 }
 
 // perElementStatus returns the HTTP status a given per-element error would

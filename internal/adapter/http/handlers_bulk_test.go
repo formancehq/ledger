@@ -325,3 +325,198 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
+
+// TestHandleBulk_StringAmountWire pins the bulk route's two amount wires
+// (EN-1779), one case per payload arm the per-element `data` field can carry.
+//
+// Two of the three arms must be byte-identical in both modes, and that is the
+// point of the table: the mode is applied inside the CreatedTransaction arm, not
+// at the write site, so an OrderSkipped element (which carries no amount) and a
+// CreatedTransaction whose inner transaction is nil both come out unchanged. The
+// nil case also measures the `omitempty` question on bulkAPIResult.Data: a typed
+// nil pointer behind an `any` is a non-nil interface, so the field is NOT
+// dropped and already renders `"data":null` today — exactly what the wrapper's
+// nil-inner-pointer guard emits.
+//
+// Bulk writes through writeCheckedBody (ConfigStd), so `<`/`&` come out escaped
+// and the body ends in a newline, in both modes.
+//
+// Amount assertions read the raw body bytes and never decode: the repository's
+// sonic wrapper has no UseNumber, so decoding silently truncates 2^53+1.
+func TestHandleBulk_StringAmountWire(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		name    string
+		payload *commonpb.LedgerLogPayload
+		// amountMoves marks the only arm whose rendering the header may change.
+		// Every other arm asserts the two bodies are equal instead.
+		amountMoves   bool
+		htmlSensitive bool
+		defaultBody   string
+		optInBody     string
+	}
+
+	testCases := []testCase{
+		{
+			name: "created transaction carries the amount",
+			payload: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+					CreatedTransaction: &commonpb.CreatedTransaction{
+						Transaction: bigAmountTransaction(t, 1),
+					},
+				},
+			},
+			amountMoves:   true,
+			htmlSensitive: true,
+			defaultBody:   `{"data":[{"data":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":9007199254740993,"asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false},"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+			optInBody:     `{"data":[{"data":{"postings":[{"source":"world\u003c\u0026\u003e","destination":"alice\u0026\u003cbob","amount":"9007199254740993","asset":"USD/2","color":""}],"metadata":{},"id":1,"reverted":false},"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+		},
+		{
+			name: "order skipped carries no amount",
+			payload: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+					OrderSkipped: &commonpb.OrderSkippedLog{
+						Reason:  commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+						Context: map[string]string{"reference": "dup<&>"},
+					},
+				},
+			},
+			htmlSensitive: true,
+			defaultBody:   `{"data":[{"data":{"skipped":true,"reason":"TRANSACTION_REFERENCE_CONFLICT","context":{"reference":"dup\u003c\u0026\u003e"}},"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+			optInBody:     `{"data":[{"data":{"skipped":true,"reason":"TRANSACTION_REFERENCE_CONFLICT","context":{"reference":"dup\u003c\u0026\u003e"}},"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+		},
+		{
+			name: "created transaction with a nil inner transaction",
+			payload: &commonpb.LedgerLogPayload{
+				Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+					CreatedTransaction: &commonpb.CreatedTransaction{},
+				},
+			},
+			defaultBody: `{"data":[{"data":null,"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+			optInBody:   `{"data":[{"data":null,"responseType":"CREATE_TRANSACTION","logID":17}]}` + "\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tc.amountMoves {
+				requireOnlyAmountQuotingDiffers(t, tc.defaultBody, tc.optInBody)
+			} else {
+				require.Equal(t, tc.defaultBody, tc.optInBody,
+					"an arm that carries no amount must be byte-identical in both modes")
+			}
+
+			modes := []struct {
+				name        string
+				headerValue string // empty means the header is not sent at all
+				wantBody    string
+			}{
+				{name: "default wire", wantBody: tc.defaultBody},
+				{name: "opt-in wire", headerValue: "true", wantBody: tc.optInBody},
+			}
+
+			for _, mode := range modes {
+				t.Run(mode.name, func(t *testing.T) {
+					t.Parallel()
+
+					backend := NewMockBackend(gomock.NewController(t))
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+						func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+							return []*commonpb.Log{{
+								Payload: &commonpb.LogPayload{
+									Type: &commonpb.LogPayload_Apply{
+										Apply: &commonpb.ApplyLedgerLog{
+											Log: &commonpb.LedgerLog{Id: 17, Data: tc.payload},
+										},
+									},
+								},
+							}}, nil
+						}).Times(1)
+					srv := newTestServer(t, backend)
+
+					w := httptest.NewRecorder()
+					r := newRequest(t, http.MethodPost, "/ledger1/bulk",
+						strings.NewReader(bulkWriteBody), map[string]string{"ledgerName": "ledger1"})
+
+					if mode.headerValue != "" {
+						r.Header.Set("Formance-Bigint-As-String", mode.headerValue)
+					}
+
+					srv.handleBulk(w, r)
+
+					require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+					require.Equal(t, mode.wantBody, w.Body.String())
+
+					// Bulk stays on ConfigStd in both modes: writeCheckedBody is
+					// byte-identical to the writeJSONResponse it replaced.
+					require.True(t, strings.HasSuffix(w.Body.String(), "\n"),
+						"bulk writes through ConfigStd, which appends a trailing newline")
+
+					if tc.htmlSensitive {
+						require.NotContains(t, w.Body.String(), "<",
+							"bulk writes through ConfigStd, which HTML-escapes")
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestHandleBulk_StringAmountWireOnlyWrapsTheTransactionArm asserts the amount
+// rendering is decided inside the CreatedTransaction arm rather than at the
+// write site. Wrapping the whole bulkResponse would also reach the OrderSkipped
+// arm, so this pins the negative: an opted-in response whose single element is a
+// skip must be identical to the default one, and must never quote a number.
+func TestHandleBulk_StringAmountWireOnlyWrapsTheTransactionArm(t *testing.T) {
+	t.Parallel()
+
+	bodies := make([]string, 0, 2)
+
+	for _, headerValue := range []string{"", "true"} {
+		backend := NewMockBackend(gomock.NewController(t))
+		backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+				return []*commonpb.Log{{
+					Payload: &commonpb.LogPayload{
+						Type: &commonpb.LogPayload_Apply{
+							Apply: &commonpb.ApplyLedgerLog{
+								Log: &commonpb.LedgerLog{
+									Id: 17,
+									Data: &commonpb.LedgerLogPayload{
+										Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+											OrderSkipped: &commonpb.OrderSkippedLog{
+												Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}}, nil
+			}).Times(1)
+
+		w := httptest.NewRecorder()
+		r := newRequest(t, http.MethodPost, "/ledger1/bulk",
+			strings.NewReader(bulkWriteBody), map[string]string{"ledgerName": "ledger1"})
+
+		if headerValue != "" {
+			r.Header.Set("Formance-Bigint-As-String", headerValue)
+		}
+
+		newTestServer(t, backend).handleBulk(w, r)
+
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), `"logID":17`)
+		require.NotContains(t, w.Body.String(), `"logID":"17"`,
+			"the header quotes posting amounts, never other numbers")
+
+		bodies = append(bodies, w.Body.String())
+	}
+
+	require.Equal(t, bodies[0], bodies[1],
+		"a skip-only bulk response must not change when the opt-in header is sent")
+}
