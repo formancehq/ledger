@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -7,39 +6,31 @@
       "type": "string",
       "enum": ["APPROVE", "REQUEST_CHANGES", "HUMAN_DECISION_REQUIRED"]
     },
-    "head": {
-      "type": "string",
-      "minLength": 1
-    },
-    "worktree_fingerprint": {
-      "type": "string",
-      "minLength": 1
-    },
+    "head": { "type": "string" },
+    "worktree_fingerprint": { "type": "string" },
     "residual_risk": {
       "type": "string",
       "enum": ["LOW", "MEDIUM", "HIGH"]
     },
-    "human_decision_context": {
-      "type": "string"
-    },
+    "human_decision_context": { "type": "string" },
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
+          "id": { "type": "string" },
           "severity": {
             "type": "string",
             "enum": ["P0", "P1", "P2", "P3"]
           },
           "blocking": { "type": "boolean" },
           "auto_fixable": { "type": "boolean" },
-          "title": { "type": "string", "minLength": 1 },
+          "title": { "type": "string" },
           "location": { "type": "string" },
-          "evidence": { "type": "string", "minLength": 1 },
-          "impact": { "type": "string", "minLength": 1 },
-          "resolution": { "type": "string", "minLength": 1 }
+          "evidence": { "type": "string" },
+          "impact": { "type": "string" },
+          "resolution": { "type": "string" }
         },
         "required": [
           "id",
