@@ -87,12 +87,11 @@ func main() {
 		fatal(err)
 	}
 	fmt.Printf("==> review-loop: state directory %s\n", runStateDir)
-	stateParent := filepath.Dir(runStateDir)
 
 	var previousResult string
 	for pass := 1; pass <= maxPasses; pass++ {
 		resultPath := filepath.Join(runStateDir, fmt.Sprintf("review-%d.json", pass))
-		reviewedState, err := captureWorkspaceState(repositoryRoot, stateParent)
+		reviewedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
 		if err != nil {
 			fatal(err)
 		}
@@ -111,7 +110,7 @@ func main() {
 		if err := runCommand(reviewCmd, env); err != nil {
 			fatal(fmt.Errorf("review command failed: %w", err))
 		}
-		currentState, err := captureWorkspaceState(repositoryRoot, stateParent)
+		currentState, err := captureWorkspaceState(repositoryRoot, runStateDir)
 		if err != nil {
 			fatal(err)
 		}
