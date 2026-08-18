@@ -53,6 +53,9 @@ import "github.com/formancehq/ledger/v3/internal/adapter/json"
 //  2. Retype the child field in the aux struct to `any`.
 //  3. Fill it through childValue (single child pointer) or sliceValue (slice
 //     field with `omitempty`), never by hand: those hold the emptiness guard.
+//     A slice field with no `omitempty` is the exception: it has no emptiness
+//     to guard and must always render `[]`, so it is filled with wrapAll
+//     instead (Transaction.postings in transaction.go is the one such field).
 //  4. Declare the wrapper type here, with the nil-inner-pointer guard returning
 //     `[]byte("null")` as its first statement. Export it only if a caller
 //     outside this package constructs it.
@@ -199,9 +202,8 @@ func (w StringAmountRevertedTransaction) MarshalJSON() ([]byte, error) {
 
 // stringAmountLedgerLogPayload renders a LedgerLogPayload whose posting-bearing
 // variants carry quoted decimal amounts (oneof dispatch). Unexported: it is
-// only ever returned
-// as `any` from LedgerLog.buildAux, never from an exported function, so
-// revive's unexported-return rule does not apply.
+// only ever returned as `any` from LedgerLog.buildAux, never from an exported
+// function, so revive's unexported-return rule does not apply.
 type stringAmountLedgerLogPayload struct {
 	*LedgerLogPayload
 }

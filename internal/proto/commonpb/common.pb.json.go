@@ -598,10 +598,12 @@ func (x *PreparedQueryCursor) buildAux(amountsAsString bool) any {
 		Previous string `json:"previous,omitempty"`
 		Next     string `json:"next,omitempty"`
 		// accountData is the one data field left concretely typed: nothing below
-		// Account carries a Uint256 or a bare JSON number. Volumes and
-		// VolumeEntry already render their big.Int values through String() into
-		// Go string fields, so an accounts page is identical in both modes and
-		// needs no wrapper.
+		// Account carries a Uint256, and no amount below it renders as a bare
+		// JSON number. Volumes and VolumeEntry already render their big.Int
+		// values through String() into Go string fields, so an accounts page is
+		// identical in both modes and needs no wrapper. Account metadata does
+		// carry bare JSON numbers - int_value and uint_value, the latter up to
+		// 2^64-1 - but the header moves amounts only, so they stay as they are.
 		AccountData     []*Account `json:"accountData,omitempty"`
 		TransactionData any        `json:"transactionData,omitempty"`
 		LogData         any        `json:"logData,omitempty"`

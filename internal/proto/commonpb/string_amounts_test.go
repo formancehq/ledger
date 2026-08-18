@@ -1,10 +1,15 @@
 package commonpb
 
 import (
+	"bytes"
 	"math/big"
+	"strconv"
 	"testing"
+	libtime "time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
@@ -890,4 +895,365 @@ func TestPreparedQueryCursor_NilReceiverIsNull(t *testing.T) {
 	got, err := json.Marshal(StringAmountPreparedQueryCursor{PreparedQueryCursor: nil})
 	require.NoError(t, err)
 	require.Equal(t, "null", string(got))
+}
+
+// --- EN-1779 default-wire golden gate ---------------------------------------
+//
+// TestDefaultWireGolden pins the DEFAULT wire byte for byte for every
+// marshaller EN-1779 rewrote.
+//
+// A FAILURE HERE MEANS THE CHANGE IS WRONG. These bytes are what every client
+// that does not send Formance-Bigint-As-String already receives, and every
+// expectation below was verified against the pre-change base branch. Never edit
+// a `want` value to make a new implementation pass: fix the implementation, or
+// escalate if the wire genuinely has to move.
+//
+// Two encoders are asserted because they disagree, and only one of them is
+// production:
+//   - json.Marshal is sonic ConfigDefault. It does NOT escape HTML, so a
+//     golden captured with it alone would not describe what clients receive.
+//   - json.MarshalWrite is sonic ConfigStd, which is what writeJSONResponse
+//     (internal/adapter/http/response.go) serves: it escapes `<`, `>` and `&`,
+//     and appends a trailing newline that is part of the response body.
+//
+// Every fixture carries at most ONE metadata key. sonic does not sort map keys
+// in either config, so a byte comparison over two or more keys would flake on
+// iteration order.
+
+// goldenAmount is aboveJSNumberLimit as a uint64. Fixtures build their amount
+// from it while the expectations concatenate aboveJSNumberLimit, and
+// TestDefaultWireGolden asserts the two agree, so neither can drift alone.
+const goldenAmount uint64 = 9007199254740993
+
+// goldenDate is the single instant every golden fixture carries. RFC3339Nano
+// drops the fractional part at whole seconds, so the rendered form is stable.
+const goldenDate = "2026-08-18T10:00:00Z"
+
+// goldenPostingJSON is the pinned default wire of goldenPosting.
+const goldenPostingJSON = `{"source":"world","destination":"alice","amount":` +
+	aboveJSNumberLimit + `,"asset":"USD/2","color":"red"}`
+
+// goldenTransactionJSON is the pinned default wire of goldenTransaction. One
+// line per field, in the order Transaction.buildAux declares them: that order
+// is part of the wire contract, not an implementation detail.
+//
+// The `weight` metadata value is deliberately 2^64-1 and renders as a bare JSON
+// number. Metadata is the counter-example to "nothing below Account carries a
+// bare number", and it is unaffected by the header: only amounts move.
+const goldenTransactionJSON = `{"postings":[` + goldenPostingJSON + `]` +
+	`,"metadata":{"weight":18446744073709551615}` +
+	`,"timestamp":"` + goldenDate + `"` +
+	`,"reference":"ref-1"` +
+	`,"id":42` +
+	`,"insertedAt":"` + goldenDate + `"` +
+	`,"updatedAt":"` + goldenDate + `"` +
+	`,"revertedAt":"` + goldenDate + `"` +
+	`,"revertedByTransactionId":43` +
+	`,"revertsTransactionId":41` +
+	`,"reverted":true` +
+	`,"postCommitVolumes":{"world":[{"asset":"USD/2","color":"","input":"0"` +
+	`,"output":"` + aboveJSNumberLimit + `"}]}}`
+
+// goldenCreatedTransactionJSON is the pinned default wire of
+// goldenCreatedTransaction.
+const goldenCreatedTransactionJSON = `{"transaction":` + goldenTransactionJSON +
+	`,"accountMetadata":{"alice":{"tier":"gold"}}` +
+	`,"chapterId":3}`
+
+// goldenLedgerLogJSON is the pinned default wire of goldenLedgerLog.
+const goldenLedgerLogJSON = `{"type":"NEW_TRANSACTION"` +
+	`,"data":{"createdTransaction":` + goldenCreatedTransactionJSON + `}` +
+	`,"date":"` + goldenDate + `"` +
+	`,"id":9}`
+
+// goldenApplyLedgerLogJSON is the pinned default wire of goldenApplyLedgerLog.
+const goldenApplyLedgerLogJSON = `{"ledgerName":"ledger0","log":` + goldenLedgerLogJSON + `}`
+
+// goldenLogJSON is the pinned default wire of goldenLog.
+//
+// responseSignature is `{}` and not absent even though the log carries no
+// signature: Log.buildAux fills it through protoFieldJSON, whose `msg == nil`
+// guard cannot see a typed nil behind the proto.Message interface, so
+// protojson renders the nil message as `{}` and `omitempty` keeps a two-byte
+// value. That is pre-existing behaviour on both sides of EN-1779 (the base
+// branch builds the field the same way), so it is pinned here rather than
+// quietly corrected: changing it would move the default wire.
+const goldenLogJSON = `{"sequence":5` +
+	`,"payload":{"apply":` + goldenApplyLedgerLogJSON + `}` +
+	`,"receipt":"receipt-1"` +
+	`,"responseSignature":{}}`
+
+// goldenTimestamp returns goldenDate as the proto Timestamp the payload types
+// carry.
+func goldenTimestamp() *Timestamp {
+	return NewTimestamp(time.New(libtime.Date(2026, 8, 18, 10, 0, 0, 0, libtime.UTC)))
+}
+
+// goldenPosting returns the posting every golden fixture carries: one
+// above-2^53 amount, so the wire is pinned exactly where a JavaScript client
+// would truncate it.
+func goldenPosting() *Posting {
+	return &Posting{
+		Source:      "world",
+		Destination: "alice",
+		Amount:      NewUint256FromUint64(goldenAmount),
+		Asset:       "USD/2",
+		Color:       "red",
+	}
+}
+
+// goldenTransaction returns a transaction with every optional field populated,
+// so the golden pins the position of each one rather than only the postings.
+func goldenTransaction() *Transaction {
+	at := goldenTimestamp()
+
+	return &Transaction{
+		Postings:              []*Posting{goldenPosting()},
+		Metadata:              map[string]*MetadataValue{"weight": NewUintValue(18446744073709551615)},
+		Timestamp:             at,
+		Reference:             "ref-1",
+		Id:                    42,
+		InsertedAt:            at,
+		UpdatedAt:             at,
+		RevertedAt:            at,
+		RevertedByTransaction: 43,
+		RevertsTransaction:    41,
+		Reverted:              true,
+		PostCommitVolumes: &PostCommitVolumes{
+			VolumesByAccount: map[string]*VolumesByAssets{
+				"world": {
+					Volumes: []*VolumeEntry{
+						{Asset: "USD/2", Volumes: &Volumes{Input: "0", Output: aboveJSNumberLimit}},
+					},
+				},
+			},
+		},
+	}
+}
+
+// goldenCreatedTransaction returns the created-transaction payload the log
+// chain carries.
+func goldenCreatedTransaction() *CreatedTransaction {
+	return &CreatedTransaction{
+		Transaction: goldenTransaction(),
+		AccountMetadata: map[string]*MetadataMap{
+			"alice": {Values: map[string]*MetadataValue{"tier": NewStringValue("gold")}},
+		},
+		ChapterId: 3,
+	}
+}
+
+// goldenLedgerLog returns the ledger log wrapping goldenCreatedTransaction.
+func goldenLedgerLog() *LedgerLog {
+	return &LedgerLog{
+		Id:   9,
+		Date: goldenTimestamp(),
+		Data: &LedgerLogPayload{
+			Payload: &LedgerLogPayload_CreatedTransaction{
+				CreatedTransaction: goldenCreatedTransaction(),
+			},
+		},
+	}
+}
+
+// goldenApplyLedgerLog returns the apply payload wrapping goldenLedgerLog.
+func goldenApplyLedgerLog() *ApplyLedgerLog {
+	return &ApplyLedgerLog{LedgerName: "ledger0", Log: goldenLedgerLog()}
+}
+
+// goldenLog returns the nine-level payload a logs response serves: Log ->
+// LogPayload_Apply -> ApplyLedgerLog -> LedgerLog ->
+// LedgerLogPayload_CreatedTransaction -> CreatedTransaction -> Transaction ->
+// Posting -> amount.
+func goldenLog() *Log {
+	return &Log{
+		Sequence: 5,
+		Payload: &LogPayload{
+			Type: &LogPayload_Apply{Apply: goldenApplyLedgerLog()},
+		},
+		Receipt: "receipt-1",
+	}
+}
+
+// defaultWireGolden pins one payload to the exact bytes the default wire must
+// produce. wantProduction is the json.MarshalWrite (ConfigStd) form without its
+// trailing newline; leave it empty when ConfigStd cannot differ from
+// ConfigDefault, which is every fixture carrying no `<`, `>` or `&`.
+type defaultWireGolden struct {
+	value          any
+	want           string
+	wantProduction string
+}
+
+// defaultWireGoldens returns the pinned default wire of every marshaller
+// EN-1779 rewrote, plus the omitted-field and empty-collection cases whose
+// shape the opt-in mechanism could otherwise have changed unnoticed.
+func defaultWireGoldens() map[string]defaultWireGolden {
+	return map[string]defaultWireGolden{
+		"posting": {
+			value: goldenPosting(),
+			want:  goldenPostingJSON,
+		},
+		"posting without an amount": {
+			// amount is `omitempty` and typed `any`, so it must stay absent
+			// rather than start emitting null.
+			value: &Posting{Source: "world", Destination: "alice", Asset: "USD/2"},
+			want:  `{"source":"world","destination":"alice","asset":"USD/2","color":""}`,
+		},
+		"posting with an HTML-escapable account address": {
+			// The only fixture where the two encoders diverge, and the reason
+			// the golden cannot be captured with json.Marshal alone.
+			value: &Posting{
+				Source:      "orders:<a&b>",
+				Destination: "alice",
+				Amount:      NewUint256FromUint64(1),
+				Asset:       "USD/2",
+			},
+			want: `{"source":"orders:<a&b>","destination":"alice"` +
+				`,"amount":1,"asset":"USD/2","color":""}`,
+			wantProduction: `{"source":"orders:\u003ca\u0026b\u003e","destination":"alice"` +
+				`,"amount":1,"asset":"USD/2","color":""}`,
+		},
+		"transaction": {
+			value: goldenTransaction(),
+			want:  goldenTransactionJSON,
+		},
+		"transaction with nil postings": {
+			// postings has no `omitempty` and the OpenAPI schema types it as a
+			// non-nullable required array, so a posting-less transaction renders
+			// `[]` and never null.
+			value: &Transaction{Id: 7},
+			want:  `{"postings":[],"metadata":{},"id":7,"reverted":false}`,
+		},
+		"created transaction": {
+			value: goldenCreatedTransaction(),
+			want:  goldenCreatedTransactionJSON,
+		},
+		"created transaction without a transaction": {
+			// transaction is an `omitempty` pointer retyped to `any`: absent,
+			// not null.
+			value: &CreatedTransaction{ChapterId: 3},
+			want:  `{"chapterId":3}`,
+		},
+		"reverted transaction": {
+			value: &RevertedTransaction{RevertedTransactionId: 3, RevertTransaction: goldenTransaction()},
+			want:  `{"revertedTransactionId":3,"revertTransaction":` + goldenTransactionJSON + `}`,
+		},
+		"reverted transaction without a revert transaction": {
+			// revertTransaction is an `omitempty` pointer retyped to `any`:
+			// absent, not null.
+			value: &RevertedTransaction{RevertedTransactionId: 3},
+			want:  `{"revertedTransactionId":3}`,
+		},
+		"ledger log payload carrying a created transaction": {
+			value: goldenLedgerLog().GetData(),
+			want:  `{"createdTransaction":` + goldenCreatedTransactionJSON + `}`,
+		},
+		"ledger log payload carrying no amount": {
+			// The oneof variants that carry no amount are deliberately not
+			// re-listed in marshalStringAmounts, so this pins the branch both
+			// modes share.
+			value: &LedgerLogPayload{
+				Payload: &LedgerLogPayload_SavedMetadata{
+					SavedMetadata: &SavedMetadata{
+						Target:   &Target{Target: &Target_TransactionId{TransactionId: 7}},
+						Metadata: map[string]*MetadataValue{"tier": NewStringValue("gold")},
+					},
+				},
+			},
+			want: `{"savedMetadata":{"targetType":"TRANSACTION","transactionId":7` +
+				`,"metadata":{"tier":"gold"}}}`,
+		},
+		"ledger log": {
+			value: goldenLedgerLog(),
+			want:  goldenLedgerLogJSON,
+		},
+		"apply ledger log": {
+			value: goldenApplyLedgerLog(),
+			want:  goldenApplyLedgerLogJSON,
+		},
+		"log payload": {
+			value: goldenLog().GetPayload(),
+			want:  `{"apply":` + goldenApplyLedgerLogJSON + `}`,
+		},
+		"log at full depth": {
+			value: goldenLog(),
+			want:  goldenLogJSON,
+		},
+		"prepared query cursor drained": {
+			// The shape emptyListResponse (internal/query/executor.go) produces.
+			value: &PreparedQueryCursor{PageSize: 15},
+			want:  `{"pageSize":15,"hasMore":false}`,
+		},
+		"prepared query cursor on accounts": {
+			value: &PreparedQueryCursor{
+				PageSize: 15,
+				HasMore:  true,
+				Previous: "prev-token",
+				Next:     "next-token",
+				AccountData: []*Account{
+					{
+						Address: "alice",
+						Volumes: []*AccountVolume{
+							{
+								Asset: "USD/2",
+								Volumes: &VolumesWithBalance{
+									Input:   aboveJSNumberLimit,
+									Output:  "0",
+									Balance: aboveJSNumberLimit,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: `{"pageSize":15,"hasMore":true,"previous":"prev-token","next":"next-token"` +
+				`,"accountData":[{"address":"alice","volumes":[{"asset":"USD/2","color":""` +
+				`,"volumes":{"input":"` + aboveJSNumberLimit + `","output":"0"` +
+				`,"balance":"` + aboveJSNumberLimit + `"}}]}]}`,
+		},
+		"prepared query cursor on transactions": {
+			value: &PreparedQueryCursor{PageSize: 15, TransactionData: []*Transaction{goldenTransaction()}},
+			want:  `{"pageSize":15,"hasMore":false,"transactionData":[` + goldenTransactionJSON + `]}`,
+		},
+		"prepared query cursor on logs": {
+			value: &PreparedQueryCursor{PageSize: 15, LogData: []*Log{goldenLog()}},
+			want:  `{"pageSize":15,"hasMore":false,"logData":[` + goldenLogJSON + `]}`,
+		},
+	}
+}
+
+// TestDefaultWireGolden asserts the default wire is byte-identical to what it
+// was before EN-1779 rewrote the marshaller chain. Read the note above
+// defaultWireGolden before changing anything here: a failure means the
+// implementation moved the wire, not that the expectation is stale.
+func TestDefaultWireGolden(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, aboveJSNumberLimit, strconv.FormatUint(goldenAmount, 10),
+		"the fixture amount and the expectation constant must be the same number")
+
+	for name, tc := range defaultWireGoldens() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := json.Marshal(tc.value)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, string(got),
+				"the default wire moved: fix the implementation, never this expectation")
+
+			wantProduction := tc.want
+			if tc.wantProduction != "" {
+				wantProduction = tc.wantProduction
+			}
+
+			var buf bytes.Buffer
+
+			require.NoError(t, json.MarshalWrite(&buf, tc.value))
+			// The trailing newline is appended by sonic's Encoder, so it is part
+			// of the body writeJSONResponse sends.
+			require.Equal(t, wantProduction+"\n", buf.String(),
+				"the production wire moved: fix the implementation, never this expectation")
+		})
+	}
 }
