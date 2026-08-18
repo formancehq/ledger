@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
@@ -536,6 +537,23 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		log := &commonpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
+		}
+
+		// The key IS the sequence (AppendLogs derives it from log.GetSequence(),
+		// internal/infra/state/batch.go:16-30), so a row whose value disagrees with
+		// its key cannot be produced by the FSM. The value's `sequence` field is not
+		// hash-bound and used to steer ReadLastSequence unchecked, which is what made
+		// the deleted `lastSequence == 0` gate a one-field bypass (EN-1526).
+		// Invariant #7: impossible by contract, so fail loudly.
+		if storedSeq := log.GetSequence(); storedSeq != seq {
+			assert.Unreachable("check: log key sequence disagrees with its value", map[string]any{
+				"keySequence":   seq,
+				"valueSequence": storedSeq,
+			})
+
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+				fmt.Sprintf("log at key sequence %d carries value sequence %d: the row was written outside AppendLogs", seq, storedSeq),
+				seq, "", "", ""))
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).

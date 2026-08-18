@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // TestCheckVerifiesFailureOnlyHistory pins EN-1526: a store that only ever
@@ -110,4 +111,55 @@ func TestCheck_ZeroLogPendingCleanupDoesNotSuppressOrphans(t *testing.T) {
 	require.Len(t, errs, 1)
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH, errs[0].GetErrorType())
 	require.Equal(t, "doomed", errs[0].GetLedger())
+}
+
+// TestCheckDetectsLogKeyValueSequenceDivergence pins the one-field bypass from
+// EN-1526. A Log row's key carries the sequence and so does its value, but the
+// value is not hash-bound and nothing compared the two — so rewriting the value's
+// `sequence` field alone was invisible while still steering ReadLastSequence,
+// which the deleted early-return gate consumed. The row is impossible by
+// contract: AppendLogs (internal/infra/state/batch.go:16-30) derives the key FROM
+// log.GetSequence(), so the two cannot disagree unless the row was rewritten
+// outside the FSM. Invariant #7: report it loudly.
+func TestCheckDetectsLogKeyValueSequenceDivergence(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+
+	// Rewrite the value at key sequence 1 so its `sequence` field says 0, leaving
+	// the key untouched. This is the minimal forgery the old gate accepted.
+	handle, err := engine.store.NewReadHandle()
+	require.NoError(t, err)
+
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(1).Build()
+
+	value, closer, err := handle.Get(key)
+	require.NoError(t, err)
+
+	stored := &commonpb.Log{}
+	require.NoError(t, stored.UnmarshalVT(value))
+	require.NoError(t, closer.Close())
+	require.NoError(t, handle.Close())
+
+	stored.Sequence = 0
+
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(key, stored))
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+
+	var divergences []*servicepb.CheckStoreError
+
+	for _, e := range errors {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP &&
+			e.GetLogSequence() == 1 {
+			divergences = append(divergences, e)
+		}
+	}
+
+	require.NotEmpty(t, divergences,
+		"a log row whose value sequence disagrees with its key is unreachable through "+
+			"AppendLogs and must be reported, not silently steer ReadLastSequence")
 }
