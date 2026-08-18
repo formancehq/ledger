@@ -706,6 +706,12 @@ func (s *scopeImpl) GetChapterByID(_ uint64) (commonpb.ChapterReader, bool) {
 	return nil, false
 }
 
+// The checker's test engine drives ledger orders, never chapter archival, so the
+// archived prefix stays at its genesis value.
+func (s *scopeImpl) GetArchivedThroughChapterID() uint64 { return 0 }
+
+func (s *scopeImpl) AdvanceArchivedThroughChapterID() {}
+
 func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 
 func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}

@@ -91,6 +91,15 @@ type Scope interface {
 	RemoveClosingChapter(chapterID uint64)
 	GetNextChapterID() uint64
 	IncrementNextChapterID() uint64
+	// GetArchivedThroughChapterID returns the archived prefix: every chapter
+	// from 1 to the returned id is ARCHIVED. Chapters are dropped from the
+	// in-memory tracker when their data is purged, so residency cannot answer
+	// "is this chapter archived?" — this does.
+	GetArchivedThroughChapterID() uint64
+	// AdvanceArchivedThroughChapterID extends the archived prefix by exactly one
+	// chapter. It takes no id on purpose: a setter could carry the prefix over a
+	// gap, which would re-authorise archival past an un-archived chapter.
+	AdvanceArchivedThroughChapterID()
 
 	// Archive chapter operations (purge range / archive request moved to the WriteSet sink via Absorb).
 	GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool)

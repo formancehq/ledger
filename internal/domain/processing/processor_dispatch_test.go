@@ -262,7 +262,10 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{
 				ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{ChapterId: 42},
 			}},
-			setup: func(m *MockScope) { m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false) },
+			setup: func(m *MockScope) {
+				m.EXPECT().GetArchivedThroughChapterID().Return(uint64(41))
+				m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false)
+			},
 			check: requireErr(new(*domain.ErrChapterNotFound)),
 		},
 		{
@@ -270,7 +273,10 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{
 				ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 42},
 			}},
-			setup: func(m *MockScope) { m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false) },
+			setup: func(m *MockScope) {
+				m.EXPECT().GetArchivedThroughChapterID().Return(uint64(41))
+				m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false)
+			},
 			check: requireErr(new(*domain.ErrChapterNotFound)),
 		},
 		{
