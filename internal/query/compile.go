@@ -1166,9 +1166,16 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
 	// The account is the variable-length trailing segment after the prefix,
 	// so entityOffset = len(prefix) and entityLen = 0 (extends to end of key).
+	// The scan is stamp-gated at the read's pin: each row's value is the
+	// account's FIRST touch of the cell, and the aligned snapshot may hold
+	// touches folded past the main handle. An unstamped scan would serve
+	// those members while enrichment through the handle cannot see them —
+	// an account rendered address-only that no single state contains. The
+	// gate keeps purged accounts servable (their touch is below any later
+	// pin), which is the case the ACCOUNTS horizon carve-out protects.
 	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
 
-	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, prefix, len(prefix), 0)
+	iter, pErr := readstore.NewStampGatedPrefixIterator(ctx.indexReader, prefix, len(prefix), 0, ctx.pin)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating has-asset prefix iterator: %w", pErr)
 	}
@@ -1271,7 +1278,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp")
+		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp", 0)
 }
 
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
@@ -1284,7 +1291,7 @@ func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat")
+		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat", 0)
 }
 
 // compileRevertedAtCondition filters transactions by reverted_at using the transaction reverted_at index.
@@ -1297,17 +1304,21 @@ func compileRevertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat")
+		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat", 0)
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
 // It handles both transaction timestamps and log dates using the same key layout:
 // [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)].
+// stampPin gates rows by the fold sequence in their value; pass 0 for indexes
+// whose rows are written with their entity's creation, where the per-target
+// horizon trim already excludes members past the main handle.
 func compileTimestampRangeCondition(
 	ctx *compileCtx,
 	cond *commonpb.UintCondition,
 	ledgerPrefix []byte,
 	bucketLabel string,
+	stampPin uint64,
 ) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
@@ -1341,7 +1352,7 @@ func compileTimestampRangeCondition(
 		lower = ledgerPrefix
 	}
 
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen)
+	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
 	}
@@ -1383,7 +1394,7 @@ func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt")
+		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt", 0)
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.

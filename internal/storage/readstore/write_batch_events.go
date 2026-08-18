@@ -24,12 +24,13 @@ import (
 // path — the rmap keeps its role and its prompt deletion semantics (the
 // checker's reverse-map pass is untouched).
 
-// eventSequence returns the declared raft sequence for event writes, failing
-// loudly when unset: stamping a zero or stale sequence would silently corrupt
-// pinned resolution for every future reader of the group.
+// eventSequence returns the declared raft sequence for sequence-stamped
+// writes — metadata events and the single-stamp rows (account-by-asset,
+// reverted_at) — failing loudly when unset: stamping a zero or stale
+// sequence would silently corrupt pinned resolution for every future reader.
 func (wb *WriteBatch) eventSequence() (uint64, error) {
 	if wb.eventSeq == 0 {
-		return 0, errors.New("invariant: metadata event write without SetEventSequence")
+		return 0, errors.New("invariant: sequence-stamped index write without SetEventSequence")
 	}
 
 	return wb.eventSeq, nil

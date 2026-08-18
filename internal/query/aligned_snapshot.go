@@ -149,8 +149,13 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 // ACCOUNTS get no predicate: main-store existence is NOT a horizon signal
 // there — a purged account legitimately lives on in the monotonic has-asset
 // and metadata indexes while absent from the V+M universe, and account
-// enrichment (scanAccount) renders absent accounts as address-only rows, so
-// index-only members are servable as-is.
+// enrichment (scanAccount) renders absent accounts as address-only rows.
+// The account leaves trim themselves instead: metadata membership resolves
+// through event keys at the pin, and the has-asset scan is gated by each
+// row's first-touch stamp (compileAccountHasAssetCondition) — so a purged
+// account keeps serving while one whose first index row folded past the
+// handle stays invisible, exactly the split main-store existence cannot
+// express.
 //
 // Returns nil for targets with no trimmable cross-store membership (callers
 // skip wrapping).

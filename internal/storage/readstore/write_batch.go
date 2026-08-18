@@ -162,12 +162,24 @@ func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledge
 }
 
 // WriteAccountByAssetIndex records that an account has ever touched (assetBase,
-// precision). Presence-only (nil value); the Put is idempotent so repeated
-// writes for the same cell are harmless.
+// precision). The value is the writing fold's raft sequence — the account's
+// FIRST touch, because the indexer dedups repeated cells before calling here
+// (writeAccountByAssetDedup) and never rewrites an existing row. A pinned read
+// admits the row only when that stamp is at or below its pin, which is what
+// keeps an aligned snapshot that folded ahead of the main handle from serving
+// members the handle cannot enrich (see compileAccountHasAssetCondition).
 func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) error {
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
+	}
+
 	key := AccountByAssetKey(kb, ledgerName, assetBase, precision, account)
 
-	return wb.put(key, nil)
+	var stamp [8]byte
+	binary.BigEndian.PutUint64(stamp[:], seq)
+
+	return wb.put(key, stamp[:])
 }
 
 // ReplaceMetadataIndexV replaces a metadata index entry at an explicit

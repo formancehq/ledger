@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -125,4 +126,70 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	require.NoError(t, iter.Err())
 
 	require.Equal(t, []string{"accounts:alice", "accounts:bob"}, got)
+}
+
+// TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch pins the stamp gate.
+// Each account-by-asset row carries its FIRST touch's fold sequence, and the
+// aligned index snapshot legitimately holds touches folded past the main
+// handle; a pinned scan must exclude exactly those. A row at or below the pin
+// keeps serving — including the purged-account case, since the gate reads the
+// stamp and never main-store existence.
+func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
+	t.Parallel()
+
+	const ledgerName = "ledger1"
+
+	logger := logging.FromContext(logging.TestingContext())
+	store, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = store.Close() })
+
+	kb := dal.NewKeyBuilder()
+	batch := store.NewBatch()
+	for _, seed := range []struct {
+		account string
+		seq     uint64
+	}{
+		{"accounts:early", 5},
+		{"accounts:late", 9},
+	} {
+		key := readstore.AccountByAssetKey(kb, ledgerName, "USD", 2, seed.account)
+		stamp := make([]byte, 8)
+		binary.BigEndian.PutUint64(stamp, seed.seq)
+		require.NoError(t, batch.SetBytes(key, stamp))
+	}
+	require.NoError(t, batch.Commit())
+
+	reader := store.DB()
+
+	assetID := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	info := &commonpb.LedgerInfo{Name: ledgerName}
+	registry := staticIndexLookup{
+		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
+	}
+	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
+
+	scan := func(pin uint64) []string {
+		iter, cErr := query.Compile(
+			reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+			nil, nil, info, registry, resolverReady, nil, reader, pin)
+		require.NoError(t, cErr)
+
+		defer iter.Close()
+
+		var got []string
+		for iter.Next() {
+			got = append(got, string(iter.Current()))
+		}
+		require.NoError(t, iter.Err())
+
+		return got
+	}
+
+	require.Equal(t, []string{"accounts:early"}, scan(7),
+		"a first touch folded past the pin must be invisible to the pinned read")
+	require.Equal(t, []string{"accounts:early", "accounts:late"}, scan(9),
+		"a pin covering both stamps serves both members")
 }

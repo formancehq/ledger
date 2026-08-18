@@ -403,6 +403,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -436,6 +437,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -487,6 +489,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Batch 1: commit account-by-asset rows for the original ledger.
 		batch1 := store.NewBatch()
 		b.initBatch(batch1)
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 			false, false, false, nil,
@@ -499,6 +502,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Get, so the dedup must not let them suppress the new Put.
 		batch2 := store.NewBatch()
 		b.initBatch(batch2)
+		b.wb.SetEventSequence(2)
 		require.NoError(t, readstore.DeleteLedgerIndexes(b.wb.Batch(), "test"))
 		b.markLedgerDeletedInBatch("test")
 		require.NoError(t, b.indexPostingAddressMappings(
@@ -534,6 +538,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 
 		batch := store.NewBatch()
 		b.initBatch(batch)
+		b.wb.SetEventSequence(1)
 
 		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
 		require.NoError(t, b.indexPostingAddressMappings(
@@ -576,6 +581,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -611,6 +617,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	// Index NOT registered.
 	cfg := newLedgerIndexConfig()
@@ -1942,6 +1949,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	// persistence inside handleCreatedIndexLog has a batch to write into.
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2026,6 +2034,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	// CreateIndex schedules the backfill (current=0, pending=1).
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2165,6 +2174,7 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2279,6 +2289,7 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	// CreateIndex on (ACCOUNT, metaKey) in taskLedger only.
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
 		Id: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
 	})
