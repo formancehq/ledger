@@ -314,6 +314,8 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		details["error"] = err.Error()
 	}
 
+	details["foldDiag"] = c.foldDiag(maxTicket)
+
 	assert.Unreachable("singleton_driver_model: asset-index account query outside model", details)
 }
 
@@ -412,6 +414,55 @@ func (c *Checker) assetContentDiags(maxTicket uint64, ledger, assetBase string, 
 	})
 
 	return strings.Join(diags, " ; ")
+}
+
+
+// foldDiag walks the enumeration's raw material — the ordered pending prefix
+// from modelState, then each in-flight bulk on the fully-folded state — and
+// reports every bulk the model REFUSES to apply. A refused pending bulk blocks
+// the whole prefix behind it (candidateBases only advances pending through a
+// successful Apply), so one such refusal explains a server effect no candidate
+// base contains. Empty when everything folds.
+func (c *Checker) foldDiag(maxTicket uint64) string {
+	var parts []string
+
+	base := c.modelState
+	blocked := false
+
+	for i, pe := range c.pending {
+		if pe.obs.ticket > maxTicket {
+			break
+		}
+
+		res := base.Apply(pe.obs.bulk)
+		if !res.OK {
+			parts = append(parts, fmt.Sprintf("pending[%d] minSeq=%d kinds=%s meta=%s refused=%q",
+				i, pe.minSeq, requestKinds(pe.obs.bulk), bulkMeta(pe.obs.bulk), res.Reason))
+			blocked = true
+
+			break
+		}
+
+		base = res.State
+	}
+
+	if !blocked {
+		for t, b := range c.inflight {
+			if t > maxTicket {
+				continue
+			}
+
+			if res := base.Apply(b); !res.OK {
+				parts = append(parts, fmt.Sprintf("inflight[t=%d] kinds=%s meta=%s refused=%q",
+					t, requestKinds(b), bulkMeta(b), res.Reason))
+				if len(parts) >= 4 {
+					break
+				}
+			}
+		}
+	}
+
+	return strings.Join(parts, " ; ")
 }
 
 // --- index-op generation -------------------------------------------------
