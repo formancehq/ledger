@@ -12,6 +12,8 @@ bash scripts/review-loop \
 
 The commands are intentionally provider-agnostic. They may wrap Codex, Claude, another local agent, or a test double.
 
+Each invocation creates a persistent, unique directory below `build/ai-review-loop/`. Review and fix payloads from concurrent or subsequent runs therefore never share file names. The selected directory is printed when the loop starts.
+
 ## Loop states
 
 The orchestrator emits exactly one terminal state:
@@ -28,6 +30,8 @@ For every pass, the orchestrator sets:
 
 - `AI_REVIEW_PASS` — 1-based pass number;
 - `AI_REVIEW_RESULT` — file path where the reviewer must write its JSON result;
+- `AI_REVIEW_HEAD` — exact commit SHA being reviewed;
+- `AI_REVIEW_WORKTREE_FINGERPRINT` — SHA-256 fingerprint of that commit, all tracked changes, and all non-ignored untracked file contents outside the selected state directory;
 - `AI_REVIEW_PREVIOUS_RESULT` — previous pass JSON path on re-review only.
 
 The reviewer must follow [ai-review.md](ai-review.md) and write:
@@ -36,6 +40,7 @@ The reviewer must follow [ai-review.md](ai-review.md) and write:
 {
   "decision": "REQUEST_CHANGES",
   "head": "0123456789abcdef",
+  "worktree_fingerprint": "f5e6d7c8b9a00123456789abcdef0123456789abcdef0123456789abcdef0123",
   "residual_risk": "MEDIUM",
   "findings": [
     {
@@ -53,9 +58,11 @@ The reviewer must follow [ai-review.md](ai-review.md) and write:
 }
 ```
 
+The reviewer must copy `AI_REVIEW_HEAD` and `AI_REVIEW_WORKTREE_FINGERPRINT` into `head` and `worktree_fingerprint` after reviewing that exact state. The orchestrator rejects a mismatch and also rejects a review command that changes the worktree while reviewing. This binds an approval to uncommitted fixes as well as to the current commit.
+
 `auto_fixable` means the repository already determines the intended result and the change is local/reversible. It must be `false` when resolving the finding requires a product choice, changes an invariant, selects between conflicting authoritative sources, broadens subsystem scope, or otherwise requires human judgment.
 
-The orchestrator rejects inconsistent reviewer output, including `APPROVE` with blocking findings and `REQUEST_CHANGES` without any blocking finding.
+The orchestrator rejects unknown JSON fields, missing required fields (including both boolean flags), inconsistent reviewer output such as `APPROVE` with blocking findings, and `REQUEST_CHANGES` without any blocking finding.
 
 ## Fix command contract
 
