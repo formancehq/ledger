@@ -115,9 +115,17 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
 
+			// A filter as of a point in time tests the metadata as it stood then,
+			// so later revisions are out of scope.
+			if query.UsePIT() {
+				subQuery = subQuery.Where("date <= ?", query.PIT)
+			}
+
+			// Stands in an empty object where the join found none, for the reason
+			// metadataOrEmpty documents.
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-				ColumnExpr("(array_agg(metadata))[1] as metadata")
+				ColumnExpr("coalesce((array_agg(metadata))[1], '{}'::jsonb) as metadata")
 		}
 	}
 
