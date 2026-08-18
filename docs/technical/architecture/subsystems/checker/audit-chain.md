@@ -217,6 +217,8 @@ The chain does *not* defend against an attacker who has the cluster's BLAKE3 key
 
 Request-level integrity is a separate, operator-level concern — see [Request Signing](../../../../ops/signing.md).
 
+**Acknowledged limit — coordinated tail truncation.** Both counters recover from the store's own last row (`internal/infra/state/fsmstate.go:139-141` for `NextSequenceID`, `:148-151` for `NextAuditSequenceID`), and the chain has no upper anchor: verification starts after the last archived `CloseAuditSequence` and walks to cursor exhaustion. So deleting the top *N* logs **and** the top *M* audit entries together leaves a store whose chain verifies as a valid prefix and whose recovered counters agree with the truncated content — nothing on disk records how far the history was supposed to reach. `compareLogBounds` detects the **asymmetric** cases (a lost log tail with the audit intact, which is the per-type backup segment shape, and logs above the audited maximum), but not the coordinated one. The checker therefore declares the ranges it could not authenticate; it does not claim to prove completeness. Detecting this would need an anchor outside the store — a signed head sequence, or an external witness — which is a separate design.
+
 ## Genesis
 
 The first entry (`Sequence = 0`) is computed with `lastHash = nil`. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
