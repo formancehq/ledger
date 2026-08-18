@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -68,4 +70,34 @@ func TestDecideHonorsExplicitHumanDecision(t *testing.T) {
 	action, _, err := decide(reviewResult{Decision: "HUMAN_DECISION_REQUIRED"})
 	require.NoError(t, err)
 	require.Equal(t, actionHuman, action)
+}
+
+func TestLoadReviewResultValidatesEnums(t *testing.T) {
+	t.Parallel()
+
+	write := func(t *testing.T, content string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "review.json")
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		return path
+	}
+
+	_, err := loadReviewResult(write(t, `{
+		"decision":"APPROVE",
+		"head":"abc",
+		"residual_risk":"EXTREME",
+		"findings":[]
+	}`))
+	require.ErrorContains(t, err, "invalid residual_risk")
+
+	_, err = loadReviewResult(write(t, `{
+		"decision":"REQUEST_CHANGES",
+		"head":"abc",
+		"residual_risk":"HIGH",
+		"findings":[{
+			"id":"x","severity":"CRITICAL","blocking":true,"auto_fixable":true,
+			"title":"x","evidence":"x","impact":"x","resolution":"x"
+		}]
+	}`))
+	require.ErrorContains(t, err, "invalid severity")
 }
