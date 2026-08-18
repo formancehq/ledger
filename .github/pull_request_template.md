@@ -8,7 +8,7 @@
 
 ## Risk
 
-<!-- Choose one and briefly justify MEDIUM/HIGH. -->
+<!-- Choose one and briefly justify the selected level. -->
 
 **LOW | MEDIUM | HIGH**
 
@@ -16,7 +16,7 @@
 
 <!-- Keep only checks that actually ran. Add targeted tests when relevant. -->
 
-- [ ] `bash scripts/agent-check`
+- [ ] Baseline validation: N/A
 - [ ] Targeted tests: N/A
 - [ ] Full suite / broader validation: N/A
 
