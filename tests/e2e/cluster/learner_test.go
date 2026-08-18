@@ -46,9 +46,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
@@ -158,9 +156,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
@@ -248,9 +244,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -289,9 +283,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {

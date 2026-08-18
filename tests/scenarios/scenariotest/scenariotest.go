@@ -23,13 +23,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Port constants for scenario tests.
-// Using 16xxx range to avoid conflicts with e2e tests (15xxx).
-const (
-	GRPCPort = 16100
-	HTTPPort = 16200
-)
-
 // ScenarioCluster holds the state for a single-node scenario test cluster.
 // It supports restart (stop + start with same WAL/data dirs) to test WAL replay.
 type ScenarioCluster struct {
@@ -40,9 +33,10 @@ type ScenarioCluster struct {
 	Client  servicepb.BucketServiceClient
 	Cluster clusterpb.ClusterServiceClient
 
-	// Config captured at setup time, reused on restart.
-	httpPort  int
-	grpcPort  int
+	// Config captured at setup time, reused on restart. Keeping the allocated
+	// NodePorts (rather than re-allocating) is required: a restarted node must
+	// come back on the same Raft port, or its peers cannot reach it.
+	ports     testserver.NodePorts
 	walDir    string
 	dataDir   string
 	extra     []testservice.Instrumentation
@@ -75,14 +69,10 @@ func (sc *ScenarioCluster) Restart() {
 func (sc *ScenarioCluster) startServer() {
 	sc.t.Helper()
 
-	raftPort := sc.grpcPort - 1000
-
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "scenario-cluster",
-		HTTPPort:  sc.httpPort,
-		RaftPort:  raftPort,
-		GRPCPort:  sc.grpcPort,
+		Ports:     sc.ports,
 		WalDir:    sc.walDir,
 		DataDir:   sc.dataDir,
 		Debug:     os.Getenv("DEBUG") == "true",
@@ -100,7 +90,7 @@ func (sc *ScenarioCluster) startServer() {
 	require.NoError(sc.t, sc.server.Start(sc.ctx))
 
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", sc.grpcPort),
+		fmt.Sprintf("localhost:%d", sc.ports.GRPC()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
@@ -123,14 +113,13 @@ func (sc *ScenarioCluster) startServer() {
 // SetupSingleNode creates a single-node cluster for scenario tests.
 // Returns the ScenarioCluster which holds ctx, clients, and supports Restart().
 // Cleanup is handled via t.Cleanup.
-func SetupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.Instrumentation) *ScenarioCluster {
+func SetupSingleNode(t *testing.T, extra ...testservice.Instrumentation) *ScenarioCluster {
 	t.Helper()
 
 	sc := &ScenarioCluster{
 		t:         t,
 		ctx:       logging.TestingContext(),
-		httpPort:  httpPort,
-		grpcPort:  grpcPort,
+		ports:     testserver.AllocateNodePorts(),
 		walDir:    t.TempDir(),
 		dataDir:   t.TempDir(),
 		extra:     extra,

@@ -27,9 +27,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9500
-		grpcPort = 8500
-		table    = "ledger_events"
+		table = "ledger_events"
 	)
 
 	BeforeAll(func() {
@@ -45,7 +43,9 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Start single-node ledger server
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {

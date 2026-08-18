@@ -50,13 +50,14 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		)
 
 		const (
-			httpPort   = 9240
-			grpcPort   = 8240
 			ledgerName = "qcp-schedule-test"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			// Create a ledger so the cluster is fully bootstrapped.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -124,15 +125,16 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		)
 
 		const (
-			httpPort   = 9241
-			grpcPort   = 8241
 			ledgerName = "qcp-schedule-auto"
 		)
 
 		var initialCheckpointCount int
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			// Create a ledger so there is data to checkpoint.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -195,13 +197,14 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		)
 
 		const (
-			httpPort   = 9242
-			grpcPort   = 8242
 			ledgerName = "qcp-schedule-update"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -260,13 +263,14 @@ var _ = Describe("Query Checkpoint Schedule", func() {
 		)
 
 		const (
-			httpPort   = 9243
-			grpcPort   = 8243
 			ledgerName = "qcp-schedule-state"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())

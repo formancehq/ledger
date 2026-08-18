@@ -22,21 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
-// Common port constants shared by all e2e tests.
-// All tests run sequentially, so they can safely reuse the same ports.
-// Using high ports (15xxx) to avoid conflicts with host services.
-const (
-	// Multi-node test ports (up to 4 nodes: base+0, base+1, base+2, base+3).
-	TestRaftBasePort    = 15000
-	TestServiceBasePort = 15100
-	TestHTTPBasePort    = 15200
-	TestGatewayBasePort = 15300
-
-	// Single-node test ports (raft port is derived as TestSingleGRPCPort - 1000).
-	TestSingleHTTPPort = 15200
-	TestSingleGRPCPort = 15100
-)
-
 var (
 	Debug = os.Getenv("DEBUG") == "true"
 )
@@ -49,6 +34,7 @@ type ServiceWithClient struct {
 	GRPCConn      *grpc.ClientConn
 	WalDir        string
 	DataDir       string
+	HTTPPort      int
 	GRPCPort      int
 	NodeID        uint32
 }
@@ -134,7 +120,6 @@ func WithNodeInstruments(nodeIndex int, instruments ...testservice.Instrumentati
 // Cleanup is handled automatically via DeferCleanup.
 func SetupMultiNodeCluster(
 	countInstances int,
-	raftBasePort, serviceBasePort, httpBasePort, gatewayBasePort int,
 	opts ...MultiNodeOption,
 ) (context.Context, []*ServiceWithClient, *testserver.Gateway, *uint64) {
 	options := MultiNodeOptions{
@@ -146,13 +131,21 @@ func SetupMultiNodeCluster(
 
 	ctx := logging.TestingContext()
 
+	// Allocate every node's ports BEFORE any node starts: the gateway's peer
+	// list and the joiners' --join address are built from these numbers while
+	// the servers are still down.
+	nodePorts := make([]testserver.NodePorts, countInstances)
+	for i := range countInstances {
+		nodePorts[i] = testserver.AllocateNodePorts()
+	}
+
 	var gw *testserver.Gateway
 	if options.WithGateway {
 		gatewayPorts := make([]int, countInstances)
 		nodeRaftAddresses := make([]string, countInstances)
 		for i := range countInstances {
-			gatewayPorts[i] = gatewayBasePort + i
-			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", raftBasePort+i)
+			gatewayPorts[i] = testserver.AllocatePort()
+			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodePorts[i].Raft())
 		}
 
 		var err error
@@ -172,9 +165,7 @@ func SetupMultiNodeCluster(
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:       i + 1,
 			ClusterID:    "test-cluster",
-			HTTPPort:     httpBasePort + i,
-			RaftPort:     raftBasePort + i,
-			GRPCPort:     serviceBasePort + i,
+			Ports:        nodePorts[i],
 			WalDir:       walDir,
 			DataDir:      dataDir,
 			Debug:        Debug,
@@ -218,7 +209,7 @@ func SetupMultiNodeCluster(
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 
-		grpcClient, clusterClient, grpcConn, err := NewGRPCClient(serviceBasePort + i)
+		grpcClient, clusterClient, grpcConn, err := NewGRPCClient(nodePorts[i].GRPC())
 		Expect(err).To(Succeed())
 		DeferCleanup(func() {
 			_ = grpcConn.Close()
@@ -231,7 +222,8 @@ func SetupMultiNodeCluster(
 			GRPCConn:      grpcConn,
 			WalDir:        walTmpDir,
 			DataDir:       dataTmpDir,
-			GRPCPort:      serviceBasePort + i,
+			HTTPPort:      nodePorts[i].HTTP(),
+			GRPCPort:      nodePorts[i].GRPC(),
 			NodeID:        uint32(i + 1),
 		})
 	}
@@ -252,7 +244,7 @@ func SetupMultiNodeCluster(
 	// ClusterBootstrapService is exposed there (see
 	// internal/adapter/grpc/server_bootstrap.go), so --join targets the
 	// raft port, not the external service gRPC port.
-	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", raftBasePort)
+	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", nodePorts[0].Raft())
 	for i := 1; i < countInstances; i++ {
 		startNode(i, testserver.WithJoin(bootstrapRaftAddr))
 	}
@@ -330,56 +322,10 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	}
 }
 
-// assertPortsAvailableForNode fails the spec when an auxiliary node would bind
-// a port belonging to the shared single-node server. In the business suite that
-// server is started once by SynchronizedBeforeSuite and stays up for the whole
-// run, so any overlap is fatal rather than merely untidy.
-//
-// The Raft port is the trap: SetupSingleNode derives it as grpcPort-1000, so a
-// caller who picks gRPC 16200 lands on Raft 15200 — TestSingleHTTPPort. The
-// server then dies with an opaque "bind: address already in use" panic raised
-// deep in the boot path, which aborts the suite and buries the spec that was
-// actually failing. Fail here instead, naming the offending constant.
-//
-// The shared node itself legitimately owns these ports, so it is exempt.
-func nodePortConflict(httpPort, grpcPort, raftPort int) error {
-	if httpPort == TestSingleHTTPPort && grpcPort == TestSingleGRPCPort {
-		return nil
-	}
-
-	reserved := map[int]string{
-		TestSingleHTTPPort:        "TestSingleHTTPPort",
-		TestSingleGRPCPort:        "TestSingleGRPCPort",
-		TestSingleGRPCPort - 1000: "the shared node's derived Raft port",
-	}
-
-	for _, p := range []struct {
-		value int
-		label string
-	}{
-		{httpPort, "HTTP port"},
-		{grpcPort, "gRPC port"},
-		{raftPort, fmt.Sprintf("Raft port (derived from gRPC port %d minus 1000)", grpcPort)},
-	} {
-		name, clashes := reserved[p.value]
-		if clashes {
-			return fmt.Errorf(
-				"%s %d is reserved for the shared single-node server (%s); pick another port",
-				p.label, p.value, name)
-		}
-	}
-
-	return nil
-}
-
-func assertPortsAvailableForNode(httpPort, grpcPort, raftPort int) {
-	Expect(nodePortConflict(httpPort, grpcPort, raftPort)).NotTo(HaveOccurred())
-}
-
 // SetupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
-// Returns the context, client, and cluster client.
+// Ports are allocated, never passed in: see testserver.AllocateNodePorts.
 // Cleanup is handled automatically via DeferCleanup.
-func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *ServiceWithClient) {
 	ctx := logging.TestingContext()
 
 	walTmpDir := GinkgoT().TempDir()
@@ -389,24 +335,19 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 		Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 	})
 
-	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
-	raftPort := grpcPort - 1000
-
-	assertPortsAvailableForNode(httpPort, grpcPort, raftPort)
+	ports := testserver.AllocateNodePorts()
 
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "test-cluster",
-		HTTPPort:  httpPort,
-		RaftPort:  raftPort,
-		GRPCPort:  grpcPort,
+		Ports:     ports,
 		WalDir:    walTmpDir,
 		DataDir:   dataTmpDir,
 		Debug:     Debug,
 		Output:    GinkgoWriter,
 	})
 	instruments = append(instruments, testserver.WithBootstrap())
-	instruments = append(instruments, extraInstruments...)
+	instruments = append(instruments, extra...)
 
 	server := testservice.New(cmdserver.NewRunCommand,
 		testservice.WithInstruments(instruments...),
@@ -421,7 +362,7 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 	})
 
 	// Create gRPC client
-	grpcClient, clusterClient, grpcConn, err := NewGRPCClient(grpcPort)
+	grpcClient, clusterClient, grpcConn, err := NewGRPCClient(ports.GRPC())
 	Expect(err).To(Succeed())
 	DeferCleanup(func() {
 		_ = grpcConn.Close()
@@ -435,5 +376,15 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 		return state.GetLeader() != 0
 	}).Within(5 * time.Second).To(BeTrue())
 
-	return ctx, grpcClient, clusterClient
+	return ctx, &ServiceWithClient{
+		Service:       server,
+		Client:        grpcClient,
+		ClusterClient: clusterClient,
+		GRPCConn:      grpcConn,
+		WalDir:        walTmpDir,
+		DataDir:       dataTmpDir,
+		HTTPPort:      ports.HTTP(),
+		GRPCPort:      ports.GRPC(),
+		NodeID:        1,
+	}
 }

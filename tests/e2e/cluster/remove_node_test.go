@@ -42,9 +42,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -97,9 +95,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 			// Add a learner node (phantom, not a real process)
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
@@ -158,9 +154,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -210,9 +204,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -273,9 +265,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -318,9 +308,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {

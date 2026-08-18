@@ -172,11 +172,12 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			ttlCtx, ttlClient, _ = testutil.SetupSingleNode(
-				15900, 16000,
+			var ttlNode *testutil.ServiceWithClient
+			ttlCtx, ttlNode = testutil.SetupSingleNode(
 				testserver.WithIdempotencyTTL(2*time.Second),
 				testserver.WithIdempotencyEvictionInterval(1*time.Second),
 			)
+			ttlClient = ttlNode.Client
 		})
 
 		It("Should allow reuse of an idempotency key after TTL expiration", func() {

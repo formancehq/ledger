@@ -124,24 +124,21 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 	var (
 		ctx    context.Context
 		client servicepb.BucketServiceClient
-	)
-
-	const (
-		httpPort = testutil.TestSingleHTTPPort
-		grpcPort = testutil.TestSingleGRPCPort
+		node   *testutil.ServiceWithClient
 	)
 
 	BeforeAll(func() {
 		// pterm output is disabled once for the whole suite in TestCluster. Its
 		// settings are package-level globals, so specs must not mutate them.
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	Context("ledgers create --schema", Ordered, func() {
 		const ledgerName = "cli-create-schema"
 
 		It("Should create a ledger with an initial schema via --schema flags", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
 				"--name", ledgerName,
 				"--schema", "account:age:int64",
@@ -168,7 +165,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should show the schema in ledgers get --json", func() {
 			var ledger map[string]any
-			err := runCLIJSON(grpcPort, &ledger, "ledgers", "get", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &ledger, "ledgers", "get", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			Expect(ledger["name"]).To(Equal(ledgerName))
@@ -193,7 +190,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should set a metadata field type via CLI", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -213,7 +210,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should set a transaction field type via CLI", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "transaction",
@@ -254,7 +251,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should remove a metadata field type via CLI with -y", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "remove-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -299,14 +296,14 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should display the schema in text mode without error", func() {
-			output, err := runCLI(grpcPort, "ledgers", "get-schema", ledgerName)
+			output, err := runCLI(node.GRPCPort, "ledgers", "get-schema", ledgerName)
 			Expect(err).To(Succeed())
 			Expect(output).To(Or(BeEmpty(), Not(ContainSubstring("FAIL"))))
 		})
 
 		It("Should return correct schema in JSON mode", func() {
 			var resp servicepb.GetMetadataSchemaStatusResponse
-			err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveKey("verified"))
@@ -322,7 +319,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			var resp servicepb.GetMetadataSchemaStatusResponse
-			err = runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", emptyLedger, "--json")
+			err = runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", emptyLedger, "--json")
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(BeEmpty())
 			Expect(resp.TransactionFields).To(BeEmpty())
@@ -333,7 +330,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		const ledgerName = "cli-lifecycle"
 
 		It("Should create ledger with schema", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
 				"--name", ledgerName,
 				"--schema", "account:age:int64",
@@ -343,7 +340,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should add another field type via set-metadata-type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -355,7 +352,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should show all three account fields in get-schema --json", func() {
 			var resp servicepb.GetMetadataSchemaStatusResponse
-			err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveLen(3))
@@ -389,7 +386,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should remove a field type via remove-metadata-type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "remove-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -401,7 +398,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should show only two fields after removal", func() {
 			var resp servicepb.GetMetadataSchemaStatusResponse
-			err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			Expect(resp.AccountFields).To(HaveLen(2))
@@ -412,7 +409,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should show schema in ledgers get", func() {
 			var ledger map[string]any
-			err := runCLIJSON(grpcPort, &ledger, "ledgers", "get", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &ledger, "ledgers", "get", ledgerName, "--json")
 			Expect(err).To(Succeed())
 
 			schema, ok := ledger["metadataSchema"].(map[string]any)
@@ -427,7 +424,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 	Context("CLI error handling", Ordered, func() {
 		It("Should fail set-metadata-type with invalid target", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", "nonexistent",
 				"--target", "invalid",
@@ -438,7 +435,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should fail set-metadata-type with invalid type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", "nonexistent",
 				"--target", "account",
@@ -449,7 +446,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should fail create with invalid --schema format", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
 				"--name", "should-fail",
 				"--schema", "invalid-format",
@@ -458,7 +455,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should fail create with invalid --schema type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "create",
 				"--name", "should-fail-2",
 				"--schema", "account:key:float64",
@@ -467,7 +464,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should fail get-schema without ledger name argument", func() {
-			_, err := runCLI(grpcPort, "ledgers", "get-schema")
+			_, err := runCLI(node.GRPCPort, "ledgers", "get-schema")
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -500,7 +497,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			for _, tt := range allTypes {
 				By(fmt.Sprintf("Setting type %s", tt.typeName), func() {
 					key := fmt.Sprintf("field_%s", tt.typeName)
-					_, err := runCLI(grpcPort,
+					_, err := runCLI(node.GRPCPort,
 						"ledgers", "set-metadata-type",
 						"--ledger", ledgerName,
 						"--target", "account",
@@ -513,7 +510,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 			By("Verifying all types via get-schema", func() {
 				var resp servicepb.GetMetadataSchemaStatusResponse
-				err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
+				err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 				Expect(err).To(Succeed())
 
 				Expect(resp.AccountFields).To(HaveLen(len(allTypes)))
@@ -541,7 +538,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should declare a type via CLI triggering background conversion", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -554,7 +551,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should eventually show COMPLETE status via get-schema --json", func() {
 			Eventually(func(g Gomega) {
 				var resp servicepb.GetMetadataSchemaStatusResponse
-				err := runCLIJSON(grpcPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
+				err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -591,7 +588,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should work with 'smt' alias for set-metadata-type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "smt",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -608,7 +605,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should work with 'rmt' alias for remove-metadata-type", func() {
-			_, err := runCLI(grpcPort,
+			_, err := runCLI(node.GRPCPort,
 				"ledgers", "rmt",
 				"--ledger", ledgerName,
 				"--target", "account",
@@ -626,7 +623,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		It("Should work with 'schema' alias for get-schema", func() {
 			var resp servicepb.GetMetadataSchemaStatusResponse
-			err := runCLIJSON(grpcPort, &resp, "ledgers", "schema", ledgerName, "--json")
+			err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "schema", ledgerName, "--json")
 			Expect(err).To(Succeed())
 			Expect(resp.AccountFields).To(HaveKey("alias_field"))
 		})

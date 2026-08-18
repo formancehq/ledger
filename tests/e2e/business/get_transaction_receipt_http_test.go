@@ -12,7 +12,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -27,7 +26,7 @@ var _ = Describe("GetTransaction HTTP receipt (EN-1510)", Ordered, func() {
 	const ledgerName = "gettx-receipt-http"
 
 	restURL := func(path string) string {
-		return fmt.Sprintf("http://localhost:%d/v3/%s%s", testutil.TestSingleHTTPPort, ledgerName, path)
+		return fmt.Sprintf("http://localhost:%d/v3/%s%s", sharedHTTPPort, ledgerName, path)
 	}
 
 	var createdTxID uint64

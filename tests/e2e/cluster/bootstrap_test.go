@@ -41,9 +41,6 @@ const (
 
 var _ = Describe("Bootstrap from backup", Ordered, func() {
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
-		raftPort   = grpcPort - 1000
 		ledgerName = "bootstrap-ledger"
 		ledger2    = "bootstrap-ledger-2"
 	)
@@ -64,6 +61,10 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 	// from. The eve posting is included because the second full backup taken
 	// in Phase 1 captures it.
 	const bankOutput = aliceTransfer + bobTransfer + eveTransfer
+
+	// Phase 1 takes the backup and Phase 3 brings the same logical node back on
+	// the offline-prepared data, so both phases reuse the same allocated ports.
+	ports := testserver.AllocateNodePorts()
 
 	var (
 		ctx              context.Context
@@ -141,9 +142,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: bootstrapBucketID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    walDir,
 				DataDir:   dataDir,
 				Debug:     testutil.Debug,
@@ -157,7 +156,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -315,9 +314,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: bootstrapBucketID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    bootstrapWalDir,
 				DataDir:   bootstrapDataDir,
 				Debug:     testutil.Debug,
@@ -331,7 +328,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {

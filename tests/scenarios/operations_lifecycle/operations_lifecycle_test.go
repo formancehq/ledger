@@ -32,7 +32,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		numDeposits = 5
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+4, scenariotest.GRPCPort+4,
+	sc := scenariotest.SetupSingleNode(t,
 		testserver.WithColdStorageDriver("filesystem"),
 	)
 	ctx, client := sc.Ctx(), sc.Client

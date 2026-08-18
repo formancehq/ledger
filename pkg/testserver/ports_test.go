@@ -112,3 +112,16 @@ func TestProcessPortBaseStaysInsideTheBand(t *testing.T) {
 	require.Less(t, portAllocatorBase+portAllocatorBuckets*portAllocatorStride, portAllocatorCeiling,
 		"buckets x stride must leave headroom below the ceiling")
 }
+
+func TestDefaultTestInstrumentsRejectsUnallocatedPorts(t *testing.T) {
+	t.Parallel()
+
+	// A zero-value NodePorts would configure --http-port 0 and let the OS pick
+	// an ephemeral port the test can never learn. Fail loudly instead.
+	require.Panics(t, func() {
+		_ = DefaultTestInstruments(TestNodeConfig{
+			NodeID:    1,
+			ClusterID: "test-cluster",
+		})
+	})
+}

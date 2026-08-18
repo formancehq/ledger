@@ -30,8 +30,6 @@ import (
 // inconsistency.
 var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
 		ledgerName = "get-ledger-snapshot"
 		toggleType = "toggle"
 
@@ -50,7 +48,9 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())

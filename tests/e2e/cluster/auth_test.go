@@ -32,13 +32,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Dedicated port range for auth tests.
-const (
-	authTestHTTPPort = 15800
-	authTestGRPCPort = 15900
-	authTestRaftPort = 14800
-)
-
 // mockOIDCServer creates an HTTP test server that serves OIDC discovery and JWKS endpoints.
 func mockOIDCServer(publicKey *rsa.PublicKey) *httptest.Server {
 	jwk := jose.JSONWebKey{
@@ -153,12 +146,12 @@ var _ = Describe("Auth", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
+		ports := testserver.AllocateNodePorts()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  authTestHTTPPort,
-			RaftPort:  authTestRaftPort,
-			GRPCPort:  authTestGRPCPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -186,7 +179,7 @@ var _ = Describe("Auth", Ordered, func() {
 		})
 
 		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
-		client, clusterClient, grpcConn, err = newTLSGRPCClient(authTestGRPCPort, certs.CACertFile)
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
 

@@ -159,13 +159,10 @@ var _ = Describe("Mirror", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = testutil.TestSingleHTTPPort
-		grpcPort = testutil.TestSingleGRPCPort
-	)
-
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	Context("When creating a mirror ledger", func() {

@@ -30,10 +30,10 @@ import (
 // to pull.
 var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 	var (
-		certs         *testserver.TestCerts
-		bootstrapRaft int
-		clusterSecret = "correct-cluster-secret-en1080"
-		clusterID     = "en1080-cluster"
+		certs          *testserver.TestCerts
+		bootstrapPorts testserver.NodePorts
+		clusterSecret  = "correct-cluster-secret-en1080"
+		clusterID      = "en1080-cluster"
 	)
 
 	// startJoiner builds a joining node targeting the bootstrap node's raft
@@ -50,19 +50,19 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 			_ = os.RemoveAll(dataDir)
 		})
 
+		joinerPorts := testserver.AllocateNodePorts()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    2,
 			ClusterID: clusterID,
-			HTTPPort:  freeTLSReproPort(),
-			RaftPort:  freeTLSReproPort(),
-			GRPCPort:  freeTLSReproPort(),
+			Ports:     joinerPorts,
 			WalDir:    walDir,
 			DataDir:   dataDir,
 			Debug:     testutil.Debug,
 			Output:    GinkgoWriter,
 		})
 		instruments = append(instruments,
-			testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", bootstrapRaft)),
+			testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", bootstrapPorts.Raft())),
 			testserver.WithTLSMode("required"),
 			testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
@@ -97,14 +97,12 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 			_ = os.RemoveAll(dataDir)
 		})
 
-		bootstrapRaft = freeTLSReproPort()
+		bootstrapPorts = testserver.AllocateNodePorts()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: clusterID,
-			HTTPPort:  freeTLSReproPort(),
-			RaftPort:  bootstrapRaft,
-			GRPCPort:  freeTLSReproPort(),
+			Ports:     bootstrapPorts,
 			WalDir:    walDir,
 			DataDir:   dataDir,
 			Debug:     testutil.Debug,

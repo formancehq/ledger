@@ -122,10 +122,6 @@ var _ = Describe("Bloom filter config change preserves data", Ordered, func() {
 	BeforeAll(func() {
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
 			countInstances,
-			testutil.TestRaftBasePort,
-			testutil.TestServiceBasePort,
-			testutil.TestHTTPBasePort,
-			testutil.TestGatewayBasePort,
 			// Default instruments already include WithBloomTestConfig() (volumes=10000)
 		)
 	})
