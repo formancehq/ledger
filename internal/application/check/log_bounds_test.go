@@ -272,6 +272,92 @@ func sealArchivedChapter(p *commonpb.Chapter) {
 	p.SealingHash = hasher.Sum(nil)
 }
 
+// archivedBoundary is the chapter metadata a purge boundary is written with.
+// closeSequence is the last LOG sequence of the archived chapter and becomes
+// signing.archiveEndSeq; closeAuditSequence is the last AUDIT sequence and is
+// where the live chain walk starts. The two ride independent counters and are
+// not interchangeable.
+type archivedBoundary struct {
+	closeSequence      uint64
+	closeAuditSequence uint64
+	// lastAuditHash is the hash of the entry AT closeAuditSequence, the chain
+	// input the first surviving entry is verified against.
+	lastAuditHash []byte
+	// purgeLogRows mirrors executePurge deleting the log rows in the archived
+	// range. False leaves them retained, which out-of-order archiving does.
+	purgeLogRows bool
+}
+
+// writeArchivedBoundary seals an ARCHIVED chapter over [1, closeSequence],
+// opens the next chapter after it, and purges the archived range exactly the
+// way WriteSet.executePurge does — logs by log sequence, audit entries and
+// applied proposals by audit sequence. Audit ITEM rows are deliberately left
+// behind: executePurge does not delete them either.
+func writeArchivedBoundary(t *testing.T, engine *testEngine, boundary archivedBoundary) {
+	t.Helper()
+
+	archived := &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+		Start:              &commonpb.Timestamp{Data: 1700000001},
+		End:                &commonpb.Timestamp{Data: 1700000002},
+		StartSequence:      1,
+		CloseSequence:      boundary.closeSequence,
+		StartAuditSequence: 1,
+		CloseAuditSequence: boundary.closeAuditSequence,
+		LastAuditHash:      boundary.lastAuditHash,
+		StateHash:          make([]byte, 32),
+	}
+	sealArchivedChapter(archived)
+
+	open := &commonpb.Chapter{
+		Id:                 2,
+		Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
+		Start:              &commonpb.Timestamp{Data: 1700000003},
+		StartSequence:      boundary.closeSequence + 1,
+		StartAuditSequence: boundary.closeAuditSequence + 1,
+	}
+
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, state.StoreChapter(batch, archived))
+	require.NoError(t, state.StoreChapter(batch, open))
+	require.NoError(t, state.StoreNextChapterID(batch, 3))
+
+	if boundary.purgeLogRows {
+		require.NoError(t, batch.DeleteRange(
+			dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(archived.GetStartSequence()).Build(),
+			dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(archived.GetCloseSequence()+1).Build(),
+			nil))
+	}
+
+	require.NoError(t, batch.DeleteRange(
+		dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(archived.GetStartAuditSequence()).Build(),
+		dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(archived.GetCloseAuditSequence()+1).Build(),
+		nil))
+	require.NoError(t, batch.DeleteRange(
+		dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(archived.GetStartAuditSequence()).Build(),
+		dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(archived.GetCloseAuditSequence()+1).Build(),
+		nil))
+	require.NoError(t, batch.Commit())
+}
+
+// captureBoundaryBaseline takes the baseline checkpoint the way archival does:
+// AT the boundary, before any post-boundary apply, so it is an independent
+// record of the purged range rather than a copy of what is being verified.
+// Without it Check() abandons entry-by-entry verification on an archived store
+// (the baselineDB == nil return), which would make every later assertion vacuous.
+func captureBoundaryBaseline(t *testing.T, engine *testEngine) {
+	t.Helper()
+
+	handle, err := engine.store.NewReadHandle()
+	require.NoError(t, err)
+
+	baselinePath, err := engine.store.BaselineSnapshotDir()
+	require.NoError(t, err)
+	require.NoError(t, attributes.CreateBaselineSnapshot(handle, baselinePath))
+	require.NoError(t, handle.Close())
+}
+
 // TestCheckBoundsLogsAcrossAnArchivedBoundary covers the archived store, which
 // is where the bound has the most room to be wrong in both directions:
 //
@@ -326,16 +412,7 @@ func TestCheckBoundsLogsAcrossAnArchivedBoundary(t *testing.T) {
 			// entry at the close-audit-sequence, which the chapter carries.
 			boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
 
-			// The baseline checkpoint is taken AT the boundary, before any
-			// post-boundary apply, which is what makes it an independent record
-			// of the purged state rather than a copy of what is being verified.
-			handle, err := engine.store.NewReadHandle()
-			require.NoError(t, err)
-
-			baselinePath, err := engine.store.BaselineSnapshotDir()
-			require.NoError(t, err)
-			require.NoError(t, attributes.CreateBaselineSnapshot(handle, baselinePath))
-			require.NoError(t, handle.Close())
+			captureBoundaryBaseline(t, engine)
 
 			// Post-boundary history: logs 3-4, audit entries 3-4. Stands in for
 			// the archive flow's own proposals, which is why a live entry always
@@ -344,52 +421,12 @@ func TestCheckBoundsLogsAcrossAnArchivedBoundary(t *testing.T) {
 				newPosting("world", "bob", "USD", 50)))
 			engine.processAndCommit(createLedgerOrder("live-era"))
 
-			archived := &commonpb.Chapter{
-				Id:                 1,
-				Status:             commonpb.ChapterStatus_CHAPTER_ARCHIVED,
-				Start:              &commonpb.Timestamp{Data: 1700000001},
-				End:                &commonpb.Timestamp{Data: 1700000002},
-				StartSequence:      1,
-				CloseSequence:      2,
-				StartAuditSequence: 1,
-				CloseAuditSequence: 2,
-				LastAuditHash:      boundaryAuditHash,
-				StateHash:          make([]byte, 32),
-			}
-			sealArchivedChapter(archived)
-
-			open := &commonpb.Chapter{
-				Id:                 2,
-				Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
-				Start:              &commonpb.Timestamp{Data: 1700000003},
-				StartSequence:      3,
-				StartAuditSequence: 3,
-			}
-
-			batch := engine.store.OpenWriteSession()
-			require.NoError(t, state.StoreChapter(batch, archived))
-			require.NoError(t, state.StoreChapter(batch, open))
-			require.NoError(t, state.StoreNextChapterID(batch, 3))
-
-			// Purge the archived range the way WriteSet.executePurge does: logs
-			// by log sequence, audit entries and applied proposals by audit
-			// sequence. The log range is optional per variant.
-			if tc.purgePreBoundaryLogs {
-				require.NoError(t, batch.DeleteRange(
-					dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(archived.GetStartSequence()).Build(),
-					dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(archived.GetCloseSequence()+1).Build(),
-					nil))
-			}
-
-			require.NoError(t, batch.DeleteRange(
-				dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(archived.GetStartAuditSequence()).Build(),
-				dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(archived.GetCloseAuditSequence()+1).Build(),
-				nil))
-			require.NoError(t, batch.DeleteRange(
-				dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(archived.GetStartAuditSequence()).Build(),
-				dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(archived.GetCloseAuditSequence()+1).Build(),
-				nil))
-			require.NoError(t, batch.Commit())
+			writeArchivedBoundary(t, engine, archivedBoundary{
+				closeSequence:      2,
+				closeAuditSequence: 2,
+				lastAuditHash:      boundaryAuditHash,
+				purgeLogRows:       tc.purgePreBoundaryLogs,
+			})
 
 			healthy := collectCheckErrors(t, engine.store, engine.attrs)
 
@@ -590,4 +627,85 @@ func TestCheckDoesNotBoundLogsBelowTrailingFailures(t *testing.T) {
 	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
 		"a failure allocates no log sequence, so the audited range stays contiguous")
 	require.Empty(t, errs, "a store ending in rejected proposals must be reported clean")
+}
+
+// TestCheckReportsDiscontinuityAboveAnArchivedBoundary covers the abutment
+// assertion's interaction with an archive boundary — the eighth case, added
+// after case 7 was found to exercise the assertion only with
+// signing.archiveEndSeq == 0.
+//
+// The fixture has a real boundary: the archived chapter closes at log 2, so
+// signing.archiveEndSeq is 2, not 0, and the `minLogSeq > signing.archiveEndSeq`
+// conjunct is genuinely evaluated rather than trivially satisfied. A live entry
+// then jumps from the audited maximum 3 straight to 6, and the finding is still
+// reported. That is the half that protects the audit: a boundary must not become
+// a blanket excuse that swallows a hole in the audited range.
+//
+// It does NOT pin the conjunct's excusing direction, and no test can, because
+// that direction is unreachable on a store whose chapter metadata is internally
+// consistent. close_sequence and close_audit_sequence are both assigned at
+// CloseChapter apply time from monotonic counters, so across archived chapters
+// they rise together and the SAME chapter supplies both maxima. The live walk
+// starts after the highest archived close_audit_sequence, so every entry it
+// visits was applied after that chapter closed, and therefore carries
+// minLogSeq > that chapter's close_sequence == signing.archiveEndSeq. The
+// scenario the conjunct was written for — an un-archived chapter below the
+// boundary — is in fact handled by the `chainBound.expectedLogMax > 0` guard
+// instead: the skipped span leaves the maximum at 0 at the first visited entry.
+//
+// Reaching the excuse requires an archived close_sequence that overlaps the live
+// audited range, which is corruption rather than out-of-order archiving — and
+// close_sequence is the attacker-forgeable field (unkeyed sealing hash, see
+// log_bounds.go). Pinning that as expected behaviour would bless a forgeable
+// suppression of an invariant finding, so this test pins the reachable half and
+// the unreachable half is reported instead.
+func TestCheckReportsDiscontinuityAboveAnArchivedBoundary(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	// Pre-boundary history: logs 1-2, audit entries 1-2.
+	engine.processAndCommit(createLedgerOrder("archived-era"))
+	engine.processAndCommit(createTransactionOrder("archived-era", true,
+		newPosting("world", "alice", "USD", 100)))
+
+	boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+	captureBoundaryBaseline(t, engine)
+
+	// Two live entries, both correctly chained onto the boundary hash so the
+	// walk reaches the second one: log 3, then a jump to log 6. Logs 4 and 5 are
+	// authenticated by nothing. Only an adversary that re-hashes, or an FSM bug
+	// in log allocation, produces this — hence the invariant assertion.
+	serialized := createLedgerOrder("live-era").MarshalDeterministicVT(nil)
+
+	for _, logSeq := range []uint64{3, 6} {
+		appendChainedAuditEntry(t, engine, &auditpb.AuditEntry{
+			Timestamp:  &commonpb.Timestamp{Data: 1700000010 + logSeq},
+			ProposalId: 100 + logSeq,
+			OrderCount: 1,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
+			},
+		}, []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}})
+	}
+
+	writeArchivedBoundary(t, engine, archivedBoundary{
+		closeSequence:      2,
+		closeAuditSequence: 2,
+		lastAuditHash:      boundaryAuditHash,
+		purgeLogRows:       true,
+	})
+
+	gaps := errorsOfType(
+		collectCheckErrors(t, engine.store, engine.attrs),
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+
+	require.Len(t, gaps, 1,
+		"a jump in the audited log range above the archive boundary must still be "+
+			"reported: archiveEndSeq narrows which ranges are held to the assertion, "+
+			"it must not excuse a hole above itself")
+	require.Equal(t, uint64(6), gaps[0].GetLogSequence())
+	require.Contains(t, gaps[0].GetMessage(), "the audited log range is discontinuous")
+	require.Contains(t, gaps[0].GetMessage(), "authenticates logs from 6 but the highest previously audited log was 3")
 }
