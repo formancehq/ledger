@@ -379,6 +379,7 @@ paths:
             dates are rejected with a 400.
             Requires the builtin `LOG_DATE` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/BigintAsString'
       responses:
         '200':
           description: Logs retrieved successfully
@@ -616,6 +617,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/BigintAsString'
       requestBody:
         required: true
         content:
@@ -725,6 +727,7 @@ paths:
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/BigintAsString'
       responses:
         '200':
           description: Transactions retrieved successfully.
@@ -767,6 +770,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
+        - $ref: '#/components/parameters/BigintAsString'
       responses:
         '200':
           description: Transaction retrieved successfully
@@ -1205,6 +1209,7 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/BigintAsString'
       requestBody:
         required: false
         content:
@@ -1800,6 +1805,7 @@ paths:
             type: boolean
             default: false
           description: Execute all operations atomically (not yet supported)
+        - $ref: '#/components/parameters/BigintAsString'
       requestBody:
         required: true
         content:
@@ -2017,6 +2023,7 @@ paths:
           description: Cursor for pagination (overrides body value)
           schema:
             type: string
+        - $ref: '#/components/parameters/BigintAsString'
       requestBody:
         required: false
         content:
@@ -2245,6 +2252,7 @@ paths:
           schema:
             type: integer
             format: uint64
+        - $ref: '#/components/parameters/BigintAsString'
       responses:
         '200':
           description: Log retrieved successfully.
@@ -2925,6 +2933,21 @@ components:
         maxLength: 256
       description: Idempotency key for the request
 
+    BigintAsString:
+      name: Formance-Bigint-As-String
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Opt into lossless amount encoding. When set to a truthy value
+        (true, yes, y or 1 — case-insensitive, surrounding whitespace
+        ignored), every posting amount in the response is a quoted decimal
+        string instead of a JSON number, so JavaScript clients do not
+        truncate values above 2^53. Any other value, or omitting the header,
+        selects the default numeric encoding; an unrecognised value is never
+        an error.
+
     ListFilter:
       name: filter
       in: query
@@ -3326,9 +3349,14 @@ components:
           type: string
           description: Destination account address
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          oneOf:
+            - type: integer
+              format: bigint
+            - type: string
+              pattern: '^[0-9]+$'
+          description: |
+            Amount as a big integer. Both a JSON number and a quoted decimal
+            string are accepted.
         asset:
           type: string
           description: Asset identifier
@@ -3957,9 +3985,15 @@ components:
         destination:
           type: string
         amount:
-          type: integer
-          format: bigint
-          description: Amount as a big integer
+          oneOf:
+            - type: integer
+              format: bigint
+            - type: string
+              pattern: '^[0-9]+$'
+          description: |
+            Amount as a big integer. A JSON number by default; a quoted
+            decimal string when the request carries the
+            Formance-Bigint-As-String header.
         asset:
           type: string
         color:
