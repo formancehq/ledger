@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -110,6 +111,10 @@ func requestKinds(b oracle.Bulk) string {
 			parts[i] = "setFieldType"
 		case *servicepb.Request_RemoveMetadataFieldType:
 			parts[i] = "removeFieldType"
+		case *servicepb.Request_CreateIndex:
+			parts[i] = "createIndex"
+		case *servicepb.Request_DropIndex:
+			parts[i] = "dropIndex"
 		default:
 			parts[i] = "other"
 		}
@@ -155,6 +160,12 @@ func bulkMeta(b oracle.Bulk) string {
 		case *servicepb.Request_RemoveMetadataFieldType:
 			ft := t.RemoveMetadataFieldType
 			parts = append(parts, fmt.Sprintf("rmFT %s/tgt%d/%s", ft.GetLedger(), ft.GetTargetType(), ft.GetKey()))
+		case *servicepb.Request_CreateIndex:
+			ci := t.CreateIndex
+			parts = append(parts, fmt.Sprintf("crIdx %s/%s", ci.GetLedger(), indexes.Canonical(ci.GetId())))
+		case *servicepb.Request_DropIndex:
+			di := t.DropIndex
+			parts = append(parts, fmt.Sprintf("drIdx %s/%s", di.GetLedger(), indexes.Canonical(di.GetId())))
 		}
 	}
 
@@ -267,6 +278,23 @@ func renderVolumeSet(vols map[string]oracle.VolumePair) string {
 	sort.Strings(parts)
 
 	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// modelIndexDump renders a ledger's model index set as canonical[state], sorted
+// — "a" for active (READY confirmed by the poller), "?" for ambiguous. Takes a
+// LedgerState so callsites already holding c.mu can use it.
+func modelIndexDump(ls oracle.LedgerState) string {
+	var parts []string
+	for canon, active := range ls.Indexes().All() {
+		state := "?"
+		if active {
+			state = "a"
+		}
+		parts = append(parts, fmt.Sprintf("%s[%s]", canon, state))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, " ") + "]"
 }
 
 // modelAccountMetaDump renders the committed model's metadata for addr as

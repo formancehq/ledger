@@ -305,8 +305,9 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			// order of this bulk already removed (the second remove is a no-op).
 			canonical := indexes.Canonical(indexes.MetadataID(rq.GetTargetType(), rq.GetKey()))
 			bulkKey := oracle.LedgerOf(req) + "\x00" + canonical
+			earlierInBulk := droppedInBulk[bulkKey]
 			hadIndex := false
-			if exists, _ := c.modelState.Ledger(oracle.LedgerOf(req)).IndexState(canonical); exists && !droppedInBulk[bulkKey] {
+			if exists, _ := c.modelState.Ledger(oracle.LedgerOf(req)).IndexState(canonical); exists && !earlierInBulk {
 				hadIndex = true
 			}
 			droppedInBulk[bulkKey] = true
@@ -315,8 +316,12 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				assert.Unreachable("singleton_driver_model: remove-field-type dropped-index mismatch", internal.Details{
 					"ledger":        oracle.LedgerOf(req),
 					"key":           rq.GetKey(),
+					"target":        rq.GetTargetType().String(),
+					"canonical":     canonical,
 					"modelHadIdx":   hadIndex,
 					"serverDropped": lg.GetDroppedIndex() != nil,
+					"modelIndexes":  modelIndexDump(c.modelState.Ledger(oracle.LedgerOf(req))),
+					"earlierInBulk": earlierInBulk,
 				})
 
 				return
