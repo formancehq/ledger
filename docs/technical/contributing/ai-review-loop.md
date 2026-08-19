@@ -31,11 +31,33 @@ A full PR URL is accepted as well. The launcher:
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
-- never checks out, edits, commits, pushes, comments, resolves threads, or merges from the primary checkout;
+- never checks out or edits the primary checkout;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
 
-Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Commit/push automation is intentionally out of scope: this layer only produces an isolated reviewed/fixed worktree and reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, or an orchestration error.
+Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, or an orchestration error.
+
+### Guarded publish mode
+
+Publishing reviewed fixes is explicit and opt-in:
+
+```bash
+bash scripts/ai-pr-loop 1732 --push
+```
+
+`--push` does not weaken the review boundary. If the first bounded loop reaches `READY_FOR_HUMAN_REVIEW` with a dirty worktree, the launcher:
+
+1. creates a second detached worktree at the exact verified base SHA, builds the policy engine in that base's pinned Nix environment, and uses only the base-pinned reviewer/fixer adapters; the PR under review cannot supply the tooling that authorizes its own publication;
+2. stages the complete isolated fix set and creates one local `fix: address AI review findings` candidate commit;
+3. runs a second **review-only** pass on that exact clean commit, with no fixer configured;
+4. refuses publication unless that candidate commit is approved as-is, `HEAD` still equals its immutable SHA, and the worktree remains clean;
+5. verifies that the remote PR branch still points to the exact head SHA observed before any agent ran;
+6. checks that the candidate is a descendant of that original head;
+7. pushes the candidate SHA, rather than the mutable `HEAD` name, to the PR branch with an explicit lease on the original head SHA.
+
+The lease acts as an atomic compare-and-swap guard. The candidate update is still a normal fast-forward, but the push is rejected if another actor updates or rewrites the PR branch between the initial metadata lookup and publication. A failed candidate review, moved remote head, dirty post-review worktree, or failed push preserves the candidate worktree for inspection and never overwrites the remote branch.
+
+If the bounded loop produces no fixes, `--push` reports `NO_CHANGES` and does not create a commit. The launcher never comments on GitHub, resolves review threads, marks a PR ready, or merges it.
 
 ## Loop states
 
@@ -206,4 +228,4 @@ The adapter does not commit, push, comment on GitHub, resolve threads, or decide
 
 ## Safety boundary
 
-This script deliberately does not post comments, resolve threads, push commits, or merge pull requests. GitHub write automation belongs in a later integration layer after this local state machine has proven stable.
+`review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
