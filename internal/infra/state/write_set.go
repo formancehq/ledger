@@ -952,6 +952,7 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 			CloseSequence:      c.GetCloseSequence(),
 			StartAuditSequence: c.GetStartAuditSequence(),
 			CloseAuditSequence: c.GetCloseAuditSequence(),
+			SealingHash:        c.GetSealingHash(),
 		})
 	case *commonpb.LogPayload_ConfirmArchiveChapter:
 		c := p.ConfirmArchiveChapter.GetChapter()

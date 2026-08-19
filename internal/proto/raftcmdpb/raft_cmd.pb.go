@@ -1406,8 +1406,11 @@ func (x *ArchiveChapterOrder) GetChapterId() uint64 {
 }
 
 type ConfirmArchiveChapterOrder struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ChapterId uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	// sealing_hash is the chapter incarnation the archive belongs to; the handler
+	// refuses the confirm unless it matches the chapter's own.
+	SealingHash   []byte `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1447,6 +1450,13 @@ func (x *ConfirmArchiveChapterOrder) GetChapterId() uint64 {
 		return x.ChapterId
 	}
 	return 0
+}
+
+func (x *ConfirmArchiveChapterOrder) GetSealingHash() []byte {
+	if x != nil {
+		return x.SealingHash
+	}
+	return nil
 }
 
 type SetMaintenanceModeOrder struct {
@@ -5678,10 +5688,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"state_hash\x18\x03 \x01(\fR\tstateHash\"4\n" +
 	"\x13ArchiveChapterOrder\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\";\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"^\n" +
 	"\x1aConfirmArchiveChapterOrder\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"3\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\x12!\n" +
+	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\"3\n" +
 	"\x17SetMaintenanceModeOrder\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\"-\n" +
 	"\x17SetChapterScheduleOrder\x12\x12\n" +

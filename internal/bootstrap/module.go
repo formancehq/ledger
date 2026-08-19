@@ -169,11 +169,12 @@ func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
 					store,
 					cold,
 					machine.ArchiveRequestCh(),
-					func(chapterID uint64) error {
+					func(chapterID uint64, sealingHash []byte) error {
 						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchiveChapter{
 								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
-									ChapterId: chapterID,
+									ChapterId:   chapterID,
+									SealingHash: sealingHash,
 								},
 							},
 						}))

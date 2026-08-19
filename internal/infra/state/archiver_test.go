@@ -195,7 +195,7 @@ func TestArchiverStartStop(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs, _ := newMockColdStorage(t)
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(chapterID uint64) error { return nil }, func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(chapterID uint64, _ []byte) error { return nil }, func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -231,7 +231,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -314,7 +314,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 		nil, // no dataStore needed since archive already exists
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -370,7 +370,7 @@ func TestArchiverAlreadyArchivedMismatchedRangesRefusesConfirm(t *testing.T) {
 		nil, // no dataStore needed: the exists path never builds
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -389,6 +389,118 @@ func TestArchiverAlreadyArchivedMismatchedRangesRefusesConfirm(t *testing.T) {
 		return proposedChapterID.Load() != 0
 	}, time.Second, 50*time.Millisecond,
 		"a range-mismatched archive must never be confirmed (its purge would delete unarchived data)")
+}
+
+// The ranges cannot tell two chapter incarnations apart on their own: a store
+// restored from an older backup over a surviving cold-storage namespace can reuse
+// a chapter id and reach the same log and audit counts over different operations,
+// so the stored object's metadata tuple matches while its contents belong to a
+// history this store no longer has. The sealing hash commits a chapter to its
+// content, so the archiver refuses to confirm an archive built for a different one.
+func TestArchiverAlreadyArchivedMismatchedIncarnationRefusesConfirm(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	// Identical ranges, different incarnation.
+	stored := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("old-incarnation")}
+	current := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("new-incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesForRequest(t, stored)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", 5, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedChapterID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: the exists path never builds
+		cs,
+		archiveReqCh,
+		func(chapterID uint64, _ []byte) error {
+			proposedChapterID.Store(chapterID)
+
+			return nil
+		},
+		func() bool { return true }, // is leader
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(current, "test")
+
+	require.Never(t, func() bool {
+		return proposedChapterID.Load() != 0
+	}, time.Second, 50*time.Millisecond,
+		"an archive built for another incarnation must never be confirmed, even with matching ranges")
+}
+
+// The confirm carries the incarnation the archive was built for, so the FSM can
+// re-check it in the same step as the purge.
+func TestArchiverProposesTheArchivedIncarnation(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	req := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesForRequest(t, req)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", 5, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var (
+		mu        sync.Mutex
+		proposed  []byte
+		proposeOK bool
+	)
+
+	a := NewArchiver(
+		logger,
+		nil,
+		cs,
+		archiveReqCh,
+		func(_ uint64, sealingHash []byte) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			proposed = sealingHash
+			proposeOK = true
+
+			return nil
+		},
+		func() bool { return true },
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(req, "test")
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return proposeOK
+	}, 5*time.Second, 50*time.Millisecond, "the archiver should confirm a matching archive")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, req.SealingHash, proposed)
 }
 
 func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
@@ -413,7 +525,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 		nil,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -459,7 +571,7 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 		nil, // no dataStore needed: guard rejects before iteration
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -510,7 +622,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -583,7 +695,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -667,7 +779,7 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -708,7 +820,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -745,7 +857,7 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -781,7 +893,7 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil

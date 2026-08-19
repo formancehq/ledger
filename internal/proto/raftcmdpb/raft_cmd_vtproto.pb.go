@@ -584,6 +584,11 @@ func (m *ConfirmArchiveChapterOrder) CloneVT() *ConfirmArchiveChapterOrder {
 	}
 	r := new(ConfirmArchiveChapterOrder)
 	r.ChapterId = m.ChapterId
+	if rhs := m.SealingHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.SealingHash = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3245,6 +3250,9 @@ func (this *ConfirmArchiveChapterOrder) EqualVT(that *ConfirmArchiveChapterOrder
 		return false
 	}
 	if this.ChapterId != that.ChapterId {
+		return false
+	}
+	if string(this.SealingHash) != string(that.SealingHash) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7108,6 +7116,13 @@ func (m *ConfirmArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.SealingHash) > 0 {
+		i -= len(m.SealingHash)
+		copy(dAtA[i:], m.SealingHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
+		i--
+		dAtA[i] = 0x12
 	}
 	if m.ChapterId != 0 {
 		i -= 8
@@ -11805,6 +11820,10 @@ func (m *ConfirmArchiveChapterOrder) SizeVT() (n int) {
 	if m.ChapterId != 0 {
 		n += 9
 	}
+	l = len(m.SealingHash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -16063,6 +16082,40 @@ func (m *ConfirmArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SealingHash = append(m.SealingHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.SealingHash == nil {
+				m.SealingHash = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
