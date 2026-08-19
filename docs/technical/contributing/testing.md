@@ -520,7 +520,7 @@ plain `-tags e2e` run neither builds nor runs them:
 | `s3` | backup, restore, bootstrap, cold storage | MinIO (Testcontainers) |
 | `azure` | Azure Blob backup | Azurite (Testcontainers) |
 | `clickhouse` | ClickHouse event sink | ClickHouse (Testcontainers) |
-| `nats` | NATS event sink | NATS (Testcontainers) |
+| `nats` | NATS event sink | none (embedded in-process server) |
 | `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
 
 `just test-e2e` runs the light set for a fast local loop. **CI runs the full tag

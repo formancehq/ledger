@@ -1,5 +1,3 @@
-//go:build e2e
-
 package testutil
 
 import (
@@ -38,10 +36,12 @@ func TestNodePortConflict(t *testing.T) {
 			errContains: "HTTP port 15200",
 		},
 		{
+			// raftPort matches what SetupSingleNode derives (grpcPort - 1000),
+			// so the tuple is one the production call site can actually build.
 			name:        "gRPC port collides",
 			httpPort:    18000,
 			grpcPort:    TestSingleGRPCPort,
-			raftPort:    17000,
+			raftPort:    TestSingleGRPCPort - 1000,
 			errContains: "gRPC port 15100",
 		},
 		{
@@ -50,6 +50,28 @@ func TestNodePortConflict(t *testing.T) {
 			grpcPort:    16200,
 			raftPort:    TestSingleHTTPPort,
 			errContains: "Raft port (derived from gRPC port 16200 minus 1000) 15200",
+		},
+		{
+			// The shared node's derived Raft port is reserved too, and nothing
+			// else in this table ever passes 14100 as a port value. An auxiliary
+			// spec picking it for HTTP would collide with the shared node's Raft
+			// listener.
+			name:        "shared node's derived Raft port is reserved",
+			httpPort:    TestSingleGRPCPort - 1000,
+			grpcPort:    18100,
+			raftPort:    17100,
+			errContains: "HTTP port 14100 is reserved for the shared single-node server (the shared node's derived Raft port)",
+		},
+		{
+			// The other gRPC value that slips past the HTTP and gRPC checks and
+			// is only caught on its derived Raft port. 16100 is the live value of
+			// the business suite's s3CredsHTTPPort, so transposing that spec's
+			// HTTP and gRPC constants is the plausible next collision.
+			name:        "Raft port collides via the second uncaught gRPC value",
+			httpPort:    18000,
+			grpcPort:    16100,
+			raftPort:    TestSingleGRPCPort,
+			errContains: "Raft port (derived from gRPC port 16100 minus 1000) 15100",
 		},
 	}
 

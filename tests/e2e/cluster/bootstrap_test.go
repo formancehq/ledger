@@ -50,7 +50,8 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 	// USD amounts posted to bootstrap-ledger. Phase 3 derives its expected
 	// volumes from these constants instead of restating them as literals, so
-	// adding or changing a posting cannot leave a stale expectation behind.
+	// changing an amount cannot leave a stale expectation behind. Adding a new
+	// bank payout before the backup still needs bankOutput updated by hand.
 	const (
 		bankFunding     = 10000 // world -> bank
 		aliceTransfer   = 3000  // bank -> alice
