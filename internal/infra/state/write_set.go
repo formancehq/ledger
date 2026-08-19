@@ -597,6 +597,37 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return err
 	}
 
+	// Registry rows go missing from storage with nothing accounting for it, and
+	// the indexbuilder only notices later, when a removal finds nothing to drop.
+	// Recording the row's creation and its deletion here dates both ends: a
+	// canonical that was written, never deleted, and is gone from Pebble was
+	// lost by something other than a delete.
+	for _, u := range indexUpdates {
+		if u.Old.IsDefined() {
+			continue
+		}
+
+		var k domain.IndexKey
+		if err := k.Unmarshal(u.CanonicalKey); err == nil {
+			b.fsm.logger.WithFields(map[string]any{
+				"cmp":       "index-registry",
+				"ledger":    k.LedgerName,
+				"canonical": k.Canonical,
+			}).Infof("Index registry row written")
+		}
+	}
+
+	for _, d := range indexDeletions {
+		var k domain.IndexKey
+		if err := k.Unmarshal(d.CanonicalKey); err == nil {
+			b.fsm.logger.WithFields(map[string]any{
+				"cmp":       "index-registry",
+				"ledger":    k.LedgerName,
+				"canonical": k.Canonical,
+			}).Infof("Index registry row deleted")
+		}
+	}
+
 	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
 	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, indexUpdates, indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
 		return err
