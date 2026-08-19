@@ -11,6 +11,13 @@ PR base branch. The launcher never commits, pushes, comments, or merges.
 EOF
 }
 
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
 if [[ $# -lt 1 ]]; then
     usage >&2
     exit 1
@@ -102,35 +109,25 @@ repo_parent=$(dirname "$repo_root")
 repo_name=$(basename "$repo_root")
 worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
 mkdir -p "$worktree_parent"
-worktree="$worktree_parent/pr-$pr_number"
-
-if [[ -e "$worktree" ]]; then
-    if git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        if [[ -n "$(git -C "$worktree" status --porcelain)" ]]; then
-            echo "ai-pr-loop: existing worktree has local changes: $worktree" >&2
-            echo "Resolve or remove it manually before rerunning." >&2
-            exit 1
-        fi
-        git worktree remove "$worktree"
-    else
-        echo "ai-pr-loop: path exists but is not a git worktree: $worktree" >&2
-        exit 1
-    fi
-fi
-
-git worktree prune
-git worktree add --detach "$worktree" "$head_sha"
+worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
+worktree="$worktree_run_dir/worktree"
 
 cleanup() {
-    status=$?
-    if [[ "$keep_worktree" == false && -d "$worktree" ]]; then
-        if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
-            git worktree remove "$worktree" >/dev/null 2>&1 || true
+    exit_status=$?
+    trap - EXIT
+    if [[ "$keep_worktree" == false ]]; then
+        if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
+                git worktree remove "$worktree" >/dev/null 2>&1 || true
+            fi
         fi
+        rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
     fi
-    exit "$status"
+    exit "$exit_status"
 }
 trap cleanup EXIT
+
+git worktree add --detach "$worktree" "$head_sha"
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
 printf '    URL: %s\n' "$pr_url"
@@ -144,8 +141,10 @@ fi
 cd "$worktree"
 
 set +e
+# The remote-tracking ref is shared and can move after the verification above.
+# Pass the verified commit identity so review-loop always captures this base.
 bash scripts/review-loop \
-    --base "$remote/$base_ref" \
+    --base "$base_sha" \
     --review-cmd 'bash scripts/ai-review-codex' \
     --fix-cmd 'bash scripts/ai-fix-claude'
 loop_status=$?
