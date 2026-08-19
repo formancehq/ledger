@@ -29,20 +29,14 @@ func recordOp(ledgerName string, id *commonpb.IndexID, wrote bool) {
 	opTrace.Store(traceKey{ledger: ledgerName, canonical: Canonical(id)}, wrote)
 }
 
-// MarkPresent records an entry this replica found in the registry at boot. A
-// process-local trace of writes alone goes blind across a restart — the replica
-// forgets every entry written before it booted, which is exactly when a loss
-// following a node kill would go unseen. Seeding from what storage holds also
-// sharpens the claim: a later miss then means storage has the entry and the
-// apply path could not see it.
-func MarkPresent(ledgerName string, id *commonpb.IndexID) {
-	recordOp(ledgerName, id, true)
-}
-
 // LastOpWasWrite reports whether the last registry mutation this replica applied
-// for (ledgerName, id) was a write, or the entry was present at boot — either
-// way the entry should still be there. False when the key was never seen here or
-// was deleted.
+// for (ledgerName, id) was a write, i.e. the entry should still be present.
+// False when the key was never written here or was deleted.
+//
+// Only mutations this process applied count. Seeding it from storage at boot
+// would call an entry present that a drop replayed from the log later removes,
+// reporting a legitimate absence as a loss — the indexbuilder's direct registry
+// read is what covers the restart case instead.
 func LastOpWasWrite(ledgerName string, id *commonpb.IndexID) bool {
 	if id == nil {
 		return false

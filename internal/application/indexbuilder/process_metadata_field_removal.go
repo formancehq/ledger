@@ -43,6 +43,39 @@ import (
 // live path stops considering the index as active immediately, and
 // drops the per-replica IndexVersionState entry so the boot orphan
 // sweep doesn't try to GC versions of a field that no longer exists.
+// registryHasEntry reports whether the persisted index registry still holds
+// (ledgerName, canonical), read straight from Pebble rather than through the
+// apply path's cache. Only reached when a removal dropped nothing, so the scan
+// costs nothing on the hot path.
+func (b *Builder) registryHasEntry(ledgerName, canonical string) (bool, error) {
+	handle, err := b.pebbleStore.NewDirectReadHandle()
+	if err != nil {
+		return false, fmt.Errorf("creating read handle for registry probe: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
+	if err != nil {
+		return false, fmt.Errorf("opening index registry iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	for iter.Next() {
+		idx := iter.Entry().Value
+		if idx == nil || idx.GetId() == nil {
+			continue
+		}
+
+		if idx.GetLedger() == ledgerName && indexes.Canonical(idx.GetId()) == canonical {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (b *Builder) handleRemovedMetadataFieldType(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
@@ -64,22 +97,24 @@ func (b *Builder) handleRemovedMetadataFieldType(
 			}
 			sort.Strings(present)
 
-			b.logger.WithFields(map[string]any{
-				"cmp":          "index-builder",
-				"ledger":       ledgerName,
-				"canonical":    canonical,
-				"buildStatus":  held.GetBuildStatus().String(),
-				"fwdVersion":   held.GetForwardEncodingVersion(),
-				"builderHolds": present,
-			}).Errorf("Field removal dropped no index while this replica still holds one")
+			// Whether storage still holds the entry splits the two ways this
+			// can happen: present means the registry kept it and the apply
+			// path could not see it, absent means the entry left storage with
+			// nothing logging a removal.
+			inStorage, storageErr := b.registryHasEntry(ledgerName, canonical)
 
-			assert.Unreachable("field removal dropped no index the builder still holds", map[string]any{
+			fields := map[string]any{
 				"ledger":       ledgerName,
 				"canonical":    canonical,
 				"buildStatus":  held.GetBuildStatus().String(),
 				"fwdVersion":   held.GetForwardEncodingVersion(),
 				"builderHolds": present,
-			})
+				"inStorage":    inStorage,
+				"storageErr":   fmt.Sprint(storageErr),
+			}
+
+			b.logger.WithFields(fields).Errorf("Field removal dropped no index while this replica still holds one")
+			assert.Unreachable("field removal dropped no index the builder still holds", fields)
 		}
 
 		return nil
