@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree]
+
+Creates an isolated git worktree for the PR head and runs the bounded
+Codex review -> Claude fix -> validation -> re-review loop against the
+PR base branch. The launcher never commits, pushes, comments, or merges.
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+if [[ $# -lt 1 ]]; then
+    usage >&2
+    exit 1
+fi
+
+pr=$1
+shift
+keep_worktree=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --keep-worktree)
+            keep_worktree=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "ai-pr-loop: unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+for command in git gh jq; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "ai-pr-loop: required command not found in PATH: $command" >&2
+        exit 1
+    fi
+done
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+
+pr_number=$(jq -r '.number' <<<"$pr_json")
+pr_url=$(jq -r '.url' <<<"$pr_json")
+state=$(jq -r '.state' <<<"$pr_json")
+is_draft=$(jq -r '.isDraft' <<<"$pr_json")
+base_ref=$(jq -r '.baseRefName' <<<"$pr_json")
+base_sha=$(jq -r '.baseRefOid' <<<"$pr_json")
+head_ref=$(jq -r '.headRefName' <<<"$pr_json")
+head_sha=$(jq -r '.headRefOid' <<<"$pr_json")
+head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
+head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+
+if [[ "$state" != "OPEN" ]]; then
+    echo "ai-pr-loop: PR #$pr_number is not open (state=$state)" >&2
+    exit 1
+fi
+if [[ -z "$head_owner" || -z "$head_repo" ]]; then
+    echo "ai-pr-loop: could not resolve PR head repository" >&2
+    exit 1
+fi
+if [[ "$head_owner/$head_repo" != "$repo" ]]; then
+    echo "ai-pr-loop: fork/cross-repository PRs are not supported yet: $head_owner/$head_repo" >&2
+    exit 1
+fi
+
+remote=origin
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+    echo "ai-pr-loop: required git remote '$remote' is missing" >&2
+    exit 1
+fi
+
+# Fetch exactly the GitHub-resolved base/head refs before creating the worktree.
+git fetch --no-tags "$remote" \
+    "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
+    "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
+
+fetched_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
+if [[ "$fetched_base" != "$base_sha" ]]; then
+    echo "ai-pr-loop: fetched base SHA does not match GitHub: got $fetched_base expected $base_sha" >&2
+    exit 1
+fi
+if [[ "$fetched_head" != "$head_sha" ]]; then
+    echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
+    exit 1
+fi
+
+# Keep linked worktrees outside the primary checkout so the review loop cannot
+# accidentally include launcher state in the PR worktree/fingerprint.
+repo_parent=$(dirname "$repo_root")
+repo_name=$(basename "$repo_root")
+worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
+mkdir -p "$worktree_parent"
+worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
+worktree="$worktree_run_dir/worktree"
+
+cleanup() {
+    exit_status=$?
+    trap - EXIT
+    if [[ "$keep_worktree" == false ]]; then
+        if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
+                git worktree remove "$worktree" >/dev/null 2>&1 || true
+            fi
+        fi
+        rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+    fi
+    exit "$exit_status"
+}
+trap cleanup EXIT
+
+git worktree add --detach "$worktree" "$head_sha"
+
+printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
+printf '    URL: %s\n' "$pr_url"
+printf '    base: %s (%s)\n' "$base_ref" "$base_sha"
+printf '    head: %s (%s)\n' "$head_ref" "$head_sha"
+printf '    worktree: %s\n' "$worktree"
+if [[ "$is_draft" == "true" ]]; then
+    echo "    note: PR is currently draft"
+fi
+
+cd "$worktree"
+
+set +e
+# The remote-tracking ref is shared and can move after the verification above.
+# Pass the verified commit identity so review-loop always captures this base.
+bash scripts/review-loop \
+    --base "$base_sha" \
+    --review-cmd 'bash scripts/ai-review-codex' \
+    --fix-cmd 'bash scripts/ai-fix-claude'
+loop_status=$?
+set -e
+
+echo
+case "$loop_status" in
+    0)
+        echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
+        ;;
+    2)
+        echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED"
+        ;;
+    *)
+        echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)"
+        ;;
+esac
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Worktree contains fixes to inspect: $worktree"
+    keep_worktree=true
+else
+    echo "Worktree is clean."
+fi
+
+exit "$loop_status"
