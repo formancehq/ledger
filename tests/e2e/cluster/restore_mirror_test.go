@@ -48,10 +48,8 @@ import (
 // mirror worker.
 var _ = Describe("Restore mirror resume position", Ordered, func() {
 	const (
-		// Distinct from the other restore suites' ports so this suite can run
-		// alongside them.
-		httpPort   = 15250
-		grpcPort   = 15150
+		httpPort   = testutil.TestSingleHTTPPort
+		grpcPort   = testutil.TestSingleGRPCPort
 		raftPort   = grpcPort - 1000
 		ledgerName = "mirror-restore-ledger"
 		s3Bucket   = "restore-mirror-cursor"
@@ -94,6 +92,13 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		// Read on the restored node as early as the gRPC surface answers.
 		restoredCursor uint64
+		// The mock's request count immediately before the restored node starts,
+		// and again at the instant the cursor was sampled. Equal means no source
+		// fetch completed before the read returned, so the cursor came from
+		// RebuildDelta rather than from a re-ingest. The mock is shared across
+		// all three phases, so the floor has to be captured, not assumed zero.
+		preRestoreRequests int
+		requestsAtSample   int
 	)
 
 	storage := func() *commonpb.BackupStorage {
@@ -367,6 +372,8 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			instruments = append(instruments, testserver.WithBootstrap())
 
 			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+
+			preRestoreRequests = mockV2.requestCount()
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
@@ -378,10 +385,18 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// leader, so the first answered read is the closest observation of
 			// what RebuildDelta actually wrote. GetLedger serves from local
 			// Pebble and needs no leader.
+			//
+			// The request counter is read AFTER GetLedger returns, so the pair
+			// witnesses "no source fetch completed before this read returned".
+			// It is asserted in the spec rather than here on purpose: inside the
+			// retry loop it could never match again once the worker's first
+			// fetch lands, turning a slow start on a CORRECT build into a 30s
+			// timeout instead of the cheap sample this is meant to be.
 			Eventually(func(g Gomega) {
 				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 				restoredCursor = info.GetMirrorSyncProgress().GetCursor()
+				requestsAtSample = mockV2.requestCount()
 			}).Within(30 * time.Second).ProbeEvery(50 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -401,6 +416,15 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		})
 
 		It("rebuilds the mirror high-water mark from the replayed delta", func() {
+			// The sample has to predate the mirror worker, or it proves nothing:
+			// on an unfixed build the rebuilt mark is 0, the worker restarts at
+			// source log 1 and re-applies logs 1..4, and processMirrorIngest
+			// advances the cursor back to 4 — the same value a correct rebuild
+			// leaves. No source request means no ingest, so the value below was
+			// written by RebuildDelta.
+			Expect(requestsAtSample).To(Equal(preRestoreRequests),
+				"the mirror worker fetched from the source before the cursor was sampled, so this read cannot distinguish a rebuilt mark from a re-ingested one")
+
 			// EN-1776: RebuildDelta folded every other boundary field but left
 			// last_mirror_v2_log_id at 0, so this read returned 0.
 			Expect(restoredCursor).To(Equal(preBackupCursor),
@@ -415,13 +439,19 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			//
 			// State is deliberately NOT asserted here. ReadMirrorSyncProgress
 			// derives it from `sourceHead > 0 && cursor >= sourceHead`, and the
-			// source head lives in SubPLMirrorSourceHead, which the FSM writes
-			// only as a side effect of a mirror ingest proposal
-			// (WriteSet -> SetMirrorSourceHead). A correctly restored mirror has
-			// nothing left to ingest, so it proposes nothing, the head stays 0
-			// and the state reads SYNCING with zero remaining logs — for as long
-			// as the source has no new logs. The next spec asserts FOLLOWING
-			// once an ingest has actually run.
+			// source head lives in SubPLMirrorSourceHead, which RebuildDelta does
+			// NOT reconstruct: the FSM writes it only as a side effect of a
+			// mirror ingest proposal (WriteSet -> SetMirrorSourceHead). A
+			// correctly restored mirror has nothing left to ingest, so it
+			// proposes nothing, the head stays 0 and the state reads SYNCING with
+			// zero remaining logs.
+			//
+			// That does not clear on its own: it takes a NEW source log to
+			// produce the ingest that writes the head, so an idle source leaves a
+			// correctly restored mirror reporting SYNCING indefinitely, and an
+			// operator treating FOLLOWING as the restore-verification signal
+			// waits forever. The next spec asserts FOLLOWING once an ingest has
+			// actually run.
 			Eventually(func(g Gomega) {
 				progress := syncProgress(g, client)
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())

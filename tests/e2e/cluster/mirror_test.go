@@ -615,18 +615,23 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// The worker may be mid-poll when the delete applies, so wait for the
-			// count to stop rising: two consecutive probes a poll interval apart
-			// reporting the same value means no fetch happened in between.
+			// count to stop rising. The probe interval must exceed the worker's
+			// poll interval (defaultPollInterval, 5s — a package-private const
+			// with no test override), or two consecutive probes can straddle a
+			// gap between ticks and read the same value off a live worker. At 6s
+			// apart, two equal counts mean a tick was due and did not happen.
 			previous := -1
 			Eventually(func(g Gomega) {
 				current := mockV2.requestCount()
 				defer func() { previous = current }()
 				g.Expect(current).To(Equal(previous))
-			}, 30*time.Second, 2*time.Second).Should(Succeed(),
+			}, 30*time.Second, 6*time.Second).Should(Succeed(),
 				"mirror worker is still polling the source after its ledger was deleted")
 
-			// And it stays stopped rather than merely pausing between polls.
-			Consistently(mockV2.requestCount, 5*time.Second, 500*time.Millisecond).
+			// And it stays stopped rather than merely pausing between polls: held
+			// over more than two poll intervals so a worker that is merely slow
+			// cannot pass.
+			Consistently(mockV2.requestCount, 12*time.Second, 500*time.Millisecond).
 				Should(Equal(previous))
 		})
 
@@ -660,7 +665,10 @@ var _ = Describe("Mirror", Ordered, func() {
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
-			Expect(st.Message()).To(ContainSubstring("ledger has been deleted"))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerDeleted))
 		})
 	})
 
