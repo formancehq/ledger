@@ -93,6 +93,14 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 			"canonical":  indexes.Canonical(id),
 			"fwdVersion": updated.GetForwardEncodingVersion(),
 		})
+	} else if indexes.LastOpWasWrite(ledger, id) {
+		// Same loss, caught on the far more frequent path: the window between
+		// the last write and the first miss is what localises it.
+		assert.Unreachable("index registry lost an entry this replica wrote", map[string]any{
+			"ledger":    ledger,
+			"canonical": indexes.Canonical(id),
+			"site":      "setFieldType",
+		})
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -173,6 +181,17 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 			"canonical":      indexes.Canonical(id),
 			"hadDeclaration": hadDeclaration,
 		})
+
+		// Put and Remove are the registry's only writers and both run here on
+		// the apply path. A miss on a key this replica last wrote means the
+		// entry went away with nothing deleting it.
+		if indexes.LastOpWasWrite(ledger, id) {
+			assert.Unreachable("index registry lost an entry this replica wrote", map[string]any{
+				"ledger":         ledger,
+				"canonical":      indexes.Canonical(id),
+				"hadDeclaration": hadDeclaration,
+			})
+		}
 	}
 
 	return &commonpb.LedgerLogPayload{
