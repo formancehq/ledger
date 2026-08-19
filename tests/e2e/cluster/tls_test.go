@@ -58,7 +58,7 @@ func newTLSGRPCClient(grpcPort int, caCertFile string) (servicepb.BucketServiceC
 
 // setupTLSSingleNode creates a single-node TLS-enabled server and returns the context,
 // a TLS-capable gRPC client, and the generated certs for further use.
-func setupTLSSingleNode(ports testserver.NodePorts) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *testserver.TestCerts) {
+func setupTLSSingleNode(lease *testserver.NodeLease) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *testserver.TestCerts) {
 	ctx := logging.TestingContext()
 
 	// Generate test certificates
@@ -76,7 +76,7 @@ func setupTLSSingleNode(ports testserver.NodePorts) (context.Context, servicepb.
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "test-cluster",
-		Ports:     ports,
+		Ports:     lease.Ports(),
 		WalDir:    walTmpDir,
 		DataDir:   dataTmpDir,
 		Debug:     testutil.Debug,
@@ -89,7 +89,7 @@ func setupTLSSingleNode(ports testserver.NodePorts) (context.Context, servicepb.
 		testserver.WithTLSKeyFile(certs.ServerKeyFile),
 	)
 
-	server := testservice.New(cmdserver.NewRunCommand,
+	server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(instruments...),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
@@ -101,7 +101,7 @@ func setupTLSSingleNode(ports testserver.NodePorts) (context.Context, servicepb.
 	})
 
 	// Create TLS-enabled gRPC client using the CA cert
-	grpcClient, clusterClient, grpcConn, err := newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
+	grpcClient, clusterClient, grpcConn, err := newTLSGRPCClient(lease.Ports().GRPC(), certs.CACertFile)
 	Expect(err).To(Succeed())
 	DeferCleanup(func() {
 		_ = grpcConn.Close()
@@ -133,11 +133,15 @@ type tlsServiceWithClient struct {
 func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServiceWithClient, *testserver.TestCerts) {
 	ctx := logging.TestingContext()
 
-	// Every node's ports are allocated before the first node starts: the
-	// joiners' --join address is built from node 0's Raft port.
+	// Every node's ports are leased before the first node starts: the joiners'
+	// --join address is built from node 0's Raft port while node 0 is still
+	// down, and the lease holds the socket until the node adopts it.
+	leases := make([]*testserver.NodeLease, countInstances)
 	nodePorts := make([]testserver.NodePorts, countInstances)
-	for i := range nodePorts {
-		nodePorts[i] = testserver.AllocateNodePorts()
+
+	for i := range leases {
+		leases[i] = testserver.AllocateNodeLease()
+		nodePorts[i] = leases[i].Ports()
 	}
 
 	// Generate shared test certificates for all nodes
@@ -179,7 +183,7 @@ func setupTLSMultiNodeCluster(countInstances int) (context.Context, []*tlsServic
 		instruments := commonInstruments(i, walTmpDir, dataTmpDir)
 		instruments = append(instruments, extraInstruments...)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := leases[i].NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -261,8 +265,9 @@ var _ = Describe("TLS", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ports = testserver.AllocateNodePorts()
-		ctx, client, clusterClient, certs = setupTLSSingleNode(ports)
+		lease := testserver.AllocateNodeLease()
+		ports = lease.Ports()
+		ctx, client, clusterClient, certs = setupTLSSingleNode(lease)
 	})
 
 	Context("with a TLS-enabled server", func() {

@@ -37,6 +37,9 @@ type ServiceWithClient struct {
 	HTTPPort      int
 	GRPCPort      int
 	NodeID        uint32
+	// lease owns the node's ports. RestartNode needs it to rebind the same
+	// addresses: the node's peers still hold its old Raft address.
+	lease *testserver.NodeLease
 }
 
 // NewGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
@@ -131,25 +134,27 @@ func SetupMultiNodeCluster(
 
 	ctx := logging.TestingContext()
 
-	// Allocate every node's ports BEFORE any node starts: the gateway's peer
-	// list and the joiners' --join address are built from these numbers while
-	// the servers are still down.
+	// Lease every node's ports BEFORE any node starts: the gateway's peer list
+	// and the joiners' --join address are built from these numbers while the
+	// servers are still down, and the lease holds the sockets open for that
+	// whole interval.
+	leases := make([]*testserver.NodeLease, countInstances)
 	nodePorts := make([]testserver.NodePorts, countInstances)
+
 	for i := range countInstances {
-		nodePorts[i] = testserver.AllocateNodePorts()
+		leases[i] = testserver.AllocateNodeLease()
+		nodePorts[i] = leases[i].Ports()
 	}
 
 	var gw *testserver.Gateway
 	if options.WithGateway {
-		gatewayPorts := make([]int, countInstances)
 		nodeRaftAddresses := make([]string, countInstances)
 		for i := range countInstances {
-			gatewayPorts[i] = testserver.AllocatePort()
 			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodePorts[i].Raft())
 		}
 
 		var err error
-		gw, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeRaftAddresses)
+		gw, err = testserver.NewGateway(logging.FromContext(ctx), nodeRaftAddresses)
 		Expect(err).To(Succeed())
 
 		Expect(gw.Start(ctx)).To(Succeed())
@@ -204,7 +209,7 @@ func SetupMultiNodeCluster(
 		instruments = append(instruments, options.PerNodeInstruments[i]...)
 		instruments = append(instruments, extraInstruments...)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := leases[i].NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -225,6 +230,7 @@ func SetupMultiNodeCluster(
 			HTTPPort:      nodePorts[i].HTTP(),
 			GRPCPort:      nodePorts[i].GRPC(),
 			NodeID:        uint32(i + 1),
+			lease:         leases[i],
 		})
 	}
 
@@ -279,7 +285,7 @@ func StopNode(ctx context.Context, srv *ServiceWithClient) {
 // instance's internal state (errorChan, cobra command) is not fully reset
 // after Stop, causing the next shutdown cycle to hang.
 func RestartNode(ctx context.Context, srv *ServiceWithClient) {
-	srv.Service = testservice.New(cmdserver.NewRunCommand,
+	srv.Service = srv.lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(srv.Service.Instruments...),
 	)
 	Expect(srv.Service.Start(ctx)).To(Succeed())
@@ -323,7 +329,7 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 }
 
 // SetupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
-// Ports are allocated, never passed in: see testserver.AllocateNodePorts.
+// Ports are leased, never passed in: see testserver.AllocateNodeLease.
 // Cleanup is handled automatically via DeferCleanup.
 func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *ServiceWithClient) {
 	ctx := logging.TestingContext()
@@ -335,7 +341,8 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 		Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 	})
 
-	ports := testserver.AllocateNodePorts()
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
@@ -349,7 +356,7 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 	instruments = append(instruments, testserver.WithBootstrap())
 	instruments = append(instruments, extra...)
 
-	server := testservice.New(cmdserver.NewRunCommand,
+	server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(instruments...),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
@@ -386,5 +393,6 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 		HTTPPort:      ports.HTTP(),
 		GRPCPort:      ports.GRPC(),
 		NodeID:        1,
+		lease:         lease,
 	}
 }

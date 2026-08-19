@@ -59,7 +59,8 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 	// returning, so every phase reuses the same allocated ports: ports are
 	// never released, and a restart on a fresh set would surface as a Raft
 	// failure rather than a port mistake.
-	ports := testserver.AllocateNodePorts()
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx            context.Context
@@ -163,7 +164,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
@@ -245,7 +246,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
@@ -307,7 +308,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var clusterClient clusterpb.ClusterServiceClient

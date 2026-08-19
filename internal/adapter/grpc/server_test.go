@@ -255,3 +255,68 @@ func TestServeWithoutListenFailsLoudly(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "before a successful Listen")
 }
+
+// TestListenAdoptsAnInjectedListener pins the seam the e2e fixtures rely on: a
+// test binds the port itself and keeps the socket, so nothing can take the port
+// between the moment the test learns the number and the moment the node serves
+// it (EN-1784). The configured port is deliberately held by another socket here:
+// Listen must not touch it.
+func TestListenAdoptsAnInjectedListener(t *testing.T) {
+	t.Parallel()
+
+	injected, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	blocker, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = blocker.Close() })
+
+	configuredPort := blocker.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(configuredPort, noopLogger{}, nil, true, "", WithListener(injected))
+	require.NoError(t, err)
+
+	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
+
+	require.NoError(t, srv.Listen(), "an adopted listener must not be re-bound")
+
+	go func() {
+		_ = srv.Serve()
+	}()
+
+	t.Cleanup(func() { _ = srv.Stop() })
+
+	conn, err := grpc.NewClient(injected.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	require.NoError(t, err, "the server must serve the adopted listener")
+}
+
+// TestStopClosesAnInjectedListener pins the ownership rule: once a listener
+// reaches the server, the lifecycle closes it. A test fixture that had to
+// remember which listeners the application consumed would leak the ones it
+// forgot, and a node that restarts must find its port free.
+func TestStopClosesAnInjectedListener(t *testing.T) {
+	t.Parallel()
+
+	injected, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	addr := injected.Addr().String()
+	port := injected.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(port, noopLogger{}, nil, true, "", WithListener(injected))
+	require.NoError(t, err)
+
+	require.NoError(t, srv.Listen())
+	require.NoError(t, srv.Stop())
+
+	rebound, err := net.Listen("tcp4", addr)
+	require.NoError(t, err, "Stop must release the adopted listener")
+	require.NoError(t, rebound.Close())
+}

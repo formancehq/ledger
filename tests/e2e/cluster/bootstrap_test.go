@@ -64,7 +64,8 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 	// Phase 1 takes the backup and Phase 3 brings the same logical node back on
 	// the offline-prepared data, so both phases reuse the same allocated ports.
-	ports := testserver.AllocateNodePorts()
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx              context.Context
@@ -150,7 +151,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand,
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
@@ -322,7 +323,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())

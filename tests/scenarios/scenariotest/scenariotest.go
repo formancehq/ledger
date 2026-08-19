@@ -33,10 +33,11 @@ type ScenarioCluster struct {
 	Client  servicepb.BucketServiceClient
 	Cluster clusterpb.ClusterServiceClient
 
-	// Config captured at setup time, reused on restart. Keeping the allocated
-	// NodePorts (rather than re-allocating) is required: a restarted node must
-	// come back on the same Raft port, or its peers cannot reach it.
-	ports     testserver.NodePorts
+	// Config captured at setup time, reused on restart. Keeping the same lease
+	// (rather than leasing new ports) is required: a restarted node must come
+	// back on the same Raft port, or its peers cannot reach it. The lease
+	// rebinds those ports for every start.
+	lease     *testserver.NodeLease
 	walDir    string
 	dataDir   string
 	extra     []testservice.Instrumentation
@@ -72,7 +73,7 @@ func (sc *ScenarioCluster) startServer() {
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "scenario-cluster",
-		Ports:     sc.ports,
+		Ports:     sc.lease.Ports(),
 		WalDir:    sc.walDir,
 		DataDir:   sc.dataDir,
 		Debug:     os.Getenv("DEBUG") == "true",
@@ -84,13 +85,13 @@ func (sc *ScenarioCluster) startServer() {
 	}
 	instruments = append(instruments, sc.extra...)
 
-	sc.server = testservice.New(cmdserver.NewRunCommand,
+	sc.server = sc.lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(instruments...),
 	)
 	require.NoError(sc.t, sc.server.Start(sc.ctx))
 
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", sc.ports.GRPC()),
+		fmt.Sprintf("localhost:%d", sc.lease.Ports().GRPC()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
@@ -119,7 +120,7 @@ func SetupSingleNode(t *testing.T, extra ...testservice.Instrumentation) *Scenar
 	sc := &ScenarioCluster{
 		t:         t,
 		ctx:       logging.TestingContext(),
-		ports:     testserver.AllocateNodePorts(),
+		lease:     testserver.AllocateNodeLease(),
 		walDir:    t.TempDir(),
 		dataDir:   t.TempDir(),
 		extra:     extra,

@@ -9,11 +9,12 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
 )
 
 // restoreGraphOptions assembles the restore-mode fx graph the way
 // cmd/server/server.go does: the restore app module plus the conditional
-// cold-storage module.
+// cold-storage module, over the same supplied values.
 func restoreGraphOptions(t *testing.T, coldStorageGated bool) fx.Option {
 	t.Helper()
 
@@ -35,6 +36,8 @@ func restoreGraphOptions(t *testing.T, coldStorageGated bool) fx.Option {
 
 	return fx.Options(
 		fx.Supply(cfg),
+		// Production supplies the zero value: the servers bind their own ports.
+		fx.Supply(network.Bindings{}),
 		fx.Provide(func() logging.Logger { return logging.Testing() }),
 		RestoreModule(),
 		ColdStorageModule(cfg.ColdStorageConfig.Driver, restore),

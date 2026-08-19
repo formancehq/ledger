@@ -106,13 +106,14 @@ BeforeEach(func() {
 `SetupSingleNode` does the same for a one-node cluster. Both accept extra
 instruments for the node under test.
 
-### Ports are allocated, never chosen
+### Ports are leased, never chosen
 
-Test ports come from `testserver.AllocateNodePorts()`. Do not write a port
-number in a test.
+A test node's ports come from `testserver.AllocateNodeLease()`. Do not write a
+port number in a test.
 
 ```go
-ports := testserver.AllocateNodePorts()
+lease := testserver.AllocateNodeLease()
+ports := lease.Ports()
 
 instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
     NodeID:    1,
@@ -121,45 +122,67 @@ instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
     WalDir:    walDir,
     DataDir:   dataDir,
 })
+
+server := lease.NewService(cmdserver.NewRunCommandWithBindings,
+    testservice.WithInstruments(instruments...),
+)
 ```
 
-`NodePorts` has unexported fields, so `AllocateNodePorts` is its only source
-and `TestNodeConfig` cannot be given a hand-picked port. The allocator
-bind-probes each candidate and gives every process its own sub-band of the
-15000-30000 range, which is below the OS ephemeral floor — so an allocated
-port cannot be stolen by an unrelated outbound connection before the node
-binds it.
+The lease binds three loopback sockets up front and **keeps them open**. A port
+number alone is not a reservation: any scheme that probes a port and releases it
+leaves a window in which another process — typically a sibling test binary
+starting at the same moment — binds the same number first. That is what EN-1784
+was. Because `lease.NewService` hands those very sockets to the run command
+(`network.Bindings`, adopted by `httpserver.WithListener` and the gRPC adapter's
+`WithListener`), there is no window at all: the socket the spec holds while it
+builds join addresses is the socket the node serves.
 
-Two rules follow from how the allocator works:
+`NodePorts` has unexported fields, so a lease is its only source and
+`TestNodeConfig` cannot be given a hand-picked port.
 
-- **Never release or re-derive a port.** A node that is stopped and restarted
-  must be given the *same* `NodePorts` value, because its peers still hold its
-  old Raft address.
+Three rules follow:
+
+- **Keep the lease for the node's whole life.** A restart must go through the
+  same lease — `RestartNode` and `ScenarioCluster.Restart` do — because peers
+  still hold the node's old Raft address. The lease rebinds the same ports for
+  each start; it panics if the previous generation is still bound, which means
+  the node was not stopped.
 - **Never compute one port from another.** The old convention derived the Raft
-  port as `grpcPort - 1000`. That is what made two suites collide on 15200:
-  one spec's gRPC port mapped onto another node's live HTTP port (EN-1784).
+  port as `grpcPort - 1000`. That is what made two suites collide on 15200: one
+  spec's gRPC port mapped onto another node's live HTTP port (EN-1784).
+- **Never bind a leased port yourself.** The lifecycle owns each listener it
+  adopts and closes it on stop.
 
 A spec that builds its own instrument list instead of using
-`DefaultTestInstruments` still passes allocated values through the low-level
+`DefaultTestInstruments` still passes leased values through the low-level
 instruments — `testserver.WithHTTPPort(ports.HTTP())`,
 `WithRaftPort(ports.Raft())`, `WithGRPCPort(ports.GRPC())`. Those take a plain
 `int`, so a literal would still compile there. So would one passed to
-`testserver.WithJoin(raftAddr)` or `testserver.NewGateway(logger, ports, nodes)`,
-or one written into an RPC field that carries an address — for example
-`AddLearnerRequest.RaftAddress`, which is a plain string. The `NodePorts` guard
-reaches none of these. Feed every one of them from `AllocateNodePorts` or
-`AllocatePort`.
+`testserver.WithJoin(raftAddr)`, or one written into an RPC field that carries an
+address — for example `AddLearnerRequest.RaftAddress`, which is a plain string.
+The `NodePorts` guard reaches none of these. Feed every one of them from a lease.
+`testserver.NewGateway(logger, nodes)` takes no ports at all: it binds its own.
 
-That includes peers which are deliberately never started: a hand-picked address
-for a phantom node is still a number inside the allocator's band, so it can name
-a port the allocator later hands to a live node. `phantomPeer()` in
-`tests/e2e/cluster` allocates those addresses instead.
+Peers that are deliberately never started need
+`testserver.AllocateDeadAddress()`. A hand-picked address for a phantom node can
+name a port a live node later gets, which points the leader's Raft transport at a
+real listener in its own cluster instead of at a dead address. A dead address is
+bound long enough to claim the number for this process and then released, so
+connections are refused and no later allocation can reuse it. `phantomPeer()` in
+`tests/e2e/cluster` is built from it.
+
+One window remains, by design: between a node's stop and its restart the ports
+are unbound, so only an unrelated process could interpose. Closing that too
+would mean putting a proxy in front of every node, which these suites do not
+justify.
 
 ### Test Helpers
 
 The package `pkg/testserver` provides helpers:
 
-- `AllocateNodePorts()`: Allocate the node's HTTP, gRPC and Raft ports
+- `AllocateNodeLease()`: Lease the node's HTTP, gRPC and Raft ports, binding
+  the sockets the node will serve
+- `AllocateDeadAddress()`: Claim a loopback address that nothing listens on
 - `DefaultTestInstruments()`: Build the standard instrument set for a node
 - `WithNodeID()`: Configure the Node ID
 - `WithRaftElectionTick()`: Configure Raft parameters

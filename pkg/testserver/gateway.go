@@ -40,7 +40,8 @@ func (f MessageInterceptorFunc) InterceptRequest(msg *raftpb.Message) bool {
 // Gateway is a gRPC gateway that forwards requests to backend nodes
 // Each port forwards to a specific node, allowing network manipulation during tests.
 type Gateway struct {
-	logger        logging.Logger
+	logger logging.Logger
+	// ports are filled in by Start, which binds one loopback port per node.
 	ports         []int
 	nodes         []string // node addresses (e.g., "127.0.0.1:8000")
 	servers       []*grpc.Server
@@ -51,24 +52,22 @@ type Gateway struct {
 	wg            sync.WaitGroup
 }
 
-// NewGateway creates a new gateway that listens on the given ports and forwards to the given node addresses
-// ports and nodes must have the same length, where ports[i] forwards to nodes[i].
-func NewGateway(logger logging.Logger, ports []int, nodes []string) (*Gateway, error) {
-	if len(ports) != len(nodes) {
-		return nil, errors.New("ports and nodes must have the same length")
-	}
-
-	if len(ports) == 0 {
-		return nil, errors.New("at least one port/node pair is required")
+// NewGateway creates a new gateway that forwards to the given node addresses.
+//
+// Start binds one loopback port per node; the gateway does not take port
+// numbers, so no caller can hand it a port a node is about to use.
+func NewGateway(logger logging.Logger, nodes []string) (*Gateway, error) {
+	if len(nodes) == 0 {
+		return nil, errors.New("at least one node address is required")
 	}
 
 	return &Gateway{
 		logger:    logger,
-		ports:     ports,
+		ports:     make([]int, len(nodes)),
 		nodes:     nodes,
-		servers:   make([]*grpc.Server, len(ports)),
-		listeners: make([]net.Listener, len(ports)),
-		conns:     make([]*grpc.ClientConn, len(ports)),
+		servers:   make([]*grpc.Server, len(nodes)),
+		listeners: make([]net.Listener, len(nodes)),
+		conns:     make([]*grpc.ClientConn, len(nodes)),
 	}, nil
 }
 
@@ -101,14 +100,23 @@ func (g *Gateway) RemoveInterceptor() {
 
 // Start starts the gateway servers on all configured ports.
 func (g *Gateway) Start(ctx context.Context) error {
-	for i, port := range g.ports {
-		nodeAddr := g.nodes[i]
+	for i, nodeAddr := range g.nodes {
+		// Bind first: the port belongs in the log fields the proxies carry.
+		lis, err := bindFresh()
+		if err != nil {
+			return fmt.Errorf("failed to bind a gateway port for node %s: %w", nodeAddr, err)
+		}
+
+		port := listenerPort(lis)
+		g.ports[i] = port
 
 		// Create gRPC client connection to the backend node
 		conn, err := grpc.NewClient(nodeAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		if err != nil {
+			_ = lis.Close()
+
 			return fmt.Errorf("failed to create connection to node %s: %w", nodeAddr, err)
 		}
 
@@ -136,12 +144,6 @@ func (g *Gateway) Start(ctx context.Context) error {
 			}),
 			client: snapshotpb.NewSnapshotServiceClient(conn),
 		})
-
-		// Start listening
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			return fmt.Errorf("failed to listen on port %d: %w", port, err)
-		}
 
 		g.servers[i] = server
 		g.listeners[i] = lis

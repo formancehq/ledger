@@ -17,16 +17,15 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// phantomPeer returns loopback addresses for a learner that is deliberately never
-// started. The ports come from the allocator instead of literals: the allocator
-// hands out ports across [15000,30000], so a hand-picked number inside that band
-// can be given to a live node, which would point the leader's Raft transport at a
-// real listener in the same cluster rather than at a dead address (EN-1784).
-// AllocatePort reserves the number without binding it, which is exactly what a
-// peer that never starts needs.
+// phantomPeer returns loopback addresses for a learner that is deliberately
+// never started. The addresses come from the allocator instead of literals: a
+// hand-picked number can be one a live node gets, which would point the leader's
+// Raft transport at a real listener in the same cluster rather than at a dead
+// address (EN-1784). AllocateDeadAddress claims the port for this process and
+// leaves nothing listening on it, which is exactly what a peer that never starts
+// needs.
 func phantomPeer() (raftAddr, serviceAddr string) {
-	return fmt.Sprintf("127.0.0.1:%d", testserver.AllocatePort()),
-		fmt.Sprintf("127.0.0.1:%d", testserver.AllocatePort())
+	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress()
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.

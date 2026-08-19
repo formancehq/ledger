@@ -31,6 +31,7 @@ import (
 var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 	var (
 		certs          *testserver.TestCerts
+		bootstrapLease *testserver.NodeLease
 		bootstrapPorts testserver.NodePorts
 		clusterSecret  = "correct-cluster-secret-en1080"
 		clusterID      = "en1080-cluster"
@@ -50,12 +51,12 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 			_ = os.RemoveAll(dataDir)
 		})
 
-		joinerPorts := testserver.AllocateNodePorts()
+		joinerLease := testserver.AllocateNodeLease()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    2,
 			ClusterID: clusterID,
-			Ports:     joinerPorts,
+			Ports:     joinerLease.Ports(),
 			WalDir:    walDir,
 			DataDir:   dataDir,
 			Debug:     testutil.Debug,
@@ -72,7 +73,7 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 			instruments = append(instruments, secretInstrument)
 		}
 
-		joiner := testservice.New(cmdserver.NewRunCommand,
+		joiner := joinerLease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		startErr := joiner.Start(ctx)
@@ -97,7 +98,8 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 			_ = os.RemoveAll(dataDir)
 		})
 
-		bootstrapPorts = testserver.AllocateNodePorts()
+		bootstrapLease = testserver.AllocateNodeLease()
+		bootstrapPorts = bootstrapLease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -122,7 +124,7 @@ var _ = Describe("Cluster join with cluster-secret required", Ordered, func() {
 		// missing/wrong secret always yields codes.Unauthenticated
 		// regardless of election state. Starting the node is enough — no
 		// leadership poll needed.
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := bootstrapLease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())

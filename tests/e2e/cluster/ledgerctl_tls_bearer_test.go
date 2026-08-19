@@ -34,6 +34,7 @@ import (
 var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func() {
 	var (
 		certs      *testserver.TestCerts
+		lease      *testserver.NodeLease
 		ports      testserver.NodePorts
 		clusterTok = "test-cluster-secret-840bef"
 	)
@@ -52,7 +53,8 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			_ = os.RemoveAll(dataTmpDir)
 		})
 
-		ports = testserver.AllocateNodePorts()
+		lease = testserver.AllocateNodeLease()
+		ports = lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -75,7 +77,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			}),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())

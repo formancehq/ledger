@@ -92,10 +92,12 @@ var _ = Describe("Restore", Ordered, func() {
 
 	// Phase 1 is the source node, Phase 2 brings it back in restore mode on
 	// fresh directories and Phase 3 brings it back again as a normal node.
-	// That is one logical node returning three times, so every phase reuses
-	// the same allocated ports: ports are never released, and a restart on a
-	// fresh set would surface as a Raft failure rather than a port mistake.
-	ports := testserver.AllocateNodePorts()
+	// That is one logical node returning three times, so every phase runs off
+	// the same lease: the lease keeps the node's ports for the whole test and
+	// rebinds them for each start, where a fresh set would surface as a Raft
+	// failure rather than as a port mistake.
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx            context.Context
@@ -191,7 +193,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// into several segments per type — exercising split-and-restore below.
 			instruments = append(instruments, testserver.WithBackupMaxSegmentBytes(1))
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand,
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
@@ -419,7 +421,7 @@ var _ = Describe("Restore", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
@@ -601,7 +603,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// CacheUnreachable horizon.
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
 
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
@@ -840,7 +842,8 @@ var _ = Describe("Restore", Ordered, func() {
 			// row (found by the Antithesis model test as an aggregated volume
 			// imbalance on the joiner). The join must instead be forced
 			// through the snapshot → checkpoint-sync path.
-			joinerPorts := testserver.AllocateNodePorts()
+			joinerLease := testserver.AllocateNodeLease()
+			joinerPorts := joinerLease.Ports()
 
 			// Committed on the restored leader only: its replication to the
 			// learner proves the learner finished catching up on the
@@ -864,7 +867,7 @@ var _ = Describe("Restore", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", ports.Raft())))
 
-			joiner := testservice.New(cmdserver.NewRunCommand,
+			joiner := joinerLease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(joiner.Start(ctx)).To(Succeed())

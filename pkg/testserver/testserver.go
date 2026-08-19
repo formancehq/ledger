@@ -14,7 +14,7 @@ import (
 type TestNodeConfig struct {
 	NodeID    int
 	ClusterID string
-	// Ports must come from AllocateNodePorts. It replaces the former
+	// Ports must come from a NodeLease. It replaces the former
 	// HTTPPort/RaftPort/GRPCPort int fields so a hand-picked port cannot be
 	// passed here at all (EN-1784).
 	Ports        NodePorts
@@ -29,7 +29,7 @@ type TestNodeConfig struct {
 // Callers append extra instruments (e.g. WithBootstrap, TLS, auth) to the returned slice.
 func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 	if !cfg.Ports.Allocated() {
-		panic("testserver: TestNodeConfig.Ports must come from testserver.AllocateNodePorts(); " +
+		panic("testserver: TestNodeConfig.Ports must come from testserver.AllocateNodeLease().Ports(); " +
 			"hand-picked ports are what caused EN-1784")
 	}
 

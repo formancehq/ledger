@@ -61,6 +61,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -544,7 +545,7 @@ func Module() fx.Option {
 				}, nil
 			},
 			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
-			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.RaftServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger, bindings network.Bindings) (*grpcadp.RaftServer, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
@@ -562,10 +563,11 @@ func Module() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
-				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret)
+				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret,
+					listenerOptions(bindings.Raft)...)
 			},
 			// ServiceServer for external client-facing API
-			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.ServiceServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
 				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for service server: %w", err)
@@ -573,7 +575,8 @@ func Module() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
-				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
+				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
+					listenerOptions(bindings.Service)...)
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
@@ -1211,9 +1214,9 @@ func Module() fx.Option {
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
 			// above and its doc comment for the EN-1436 ordering rationale.
-			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
+			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
-					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
+					httpListenerOption(bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort)),
 				)))
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {

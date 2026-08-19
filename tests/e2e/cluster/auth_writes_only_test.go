@@ -66,7 +66,8 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
-		ports := testserver.AllocateNodePorts()
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -89,7 +90,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			testserver.WithAuthAnonymousScopes("*:read"),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())

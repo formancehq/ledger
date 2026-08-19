@@ -143,7 +143,8 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
-		ports := testserver.AllocateNodePorts()
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -164,7 +165,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -344,7 +345,8 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
-		ports := testserver.AllocateNodePorts()
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -365,7 +367,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -530,7 +532,8 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
-		ports := testserver.AllocateNodePorts()
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
@@ -551,7 +554,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())

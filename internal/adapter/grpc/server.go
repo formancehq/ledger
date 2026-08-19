@@ -99,6 +99,13 @@ type baseServer struct {
 	listened bool
 	mu       sync.Mutex
 
+	// injected is a listener bound by the caller, set by WithListener. When it
+	// is present Listen adopts it instead of binding host:port. Held apart from
+	// listener so closeListener cannot resurrect it: an adopted listener is
+	// one-shot, and a second Listen on the same server must not hand a closed
+	// socket to Serve.
+	injected net.Listener
+
 	logger logging.Logger
 	host   string // bind host; empty means "0.0.0.0"
 	port   int
@@ -144,7 +151,7 @@ func (s *baseServer) registerReflection() {
 	}
 }
 
-// Listen binds the server's port.
+// Listen binds the server's port, or adopts the listener WithListener supplied.
 //
 // It returns the bind error synchronously so callers can fail startup with a
 // proper error. This used to happen inside the serving goroutine, where the
@@ -157,9 +164,14 @@ func (s *baseServer) Listen() error {
 		host = "0.0.0.0"
 	}
 
-	lis, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", host, s.port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s:%d: %w", host, s.port, err)
+	lis := s.injected
+	if lis == nil {
+		var err error
+
+		lis, err = net.Listen("tcp4", fmt.Sprintf("%s:%d", host, s.port))
+		if err != nil {
+			return fmt.Errorf("failed to listen on %s:%d: %w", host, s.port, err)
+		}
 	}
 
 	s.mu.Lock()
@@ -172,6 +184,7 @@ func (s *baseServer) Listen() error {
 			"addr":      lis.Addr().String(),
 			"tls":       s.tlsServer != nil,
 			"plaintext": s.plaintextServer != nil,
+			"adopted":   s.injected != nil,
 		}).
 		Infof("Starting %s server", s.name)
 
@@ -674,6 +687,23 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	return status.Errorf(codes.Unknown, "unknown server error (correlation ID: %s)", correlationID)
 }
 
+// Option configures a Raft or Service gRPC server.
+type Option func(*baseServer)
+
+// WithListener makes the server serve a listener the caller already bound,
+// instead of binding host:port itself in Listen.
+//
+// The server takes ownership: Stop closes the listener like any it bound
+// itself. host and port stay meaningful for logs and for the address the node
+// advertises to its peers, so an injected listener must be bound to the same
+// port the configuration names — nothing re-derives the advertised address
+// from listener.Addr().
+func WithListener(listener net.Listener) Option {
+	return func(bs *baseServer) {
+		bs.injected = listener
+	}
+}
+
 // buildBaseServer constructs the baseServer fields shared by RaftServer and
 // ServiceServer. It instantiates one or two underlying gRPC servers based on
 // the (tlsCfg, acceptPlaintext) combination.
@@ -721,8 +751,8 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 // matches single-node setups that never set --cluster-secret. When set, the
 // caller MUST present `authorization: Bearer <clusterSecret>` on every call
 // or the RPC is rejected with codes.Unauthenticated (#310).
-func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string) (*RaftServer, error) {
-	opts := []ggrpc.ServerOption{
+func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string, opts ...Option) (*RaftServer, error) {
+	serverOpts := []ggrpc.ServerOption{
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
 		ggrpc.ReadBufferSize(transport.GRPCReadBufferSize),
@@ -732,15 +762,19 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 	}
 
 	if unary, stream := raftAuthInterceptors(clusterSecret); unary != nil {
-		opts = append(opts,
+		serverOpts = append(serverOpts,
 			ggrpc.ChainUnaryInterceptor(unary),
 			ggrpc.ChainStreamInterceptor(stream),
 		)
 	}
 
-	bs, err := buildBaseServer("Raft gRPC", "", port, logger, tlsCfg, acceptPlaintext, opts)
+	bs, err := buildBaseServer("Raft gRPC", "", port, logger, tlsCfg, acceptPlaintext, serverOpts)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, opt := range opts {
+		opt(bs)
 	}
 
 	srv := &RaftServer{baseServer: bs}
@@ -758,7 +792,7 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 // destructive restore RPCs are not exposed on the public network.
 //
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
-func NewServiceServer(host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool) (*ServiceServer, error) {
+func NewServiceServer(host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers.
 	// Logging is placed before error conversion so that on the response path
 	// (innermost-first), error conversion runs first and logging sees the
@@ -776,7 +810,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		errorConversionStreamInterceptor(logger),
 	}
 
-	opts := []ggrpc.ServerOption{
+	serverOpts := []ggrpc.ServerOption{
 		ggrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
@@ -788,9 +822,13 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		ggrpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 
-	bs, err := buildBaseServer("Service gRPC", host, port, logger, tlsCfg, acceptPlaintext, opts)
+	bs, err := buildBaseServer("Service gRPC", host, port, logger, tlsCfg, acceptPlaintext, serverOpts)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, opt := range opts {
+		opt(bs)
 	}
 
 	srv := &ServiceServer{baseServer: bs}
