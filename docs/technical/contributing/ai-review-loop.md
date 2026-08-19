@@ -140,7 +140,38 @@ The fix agent must:
 3. avoid opportunistic refactors;
 4. report/exit non-zero rather than weakening a check or guessing through an ambiguity.
 
+The blocker payload and originating review result are immutable inputs. The orchestrator snapshots both files before invoking the fixer and rejects the pass if either file's contents change or can no longer be read.
+
 After a successful fix command, the orchestrator runs `bash scripts/agent-check` by default. A validation failure stops the loop immediately. Only after validation succeeds does it invoke the reviewer again.
+
+## Claude Code fix adapter
+
+`scripts/ai-fix-claude` is the first provider-specific fixer adapter. It deliberately exposes a narrower autonomous surface than an interactive Claude Code session.
+
+Use it together with the Codex reviewer:
+
+```bash
+bash scripts/review-loop \
+  --base origin/release/v3.0 \
+  --review-cmd 'bash scripts/ai-review-codex' \
+  --fix-cmd 'bash scripts/ai-fix-claude'
+```
+
+The adapter:
+
+- requires only the blocker payload, originating review result, and pass number provided by `review-loop`;
+- requires those two state files to resolve inside the current worktree; the default `build/ai-review-loop` state directory satisfies this boundary, while a custom external `--state-dir` is rejected by this adapter;
+- passes those JSON files by path and explicitly treats their contents as untrusted data rather than interpolating finding text into the trusted prompt;
+- runs Claude Code non-interactively in `--safe-mode`, which disables user/project hooks, plugins, skills, MCP servers, custom agents, and other discovered customizations while preserving normal authentication;
+- uses `--strict-mcp-config`, disables slash commands and session persistence, and exposes exactly the built-in `Read`, `Edit`, `Write`, and `Grep` tools through `--tools`; `Glob` is omitted because Claude Code 2.1.202 does not reliably apply project-relative `Read` rules to external path discovery;
+- uses `--permission-mode dontAsk` with project-relative `Read(/**)` and `Edit(/**)` approval, so repository inspection and edits succeed while parent, sibling-worktree, and other external filesystem access fails closed without an interactive prompt;
+- explicitly denies `Bash`, `WebFetch`, `WebSearch`, and edits to `.git` as defense in depth, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
+- instructs Claude to make only finding-traceable edits and to avoid guessing through product/design/invariant ambiguity;
+- leaves all validation to the orchestrator's mandatory `bash scripts/agent-check` step before re-review.
+
+Safe mode deliberately disables automatic instruction discovery, so the trusted prompt explicitly tells Claude to read the repository's `AGENTS.md` and only the relevant subsystem documentation. Administrator-managed policy still applies and may further restrict the invocation, but repository/user settings and extensions are not loaded. The adapter does not use `--dangerously-skip-permissions`. Authentication and the installed Claude Code binary remain machine prerequisites.
+
+The adapter does not commit, push, comment on GitHub, resolve threads, or decide whether a fix is accepted. A successful CLI exit only means the fix pass completed; `review-loop` verifies that the blocker payload and originating review result were not modified, validates the resulting worktree, and asks the reviewer to determine whether findings are actually resolved.
 
 ## Exit codes
 

@@ -411,6 +411,24 @@ func TestCaptureReviewChangeTargetExcludesRunStateDirectory(t *testing.T) {
 	require.Equal(t, []string{"untracked.txt"}, target.UntrackedPaths)
 }
 
+func TestVerifyFileSnapshotsUnchangedRejectsFixerStateMutation(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	findingsPath := filepath.Join(directory, "fix-1.json")
+	resultPath := filepath.Join(directory, "review-1.json")
+	require.NoError(t, os.WriteFile(findingsPath, []byte("findings\n"), 0o644))
+	require.NoError(t, os.WriteFile(resultPath, []byte("review\n"), 0o644))
+
+	snapshots, err := captureFileSnapshots(findingsPath, resultPath)
+	require.NoError(t, err)
+	require.NoError(t, verifyFileSnapshotsUnchanged(snapshots))
+
+	require.NoError(t, os.WriteFile(resultPath, []byte("tampered\n"), 0o644))
+	err = verifyFileSnapshotsUnchanged(snapshots)
+	require.ErrorContains(t, err, resultPath+" content changed")
+}
+
 func writeReviewResult(t *testing.T, content string) string {
 	t.Helper()
 
