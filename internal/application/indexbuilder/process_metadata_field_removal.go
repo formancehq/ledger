@@ -3,7 +3,9 @@ package indexbuilder
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -49,6 +51,37 @@ func (b *Builder) handleRemovedMetadataFieldType(
 ) error {
 	dropped := log.GetDroppedIndex()
 	if dropped == nil {
+		// The processor probes the Index registry and only sets dropped_index
+		// when it removed an entry. This replica's own config is the second
+		// witness: holding an index for the very field whose declaration just
+		// went away means the registry answered "absent" for an entry that is
+		// still live here, and the index now outlives its declaration.
+		canonical := indexes.Canonical(indexes.MetadataID(log.GetTargetType(), log.GetKey()))
+		if held, ok := cfg.byCanonical[canonical]; ok {
+			present := make([]string, 0, len(cfg.byCanonical))
+			for c := range cfg.byCanonical {
+				present = append(present, c)
+			}
+			sort.Strings(present)
+
+			b.logger.WithFields(map[string]any{
+				"cmp":          "index-builder",
+				"ledger":       ledgerName,
+				"canonical":    canonical,
+				"buildStatus":  held.GetBuildStatus().String(),
+				"fwdVersion":   held.GetForwardEncodingVersion(),
+				"builderHolds": present,
+			}).Errorf("Field removal dropped no index while this replica still holds one")
+
+			assert.Unreachable("field removal dropped no index the builder still holds", map[string]any{
+				"ledger":       ledgerName,
+				"canonical":    canonical,
+				"buildStatus":  held.GetBuildStatus().String(),
+				"fwdVersion":   held.GetForwardEncodingVersion(),
+				"builderHolds": present,
+			})
+		}
+
 		return nil
 	}
 

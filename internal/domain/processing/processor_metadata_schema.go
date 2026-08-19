@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -82,6 +84,15 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 		updated.ForwardEncodingVersion++
 		indexes.Put(s.Indexes(), ledger, updated)
+
+		// The bump is observable downstream (it drives each replica's rewrite),
+		// so this event dates the last moment the registry is known to hold
+		// the entry.
+		assert.Reachable("field type change bumped its index", map[string]any{
+			"ledger":     ledger,
+			"canonical":  indexes.Canonical(id),
+			"fwdVersion": updated.GetForwardEncodingVersion(),
+		})
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -112,6 +123,9 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
+
+	_, priorField := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
+	hadDeclaration := priorField != nil
 
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -144,6 +158,21 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 			return nil, domain.StoreFailure("removing metadata field index", err)
 		}
 		droppedIndex = id
+
+		assert.Reachable("field removal dropped its index", map[string]any{
+			"ledger":    ledger,
+			"canonical": indexes.Canonical(id),
+		})
+	} else {
+		// A field can be declared without ever being indexed, so an absent
+		// entry is legitimate on its own. hadDeclaration separates "no such
+		// field" from "declared field whose registry entry is missing", which
+		// is what the indexbuilder cross-checks against its own config.
+		assert.Reachable("field removal found no index", map[string]any{
+			"ledger":         ledger,
+			"canonical":      indexes.Canonical(id),
+			"hadDeclaration": hadDeclaration,
+		})
 	}
 
 	return &commonpb.LedgerLogPayload{
