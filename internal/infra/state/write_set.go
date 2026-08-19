@@ -1002,8 +1002,9 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		// reaching into Derived.Ledgers here would re-introduce the raw,
 		// ungated overlay access this case was deliberately moved away from
 		// (invariant #9). A deletion of a non-mirror ledger therefore costs one
-		// spurious reconcile — idempotent, one read handle, and ledger deletion
-		// is rare.
+		// spurious reconcile in every ConfigChanged consumer — signal.FanOut
+		// dispatches to all of them, so it is a read handle each, not one
+		// overall. Idempotent, and ledger deletion is rare.
 		b.mirrorConfigChanged = true
 	case *commonpb.LogPayload_CloseChapter:
 		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee

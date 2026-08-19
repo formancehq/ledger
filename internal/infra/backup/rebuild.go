@@ -790,9 +790,10 @@ type attributeReplayWriter struct {
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
 // stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
-// keeps only the original v2 id). These live on the order itself, which
-// AuditItem.serialized_order preserves — bound into the audit hash chain and
-// shipped by the incremental export's auditItem segments.
+// keeps only the original v2 id) and every MirrorIngest's source v2 log id
+// (only FilledGapLog echoes it back into the log stream). These live on the
+// order itself, which AuditItem.serialized_order preserves — bound into the
+// audit hash chain and shipped by the incremental export's auditItem segments.
 //
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
@@ -866,9 +867,19 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 		// the re-fetched logs arrive as v2LogID == last+1 — the APPLY branch,
 		// not the idempotent skip (EN-1776).
 		//
-		// Max, not assignment: audit items are folded in key order, which is
-		// audit sequence rather than v2 log id, and it matches the checker's
-		// own fold in recordMirrorIngestMutations.
+		// Max, not assignment: a same-ledger effect can carry no source id at
+		// all. DecodeOrderEffects returns a non-empty Ledger with
+		// MirrorV2LogID == 0 for a script-sourced CreateTransaction, so one
+		// numscript order in the delta of a promoted ex-mirror ledger would,
+		// under an assignment, rewind the checkpoint-seeded mark boundaryFor
+		// loaded to 0 — and compareMirrorV2LogID is a strict equality check
+		// against its own max fold, so the checker would then report
+		// CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a healthy store.
+		// Pinned by TestRebuildDelta_NumscriptOrderDoesNotClobberMirrorMark.
+		//
+		// It also matches the checker's own fold in
+		// recordMirrorIngestMutations, so rebuild and checker agree by
+		// construction.
 		if effects.MirrorV2LogID > b.GetLastMirrorV2LogId() {
 			b.LastMirrorV2LogId = effects.MirrorV2LogID
 		}

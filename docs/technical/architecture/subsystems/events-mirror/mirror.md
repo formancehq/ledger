@@ -174,7 +174,7 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 
 - **Async prefetch**: the next batch is fetched from the source while the previous batch is still applying through Raft + FSM. This overlaps source latency with consensus latency.
 - **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:594-684`), so the per-proposal preload work is amortised.
-- **Single-writer**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage.
+- **Single-writer on the live path**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage. The one other writer is offline: `backup.RebuildDelta` reconstructs the mark from the replayed delta during a restore, when no worker and no FSM are running (EN-1776).
 
 ## What the mirror does not do
 
