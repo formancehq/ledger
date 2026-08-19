@@ -120,10 +120,18 @@ worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
 mkdir -p "$worktree_parent"
 worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
 worktree="$worktree_run_dir/worktree"
+trusted_tool_worktree=""
+review_loop_binary=""
 
 cleanup() {
     exit_status=$?
     trap - EXIT
+    if [[ -n "$trusted_tool_worktree" ]] && [[ -d "$trusted_tool_worktree" ]] && git -C "$trusted_tool_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git worktree remove "$trusted_tool_worktree" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$review_loop_binary" ]] && [[ "$review_loop_binary" == "$worktree_run_dir/review-loop" ]]; then
+        rm -f -- "$review_loop_binary"
+    fi
     if [[ "$keep_worktree" == false ]]; then
         if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
@@ -137,6 +145,29 @@ cleanup() {
 trap cleanup EXIT
 
 git worktree add --detach "$worktree" "$head_sha"
+
+review_loop=(bash scripts/review-loop)
+review_cmd='bash scripts/ai-review-codex'
+fix_cmd='bash scripts/ai-fix-claude'
+if [[ "$push_changes" == "true" ]]; then
+    if ! command -v nix >/dev/null 2>&1; then
+        echo "ai-pr-loop: required command not found in PATH: nix" >&2
+        exit 1
+    fi
+
+    # A PR must not supply the policy engine or provider adapters that authorize
+    # its own publication. Build the orchestrator from the exact verified base
+    # commit and invoke the adapters from the same immutable tool worktree.
+    trusted_tool_worktree="$worktree_run_dir/trusted-tools"
+    review_loop_binary="$worktree_run_dir/review-loop"
+    git worktree add --detach "$trusted_tool_worktree" "$base_sha"
+    nix develop "path:$trusted_tool_worktree" --command \
+        env -u GOROOT go -C "$trusted_tool_worktree" build \
+        -o "$review_loop_binary" ./scripts/reviewloop
+    review_loop=("$review_loop_binary")
+    printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
+    printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
+fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
 printf '    URL: %s\n' "$pr_url"
@@ -153,18 +184,18 @@ fi
 cd "$worktree"
 
 run_full_loop() {
-    bash scripts/review-loop \
+    "${review_loop[@]}" \
         --base "$base_sha" \
-        --review-cmd 'bash scripts/ai-review-codex' \
-        --fix-cmd 'bash scripts/ai-fix-claude'
+        --review-cmd "$review_cmd" \
+        --fix-cmd "$fix_cmd"
 }
 
 run_commit_review() {
     # No fixer on this pass: the exact clean commit that may be pushed must be
     # approved as-is. Any new blocker stops publication and requires a rerun.
-    bash scripts/review-loop \
+    "${review_loop[@]}" \
         --base "$base_sha" \
-        --review-cmd 'bash scripts/ai-review-codex'
+        --review-cmd "$review_cmd"
 }
 
 set +e
@@ -241,6 +272,16 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
+current_head=$(git rev-parse HEAD)
+if [[ "$current_head" != "$candidate_sha" ]]; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (reviewed candidate HEAD changed)"
+    echo "Reviewed: $candidate_sha"
+    echo "Current:  $current_head"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
+
 # Verify the remote still points at the exact PR head observed before any agent
 # ran. The explicit force-with-lease is used only as an atomic compare-and-swap
 # guard; candidate_sha is a normal descendant of head_sha, so the update itself
@@ -270,7 +311,7 @@ fi
 if ! git push \
     --force-with-lease="refs/heads/$head_ref:$head_sha" \
     "$remote" \
-    "HEAD:refs/heads/$head_ref"; then
+    "$candidate_sha:refs/heads/$head_ref"; then
     echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (remote changed during push or push failed)"
     echo "Candidate worktree preserved for inspection: $worktree"
     keep_worktree=true

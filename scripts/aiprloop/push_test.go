@@ -14,7 +14,7 @@ import (
 func TestPushReviewsCandidateCommitBeforePublishing(t *testing.T) {
 	t.Parallel()
 
-	fixture := newPushFixture(t, false)
+	fixture := newPushFixture(t, pushFixtureOptions{})
 	output, exitCode := fixture.run(t)
 	require.Equal(t, 0, exitCode, output)
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
@@ -31,13 +31,40 @@ func TestPushReviewsCandidateCommitBeforePublishing(t *testing.T) {
 func TestPushRefusesWhenRemoteHeadMoves(t *testing.T) {
 	t.Parallel()
 
-	fixture := newPushFixture(t, true)
+	fixture := newPushFixture(t, pushFixtureOptions{moveRemote: true})
 	output, exitCode := fixture.run(t)
 	require.Equal(t, 2, exitCode, output)
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: REFUSED (remote PR head moved)")
 
 	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
 	require.Equal(t, fixture.baseSHA, remoteHead)
+}
+
+func TestPushRefusesWhenReviewedCandidateHeadMoves(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{moveLocalHead: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: REFUSED (reviewed candidate HEAD changed)")
+
+	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
+	require.Equal(t, fixture.headSHA, remoteHead)
+}
+
+func TestPushUsesBasePinnedReviewToolchain(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{tamperTargetToolchain: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 0, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
+type pushFixtureOptions struct {
+	moveRemote            bool
+	moveLocalHead         bool
+	tamperTargetToolchain bool
 }
 
 type pushFixture struct {
@@ -48,10 +75,10 @@ type pushFixture struct {
 	baseSHA         string
 	headSHA         string
 	reviewCountFile string
-	moveRemote      bool
+	options         pushFixtureOptions
 }
 
-func newPushFixture(t *testing.T, moveRemote bool) pushFixture {
+func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	t.Helper()
 
 	root := t.TempDir()
@@ -68,8 +95,37 @@ func newPushFixture(t *testing.T, moveRemote bool) pushFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
+	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
+review_cmd=""
+fix_cmd=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --review-cmd)
+            review_cmd=$2
+            shift 2
+            ;;
+        --fix-cmd)
+            fix_cmd=$2
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+case "$review_cmd" in
+    *trusted-tools/scripts/ai-review-codex) ;;
+    *) exit 95 ;;
+esac
+if [[ -n "$fix_cmd" ]]; then
+    case "$fix_cmd" in
+        *trusted-tools/scripts/ai-fix-claude) ;;
+        *) exit 94 ;;
+    esac
+fi
 count=0
 if [[ -f "$TEST_REVIEW_COUNT_FILE" ]]; then
     count=$(cat "$TEST_REVIEW_COUNT_FILE")
@@ -80,6 +136,10 @@ if [[ "$count" -eq 1 ]]; then
     printf 'review fix\n' >> feature.txt
 elif [[ "$count" -eq 2 && "${TEST_MOVE_REMOTE:-false}" == "true" ]]; then
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/feature "$TEST_BASE_SHA"
+elif [[ "$count" -eq 2 && "${TEST_MOVE_LOCAL_HEAD:-false}" == "true" ]]; then
+    printf 'unreviewed commit\n' > unreviewed.txt
+    git add unreviewed.txt
+    git commit -m 'test: move reviewed candidate head'
 fi
 exit 0
 `)
@@ -93,7 +153,15 @@ exit 0
 
 	runGit(t, seed, "checkout", "-b", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "feature.txt"), []byte("feature\n"), 0o644))
+	if options.tamperTargetToolchain {
+		writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 97\n")
+	}
 	runGit(t, seed, "add", "feature.txt")
+	if options.tamperTargetToolchain {
+		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-fix-claude")
+	}
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "push", "-u", "origin", "feature")
@@ -117,6 +185,31 @@ case "$1 $2" in
         ;;
 esac
 `)
+	writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
+set -euo pipefail
+source_root=""
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -C)
+            source_root=$2
+            shift 2
+            ;;
+        -o)
+            output=$2
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+if [[ -z "$source_root" || -z "$output" ]]; then
+    exit 96
+fi
+cp "$source_root/scripts/review-loop" "$output"
+chmod 755 "$output"
+`)
 
 	return pushFixture{
 		root:            root,
@@ -126,7 +219,7 @@ esac
 		baseSHA:         baseSHA,
 		headSHA:         headSHA,
 		reviewCountFile: filepath.Join(root, "review-count"),
-		moveRemote:      moveRemote,
+		options:         options,
 	}
 }
 
@@ -140,7 +233,8 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 		"TEST_BASE_SHA="+fixture.baseSHA,
 		"TEST_HEAD_SHA="+fixture.headSHA,
 		"TEST_REVIEW_COUNT_FILE="+fixture.reviewCountFile,
-		"TEST_MOVE_REMOTE="+strconv.FormatBool(fixture.moveRemote),
+		"TEST_MOVE_REMOTE="+strconv.FormatBool(fixture.options.moveRemote),
+		"TEST_MOVE_LOCAL_HEAD="+strconv.FormatBool(fixture.options.moveLocalHead),
 		"TEST_REMOTE="+fixture.remote,
 	)
 	output, err := command.CombinedOutput()
@@ -149,5 +243,6 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 	}
 	var exitError *exec.ExitError
 	require.ErrorAs(t, err, &exitError, string(output))
+
 	return string(output), exitError.ExitCode()
 }
