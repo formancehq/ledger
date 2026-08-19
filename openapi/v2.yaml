@@ -2119,6 +2119,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of exporters
           required:
             - pageSize
             - hasMore
@@ -2150,6 +2151,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of pipelines
           required:
             - pageSize
             - hasMore
@@ -2181,10 +2183,12 @@ components:
       properties:
         resource:
           type: string
+          description: The resource type carried by this cursor
           enum:
             - accounts
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of accounts
           required:
             - pageSize
             - hasMore
@@ -2216,10 +2220,12 @@ components:
       properties:
         resource:
           type: string
+          description: The resource type carried by this cursor
           enum:
             - transactions
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of transactions
           required:
             - pageSize
             - hasMore
@@ -2251,10 +2257,12 @@ components:
       properties:
         resource:
           type: string
+          description: The resource type carried by this cursor
           enum:
             - logs
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of logs
           required:
             - pageSize
             - hasMore
@@ -2300,10 +2308,12 @@ components:
       properties:
         resource:
           type: string
+          description: The resource type carried by this cursor
           enum:
             - volumes
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of volumes
           required:
             - pageSize
             - hasMore
@@ -2333,17 +2343,22 @@ components:
       properties:
         account:
           type: string
+          description: The account address these volumes belong to
         asset:
           type: string
+          description: The asset these volumes are denominated in
         input:
           type: integer
           format: bigint
+          description: Total amount credited to the account for this asset
         output:
           type: integer
           format: bigint
+          description: Total amount debited from the account for this asset
         balance:
           type: integer
           format: bigint
+          description: Net balance for this asset, equal to input minus output
       required:
         - account
         - asset
@@ -2352,6 +2367,9 @@ components:
         - balance
     V2Metadata:
       type: object
+      description: >-
+        Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time
+        query returns the metadata as it stood at that time
       additionalProperties:
         type: string
       example:
@@ -2361,10 +2379,13 @@ components:
       properties:
         server:
           type: string
+          description: Name of the server serving the API
         version:
           type: string
+          description: Version of the ledger service
         experimentalFeatures:
           type: array
+          description: Experimental feature flags enabled on this deployment
           items:
             type: string
       required:
@@ -2373,15 +2394,20 @@ components:
         - version
     V2Account:
       type: object
+      description: An account in the ledger, identified by its address and carrying its metadata and volumes
       required:
         - address
         - metadata
       properties:
         address:
           type: string
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         metadata:
           type: object
+          description: >-
+            Arbitrary key/value pairs attached to the account. Metadata is bi-temporal, so a point-in-time
+            query returns the metadata as it stood at that time
           properties: {}
           additionalProperties:
             type: string
@@ -2390,14 +2416,19 @@ components:
         insertionDate:
           type: string
           format: date-time
+          description: When the account was first written to the ledger, on the request-time axis
           example: "2023-01-01T00:00:00Z"
         updatedAt:
           type: string
           format: date-time
+          description: When the account was last modified, for example by a metadata change
           example: "2023-01-01T00:00:00Z"
         firstUsage:
           type: string
           format: date-time
+          description: >-
+            Transaction time of the earliest transaction touching this account. Inserting a backdated
+            transaction can move it earlier
           example: "2023-01-01T00:00:00Z"
         volumes:
           $ref: "#/components/schemas/V2Volumes"
@@ -2405,6 +2436,7 @@ components:
           $ref: "#/components/schemas/V2Volumes"
     V2AssetsBalances:
       type: object
+      description: Balances keyed by asset
       additionalProperties:
         type: integer
         format: bigint
@@ -2418,15 +2450,19 @@ components:
           type: integer
           format: bigint
           minimum: 0
+          description: Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit
           example: 100
         asset:
           type: string
+          description: The asset being moved, optionally carrying a scale suffix such as USD/2
           example: COIN
         destination:
           type: string
+          description: Address of the account credited by this posting
           example: users:002
         source:
           type: string
+          description: Address of the account debited by this posting
           example: users:001
       required:
         - amount
@@ -2435,22 +2471,36 @@ components:
         - source
     V2Transaction:
       type: object
+      description: >-
+        A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal
+        timestamps
       properties:
         insertedAt:
           type: string
           format: date-time
+          description: >-
+            The request time: when the transaction was actually written to the ledger. Set by the
+            ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         updatedAt:
           type: string
           format: date-time
+          description: When the transaction row was last modified, for example by a metadata change or a revert
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time: when the transaction is considered to have occurred, also called
+            the effective or booking date. This is the axis the ledger uses to compute balances and
+            resolve point-in-time queries. Settable at creation, defaulting to current machine time
+            if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
+          description: The fund movements making up the transaction
           items:
             $ref: "#/components/schemas/V2Posting"
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
@@ -2458,11 +2508,16 @@ components:
           type: integer
           format: bigint
           minimum: 0
+          description: Unique sequential identifier for this transaction within the ledger
         reverted:
           type: boolean
+          description: Indicates if the transaction has been reverted
         revertedAt:
           type: string
           format: date-time
+          description: >-
+            When the transaction was reverted, on the request-time axis. Absent if the transaction has not
+            been reverted
         preCommitVolumes:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitVolumes:
@@ -2473,6 +2528,7 @@ components:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         template:
           type: string
+          description: Name of the transaction template this transaction was created from, if any
       required:
         - postings
         - timestamp
@@ -2487,12 +2543,18 @@ components:
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time to record, letting you backdate or postdate the transaction. Defaults to
+            current machine time if omitted. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
+          description: Fund movements to apply. Mutually exclusive with script and template
           items:
             $ref: "#/components/schemas/V2Posting"
         script:
           type: object
+          description: A Numscript program executed to produce the postings. Mutually exclusive with postings
           properties:
             template:
               type: string
@@ -2511,26 +2573,34 @@ components:
           $ref: "#/components/schemas/Runtime"
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         accountMetadata:
           type: object
+          description: Metadata to set on the accounts involved in the transaction, keyed by account address
           additionalProperties:
             $ref: "#/components/schemas/V2Metadata"
         force:
           type: boolean
+          description: >-
+            When true, lets source accounts overdraft without bound, bypassing the balance check. Applies to
+            the postings form only
     V2Stats:
       type: object
+      description: Aggregate counts for a ledger
       properties:
         accounts:
           type: integer
           format: int64
           minimum: 0
+          description: Total number of accounts in the ledger
         transactions:
           type: integer
           format: bigint
           minimum: 0
+          description: Total number of transactions in the ledger
       required:
         - accounts
         - transactions
@@ -2597,8 +2667,10 @@ components:
           type: integer
           format: bigint
           minimum: 0
+          description: Unique sequential identifier for this transaction within the ledger
         postings:
           type: array
+          description: The fund movements making up the transaction
           items:
             $ref: "#/components/schemas/V2Posting"
         metadata:
@@ -2606,17 +2678,26 @@ components:
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time: when the transaction is considered to have occurred. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger
         insertedAt:
           type: string
           format: date-time
+          description: >-
+            The request time: when the transaction was actually written to the ledger. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         updatedAt:
           type: string
           format: date-time
+          description: When the transaction row was last modified
         revertedAt:
           type: string
           format: date-time
+          description: When the transaction was reverted, on the request-time axis
         reverted:
           type: boolean
           description: Indicates if the transaction has been reverted
@@ -2677,6 +2758,7 @@ components:
             - TRANSACTION
           description: Type of the target entity
         targetId:
+          description: Identifier of the entity the metadata was set on, either an account address or a transaction ID
           oneOf:
             - type: string
               description: Account address (when targetType is ACCOUNT)
@@ -2741,6 +2823,9 @@ components:
             - TRANSACTION
           description: Type of the target entity
         targetId:
+          description: >-
+            Identifier of the entity the metadata was deleted from, either an account address or a transaction
+            ID
           oneOf:
             - type: string
               description: Account address (when targetType is ACCOUNT)
@@ -2797,12 +2882,15 @@ components:
         input:
           type: integer
           format: bigint
+          description: Total amount credited for this asset
         output:
           type: integer
           format: bigint
+          description: Total amount debited for this asset
         balance:
           type: integer
           format: bigint
+          description: Net balance, equal to input minus output
       required:
         - input
         - output
@@ -2812,6 +2900,7 @@ components:
         balance: 80
     V2Volumes:
       type: object
+      description: Volumes per asset for a single account
       additionalProperties:
         $ref: "#/components/schemas/V2Volume"
       example:
@@ -2825,6 +2914,7 @@ components:
           balance: 90
     V2AggregatedVolumes:
       type: object
+      description: Volumes aggregated per account and per asset
       additionalProperties:
         $ref: "#/components/schemas/V2Volumes"
       example:
@@ -2848,13 +2938,18 @@ components:
           $ref: "#/components/schemas/V2ErrorsEnum"
         errorMessage:
           type: string
+          description: Human-readable description of the error
           example: "[VALIDATION] invalid 'cursor' query param"
         details:
           type: string
+          description: >-
+            Optional link carrying additional context about the error, such as a Numscript playground URL
+            reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
     V2ErrorsEnum:
       type: string
+      description: Machine-readable error code identifying the failure
       enum:
         - INTERNAL
         - INSUFFICIENT_FUND
@@ -2884,12 +2979,15 @@ components:
           $ref: "#/components/schemas/V2LedgerInfo"
     V2LedgerInfo:
       type: object
+      description: Runtime information about a ledger, including the state of its storage migrations
       properties:
         name:
           type: string
+          description: Name of the ledger
           example: ledger001
         storage:
           type: object
+          description: Storage backend information, including the migrations applied to the ledger's bucket
           properties:
             migrations:
               type: array
@@ -2900,15 +2998,19 @@ components:
       properties:
         version:
           type: string
+          description: Sequence number of the migration
           example: 11
         name:
           type: string
+          description: Name of the migration
           example: migrations:001
         date:
           type: string
           format: date-time
+          description: When the migration was applied
         state:
           type: string
+          description: Current state of the migration
           enum:
             - TO DO
             - DONE
@@ -2924,8 +3026,10 @@ components:
       properties:
         action:
           type: string
+          description: The bulk action this element performs
         ik:
           type: string
+          description: Idempotency key scoped to this element, making it safe to retry the bulk request
     V2BulkElement:
       type: object
       oneOf:
@@ -3023,12 +3127,14 @@ components:
       properties:
         data:
           type: array
+          description: Result of each element of the bulk request, in submission order
           items:
             $ref: "#/components/schemas/V2BulkElementResult"
         errorCode:
           $ref: "#/components/schemas/V2ErrorsEnum"
         errorMessage:
           type: string
+          description: Human-readable description of the error
           example: "[VALIDATION] invalid 'cursor' query param"
     V2BulkElementResult:
       type: object
@@ -3051,8 +3157,10 @@ components:
       properties:
         responseType:
           type: string
+          description: The action this result corresponds to
         logID:
           type: integer
+          description: Identifier of the log entry produced by this element
       required:
         - responseType
         - logID
@@ -3096,23 +3204,28 @@ components:
             - errorDescription
     V2ChartAccountRules:
       type: object
+      description: Rules applied to accounts matching a chart-of-accounts segment
     V2ChartAccountMetadata:
       type: object
       properties:
         default:
           type: string
+          description: Value applied to this metadata key when an account matching the segment is created
     V2ChartSegment:
       type: object
       description: "Segment within a chart of accounts"
       properties:
         .self:
           type: object
+          description: Rules and metadata applied to the segment's own account, as opposed to its children
         .pattern:
           type: string
+          description: Regular expression every child segment name must match
         .rules:
           $ref: "#/components/schemas/V2ChartAccountRules"
         .metadata:
           type: object
+          description: Metadata applied to accounts matching this segment, keyed by metadata key
           additionalProperties:
             $ref: "#/components/schemas/V2ChartAccountMetadata"
       additionalProperties:
@@ -3141,8 +3254,10 @@ components:
       properties:
         description:
           type: string
+          description: Human-readable description of what the template does
         script:
           type: string
+          description: The Numscript program the template executes
         runtime:
           $ref: "#/components/schemas/Runtime"
       required:
@@ -3157,14 +3272,18 @@ components:
       properties:
         type:
           type: string
-        default: {}
+          description: Type of the variable
+        default:
+          description: Value used when the variable is not supplied at query time
       required:
         - type
     V2QueryResource:
       type: string
+      description: The resource a query template targets
       enum: [transactions, accounts, logs, volumes]
     V2QueryParams:
       type: object
+      description: Parameters applied when running a query template
       properties:
         pageSize:
           type: integer
@@ -3188,11 +3307,13 @@ components:
           example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
         expand:
           type: string
+          description: Additional data to include in the response, such as volumes
           items:
             type: string
         pit:
           type: string
           format: date-time
+          description: Point-in-time. Returns the state as it existed at this timestamp
         sort:
           type: string
           description: |
@@ -3239,17 +3360,20 @@ components:
       properties:
         description:
           type: string
+          description: Human-readable description of what the query returns
         resource:
           $ref: "#/components/schemas/V2QueryResource"
         params:
           $ref: "#/components/schemas/V2QueryParams"
         vars:
           type: object
+          description: Variables the query accepts, keyed by variable name
           additionalProperties:
             $ref: "#/components/schemas/V2QueryTemplateVar"
         body:
           type: object
           additionalProperties: true
+          description: The filter expression the query evaluates
     V2QueryTemplates:
       type: object
       description: Query templates
@@ -3305,19 +3429,25 @@ components:
       properties:
         data:
           type: array
+          description: The schemas on this page
           items:
             $ref: "#/components/schemas/V2Schema"
         hasMore:
           type: boolean
+          description: Whether further pages are available
         previous:
           type: string
+          description: Cursor for the previous page, absent on the first page
           example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
         next:
           type: string
+          description: Cursor for the next page, absent on the last page
           example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
         pageSize:
           type: integer
+          description: Number of items requested per page
       type: object
+      description: Paginated cursor over the ledger's schemas
       required:
         - data
         - hasMore
@@ -3327,34 +3457,43 @@ components:
       properties:
         bucket:
           type: string
+          description: Name of the storage bucket backing the ledger. Ledgers sharing a bucket share a database schema
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
           type: object
+          description: Feature flags to enable on the ledger, keyed by feature name
           additionalProperties:
             type: string
     V2Ledger:
       type: object
+      description: A ledger and its configuration
       properties:
         name:
           type: string
+          description: Name of the ledger
         addedAt:
           type: string
           format: date-time
+          description: When the ledger was created
         bucket:
           type: string
+          description: Name of the storage bucket backing the ledger
         deletedAt:
           type: string
           format: date-time
           nullable: true
+          description: When the ledger was deleted, absent for active ledgers
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
           type: object
+          description: Feature flags enabled on the ledger, keyed by feature name
           additionalProperties:
             type: string
         id:
           type: integer
+          description: Unique sequential identifier for the ledger
       required:
         - name
         - addedAt
@@ -3366,6 +3505,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of ledgers
           required:
             - pageSize
             - hasMore
@@ -3407,11 +3547,13 @@ components:
         file:
           type: string
           format: binary
+          description: The log export to import, as produced by the export endpoint
     V2RevertTransactionRequest:
       type: object
       properties:
         metadata:
           type: object
+          description: Metadata to attach to the compensating transaction created by the revert
           additionalProperties:
             type: string
     V2CreatePipelineRequest:
@@ -3419,6 +3561,7 @@ components:
       properties:
         exporterID:
           type: string
+          description: Identifier of the exporter this pipeline feeds
       required:
         - exporterID
     V2CreateExporterRequest:
@@ -3429,8 +3572,10 @@ components:
       properties:
         ledger:
           type: string
+          description: Name of the ledger the pipeline reads from
         exporterID:
           type: string
+          description: Identifier of the exporter the pipeline feeds
       required:
         - ledger
         - exporterID
@@ -3439,9 +3584,11 @@ components:
       properties:
         driver:
           type: string
+          description: Name of the exporter driver to use
         config:
           type: object
           additionalProperties: true
+          description: Driver-specific configuration for the exporter
       required:
         - driver
         - config
