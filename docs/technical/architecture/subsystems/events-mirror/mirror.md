@@ -85,6 +85,8 @@ The ingestion position itself is advanced by the order-apply path (`processMirro
 
 Atomicity matters: if any of the orders in the batch fails (e.g. balance mismatch in a translated CreatedTransaction), the whole proposal rolls back and the boundary does **not** advance. The worker will retry the same batch on the next tick.
 
+When the worker is fully caught up it fetches no logs, so the ingest path never runs. To keep the reported state from being pinned at `SYNCING` — most visibly after a restore, where `RebuildDelta` reconstructs `last_mirror_v2_log_id` but not `MirrorSourceHead` — the caught-up worker publishes the refreshed source head on its own via a standalone `MirrorSyncUpdate` (`Worker.publishSourceHead`). It only proposes when the observed head changed since the last publish, so an idle mirror does not re-propose the same value every poll tick (EN-1773).
+
 ## Storage layout
 
 `internal/query/mirror.go` — reporting keys under the per-ledger zone:

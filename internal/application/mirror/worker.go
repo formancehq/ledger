@@ -56,6 +56,11 @@ type Worker struct {
 	builder        *plan.Builder
 	logger         logging.Logger
 	sourceLogCount uint64
+	// lastPublishedSourceHead is the source head most recently persisted via a
+	// MirrorSyncUpdate (either bundled with an ingest batch or published on its
+	// own by an idle, caught-up worker). It gates publishSourceHead so an idle
+	// mirror does not re-propose the same value every poll tick (EN-1773).
+	lastPublishedSourceHead uint64
 
 	notify  signal.Signal
 	w       worker.Worker
@@ -321,6 +326,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.fetchDuration.Record(ctx, fetchDur.Microseconds(), attrs)
 
 	if len(v2Logs) == 0 {
+		// Fully caught up: the ingest path (which normally bundles the source
+		// head into its data proposal) never runs, so publish the head on its
+		// own. Without this a correctly restored, idle mirror reports SYNCING
+		// forever because RebuildDelta reconstructs last_mirror_v2_log_id but
+		// not SubPLMirrorSourceHead (EN-1773).
+		w.publishSourceHead(ctx)
+
 		return false, nil
 	}
 
@@ -497,6 +509,10 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.lastAppliedV2LogID = lastV2LogID
 	w.prefetchCh = nextPrefetchCh
 
+	// The applied proposal carried this source head in its MirrorSyncUpdate, so
+	// record it as published to keep a later idle tick from re-proposing it.
+	w.lastPublishedSourceHead = w.sourceLogCount
+
 	return hasMore, nil
 }
 
@@ -506,6 +522,92 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 	if ch != nil {
 		<-ch
 	}
+}
+
+// publishSourceHead proposes a source-head-only MirrorSyncUpdate for an idle,
+// fully caught-up mirror. The ingest path bundles the source head into its data
+// proposal, but a caught-up worker fetches no logs and would otherwise propose
+// nothing — leaving SubPLMirrorSourceHead at 0 after a restore, so
+// ReadMirrorSyncProgress reports SYNCING indefinitely until a new source log
+// arrives (EN-1773).
+//
+// It proposes only when the observed head changed since the last publish, so an
+// idle mirror does not re-propose the same value on every poll tick. A source
+// head of 0 (never observed, e.g. refreshSourceHead has not yet succeeded)
+// carries no information and is skipped.
+func (w *Worker) publishSourceHead(ctx context.Context) {
+	if w.sourceLogCount == 0 || w.sourceLogCount == w.lastPublishedSourceHead {
+		return
+	}
+
+	cmd := &raftcmdpb.Proposal{
+		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentMirror),
+		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
+			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
+				MirrorSync: &raftcmdpb.MirrorSyncUpdate{
+					LedgerName:     w.ledgerName,
+					ClearError:     true,
+					SourceLogCount: w.sourceLogCount,
+				},
+			},
+		}},
+	}
+
+	// applyMirrorSyncUpdate reads Registry.Ledgers through the FSM-side Plan, so
+	// the TU must declare the ledger key or the gate rejects the read and the
+	// update silently skips — same coverage as the ingest and error paths.
+	needs := plan.NewCoverage()
+	needs.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
+
+	operations := []plan.WriteOperation{{
+		Coverage: needs,
+		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
+	}}
+
+	build, err := w.builder.Build(needs, operations)
+	if err != nil {
+		if build != nil {
+			build.ReleaseLoaders()
+		}
+
+		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to build preloads for mirror source-head publish")
+
+		return
+	}
+
+	runResult, err := w.builder.Run(ctx, cmd, build, marshalMirrorCommand, w.proposer)
+	if err != nil {
+		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to publish mirror source head")
+
+		return
+	}
+
+	runResult.Guard.ReleaseLoaders()
+
+	// Wait for Raft acceptance THEN FSM apply, mirroring reportError: only a
+	// confirmed application may advance lastPublishedSourceHead, or a rejected
+	// proposal would suppress the retry on the next tick.
+	if _, err := runResult.Proposal.Wait(ctx); err != nil {
+		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror source-head publish rejected by Raft")
+
+		return
+	}
+
+	result, fsmErr := runResult.FSMFuture.Wait(ctx)
+	if fsmErr != nil {
+		w.logger.WithFields(map[string]any{"error": fsmErr.Error()}).Errorf("Mirror source-head publish rejected by FSM")
+
+		return
+	}
+
+	if result.Error != nil {
+		w.logger.WithFields(map[string]any{"error": result.Error.Error()}).Errorf("Mirror source-head publish apply returned business error")
+
+		return
+	}
+
+	w.lastPublishedSourceHead = w.sourceLogCount
 }
 
 func (w *Worker) reportError(ctx context.Context, message string) {

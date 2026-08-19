@@ -431,32 +431,27 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				"restored mirror cursor must match the position the backup captured")
 		})
 
-		It("resumes ingestion without error", func() {
+		It("reports FOLLOWING for the idle restored mirror", func() {
 			// A rebuilt mark ahead of the applied prefix would be rejected by
 			// the FSM's contiguity guard and surface here as
 			// ERROR_REASON_MIRROR_V2_LOG_ID_GAP; a mark behind it re-ingests
 			// silently, which the next spec covers.
 			//
-			// State is deliberately NOT asserted here. ReadMirrorSyncProgress
-			// derives it from `sourceHead > 0 && cursor >= sourceHead`, and the
-			// source head lives in SubPLMirrorSourceHead, which RebuildDelta does
-			// NOT reconstruct: the FSM writes it only as a side effect of a
-			// mirror ingest proposal (WriteSet -> SetMirrorSourceHead). A
-			// correctly restored mirror has nothing left to ingest, so it
-			// proposes nothing, the head stays 0 and the state reads SYNCING with
-			// zero remaining logs.
-			//
-			// That does not clear on its own: it takes a NEW source log to
-			// produce the ingest that writes the head, so an idle source leaves a
-			// correctly restored mirror reporting SYNCING indefinitely, and an
-			// operator treating FOLLOWING as the restore-verification signal
-			// waits forever. The next spec asserts FOLLOWING once an ingest has
-			// actually run.
+			// ReadMirrorSyncProgress derives FOLLOWING from
+			// `sourceHead > 0 && cursor >= sourceHead`, and the source head lives
+			// in SubPLMirrorSourceHead, which RebuildDelta does NOT reconstruct.
+			// A correctly restored mirror has nothing left to ingest, so the
+			// ingest path — which normally bundles the source head into its data
+			// proposal — never runs. To keep an idle restored mirror from
+			// reporting SYNCING forever, the caught-up worker publishes the
+			// refreshed source head on its own (EN-1773), so FOLLOWING becomes
+			// observable without waiting for a new source log.
 			Eventually(func(g Gomega) {
 				progress := syncProgress(g, client)
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(preBackupCursor))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -493,9 +488,8 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(ids).To(ContainElement(uint64(postRestoreTxID)),
 					fmt.Sprintf("mirrored transaction ids: %v", ids))
 
-				// This ingest is what persists SubPLMirrorSourceHead again, so
-				// FOLLOWING is only observable from here on — see the note in
-				// the previous spec.
+				// FOLLOWING again after the fresh ingest advances both the
+				// cursor and the source head in lock-step.
 				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
