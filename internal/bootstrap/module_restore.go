@@ -88,11 +88,13 @@ func RestoreModule() fx.Option {
 				lc fx.Lifecycle,
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
+				shutdowner fx.Shutdowner,
 			) {
 				lc.Append(grpcServerHook(grpcServerHookConfig{
-					Server: serviceServer,
-					Name:   "restore-mode gRPC server",
-					Logger: logger,
+					Server:          serviceServer,
+					Name:            "restore-mode gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
 			// Start minimal HTTP server with /health only, bound to the same

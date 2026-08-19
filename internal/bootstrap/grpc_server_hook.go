@@ -31,6 +31,11 @@ type grpcServerHookConfig struct {
 	// state and the kernel queues connections before Accept, so this is the
 	// same ordering the old close(listening) signal provided.
 	AfterListen func()
+	// RequestShutdown stops the application. It is required: a server whose
+	// Serve returns after a successful bind leaves the process alive with a
+	// dead endpoint, and /readyz only reports Node.IsStarted(), so nothing else
+	// would notice. fx.Shutdowner.Shutdown satisfies it.
+	RequestShutdown func() error
 }
 
 // grpcServerHook returns the fx lifecycle hook that binds, serves and stops a
@@ -43,6 +48,15 @@ type grpcServerHookConfig struct {
 // genuinely failing spec with it (EN-1784). The old `listening` channel was
 // never closed on a bind failure, so OnStart could not observe the error at
 // all — it would have hung had the panic not won the race.
+//
+// A Serve that fails AFTER the bind cannot be reported through OnStart, which
+// has already returned. Deferring it to OnStop is not enough either: the
+// process would keep running — Ready, since /readyz only reflects
+// Node.IsStarted() — with a dead Raft or service endpoint until something else
+// stopped it. The serve goroutine therefore logs the failure and requests a
+// shutdown as soon as it happens, and OnStop still returns the error so the
+// exit is not silent. Replacing the panic must not cost the loud failure the
+// panic provided.
 func grpcServerHook(cfg grpcServerHookConfig) fx.Hook {
 	var (
 		wait     func()
@@ -51,12 +65,35 @@ func grpcServerHook(cfg grpcServerHookConfig) fx.Hook {
 
 	return fx.Hook{
 		OnStart: func(_ context.Context) error {
+			// Unreachable by contract: every call site passes
+			// fx.Shutdowner.Shutdown. Refuse to start rather than serve with
+			// the failure path silently disabled.
+			if cfg.RequestShutdown == nil {
+				return fmt.Errorf("%s: no shutdown requester wired into the hook", cfg.Name)
+			}
+
 			if err := cfg.Server.Listen(); err != nil {
 				return fmt.Errorf("%s: %w", cfg.Name, err)
 			}
 
 			wait = otlplogs.GoWait(func() {
 				serveErr = cfg.Server.Serve()
+				if serveErr == nil {
+					// A normal shutdown returns nil: serveSingle and serveDual
+					// tolerate ErrServerStopped and net.ErrClosed, and Serve
+					// returns nil when Stop closed the listener before the
+					// goroutine ran. So non-nil means the endpoint died under a
+					// live application.
+					return
+				}
+
+				cfg.Logger.Errorf("%s stopped serving: %v", cfg.Name, serveErr)
+
+				if err := cfg.RequestShutdown(); err != nil {
+					// Nothing left to escalate to; make the double failure
+					// visible instead of exiting on the OnStop error alone.
+					cfg.Logger.Errorf("%s: requesting application shutdown: %v", cfg.Name, err)
+				}
 			}, cfg.Logger)
 
 			if cfg.AfterListen != nil {
@@ -94,5 +131,13 @@ func grpcServerHook(cfg grpcServerHookConfig) fx.Hook {
 			// "<name> server failed".
 			return serveErr
 		},
+	}
+}
+
+// shutdownRequester adapts fx.Shutdowner to the hook's RequestShutdown, whose
+// signature stays free of fx so the hook can be tested with a plain spy.
+func shutdownRequester(shutdowner fx.Shutdowner) func() error {
+	return func() error {
+		return shutdowner.Shutdown()
 	}
 }

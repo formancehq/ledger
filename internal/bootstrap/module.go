@@ -1060,12 +1060,14 @@ func Module() fx.Option {
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
 				membership *raftmembership.Membership,
+				shutdowner fx.Shutdowner,
 			) {
 				lc.Append(grpcServerHook(grpcServerHookConfig{
-					Server:      raftServer,
-					Name:        "Raft gRPC server",
-					Logger:      logger,
-					AfterListen: membership.Start,
+					Server:          raftServer,
+					Name:            "Raft gRPC server",
+					Logger:          logger,
+					AfterListen:     membership.Start,
+					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
@@ -1203,11 +1205,13 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
+				shutdowner fx.Shutdowner,
 			) {
 				lc.Append(grpcServerHook(grpcServerHookConfig{
-					Server: serviceServer,
-					Name:   "Service gRPC server",
-					Logger: logger,
+					Server:          serviceServer,
+					Name:            "Service gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
 				}))
 			},
 			// Join mode preflight is registered EARLIER (before the Raft
